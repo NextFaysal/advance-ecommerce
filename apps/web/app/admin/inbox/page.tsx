@@ -2,12 +2,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { maskPhone } from "@/checkout/validation";
 import { demoInboxFlags, isInboxEnabled } from "@/inbox/flags";
 import { extractPhoneFromMessages } from "@/inbox/conversion";
-import {
-  demoConversations,
-  demoMessages,
-  messagesForConversation,
-  toConversationView,
-} from "@/inbox/service";
+import { toConversationView } from "@/inbox/service";
+import { loadInbox } from "@/inbox/store";
 import type { InboxMessage } from "@/inbox/types";
 import InboxClient from "./inbox-client";
 
@@ -16,15 +12,15 @@ import InboxClient from "./inbox-client";
 // Locked state: while module.f_commerce is OFF (seeded default, paid
 // add-on), the page renders the lock panel, matching the API's 403
 // FEATURE_LOCKED and the call-center / pos / automation page pattern.
-// Unlocked: the unified inbox UI (InboxClient) works on the src/inbox
-// TEMPORARY DEMO store (in-memory, lost on restart). Channels are TYPES
-// ONLY in this slice — no Messenger / WhatsApp / Instagram API is
-// connected, no channel token exists anywhere, and nothing is ever sent.
+// Unlocked: the unified inbox UI (InboxClient) works on the Prisma DB
+// store (src/inbox/store.ts). Channels are TYPES ONLY in this slice — no
+// Messenger / WhatsApp / Instagram API is connected, no channel token
+// exists anywhere, and nothing is ever sent.
 // Privacy (D1 fix): only MASKED shapes cross to the client component —
 // ConversationView[] (toConversationView) and pre-masked detected phones.
 // Full numbers stay server-side; the order draft is built by POST
 // /api/v1/admin/inbox/draft, which resolves the phone server-side.
-export default function AdminInboxPage() {
+export default async function AdminInboxPage() {
   if (!isInboxEnabled(demoInboxFlags)) {
     return (
       <main>
@@ -41,10 +37,11 @@ export default function AdminInboxPage() {
     );
   }
 
+  const { conversations, messagesByConversation } = await loadInbox();
   const threads: Record<string, InboxMessage[]> = {};
   const detectedPhoneMasked: Record<string, string | null> = {};
-  for (const conv of demoConversations) {
-    const messages = messagesForConversation(demoMessages, conv.id);
+  for (const conv of conversations) {
+    const messages = messagesByConversation.get(conv.id) ?? [];
     threads[conv.id] = messages;
     const detected = extractPhoneFromMessages(messages);
     detectedPhoneMasked[conv.id] = detected ? maskPhone(detected) : null;
@@ -54,11 +51,11 @@ export default function AdminInboxPage() {
     <main>
       <PageHeader
         title="ইনবক্স (F-commerce)"
-        description="TEMPORARY DEMO — ডেটা src/inbox ইন-মেমরি ডেমো স্টোর থেকে (রিস্টার্টে মুছে যায়)। কোনো চ্যানেল API সংযুক্ত নেই: উত্তর পাঠানো যায় না, আর কথোপকথন থেকে তৈরি ড্রাফট কোনো অর্ডার নয়।"
+        description="ডেটা ডাটাবেস থেকে (src/inbox/store.ts)। কোনো চ্যানেল API সংযুক্ত নেই: উত্তর পাঠানো যায় না, আর কথোপকথন থেকে তৈরি ড্রাফট কোনো অর্ডার নয়।"
         breadcrumb="Admin / Sales"
       />
       <InboxClient
-        conversations={demoConversations.map(toConversationView)}
+        conversations={conversations.map(toConversationView)}
         threads={threads}
         detectedPhoneMasked={detectedPhoneMasked}
       />

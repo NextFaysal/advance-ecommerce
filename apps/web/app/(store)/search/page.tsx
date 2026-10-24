@@ -1,21 +1,30 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ProductCard } from "@/catalog/ProductCard";
-import { applyProductFilter, expandQueryTokens } from "@/catalog/search";
-import { getMockActiveProducts } from "@/catalog/mock";
+import { expandQueryTokens } from "@/catalog/search";
+import { searchPublicProductsForPage } from "@/catalog/server-read";
+
+// Data: Meilisearch-first product search with an honest Postgres
+// fallback (src/catalog/search-service.ts) over the real catalog DB
+// (ACTIVE products only). The answering engine is shown on the page.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Search — Advance Ecommerce",
   description: "পণ্য খুঁজুন — বাংলা ও Banglish দুটোতেই।",
 };
 
-export default function SearchPage({
+export default async function SearchPage({
   searchParams,
 }: {
   searchParams: { q?: string | string[] };
 }) {
   const q = Array.isArray(searchParams.q) ? searchParams.q[0] ?? "" : searchParams.q ?? "";
-  const products = q ? applyProductFilter(getMockActiveProducts(), { query: q }) : [];
+  // PUBLIC shape only — costPoisha stripped inside the search service.
+  const searchResult = q
+    ? await searchPublicProductsForPage({ query: q, page: 1, pageSize: 100 })
+    : null;
+  const products = searchResult?.products ?? [];
   const expansions = q ? expandQueryTokens(q).filter((t) => t !== q.toLowerCase()) : [];
 
   return (
@@ -59,7 +68,11 @@ export default function SearchPage({
         </div>
       )}
       <p className="mt-6 text-xs text-slate-500">
-        Typo-tolerant search: Step 10-এ Meilisearch typoTolerance (1 typo ≥4 অক্ষর, 2 typo ≥8 অক্ষর) এই পেজে বসবে।
+        {searchResult
+          ? searchResult.engine === "meilisearch"
+            ? "Search engine: Meilisearch (typo-tolerant, বাংলা + Banglish synonyms)।"
+            : "Search engine: PostgreSQL (fallback — Meilisearch unavailable)।"
+          : "Typo-tolerant search: Meilisearch (বাংলা + Banglish synonyms), না থাকলে PostgreSQL fallback।"}
       </p>
     </main>
   );

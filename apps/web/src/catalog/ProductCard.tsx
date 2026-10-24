@@ -6,11 +6,14 @@ import Link from "next/link";
 import { useState } from "react";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { toggleWishlistId } from "./wishlist";
-import type { Product } from "./types";
+import type { PublicProduct } from "./types";
 import { minVariantPricePoisha } from "./types";
 import { AddToCartButton } from "@/cart/components/AddToCartButton";
 
-export function ProductCard({ product }: { product: Product }) {
+// Public card — typed on PublicProduct (no costPoisha anywhere in the
+// shape), so a full admin Product cannot be passed here by accident:
+// cost prices can never ride this component's serialized props.
+export function ProductCard({ product }: { product: PublicProduct }) {
   const [wishlisted, setWishlisted] = useState(false);
   const [showQuickView, setShowQuickView] = useState(false);
   const price = minVariantPricePoisha(product);

@@ -5,12 +5,13 @@
  *   success: { data: { order, pricing }, meta: {...} }
  *   error:   { error: { code, message, details } }
  *
- * REAL, already wired in this file:
+ * REAL, wired in this file:
  * - Zod validation on every input (checkoutFormSchema: phone required,
  *   BD regex, normalized to +8801XXXXXXXXX, email optional, address
  *   Division > District > Upazila > Union, items >= 1, UUID idempotencyKey)
  * - Server-side price re-validation: client sends NO price. Prices, SKU,
- *   product name and stock are taken from the SERVER price source below.
+ *   product name and stock are read from the DATABASE (Prisma
+ *   ProductVariant via src/orders/repository.getVariantSnapshots).
  *   A client total is never trusted.
  * - Pricing pipeline, integer poisha only: subtotal -> coupon -> shipping
  *   -> COD fee -> tax (0 bps for now) -> grand total.
@@ -20,39 +21,38 @@
  *   An ineligible/unknown code never fails the order: it is created with
  *   a 0 discount and couponStatus "rejected" + the bn/en reason.
  * - Fraud (Agent 59): every create is scored with the REAL scoreFraud()
- *   (src/fraud) over the demo list store + this route's in-memory order
- *   history. Suggested action "block" -> 422 FRAUD_BLOCKED (generic
- *   message, no signal details leave the server); "require_advance" ->
- *   the order is created flagged advanceRequired + requiresOtp. The real
- *   score/band/action are stored on the order record.
+ *   (src/fraud) over the demo list store + the customer's prior orders
+ *   read from the DATABASE. Suggested action "block" -> 422
+ *   FRAUD_BLOCKED (generic message, no signal details leave the server);
+ *   "require_advance" -> the order is created flagged advanceRequired +
+ *   requiresOtp. The real score is persisted as Order.riskScore.
  * - Idempotency: a duplicate idempotencyKey returns the ORIGINAL order
- *   (with its original coupon/fraud results — a replay never re-applies
- *   a coupon or re-scores), never a second order. The in-memory claim
- *   below is TEMPORARY ONLY.
+ *   (a replay never re-applies a coupon or re-scores), never a second
+ *   order. The durable backstop is the UNIQUE Order.idempotencyKey
+ *   column (src/orders/repository.createOrderRecord converts a P2002
+ *   race into a replay); the in-memory claim below still guards
+ *   double-submits inside this process, including the FRAUD_BLOCKED
+ *   retry -> 409 behaviour.
+ * - Persistence (DB swap): the order is written by
+ *   src/orders/repository.createOrderRecord in ONE prisma.$transaction:
+ *   Customer find-or-create by phone (+ default Address), Order +
+ *   OrderItems (purchase-time snapshots), OrderStatusHistory
+ *   (null -> PENDING), Payment row (UNPAID), and a CouponUsage row when
+ *   the applied coupon exists as a DB Coupon (@@unique([couponId,
+ *   orderId]) backstop). meta.db = "PRISMA".
+ * - order.created is published on the in-process bus only after the
+ *   transaction commits — never on a replay or a fraud block.
  *
- * TEMPORARY MOCK / NOT YET WIRED — do not present as a real DB:
- * - SERVER_PRICES comes from src/catalog/mock.ts (TEMPORARY MOCK data).
- *   Replace with a Prisma ProductVariant query once Agent 6 merges the
- *   Order/Cart schema (orders/SCHEMA-ADDITIONS.md) and Prisma generate
- *   succeeds. The current Prisma schema has NO Order/OrderItem tables yet.
- * - Created orders live in a module-level in-memory array only: lost on
- *   restart, NOT shared with admin routes, NOT a database.
- * - The real DB transaction is documented in createOrderTransactionSteps()
- *   and must be implemented as prisma.$transaction once the schema lands:
- *     1. re-validate variant prices + stock (SELECT ... FOR UPDATE / stock check)
- *     2. enforce UNIQUE idempotencyKey (return existing order on conflict)
- *     3. create Order + OrderItems (purchase-time price/SKU/name snapshots)
- *     4. create OrderStatusHistory (null -> PENDING)
- *     5. reserve stock via stock_movements ledger (reserve at checkout)
- *     6. create Payment row (UNPAID for COD / until gateway verifies)
- *     7. emit order.created event (in-process bus now — see the publish
- *        call after the store push; Redis pub/sub once the DB lands)
- *   Until then this route returns meta.db = "NOT_WIRED" so no caller can
- *   mistake a mock order for a persisted order.
+ * STILL DEMO / NOT THIS SLICE:
+ * - The coupon RECORDS evaluated by evaluateOrderCoupon still come from
+ *   the marketing module's demo records / in-memory store (the coupon
+ *   module's own DB swap is separate); recordCouponUse() remains that
+ *   module's bookkeeping. Stock is a read-only check against the
+ *   variant's denormalized stock cache — the checkout path never wrote
+ *   stock_movements before this swap and still does not (inventory
+ *   module owns the ledger wiring).
  */
 import { NextResponse } from "next/server";
-import { z } from "zod";
-import { MOCK_PRODUCTS } from "@/catalog/mock";
 import { checkoutFormSchema } from "@/checkout/validation";
 import { computePricing } from "@/checkout/pricing";
 import { InMemoryIdempotencyStore } from "@/checkout/idempotency";
@@ -65,29 +65,14 @@ import {
 } from "@/checkout/order-enrichment";
 import { scoreFraud } from "@/fraud/scoring";
 import { publishOrderCreated } from "@/orders/event-bus";
+import {
+  createOrderRecord,
+  findOrderByIdempotencyKey,
+  getVariantSnapshots,
+  listOrdersByPhone,
+  orderRowToEnriched,
+} from "@/orders/repository";
 import type { Order } from "@/orders/types";
-
-type ServerVariant = {
-  variantId: string;
-  productName: string;
-  sku: string;
-  unitPricePoisha: number;
-  stock: number;
-};
-
-// TEMPORARY MOCK server price source — see header. Replace with Prisma.
-const SERVER_PRICES = new Map<string, ServerVariant>();
-for (const product of MOCK_PRODUCTS) {
-  for (const variant of product.variants) {
-    SERVER_PRICES.set(variant.id, {
-      variantId: variant.id,
-      productName: product.title.en,
-      sku: variant.sku,
-      unitPricePoisha: variant.pricePoisha,
-      stock: variant.stock,
-    });
-  }
-}
 
 function shippingPoisha(method: string): number {
   if (method === "inside_dhaka") return 6000; // ৳60, configurable via settings later
@@ -103,24 +88,13 @@ function errorResponse(code: string, message: string, status: number, details?: 
   return NextResponse.json({ error: { code, message, details } }, { status });
 }
 
-// TEMPORARY in-memory order store + idempotency store — NOT a DB.
-// Records are EnrichedOrder: the base Order plus the real coupon outcome
-// and fraud assessment fields wired by Agent 59 (order-enrichment.ts).
-const TEMPORARY_ORDERS: EnrichedOrder[] = [];
+// In-process claim guard (double-submit inside this process) + the
+// exact create-time EnrichedOrder per order id, so a same-process
+// idempotent replay returns the order with its ORIGINAL coupon/fraud
+// outcome (the DB row reconstructs it after a restart — see
+// src/orders/repository.ts header for what is persisted vs derived).
 const idempotencyStore = new InMemoryIdempotencyStore();
-const idempotencyOrderIds = new Map<string, string>();
-
-export function createOrderTransactionSteps(): string[] {
-  return [
-    "1. Re-validate variant prices + stock from DB (server source only, never client prices)",
-    "2. Enforce UNIQUE idempotencyKey — on conflict return the existing order",
-    "3. prisma.$transaction: create Order + OrderItems (price/SKU/name snapshots)",
-    "4. prisma.$transaction: create OrderStatusHistory (null -> PENDING)",
-    "5. prisma.$transaction: reserve stock via stock_movements ledger",
-    "6. prisma.$transaction: create Payment row (UNPAID until gateway verifies)",
-    "7. Emit order.created event (in-process bus today -> /api/v1/admin/orders/feed; Redis pub/sub after DB wiring)",
-  ];
-}
+const enrichmentByOrderId = new Map<string, EnrichedOrder>();
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
@@ -135,25 +109,27 @@ export async function POST(req: Request) {
   }
   const form = parsed.data;
 
-  // Idempotency FIRST: duplicate key returns the original order, never a second one.
-  if (idempotencyOrderIds.has(form.idempotencyKey)) {
-    const existing = TEMPORARY_ORDERS.find((o) => o.id === idempotencyOrderIds.get(form.idempotencyKey));
-    if (existing) {
-      return NextResponse.json(
-        { data: { order: existing, pricing: null }, meta: { idempotentReplay: true, db: "NOT_WIRED" } },
-        { status: 200 },
-      );
-    }
+  // Idempotency FIRST: duplicate key returns the original persisted
+  // order, never a second one.
+  const existingRow = await findOrderByIdempotencyKey(form.idempotencyKey);
+  if (existingRow) {
+    const existing =
+      enrichmentByOrderId.get(existingRow.id) ?? orderRowToEnriched(existingRow);
+    return NextResponse.json(
+      { data: { order: existing, pricing: null }, meta: { idempotentReplay: true, db: "PRISMA" } },
+      { status: 200 },
+    );
   }
   if (!idempotencyStore.claim(form.idempotencyKey)) {
     return errorResponse("IDEMPOTENCY_CONFLICT", "This checkout attempt was already processed.", 409);
   }
 
-  // Server-side re-validation: price, SKU, name, stock from SERVER_PRICES only.
+  // Server-side re-validation: price, SKU, name, stock from the DB only.
+  const serverPrices = await getVariantSnapshots(form.items.map((i) => i.variantId));
   const snapshotItems: Order["items"] = [];
   let subtotalPoisha = 0;
   for (const item of form.items) {
-    const server = SERVER_PRICES.get(item.variantId);
+    const server = serverPrices.get(item.variantId);
     if (!server) {
       return errorResponse("VARIANT_NOT_FOUND", `Variant not found: ${item.variantId}`, 400);
     }
@@ -175,13 +151,16 @@ export async function POST(req: Request) {
     subtotalPoisha += server.unitPricePoisha * item.quantity;
   }
 
+  // The customer's prior orders (real, from the DB) feed both the
+  // coupon first-order check and the fraud scorer's history signals.
+  const priorOrders = await listOrdersByPhone(form.phone);
+
   // Coupon: evaluated with the REAL applyCoupon() (see order-enrichment)
   // and applied INSIDE the pricing pipeline at the coupon stage, so the
   // breakdown, the order total and the item snapshots all agree. An
   // ineligible/unknown code does NOT fail the order — discount stays 0
   // and the outcome carries couponStatus "rejected" + the bn/en reason.
   const baseShippingPoisha = shippingPoisha(form.shippingMethod);
-  const priorOrders = TEMPORARY_ORDERS.filter((o) => o.customerPhone === form.phone);
   const coupon = evaluateOrderCoupon({
     code: form.couponCode,
     subtotalPoisha,
@@ -205,13 +184,13 @@ export async function POST(req: Request) {
   // Only score/band/action reach the response — signal details never do.
   const now = new Date().toISOString();
   const assessment = scoreFraud(
-    assembleFraudInput({
+    await assembleFraudInput({
       phone: form.phone,
       address: form.address,
       paymentMethod: form.paymentMethod,
       totalPoisha: pricing.grandTotalPoisha,
       itemKeys: snapshotItems.map((i) => i.variantId),
-      priorOrders: TEMPORARY_ORDERS,
+      priorOrders,
       now,
     }),
   );
@@ -228,18 +207,53 @@ export async function POST(req: Request) {
     );
   }
 
-  const order: EnrichedOrder = {
-    id: crypto.randomUUID(),
-    orderNo: `ORD-${Date.now()}`,
+  // Persist in ONE transaction (see repository.createOrderRecord). A
+  // concurrent create with the same key loses the UNIQUE race and comes
+  // back as a replay of the winning row.
+  const created = await createOrderRecord({
+    idempotencyKey: form.idempotencyKey,
     customerName: form.customerName,
     customerPhone: form.phone, // already normalized to +8801XXXXXXXXX by Zod transform
+    customerEmail: form.email || undefined,
+    address: form.address,
+    items: snapshotItems,
+    pricing: {
+      subtotalPoisha: pricing.subtotalPoisha,
+      discountPoisha: pricing.couponDiscountPoisha,
+      shippingPoisha: pricing.shippingPoisha,
+      codFeePoisha: pricing.codFeePoisha,
+      taxPoisha: pricing.taxPoisha,
+      totalPoisha: pricing.grandTotalPoisha,
+    },
+    paymentMethod: form.paymentMethod,
+    riskScore: assessment.score, // real scoreFraud() score, 0-100
+    appliedCoupon:
+      coupon.status === "applied" && coupon.code
+        ? { code: coupon.code, discountPoisha: coupon.discountPoisha }
+        : null,
+    note: form.note,
+  });
+  if (created.replayed) {
+    const existing =
+      enrichmentByOrderId.get(created.existing.id) ?? orderRowToEnriched(created.existing);
+    return NextResponse.json(
+      { data: { order: existing, pricing: null }, meta: { idempotentReplay: true, db: "PRISMA" } },
+      { status: 200 },
+    );
+  }
+
+  const order: EnrichedOrder = {
+    id: created.orderId,
+    orderNo: created.orderNo,
+    customerName: form.customerName,
+    customerPhone: form.phone,
     address: form.address,
     items: snapshotItems,
     totalPoisha: pricing.grandTotalPoisha,
     paymentMethod: form.paymentMethod,
     paymentStatus: "UNPAID", // non-COD stays UNPAID until the gateway verifies payment
     status: "PENDING",
-    riskScore: assessment.score, // real scoreFraud() score, 0-100
+    riskScore: assessment.score,
     riskBand: assessment.level,
     fraudAction: assessment.suggestedAction,
     advanceRequired: enforcement.advanceRequired,
@@ -251,22 +265,22 @@ export async function POST(req: Request) {
     couponReasonEn: coupon.reasonEn,
     tags: [],
     history: [{ from: null, to: "PENDING", changedBy: "customer", changedAt: now }],
-    notes: form.note ? [{ id: crypto.randomUUID(), author: "customer", text: form.note, createdAt: now }] : [],
-    createdAt: now,
+    notes: form.note
+      ? [{ id: created.noteId ?? created.orderId, author: "customer", text: form.note, createdAt: now }]
+      : [],
+    createdAt: created.createdAt,
   };
-
-  // TEMPORARY MOCK persistence only — see header. Real write = prisma.$transaction.
-  TEMPORARY_ORDERS.push(order);
-  idempotencyOrderIds.set(form.idempotencyKey, order.id);
-  // order.created is published exactly here — the single create funnel.
-  // The idempotent-replay return (top) and the FRAUD_BLOCKED return
-  // (above) both happen before this line, so neither re-publishes.
+  enrichmentByOrderId.set(order.id, order);
+  // order.created is published exactly here — after the transaction
+  // commits. The idempotent-replay returns (top) and the FRAUD_BLOCKED
+  // return (above) both happen before this line, so neither publishes.
   // Delivery is the in-process bus (src/orders/event-bus); the helper
   // never throws into this mutation path.
   publishOrderCreated(order);
   // Coupon usage is recorded only now that the order exists — never on a
   // fraud block (returned above) and never on an idempotent replay
-  // (returned at the top of this handler).
+  // (returned at the top of this handler). (CouponUsage row: written
+  // inside the create transaction when the coupon exists in the DB.)
   if (coupon.status === "applied" && coupon.record) {
     recordCouponUse(coupon.record, form.phone);
   }
@@ -275,14 +289,13 @@ export async function POST(req: Request) {
     {
       data: { order, pricing },
       meta: {
-        db: "NOT_WIRED",
-        source: "TEMPORARY_MOCK_STORE",
-        transactionSteps: createOrderTransactionSteps(),
+        db: "PRISMA",
+        source: "DATABASE",
         couponApplied: coupon.status === "applied",
         couponStatus: coupon.status,
         fraudScored: true,
         advanceRequired: order.advanceRequired,
-        note: "Order is NOT persisted to a database yet (in-memory demo store). Coupon + fraud scoring above are the real services; persistence awaits Prisma.",
+        note: "Order persisted to the database (Prisma). Coupon records + fraud lists are DB-backed (marketing/fraud modules); checkout assembles fraud input from DB lists and the coupon lookup from a DB snapshot.",
       },
     },
     { status: 201 },
@@ -292,5 +305,3 @@ export async function POST(req: Request) {
 export function GET() {
   return errorResponse("METHOD_NOT_ALLOWED", "Use POST to create an order.", 405);
 }
-
-void z;

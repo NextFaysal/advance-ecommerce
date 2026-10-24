@@ -1,13 +1,14 @@
-// Route helpers for catalog APIs — Agent 8.
+// Route helpers for catalog APIs — Agent 8; Prisma DB swap 2026-10-24.
 // Session: admin_session cookie (set by Agent 2 login handlers),
-// validated via lib/auth validateSessionToken. If the DB/Prisma
-// client is unavailable, admin routes return 503 DB_NOT_READY
-// instead of crashing — public reads still serve the mock fallback.
+// validated via lib/auth validateSessionToken. Catalog persistence is
+// the real Prisma DB only: if the client is unavailable, routes return
+// 503 DB_NOT_READY instead of crashing — there is NO mock fallback at
+// runtime anymore (an empty DB returns empty results, not mock data).
 
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import type { CatalogRepository } from "./service";
-import { DbNotReadyError, MockCatalogRepository, PrismaCatalogRepository, hasPrismaCatalog } from "./service";
+import { DbNotReadyError, PrismaCatalogRepository, hasPrismaCatalog } from "./service";
 
 export function apiError(code: string, message: string, status: number) {
   return NextResponse.json({ error: { code, message } }, { status });
@@ -19,9 +20,11 @@ export async function getCatalogRepository(): Promise<CatalogRepository> {
     const client: unknown = (db as { prisma?: unknown }).prisma;
     if (hasPrismaCatalog(client)) return new PrismaCatalogRepository(client);
   } catch {
-    // Generated client missing / engine unavailable — fall through to mock.
+    // DB package failed to load — fall through to the honest 503 below.
   }
-  return new MockCatalogRepository();
+  throw new DbNotReadyError(
+    "Catalog database is not available: the Prisma client has no catalog models or the DB package failed to load.",
+  );
 }
 
 export interface AdminSession {

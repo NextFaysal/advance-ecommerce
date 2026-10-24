@@ -1,5 +1,9 @@
 /**
- * Back-in-stock notify signup — Part B. Pure logic + in-memory demo store.
+ * Back-in-stock notify signup — Part B. Pure validation logic + the
+ * in-memory demo store (kept for tests/preview). The DB-backed store
+ * the public signup route uses lives in back-in-stock-db.ts — it is
+ * server-only (Prisma) and must never be imported from this module,
+ * which client components import.
  *
  * A customer leaves a BD phone for an out-of-stock variant; when stock is
  * restored (stock_movements restore/commit path) the notify job sends ONE
@@ -63,5 +67,11 @@ function toPublic(s: BackInStockSignup): BackInStockSignupPublic {
   return { productId: s.productId, variantId: s.variantId, maskedPhone: maskPhone(s.phone), createdAt: s.createdAt };
 }
 
-/** Shared demo store — TEMPORARY, replaced by a back_in_stock_signups table. */
+/** Shared with the DB store (back-in-stock-db.ts) so both stores mask
+ *  phones identically in every outward view. */
+export const backInStockToPublic = toPublic;
+
+/** Shared demo store — in-memory only; the public route uses the
+ *  Prisma store in back-in-stock-db.ts. Kept for tests and isolated
+ *  previews. */
 export const demoBackInStockStore = new InMemoryBackInStockStore();

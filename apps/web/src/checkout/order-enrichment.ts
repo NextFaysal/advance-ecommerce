@@ -7,11 +7,16 @@
  * of the pipeline (subtotal -> item discounts -> coupon -> shipping ->
  * COD fee -> tax -> total), never subtracted after the fact.
  * Coupon records are looked up in this order (no new copy is created):
- *   1. couponStoreInMemory — the shared in-memory store the coupons API
- *      (app/api/v1/admin/coupons) reads and writes.
- *   2. DEMO_COUPONS — the existing demo records in src/cart/components/
- *      resolve.ts that mirror the DB seed (WELCOME10, SAMPLE-FIXED200),
- *      used because the shared store starts empty in demo mode.
+ *   1. The marketing repository's DB snapshot (src/marketing/
+ *      repository.ts) — Coupon rows + CouponUsage aggregates, refreshed
+ *      on module load / admin writes / server start. This evaluation
+ *      stays synchronous (the create flow's contract), so it reads the
+ *      snapshot rather than awaiting a query; admin-created coupons
+ *      are upserted into the snapshot in the same request that creates
+ *      them, and usage counts reload from CouponUsage after a restart.
+ *   2. couponStoreInMemory — the legacy shared in-memory store.
+ *   3. DEMO_COUPONS — the existing demo records in src/cart/components/
+ *      resolve.ts that mirror the DB seed (WELCOME10, SAMPLE-FIXED200).
  * An ineligible or unknown code never fails the order: the outcome is
  * "rejected" with the Bangla + English reason and a 0 discount.
  *
@@ -24,21 +29,23 @@
  *     caller's prior orders in the in-memory order store (same phone).
  *     accountAddress is the most recent prior order's address — the
  *     customer's previous address on file; absent when there is none.
- *   - lists: demoFraudListStore snapshot (src/fraud/lists) — the demo
- *     blacklist/whitelist the fraud-rules API routes manage.
+ *   - lists: fraudListStore snapshot (src/fraud/lists) — the DB-backed
+ *     blacklist/whitelist (FraudListEntry table) the fraud-rules API
+ *     routes manage. assembleFraudInput is async for this read.
  *   - courierHistory is NOT supplied: no courier outcome data exists at
  *     checkout time, so the signal stays absent rather than invented.
  * The assessment's per-signal details are internal (admin fraud UI);
  * nothing here returns them to the public caller.
  */
 import { COUPON_REASON_BN, findDemoCoupon } from "@/cart/components/resolve";
-import { demoFraudListStore } from "@/fraud/lists";
+import { fraudListStore } from "@/fraud/lists";
 import type { FraudAssessment, FraudScoreInput, RecentOrderRef } from "@/fraud/types";
 import {
   applyCoupon,
   couponStoreInMemory,
   type CouponRecord,
 } from "@/marketing/service";
+import { findCouponInSnapshot } from "@/marketing/repository";
 import type { RiskLevel } from "@/orders/customer";
 import type { Order } from "@/orders/types";
 import type { SuggestedAction } from "@/fraud/types";
@@ -119,12 +126,15 @@ function rejectedOutcome(
   };
 }
 
-/** Finds the coupon record for a submitted code: shared coupons-API store
- *  first, then the existing seed-mirroring demo records. */
+/** Finds the coupon record for a submitted code: the marketing
+ *  repository's DB snapshot first (real Coupon rows + CouponUsage
+ *  aggregates), then the legacy shared in-memory store, then the
+ *  existing seed-mirroring demo records. */
 export function findOrderCoupon(code: string): CouponRecord | null {
   const normalized = code.trim().toUpperCase();
   if (normalized === "") return null;
   return (
+    findCouponInSnapshot(normalized) ??
     couponStoreInMemory.find((c) => c.code === normalized) ??
     findDemoCoupon(normalized)
   );
@@ -181,9 +191,13 @@ export function evaluateOrderCoupon(args: {
   };
 }
 
-/** Records one use of an applied coupon (in-memory demo bookkeeping on the
- *  shared/demo record). Call ONLY after the order is created — never on a
- *  fraud block and never on an idempotent replay. */
+/** Records one use of an applied coupon in-process (the durable
+ *  CouponUsage row is written by the orders create transaction itself —
+ *  see src/orders/repository.ts — under the @@unique([couponId,
+ *  orderId]) backstop; this increment keeps the snapshot/demo record's
+ *  counts consistent for later evaluations in the same process).
+ *  Call ONLY after the order is created — never on a fraud block and
+ *  never on an idempotent replay. */
 export function recordCouponUse(record: CouponRecord, userKey: string): void {
   record.usedCount += 1;
   record.usedByUser[userKey] = (record.usedByUser[userKey] ?? 0) + 1;
@@ -198,7 +212,7 @@ export function recordCouponUse(record: CouponRecord, userKey: string): void {
  * the in-memory order store BEFORE the new order is pushed, so the order
  * never scores against itself.
  */
-export function assembleFraudInput(args: {
+export async function assembleFraudInput(args: {
   phone: string;
   address: { division: string; district: string; upazila: string };
   paymentMethod: string;
@@ -206,7 +220,7 @@ export function assembleFraudInput(args: {
   itemKeys: string[];
   priorOrders: readonly Order[];
   now: string;
-}): FraudScoreInput {
+}): Promise<FraudScoreInput> {
   const own = args.priorOrders.filter((o) => o.customerPhone === args.phone);
   const newestFirst = [...own].reverse();
   const recentOrders: RecentOrderRef[] = newestFirst.map((o) => ({
@@ -241,7 +255,7 @@ export function assembleFraudInput(args: {
       totalOrders: own.length,
       returnedOrders: own.filter((o) => o.status === "RETURNED").length,
     },
-    lists: demoFraudListStore.snapshot(),
+    lists: await fraudListStore.snapshot(),
     now: args.now,
   };
 }

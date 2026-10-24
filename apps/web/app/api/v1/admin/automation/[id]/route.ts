@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { featureGuardError, requireFeatureAdmin } from "@/automation/guard";
-import { demoAutomationStore } from "@/automation/store";
+import { automationStore } from "@/automation/store";
 import { updateRuleSchema, type AutomationRule } from "@/automation/types";
 
 // One automation rule — Agent 13. PATCH covers partial updates AND the
@@ -10,11 +10,11 @@ import { updateRuleSchema, type AutomationRule } from "@/automation/types";
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const guard = await requireFeatureAdmin("module.automation", "automation.view");
   if (!guard.ok) return NextResponse.json(featureGuardError(guard), { status: guard.status });
-  const rule = demoAutomationStore.getRule(params.id);
+  const rule = await automationStore.getRule(params.id);
   if (!rule) {
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "Rule not found." } }, { status: 404 });
   }
-  return NextResponse.json({ data: { rule }, meta: { persistence: "in-memory-demo" } });
+  return NextResponse.json({ data: { rule }, meta: { persistence: "database" } });
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -29,19 +29,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     );
   }
   const patch: Partial<AutomationRule> = { ...parsed.data, updatedAt: new Date().toISOString() };
-  const updated = demoAutomationStore.updateRule(params.id, patch);
+  const updated = await automationStore.updateRule(params.id, patch);
   if (!updated) {
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "Rule not found." } }, { status: 404 });
   }
-  return NextResponse.json({ data: { rule: updated }, meta: { persistence: "in-memory-demo" } });
+  return NextResponse.json({ data: { rule: updated }, meta: { persistence: "database" } });
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   const guard = await requireFeatureAdmin("module.automation", "automation.manage");
   if (!guard.ok) return NextResponse.json(featureGuardError(guard), { status: guard.status });
-  const removed = demoAutomationStore.deleteRule(params.id);
+  const removed = await automationStore.deleteRule(params.id);
   if (!removed) {
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "Rule not found." } }, { status: 404 });
   }
-  return NextResponse.json({ data: { deleted: true }, meta: { persistence: "in-memory-demo" } });
+  return NextResponse.json({ data: { deleted: true }, meta: { persistence: "database" } });
 }

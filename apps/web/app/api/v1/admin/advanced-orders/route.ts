@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { allocateOrderItems } from "@/advanced-orders/split";
-import { demoAdvancedOrderStore } from "@/advanced-orders/store";
+import { advancedOrderStore } from "@/advanced-orders/db-store";
 
 // Advanced orders — Agent 16, Step 48 (A9).
-// GET: demo pre-orders + transfers. POST: split-allocation PREVIEW — pure
-// computation over the supplied items/warehouse stock, persists nothing.
-// Persistence is in-memory demo, labelled in meta, until Prisma lands.
+// GET: pre-orders + transfers from the DB (PrismaAdvancedOrderStore).
+// POST: split-allocation PREVIEW — pure computation over the supplied
+// items/warehouse stock, persists nothing.
 
 const splitPreviewSchema = z.object({
   items: z.array(z.object({
@@ -30,10 +30,10 @@ export async function GET() {
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   return NextResponse.json({
     data: {
-      preOrders: demoAdvancedOrderStore.listPreOrders(),
-      transfers: demoAdvancedOrderStore.listTransfers(),
+      preOrders: await advancedOrderStore.listPreOrders(),
+      transfers: await advancedOrderStore.listTransfers(),
     },
-    meta: { persistence: "in-memory-demo", source: "TEMPORARY_DEMO_STORE" },
+    meta: { persistence: "database" },
   });
 }
 

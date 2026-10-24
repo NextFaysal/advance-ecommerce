@@ -1,9 +1,19 @@
-// Landing in-memory demo store — Agent 53.
-// TEMPORARY DEMO persistence, same pattern as the CMS store: swap for a
-// Prisma-backed store (landing_pages table / CmsPage-adjacent) when the
-// DB lands, without changing validate/render contracts.
-// Seeded with ONE sample campaign for the TEMPORARY MOCK Jamdani product.
-import type { LandingPage } from "./types";
+// Landing store — DB-backed (Prisma LandingPage table).
+// Same store contract as the former in-memory demo store; validate /
+// render contracts unchanged. Storage mapping: the table has a single
+// `title` column and a `sectionsJson` Json column. To keep the
+// bilingual title contract lossless, `title` stores titleBn (Bangla-
+// first) and sectionsJson stores an envelope
+// { v: 1, titleBn, titleEn, sections } — a bare-array sectionsJson
+// (written by anything else) still reads back as sections with the
+// row title used for both languages. Status is the free-string column
+// holding DRAFT / PUBLISHED / ARCHIVED verbatim.
+// SAMPLE_LANDING_PAGE below is retained as a fixture export only — the
+// store no longer seeds it. Its offer references the dead TEMPORARY
+// MOCK product id "prod-1": against the real catalog it resolves to
+// null / fails publish validation honestly, by design.
+import { prisma } from "@advance-ecommerce/db";
+import type { LandingPage, LandingSection, LandingStatus } from "./types";
 import { transitionLandingStatus } from "./validate";
 import type { LandingCatalogProduct } from "./types";
 
@@ -54,7 +64,7 @@ export const SAMPLE_LANDING_PAGE: LandingPage = {
       headingBn: "সাধারণ জিজ্ঞাসা", headingEn: "FAQ",
       items: [
         { questionBn: "ডেলিভারি পেতে কতদিন লাগবে?", questionEn: "How long does delivery take?", answerBn: "ঢাকায় ২৪–৪৮ ঘণ্টা, ঢাকার বাইরে ২–৪ দিন।", answerEn: "24–48 hours inside Dhaka, 2–4 days outside." },
-        { questionBn: "অগ্রিম টাকা দিতে হবে কি?", questionEn: "Do I need to pay in advance?", answerBn: "না — ক্যাশ অন ডেলিভারি, পণ্য হাতে পেয়ে টাকা দেবেন।", answerEn: "No — Cash on Delivery; pay when the product is in your hand." },
+        { questionBn: "অগ্রিম টাকা দিতে হবে কি?", questionEn: "Do I need to pay in advance?", answerBn: "না — ক্যাশ অন ডেলিভারি, পণ্য হাতে পেয়ে যাচাই করে তারপর টাকা দেবেন।", answerEn: "No — Cash on Delivery; pay when the product is in your hand." },
       ],
     },
     {
@@ -72,66 +82,145 @@ export const SAMPLE_LANDING_PAGE: LandingPage = {
   updatedAt: "2026-10-22T00:00:00.000Z",
 };
 
+const LANDING_STATUSES: readonly string[] = ["DRAFT", "PUBLISHED", "ARCHIVED"];
+
+interface LandingRow {
+  id: string;
+  slug: string;
+  title: string;
+  status: string;
+  sectionsJson: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface StoredEnvelope {
+  v: 1;
+  titleBn: string;
+  titleEn: string;
+  sections: LandingSection[];
+}
+
+function rowToPage(row: LandingRow): LandingPage {
+  let titleBn = row.title;
+  let titleEn = row.title;
+  let sections: LandingSection[] = [];
+  const raw = row.sectionsJson;
+  if (Array.isArray(raw)) {
+    sections = raw as LandingSection[];
+  } else if (raw !== null && typeof raw === "object") {
+    const env = raw as Partial<StoredEnvelope>;
+    sections = (env.sections ?? []) as LandingSection[];
+    if (typeof env.titleBn === "string") titleBn = env.titleBn;
+    if (typeof env.titleEn === "string") titleEn = env.titleEn;
+  }
+  return {
+    id: row.id,
+    slug: row.slug,
+    titleBn,
+    titleEn,
+    status: (LANDING_STATUSES.includes(row.status) ? row.status : "DRAFT") as LandingStatus,
+    sections,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function pageToData(input: Omit<LandingPage, "id" | "createdAt" | "updatedAt">) {
+  const envelope: StoredEnvelope = {
+    v: 1,
+    titleBn: input.titleBn,
+    titleEn: input.titleEn,
+    sections: input.sections,
+  };
+  return {
+    slug: input.slug,
+    title: input.titleBn,
+    status: input.status,
+    sectionsJson: envelope as unknown as object,
+  };
+}
+
+function isUniqueViolation(e: unknown): boolean {
+  return typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002";
+}
+
 export class LandingStore {
-  private pages = new Map<string, LandingPage>();
-
-  constructor(seed: readonly LandingPage[] = [SAMPLE_LANDING_PAGE]) {
-    for (const p of seed) this.pages.set(p.id, p);
+  async list(): Promise<LandingPage[]> {
+    const rows = await prisma.landingPage.findMany({ orderBy: { updatedAt: "desc" } });
+    return rows.map(rowToPage);
   }
 
-  list(): LandingPage[] {
-    return [...this.pages.values()].sort((a, b) => a.updatedAt.localeCompare(b.updatedAt)).reverse();
+  async get(id: string): Promise<LandingPage | undefined> {
+    const row = await prisma.landingPage.findUnique({ where: { id } });
+    return row ? rowToPage(row) : undefined;
   }
 
-  get(id: string): LandingPage | undefined {
-    return this.pages.get(id);
-  }
-
-  getBySlug(slug: string): LandingPage | undefined {
-    return [...this.pages.values()].find((p) => p.slug === slug);
+  async getBySlug(slug: string): Promise<LandingPage | undefined> {
+    const row = await prisma.landingPage.findUnique({ where: { slug } });
+    return row ? rowToPage(row) : undefined;
   }
 
   /** Only PUBLISHED pages are publicly visible — drafts/archived return undefined here. */
-  getPublishedBySlug(slug: string): LandingPage | undefined {
-    const page = this.getBySlug(slug);
+  async getPublishedBySlug(slug: string): Promise<LandingPage | undefined> {
+    const page = await this.getBySlug(slug);
     return page && page.status === "PUBLISHED" ? page : undefined;
   }
 
-  otherSlugs(excludeId?: string): string[] {
-    return [...this.pages.values()].filter((p) => p.id !== excludeId).map((p) => p.slug);
+  async otherSlugs(excludeId?: string): Promise<string[]> {
+    const rows = await prisma.landingPage.findMany({
+      where: excludeId ? { id: { not: excludeId } } : {},
+      select: { slug: true },
+    });
+    return rows.map((r) => r.slug);
   }
 
-  create(input: Omit<LandingPage, "id" | "createdAt" | "updatedAt">): LandingPage {
-    if (this.getBySlug(input.slug)) throw new Error("slug_already_exists");
-    const now = new Date().toISOString();
-    const page: LandingPage = { ...input, id: `lp_${Date.now().toString(36)}`, createdAt: now, updatedAt: now };
-    this.pages.set(page.id, page);
-    return page;
+  async create(input: Omit<LandingPage, "id" | "createdAt" | "updatedAt">): Promise<LandingPage> {
+    if (await this.getBySlug(input.slug)) throw new Error("slug_already_exists");
+    try {
+      const row = await prisma.landingPage.create({ data: pageToData(input) });
+      return rowToPage(row);
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new Error("slug_already_exists");
+      throw e;
+    }
   }
 
-  update(id: string, input: Omit<LandingPage, "id" | "createdAt" | "updatedAt">): LandingPage {
-    const existing = this.pages.get(id);
+  async update(id: string, input: Omit<LandingPage, "id" | "createdAt" | "updatedAt">): Promise<LandingPage> {
+    const existing = await this.get(id);
     if (!existing) throw new Error("landing_page_not_found");
-    const clash = this.getBySlug(input.slug);
+    const clash = await this.getBySlug(input.slug);
     if (clash && clash.id !== id) throw new Error("slug_already_exists");
-    const updated: LandingPage = { ...existing, ...input, updatedAt: new Date().toISOString() };
-    this.pages.set(id, updated);
-    return updated;
+    try {
+      const row = await prisma.landingPage.update({ where: { id }, data: pageToData(input) });
+      return rowToPage(row);
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new Error("slug_already_exists");
+      throw e;
+    }
   }
 
-  setStatus(id: string, to: LandingPage["status"], catalog: readonly LandingCatalogProduct[]) {
-    const existing = this.pages.get(id);
+  async setStatus(id: string, to: LandingPage["status"], catalog: readonly LandingCatalogProduct[]) {
+    const existing = await this.get(id);
     if (!existing) throw new Error("landing_page_not_found");
-    const result = transitionLandingStatus(existing, to, catalog, this.otherSlugs(id));
+    const result = transitionLandingStatus(existing, to, catalog, await this.otherSlugs(id));
     if (!result.ok) return result;
-    this.pages.set(id, result.page);
-    return result;
+    const row = await prisma.landingPage.update({
+      where: { id },
+      data: { status: result.page.status },
+    });
+    return { ok: true as const, page: rowToPage(row) };
   }
 
-  delete(id: string): boolean {
-    return this.pages.delete(id);
+  async delete(id: string): Promise<boolean> {
+    try {
+      await prisma.landingPage.delete({ where: { id } });
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 
-/** Shared in-memory singleton for the landing API routes + public page (stub persistence). */
+/** Shared DB-backed singleton for the landing API routes + public page. */
 export const landingStore = new LandingStore();

@@ -6,16 +6,18 @@
  *
  * REAL here: Zod validation on every input, integer-poisha pricing from the
  * SERVER price source only (client unitPricePoisha is ignored and overwritten),
- * stock clamping to server stock with a correction flag in meta.
+ * stock clamping to server stock with a correction flag in meta. Prices/stock
+ * resolve from the REAL catalog DB (ACTIVE products via the Prisma
+ * repository) — never from mock data.
  *
- * TEMPORARY MOCK: carts live in a module-level Map only, prices/stock come from
- * src/catalog/mock.ts. Replace both with Prisma Cart/CartItem (see
- * orders/SCHEMA-ADDITIONS.md) once Agent 6 merges the schema and Prisma
- * generate succeeds. A cart returned here is NOT persisted to a database.
+ * STILL TEMPORARY: the carts themselves live in a module-level Map only
+ * (meta db: "NOT_WIRED"). Replace with Prisma Cart/CartItem (see
+ * orders/SCHEMA-ADDITIONS.md) in the orders module's persistence swap.
+ * A cart returned here is NOT persisted to a database.
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { MOCK_PRODUCTS } from "@/catalog/mock";
+import { tryCatalogRepository } from "@/catalog/server-read";
 import { cartItemCount, cartSubtotalPoisha, type Cart, type CartItem } from "@/cart/types";
 
 const addCartSchema = z.object({
@@ -33,20 +35,36 @@ const addCartSchema = z.object({
   couponCode: z.string().optional(),
 });
 
-const SERVER_PRICES = new Map<string, { productId: string; name: string; sku: string; unitPricePoisha: number; stock: number }>();
-for (const product of MOCK_PRODUCTS) {
-  for (const variant of product.variants) {
-    SERVER_PRICES.set(variant.id, {
-      productId: product.id,
-      name: product.title.en,
-      sku: variant.sku,
-      unitPricePoisha: variant.pricePoisha,
-      stock: variant.stock,
-    });
-  }
+interface ServerPrice {
+  productId: string;
+  name: string;
+  sku: string;
+  unitPricePoisha: number;
+  stock: number;
 }
 
-// TEMPORARY MOCK store — NOT a DB.
+/** Server-side price/stock source: ACTIVE catalog products from the DB. */
+async function loadServerPrices(): Promise<Map<string, ServerPrice> | null> {
+  const repo = await tryCatalogRepository();
+  if (!repo) return null;
+  const { products } = await repo.listProducts({ status: "ACTIVE", page: 1, pageSize: 100 });
+  const prices = new Map<string, ServerPrice>();
+  for (const product of products) {
+    for (const variant of product.variants) {
+      if (!variant.isActive) continue;
+      prices.set(variant.id, {
+        productId: product.id,
+        name: product.title.en,
+        sku: variant.sku,
+        unitPricePoisha: variant.pricePoisha,
+        stock: variant.stock,
+      });
+    }
+  }
+  return prices;
+}
+
+// TEMPORARY store — NOT a DB (cart persistence is the orders module's swap).
 const TEMPORARY_CARTS = new Map<string, Cart>();
 
 function errorResponse(code: string, message: string, status: number, details?: unknown) {
@@ -68,7 +86,7 @@ export async function GET(req: Request) {
       subtotalPoisha: cartSubtotalPoisha(cart),
       itemCount: cartItemCount(cart),
     },
-    meta: { db: "NOT_WIRED", source: "TEMPORARY_MOCK_STORE" },
+    meta: { db: "NOT_WIRED", source: "TEMPORARY_MOCK_STORE", priceSource: "database" },
   });
 }
 
@@ -78,11 +96,13 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return errorResponse("VALIDATION_ERROR", "Cart input invalid.", 400, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`));
   }
+  const serverPrices = await loadServerPrices();
+  if (!serverPrices) return errorResponse("DB_NOT_READY", "Catalog database is not available.", 503);
   const ownerKey = parsed.data.ownerKey ?? crypto.randomUUID();
   const items: CartItem[] = [];
   let corrected = false;
   for (const input of parsed.data.items) {
-    const server = SERVER_PRICES.get(input.variantId);
+    const server = serverPrices.get(input.variantId);
     if (!server) return errorResponse("VARIANT_NOT_FOUND", `Variant not found: ${input.variantId}`, 400);
     const quantity = Math.min(input.quantity, server.stock);
     if (quantity !== input.quantity || (input.unitPricePoisha !== undefined && input.unitPricePoisha !== server.unitPricePoisha)) {
@@ -111,7 +131,7 @@ export async function POST(req: Request) {
   return NextResponse.json(
     {
       data: { cart, subtotalPoisha: cartSubtotalPoisha(cart), itemCount: cartItemCount(cart) },
-      meta: { db: "NOT_WIRED", source: "TEMPORARY_MOCK_STORE", corrected },
+      meta: { db: "NOT_WIRED", source: "TEMPORARY_MOCK_STORE", priceSource: "database", corrected },
     },
     { status: 201 },
   );

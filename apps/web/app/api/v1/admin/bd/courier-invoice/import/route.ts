@@ -17,7 +17,9 @@ import {
 // the caller supplies explicit expected rows (validated by the existing
 // reconciliation schema). Valid CSV rows are fed to the EXISTING
 // reconciliation; invalid rows come back with row numbers — none are
-// silently dropped. Persistence is the in-memory demo store.
+// silently dropped. Persistence is DB-backed (run header in
+// courier_invoice_runs; row detail cached in-process — see
+// src/bd/courier-invoice.ts drift notes).
 const importRequestSchema = z.object({
   courierKey: z.string().min(1),
   csvText: z.string().min(1),
@@ -35,15 +37,15 @@ export async function POST(req: Request) {
     );
   }
   const { courierKey, csvText } = parsed.data;
-  const fromSandbox = parsed.data.expected ? null : buildExpectedFromSandbox(courierKey);
+  const fromSandbox = parsed.data.expected ? null : await buildExpectedFromSandbox(courierKey);
   const run = runCourierInvoiceImport({
     courierKey,
     csvText,
     expected: parsed.data.expected ?? fromSandbox?.expected ?? [],
     skippedShipments: fromSandbox?.skippedCount ?? 0,
-    alreadyImported: importedTrackingIdsFor(courierKey),
+    alreadyImported: await importedTrackingIdsFor(courierKey),
   });
-  recordRun(run);
+  await recordRun(run);
   return NextResponse.json({
     data: {
       runId: run.runId,
@@ -58,6 +60,6 @@ export async function POST(req: Request) {
       summary: run.summary,
       rows: run.rows,
     },
-    meta: { persistence: "in-memory-demo" },
+    meta: { persistence: "database" },
   });
 }

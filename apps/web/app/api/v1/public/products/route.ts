@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { getCatalogRepository, handleServiceError } from "@/catalog/api";
-import { getPublicProducts } from "@/catalog/service";
+import { searchPublicProducts } from "@/catalog/search-service";
 
-// GET /api/v1/public/products — public list. Cost price is stripped
-// by getPublicProducts (toPublicProduct), never by the client.
+// GET /api/v1/public/products — public list + search. With ?q= the
+// search service answers Meilisearch-first and degrades to Postgres;
+// meta.engine names the engine that ACTUALLY answered ("meilisearch"
+// or "postgres") — never a pretended source. Cost price is stripped
+// by toPublicProduct inside the service, never by the client.
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -13,7 +16,7 @@ export async function GET(req: Request) {
     const max = url.searchParams.get("maxPricePoisha");
     const sortParam = url.searchParams.get("sort");
     const repo = await getCatalogRepository();
-    const result = await getPublicProducts(repo, {
+    const result = await searchPublicProducts(repo, {
       query: url.searchParams.get("q") ?? undefined,
       categorySlug: url.searchParams.get("category") ?? undefined,
       brandName: url.searchParams.get("brand") ?? undefined,
@@ -29,7 +32,7 @@ export async function GET(req: Request) {
     });
     return NextResponse.json({
       data: result.products,
-      meta: { total: result.total, page: result.page, pageSize: result.pageSize },
+      meta: { total: result.total, page: result.page, pageSize: result.pageSize, engine: result.engine },
     });
   } catch (error) {
     return handleServiceError(error);

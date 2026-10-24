@@ -4,7 +4,7 @@ import { requireRiderAdmin, riderGuardError } from "@/riders/guard";
 import { applyDeliveryTransition } from "@/riders/assignment";
 import { hashDeliveryOtp } from "@/riders/proof";
 import { codHandoverLine, recordCodHandover } from "@/riders/service";
-import { demoRiderStore } from "@/riders/store";
+import { riderStore } from "@/riders/db-store";
 import { deliveryTransitionSchema, type DeliveryProof } from "@/riders/types";
 
 // Rider deliveries — Agent 18 (E3).
@@ -19,13 +19,13 @@ import { deliveryTransitionSchema, type DeliveryProof } from "@/riders/types";
 export async function GET() {
   const guard = await requireRiderAdmin("riders.view");
   if (!guard.ok) return NextResponse.json(riderGuardError(guard), { status: guard.status });
-  const deliveries = demoRiderStore.listDeliveries();
+  const deliveries = await riderStore.listDeliveries();
   return NextResponse.json({
     data: {
       deliveries,
       codHandover: deliveries.filter((d) => d.status === "DELIVERED").map(codHandoverLine),
     },
-    meta: { persistence: "in-memory-demo" },
+    meta: { persistence: "database" },
   });
 }
 
@@ -43,16 +43,16 @@ export async function PATCH(req: Request) {
   const handover = handoverSchema.safeParse(body);
   const raw = body as { to?: unknown };
   if (handover.success && raw.to === undefined) {
-    const delivery = demoRiderStore.getDelivery(handover.data.deliveryId);
+    const delivery = await riderStore.getDelivery(handover.data.deliveryId);
     if (!delivery) {
       return NextResponse.json({ error: { code: "NOT_FOUND", message: "Delivery not found." } }, { status: 404 });
     }
     try {
       const updated = recordCodHandover(delivery, handover.data.handedOverPoisha);
-      demoRiderStore.replaceDelivery(updated);
+      await riderStore.replaceDelivery(updated);
       return NextResponse.json({
         data: { delivery: updated, codHandover: codHandoverLine(updated) },
-        meta: { persistence: "in-memory-demo" },
+        meta: { persistence: "database" },
       });
     } catch (err) {
       return NextResponse.json(
@@ -69,7 +69,7 @@ export async function PATCH(req: Request) {
       { status: 400 },
     );
   }
-  const delivery = demoRiderStore.getDelivery(parsed.data.deliveryId);
+  const delivery = await riderStore.getDelivery(parsed.data.deliveryId);
   if (!delivery) {
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "Delivery not found." } }, { status: 404 });
   }
@@ -95,18 +95,18 @@ export async function PATCH(req: Request) {
       failureReason: parsed.data.failureReason,
       collectedPoisha: parsed.data.collectedPoisha,
     });
-    demoRiderStore.replaceDelivery(updated);
+    await riderStore.replaceDelivery(updated);
     // If the rider has no more in-flight parcels, they are simply ACTIVE again.
-    const rider = demoRiderStore.getRider(updated.riderId);
+    const rider = await riderStore.getRider(updated.riderId);
     if (rider && rider.status === "ON_DELIVERY") {
-      const stillBusy = demoRiderStore.listDeliveries(rider.id).some(
+      const stillBusy = (await riderStore.listDeliveries(rider.id)).some(
         (d) => d.status === "ASSIGNED" || d.status === "PICKED_UP",
       );
-      if (!stillBusy) demoRiderStore.replaceRider({ ...rider, status: "ACTIVE" });
+      if (!stillBusy) await riderStore.replaceRider({ ...rider, status: "ACTIVE" });
     }
     return NextResponse.json({
       data: { delivery: updated, codHandover: updated.status === "DELIVERED" ? codHandoverLine(updated) : undefined },
-      meta: { persistence: "in-memory-demo" },
+      meta: { persistence: "database" },
     });
   } catch (err) {
     return NextResponse.json(

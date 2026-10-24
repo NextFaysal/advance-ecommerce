@@ -1,6 +1,6 @@
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
 import { toQueueItemView } from "@/callcenter/queue";
-import { demoCallTasks } from "@/callcenter/service";
+import { loadCallTasks } from "@/callcenter/store";
 import { CONFIRMATION_SCRIPT } from "@/callcenter/types";
 import { formatBdt } from "@/checkout/pricing";
 
@@ -9,7 +9,9 @@ import { formatBdt } from "@/checkout/pricing";
 // add-on), the page renders the lock panel, matching the API's 403
 // FEATURE_LOCKED. Queue phones are masked in this page — the full number is
 // only ever served by the API to callers with customers.view_full_phone.
-export default function AdminCallCenterPage() {
+// Data: Prisma DB via src/callcenter/store.ts (tasks store masked phones
+// only; names/totals come from the linked orders).
+export default async function AdminCallCenterPage() {
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
       <main style={{ padding: 24, fontFamily: "system-ui" }}>
@@ -21,11 +23,12 @@ export default function AdminCallCenterPage() {
       </main>
     );
   }
-  const views = demoCallTasks.map((t) => toQueueItemView(t, false));
+  const tasks = await loadCallTasks();
+  const views = tasks.map((t) => toQueueItemView(t, false));
   return (
     <main style={{ padding: 24, fontFamily: "system-ui" }}>
       <h1>Call Center — Queue</h1>
-      <p>Demo data (in-memory). Highest priority first: failed delivery, then pending orders, abandoned checkouts, manual.</p>
+      <p>Live data from the database. Highest priority first: failed delivery, then pending orders, abandoned checkouts, manual.</p>
       <table>
         <thead>
           <tr>
@@ -55,7 +58,8 @@ export default function AdminCallCenterPage() {
       <p>
         Outcomes: Confirmed, Callback (a time must be scheduled), Cancelled, No Answer
         (re-queues up to 3 attempts), Wrong Number. Recording an outcome via the API
-        returns the agent&apos;s next task in the same response.
+        returns the agent&apos;s next task in the same response. A Confirmed/Cancelled
+        outcome also moves the linked order through the order state machine.
       </p>
     </main>
   );

@@ -62,9 +62,13 @@ export interface AbandonedCartJob {
 }
 
 export interface AutomationJob {
+  /** The AutomationRule id (rules are this module's workflows). */
   workflowId: string;
   triggerEvent: string;
   entityId: string;
+  /** When true the runner evaluates but never persists a run log
+   *  (the automation engine's dry-run contract). */
+  dryRun?: boolean;
 }
 
 export interface ImportExportJob {

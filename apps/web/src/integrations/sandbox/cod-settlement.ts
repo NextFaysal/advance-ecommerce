@@ -2,14 +2,17 @@
 // Row meaning: for a DELIVERED shipment, the courier collected
 // collectedPoisha in cash from the customer and owes the merchant
 // payablePoisha = collectedPoisha - courierChargePoisha.
-// All amounts are integer poisha. The sandbox computation below reads the
-// in-memory sandbox shipments only; the real report must aggregate the
-// shipments / courier_accounts DB tables and the courier's own invoice,
-// and a row whose collected amount disagrees with the courier invoice is
-// "disputed", never silently adjusted.
+// All amounts are integer poisha. Persistence: DB-backed since
+// 2026-10-24 — the report aggregates the persisted Shipment rows and
+// uses each row's stored chargePoisha (the real courierChargePoisha()
+// output captured at booking). Rows booked before charges were stored
+// (chargePoisha 0) fall back to the district-base computation, the same
+// convention the old in-memory report used. A row whose collected amount
+// disagrees with the courier invoice is "disputed", never silently
+// adjusted (see bd/courier-reconciliation.ts).
 import type { CodSettlementRow, CourierProviderName } from "../courier";
 import { courierChargePoisha } from "./courier-provider";
-import { sandboxStore } from "./store";
+import { findShipmentCharge, listShipments } from "./db-store";
 
 export type { CodSettlementRow };
 
@@ -26,14 +29,13 @@ export interface CodSettlementReport {
   sandbox: true;
 }
 
-export function buildCodSettlementReport(provider: string = "all"): CodSettlementReport {
+export async function buildCodSettlementReport(provider: string = "all"): Promise<CodSettlementReport> {
   const rows: CodSettlementRow[] = [];
-  for (const shipment of sandboxStore.shipments.values()) {
-    if (provider !== "all" && shipment.provider !== provider) continue;
+  const shipments = await listShipments(provider === "all" ? undefined : provider);
+  for (const shipment of shipments) {
     if (shipment.status !== "DELIVERED") continue;
-    // Sandbox shipments do not carry a zone; charge uses the district base.
-    // The real report must use the shipment's stored zone + rate snapshot.
-    const charge = courierChargePoisha("district", shipment.weightGrams);
+    const stored = await findShipmentCharge(shipment.shipmentId);
+    const charge = stored > 0 ? stored : courierChargePoisha("district", shipment.weightGrams);
     rows.push({
       shipmentId: shipment.shipmentId,
       orderId: shipment.orderId,

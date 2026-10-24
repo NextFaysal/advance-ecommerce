@@ -4,18 +4,19 @@ import { requireFeature } from "@/ai/feature-flag";
 import { ANALYTICS_FEATURE_FLAG } from "@/ai/types";
 import { dateRangeSchema } from "@/reports/types";
 import type { SalesRow } from "@/reports/types";
-import { DEMO_SALES_ROWS } from "@/reports/demo";
+import { fetchSalesRows } from "@/reports/db-rows";
 import { computeRfm, segmentCounts, type CustomerOrderSummary } from "@/analytics/rfm";
 import { computeUnitEconomics } from "@/analytics/unit-economics";
 import { rankCouriers, type CourierStats } from "@/analytics/performance";
 import { aggregateSales } from "@/reports/service";
 
 // GET /api/v1/admin/analytics?from=YYYY-MM-DD&to=YYYY-MM-DD
-// Advanced analytics bundle (Step 47, A8) over TEMPORARY_DEMO rows.
-// RFM recency is measured against the latest date IN the data (demo
-// determinism), not wall-clock today — the response notes this. Funnel
-// view/cart/checkout counts need storefront tracking events, which are
-// not wired yet, so funnel is null with a reason — never invented.
+// Advanced analytics bundle (Step 47, A8) over real order rows from the
+// DB (Prisma, Asia/Dhaka dates). RFM recency is measured against the
+// latest date IN the data, not wall-clock today — the response notes
+// this. Funnel view/cart/checkout counts need storefront tracking
+// events, which are not wired yet, so funnel is null with a reason —
+// never invented.
 // RBAC: reports.view. Flag: module.advanced_analytics.
 
 function daysBetween(a: string, b: string): number {
@@ -68,7 +69,7 @@ export async function GET(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: { code: "INVALID_RANGE", message: "from/to (YYYY-MM-DD) are required, from <= to." } }, { status: 400 });
   }
-  const rows = DEMO_SALES_ROWS.filter((r) => r.date >= parsed.data.from && r.date <= parsed.data.to);
+  const rows = await fetchSalesRows(parsed.data);
   const bundle = aggregateSales(rows, parsed.data, false);
   const rfm = computeRfm(buildSummaries(rows));
   return NextResponse.json({
@@ -86,12 +87,12 @@ export async function GET(req: Request) {
       funnel: null,
     },
     meta: {
-      source: "TEMPORARY_DEMO",
+      source: "database",
       notes: [
         "RFM recency is measured against the latest date in the data, not today.",
         "Ad spend is not tracked yet, so ROAS/LTV:CAC are null (not zero, not invented).",
         "Funnel is null until storefront view/cart/checkout tracking events are wired.",
-        "Courier COD collected is assumed equal to delivered revenue in demo rows.",
+        "Courier COD collected is approximated as delivered revenue; shipment-level COD collection is not broken out in sales rows.",
       ],
     },
   });

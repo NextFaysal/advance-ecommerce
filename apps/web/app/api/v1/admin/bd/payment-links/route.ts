@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import {
   createPaymentLink,
   createPaymentLinkSchema,
-  demoPaymentLinkStore,
+  paymentLinkStore,
   withEffectiveStatus,
 } from "@/bd/payment-link";
+import { SandboxOrderNotFoundError } from "@/integrations/sandbox/db-store";
 import { guardError, requireAdmin } from "@/reports/guard";
 
 // Payment links — Agent 11, Step 44 (E1).
@@ -12,8 +13,9 @@ import { guardError, requireAdmin } from "@/reports/guard";
 // token hash — hashes are a server secret-equivalent and never leave.
 // POST: RBAC payments.verify_manual. Creates a link; the plain token +
 // URL are returned ONCE in this response (for staff to send), and only
-// the token hash is kept — in the IN-MEMORY-DEMO store for now.
-// DB version: payment_links table (tokenHash unique), see payment-link.ts.
+// the token hash is kept — in the payment_links table (DB swap
+// 2026-10-24; tokenHash unique). The order reference (id or orderNo)
+// must resolve to a real Order row.
 export async function GET(req: Request) {
   const guard = await requireAdmin("payments.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
@@ -22,7 +24,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: { code: "INVALID_INPUT", message: "orderId query param required." } }, { status: 400 });
   }
   const now = new Date();
-  const links = demoPaymentLinkStore.listByOrder(orderId).map((r) => {
+  const records = await paymentLinkStore.listByOrder(orderId);
+  const links = records.map((r) => {
     const effective = withEffectiveStatus(r, now);
     return {
       id: effective.id,
@@ -35,7 +38,7 @@ export async function GET(req: Request) {
       paidAt: effective.paidAt,
     };
   });
-  return NextResponse.json({ data: { links }, meta: { persistence: "in-memory-demo" } });
+  return NextResponse.json({ data: { links }, meta: { persistence: "database" } });
 }
 
 export async function POST(req: Request) {
@@ -49,7 +52,17 @@ export async function POST(req: Request) {
     );
   }
   const created = createPaymentLink(parsed.data);
-  demoPaymentLinkStore.add(created.record);
+  try {
+    await paymentLinkStore.add(created.record);
+  } catch (err) {
+    if (err instanceof SandboxOrderNotFoundError) {
+      return NextResponse.json(
+        { error: { code: "ORDER_NOT_FOUND", message: "Order not found for this payment link." } },
+        { status: 400 },
+      );
+    }
+    throw err;
+  }
   return NextResponse.json(
     {
       data: {
@@ -62,7 +75,7 @@ export async function POST(req: Request) {
         // Returned once, for the staff member to send to the customer.
         url: created.url,
       },
-      meta: { persistence: "in-memory-demo" },
+      meta: { persistence: "database" },
     },
     { status: 201 },
   );

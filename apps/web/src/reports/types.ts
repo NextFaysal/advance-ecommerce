@@ -1,7 +1,9 @@
 // Reports types — Agent 10, Steps 28/30-33. All money is integer poisha.
 import { z } from "zod";
 
-export const SALES_STATUSES = ["PENDING", "CONFIRMED", "PROCESSING", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED", "RETURNED", "REFUNDED"] as const;
+// Mirrors the full Prisma OrderStatus enum so DB-built rows are lossless
+// (FAILED / RETURN_REQUESTED / RETURNING / EXCHANGED included).
+export const SALES_STATUSES = ["PENDING", "CONFIRMED", "PROCESSING", "PACKED", "SHIPPED", "DELIVERED", "FAILED", "RETURN_REQUESTED", "RETURNING", "CANCELLED", "RETURNED", "REFUNDED", "EXCHANGED"] as const;
 export const salesRowSchema = z.object({
   orderId: z.string().min(1),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

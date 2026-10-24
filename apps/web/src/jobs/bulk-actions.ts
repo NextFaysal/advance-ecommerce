@@ -26,13 +26,17 @@
  *  - Partial failure is a first-class outcome: a job with some failed
  *    orders ends COMPLETED_WITH_FAILURES, lists every failure, and never
  *    rolls back the orders that succeeded.
- *  - Registry + order persistence are the in-memory demo store
- *    (src/orders/mock.ts) — labelled demo, replaced by Prisma tables
- *    behind these same functions when the DB lands.
+ *  - The job REGISTRY is still in-memory (a jobs table / BullMQ
+ *    replaces it later), but ORDER persistence is now the real Prisma
+ *    store by default (src/orders/repository): the default
+ *    BulkOrderStore reads and writes DB Order rows, and transitions
+ *    persisted through it carry their OrderStatusHistory rows. The
+ *    demo store remains available for tests via demoBulkOrderStore.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { DEFAULT_RETRY, type JobRetryPolicy } from "./queues";
 import { findMockOrder, MOCK_ORDERS } from "../orders/mock";
+import { getOrderByIdOrNo, saveOrder } from "../orders/repository";
 import { buildPrintData } from "../orders/print";
 import { transitionOrder } from "../orders/state-machine";
 import type { Order, OrderStatus } from "../orders/types";
@@ -116,25 +120,38 @@ export interface EnqueueBulkJobInput {
 }
 
 /* ------------------------------------------------------------------ */
-/* Order store seam — default is the in-memory demo store (mock.ts).   */
-/* Tests inject their own; the DB swap replaces only this default.     */
+/* Order store seam — default is now the Prisma-backed store           */
+/* (src/orders/repository). Tests can still inject demoBulkOrderStore  */
+/* or their own implementation; find/save are async because the DB is. */
 /* ------------------------------------------------------------------ */
 
 export interface BulkOrderStore {
   /** Find by internal id or order number (same semantics as findMockOrder). */
-  find(id: string): Order | undefined;
+  find(id: string): Promise<Order | undefined>;
   /** Persist a mutated order back into the store. */
-  save(order: Order): void;
+  save(order: Order): Promise<void>;
 }
 
 export const demoBulkOrderStore: BulkOrderStore = {
-  find(id) {
+  async find(id) {
     return findMockOrder(id);
   },
-  save(order) {
+  async save(order) {
     const idx = MOCK_ORDERS.findIndex((o) => o.id === order.id);
     if (idx >= 0) MOCK_ORDERS[idx] = order;
     else MOCK_ORDERS.push(order);
+  },
+};
+
+/** DB-backed default: reads/writes real Order rows via the repository.
+ *  save() persists scalars + appended history + tag changes; the state
+ *  machine remains the only place a status transition is decided. */
+export const prismaBulkOrderStore: BulkOrderStore = {
+  async find(id) {
+    return (await getOrderByIdOrNo(id)) ?? undefined;
+  },
+  async save(order) {
+    await saveOrder(order);
   },
 };
 
@@ -240,7 +257,7 @@ async function runForOrder(
   orderId: string,
   deps: Required<BulkProcessDeps>,
 ): Promise<BulkOrderResult> {
-  const order = deps.orders.find(orderId);
+  const order = await deps.orders.find(orderId);
   if (!order) return fail(orderId, "ORDER_NOT_FOUND", `Order ${orderId} not found.`);
 
   switch (job.action) {
@@ -252,7 +269,7 @@ async function runForOrder(
       }
       const result = transitionOrder(order, to, job.requestedBy, job.reason);
       if (!result.ok) return fail(orderId, "INVALID_TRANSITION", result.error);
-      deps.orders.save(result.order);
+      await deps.orders.save(result.order);
       return {
         orderId,
         ok: true,
@@ -322,7 +339,7 @@ async function runForOrder(
           // double-book at the adapter (the sandbox store dedupes on it).
           idempotencyKey: `bulk-${job.id}-${order.id}`,
         });
-        deps.orders.save({ ...order, courier: providerKey, trackingId: booked.trackingId });
+        await deps.orders.save({ ...order, courier: providerKey, trackingId: booked.trackingId });
         return {
           orderId,
           ok: true,
@@ -342,7 +359,7 @@ async function runForOrder(
       if (order.tags.includes(tag)) {
         return { orderId, ok: true, code: "TAG_ALREADY_PRESENT", message: `Tag "${tag}" already on the order.` };
       }
-      deps.orders.save({ ...order, tags: [...order.tags, tag] });
+      await deps.orders.save({ ...order, tags: [...order.tags, tag] });
       return { orderId, ok: true, code: "TAGGED", message: `Tag "${tag}" added.` };
     }
   }
@@ -374,7 +391,7 @@ export async function processBulkJob(
   if (job.status !== "QUEUED") return job;
 
   const resolved: Required<BulkProcessDeps> = {
-    orders: deps.orders ?? demoBulkOrderStore,
+    orders: deps.orders ?? prismaBulkOrderStore,
     courierProviderFor: deps.courierProviderFor ?? ((name) => createSandboxCourierProvider(name)),
     now: deps.now ?? (() => new Date()),
   };

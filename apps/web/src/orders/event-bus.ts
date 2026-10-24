@@ -37,16 +37,18 @@
  *   reach the server feed — correct, because they are not server
  *   mutations. Only server-side transitions reach subscribers.
  *
+ * - payment.succeeded — published ONLY from markOrderPayment()
+ *   (src/orders/repository.ts), the single order-paid funnel: every
+ *   payment confirmation (manual TrxID review approve, gateway
+ *   verify, verified payment webhook, gateway refund) persists the
+ *   payment side first, then calls the funnel, which recomputes
+ *   Order.paymentStatus from the persisted Payment / approved
+ *   ManualTrxSubmission / Refund rows. The event fires ONLY on the
+ *   transition INTO PAID (previous status was not PAID) — never for
+ *   PARTIAL, never on an idempotent replay, never on refunds.
+ *
  * NOT YET WIRED (deliberately not faked):
- * - payment.succeeded — reserved in the feed contract
- *   (src/orders/realtime.ts) but NOT published: today no server-side
- *   mutation marks an ORDER paid. The sandbox webhook mutates payment
- *   ATTEMPT records and the manual-TrxID review returns a paymentStatus
- *   for the caller to apply — neither touches an order record (orders
- *   live in the create route's in-memory store, not shared). Once the
- *   DB lands and those flows update Order.paymentStatus in one place,
- *   add the event to the union below and publish from that funnel.
- * - stock.low — also contract-reserved; publishes from the inventory
+ * - stock.low — contract-reserved; publishes from the inventory
  *   stock_movements ledger writer, which is post-DB as well.
  *
  * PAYLOAD SAFETY (same rule as src/jobs/queues.ts): events carry ids,
@@ -91,7 +93,20 @@ export interface OrderStatusChangedEvent {
   at: string;
 }
 
-export type DomainEvent = OrderCreatedEvent | OrderStatusChangedEvent;
+export interface PaymentSucceededEvent {
+  type: "payment.succeeded";
+  orderId: string;
+  orderNo: string;
+  /** Same value as the realtime.ts contract's `status` field: "PAID". */
+  status: "PAID";
+  /** Net paid amount at the moment of the transition, integer poisha. */
+  paidPoisha: number;
+  /** Order grand total the payment satisfied, integer poisha. */
+  totalPoisha: number;
+  at: string;
+}
+
+export type DomainEvent = OrderCreatedEvent | OrderStatusChangedEvent | PaymentSucceededEvent;
 
 export type OrderEventListener = (event: DomainEvent) => void;
 
@@ -155,6 +170,30 @@ export function publishOrderCreated(order: {
       orderNo: order.orderNo,
       totalPoisha: order.totalPoisha,
       district: order.address.district,
+      at: new Date().toISOString(),
+    });
+  } catch {
+    // Swallowed by design — see NEVER-THROW RULE in the header.
+  }
+}
+
+/** Publish payment.succeeded for an order that has JUST transitioned
+ *  into PAID inside markOrderPayment(). Callers must not call this for
+ *  a PARTIAL result, an idempotent replay, or a refund. Never throws. */
+export function publishPaymentSucceeded(order: {
+  id: string;
+  orderNo: string;
+  paidPoisha: number;
+  totalPoisha: number;
+}): void {
+  try {
+    publishOrderEvent({
+      type: "payment.succeeded",
+      orderId: order.id,
+      orderNo: order.orderNo,
+      status: "PAID",
+      paidPoisha: order.paidPoisha,
+      totalPoisha: order.totalPoisha,
       at: new Date().toISOString(),
     });
   } catch {

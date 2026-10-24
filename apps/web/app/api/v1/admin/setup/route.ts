@@ -1,21 +1,23 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { guardError, requireAdmin } from "@/reports/guard";
+import { setSetting } from "@/lib/settings";
 import {
   buildSetupSettingsPayload,
   initialSetupState,
   isSetupComplete,
-  recordSetupSubmission,
   validateSetupStep,
   type SetupState,
 } from "@/platform/setup";
 
 // First-run setup wizard submission — Agent 37. RBAC: settings.edit.
-// DEMO PERSISTENCE: the payload (settings-contract shape) is recorded in
-// an in-memory store labelled NOT_WIRED and the response carries
-// `persisted: false`. Nothing here writes to the settings table — when
-// DB wiring lands, these entries go through setSetting() in
-// src/lib/settings.ts behind this same contract, with an audit reason.
+// DB-BACKED: the payload (settings-contract shape) is written through
+// setSetting() in src/lib/settings.ts — each entry lands in the
+// Setting table (secrets AES-256-GCM encrypted; the wizard collects no
+// secrets, only enablement + store basics) with the settings.update
+// audit entry setSetting writes, and the response carries
+// `persisted: true`. If any write fails, the route answers 503 and
+// does NOT claim persistence.
 
 const providerFlags = (providers: readonly string[]) =>
   z.record(z.string(), z.boolean()).refine(
@@ -67,15 +69,30 @@ export async function POST(req: Request) {
   }
 
   const settings = buildSetupSettingsPayload(state);
-  const submission = recordSetupSubmission(settings);
+  const submissionId = `setup_${Date.now()}`;
+  try {
+    for (const entry of settings) {
+      await setSetting({
+        key: entry.key,
+        value: entry.value,
+        actorId: guard.userId,
+        reason: `First-run setup wizard (${submissionId})`,
+      });
+    }
+  } catch (e) {
+    // Never claim the setup was saved when a write failed.
+    return NextResponse.json(
+      { error: { code: "SETTINGS_SAVE_FAILED", message: e instanceof Error ? e.message : "Setup settings could not be saved." } },
+      { status: 503 },
+    );
+  }
 
   return NextResponse.json(
     {
-      data: { submissionId: submission.id, settings, persisted: false },
+      data: { submissionId, settings, persisted: true },
       meta: {
-        persistence: "in-memory-demo",
-        wiring: "NOT_WIRED",
-        note: "Recorded in a demo in-memory store only. Settings were NOT saved to the database; real wiring writes these entries via Admin Settings (encrypted) once the DB lands.",
+        persistence: "database",
+        note: "Setup settings saved to the database via Admin Settings (setSetting, audited).",
       },
     },
     { status: 201 },

@@ -2,18 +2,18 @@
  * Admin order detail — /api/v1/admin/orders/[id]
  * GET: detail (masked phone by default). PATCH: status transition.
  *
- * PATCH rules (real, via src/orders/state-machine):
+ * PATCH rules (real, via src/orders/state-machine — the single
+ * authority for transitions):
  * - requires orders.update_status
- * - invalid transitions are REJECTED (422), never coerced
- * - reason is REQUIRED for CANCELLED and REFUNDED (state-machine + API check)
+ * - invalid transitions are REJECTED (422), never coerced, and write
+ *   nothing to the DB
+ * - reason is REQUIRED for CANCELLED and REFUNDED (state-machine check)
  * - the transition is audited (writeAudit, best-effort)
  *
- * TEMPORARY MOCK: the order is loaded from src/orders/mock.ts and PATCH
- * returns the transitioned COPY with meta.persisted = false. It is NOT
- * saved to a DB and NOT shared with other routes, because the Prisma
- * schema has no Order table yet (Agent 6 merge pending). Once it lands,
- * PATCH must run inside prisma.$transaction: update Order.status +
- * insert OrderStatusHistory + adjust stock/audit in the same transaction.
+ * DB-BACKED: the order is loaded from and persisted to Prisma via
+ * src/orders/repository. PATCH goes through applyOrderTransition():
+ * state machine decides, then Order.status + OrderStatusHistory are
+ * written in one transaction. meta.persisted = true is now truthful.
  */
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
@@ -21,8 +21,7 @@ import { z } from "zod";
 import { validateSessionToken } from "@/lib/auth";
 import { phoneForViewer, requirePermission, RbacError, type PermissionKey } from "@/lib/rbac";
 import { writeAudit } from "@/lib/audit";
-import { findMockOrder } from "@/orders/mock";
-import { transitionOrder } from "@/orders/state-machine";
+import { applyOrderTransition, getOrderByIdOrNo } from "@/orders/repository";
 import type { OrderStatus } from "@/orders/types";
 
 function err(code: string, message: string, status: number, details?: unknown) {
@@ -46,10 +45,10 @@ async function requireAdmin(permission: PermissionKey) {
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const auth = await requireAdmin("orders.view");
   if ("error" in auth) return auth.error;
-  const order = findMockOrder(params.id);
+  const order = await getOrderByIdOrNo(params.id);
   if (!order) return err("NOT_FOUND", "Order not found.", 404);
   const view = { ...order, customerPhone: phoneForViewer(order.customerPhone, auth.session.user.permissions) ?? "" };
-  return NextResponse.json({ data: view, meta: { db: "NOT_WIRED", source: "TEMPORARY_MOCK" } });
+  return NextResponse.json({ data: view, meta: { db: "PRISMA", source: "DATABASE" } });
 }
 
 const patchSchema = z.object({
@@ -68,18 +67,22 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!parsed.success) {
     return err("VALIDATION_ERROR", "Status transition input invalid.", 400, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`));
   }
-  const order = findMockOrder(params.id);
-  if (!order) return err("NOT_FOUND", "Order not found.", 404);
-  const result = transitionOrder(order, parsed.data.to as OrderStatus, auth.session.user.id, parsed.data.reason);
-  if (!result.ok) {
+  const result = await applyOrderTransition(
+    params.id,
+    parsed.data.to as OrderStatus,
+    auth.session.user.id,
+    parsed.data.reason,
+  );
+  if (result.kind === "not_found") return err("NOT_FOUND", "Order not found.", 404);
+  if (result.kind === "invalid") {
     return err("INVALID_TRANSITION", result.error, 422);
   }
   await writeAudit({
     actorId: auth.session.user.id,
     action: "orders.update_status",
     entityType: "Order",
-    entityId: order.id,
-    beforeJson: { status: order.status },
+    entityId: result.order.id,
+    beforeJson: { status: result.from },
     afterJson: { status: parsed.data.to },
     reason: parsed.data.reason,
     ip: req.headers.get("x-forwarded-for") ?? undefined,
@@ -87,6 +90,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   });
   return NextResponse.json({
     data: { ...result.order, customerPhone: phoneForViewer(result.order.customerPhone, auth.session.user.permissions) ?? "" },
-    meta: { db: "NOT_WIRED", persisted: false, note: "Transition computed on a mock copy only — DB transaction pending schema merge." },
+    meta: { db: "PRISMA", persisted: true },
   });
 }

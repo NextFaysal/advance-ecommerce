@@ -2,14 +2,14 @@
 
 /**
  * Recently-viewed rail — Part B wiring (Agent 21).
- * Browser-local list (localStorage); product details for quick view
- * resolve from TEMPORARY MOCK catalog data, same as the wishlist page.
+ * Browser-local list (localStorage) whose entries carry their own
+ * display snapshot; quick-view details resolve fresh from the real
+ * public catalog API by slug (ACTIVE-only) — no mock data.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatBdt } from "@advance-ecommerce/validators";
-import { MOCK_PRODUCTS } from "@/catalog/mock";
-import { toPublicProduct } from "@/catalog/types";
+import { fetchPublicProductBySlug } from "@/catalog/public-client";
 import { getRecentlyViewed } from "../recently-viewed";
 import { buildQuickViewData } from "../quick-view";
 import type { QuickViewData, RecentlyViewedEntry } from "../types";
@@ -25,9 +25,9 @@ export function RecentlyViewedRail({ excludeProductId }: { excludeProductId?: st
 
   if (entries.length === 0) return null;
 
-  function openQuickView(entry: RecentlyViewedEntry) {
-    const raw = MOCK_PRODUCTS.find((p) => p.id === entry.productId);
-    if (raw) setQuickView(buildQuickViewData(toPublicProduct(raw)));
+  async function openQuickView(entry: RecentlyViewedEntry) {
+    const product = await fetchPublicProductBySlug(entry.slug);
+    if (product) setQuickView(buildQuickViewData(product));
   }
 
   return (

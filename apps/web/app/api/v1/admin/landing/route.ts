@@ -1,19 +1,20 @@
 import { NextResponse } from "next/server";
 import { landingStore as store } from "@/landing/store";
 import { landingPageInputSchema, validateLandingPage } from "@/landing/validate";
-import { MOCK_PRODUCTS } from "@/catalog/mock";
+import { tryCatalogRepository } from "@/catalog/server-read";
 import { guardError, requireAdmin } from "@/reports/guard";
 
 // Landing pages — Agent 53. RBAC: content.page (same convention as the
 // CMS Pages API — landing is a marketing-content surface, no dedicated
-// landing permission exists). In-memory demo store; publish validation
-// runs against the TEMPORARY MOCK catalog list.
+// landing permission exists). Pages persist in the DB (Prisma
+// LandingPage); publish validation runs against the REAL catalog DB
+// (ACTIVE products from the Prisma repository).
 
 export async function GET() {
   const guard = await requireAdmin("content.page");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   return NextResponse.json(
-    { data: { pages: store.list() }, meta: { persistence: "in-memory-demo", marker: "TEMPORARY_DEMO" } },
+    { data: { pages: await store.list() }, meta: { persistence: "database" } },
   );
 }
 
@@ -28,7 +29,15 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const validation = validateLandingPage(parsed.data, MOCK_PRODUCTS, store.otherSlugs());
+  const repo = await tryCatalogRepository();
+  if (!repo) {
+    return NextResponse.json(
+      { error: { code: "DB_NOT_READY", message: "Catalog database is not available." } },
+      { status: 503 },
+    );
+  }
+  const { products } = await repo.listProducts({ status: "ACTIVE", page: 1, pageSize: 100 });
+  const validation = validateLandingPage(parsed.data, products, await store.otherSlugs());
   if (!validation.ok) {
     return NextResponse.json(
       { error: { code: "VALIDATION_FAILED", message: "Landing page validation failed.", details: validation.errors } },
@@ -36,9 +45,9 @@ export async function POST(req: Request) {
     );
   }
   try {
-    const page = store.create(parsed.data);
+    const page = await store.create(parsed.data);
     return NextResponse.json(
-      { data: { page }, meta: { persistence: "in-memory-demo", marker: "TEMPORARY_DEMO" } },
+      { data: { page }, meta: { persistence: "database" } },
       { status: 201 },
     );
   } catch (e) {

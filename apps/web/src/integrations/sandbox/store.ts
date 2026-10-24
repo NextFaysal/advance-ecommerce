@@ -1,15 +1,21 @@
-// Sandbox store — process-local, SIMULATED data only. Agent 9.
-// This in-memory store lets the sandbox adapters, webhooks and manual TrxID
-// flow be exercised end-to-end WITHOUT a database and WITHOUT any real
-// provider. It is NOT a production store:
-//  - it resets when the server process restarts,
-//  - it is not shared between instances,
-//  - it must be replaced by the DB tables in ../SCHEMA-ADDITIONS.md
-//    (payments, payment_attempts, manual_trx_submissions with a UNIQUE
-//    index on (method, trxId), shipments, shipment_events, webhook_logs)
-//    before any real provider integration. Never store a real credential,
-//    a real customer payment, or a real order payment in this store.
-import type { ManualTrxSubmission, PaymentStatus } from "../payment";
+// Sandbox integration shapes + webhook memory — Agent 9; DB swap 2026-10-24.
+// The process-local Maps that used to persist sandbox payments,
+// shipments and manual TrxID submissions are GONE: those records now
+// live in the real tables via ./db-store.ts (Payment / PaymentAttempt /
+// Refund / ManualTrxSubmission / Shipment / ShipmentEvent). This module
+// keeps only:
+//  - the shared TS shapes (SandboxPaymentAttempt, SandboxShipment,
+//    WebhookLogEntry) that routes, pages and the BD modules consume;
+//  - normalizeTrxId (pure);
+//  - the webhook attempt log + idempotency RESULTS, which stay
+//    process-local for one documented reason: the merged Prisma schema
+//    has NO webhook_logs table (schema drift, reported — not silently
+//    worked around). Courier webhook applies additionally persist a
+//    ShipmentEvent whose idempotencyKey is UNIQUE, so a replayed courier
+//    webhook is backstopped by the DB even across restarts; payment
+//    webhook state application is itself idempotent (it writes the
+//    mapped status onto the persisted attempt).
+import type { PaymentStatus } from "../payment";
 import type { ShipmentStatus } from "../courier";
 import type { OrderStatus } from "../../orders/types";
 
@@ -35,7 +41,7 @@ export interface SandboxShipment {
   weightGrams: number;
   status: ShipmentStatus;
   statusHistory: ShipmentStatus[];
-  /** Minimal order status tracked only to demonstrate state-machine mapping. */
+  /** Linked order's CURRENT status, read from the Order row (read-only). */
   orderStatus: OrderStatus;
   idempotencyKey: string;
   createdAt: string;
@@ -54,30 +60,26 @@ export interface WebhookLogEntry {
   receivedAt: string;
 }
 
-export interface SandboxStore {
-  payments: Map<string, SandboxPaymentAttempt>;
-  shipments: Map<string, SandboxShipment>;
-  manualTrx: Map<string, ManualTrxSubmission>;
-  /** idempotencyKey -> first result, per channel. A replay returns this. */
-  webhookResults: Map<string, { applied: boolean; duplicate: boolean }>;
-  webhookLog: WebhookLogEntry[];
-}
-
-export const sandboxStore: SandboxStore = {
-  payments: new Map(),
-  shipments: new Map(),
-  manualTrx: new Map(),
-  webhookResults: new Map(),
-  webhookLog: [],
+/**
+ * Process-local webhook bookkeeping (see module header for why this is
+ * not in the DB). `results` maps `${channel}:${provider}:${key}` to the
+ * first result so a replay inside this process returns duplicate:true.
+ */
+export const webhookMemory: {
+  results: Map<string, { applied: boolean; duplicate: boolean }>;
+  log: WebhookLogEntry[];
+} = {
+  results: new Map(),
+  log: [],
 };
 
 export function logWebhook(entry: Omit<WebhookLogEntry, "id" | "receivedAt">): WebhookLogEntry {
   const full: WebhookLogEntry = {
     ...entry,
-    id: `sbx-wh-${sandboxStore.webhookLog.length + 1}`,
+    id: `sbx-wh-${webhookMemory.log.length + 1}`,
     receivedAt: new Date().toISOString(),
   };
-  sandboxStore.webhookLog.push(full);
+  webhookMemory.log.push(full);
   return full;
 }
 
@@ -86,22 +88,8 @@ export function normalizeTrxId(trxId: string): string {
   return trxId.trim().toUpperCase();
 }
 
-export function findManualTrxByMethodAndTrx(
-  method: ManualTrxSubmission["method"],
-  trxId: string,
-): ManualTrxSubmission | null {
-  const normalized = normalizeTrxId(trxId);
-  for (const sub of sandboxStore.manualTrx.values()) {
-    if (sub.method === method && normalizeTrxId(sub.trxId) === normalized) return sub;
-  }
-  return null;
-}
-
-/** Test/support only: clear all simulated data. Never call from a route. */
-export function resetSandboxStore(): void {
-  sandboxStore.payments.clear();
-  sandboxStore.shipments.clear();
-  sandboxStore.manualTrx.clear();
-  sandboxStore.webhookResults.clear();
-  sandboxStore.webhookLog = [];
+/** Test/support only: clear the process-local webhook memory. */
+export function resetWebhookMemory(): void {
+  webhookMemory.results.clear();
+  webhookMemory.log = [];
 }

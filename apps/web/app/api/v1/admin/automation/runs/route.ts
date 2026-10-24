@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { processEvent } from "@/automation/engine";
 import { featureGuardError, requireFeatureAdmin } from "@/automation/guard";
-import { demoAutomationStore } from "@/automation/store";
+import { automationStore } from "@/automation/store";
 import { automationEventSchema } from "@/automation/types";
 
 // Automation runs — Agent 13.
@@ -19,8 +19,8 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const ruleId = url.searchParams.get("ruleId") ?? undefined;
   return NextResponse.json({
-    data: { runs: demoAutomationStore.listRuns(ruleId) },
-    meta: { persistence: "in-memory-demo", execution: "bullmq-pending" },
+    data: { runs: await automationStore.listRuns(ruleId) },
+    meta: { persistence: "database", execution: "bullmq-pending" },
   });
 }
 
@@ -36,13 +36,13 @@ export async function POST(req: Request) {
     );
   }
   const stamp = Date.now();
-  const logs = processEvent(demoAutomationStore.listRules(), parsed.data, {
+  const logs = processEvent(await automationStore.listRules(), parsed.data, {
     dryRun: false,
     runIdFor: (rule, index) => `run_${stamp}_${index}_${rule.id}`,
   });
-  for (const log of logs) demoAutomationStore.appendRun(log);
+  for (const log of logs) await automationStore.appendRun(log);
   return NextResponse.json({
     data: { runs: logs },
-    meta: { persistence: "in-memory-demo", execution: "bullmq-pending" },
+    meta: { persistence: "database", execution: "bullmq-pending" },
   });
 }

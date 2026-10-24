@@ -16,9 +16,10 @@
  *
  * Demo honesty: cash-closing + reconciliation panels are computed from
  * the SAMPLE inputs in ./demo-data.ts and labelled TEMPORARY DEMO.
- * Payment links use the shared in-memory-demo store (the same store
- * /pay/[token] resolves against); the list below is built server-side
- * and only the token-hash PREFIX ever reaches the browser.
+ * Payment links use the shared DB-backed store (payment_links table —
+ * the same store /pay/[token] resolves against); the list below is
+ * built server-side and only the token-hash PREFIX ever reaches the
+ * browser.
  */
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -29,7 +30,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { Tabs } from "@/components/ui/tabs";
 import { buildDailyCashClosing } from "@/bd/cash-closing";
 import { reconcileCourierInvoice } from "@/bd/courier-reconciliation";
-import { demoPaymentLinkStore, withEffectiveStatus } from "@/bd/payment-link";
+import { paymentLinkStore, withEffectiveStatus } from "@/bd/payment-link";
 import { ensureDemoPaymentLink } from "@/storefront-ux/pay-link-view";
 import { AddressParserPanel } from "./address-parser-panel";
 import { SmsVerifyPanel } from "./sms-verify-panel";
@@ -50,9 +51,10 @@ import {
 
 /** Server-side only: maps store records to the browser-safe list view
  *  (hash prefix, never the full hash, never a token). */
-function initialPaymentLinks(): PaymentLinkListItemView[] {
-  ensureDemoPaymentLink();
-  return demoPaymentLinkStore.listByOrder("ORD-100244").map((record) => {
+async function initialPaymentLinks(): Promise<PaymentLinkListItemView[]> {
+  await ensureDemoPaymentLink();
+  const records = await paymentLinkStore.listByOrder("ORD-100244");
+  return records.map((record) => {
     const effective = withEffectiveStatus(record);
     return {
       id: effective.id,
@@ -219,7 +221,7 @@ function CourierReconciliationPanel() {
   );
 }
 
-export default function BdToolsPage() {
+export default async function BdToolsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
@@ -232,7 +234,7 @@ export default function BdToolsPage() {
           tabs={[
             { id: "address", label: "ঠিকানা পার্সার", content: <AddressParserPanel /> },
             { id: "sms", label: "SMS যাচাই", content: <SmsVerifyPanel /> },
-            { id: "payment-links", label: "পেমেন্ট লিংক", content: <PaymentLinksPanel initialLinks={initialPaymentLinks()} /> },
+            { id: "payment-links", label: "পেমেন্ট লিংক", content: <PaymentLinksPanel initialLinks={await initialPaymentLinks()} /> },
             { id: "cash-closing", label: "ক্যাশ ক্লোজিং", content: <CashClosingPanel /> },
             { id: "courier-reconciliation", label: "কুরিয়ার রিকনসিলিয়েশন", content: <CourierReconciliationPanel /> },
             { id: "courier-assignment", label: "অটো কুরিয়ার বাছাই", content: <CourierAssignmentPanel /> },

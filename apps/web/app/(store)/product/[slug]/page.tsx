@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { formatBdt, fromPoisha } from "@advance-ecommerce/validators";
-import { getMockProductBySlug } from "@/catalog/mock";
+import { tryCatalogRepository } from "@/catalog/server-read";
 import { minVariantPricePoisha, toPublicProduct } from "@/catalog/types";
 import { RecordRecentlyViewed } from "@/storefront-ux/components/RecordRecentlyViewed";
 import { RecentlyViewedRail } from "@/storefront-ux/components/RecentlyViewedRail";
@@ -13,8 +13,13 @@ import { BackInStockForm } from "@/storefront-ux/components/BackInStockForm";
 import { BuyBoxActions } from "@/cart/components/BuyBoxActions";
 import type { RecentlyViewedEntry } from "@/storefront-ux/types";
 
+// Data: real catalog DB via the repository PUBLIC read path
+// (ACTIVE-only) — a DRAFT/ARCHIVED slug 404s exactly like a missing one.
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
-  const product = getMockProductBySlug(params.slug);
+  const repo = await tryCatalogRepository();
+  const product = repo ? await repo.getPublicProductBySlug(params.slug) : null;
   if (!product) return { title: "পণ্য পাওয়া যায়নি" };
   return {
     title: product.seoTitle?.bn ?? product.title.bn,
@@ -27,8 +32,9 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   };
 }
 
-export default function ProductPage({ params }: { params: { slug: string } }) {
-  const raw = getMockProductBySlug(params.slug);
+export default async function ProductPage({ params }: { params: { slug: string } }) {
+  const repo = await tryCatalogRepository();
+  const raw = repo ? await repo.getPublicProductBySlug(params.slug) : null;
   if (!raw) notFound();
   // Public view: costPoisha stripped — never render cost to customers.
   const product = toPublicProduct(raw);
@@ -121,8 +127,6 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
           </div>
 
           <BackInStockForm productId={product.id} variants={outOfStockVariants} />
-
-          <p className="mt-3 text-xs text-slate-500">TEMPORARY MOCK — Step 8-এ Prisma service থেকে আসল ডেটা আসবে।</p>
         </div>
       </div>
 

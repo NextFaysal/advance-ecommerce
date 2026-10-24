@@ -1,7 +1,10 @@
 /**
- * Call-center demo data — TEMPORARY, in-memory, lost on restart. Agent 14.
- * Phones are demo numbers in the server-side shape; every API/UI surface
- * masks them via toQueueItemView before they leave the server.
+ * Call-center demo data — FIXTURE ONLY. Agent 14.
+ *
+ * PERSISTENCE SWAP DONE: the production path is src/callcenter/store.ts
+ * (Prisma tables CallTask / CallLogEntry); all routes and the admin page
+ * read/write through it. The demo arrays below remain as labelled
+ * fixtures and are no longer read by any route/page.
  */
 import { claimNextTask, priorityForSource } from "./queue";
 import type { CallLogEntry, CallTask } from "./types";

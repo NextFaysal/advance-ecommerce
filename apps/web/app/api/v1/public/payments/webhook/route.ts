@@ -13,14 +13,16 @@
 //    webhook never applies twice.
 //  - Body: { paymentAttemptId, gatewayTransactionId, rawStatus, idempotencyKey? }
 //    rawStatus is mapped per provider in sandbox/status-mapping.ts.
-// Real integration must additionally: persist to a webhook_logs DB table,
-// verify with the provider's real signature scheme, and update the
-// payments DB row + order payment status in one transaction.
+// Persistence: DB-backed (2026-10-24) — the mapped status is written to
+// the persisted PaymentAttempt + Payment rows in one transaction. The
+// webhook attempt log itself stays process-local (no webhook_logs table
+// in the schema — see sandbox/store.ts).
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { processWebhook, WEBHOOK_HEADERS } from "@/integrations/sandbox/webhook";
 import { mapPaymentRawStatus } from "@/integrations/sandbox/status-mapping";
-import { sandboxStore } from "@/integrations/sandbox/store";
+import { applyAttemptStatus, findAttemptById } from "@/integrations/sandbox/db-store";
+import { markOrderPayment } from "@/orders/repository";
 import { SANDBOX_PAYMENT_METHODS } from "@/integrations/sandbox/payment-gateway";
 import { getSetting } from "@/lib/settings";
 
@@ -75,7 +77,7 @@ export async function POST(req: Request) {
     );
   }
   const secret = await webhookSecret(provider);
-  const result = processWebhook({
+  const result = await processWebhook({
     channel: "payment",
     provider,
     rawBody,
@@ -83,8 +85,8 @@ export async function POST(req: Request) {
     timestamp: req.headers.get(WEBHOOK_HEADERS.timestamp) ?? undefined,
     idempotencyKey,
     secret,
-    apply: () => {
-      const attempt = sandboxStore.payments.get(parsed.data.paymentAttemptId);
+    apply: async () => {
+      const attempt = await findAttemptById(parsed.data.paymentAttemptId);
       if (!attempt || attempt.method !== provider) {
         return { applied: false, reason: "attempt_not_found" };
       }
@@ -93,9 +95,27 @@ export async function POST(req: Request) {
       }
       const status = mapPaymentRawStatus(provider, parsed.data.rawStatus);
       if (status === null) return { applied: false, reason: "unknown_raw_status" };
-      attempt.status = status;
-      if (status === "PAID") attempt.paidPoisha = attempt.amountPoisha;
-      if (status === "FAILED") attempt.paidPoisha = 0;
+      // Writing the mapped status is naturally idempotent: a replayed
+      // webhook (after a restart) re-writes the same status, never a
+      // second transition.
+      await applyAttemptStatus(
+        attempt.attemptId,
+        status,
+        status === "PAID" ? attempt.amountPoisha : status === "FAILED" ? 0 : undefined,
+      );
+      if (status === "PAID") {
+        // Order-paid funnel: the attempt + Payment rows are persisted
+        // above; the funnel recomputes the linked Order's payment
+        // status from the persisted rows and publishes
+        // payment.succeeded on the transition into PAID. A replayed
+        // webhook (duplicate key) never reaches apply() again, and
+        // the funnel itself is idempotent regardless.
+        await markOrderPayment(attempt.orderId, {
+          paymentStatus: "PAID",
+          source: "payment_webhook",
+          reference: idempotencyKey,
+        });
+      }
       return { applied: true, reason: null };
     },
   });

@@ -5,9 +5,8 @@
  * API keys / secrets are NEVER collected here — they belong in
  * Admin > Settings, stored encrypted (see src/lib/settings.ts). The
  * wizard's finish step sends this payload to POST /api/v1/admin/setup,
- * which in this build records it in an in-memory demo store labelled
- * NOT_WIRED and answers `persisted: false` — nothing here may claim the
- * settings were saved to the database.
+ * which writes every entry through setSetting() (src/lib/settings.ts)
+ * into the Setting table and answers `persisted: true`.
  *
  * BD defaults are locked by product decision (Bangla default, BDT,
  * Asia/Dhaka) — the wizard displays them, it cannot change them.
@@ -217,25 +216,13 @@ export function clearSetupProgress(): void {
 }
 
 /* ------------------------------------------------------------------ */
-/* Submission store — in-memory demo, NOT wired to the DB              */
+/* Submission — persisted via setSetting()                             */
 /* ------------------------------------------------------------------ */
 
-export interface SetupSubmission {
-  id: string;
-  submittedAt: string;
-  settings: SettingEntry[];
-}
-
-/** In-memory only; resets on server restart. Swap for setSetting() calls
- *  behind the same payload shape once DB wiring lands. */
-export const setupSubmissionStore: SetupSubmission[] = [];
-
-export function recordSetupSubmission(settings: SettingEntry[]): SetupSubmission {
-  const submission: SetupSubmission = {
-    id: `setup_${setupSubmissionStore.length + 1}`,
-    submittedAt: new Date().toISOString(),
-    settings,
-  };
-  setupSubmissionStore.push(submission);
-  return submission;
-}
+/**
+ * Submissions persist through the setup API route, which writes each
+ * payload entry via setSetting() (src/lib/settings.ts) into the
+ * Setting table with a settings.update audit entry. There is no
+ * submission store in this module anymore — the payload shape above
+ * (buildSetupSettingsPayload) is the contract.
+ */

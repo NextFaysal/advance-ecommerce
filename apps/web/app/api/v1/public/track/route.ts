@@ -8,14 +8,16 @@
  * Rate limit: 10 lookups / 5 min / IP (in-memory demo limiter; production
  * swaps it for Redis — see src/storefront-ux/order-tracking.ts).
  *
- * TEMPORARY: orders come from src/orders/mock.ts (TEMPORARY MOCK). The DB
- * version replaces MOCK_ORDERS with an Order lookup by orderNo + its
- * Shipment row for a real ShipmentStatus; lookupTracking's contract and
- * the response shape do not change.
+ * DB-BACKED: the order is looked up by orderNo in Prisma (via
+ * src/orders/repository) and handed to lookupTracking as a one-element
+ * list, so the generic not-found/phone-mismatch behaviour and the
+ * response shape are byte-identical to the mock era. ShipmentStatus is
+ * still derived from the order status by lookupTracking (real Shipment
+ * rows are the shipments slice).
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { MOCK_ORDERS } from "@/orders/mock";
+import { getOrderByOrderNo } from "@/orders/repository";
 import { lookupTracking, trackingRateLimiter } from "@/storefront-ux/order-tracking";
 
 const trackBodySchema = z.object({
@@ -39,7 +41,8 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const result = lookupTracking(MOCK_ORDERS, parsed.data.orderNo, parsed.data.phone);
+  const order = await getOrderByOrderNo(parsed.data.orderNo.trim().toUpperCase());
+  const result = lookupTracking(order ? [order] : [], parsed.data.orderNo, parsed.data.phone);
   if (!result.ok) {
     return NextResponse.json(
       { error: { code: "NOT_FOUND", message: result.messageBn } },
@@ -48,6 +51,6 @@ export async function POST(req: Request) {
   }
   return NextResponse.json({
     data: { tracking: result.view },
-    meta: { source: "TEMPORARY_MOCK", rateLimit: "10 requests / 5 min / IP" },
+    meta: { source: "DATABASE", rateLimit: "10 requests / 5 min / IP" },
   });
 }

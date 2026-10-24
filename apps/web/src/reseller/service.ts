@@ -1,11 +1,12 @@
 /**
- * Reseller service — in-memory DEMO store + dashboard builder. Agent 14.
+ * Reseller service — dashboard builder + DEMO fixture data. Agent 14.
  *
- * TEMPORARY DEMO persistence (same pattern as other v2 slices): data lives in
- * module-level arrays and is lost on restart. The DB implementation replaces
- * this store with tables: resellers, reseller_price_entries,
- * reseller_wallet_entries (append-only), reseller_withdrawals — and reads the
- * module.reseller flag from the feature_flags table instead of flags.ts.
+ * PERSISTENCE SWAP DONE: the production path is src/reseller/store.ts
+ * (Prisma tables Reseller / ResellerPriceEntry / ResellerWalletEntry /
+ * ResellerWithdrawal); all API routes and the admin page read/write
+ * through it. buildDashboard below stays — it is the pure dashboard
+ * builder the DB store reuses. The DEMO_* arrays in this file remain
+ * only as labelled fixtures and are no longer read by any route/page.
  *
  * Phone handling: the full normalized phone is stored on the demo Reseller
  * record (server-side only shape). Every outward shape (dashboard, API

@@ -15,18 +15,20 @@
  * exactly once, from createBdPaymentLinkAction, mirroring
  * createPaymentLink()'s contract.
  *
- * Persistence: demoPaymentLinkStore is IN-MEMORY-DEMO (process-local,
- * lost on restart) — same store the public /pay/[token] page resolves
- * against, so a link created here really does open there locally.
+ * Persistence: paymentLinkStore is DB-backed (payment_links table) —
+ * the same store the public /pay/[token] page resolves against, so a
+ * link created here really does open there. The order reference must
+ * resolve to a real Order row.
  */
 import {
   createPaymentLink,
   createPaymentLinkSchema,
-  demoPaymentLinkStore,
+  paymentLinkStore,
   withEffectiveStatus,
   type PaymentLinkRecord,
   type PaymentLinkStatus,
 } from "@/bd/payment-link";
+import { SandboxOrderNotFoundError } from "@/integrations/sandbox/db-store";
 
 export interface PaymentLinkListItemView {
   id: string;
@@ -71,7 +73,14 @@ export async function createBdPaymentLinkAction(input: {
     return { ok: false, error: "তথ্য সঠিক নয় — অর্ডার আইডি, পরিমাণ (পয়সায় ধনাত্মক পূর্ণসংখ্যা) ও মেয়াদ যাচাই করুন।" };
   }
   const created = createPaymentLink(parsed.data);
-  demoPaymentLinkStore.add(created.record);
+  try {
+    await paymentLinkStore.add(created.record);
+  } catch (err) {
+    if (err instanceof SandboxOrderNotFoundError) {
+      return { ok: false, error: "অর্ডারটি খুঁজে পাওয়া যায়নি — সঠিক অর্ডার আইডি দিন।" };
+    }
+    throw err;
+  }
   return {
     ok: true,
     link: toListItem(created.record),
@@ -81,5 +90,6 @@ export async function createBdPaymentLinkAction(input: {
 }
 
 export async function listBdPaymentLinksAction(orderId: string): Promise<PaymentLinkListItemView[]> {
-  return demoPaymentLinkStore.listByOrder(orderId).map(toListItem);
+  const records = await paymentLinkStore.listByOrder(orderId);
+  return records.map(toListItem);
 }

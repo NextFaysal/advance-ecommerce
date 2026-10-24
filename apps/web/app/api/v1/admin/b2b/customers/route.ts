@@ -1,26 +1,26 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { b2bGuardError, requireB2bAdmin } from "@/b2b/guard";
-import { demoB2bStore } from "@/b2b/store";
+import { b2bStore } from "@/b2b/db-store";
 import { approvalTransition, checkCredit } from "@/b2b/service";
 import { maskPhone } from "@/checkout/validation";
 
 // B2B customers — Agent 16. GET: approval queue + credit state (phones
 // masked). PATCH: approval transition (PENDING->APPROVED/REJECTED,
 // APPROVED->SUSPENDED, SUSPENDED->APPROVED/REJECTED, REJECTED->PENDING).
-// POST: credit check for a proposed order total. Demo persistence, labelled.
+// POST: credit check for a proposed order total. DB-backed since 2026-10-24.
 
 export async function GET() {
   const guard = await requireB2bAdmin("b2b.view");
   if (!guard.ok) return NextResponse.json(b2bGuardError(guard), { status: guard.status });
   const today = new Date().toISOString().slice(0, 10);
-  const customers = demoB2bStore.listCustomers().map((c) => ({
+  const customers = (await b2bStore.listCustomers()).map((c) => ({
     ...c,
     phone: maskPhone(c.phone),
     overdue: Boolean(c.oldestDueDate && c.oldestDueDate < today && c.outstandingPoisha > 0),
     availableCreditPoisha: Math.max(0, c.creditLimitPoisha - c.outstandingPoisha),
   }));
-  return NextResponse.json({ data: { customers }, meta: { persistence: "in-memory-demo" } });
+  return NextResponse.json({ data: { customers }, meta: { persistence: "database" } });
 }
 
 const approvalSchema = z.object({
@@ -39,7 +39,7 @@ export async function PATCH(req: Request) {
       { status: 400 },
     );
   }
-  const customer = demoB2bStore.getCustomer(parsed.data.customerId);
+  const customer = await b2bStore.getCustomer(parsed.data.customerId);
   if (!customer) {
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "B2B customer not found." } }, { status: 404 });
   }
@@ -50,10 +50,10 @@ export async function PATCH(req: Request) {
     );
   }
   const updated = { ...customer, approvalStatus: parsed.data.to };
-  demoB2bStore.replaceCustomer(updated);
+  await b2bStore.replaceCustomer(updated);
   return NextResponse.json({
     data: { customer: { ...updated, phone: maskPhone(updated.phone) } },
-    meta: { persistence: "in-memory-demo" },
+    meta: { persistence: "database" },
   });
 }
 
@@ -73,11 +73,11 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const customer = demoB2bStore.getCustomer(parsed.data.customerId);
+  const customer = await b2bStore.getCustomer(parsed.data.customerId);
   if (!customer) {
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "B2B customer not found." } }, { status: 404 });
   }
   const today = new Date().toISOString().slice(0, 10);
   const result = checkCredit(customer, parsed.data.orderTotalPoisha, today);
-  return NextResponse.json({ data: { creditCheck: result }, meta: { persistence: "in-memory-demo" } });
+  return NextResponse.json({ data: { creditCheck: result }, meta: { persistence: "database" } });
 }

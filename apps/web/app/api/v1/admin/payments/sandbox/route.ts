@@ -2,9 +2,13 @@
 // GET /api/v1/admin/payments/sandbox (payments.view)
 // Returns simulated attempts only. No credential, signature, or secret is
 // ever included — attempts do not carry any.
+// Persistence: attempts are DB-backed (payment_attempts). The webhook
+// log in meta stays process-local: the schema has no webhook_logs table
+// (see src/integrations/sandbox/store.ts).
 import { NextResponse } from "next/server";
 import { requireAdminPermission } from "@/integrations/sandbox/admin-auth";
-import { sandboxStore } from "@/integrations/sandbox/store";
+import { listAttempts } from "@/integrations/sandbox/db-store";
+import { webhookMemory } from "@/integrations/sandbox/store";
 
 export async function GET() {
   const guard = await requireAdminPermission("payments.view");
@@ -15,7 +19,7 @@ export async function GET() {
     );
   }
   return NextResponse.json({
-    data: [...sandboxStore.payments.values()],
-    meta: { sandbox: true, webhookLog: sandboxStore.webhookLog },
+    data: await listAttempts(),
+    meta: { sandbox: true, persistence: "database", webhookLog: webhookMemory.log },
   });
 }

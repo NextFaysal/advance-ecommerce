@@ -149,7 +149,7 @@ export function SetupWizard() {
           ok: true,
           message:
             body.meta?.note ??
-            "সেটআপ জমা হয়েছে (ডেমো — ডাটাবেসে সংরক্ষিত হয়নি, persisted: false)।",
+            "সেটআপ সংরক্ষিত হয়েছে (ডাটাবেসে, persisted: true)।",
         });
       } else {
         setResult({ ok: false, message: body.error?.message ?? `জমা ব্যর্থ হয়েছে (HTTP ${res.status})।` });
@@ -332,8 +332,8 @@ export function SetupWizard() {
               </div>
             </dl>
             <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-700">
-              ডেমো সতর্কতা: জমা দিলে তথ্য শুধু একটি in-memory ডেমো স্টোরে যাবে (NOT_WIRED) —
-              ডাটাবেসে সংরক্ষিত হবে না। আসল সেটিংস সংরক্ষণ DB ওয়্যারিংয়ের পর সেটিংস পেজ থেকেই হবে।
+              জমা দিলে তথ্য ডাটাবেসের Settings টেবিলে সংরক্ষিত হবে (অডিটসহ)।
+              API key/secret এখানে নেওয়া হয় না — সেগুলো Settings পেজে এনক্রিপ্ট করে রাখতে হয়।
             </p>
             {result ? (
               <p className={`rounded-md p-3 text-sm ${result.ok ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>

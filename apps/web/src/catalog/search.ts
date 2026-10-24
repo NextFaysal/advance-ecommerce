@@ -52,6 +52,10 @@ export function expandQueryTokens(query: string): string[] {
 export interface MeilisearchProductDocument {
   id: string;
   slug: string;
+  /** Lifecycle status — filterable so public queries can hard-require
+   *  ACTIVE. Only ACTIVE products are ever written to the public index
+   *  (see indexer.ts); this field is the second, query-time gate. */
+  status: "DRAFT" | "ACTIVE" | "ARCHIVED";
   titleBn: string;
   titleEn: string;
   descriptionBn: string;
@@ -79,6 +83,7 @@ export const PRODUCTS_INDEX_CONFIG = {
     "categorySlug",
   ],
   filterableAttributes: [
+    "status",
     "categorySlug",
     "brandName",
     "tags",

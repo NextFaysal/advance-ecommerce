@@ -5,10 +5,10 @@ import { posGuardError, requirePosAdmin } from "../guard";
 import { posCatalog } from "../catalog";
 
 // POS barcode / SKU lookup — Agent 38, on src/pos/register.ts
-// resolveScan() (SKU first). The catalog is the TEMPORARY MOCK catalog
-// (src/catalog/mock) until the catalog DB service lands — labelled in
-// meta. An unmatched code is a normal 200 with matched: false, so the
-// register can fall back to manual entry.
+// resolveScan() (SKU first). The catalog is the REAL catalog DB
+// (../catalog.ts, ACTIVE products) — labelled in meta. An unmatched
+// code is a normal 200 with matched: false, so the register can fall
+// back to manual entry.
 export async function POST(req: Request) {
   const guard = await requirePosAdmin("pos.view");
   if (!guard.ok) return NextResponse.json(posGuardError(guard), { status: guard.status });
@@ -21,9 +21,18 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const resolution = resolveScan(parsed.data, posCatalog());
+  let catalog: Awaited<ReturnType<typeof posCatalog>>;
+  try {
+    catalog = await posCatalog();
+  } catch {
+    return NextResponse.json(
+      { error: { code: "DB_NOT_READY", message: "Catalog database is not available." } },
+      { status: 503 },
+    );
+  }
+  const resolution = resolveScan(parsed.data, catalog);
   return NextResponse.json({
     data: { resolution },
-    meta: { persistence: "none-pure-logic", catalogSource: "TEMPORARY_MOCK" },
+    meta: { persistence: "none-pure-logic", catalogSource: "database" },
   });
 }

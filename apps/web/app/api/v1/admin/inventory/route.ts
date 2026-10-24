@@ -1,27 +1,61 @@
 import { NextResponse } from "next/server";
-import { InMemoryInventoryStore, applyMovement, lowStockList, movementActionSchema, valuationPoisha } from "@/inventory/service";
-import { DEMO_COST_POISHA, DEMO_INVENTORY, DEMO_LOW_STOCK_THRESHOLD } from "@/reports/demo";
+import { InMemoryInventoryStore, lowStockList, movementActionSchema, valuationPoisha } from "@/inventory/service";
+import {
+  LOW_STOCK_THRESHOLD,
+  applyMovementDb,
+  getVariantCostMapDb,
+  listInventoryItemsDb,
+} from "@/inventory/repository";
+import { writeAudit } from "@/lib/audit";
 import { guardError, requireAdmin } from "@/reports/guard";
 
-// GET /api/v1/admin/inventory — list + low stock + valuation (DEMO in-memory)
+// GET /api/v1/admin/inventory — list + low stock + valuation (DB, Prisma)
 // POST — a stock movement via the ledger (never a direct quantity edit).
 // RBAC: inventory.view (GET) / inventory.adjust (POST).
-// Persistence is in-memory demo until the Prisma store lands; meta says so.
-const store = new InMemoryInventoryStore(DEMO_INVENTORY);
+// Persistence: Prisma — InventoryItem rows + StockMovement ledger rows
+// (src/inventory/repository.ts). The pure helpers (lowStockList,
+// valuationPoisha) run over the DB rows via a throwaway in-memory
+// adapter; valuation covers only variants that carry a costPoisha and
+// reports how many items were excluded for a missing cost.
+
+function isMovementRejection(e: unknown): boolean {
+  return (
+    e instanceof Error &&
+    /insufficient|cannot commit|cannot release|must be positive|unknown movement/.test(e.message)
+  );
+}
+
+function isForeignKeyError(e: unknown): boolean {
+  return typeof e === "object" && e !== null && "code" in e && (e as { code?: string }).code === "P2003";
+}
 
 export async function GET() {
   const guard = await requireAdmin("inventory.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  const items = store.listItems();
-  return NextResponse.json({
-    data: {
-      items,
-      lowStock: lowStockList(store, DEMO_LOW_STOCK_THRESHOLD),
-      lowStockThreshold: DEMO_LOW_STOCK_THRESHOLD,
-      valuationPoisha: valuationPoisha(items, DEMO_COST_POISHA),
-    },
-    meta: { persistence: "in-memory-demo", source: "TEMPORARY_DEMO" },
-  });
+  try {
+    const items = await listInventoryItemsDb();
+    const costMap = await getVariantCostMapDb(items.map((i) => i.variantId));
+    const costedItems = items.filter((i) => costMap.has(i.variantId));
+    // Pure reporting helpers over the DB snapshot (same pattern the
+    // admin page used with the demo store — the store here is only an
+    // adapter for the pure functions, never a persistence layer).
+    const adapter = new InMemoryInventoryStore(items);
+    return NextResponse.json({
+      data: {
+        items,
+        lowStock: lowStockList(adapter, LOW_STOCK_THRESHOLD),
+        lowStockThreshold: LOW_STOCK_THRESHOLD,
+        valuationPoisha: valuationPoisha(costedItems, Object.fromEntries(costMap)),
+        valuationMissingCostItems: items.length - costedItems.length,
+      },
+      meta: { persistence: "database", source: "DATABASE" },
+    });
+  } catch {
+    return NextResponse.json(
+      { error: { code: "DB_NOT_READY", message: "Inventory needs a working database." } },
+      { status: 503 },
+    );
+  }
 }
 
 export async function POST(req: Request) {
@@ -32,14 +66,36 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: { code: "INVALID_INPUT", message: "Invalid stock movement.", details: parsed.error.issues } }, { status: 400 });
   }
-  // Audit note: a Prisma implementation must writeAudit() here with actor,
-  // action, entity and reason before applying the movement (audit.ts).
-  // Reason is required by movementActionSchema, so a sensitive adjustment
-  // can never be applied anonymously in this contract.
   try {
-    const result = applyMovement(store, { ...parsed.data, actorId: guard.userId });
-    return NextResponse.json({ data: result, meta: { persistence: "in-memory-demo", audited: false, auditPending: "prisma" } }, { status: 201 });
+    const result = await applyMovementDb({ ...parsed.data, actorId: guard.userId });
+    // The movement is a sensitive stock change: audit it with the actor,
+    // the movement and the required reason (reason is mandatory in
+    // movementActionSchema, so an adjustment can never be anonymous).
+    await writeAudit({
+      actorId: guard.userId,
+      action: "inventory.adjust",
+      entityType: "StockMovement",
+      entityId: result.movement.id,
+      afterJson: {
+        variantId: result.movement.variantId,
+        warehouseId: result.movement.warehouseId,
+        type: result.movement.type,
+        quantityDelta: result.movement.quantityDelta,
+        quantityBefore: result.movement.quantityBefore,
+        quantityAfter: result.movement.quantityAfter,
+        referenceType: result.movement.referenceType,
+        referenceId: result.movement.referenceId,
+      },
+      reason: parsed.data.reason,
+    });
+    return NextResponse.json({ data: result, meta: { persistence: "database", audited: true } }, { status: 201 });
   } catch (e) {
-    return NextResponse.json({ error: { code: "MOVEMENT_REJECTED", message: e instanceof Error ? e.message : "Movement rejected." } }, { status: 422 });
+    if (isMovementRejection(e)) {
+      return NextResponse.json({ error: { code: "MOVEMENT_REJECTED", message: e instanceof Error ? e.message : "Movement rejected." } }, { status: 422 });
+    }
+    if (isForeignKeyError(e)) {
+      return NextResponse.json({ error: { code: "INVALID_REFERENCE", message: "Variant or warehouse not found." } }, { status: 422 });
+    }
+    return NextResponse.json({ error: { code: "DB_NOT_READY", message: "Inventory needs a working database." } }, { status: 503 });
   }
 }

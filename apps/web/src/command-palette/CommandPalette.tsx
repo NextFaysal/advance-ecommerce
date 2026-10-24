@@ -19,12 +19,14 @@
  *   Home/End jump, Enter opens, Esc closes — the pure reducer lives in
  *   keyboard.ts, this component only renders where it points.
  * - Results come from the pure pipeline in this folder: nav pages +
- *   quick actions + TEMPORARY MOCK orders/products/customers (each demo
- *   result carries a "ডেমো ডেটা" badge — never disguised as live), plus
+ *   quick actions + REAL catalog products (loaded once on mount from
+ *   GET /api/v1/admin/products?status=ACTIVE — ACTIVE-only, so drafts
+ *   never appear) + REAL orders/customers (loaded once on mount from
+ *   GET /api/v1/admin/orders and /api/v1/admin/customers), plus
  *   natural-language links from src/ai/search's parseCommandQuery.
  * - Customer/order subtitles show MASKED phones only (maskPhone at
- *   index-build time); full digits exist only in never-rendered
- *   keywords so staff can still search by number.
+ *   index-build time, on top of the APIs' own masking); the full number
+ *   never enters the palette index at all.
  * - With an empty query it shows recent searches (localStorage) and
  *   the full page list. Recent rows are mouse/tap targets; keyboard
  *   navigation covers the page results below them.
@@ -36,6 +38,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { Product } from "../catalog/types";
+import type { Customer, Order } from "../orders/types";
 import { Badge } from "../components/ui/badge";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
@@ -87,10 +91,6 @@ function buildDisplayGroups(
   );
 }
 
-function isDemoSource(result: PaletteResult): boolean {
-  return result.source.startsWith("TEMPORARY_MOCK");
-}
-
 export function CommandPalette({ onNavigate }: CommandPaletteProps = {}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -99,15 +99,64 @@ export function CommandPalette({ onNavigate }: CommandPaletteProps = {}) {
   const [nav, setNav] = useState<PaletteNavState>(INITIAL_NAV_STATE);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const index = useMemo(() => buildPaletteIndex(), []);
+  // Real catalog products for the index: fetched once on mount from the
+  // admin products API (ACTIVE-only). Until it lands — or if it fails —
+  // the palette simply has no product group; it never falls back to
+  // mock data.
+  const [products, setProducts] = useState<Product[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/v1/admin/products?status=ACTIVE&pageSize=100")
+      .then((res) => (res.ok ? res.json() : { data: [] }))
+      .then((json: { data?: Product[] }) => {
+        if (!cancelled) setProducts(json.data ?? []);
+      })
+      .catch(() => {
+        // Palette stays usable without the product group.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Real orders + customers, same pattern as products: fetched once on
+  // mount from the DB-backed admin APIs. Phones arrive masked from the
+  // API for viewers without full-phone permission, and the builder
+  // masks again — full numbers never enter the index.
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/v1/admin/orders?pageSize=100")
+      .then((res) => (res.ok ? res.json() : { data: [] }))
+      .then((json: { data?: Order[] }) => {
+        if (!cancelled) setOrders(json.data ?? []);
+      })
+      .catch(() => {
+        // Palette stays usable without the orders group.
+      });
+    void fetch("/api/v1/admin/customers?pageSize=100")
+      .then((res) => (res.ok ? res.json() : { data: [] }))
+      .then((json: { data?: Customer[] }) => {
+        if (!cancelled) setCustomers(json.data ?? []);
+      })
+      .catch(() => {
+        // Palette stays usable without the customers group.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const index = useMemo(() => buildPaletteIndex(products, orders, customers), [products, orders, customers]);
 
   const displayGroups = useMemo<DisplayGroup[]>(() => {
     if (query.trim().length === 0) {
       // Empty query: the full page list is the navigable default.
       return [{ group: "pages", entries: index.filter((r) => r.group === "pages") }];
     }
-    return buildDisplayGroups(searchPalette(index, query), buildNaturalLanguageResults(query));
-  }, [index, query]);
+    return buildDisplayGroups(searchPalette(index, query), buildNaturalLanguageResults(query, orders));
+  }, [index, query, orders]);
 
   const flat = useMemo(() => displayGroups.flatMap((g) => g.entries), [displayGroups]);
 
@@ -236,7 +285,6 @@ export function CommandPalette({ onNavigate }: CommandPaletteProps = {}) {
                           ) : null}
                         </span>
                         {result.locked ? <Badge tone="warning">🔒 অ্যাড-অন</Badge> : null}
-                        {isDemoSource(result) ? <Badge tone="neutral">ডেমো ডেটা</Badge> : null}
                       </button>
                     </li>
                   );

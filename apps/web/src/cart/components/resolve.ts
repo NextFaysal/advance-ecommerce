@@ -1,8 +1,12 @@
 // Cart page helpers — Agent 33 (Storefront Cart Page).
 // Reuses the existing contracts, invents nothing new:
 // - Cart state: src/cart/types + src/cart/persistence (guest localStorage).
-// - Product resolution: TEMPORARY MOCK catalog (src/catalog/mock) by
-//   variantId, falling back to sku, then to the cart item's own snapshot.
+// - Product resolution: the caller passes the real catalog list (the
+//   cart page's server shell loads ACTIVE products from the Prisma
+//   repository via src/catalog/server-read) and lines resolve by
+//   productId / variantId, falling back to sku, then to the cart item's
+//   own snapshot. Items whose product is no longer ACTIVE resolve as
+//   snapshot-only lines — no mock data anywhere in this path.
 // - Shipping zone charges mirror the DB seed zones (packages/db seed:
 //   inside Dhaka 6000 poisha, outside Dhaka 12000 poisha).
 // - Demo coupons mirror the admin marketing page SAMPLE rows / DB seed
@@ -10,16 +14,15 @@
 // All money is integer poisha. Prices on the cart item are add-time
 // snapshots; checkout re-validates server-side (see checkout/pricing.ts).
 
-import { MOCK_PRODUCTS } from "@/catalog/mock";
-import type { Product, ProductVariant } from "@/catalog/types";
+import type { PublicProduct, PublicVariant } from "@/catalog/types";
 import type { CouponRecord } from "@/marketing/service";
 import type { Cart, CartItem } from "../types";
 
 export interface ResolvedCartLine {
   item: CartItem;
-  /** Null when the item is not in the mock catalog (snapshot-only line). */
-  product: Product | null;
-  variant: ProductVariant | null;
+  /** Null when the item is not in the supplied catalog (snapshot-only line). */
+  product: PublicProduct | null;
+  variant: PublicVariant | null;
   productSlug: string | null;
   titleBn: string;
   variantLabel: string | null;
@@ -30,8 +33,8 @@ export interface ResolvedCartLine {
   discountPoishaPerUnit: number;
 }
 
-export function resolveCartLine(item: CartItem): ResolvedCartLine {
-  const product = MOCK_PRODUCTS.find((p) => p.id === item.productId) ?? null;
+export function resolveCartLine(item: CartItem, catalog: readonly PublicProduct[]): ResolvedCartLine {
+  const product = catalog.find((p) => p.id === item.productId) ?? null;
   const variant =
     product?.variants.find((v) => v.id === item.variantId) ??
     product?.variants.find((v) => v.sku === item.sku) ??
@@ -56,8 +59,8 @@ export function resolveCartLine(item: CartItem): ResolvedCartLine {
   };
 }
 
-export function resolveCartLines(cart: Cart): ResolvedCartLine[] {
-  return cart.items.map(resolveCartLine);
+export function resolveCartLines(cart: Cart, catalog: readonly PublicProduct[]): ResolvedCartLine[] {
+  return cart.items.map((item) => resolveCartLine(item, catalog));
 }
 
 /** Per-unit item discounts summed over the cart, in poisha. */
@@ -138,38 +141,6 @@ export const COUPON_REASON_BN: Record<string, string> = {
   not_found: "কুপন কোড পাওয়া যায়নি। (ডেমো কোড: WELCOME10)",
 };
 
-function demoItem(variantId: string, quantity: number): CartItem | null {
-  for (const product of MOCK_PRODUCTS) {
-    const variant = product.variants.find((v) => v.id === variantId);
-    if (variant) {
-      return {
-        variantId: variant.id,
-        productId: product.id,
-        name: product.title.bn,
-        sku: variant.sku,
-        unitPricePoisha: variant.pricePoisha,
-        quantity,
-        availableStock: variant.stock,
-        imageUrl: product.images[0]?.url,
-      };
-    }
-  }
-  return null;
-}
-
-/**
- * TEMPORARY DEMO cart — shown only when the browser has no guest cart yet,
- * so the page is demonstrable before add-to-cart writes real guest carts.
- * First edit persists it as the guest cart via saveGuestCart().
- */
-export function buildDemoCart(): Cart {
-  const items = [demoItem("v-1", 1), demoItem("v-3", 2)].filter(
-    (i): i is CartItem => i !== null,
-  );
-  return {
-    ownerKey: "guest-demo",
-    ownerType: "guest",
-    items,
-    updatedAt: new Date().toISOString(),
-  };
-}
+// NOTE: the old TEMPORARY DEMO cart (seeded from the mock catalog) is
+// gone — with the real catalog wired, a browser without a guest cart
+// sees the honest empty-cart state. Nothing fabricates cart items.

@@ -2,15 +2,15 @@ import { NextResponse } from "next/server";
 import { demoTrxRegistry } from "@/bd/sms-autoverify";
 import {
   candidateFromOrder,
-  demoSmsIngestionStore,
   ingestSms,
   ingestSmsItemSchema,
   ingestSmsRequestSchema,
   isBatchRequest,
+  smsIngestionStore,
   type IngestSmsResult,
   type SmsIngestionRecord,
 } from "@/bd/sms-ingestion";
-import { MOCK_ORDERS } from "@/orders/mock";
+import { listOrders } from "@/orders/repository";
 import { guardError, requireAdmin } from "@/reports/guard";
 
 // SMS ingestion — Agent 49, Step 44 (E1 follow-up).
@@ -23,10 +23,11 @@ import { guardError, requireAdmin } from "@/reports/guard";
 //       ingested one by one: a bad item yields its own error entry and
 //       NEVER fails the batch.
 //
-// Persistence: IN-MEMORY-DEMO only (demoSmsIngestionStore). Matching runs
-// against the TEMPORARY MOCK order store (src/orders/mock.ts) — the same
-// source the orders API reads — until Prisma orders land; the DB version
-// stores records in an sms_ingestions table with UNIQUE(provider, trxId).
+// Persistence: DB-backed (DB swap 2026-10-24) — records live in the
+// sms_ingestions table with UNIQUE(provider, trxId); matching runs
+// against the DB-backed orders repository. REJECTED records (no parsed
+// TrxID/amount) have no table representation and stay process-local —
+// see src/bd/sms-ingestion.ts for the drift notes.
 //
 // Ingestion NEVER marks anything paid: a MATCHED record is a verification
 // PROPOSAL for staff. The payment is confirmed only through the existing
@@ -36,7 +37,7 @@ import { guardError, requireAdmin } from "@/reports/guard";
 // truncated preview. REJECTED bodies (incl. OTPs) get no preview at all.
 
 const META = {
-  persistence: "in-memory-demo",
+  persistence: "database",
   marksPaid: false,
   note: "Ingestion proposes matches for staff review only; payment confirmation stays with the manual-TrxID review flow.",
 } as const;
@@ -52,7 +53,7 @@ export async function GET(req: Request) {
   const outcome = params.get("outcome");
   const limitParam = Number(params.get("limit") ?? "100");
   const limit = Number.isFinite(limitParam) ? Math.min(Math.max(Math.trunc(limitParam), 1), 200) : 100;
-  let records: SmsIngestionRecord[] = demoSmsIngestionStore.list(limit);
+  let records: SmsIngestionRecord[] = await smsIngestionStore.list(limit);
   if (outcome) records = records.filter((r) => r.outcome === outcome);
   return NextResponse.json({ data: { records }, meta: META });
 }
@@ -68,28 +69,33 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+  // Match candidates come from the DB-backed orders repository (the
+  // orders module's read contract) — most recent 200 orders.
+  const { rows: orders } = await listOrders({ page: 1, pageSize: 200 });
   const deps = {
-    store: demoSmsIngestionStore,
-    orders: MOCK_ORDERS.map(candidateFromOrder),
+    store: smsIngestionStore,
+    orders: orders.map(candidateFromOrder),
     verifiedRegistry: demoTrxRegistry,
   };
 
   if (!isBatchRequest(parsed.data)) {
-    const result = ingestSms(parsed.data, deps);
+    const result = await ingestSms(parsed.data, deps);
     return NextResponse.json({ data: publicResult(result), meta: META }, { status: 201 });
   }
 
   // Batch mode: validate each item on its own so one malformed SMS
   // cannot fail the other 49. Valid items ingest in order, so a TrxID
   // repeated inside one batch dedupes against its own first occurrence.
-  const results = parsed.data.items.map((rawItem, index) => {
+  const results = [];
+  for (const [index, rawItem] of parsed.data.items.entries()) {
     const item = ingestSmsItemSchema.safeParse(rawItem);
     if (!item.success) {
-      return { index, record: null, duplicate: false, error: "INVALID_ITEM", issues: item.error.issues };
+      results.push({ index, record: null, duplicate: false, error: "INVALID_ITEM", issues: item.error.issues });
+      continue;
     }
-    const result = ingestSms(item.data, deps);
-    return { index, record: result.record, duplicate: result.duplicate, error: null, issues: null };
-  });
+    const result = await ingestSms(item.data, deps);
+    results.push({ index, record: result.record, duplicate: result.duplicate, error: null, issues: null });
+  }
   const counts: Record<string, number> = {};
   for (const entry of results) {
     const key = entry.record ? entry.record.outcome : "INVALID_ITEM";

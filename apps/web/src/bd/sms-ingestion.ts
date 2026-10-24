@@ -30,9 +30,8 @@
  *    the hash alone means a rejected OTP leaves no usable trace.
  *  - Idempotency: the same (provider, TrxID) ingested twice returns the
  *    ORIGINAL record with `duplicate: true`; no second record is created.
- *    Dedupe goes through the TrxRegistry interface from sms-autoverify
- *    (in-memory impl here; the DB version backs it with
- *    UNIQUE(method, trxId), the same index the parser documents).
+ *    Dedupe goes through the store's findByTrx, backed by the
+ *    sms_ingestions UNIQUE(provider, trxId) constraint.
  *
  * Matching rule (per spec): a candidate order must expect EXACTLY the SMS
  * amount (integer poisha, never a range — partial/over payments are a
@@ -40,10 +39,19 @@
  * phone equals the SMS sender, OR the order awaits manual payment
  * (UNPAID/PARTIAL with a manual method — see candidateFromOrder).
  *
- * Persistence is IN-MEMORY-DEMO only (demoSmsIngestionStore). Orders are
- * matched against whatever candidate list the caller supplies — the admin
- * route supplies the TEMPORARY MOCK order store (src/orders/mock.ts),
- * the same source the orders API reads, until Prisma orders land.
+ * Persistence: DB-backed since 2026-10-24 (smsIngestionStore, the
+ * sms_ingestions table with UNIQUE(provider, trxId)). Orders are matched
+ * against whatever candidate list the caller supplies.
+ *
+ * SCHEMA DRIFT (reported, worked around — schema NOT changed):
+ *  - SmsIngestion requires trxId + amountPoisha, so REJECTED records
+ *    (unparseable bodies — including OTPs, which must leave no usable
+ *    trace anyway) have no DB representation and stay process-local in
+ *    the store's memory list.
+ *  - The table has no candidates / rejectReason / transactionDate /
+ *    receivedAt columns: records read back after a restart lose the
+ *    candidate detail (proposedOrderId and duplicateOfId DO persist).
+ *    Within a process, the store's cache returns the full record.
  */
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
@@ -163,44 +171,151 @@ export interface SmsIngestionRecord {
 /* ------------------------------------------------------------------ */
 
 export interface SmsIngestionStore {
-  findByTrx(provider: MerchantProvider, trxId: string): SmsIngestionRecord | null;
-  add(record: SmsIngestionRecord): void;
+  findByTrx(provider: MerchantProvider, trxId: string): Promise<SmsIngestionRecord | null>;
+  add(record: SmsIngestionRecord): Promise<void>;
   /** Newest first. */
-  list(limit?: number): SmsIngestionRecord[];
+  list(limit?: number): Promise<SmsIngestionRecord[]>;
 }
 
 /**
- * In-memory/demo only, NOT concurrency-safe. The dedupe index is a
- * TrxRegistry (the interface from sms-autoverify): register() stores the
- * ingestion record id in the registry's reference slot, lookup() finds it
- * again — the DB version replaces this with UNIQUE(method, trxId) on the
- * ingestion table.
+ * In-memory fixture implementation (tests only — NOT the runtime store).
+ * The dedupe index is a TrxRegistry (the interface from sms-autoverify):
+ * register() stores the ingestion record id in the registry's reference
+ * slot, lookup() finds it again.
  */
 export class InMemorySmsIngestionStore implements SmsIngestionStore {
   private readonly byId = new Map<string, SmsIngestionRecord>();
   private readonly trxIndex: TrxRegistry = new InMemoryTrxRegistry();
 
-  findByTrx(provider: MerchantProvider, trxId: string): SmsIngestionRecord | null {
+  async findByTrx(provider: MerchantProvider, trxId: string): Promise<SmsIngestionRecord | null> {
     const id = this.trxIndex.lookup(provider, trxId);
     return id ? (this.byId.get(id) ?? null) : null;
   }
 
-  add(record: SmsIngestionRecord): void {
+  async add(record: SmsIngestionRecord): Promise<void> {
     this.byId.set(record.id, record);
     if (record.parsed) {
       this.trxIndex.register(record.parsed.provider, record.parsed.trxId, record.id);
     }
   }
 
-  list(limit = 100): SmsIngestionRecord[] {
+  async list(limit = 100): Promise<SmsIngestionRecord[]> {
     return [...this.byId.values()]
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, limit);
   }
 }
 
-/** Shared demo store for the admin sms-ingest route (in-memory-demo persistence). */
-export const demoSmsIngestionStore = new InMemorySmsIngestionStore();
+/* ------------------------------------------------------------------ */
+/* Prisma-backed store (runtime)                                       */
+/* ------------------------------------------------------------------ */
+
+import { prisma } from "@advance-ecommerce/db";
+
+interface SmsIngestionRowShape {
+  id: string;
+  provider: string;
+  trxId: string;
+  amountPoisha: number;
+  senderPhoneMasked: string;
+  rawTextHash: string;
+  preview: string | null;
+  source: string;
+  outcome: string;
+  proposedOrderId: string | null;
+  duplicateOfId: string | null;
+  createdAt: Date;
+}
+
+function smsRowToRecord(row: SmsIngestionRowShape): SmsIngestionRecord {
+  return {
+    id: row.id,
+    source: row.source as SmsIngestionSource,
+    receivedAt: row.createdAt.toISOString(), // drift: no receivedAt column
+    createdAt: row.createdAt.toISOString(),
+    rawTextHash: row.rawTextHash,
+    preview: row.preview,
+    parsed: {
+      provider: row.provider as MerchantProvider,
+      trxId: row.trxId,
+      amountPoisha: row.amountPoisha,
+      senderPhoneMasked: row.senderPhoneMasked === "" ? null : row.senderPhoneMasked,
+      transactionDate: null, // drift: no transactionDate column
+    },
+    outcome: row.outcome as SmsIngestionOutcome,
+    rejectReason: null,
+    candidates: [], // drift: no candidates column (see module header)
+    proposedOrderId: row.proposedOrderId,
+    duplicateOfOrderId: row.duplicateOfId,
+    marksPaid: false,
+  };
+}
+
+export class PrismaSmsIngestionStore implements SmsIngestionStore {
+  /** Full-fidelity records added in this process (DB rows lose the
+   *  candidate detail — see module header). */
+  private readonly cache = new Map<string, SmsIngestionRecord>();
+  /** REJECTED records: no DB representation (no trxId/amount). */
+  private readonly rejected: SmsIngestionRecord[] = [];
+
+  async findByTrx(provider: MerchantProvider, trxId: string): Promise<SmsIngestionRecord | null> {
+    for (const record of this.cache.values()) {
+      if (record.parsed && record.parsed.provider === provider && record.parsed.trxId === trxId) {
+        return record;
+      }
+    }
+    const row = await prisma.smsIngestion.findUnique({
+      where: { provider_trxId: { provider, trxId } },
+    });
+    return row ? smsRowToRecord(row) : null;
+  }
+
+  async add(record: SmsIngestionRecord): Promise<void> {
+    if (!record.parsed) {
+      this.rejected.push(record);
+      return;
+    }
+    this.cache.set(record.id, record);
+    try {
+      await prisma.smsIngestion.create({
+        data: {
+          id: record.id,
+          provider: record.parsed.provider,
+          trxId: record.parsed.trxId,
+          amountPoisha: record.parsed.amountPoisha,
+          senderPhoneMasked: record.parsed.senderPhoneMasked ?? "",
+          rawTextHash: record.rawTextHash,
+          preview: record.preview,
+          source: record.source,
+          outcome: record.outcome,
+          proposedOrderId: record.proposedOrderId,
+          duplicateOfId: record.duplicateOfOrderId,
+        },
+      });
+    } catch (err) {
+      // UNIQUE(provider, trxId) backstop: a concurrent ingest won; the
+      // dedupe contract (original record wins) is enforced by findByTrx.
+      if (typeof err === "object" && err !== null && (err as { code?: string }).code === "P2002") return;
+      throw err;
+    }
+  }
+
+  async list(limit = 100): Promise<SmsIngestionRecord[]> {
+    const rows = await prisma.smsIngestion.findMany({
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
+    const fromDb = rows.map((row) => this.cache.get(row.id) ?? smsRowToRecord(row));
+    const seen = new Set(fromDb.map((r) => r.id));
+    const merged = [...fromDb, ...this.rejected.filter((r) => !seen.has(r.id))];
+    return merged
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit);
+  }
+}
+
+/** Shared DB-backed store for the admin sms-ingest route. */
+export const smsIngestionStore = new PrismaSmsIngestionStore();
 
 /* ------------------------------------------------------------------ */
 /* Pipeline                                                            */
@@ -288,7 +403,7 @@ function findCandidates(
   return views;
 }
 
-export function ingestSms(input: IngestSmsInput, deps: IngestSmsDeps): IngestSmsResult {
+export async function ingestSms(input: IngestSmsInput, deps: IngestSmsDeps): Promise<IngestSmsResult> {
   const now = deps.now ?? new Date();
   const createdAt = now.toISOString();
   const receivedAt = input.receivedAt ?? createdAt;
@@ -313,14 +428,14 @@ export function ingestSms(input: IngestSmsInput, deps: IngestSmsDeps): IngestSms
       duplicateOfOrderId: null,
       marksPaid: false,
     };
-    deps.store.add(record);
+    await deps.store.add(record);
     return { record, duplicate: false };
   }
 
   const sms = parse.sms;
 
   // Idempotency: same (provider, TrxID) -> original record, no new row.
-  const existing = deps.store.findByTrx(sms.provider, sms.trxId);
+  const existing = await deps.store.findByTrx(sms.provider, sms.trxId);
   if (existing) return { record: existing, duplicate: true };
 
   const parsedFields: IngestedSmsFields = {
@@ -352,7 +467,7 @@ export function ingestSms(input: IngestSmsInput, deps: IngestSmsDeps): IngestSms
       duplicateOfOrderId: verifiedForOrderId,
       marksPaid: false,
     };
-    deps.store.add(record);
+    await deps.store.add(record);
     return { record, duplicate: false };
   }
 
@@ -375,16 +490,20 @@ export function ingestSms(input: IngestSmsInput, deps: IngestSmsDeps): IngestSms
     duplicateOfOrderId: null,
     marksPaid: false,
   };
-  deps.store.add(record);
+  await deps.store.add(record);
   return { record, duplicate: false };
 }
 
 /** Ingest a batch in order; one item's outcome never affects the others. */
-export function ingestSmsBatch(
+export async function ingestSmsBatch(
   items: readonly IngestSmsInput[],
   deps: IngestSmsDeps,
-): IngestSmsResult[] {
-  return items.map((item) => ingestSms(item, deps));
+): Promise<IngestSmsResult[]> {
+  const results: IngestSmsResult[] = [];
+  for (const item of items) {
+    results.push(await ingestSms(item, deps));
+  }
+  return results;
 }
 
 /* ------------------------------------------------------------------ */

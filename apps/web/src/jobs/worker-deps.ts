@@ -26,24 +26,29 @@
  *  - bulkActionsRunner — real: getBulkJob(id) -> processBulkJob(job)
  *    from src/jobs/bulk-actions.ts, the same executor the admin route
  *    triggers in-process today.
- *
- * OMITTED (no real executor exists — the handler then honestly
- * reports "skipped — not configured", which is the truth):
- *  - webhookFanout: src/extensibility/webhooks.ts has signing +
- *    delivery-classification helpers only; nothing performs an actual
- *    outbound delivery.
- *  - reportRunner: src/reports/service.ts aggregates rows it is
- *    handed and renders CSV; nothing loads data for a ReportJob or
- *    writes a report file returning a fileRef.
- *  - automationRunner: src/automation/engine.ts evaluates rules and
- *    describes effects — it deliberately applies nothing, and no
- *    dispatch maps (workflowId, triggerEvent, entityId) to an
- *    executable event.
- *  - importExportRunner: catalog CSV import is synchronous text-in
- *    route logic (src/catalog/import.ts); no fileRef-based job
- *    executor exists.
- *  - notificationRetryRunner: there is no notification-log store or
- *    retry executor in the codebase yet.
+ *  - The five queue runners from src/jobs/runners.ts — all real
+ *    executors over the existing service layer, so no handler reports
+ *    "skipped" for them anymore:
+ *      webhookFanout — delivers to the DB-registered webhook
+ *        subscriptions (signing + classification from
+ *        src/extensibility/webhooks.ts; attempts recorded in the
+ *        runners' in-memory delivery-log store — no DB table exists
+ *        for delivery logs yet, see runners.ts header).
+ *      reportRunner — fetchSalesRows + aggregateSales over real DB
+ *        rows; returns a computed-summary ref (the reports module
+ *        has no result/file store, so no fileRef is ever faked).
+ *      automationRunner — the (workflowId, triggerEvent, entityId)
+ *        dispatch: rule from the DB automation store, event built
+ *        from the entity, engine evaluation, run log persisted
+ *        through the store (dry-run jobs are never persisted).
+ *      importExportRunner — catalog CSV import/export through
+ *        src/catalog/import.ts + the Prisma CatalogRepository;
+ *        fileRef is a file name inside the local job-files directory
+ *        (env AE_JOB_FILES_DIR) — no object storage exists yet.
+ *      notificationRetryRunner — re-drives FAILED NotificationLog
+ *        rows through the sms/email resolvers above; a successful
+ *        re-drive returns the row to QUEUED (simulated send), never
+ *        SENT.
  *
  * PRISMA LANDMINE — read before touching the settings import:
  * src/lib/settings.ts imports the Prisma client at module top level,
@@ -83,6 +88,13 @@ import {
   type SandboxCourierProvider,
 } from "../integrations/sandbox/courier-provider";
 import { getBulkJob, processBulkJob } from "./bulk-actions";
+import {
+  createAutomationRunner,
+  createImportExportRunner,
+  createNotificationRetryRunner,
+  createReportRunner,
+  createWebhookFanout,
+} from "./runners";
 
 /* ------------------------------------------------------------------ */
 /* Settings lookup — lazy, fail-soft (see the landmine note above)     */
@@ -94,7 +106,9 @@ const ENV_FALLBACK: Record<string, string> = {
   "email.provider": "EMAIL_PROVIDER",
 };
 
-async function readSetting(key: string): Promise<string | null> {
+/** Exported for the webhook fanout runner (per-subscription signing
+ *  secret lookup: `webhook.secret.<subscriptionId>`). */
+export async function readSetting(key: string): Promise<string | null> {
   try {
     const settings = await import("../lib/settings");
     const value = await settings.getSetting(key);
@@ -232,9 +246,16 @@ export const workerDeps: WorkerRuntimeDeps = {
     const processed = await processBulkJob(bulkJob);
     return { ref: processed.id, status: processed.status };
   },
-  // Deliberately omitted — see the header for the per-dep reason:
-  // webhookFanout, reportRunner, automationRunner,
-  // importExportRunner, notificationRetryRunner.
+  // The five runners (src/jobs/runners.ts) — see the header.
+  webhookFanout: createWebhookFanout({ readSetting, logger: consoleJobLogger }),
+  reportRunner: createReportRunner({ logger: consoleJobLogger }),
+  automationRunner: createAutomationRunner(),
+  importExportRunner: createImportExportRunner(),
+  notificationRetryRunner: createNotificationRetryRunner({
+    smsProvider: resolveSmsProvider,
+    emailProvider: resolveEmailProvider,
+    logger: consoleJobLogger,
+  }),
 };
 
 export type { HandlerDeps };

@@ -1,7 +1,6 @@
 import { demoResellerFlags, isResellerEnabled } from "@/reseller/flags";
-import { demoDashboards, demoWithdrawals } from "@/reseller/service";
+import { buildDashboardsDb, listPriceEntries, listWithdrawals } from "@/reseller/store";
 import { computeMargin } from "@/reseller/pricing";
-import { DEMO_PRICE_ENTRIES } from "@/reseller/service";
 import { formatBdt } from "@/checkout/pricing";
 
 // Resellers admin — Agent 14, Step 46 (A5).
@@ -9,7 +8,9 @@ import { formatBdt } from "@/checkout/pricing";
 // paid add-on), the page renders the lock panel instead of data, matching the
 // API's 403 FEATURE_LOCKED. Unlocking is a feature-flag change by the Owner
 // (Admin > Settings), never a code change.
-export default function AdminResellersPage() {
+// Data: Prisma DB via src/reseller/store.ts (dashboards are built by the
+// same pure builder as before; wallet balances are ledger sums).
+export default async function AdminResellersPage() {
   if (!isResellerEnabled(demoResellerFlags)) {
     return (
       <main style={{ padding: 24, fontFamily: "system-ui" }}>
@@ -21,11 +22,15 @@ export default function AdminResellersPage() {
       </main>
     );
   }
-  const dashboards = demoDashboards();
+  const [dashboards, priceEntries, withdrawals] = await Promise.all([
+    buildDashboardsDb(),
+    listPriceEntries(),
+    listWithdrawals(),
+  ]);
   return (
     <main style={{ padding: 24, fontFamily: "system-ui" }}>
       <h1>Resellers</h1>
-      <p>Demo data (in-memory) — DB wiring is the follow-up slice.</p>
+      <p>Live data from the database (src/reseller/store.ts).</p>
       <table>
         <thead>
           <tr>
@@ -47,9 +52,9 @@ export default function AdminResellersPage() {
           ))}
         </tbody>
       </table>
-      <h2>Sample Price List (margin never negative)</h2>
+      <h2>Price List (margin never negative)</h2>
       <ul>
-        {DEMO_PRICE_ENTRIES.map((e) => {
+        {priceEntries.map((e) => {
           const m = computeMargin(e);
           return (
             <li key={e.variantId}>
@@ -59,7 +64,7 @@ export default function AdminResellersPage() {
           );
         })}
       </ul>
-      <p>Pending withdrawals: {demoWithdrawals.filter((w) => w.status === "PENDING").length}</p>
+      <p>Pending withdrawals: {withdrawals.filter((w) => w.status === "PENDING").length}</p>
     </main>
   );
 }

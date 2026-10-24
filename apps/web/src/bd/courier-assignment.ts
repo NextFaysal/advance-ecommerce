@@ -48,7 +48,11 @@
  */
 import { z } from "zod";
 import type { CourierProviderName, ShippingZone } from "../integrations/courier";
-import { courierChargePoisha, createSandboxCourierProvider, SANDBOX_COURIER_PROVIDERS } from "../integrations/sandbox/courier-provider";
+// courierChargePoisha comes from the pure courier-rates module (NOT
+// courier-provider.ts): this engine is imported by a client component
+// (the bd-tools assignment panel) and courier-provider.ts pulls in
+// node:crypto via deterministic.ts, which cannot ship to the browser.
+import { courierChargePoisha } from "../integrations/sandbox/courier-rates";
 import { scoreCourier, type CourierStats } from "../analytics/performance";
 
 export type { ShippingZone };
@@ -565,33 +569,13 @@ export function assignCourier(
 }
 
 /* ------------------------------------------------------------------ */
-/* Sandbox rate cross-check helper                                     */
+/* Sandbox rate cross-check helper — MOVED                              */
 /* ------------------------------------------------------------------ */
 
-/**
- * The REAL sandbox rates (charge + ETA) straight from each sandbox
- * provider's getRates() — for callers/tests that want to verify the
- * sample stats table's estimatedDays and the engine's charges against
- * the sandbox source instead of trusting the copies.
- */
-export async function getSandboxRates(
-  zone: ShippingZone,
-  weightGrams: number,
-): Promise<Array<{ provider: string; chargePoisha: number; estimatedDays: number | null }>> {
-  const out: Array<{ provider: string; chargePoisha: number; estimatedDays: number | null }> = [];
-  for (const name of SANDBOX_COURIER_PROVIDERS) {
-    const rates = await createSandboxCourierProvider(name).getRates({
-      zone,
-      district: "",
-      weightGrams,
-      orderValuePoisha: 0,
-    });
-    for (const rate of rates) {
-      out.push({ provider: rate.provider, chargePoisha: rate.chargePoisha, estimatedDays: rate.estimatedDays });
-    }
-  }
-  return out;
-}
+// getSandboxRates() (the cross-check against each sandbox provider's
+// real getRates()) lives in ./courier-assignment-sandbox.ts: it needs
+// createSandboxCourierProvider, which is server-only (node:crypto via
+// deterministic.ts), and this module must stay client-safe.
 
 /* ------------------------------------------------------------------ */
 /* Manual override (types + pure decision builder)                     */

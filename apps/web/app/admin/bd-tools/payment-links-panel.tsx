@@ -6,7 +6,8 @@
  * Creation goes through the server action in ./actions.ts, which calls
  * the REAL service (src/bd/payment-link.ts, Agent 11 — node:crypto
  * token hashing, so it can never run in the browser) and stores the
- * record in demoPaymentLinkStore (in-memory-demo). Only the token HASH
+ * record in paymentLinkStore (DB-backed, payment_links table). Only
+ * the token HASH
  * is ever kept; the plain token comes back exactly once and is shown
  * in the one-time box below — if staff leave this panel without
  * copying it, it cannot be recovered, only a new link can be made.

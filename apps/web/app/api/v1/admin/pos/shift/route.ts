@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { closeShift, expectedCashPoisha, openShiftForRegister } from "@/pos/register";
-import { DEMO_REGISTERS, demoSales, demoShifts } from "@/pos/service";
-import { closeShiftSchema, openShiftSchema, type PosShift } from "@/pos/types";
+import { closeShiftDb, openShiftDb } from "@/pos/store";
+import { closeShiftSchema, openShiftSchema } from "@/pos/types";
 import { posGuardError, requirePosAdmin } from "../guard";
 
 // POS shift open / close — Agent 38, on src/pos/register.ts rules.
@@ -11,6 +10,7 @@ import { posGuardError, requirePosAdmin } from "../guard";
 // cash is stored exactly as counted — a variance is REPORTED in the
 // response (variancePoisha, hasVariance) and never adjusted away, and
 // register.ts refuses a non-zero variance without an explanatory note.
+// Persistence: Prisma DB via src/pos/store.ts.
 const shiftActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("open") }).merge(openShiftSchema),
   z.object({ action: z.literal("close"), shiftId: z.string().min(1) }).merge(closeShiftSchema),
@@ -31,63 +31,50 @@ export async function POST(req: Request) {
 
   const data = parsed.data;
 
-  if (data.action === "open") {
-    const register = DEMO_REGISTERS.find((r) => r.id === data.registerId);
-    if (!register || !register.isActive) {
+  try {
+    if (data.action === "open") {
+      const result = await openShiftDb({
+        registerId: data.registerId,
+        openingFloatPoisha: data.openingFloatPoisha,
+        openedBy: guard.userId,
+      });
+      if (!result.ok) {
+        return NextResponse.json(
+          { error: { code: result.code, message: result.message } },
+          { status: result.status },
+        );
+      }
       return NextResponse.json(
-        { error: { code: "NOT_FOUND", message: `Unknown or inactive register: ${data.registerId}` } },
-        { status: 404 },
+        { data: { shift: result.shift }, meta: { persistence: "database" } },
+        { status: 201 },
       );
     }
-    const existing = openShiftForRegister(demoShifts, register.id);
-    if (existing) {
-      return NextResponse.json(
-        { error: { code: "SHIFT_ALREADY_OPEN", message: `Register ${register.id} already has an open shift (${existing.id}). Close it first.` } },
-        { status: 409 },
-      );
-    }
-    const shift: PosShift = {
-      id: `shift_${Date.now()}`,
-      registerId: register.id,
-      openedBy: guard.userId,
-      openedAt: new Date().toISOString(),
-      openingFloatPoisha: data.openingFloatPoisha,
-      status: "OPEN",
-    };
-    demoShifts.push(shift);
-    return NextResponse.json(
-      { data: { shift }, meta: { persistence: "in-memory-demo" } },
-      { status: 201 },
-    );
-  }
 
-  // action === "close"
-  const index = demoShifts.findIndex((s) => s.id === data.shiftId);
-  if (index === -1) {
+    // action === "close"
+    const result = await closeShiftDb(data.shiftId, {
+      countedCashPoisha: data.countedCashPoisha,
+      closedBy: guard.userId,
+      note: data.note,
+    });
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: { code: result.code, message: result.message } },
+        { status: result.status },
+      );
+    }
+    return NextResponse.json({
+      data: {
+        shift: result.shift,
+        expectedCashPoisha: result.expectedCashPoisha,
+        variancePoisha: result.variancePoisha,
+        hasVariance: result.variancePoisha !== 0,
+      },
+      meta: { persistence: "database", varianceAdjusted: false },
+    });
+  } catch {
     return NextResponse.json(
-      { error: { code: "NOT_FOUND", message: `Unknown shift: ${data.shiftId}` } },
-      { status: 404 },
+      { error: { code: "DB_NOT_READY", message: "POS database is not available." } },
+      { status: 503 },
     );
   }
-  const current = demoShifts[index]!;
-  const result = closeShift(current, demoSales, {
-    countedCashPoisha: data.countedCashPoisha,
-    closedBy: guard.userId,
-    closedAt: new Date().toISOString(),
-    note: data.note,
-  });
-  if (!result.ok) {
-    return NextResponse.json({ error: { code: "SHIFT_CLOSE_REJECTED", message: result.error } }, { status: 422 });
-  }
-  demoShifts[index] = result.shift;
-  const variancePoisha = result.shift.variancePoisha ?? 0;
-  return NextResponse.json({
-    data: {
-      shift: result.shift,
-      expectedCashPoisha: expectedCashPoisha(current, demoSales),
-      variancePoisha,
-      hasVariance: variancePoisha !== 0,
-    },
-    meta: { persistence: "in-memory-demo", varianceAdjusted: false },
-  });
 }

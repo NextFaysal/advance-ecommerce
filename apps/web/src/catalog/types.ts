@@ -86,12 +86,19 @@ export function toPublicProduct(product: Product): PublicProduct {
   };
 }
 
-export function minVariantPricePoisha(product: Product): number {
+/** Structural minimum the price helpers need — accepts both the admin
+ *  Product and the cost-free PublicProduct, so client components typed
+ *  on PublicProduct can price without ever seeing costPoisha. */
+export interface PricedVariantSet {
+  variants: ReadonlyArray<{ isActive: boolean; pricePoisha: number }>;
+}
+
+export function minVariantPricePoisha(product: PricedVariantSet): number {
   const prices = product.variants.filter((v) => v.isActive).map((v) => v.pricePoisha);
   return prices.length > 0 ? Math.min(...prices) : 0;
 }
 
-export function maxVariantPricePoisha(product: Product): number {
+export function maxVariantPricePoisha(product: PricedVariantSet): number {
   const prices = product.variants.filter((v) => v.isActive).map((v) => v.pricePoisha);
   return prices.length > 0 ? Math.max(...prices) : 0;
 }

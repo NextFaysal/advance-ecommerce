@@ -6,7 +6,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminPermission } from "@/integrations/sandbox/admin-auth";
-import { sandboxStore } from "@/integrations/sandbox/store";
+import { findShipmentById } from "@/integrations/sandbox/db-store";
 import {
   createSandboxCourierProvider,
   SANDBOX_COURIER_PROVIDERS,
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const shipment = sandboxStore.shipments.get(parsed.data.shipmentId);
+  const shipment = await findShipmentById(parsed.data.shipmentId);
   if (!shipment) {
     return NextResponse.json(
       { error: { code: "NOT_FOUND", message: "Sandbox shipment not found." } },

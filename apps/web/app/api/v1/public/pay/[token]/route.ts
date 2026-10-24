@@ -8,8 +8,8 @@
  * gateway call, no money moves, and the link is NOT marked paid by this
  * route; paid state arrives via verified webhook in the real flow.
  *
- * Persistence is the in-memory demo store (meta.source says so); the DB
- * version swaps resolvePayLink's store for the payment_links table.
+ * Persistence is the DB-backed payment_links table (DB swap 2026-10-24;
+ * meta.source says "database").
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -22,8 +22,8 @@ const payBodySchema = z.object({
 });
 
 export async function GET(_req: Request, { params }: { params: { token: string } }) {
-  ensureDemoPaymentLink();
-  const resolved = resolvePayLink(params.token);
+  await ensureDemoPaymentLink();
+  const resolved = await resolvePayLink(params.token);
   if (!resolved.ok) {
     return NextResponse.json(
       { error: { code: "NOT_FOUND", message: "পেমেন্ট লিংক পাওয়া যায়নি।" } },
@@ -32,13 +32,13 @@ export async function GET(_req: Request, { params }: { params: { token: string }
   }
   return NextResponse.json({
     data: { link: resolved.view },
-    meta: { source: "in-memory-demo", sandbox: true },
+    meta: { source: "database", sandbox: true },
   });
 }
 
 export async function POST(req: Request, { params }: { params: { token: string } }) {
-  ensureDemoPaymentLink();
-  const resolved = resolvePayLink(params.token);
+  await ensureDemoPaymentLink();
+  const resolved = await resolvePayLink(params.token);
   if (!resolved.ok) {
     return NextResponse.json(
       { error: { code: "NOT_FOUND", message: "পেমেন্ট লিংক পাওয়া যায়নি।" } },
@@ -74,7 +74,7 @@ export async function POST(req: Request, { params }: { params: { token: string }
     if (!result.ok) {
       return NextResponse.json({ error: { code: "LINK_NOT_PAYABLE", message: result.error } }, { status: 409 });
     }
-    return NextResponse.json({ data: result, meta: { source: "in-memory-demo", sandbox: true } });
+    return NextResponse.json({ data: result, meta: { source: "database", sandbox: true } });
   } catch {
     return NextResponse.json(
       { error: { code: "SANDBOX_INIT_FAILED", message: "পেমেন্ট শুরু করা যায়নি, আবার চেষ্টা করুন।" } },

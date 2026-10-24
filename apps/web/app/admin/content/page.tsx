@@ -3,80 +3,16 @@ import { StatCard } from "@/components/ui/stat-card";
 import { DataTable } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { buildMenu, type CmsPage, type MenuItem } from "@/reports/cms";
+import { buildMenu, cmsStore, type CmsPage, type MenuItem } from "@/reports/cms";
 
-// Content / CMS admin — Agent 25, Step 29.
-// The CMS service (src/reports/cms.ts) keeps an in-memory store that the
-// Pages API uses; it ships without seed rows, so the list below is
-// page-local SAMPLE data typed as CmsPage, labelled TEMPORARY DEMO.
-// Create/edit happens through /api/v1/admin/pages (slug rename records
-// an SEO redirect there). Menu is a builder stub: ordered items, at
-// most one level of nesting for v1.
-
-const SAMPLE_PAGES: CmsPage[] = [
-  {
-    id: "pg_sample_about",
-    kind: "page",
-    slug: "about-us",
-    titleBn: "আমাদের সম্পর্কে",
-    titleEn: "About Us",
-    bodyBn: "",
-    bodyEn: "",
-    status: "published",
-    scheduledAt: null,
-    tags: [],
-    seo: { title: "আমাদের সম্পর্কে | SAMPLE Store", description: "SAMPLE SEO বিবরণ — দোকানের পরিচিতি ও যোগাযোগ।" },
-    createdAt: "2026-09-01T00:00:00.000Z",
-    updatedAt: "2026-10-05T00:00:00.000Z",
-  },
-  {
-    id: "pg_sample_delivery",
-    kind: "page",
-    slug: "delivery-policy",
-    titleBn: "ডেলিভারি নীতিমালা",
-    titleEn: "Delivery Policy",
-    bodyBn: "",
-    bodyEn: "",
-    status: "draft",
-    scheduledAt: null,
-    tags: [],
-    seo: { title: "", description: "" },
-    createdAt: "2026-10-18T00:00:00.000Z",
-    updatedAt: "2026-10-18T00:00:00.000Z",
-  },
-  {
-    id: "pg_sample_guide",
-    kind: "post",
-    slug: "new-arrival-guide",
-    titleBn: "নতুন কালেকশন গাইড",
-    titleEn: "New Arrival Guide",
-    bodyBn: "",
-    bodyEn: "",
-    status: "scheduled",
-    scheduledAt: "2026-10-26T04:00:00.000Z",
-    category: "guide",
-    tags: ["new", "guide"],
-    seo: { title: "নতুন কালেকশন গাইড", description: "SAMPLE SEO বিবরণ — এই মৌসুমের নতুন পণ্য বেছে নেওয়ার গাইড।" },
-    createdAt: "2026-10-20T00:00:00.000Z",
-    updatedAt: "2026-10-21T00:00:00.000Z",
-  },
-  {
-    id: "pg_sample_care",
-    kind: "post",
-    slug: "product-care-tips",
-    titleBn: "পণ্যের যত্নের টিপস",
-    titleEn: "Product Care Tips",
-    bodyBn: "",
-    bodyEn: "",
-    status: "published",
-    scheduledAt: null,
-    category: "tips",
-    tags: ["care"],
-    seo: { title: "পণ্যের যত্নের টিপস", description: "" },
-    createdAt: "2026-09-12T00:00:00.000Z",
-    updatedAt: "2026-09-28T00:00:00.000Z",
-  },
-];
+// Content / CMS admin — Step 29.
+// The page/post list is REAL: the DB-backed CMS store (Prisma
+// CmsPage/CmsPost, the same store the Pages API uses). An empty DB
+// shows honest zeros and an empty table. Create/edit happens through
+// /api/v1/admin/pages (slug rename records an SEO redirect there).
+// Menu is still a builder stub: ordered items, at most one level of
+// nesting for v1 — it is labelled as a stub in the UI.
+export const dynamic = "force-dynamic";
 
 const SAMPLE_MENU: MenuItem[] = buildMenu([
   { labelBn: "হোম", labelEn: "Home", href: "/", children: [] },
@@ -92,13 +28,15 @@ function seoSummary(p: CmsPage): string {
   return `${hasTitle ? "শিরোনাম ✓" : "শিরোনাম ✗"} · বিবরণ ${descLen} অক্ষর`;
 }
 
-export default function AdminContentPage() {
-  const pages = SAMPLE_PAGES.filter((p) => p.kind === "page");
-  const posts = SAMPLE_PAGES.filter((p) => p.kind === "post");
-  const published = SAMPLE_PAGES.filter((p) => p.status === "published").length;
-  const drafts = SAMPLE_PAGES.filter((p) => p.status === "draft").length;
+export default async function AdminContentPage() {
+  const all = await cmsStore.list();
+  const redirects = await cmsStore.listRedirects();
+  const pages = all.filter((p) => p.kind === "page");
+  const posts = all.filter((p) => p.kind === "post");
+  const published = all.filter((p) => p.status === "published").length;
+  const drafts = all.filter((p) => p.status === "draft").length;
 
-  const rows = SAMPLE_PAGES.map((p) => ({
+  const rows = all.map((p) => ({
     title: (
       <span>
         <span className="font-medium">{p.titleBn}</span>
@@ -120,29 +58,35 @@ export default function AdminContentPage() {
     <main>
       <PageHeader
         title="কন্টেন্ট (CMS)"
-        description="TEMPORARY DEMO — নমুনা (SAMPLE) পেজ/পোস্ট তালিকা। তৈরি/সম্পাদনা Pages API দিয়ে হয়; স্লাগ বদলালে পুরনো URL-এর জন্য SEO রিডাইরেক্ট রেকর্ড হয়। (Content / CMS)"
+        description="ডাটাবেসের পেজ/পোস্ট তালিকা। তৈরি/সম্পাদনা Pages API দিয়ে হয়; স্লাগ বদলালে পুরনো URL-এর জন্য SEO রিডাইরেক্ট রেকর্ড হয়। (Content / CMS)"
         breadcrumb="Admin / Catalog"
       />
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="পেজ (নমুনা)" value={String(pages.length)} delta="ডেমো" icon="📄" />
-        <StatCard label="পোস্ট (নমুনা)" value={String(posts.length)} delta="ডেমো" icon="✍️" />
-        <StatCard label="প্রকাশিত" value={String(published)} delta="লাইভ (ডেমো)" icon="✅" />
+        <StatCard label="পেজ" value={String(pages.length)} delta="ডাটাবেস" icon="📄" />
+        <StatCard label="পোস্ট" value={String(posts.length)} delta="ডাটাবেস" icon="✍️" />
+        <StatCard label="প্রকাশিত" value={String(published)} delta="লাইভ" icon="✅" />
         <StatCard label="খসড়া" value={String(drafts)} delta="অপ্রকাশিত" deltaTone="down" icon="📝" />
       </div>
 
-      <h2 className="mb-3 text-lg font-semibold">পেজ ও পোস্ট (নমুনা)</h2>
-      <DataTable
-        caption="CMS তালিকা — প্রতিটি আইটেমে বাংলা + ইংরেজি শিরোনাম, kebab-case স্লাগ, অবস্থা ও SEO সারাংশ"
-        columns={[
-          { key: "title", header: "শিরোনাম" },
-          { key: "slug", header: "স্লাগ" },
-          { key: "kind", header: "ধরন" },
-          { key: "status", header: "অবস্থা" },
-          { key: "seo", header: "SEO সারাংশ" },
-          { key: "updated", header: "হালনাগাদ" },
-        ]}
-        rows={rows}
-      />
+      <h2 className="mb-3 text-lg font-semibold">পেজ ও পোস্ট</h2>
+      {all.length === 0 ? (
+        <Card>
+          <p className="text-sm text-text-muted">এখনো কোনো পেজ বা পোস্ট তৈরি হয়নি — Pages API দিয়ে প্রথমটি তৈরি করুন।</p>
+        </Card>
+      ) : (
+        <DataTable
+          caption="CMS তালিকা — প্রতিটি আইটেমে বাংলা + ইংরেজি শিরোনাম, kebab-case স্লাগ, অবস্থা ও SEO সারাংশ"
+          columns={[
+            { key: "title", header: "শিরোনাম" },
+            { key: "slug", header: "স্লাগ" },
+            { key: "kind", header: "ধরন" },
+            { key: "status", header: "অবস্থা" },
+            { key: "seo", header: "SEO সারাংশ" },
+            { key: "updated", header: "হালনাগাদ" },
+          ]}
+          rows={rows}
+        />
+      )}
 
       <div className="mt-6">
         <Card>
@@ -160,8 +104,9 @@ export default function AdminContentPage() {
             ))}
           </ul>
           <p className="mt-3 text-sm text-text-muted">
-            রিডাইরেক্ট: ডেমো স্টোরে বর্তমানে কোনো রিডাইরেক্ট নেই — স্লাগ বদলালে API স্বয়ংক্রিয়ভাবে
-            পুরনো → নতুন স্লাগের রিডাইরেক্ট রেকর্ড করে।
+            {redirects.length === 0
+              ? "রিডাইরেক্ট: বর্তমানে কোনো রিডাইরেক্ট নেই — স্লাগ বদলালে API স্বয়ংক্রিয়ভাবে পুরনো → নতুন স্লাগের রিডাইরেক্ট রেকর্ড করে।"
+              : `রিডাইরেক্ট (${redirects.length}): ${redirects.map((r) => `/${r.from} → /${r.to}`).join(" · ")}`}
           </p>
         </Card>
       </div>

@@ -71,12 +71,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       ip: req.headers.get("x-forwarded-for") ?? undefined,
       userAgent: req.headers.get("user-agent") ?? undefined,
     });
-    try {
-      const { indexProduct } = await import("@/catalog/indexer");
-      await indexProduct(product);
-    } catch {
-      // Indexing is best-effort only.
-    }
+    // Search-index sync is owned by the repository layer
+    // (PrismaCatalogRepository.updateProduct, fire-and-forget).
     return NextResponse.json({ data: product });
   } catch (error) {
     return handleServiceError(error);

@@ -6,8 +6,8 @@
  * active (amount + sandbox pay form), paid, expired, cancelled, not found.
  * Bangla-first, mobile-first. noindex — a payment link is not a search page.
  *
- * Data is the in-memory demo store for now (badge on the page says so);
- * DB wiring swaps the store behind resolvePayLink, this page is unchanged.
+ * Data is the DB-backed payment_links store (DB swap 2026-10-24); the
+ * store behind resolvePayLink changed, this page only gained awaits.
  */
 import type { Metadata } from "next";
 import { ensureDemoPaymentLink, resolvePayLink } from "@/storefront-ux/pay-link-view";
@@ -18,14 +18,14 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function PayPage({ params }: { params: { token: string } }) {
-  ensureDemoPaymentLink();
-  const resolved = resolvePayLink(params.token);
+export default async function PayPage({ params }: { params: { token: string } }) {
+  await ensureDemoPaymentLink();
+  const resolved = await resolvePayLink(params.token);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-md px-4 py-8">
       <h1 className="text-xl font-bold">পেমেন্ট</h1>
-      <p className="mt-1 text-xs text-slate-500">TEMPORARY DEMO — in-memory store, sandbox payment only.</p>
+      <p className="mt-1 text-xs text-slate-500">Sandbox payment only — no real money moves.</p>
 
       {!resolved.ok && (
         <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-5">

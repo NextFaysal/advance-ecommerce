@@ -1,68 +1,61 @@
-// Route-local DEMO store for the vendor admin API — Agent 18.
-// src/vendors/store.ts (Agent 16) is read-only for products and has no
-// vendor mutation helpers, and it is outside this slice's owned files.
-// This store therefore WRAPS it: the base vendor list comes from
-// demoVendorStore, while vendors created via the API, vendor status
-// changes, product-approval decisions, and the demo commission/refund
-// rows used by the payout summary live here as overrides. Everything is
-// in-memory and labelled in-memory-demo in route meta; a Prisma-backed
-// store replaces both layers behind the same route contracts.
-import { demoVendorStore } from "@/vendors/store";
+// Route store for the vendor admin API — PARTIALLY DB-backed since
+// 2026-10-24. Vendor records (list / get / create / status) are served
+// by PrismaVendorStore over the Vendor table (src/vendors/db-store.ts).
+//
+// What remains in-memory here, and why: the merged schema has NO
+// vendor-product table and NO vendor-commission table (core Product
+// rows carry no vendor link, and no commission-line model exists), so
+// product approvals, commission lines and refund totals have nowhere
+// to persist. They stay in this process-local layer, empty at boot —
+// the previous SAMPLE product row belonged to the demo vendor, which
+// no longer exists on the API surface now that vendors are real rows.
+// Routes label this honestly in meta (persistence: "mixed").
+import { vendorStore } from "@/vendors/db-store";
 import type { CommissionLine, Vendor, VendorProduct } from "@/vendors/types";
 
-class VendorApiDemoStore {
-  private created: Vendor[] = [];
-  private statusOverrides = new Map<string, Vendor["status"]>();
-  private products: VendorProduct[] = [
-    {
-      id: "vprod_demo_1", vendorId: "vendor_demo_1", productName: "SAMPLE Vendor Product",
-      sku: "SAMPLE-VP-1", pricePoisha: 45000, approval: "PENDING_REVIEW",
-    },
-  ];
-  private approvalOverrides = new Map<string, VendorProduct>();
-  /** Demo commission rows (SAMPLE) feeding GET /vendors/[id]/payout. */
+class VendorApiStore {
+  private products: VendorProduct[] = [];
+  /** Commission rows feeding GET /vendors/[id]/payout (no DB table). */
   private commissionLines: CommissionLine[] = [];
   private refundsByVendor = new Map<string, number>();
 
-  listVendors(): Vendor[] {
-    const base = demoVendorStore.listVendors().map((v) => {
-      const status = this.statusOverrides.get(v.id);
-      return status ? { ...v, status } : v;
-    });
-    return [...base, ...this.created];
+  async listVendors(): Promise<Vendor[]> {
+    return vendorStore.listVendors();
   }
 
-  getVendor(id: string): Vendor | undefined {
-    return this.listVendors().find((v) => v.id === id);
+  async getVendor(id: string): Promise<Vendor | undefined> {
+    return vendorStore.getVendor(id);
   }
 
-  addVendor(v: Vendor): Vendor { this.created.push(v); return v; }
-
-  setVendorStatus(id: string, status: Vendor["status"]): void {
-    const created = this.created.find((v) => v.id === id);
-    if (created) created.status = status;
-    else this.statusOverrides.set(id, status);
+  async addVendor(v: Vendor): Promise<Vendor> {
+    return vendorStore.addVendor(v);
   }
 
-  listProducts(vendorId?: string): VendorProduct[] {
-    const base = demoVendorStore.listProducts(vendorId);
-    const merged = [...base, ...this.products.filter((p) => !vendorId || p.vendorId === vendorId)];
-    return merged.map((p) => this.approvalOverrides.get(p.id) ?? p);
+  async setVendorStatus(id: string, status: Vendor["status"]): Promise<void> {
+    await vendorStore.setVendorStatus(id, status);
   }
 
-  getProduct(id: string): VendorProduct | undefined {
-    return this.listProducts().find((p) => p.id === id);
+  async listProducts(vendorId?: string): Promise<VendorProduct[]> {
+    return vendorId ? this.products.filter((p) => p.vendorId === vendorId) : [...this.products];
   }
 
-  replaceProduct(p: VendorProduct): void { this.approvalOverrides.set(p.id, p); }
+  async getProduct(id: string): Promise<VendorProduct | undefined> {
+    return this.products.find((p) => p.id === id);
+  }
 
-  listCommissionLines(vendorId: string): CommissionLine[] {
+  async replaceProduct(p: VendorProduct): Promise<void> {
+    const idx = this.products.findIndex((x) => x.id === p.id);
+    if (idx >= 0) this.products[idx] = p;
+    else this.products.push(p);
+  }
+
+  async listCommissionLines(vendorId: string): Promise<CommissionLine[]> {
     return this.commissionLines.filter((l) => l.vendorId === vendorId);
   }
 
-  addCommissionLine(line: CommissionLine): void { this.commissionLines.push(line); }
+  async addCommissionLine(line: CommissionLine): Promise<void> { this.commissionLines.push(line); }
 
-  refundsPoisha(vendorId: string): number { return this.refundsByVendor.get(vendorId) ?? 0; }
+  async refundsPoisha(vendorId: string): Promise<number> { return this.refundsByVendor.get(vendorId) ?? 0; }
 }
 
-export const vendorApiStore = new VendorApiDemoStore();
+export const vendorApiStore = new VendorApiStore();

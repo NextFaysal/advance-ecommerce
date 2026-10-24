@@ -1,15 +1,15 @@
 /**
  * Admin customer detail — /api/v1/admin/customers/[id]
- * GET: customer profile + their mock orders. Phone masked by default;
+ * GET: customer profile + their orders. Phone masked by default;
  * full phone only with customers.view_full_phone, audited via logPhoneAccess.
- * TEMPORARY MOCK until Customer/Order tables land (Agent 6).
+ * DB-BACKED via src/orders/repository.getCustomerWithOrders.
  */
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { validateSessionToken } from "@/lib/auth";
 import { hasPermission, phoneForViewer, requirePermission, RbacError } from "@/lib/rbac";
 import { logPhoneAccess } from "@/lib/audit";
-import { MOCK_CUSTOMERS, MOCK_ORDERS } from "@/orders/mock";
+import { getCustomerWithOrders } from "@/orders/repository";
 
 function err(code: string, message: string, status: number, details?: unknown) {
   return NextResponse.json({ error: { code, message, details } }, { status });
@@ -32,8 +32,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     throw e;
   }
 
-  const customer = MOCK_CUSTOMERS.find((c) => c.id === params.id);
-  if (!customer) return err("NOT_FOUND", "Customer not found.", 404);
+  const detail = await getCustomerWithOrders(params.id);
+  if (!detail) return err("NOT_FOUND", "Customer not found.", 404);
+  const { customer } = detail;
 
   const canSeeFullPhone = hasPermission(session.user.permissions, "customers.view_full_phone");
   if (canSeeFullPhone) {
@@ -45,7 +46,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       userAgent: req.headers.get("user-agent") ?? undefined,
     });
   }
-  const orders = MOCK_ORDERS.filter((o) => o.customerPhone === customer.phone).map((o) => ({
+  const orders = detail.orders.map((o) => ({
     ...o,
     customerPhone: phoneForViewer(o.customerPhone, session.user.permissions) ?? "",
   }));
@@ -54,6 +55,6 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       customer: { ...customer, phone: phoneForViewer(customer.phone, session.user.permissions) ?? "" },
       orders,
     },
-    meta: { db: "NOT_WIRED", source: "TEMPORARY_MOCK", phonesMasked: !canSeeFullPhone },
+    meta: { db: "PRISMA", source: "DATABASE", phonesMasked: !canSeeFullPhone },
   });
 }

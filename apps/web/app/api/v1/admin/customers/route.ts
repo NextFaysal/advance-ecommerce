@@ -3,8 +3,9 @@
  * GET: list/filter. Phone is masked by default in every response
  * (phoneForViewer); a full phone is returned ONLY for a viewer with
  * customers.view_full_phone, and that view is audited via logPhoneAccess.
- * TEMPORARY MOCK: reads src/orders/mock.ts until Customer tables land
- * (Agent 6). Filters/pagination mirror the future Prisma query.
+ * DB-BACKED: reads real Customer rows via src/orders/repository;
+ * order aggregates (totals, LTV, last order) are computed from the
+ * Order table, not stored counters.
  */
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
@@ -12,8 +13,7 @@ import { z } from "zod";
 import { validateSessionToken } from "@/lib/auth";
 import { hasPermission, phoneForViewer, requirePermission, RbacError } from "@/lib/rbac";
 import { logPhoneAccess } from "@/lib/audit";
-import { MOCK_CUSTOMERS } from "@/orders/mock";
-import type { Customer } from "@/orders/types";
+import { listCustomers } from "@/orders/repository";
 
 function err(code: string, message: string, status: number, details?: unknown) {
   return NextResponse.json({ error: { code, message, details } }, { status });
@@ -50,23 +50,21 @@ export async function GET(req: Request) {
     return err("VALIDATION_ERROR", "List query invalid.", 400, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`));
   }
   const q = parsed.data;
-  let rows: Customer[] = [...MOCK_CUSTOMERS];
-  if (q.tag) rows = rows.filter((c) => c.tags.includes(q.tag as string));
-  if (q.blocked !== undefined) rows = rows.filter((c) => c.blocked === (q.blocked === "true"));
-  if (q.search) {
-    const needle = q.search.toLowerCase();
-    rows = rows.filter((c) => c.name.toLowerCase().includes(needle) || c.phone.includes(q.search as string));
-  }
-  const total = rows.length;
-  const start = (q.page - 1) * q.pageSize;
+  const { rows, total } = await listCustomers({
+    search: q.search,
+    tag: q.tag,
+    blocked: q.blocked === undefined ? undefined : q.blocked === "true",
+    page: q.page,
+    pageSize: q.pageSize,
+  });
   const canSeeFullPhone = hasPermission(session.user.permissions, "customers.view_full_phone");
-  const pageRows = rows.slice(start, start + q.pageSize).map((c) => ({
+  const pageRows = rows.map((c) => ({
     ...c,
     phone: phoneForViewer(c.phone, session.user.permissions) ?? "",
   }));
   if (canSeeFullPhone && pageRows.length > 0) {
     // A list view that exposes full phones must leave an audit trail per customer.
-    for (const c of rows.slice(start, start + q.pageSize)) {
+    for (const c of rows) {
       await logPhoneAccess({
         actorId: session.user.id,
         customerId: c.id,
@@ -78,6 +76,6 @@ export async function GET(req: Request) {
   }
   return NextResponse.json({
     data: pageRows,
-    meta: { total, page: q.page, pageSize: q.pageSize, db: "NOT_WIRED", source: "TEMPORARY_MOCK", phonesMasked: !canSeeFullPhone },
+    meta: { total, page: q.page, pageSize: q.pageSize, db: "PRISMA", source: "DATABASE", phonesMasked: !canSeeFullPhone },
   });
 }

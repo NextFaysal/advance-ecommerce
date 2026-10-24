@@ -1,8 +1,13 @@
 /**
- * Inbox demo store + views — TEMPORARY in-memory, lost on restart. Agent 14.
- * No channel API is called; demo conversations stand in for webhook-ingested
- * threads until a ChannelAdapter + DB tables (inbox_conversations,
- * inbox_messages) land in the follow-up slice.
+ * Inbox views + DEMO fixture data. Agent 14.
+ *
+ * PERSISTENCE SWAP DONE: the production path is src/inbox/store.ts
+ * (Prisma tables InboxConversation / InboxMessage, dedupe on
+ * (channel, externalMessageId)); all routes and the admin page
+ * read/write through it. toConversationView / messagesForConversation
+ * below stay — they are the pure view helpers the DB store reuses. The
+ * DEMO_* arrays remain only as labelled fixtures. No channel API is
+ * called (channels are still types only).
  */
 import { maskPhone } from "../checkout/validation";
 import type { Conversation, ConversationView, InboxMessage } from "./types";

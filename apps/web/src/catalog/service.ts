@@ -1,33 +1,32 @@
-// Catalog service — Agent 8.
-// Status: RUNTIME TEST PENDING Prisma generate + Agent 6 schema merge.
-// The current packages/db/prisma/schema.prisma has NO Product/Category/
-// StockMovement models yet. This file therefore codes against the row
-// shapes proposed in src/catalog/SCHEMA-ADDITIONS.md, NOT against a
-// generated Prisma client (which does not exist yet — `prisma generate`
-// previously failed on a Prisma engine binary network download).
+// Catalog service — Agent 8; Prisma DB swap completed 2026-10-24.
+// Persistence: PrismaCatalogRepository below is backed by the real
+// generated Prisma client (@advance-ecommerce/db exports `prisma`) and
+// the merged schema in packages/db/prisma/schema.prisma (Product /
+// ProductVariant / ProductImage / Category / Brand / StockMovement /
+// InventoryItem / Warehouse). Routes obtain it via
+// getCatalogRepository() in ./api.ts, which throws DbNotReadyError
+// (routes return 503 DB_NOT_READY) if the client is unavailable —
+// runtime reads and writes hit the database ONLY; there is no mock
+// fallback at runtime anymore. MockCatalogRepository is retained
+// solely as a labelled in-memory fixture for tests.
 //
-// How it stays honest:
-//  - Reads: if a Prisma-like client with a `product` model is present at
-//    runtime, it is used. Otherwise reads fall back to the labelled
-//    TEMPORARY MOCK data (cost stripped for public callers) — never
-//    presented as DB data.
-//  - Writes: if no Prisma product model is present, create/update throw
-//    DbNotReadyError and routes return 503 DB_NOT_READY. No fake
-//    persistence, no silent in-memory "save".
-//  - Stock: initial stock is NEVER a direct edit. createProduct returns
-//    ledger entries (stock_movements, ledger-only). The Prisma adapter
-//    writes them only if client.stockMovement exists; otherwise it
-//    returns them as `ledgerPending` so the caller can see the stock
-//    was NOT yet written to a ledger. Agent 6 must add the
-//    StockMovement model for this to become a real write.
-//  - Money: integer poisha everywhere. No float. Slug unique, soft
-//    delete (deletedAt) respected on every read.
+// Invariants kept from the original contract:
+//  - Money: integer poisha everywhere. No float.
+//  - Slug unique (checked in routes, DB unique constraint is the
+//    backstop); soft delete (deletedAt) respected on every read.
+//  - Stock: variant.stock is a denormalized cache. Initial and adjusted
+//    quantities are ALSO written to the stock_movements ledger plus
+//    InventoryItem by the Prisma adapter (see the adapter notes for the
+//    INITIAL_STOCK -> PURCHASE_RECEIVE mapping); if no warehouse exists
+//    to book the movement against, the write reports
+//    `ledgerPending: true` instead of silently dropping it.
 
 import { z } from "zod";
 import type { Category, Product, ProductImage, ProductVariant, PublicProduct } from "./types";
 import { toPublicProduct } from "./types";
 import type { ProductFilter } from "./search";
 import { applyProductFilter } from "./search";
+import { syncProductSearchIndex } from "./indexer";
 import { MOCK_CATEGORIES, MOCK_PRODUCTS } from "./mock";
 
 export const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -103,7 +102,8 @@ export type ProductUpdateInput = z.infer<typeof productUpdateSchema>;
 export type VariantInput = z.infer<typeof variantInputSchema>;
 
 // ---------------------------------------------------------------------------
-// Row shapes (exactly the SCHEMA-ADDITIONS.md proposal)
+// Row shapes (service-internal flattened contract; the Prisma adapter
+// maps real schema rows — relations included — into these shapes)
 // ---------------------------------------------------------------------------
 
 export interface ProductRow {
@@ -236,6 +236,12 @@ export function buildInitialStockLedgerEntries(
 // ---------------------------------------------------------------------------
 
 export interface CatalogRepository {
+  /**
+   * List non-deleted products. `status` semantics: a specific status
+   * (ACTIVE/DRAFT/ARCHIVED) filters; "ALL" returns every status (admin
+   * surfaces only — public callers must keep the ACTIVE rule below);
+   * omitted status defaults to ACTIVE.
+   */
   listProducts(filter: ProductFilter & { status?: string; page?: number; pageSize?: number }): Promise<{
     products: Product[];
     total: number;
@@ -243,6 +249,13 @@ export interface CatalogRepository {
     pageSize: number;
   }>;
   getProductBySlug(slug: string): Promise<Product | null>;
+  /**
+   * PUBLIC read path: only ACTIVE, non-deleted products are visible.
+   * The status rule lives HERE, in the repository layer, so no public
+   * caller can ever resolve a DRAFT/ARCHIVED product by slug. Admin
+   * reads keep using getProductBySlug/getProductById (all statuses).
+   */
+  getPublicProductBySlug(slug: string): Promise<Product | null>;
   getProductById(id: string): Promise<Product | null>;
   getCategories(): Promise<Category[]>;
   slugExists(slug: string, excludeId?: string): Promise<boolean>;
@@ -258,18 +271,32 @@ export interface CatalogRepository {
   ): Promise<{ product: Product; ledgerEntries: StockLedgerEntry[]; ledgerPending: boolean }>;
 }
 
-/** Read-only mock repository: labelled fallback until DB tables exist. */
+/**
+ * In-memory fixture repository over the labelled TEMPORARY MOCK data.
+ * Retained for tests only — runtime routes no longer use it:
+ * getCatalogRepository() in ./api.ts returns the Prisma repository or
+ * throws DbNotReadyError. If the DB is empty the API returns empty
+ * results, never this mock data.
+ */
 export class MockCatalogRepository implements CatalogRepository {
   async listProducts(filter: ProductFilter & { status?: string; page?: number; pageSize?: number }) {
     const page = Math.max(1, filter.page ?? 1);
     const pageSize = Math.min(100, Math.max(1, filter.pageSize ?? 20));
-    let products = MOCK_PRODUCTS.filter((p) => p.status === "ACTIVE");
-    if (filter.status) products = MOCK_PRODUCTS.filter((p) => p.status === filter.status);
+    // Parity with the Prisma adapter: "ALL" = every status, a specific
+    // status filters, no status defaults to ACTIVE.
+    let products =
+      filter.status === "ALL"
+        ? [...MOCK_PRODUCTS]
+        : MOCK_PRODUCTS.filter((p) => p.status === (filter.status ?? "ACTIVE"));
     products = applyProductFilter(products, filter);
     const total = products.length;
     return { products: products.slice((page - 1) * pageSize, page * pageSize), total, page, pageSize };
   }
   async getProductBySlug(slug: string) {
+    return MOCK_PRODUCTS.find((p) => p.slug === slug && p.status === "ACTIVE") ?? null;
+  }
+  async getPublicProductBySlug(slug: string) {
+    // Fixture parity with the Prisma adapter: public reads are ACTIVE-only.
     return MOCK_PRODUCTS.find((p) => p.slug === slug && p.status === "ACTIVE") ?? null;
   }
   async getProductById(id: string) {
@@ -293,43 +320,200 @@ export class MockCatalogRepository implements CatalogRepository {
   }
 }
 
-// Structural client type for the future Prisma adapter. Deliberately NOT
-// imported from @prisma/client: that client is not generated yet, and
-// importing it would make every file in this slice fail tsc today.
-// Once Agent 6 merges the tables and `prisma generate` succeeds, this
-// adapter can be re-typed directly against the generated client with
-// no change to the repository interface or the routes.
-export interface PrismaLikeClient {
-  product?: {
-    findMany: (args: Record<string, unknown>) => Promise<ProductRow[]>;
-    findUnique: (args: Record<string, unknown>) => Promise<ProductRow | null>;
-    count: (args: Record<string, unknown>) => Promise<number>;
-    create: (args: Record<string, unknown>) => Promise<ProductRow>;
-    update: (args: Record<string, unknown>) => Promise<ProductRow>;
-  };
-  category?: {
-    findMany: (args: Record<string, unknown>) => Promise<CategoryRow[]>;
-    findUnique: (args: Record<string, unknown>) => Promise<{ id: string } | null>;
-  };
-  stockMovement?: {
-    createMany: (args: Record<string, unknown>) => Promise<unknown>;
+// ---------------------------------------------------------------------------
+// Prisma adapter — real merged schema (packages/db/prisma/schema.prisma)
+// ---------------------------------------------------------------------------
+// The merged schema differs from the original SCHEMA-ADDITIONS.md
+// proposal in three ways this adapter absorbs:
+//  1. Product has NO brandName column: brand is a Brand relation
+//     (brandId). Reads flatten brand.name -> brandName; writes resolve a
+//     brand name to a Brand row (find-or-create by unique name/slug).
+//  2. Category is a relation: reads include it and flatten slug/names;
+//     writes resolve categorySlug -> categoryId. Category has no
+//     productCount column: getCategories computes it with _count over
+//     non-deleted ACTIVE products.
+//  3. StockMovement has no INITIAL_STOCK type and requires warehouseId,
+//     quantityBefore/quantityAfter and a reference. Service-level
+//     ledger types map to the DB enum via DB_STOCK_MOVEMENT_TYPE
+//     (INITIAL_STOCK -> PURCHASE_RECEIVE); movements are booked against
+//     the default (earliest-created active) warehouse with
+//     referenceType PRODUCT_CREATE / PRODUCT_UPDATE and
+//     referenceId = product id, and a matching InventoryItem row is
+//     upserted so quantityOnHand tracks the variant.stock cache.
+
+/** Real Prisma row shape for a product with catalog relations included. */
+export interface PrismaProductRow {
+  id: string;
+  slug: string;
+  titleBn: string;
+  titleEn: string;
+  descriptionBn: string;
+  descriptionEn: string;
+  categoryId: string;
+  brandId: string | null;
+  status: string;
+  tags: string[];
+  ratingAverage: number | null;
+  reviewCount: number;
+  seoTitleBn: string | null;
+  seoTitleEn: string | null;
+  seoDescriptionBn: string | null;
+  seoDescriptionEn: string | null;
+  deletedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  category: { slug: string; nameBn: string; nameEn: string };
+  brand: { name: string } | null;
+  images: { id: string; url: string; altBn: string; altEn: string; sortOrder: number }[];
+  variants: {
+    id: string;
+    productId: string;
+    attributes: unknown;
+    sku: string;
+    barcode: string | null;
+    pricePoisha: number;
+    compareAtPoisha: number | null;
+    costPoisha: number | null;
+    stock: number;
+    imageUrl: string | null;
+    isActive: boolean;
+  }[];
+}
+
+/** Real Prisma row shape for a category with an ACTIVE-product count. */
+export interface PrismaCategoryRow {
+  id: string;
+  slug: string;
+  nameBn: string;
+  nameEn: string;
+  imageUrl: string | null;
+  _count: { products: number };
+}
+
+function normalizeAttributes(value: unknown): Record<string, string> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value)) out[k] = typeof v === "string" ? v : String(v);
+  return out;
+}
+
+/** Flatten a real Prisma product row into the service-internal ProductRow. */
+export function mapPrismaRowToProductRow(row: PrismaProductRow): ProductRow {
+  return {
+    id: row.id,
+    slug: row.slug,
+    titleBn: row.titleBn,
+    titleEn: row.titleEn,
+    descriptionBn: row.descriptionBn,
+    descriptionEn: row.descriptionEn,
+    categoryId: row.categoryId,
+    categorySlug: row.category.slug,
+    categoryNameBn: row.category.nameBn,
+    categoryNameEn: row.category.nameEn,
+    brandName: row.brand?.name ?? null,
+    status: row.status === "ACTIVE" || row.status === "ARCHIVED" ? row.status : "DRAFT",
+    tags: row.tags,
+    ratingAverage: row.ratingAverage,
+    reviewCount: row.reviewCount,
+    seoTitleBn: row.seoTitleBn,
+    seoTitleEn: row.seoTitleEn,
+    seoDescriptionBn: row.seoDescriptionBn,
+    seoDescriptionEn: row.seoDescriptionEn,
+    deletedAt: row.deletedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    images: row.images,
+    variants: row.variants.map((v) => ({ ...v, attributes: normalizeAttributes(v.attributes) })),
   };
 }
 
-/** Returns true only if the runtime client actually has a product model. */
+const PRODUCT_INCLUDE = {
+  category: { select: { slug: true, nameBn: true, nameEn: true } },
+  brand: { select: { name: true } },
+  images: true,
+  variants: { where: { deletedAt: null } },
+};
+
+/** Service ledger vocabulary -> StockMovementType DB enum. */
+const DB_STOCK_MOVEMENT_TYPE: Record<StockLedgerEntry["type"], string> = {
+  INITIAL_STOCK: "PURCHASE_RECEIVE",
+  ADJUSTMENT: "ADJUSTMENT",
+  RESERVE: "SALE_RESERVE",
+  COMMIT: "SALE_COMMIT",
+  RELEASE: "SALE_RELEASE",
+  RESTORE: "SALE_RESTORE",
+};
+
+interface StockMovementWrite {
+  variantId: string;
+  type: StockLedgerEntry["type"];
+  quantityDelta: number;
+  quantityBefore: number;
+  quantityAfter: number;
+  reason: string;
+  actorId: string | null;
+}
+
+// Structural client type for the Prisma adapter: the exact delegates of
+// the generated client this repository uses, typed loosely on args.
+// api.ts asserts the real client against it via hasPrismaCatalog(), so
+// routes stay decoupled from @prisma/client imports.
+export interface PrismaLikeClient {
+  product: {
+    findMany: (args: Record<string, unknown>) => Promise<PrismaProductRow[]>;
+    findUnique: (args: Record<string, unknown>) => Promise<PrismaProductRow | null>;
+    count: (args: Record<string, unknown>) => Promise<number>;
+    create: (args: Record<string, unknown>) => Promise<PrismaProductRow>;
+    update: (args: Record<string, unknown>) => Promise<PrismaProductRow>;
+  };
+  category: {
+    findMany: (args: Record<string, unknown>) => Promise<PrismaCategoryRow[]>;
+    findUnique: (args: Record<string, unknown>) => Promise<{ id: string; deletedAt: Date | null } | null>;
+  };
+  brand: {
+    findFirst: (args: Record<string, unknown>) => Promise<{ id: string } | null>;
+    create: (args: Record<string, unknown>) => Promise<{ id: string }>;
+  };
+  productVariant: {
+    findMany: (args: Record<string, unknown>) => Promise<{ sku: string }[]>;
+    create: (args: Record<string, unknown>) => Promise<{ id: string; sku: string; stock: number }>;
+    update: (args: Record<string, unknown>) => Promise<unknown>;
+  };
+  productImage: {
+    deleteMany: (args: Record<string, unknown>) => Promise<unknown>;
+    createMany: (args: Record<string, unknown>) => Promise<unknown>;
+  };
+  warehouse: {
+    findFirst: (args: Record<string, unknown>) => Promise<{ id: string } | null>;
+  };
+  stockMovement: {
+    createMany: (args: Record<string, unknown>) => Promise<unknown>;
+  };
+  inventoryItem: {
+    upsert: (args: Record<string, unknown>) => Promise<unknown>;
+  };
+  $transaction: <T>(fn: (tx: PrismaLikeClient) => Promise<T>) => Promise<T>;
+}
+
+/** Returns true only if the runtime client actually has the catalog delegates. */
 export function hasPrismaCatalog(client: unknown): client is PrismaLikeClient {
   if (typeof client !== "object" || client === null) return false;
   const c = client as PrismaLikeClient;
-  return typeof c.product?.findMany === "function" && typeof c.product?.create === "function";
+  return (
+    typeof c.product?.findMany === "function" &&
+    typeof c.product?.create === "function" &&
+    typeof c.category?.findMany === "function" &&
+    typeof c.productVariant?.findMany === "function" &&
+    typeof c.stockMovement?.createMany === "function" &&
+    typeof c.$transaction === "function"
+  );
 }
 
 /**
- * Prisma-backed repository. All writes happen in one logical transaction
- * at the call site (see routes): product + variants + images + ledger.
- * Here the adapter builds the exact Prisma payloads; the route wraps
- * them in $transaction once a generated client exists. Until then this
- * class is constructed only after hasPrismaCatalog() passes, so it is
- * never instantiated against a client without catalog models.
+ * Prisma-backed repository against the real merged schema. Create and
+ * update run inside a single $transaction: product + variants + images
+ * + stock ledger (StockMovement + InventoryItem) commit or roll back
+ * together.
  */
 export class PrismaCatalogRepository implements CatalogRepository {
   constructor(private readonly client: PrismaLikeClient) {}
@@ -337,128 +521,245 @@ export class PrismaCatalogRepository implements CatalogRepository {
   async listProducts(filter: ProductFilter & { status?: string; page?: number; pageSize?: number }) {
     const page = Math.max(1, filter.page ?? 1);
     const pageSize = Math.min(100, Math.max(1, filter.pageSize ?? 20));
-    const rows = await this.client.product!.findMany({
-      where: { deletedAt: null, ...(filter.status ? { status: filter.status } : { status: "ACTIVE" }) },
-      include: { images: true, variants: true },
+    // Status semantics: a specific status filters; "ALL" means every
+    // status (the admin list); no status keeps the storefront-safe
+    // ACTIVE default so a caller that forgets the filter can never
+    // leak DRAFT/ARCHIVED products.
+    const where = {
+      deletedAt: null,
+      ...(filter.status === "ALL" ? {} : { status: filter.status ?? "ACTIVE" }),
+    };
+    const rows = await this.client.product.findMany({
+      where,
+      include: PRODUCT_INCLUDE,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
     });
-    const products = rows.map(mapRowToProduct);
+    const products = rows.map((r) => mapRowToProduct(mapPrismaRowToProductRow(r)));
     const filtered = applyProductFilter(products, filter);
-    const total = await this.client.product!.count({
-      where: { deletedAt: null, ...(filter.status ? { status: filter.status } : { status: "ACTIVE" }) },
-    });
+    const total = await this.client.product.count({ where });
     return { products: filtered, total, page, pageSize };
   }
 
   async getProductBySlug(slug: string) {
-    const row = await this.client.product!.findUnique({
+    const row = await this.client.product.findUnique({
       where: { slug },
-      include: { images: true, variants: true },
+      include: PRODUCT_INCLUDE,
     });
     if (!row || row.deletedAt !== null) return null;
-    return mapRowToProduct(row);
+    return mapRowToProduct(mapPrismaRowToProductRow(row));
+  }
+
+  async getPublicProductBySlug(slug: string) {
+    // Status filter is part of the QUERY (not a post-check): a DRAFT or
+    // ARCHIVED product is indistinguishable from a missing one here.
+    const rows = await this.client.product.findMany({
+      where: { slug, status: "ACTIVE" },
+      include: PRODUCT_INCLUDE,
+      take: 1,
+    });
+    const row = rows[0];
+    if (!row || row.deletedAt !== null) return null;
+    return mapRowToProduct(mapPrismaRowToProductRow(row));
   }
 
   async getProductById(id: string) {
-    const row = await this.client.product!.findUnique({
+    const row = await this.client.product.findUnique({
       where: { id },
-      include: { images: true, variants: true },
+      include: PRODUCT_INCLUDE,
     });
     if (!row || row.deletedAt !== null) return null;
-    return mapRowToProduct(row);
+    return mapRowToProduct(mapPrismaRowToProductRow(row));
   }
 
-  async getCategories() {
-    const rows = (await this.client.category?.findMany({})) ?? [];
+  async getCategories(): Promise<Category[]> {
+    const rows = await this.client.category.findMany({
+      where: { deletedAt: null, isActive: true },
+      include: {
+        _count: { select: { products: { where: { deletedAt: null, status: "ACTIVE" } } } },
+      },
+      orderBy: [{ sortOrder: "asc" }, { nameEn: "asc" }],
+    });
     return rows.map((r) => ({
       slug: r.slug,
       name: { bn: r.nameBn, en: r.nameEn },
       imageUrl: r.imageUrl,
-      productCount: r.productCount,
+      productCount: r._count.products,
     }));
   }
 
   async slugExists(slug: string, excludeId?: string) {
-    const row = await this.client.product!.findUnique({ where: { slug } });
+    // Slug is globally unique in the schema — including soft-deleted
+    // rows — so any row with this slug blocks reuse.
+    const row = await this.client.product.findUnique({ where: { slug }, select: { id: true } });
     if (!row) return false;
     return excludeId === undefined || row.id !== excludeId;
   }
 
   async skusExist(skus: string[]) {
-    // Implemented by the route via a dedicated variant query once the
-    // generated client exists; this adapter keeps the contract by
-    // checking slugs of variants through product rows is not reliable,
-    // so callers must use the SKU check in create/update validation
-    // below (duplicate SKUs inside one payload are rejected there).
-    // For now, return [] and let the DB unique constraint be the backstop.
-    void skus;
-    return [];
+    if (skus.length === 0) return [];
+    // SKU is globally unique in the schema — including soft-deleted
+    // variants — so check every variant row, not just live ones.
+    const rows = await this.client.productVariant.findMany({
+      where: { sku: { in: skus } },
+      select: { sku: true },
+    });
+    const found = new Set(rows.map((r) => r.sku));
+    return skus.filter((s) => found.has(s));
+  }
+
+  /** Resolve a category slug to a live category id, or throw 404-mapped. */
+  private async resolveCategoryId(client: PrismaLikeClient, categorySlug: string): Promise<string> {
+    const category = await client.category.findUnique({
+      where: { slug: categorySlug },
+      select: { id: true, deletedAt: true },
+    });
+    if (!category || category.deletedAt !== null) {
+      throw new Error(`Category not found: ${categorySlug}`);
+    }
+    return category.id;
+  }
+
+  /** Find-or-create a Brand row by its (unique) name. */
+  private async resolveBrandId(client: PrismaLikeClient, brandName: string): Promise<string> {
+    const byName = await client.brand.findFirst({
+      where: { name: brandName, deletedAt: null },
+      select: { id: true },
+    });
+    if (byName) return byName.id;
+    const slug = slugify(brandName) || "brand";
+    const bySlug = await client.brand.findFirst({
+      where: { slug, deletedAt: null },
+      select: { id: true },
+    });
+    if (bySlug) return bySlug.id;
+    const created = await client.brand.create({ data: { name: brandName, slug }, select: { id: true } });
+    return created.id;
+  }
+
+  /**
+   * Persist stock movements to the ledger + InventoryItem against the
+   * default warehouse. Returns false when no warehouse exists to book
+   * against — callers surface that as ledgerPending instead of dropping
+   * the entries. InventoryItem.quantityOnHand mirrors the
+   * variant.stock cache (single-default-warehouse bookkeeping at this
+   * stage; per-warehouse allocation lives in the inventory module).
+   */
+  private async persistStockMovements(
+    client: PrismaLikeClient,
+    rows: StockMovementWrite[],
+    referenceType: string,
+    referenceId: string,
+  ): Promise<boolean> {
+    if (rows.length === 0) return true;
+    const warehouse = await client.warehouse.findFirst({
+      where: { deletedAt: null, isActive: true },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+    if (!warehouse) return false;
+    await client.stockMovement.createMany({
+      data: rows.map((r) => ({
+        variantId: r.variantId,
+        warehouseId: warehouse.id,
+        type: DB_STOCK_MOVEMENT_TYPE[r.type],
+        quantityDelta: r.quantityDelta,
+        quantityBefore: r.quantityBefore,
+        quantityAfter: r.quantityAfter,
+        referenceType,
+        referenceId,
+        reason: r.reason,
+        actorId: r.actorId,
+      })),
+    });
+    for (const r of rows) {
+      await client.inventoryItem.upsert({
+        where: { variantId_warehouseId: { variantId: r.variantId, warehouseId: warehouse.id } },
+        create: {
+          variantId: r.variantId,
+          warehouseId: warehouse.id,
+          quantityOnHand: r.quantityAfter,
+          quantityReserved: 0,
+        },
+        update: { quantityOnHand: r.quantityAfter },
+      });
+    }
+    return true;
   }
 
   async createProduct(input: ProductInput, actorId: string | null) {
-    const category = await this.client.category?.findUnique({ where: { slug: input.categorySlug } });
-    if (!category) throw new Error(`Category not found: ${input.categorySlug}`);
-    const row = await this.client.product!.create({
-      data: {
-        slug: input.slug,
-        titleBn: input.titleBn,
-        titleEn: input.titleEn,
-        descriptionBn: input.descriptionBn,
-        descriptionEn: input.descriptionEn,
-        categoryId: category.id,
-        brandName: input.brandName ?? null,
-        status: input.status,
-        tags: input.tags,
-        seoTitleBn: input.seoTitleBn ?? null,
-        seoTitleEn: input.seoTitleEn ?? null,
-        seoDescriptionBn: input.seoDescriptionBn ?? null,
-        seoDescriptionEn: input.seoDescriptionEn ?? null,
-        images: { create: input.images },
-        variants: {
-          create: input.variants.map((v) => ({
-            attributes: v.attributes,
-            sku: v.sku,
-            barcode: v.barcode ?? null,
-            pricePoisha: v.pricePoisha,
-            compareAtPoisha: v.compareAtPoisha ?? null,
-            costPoisha: v.costPoisha ?? null,
-            stock: v.stock,
-            imageUrl: v.imageUrl ?? null,
-            isActive: v.isActive,
-          })),
+    const result = await this.client.$transaction(async (tx) => {
+      const categoryId = await this.resolveCategoryId(tx, input.categorySlug);
+      const brandId =
+        input.brandName !== null && input.brandName !== undefined && input.brandName !== ""
+          ? await this.resolveBrandId(tx, input.brandName)
+          : null;
+      const row = await tx.product.create({
+        data: {
+          slug: input.slug,
+          titleBn: input.titleBn,
+          titleEn: input.titleEn,
+          descriptionBn: input.descriptionBn,
+          descriptionEn: input.descriptionEn,
+          categoryId,
+          brandId,
+          status: input.status,
+          tags: input.tags,
+          seoTitleBn: input.seoTitleBn ?? null,
+          seoTitleEn: input.seoTitleEn ?? null,
+          seoDescriptionBn: input.seoDescriptionBn ?? null,
+          seoDescriptionEn: input.seoDescriptionEn ?? null,
+          images: {
+            create: input.images.map((i) => ({
+              url: i.url,
+              altBn: i.altBn,
+              altEn: i.altEn,
+              sortOrder: i.sortOrder,
+            })),
+          },
+          variants: {
+            create: input.variants.map((v) => ({
+              attributes: v.attributes,
+              sku: v.sku,
+              barcode: v.barcode ?? null,
+              pricePoisha: v.pricePoisha,
+              compareAtPoisha: v.compareAtPoisha ?? null,
+              costPoisha: v.costPoisha ?? null,
+              stock: v.stock,
+              imageUrl: v.imageUrl ?? null,
+              isActive: v.isActive,
+            })),
+          },
         },
-      },
-      include: { images: true, variants: true },
-    });
-    const product = mapRowToProduct(row);
-    const ledgerEntries = buildInitialStockLedgerEntries(
-      product.id,
-      product.variants,
-      actorId,
-    );
-    let ledgerPending = false;
-    if (ledgerEntries.length > 0) {
-      if (this.client.stockMovement) {
-        await this.client.stockMovement.createMany({
-          data: ledgerEntries.map((e) => ({
-            productId: e.productId,
+        include: PRODUCT_INCLUDE,
+      });
+      const product = mapRowToProduct(mapPrismaRowToProductRow(row));
+      const ledgerEntries = buildInitialStockLedgerEntries(product.id, product.variants, actorId);
+      let ledgerPending = false;
+      if (ledgerEntries.length > 0) {
+        const written = await this.persistStockMovements(
+          tx,
+          ledgerEntries.map((e) => ({
             variantId: e.variantId,
-            sku: e.sku,
             type: e.type,
-            quantityChange: e.quantityChange,
+            quantityDelta: e.quantityChange,
+            quantityBefore: 0,
+            quantityAfter: e.quantityChange,
             reason: e.reason,
             actorId: e.actorId,
           })),
-        });
-      } else {
-        // StockMovement model not yet merged by Agent 6 — do NOT silently
-        // drop the ledger. Caller surfaces ledgerPending in the response.
-        ledgerPending = true;
+          "PRODUCT_CREATE",
+          product.id,
+        );
+        ledgerPending = !written;
       }
-    }
-    return { product, ledgerEntries, ledgerPending };
+      return { product, ledgerEntries, ledgerPending };
+    });
+    // Search-index sync (repository layer): fire-and-forget — a
+    // Meilisearch outage never fails or delays the catalog write.
+    syncProductSearchIndex(result.product);
+    return result;
   }
 
   async updateProduct(id: string, input: ProductUpdateInput, actorId: string | null) {
@@ -472,24 +773,160 @@ export class PrismaCatalogRepository implements CatalogRepository {
     if (priceChanged && (input.reason === undefined || input.reason.trim() === "")) {
       throw new Error("Reason is required when variant prices change (products.price_change).");
     }
-    // Variant/image replacement is done by the route in a $transaction
-    // once the generated client exists; this adapter updates scalar
-    // fields here and returns the refreshed product.
-    const row = await this.client.product!.update({
-      where: { id },
-      data: {
-        ...(input.slug !== undefined ? { slug: input.slug } : {}),
-        ...(input.titleBn !== undefined ? { titleBn: input.titleBn } : {}),
-        ...(input.titleEn !== undefined ? { titleEn: input.titleEn } : {}),
-        ...(input.descriptionBn !== undefined ? { descriptionBn: input.descriptionBn } : {}),
-        ...(input.descriptionEn !== undefined ? { descriptionEn: input.descriptionEn } : {}),
-        ...(input.status !== undefined ? { status: input.status } : {}),
-        ...(input.tags !== undefined ? { tags: input.tags } : {}),
-      },
-      include: { images: true, variants: true },
+    const result = await this.client.$transaction(async (tx) => {
+      const ledgerEntries: StockLedgerEntry[] = [];
+      const movementRows: StockMovementWrite[] = [];
+
+      if (input.variants !== undefined) {
+        const existingBySku = new Map(existing.variants.map((v) => [v.sku, v]));
+        const payloadSkus = new Set<string>();
+        for (const v of input.variants) {
+          payloadSkus.add(v.sku);
+          const match = existingBySku.get(v.sku);
+          if (match) {
+            await tx.productVariant.update({
+              where: { id: match.id },
+              data: {
+                attributes: v.attributes,
+                barcode: v.barcode ?? null,
+                pricePoisha: v.pricePoisha,
+                compareAtPoisha: v.compareAtPoisha ?? null,
+                costPoisha: v.costPoisha ?? null,
+                stock: v.stock,
+                imageUrl: v.imageUrl ?? null,
+                isActive: v.isActive,
+              },
+            });
+            if (v.stock !== match.stock) {
+              const entry: StockLedgerEntry = {
+                productId: id,
+                variantId: match.id,
+                sku: v.sku,
+                type: "ADJUSTMENT",
+                quantityChange: v.stock - match.stock,
+                reason: input.reason ?? "Stock adjustment on product update (ledger-only)",
+                actorId,
+              };
+              ledgerEntries.push(entry);
+              movementRows.push({
+                variantId: match.id,
+                type: "ADJUSTMENT",
+                quantityDelta: v.stock - match.stock,
+                quantityBefore: match.stock,
+                quantityAfter: v.stock,
+                reason: entry.reason,
+                actorId,
+              });
+            }
+          } else {
+            const createdVariant = await tx.productVariant.create({
+              data: {
+                productId: id,
+                attributes: v.attributes,
+                sku: v.sku,
+                barcode: v.barcode ?? null,
+                pricePoisha: v.pricePoisha,
+                compareAtPoisha: v.compareAtPoisha ?? null,
+                costPoisha: v.costPoisha ?? null,
+                stock: v.stock,
+                imageUrl: v.imageUrl ?? null,
+                isActive: v.isActive,
+              },
+              select: { id: true, sku: true, stock: true },
+            });
+            if (v.stock > 0) {
+              const entry: StockLedgerEntry = {
+                productId: id,
+                variantId: createdVariant.id,
+                sku: v.sku,
+                type: "INITIAL_STOCK",
+                quantityChange: v.stock,
+                reason: "Initial stock for variant added on product update (ledger-only)",
+                actorId,
+              };
+              ledgerEntries.push(entry);
+              movementRows.push({
+                variantId: createdVariant.id,
+                type: "INITIAL_STOCK",
+                quantityDelta: v.stock,
+                quantityBefore: 0,
+                quantityAfter: v.stock,
+                reason: entry.reason,
+                actorId,
+              });
+            }
+          }
+        }
+        // Variants dropped from the payload are soft-deleted, never
+        // hard-deleted, so order history keeps its references.
+        for (const ev of existing.variants) {
+          if (!payloadSkus.has(ev.sku)) {
+            await tx.productVariant.update({
+              where: { id: ev.id },
+              data: { deletedAt: new Date(), isActive: false },
+            });
+          }
+        }
+      }
+
+      if (input.images !== undefined) {
+        // ProductImage has no deletedAt column — replace semantics are
+        // delete + recreate, inside this transaction.
+        await tx.productImage.deleteMany({ where: { productId: id } });
+        if (input.images.length > 0) {
+          await tx.productImage.createMany({
+            data: input.images.map((i) => ({
+              productId: id,
+              url: i.url,
+              altBn: i.altBn,
+              altEn: i.altEn,
+              sortOrder: i.sortOrder,
+            })),
+          });
+        }
+      }
+
+      const data: Record<string, unknown> = {};
+      if (input.slug !== undefined) data.slug = input.slug;
+      if (input.titleBn !== undefined) data.titleBn = input.titleBn;
+      if (input.titleEn !== undefined) data.titleEn = input.titleEn;
+      if (input.descriptionBn !== undefined) data.descriptionBn = input.descriptionBn;
+      if (input.descriptionEn !== undefined) data.descriptionEn = input.descriptionEn;
+      if (input.status !== undefined) data.status = input.status;
+      if (input.tags !== undefined) data.tags = input.tags;
+      if (input.seoTitleBn !== undefined) data.seoTitleBn = input.seoTitleBn;
+      if (input.seoTitleEn !== undefined) data.seoTitleEn = input.seoTitleEn;
+      if (input.seoDescriptionBn !== undefined) data.seoDescriptionBn = input.seoDescriptionBn;
+      if (input.seoDescriptionEn !== undefined) data.seoDescriptionEn = input.seoDescriptionEn;
+      if (input.categorySlug !== undefined) {
+        data.categoryId = await this.resolveCategoryId(tx, input.categorySlug);
+      }
+      if (input.brandName !== undefined) {
+        data.brandId =
+          input.brandName === null || input.brandName === ""
+            ? null
+            : await this.resolveBrandId(tx, input.brandName);
+      }
+      await tx.product.update({ where: { id }, data });
+
+      let ledgerPending = false;
+      if (movementRows.length > 0) {
+        ledgerPending = !(await this.persistStockMovements(tx, movementRows, "PRODUCT_UPDATE", id));
+      }
+
+      const row = await tx.product.findUnique({ where: { id }, include: PRODUCT_INCLUDE });
+      if (!row) throw new Error("Product not found");
+      return {
+        product: mapRowToProduct(mapPrismaRowToProductRow(row)),
+        ledgerEntries,
+        ledgerPending,
+      };
     });
-    void actorId;
-    return { product: mapRowToProduct(row), ledgerEntries: [], ledgerPending: false };
+    // Search-index sync (repository layer): fire-and-forget, same
+    // contract as createProduct — a status flip away from ACTIVE
+    // makes the indexer delete the document.
+    syncProductSearchIndex(result.product);
+    return result;
   }
 }
 
@@ -513,7 +950,9 @@ export async function getPublicProductBySlug(
   repo: CatalogRepository,
   slug: string,
 ): Promise<PublicProduct | null> {
-  const product = await repo.getProductBySlug(slug);
+  // Repository public path enforces ACTIVE-only; this layer only strips
+  // the staff-only cost price for the public contract.
+  const product = await repo.getPublicProductBySlug(slug);
   return product ? toPublicProduct(product) : null;
 }
 

@@ -8,13 +8,13 @@ import {
   type DemoAuditEntry,
 } from "../store";
 
-// Audit log export — Agent 39.
+// Audit log export — Agent 39, DB-backed since the Prisma persistence swap.
 // RBAC: audit.view. A reason is MANDATORY (Zod): audit exports are
 // sensitive actions per src/lib/audit.ts rules, and the export itself is
-// recorded as an audit entry in the demo store (action "audit.export").
+// recorded as an audit entry in the AuditLog table (action "audit.export").
 // The CSV carries a watermark header: exported-by, exported-at
-// (Asia/Dhaka) and the reason. Snapshots are the store's sanitized ones —
-// no secret value can appear in the output.
+// (Asia/Dhaka) and the reason. Snapshots were sanitized on write by
+// src/lib/audit.ts — no secret value can appear in the output.
 
 const exportSchema = z.object({
   reason: z.string().trim().min(1, "A reason is required to export the audit log."),
@@ -84,7 +84,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const rows = filterDemoAuditEntries(filters);
+  const rows = await filterDemoAuditEntries(filters);
   const now = new Date();
   const filterSummary =
     Object.entries({ ...rest, entity })
@@ -93,7 +93,7 @@ export async function POST(req: Request) {
       .join("; ") || "none";
 
   const lines = [
-    "# AUDIT LOG EXPORT — Advance Ecommerce (in-memory DEMO data, not production records)",
+    "# AUDIT LOG EXPORT — Advance Ecommerce (AuditLog table records)",
     `# exported-by: ${guard.userId}`,
     `# exported-at: ${dhakaTimestamp(now)} (Asia/Dhaka)`,
     `# reason: ${reason.replace(/\n/g, " ")}`,
@@ -104,8 +104,8 @@ export async function POST(req: Request) {
   ];
   const csv = lines.join("\n");
 
-  // The export itself is audited (in the demo store, like everything here).
-  const auditEntry = recordDemoAudit({
+  // The export itself is audited (in the AuditLog table, like everything here).
+  const auditEntry = await recordDemoAudit({
     actorId: guard.userId,
     action: "audit.export",
     entityType: "AuditLog",
@@ -125,9 +125,9 @@ export async function POST(req: Request) {
       auditEntryId: auditEntry.id,
     },
     meta: {
-      persistence: "in-memory-demo",
-      source: "TEMPORARY_DEMO",
-      note: "Export generated from the demo store and recorded there as an audit entry. Real wiring exports from the AuditLog table and records via writeAudit().",
+      persistence: "database",
+      source: "AuditLog table via Prisma",
+      note: "Export generated from the AuditLog table and recorded there as an audit entry via writeAudit().",
     },
   });
 }

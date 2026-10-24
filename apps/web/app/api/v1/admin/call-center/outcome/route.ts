@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
-import { agentPerformance, checkOutcomeAccess, claimTask, nextTaskForAgent, recordOutcome, toQueueItemView } from "@/callcenter/queue";
-import { demoCallLogs, demoCallTasks } from "@/callcenter/service";
-import { recordOutcomeSchema } from "@/callcenter/types";
+import { agentPerformance, nextTaskForAgent, toQueueItemView } from "@/callcenter/queue";
+import { loadCallLogs, loadCallTasks, recordOutcomeDb, type DbCallTask } from "@/callcenter/store";
+import { recordOutcomeSchema, type CallTask } from "@/callcenter/types";
 
 // Call outcome + auto-next — Agent 14. POST { taskId, ...outcome } records the
 // outcome (CALLBACK requires a future callbackAt; NO_ANSWER re-queues up to
@@ -14,30 +14,46 @@ import { recordOutcomeSchema } from "@/callcenter/types";
 // a task CLAIMED by the caller (unassigned -> 409 TASK_UNASSIGNED; another
 // agent's task -> 403 TASK_ASSIGNED_TO_OTHER). The one exception is a
 // supervisor (staff.manage), whose override is stamped on the call log entry.
+// Persistence: Prisma DB via src/callcenter/store.ts. CONFIRMED / CANCELLED
+// outcomes also drive the linked order through the orders state machine
+// (applyOrderTransition); the effect is reported as data.orderEffect.
+function locked() {
+  return NextResponse.json(
+    { error: { code: "FEATURE_LOCKED", message: "Call center module is locked for this install (module.call_center is OFF)." } },
+    { status: 403 },
+  );
+}
+
+function dbNotReady() {
+  return NextResponse.json(
+    { error: { code: "DB_NOT_READY", message: "Call-center database is not available." } },
+    { status: 503 },
+  );
+}
+
+function view(task: DbCallTask | (CallTask & { phoneResolved?: boolean }), canViewFullPhone: boolean) {
+  return toQueueItemView(task, canViewFullPhone && task.phoneResolved === true);
+}
+
 export async function GET() {
   const guard = await requireAdmin("orders.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  if (!isCallCenterEnabled(demoCallCenterFlags)) {
-    return NextResponse.json(
-      { error: { code: "FEATURE_LOCKED", message: "Call center module is locked for this install (module.call_center is OFF)." } },
-      { status: 403 },
-    );
+  if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
+  try {
+    const logs = await loadCallLogs(guard.userId);
+    return NextResponse.json({
+      data: { performance: agentPerformance(logs, guard.userId) },
+      meta: { persistence: "database" },
+    });
+  } catch {
+    return dbNotReady();
   }
-  return NextResponse.json({
-    data: { performance: agentPerformance(demoCallLogs, guard.userId) },
-    meta: { persistence: "in-memory-demo" },
-  });
 }
 
 export async function POST(req: Request) {
   const guard = await requireAdmin("orders.update_status");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  if (!isCallCenterEnabled(demoCallCenterFlags)) {
-    return NextResponse.json(
-      { error: { code: "FEATURE_LOCKED", message: "Call center module is locked for this install (module.call_center is OFF)." } },
-      { status: 403 },
-    );
-  }
+  if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   const body = (await req.json().catch(() => ({}))) as { taskId?: string };
   const parsed = recordOutcomeSchema.safeParse(body);
   if (!parsed.success || typeof body.taskId !== "string") {
@@ -46,63 +62,52 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const idx = demoCallTasks.findIndex((t) => t.id === body.taskId);
-  const task = demoCallTasks[idx];
-  if (idx === -1 || !task) {
-    return NextResponse.json({ error: { code: "NOT_FOUND", message: "Call task not found." } }, { status: 404 });
-  }
-  // G3 assignment gate: only the assignee may record an outcome; a
-  // supervisor (staff.manage) may override on another agent's task, and the
-  // override is recorded on the call log entry (supervisorOverride: true).
   const isSupervisor = guard.permissions.includes("staff.manage");
-  const access = checkOutcomeAccess(task, guard.userId, isSupervisor);
-  if (!access.allowed) {
-    if (access.code === "TASK_UNASSIGNED") {
-      return NextResponse.json(
-        {
-          error: {
-            code: access.code,
-            message: access.error,
-            details: { hint: "Claim the task first: POST /api/v1/admin/call-center/claim" },
+  try {
+    const result = await recordOutcomeDb(body.taskId, parsed.data, {
+      agentId: guard.userId,
+      isSupervisor,
+    });
+    if (!result.ok) {
+      if (result.code === "NOT_FOUND") {
+        return NextResponse.json({ error: { code: "NOT_FOUND", message: "Call task not found." } }, { status: 404 });
+      }
+      if (result.code === "TASK_UNASSIGNED") {
+        return NextResponse.json(
+          {
+            error: {
+              code: result.code,
+              message: result.error,
+              details: { hint: "Claim the task first: POST /api/v1/admin/call-center/claim" },
+            },
           },
-        },
-        { status: 409 },
-      );
+          { status: 409 },
+        );
+      }
+      if (result.code === "TASK_ASSIGNED_TO_OTHER") {
+        return NextResponse.json(
+          { error: { code: result.code, message: result.error } },
+          { status: 403 },
+        );
+      }
+      return NextResponse.json({ error: { code: "OUTCOME_REJECTED", message: result.error } }, { status: 422 });
     }
-    return NextResponse.json(
-      { error: { code: access.code, message: access.error } },
-      { status: 403 },
-    );
+    const canViewFullPhone = guard.permissions.includes("customers.view_full_phone");
+    const tasks = await loadCallTasks();
+    const nextPick = nextTaskForAgent(tasks, guard.userId, new Date().toISOString());
+    const next = nextPick ? (tasks.find((t) => t.id === nextPick.id) ?? null) : null;
+    const logs = await loadCallLogs(guard.userId);
+    return NextResponse.json({
+      data: {
+        task: view(result.task, canViewFullPhone),
+        log: result.log,
+        orderEffect: result.orderEffect,
+        nextTask: next ? view(next, canViewFullPhone) : null,
+        performance: agentPerformance(logs, guard.userId),
+      },
+      meta: { persistence: "database" },
+    });
+  } catch {
+    return dbNotReady();
   }
-  const now = new Date().toISOString();
-  // The assignee's own QUEUED task moves to IN_CALL before the outcome is
-  // recorded (pre-G3 behaviour). A supervisor-override task is NOT re-claimed:
-  // it keeps its original assignee, so a re-queue outcome (CALLBACK /
-  // NO_ANSWER) returns it to the agent who owns it.
-  const inCall =
-    task.status === "QUEUED" && task.assignedAgentId === guard.userId
-      ? claimTask(task, guard.userId, now)
-      : task;
-  const result = recordOutcome(inCall, parsed.data, {
-    logId: `log-${Date.now()}`,
-    agentId: guard.userId,
-    calledAt: now,
-    supervisorOverride: access.supervisorOverride,
-  });
-  if (!result.ok) {
-    return NextResponse.json({ error: { code: "OUTCOME_REJECTED", message: result.error } }, { status: 422 });
-  }
-  demoCallTasks[idx] = result.task;
-  demoCallLogs.push(result.log);
-  const canViewFullPhone = guard.permissions.includes("customers.view_full_phone");
-  const next = nextTaskForAgent(demoCallTasks, guard.userId, now);
-  return NextResponse.json({
-    data: {
-      task: toQueueItemView(result.task, canViewFullPhone),
-      log: result.log,
-      nextTask: next ? toQueueItemView(next, canViewFullPhone) : null,
-      performance: agentPerformance(demoCallLogs, guard.userId),
-    },
-    meta: { persistence: "in-memory-demo" },
-  });
 }

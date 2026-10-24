@@ -9,7 +9,8 @@ import { vendorApiStore } from "../store";
 // One vendor — Agent 18. GET: vendor (masked phone) + its products with
 // approval states. PATCH: vendor status transition and/or a product
 // approval decision, both validated against the state machines in
-// src/vendors/service.ts. Demo persistence, labelled.
+// src/vendors/service.ts. Vendor record is DB-backed; products remain
+// in-memory (no vendor-product table in the schema) — meta says mixed.
 
 const VENDOR_STATUS_TRANSITIONS: Record<VendorStatus, readonly VendorStatus[]> = {
   PENDING: ["ACTIVE", "REJECTED"],
@@ -30,23 +31,23 @@ const patchSchema = z.object({
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const guard = await requireVendorAdmin("vendors.view");
   if (!guard.ok) return NextResponse.json(vendorGuardError(guard), { status: guard.status });
-  const vendor = vendorApiStore.getVendor(params.id);
+  const vendor = await vendorApiStore.getVendor(params.id);
   if (!vendor) {
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "Vendor not found." } }, { status: 404 });
   }
   return NextResponse.json({
     data: {
       vendor: { ...vendor, phone: maskPhone(vendor.phone) },
-      products: vendorApiStore.listProducts(vendor.id),
+      products: await vendorApiStore.listProducts(vendor.id),
     },
-    meta: { persistence: "in-memory-demo" },
+    meta: { persistence: "mixed", source: "vendor:database, products:in-memory-no-schema-table" },
   });
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const guard = await requireVendorAdmin("vendors.manage");
   if (!guard.ok) return NextResponse.json(vendorGuardError(guard), { status: guard.status });
-  const vendor = vendorApiStore.getVendor(params.id);
+  const vendor = await vendorApiStore.getVendor(params.id);
   if (!vendor) {
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "Vendor not found." } }, { status: 404 });
   }
@@ -65,11 +66,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         { status: 422 },
       );
     }
-    vendorApiStore.setVendorStatus(vendor.id, parsed.data.status);
+    await vendorApiStore.setVendorStatus(vendor.id, parsed.data.status);
   }
   if (parsed.data.productApproval) {
     const { productId, to, rejectionReason } = parsed.data.productApproval;
-    const product = vendorApiStore.getProduct(productId);
+    const product = await vendorApiStore.getProduct(productId);
     if (!product || product.vendorId !== vendor.id) {
       return NextResponse.json({ error: { code: "NOT_FOUND", message: "Vendor product not found." } }, { status: 404 });
     }
@@ -85,14 +86,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         { status: 400 },
       );
     }
-    vendorApiStore.replaceProduct({ ...product, approval: to, rejectionReason });
+    await vendorApiStore.replaceProduct({ ...product, approval: to, rejectionReason });
   }
-  const updated = vendorApiStore.getVendor(vendor.id);
+  const updated = await vendorApiStore.getVendor(vendor.id);
   return NextResponse.json({
     data: {
       vendor: updated ? { ...updated, phone: maskPhone(updated.phone) } : null,
-      products: vendorApiStore.listProducts(vendor.id),
+      products: await vendorApiStore.listProducts(vendor.id),
     },
-    meta: { persistence: "in-memory-demo" },
+    meta: { persistence: "mixed", source: "vendor:database, products:in-memory-no-schema-table" },
   });
 }

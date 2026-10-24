@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { runRule } from "@/automation/engine";
 import { featureGuardError, requireFeatureAdmin } from "@/automation/guard";
-import { demoAutomationStore } from "@/automation/store";
+import { automationStore } from "@/automation/store";
 import { dryRunSchema, type AutomationRule } from "@/automation/types";
 
 // Automation dry-run — Agent 13. Evaluates a rule (stored by ruleId, or a
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
   }
   let rule: AutomationRule;
   if (parsed.data.ruleId) {
-    const stored = demoAutomationStore.getRule(parsed.data.ruleId);
+    const stored = await automationStore.getRule(parsed.data.ruleId);
     if (!stored) {
       return NextResponse.json({ error: { code: "NOT_FOUND", message: "Rule not found." } }, { status: 404 });
     }
@@ -42,6 +42,6 @@ export async function POST(req: Request) {
   const log = runRule(rule, parsed.data.event, { dryRun: true, runId: `run_dry_${Date.now()}` });
   return NextResponse.json({
     data: { log },
-    meta: { persisted: false, applied: false, persistence: "in-memory-demo" },
+    meta: { persisted: false, applied: false, persistence: "database" },
   });
 }

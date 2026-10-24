@@ -1,6 +1,7 @@
 /**
- * Payment link service — Agent 11, Step 44 (E1). Pure logic + in-memory
- * demo store. NO real gateway call.
+ * Payment link service — Agent 11, Step 44 (E1). Pure logic + a
+ * Prisma-backed store (DB swap 2026-10-24, see the store section at the
+ * bottom for the schema-drift notes). NO real gateway call.
  *
  * A payment link lets staff send a customer one URL (SMS / WhatsApp /
  * Messenger) to pay a fixed amount for a specific order — used for COD
@@ -132,37 +133,111 @@ export function cancelPaymentLink(record: PaymentLinkRecord, now: Date = new Dat
 }
 
 /* ------------------------------------------------------------------ */
-/* In-memory demo store — NOT production persistence.                  */
-/* DB version: a payment_links table storing tokenHash (unique),       */
-/* status, expiresAt; lookups are by tokenHash, never by plain token.  */
+/* Prisma-backed store (DB swap 2026-10-24).                           */
+/* payment_links table: tokenHash (unique), status, expiresAt;         */
+/* lookups are by tokenHash, never by plain token. Only the SHA-256     */
+/* hash is ever written — the plain token exists only in the create    */
+/* response, exactly as before.                                        */
+/*                                                                     */
+/* SCHEMA DRIFT (reported, worked around — schema NOT changed):        */
+/*  - PaymentLink has NO `purpose` column: the purpose is accepted at  */
+/*    creation (it is part of the create contract) but cannot persist; */
+/*    read-backs report the default "cod_advance".                     */
+/*  - PaymentLink has NO `cancelledAt` column: the CANCELLED status    */
+/*    persists, the timestamp reads back null.                         */
+/*  - PaymentLink.orderId is an optional FK to Order: the caller's     */
+/*    order reference (id or orderNo) is resolved to the Order row at  */
+/*    write time; an unresolvable order fails the write with           */
+/*    SandboxOrderNotFoundError instead of storing an orphan. On read,  */
+/*    the order's orderNo is preferred for display, as before.         */
 /* ------------------------------------------------------------------ */
 
-export class InMemoryPaymentLinkStore {
-  private readonly byId = new Map<string, PaymentLinkRecord>();
-  private readonly idByTokenHash = new Map<string, string>();
+import { prisma } from "@advance-ecommerce/db";
+import { SandboxOrderNotFoundError, resolveOrderRef } from "../integrations/sandbox/db-store";
 
-  add(record: PaymentLinkRecord): void {
-    this.byId.set(record.id, record);
-    this.idByTokenHash.set(record.tokenHash, record.id);
+type PaymentLinkRowShape = {
+  id: string;
+  tokenHash: string;
+  orderId: string | null;
+  amountPoisha: number;
+  status: string;
+  expiresAt: Date;
+  paidAt: Date | null;
+  createdAt: Date;
+  order: { orderNo: string } | null;
+};
+
+function linkRowToRecord(row: PaymentLinkRowShape): PaymentLinkRecord {
+  return {
+    id: row.id,
+    orderId: row.order?.orderNo ?? row.orderId ?? "",
+    amountPoisha: row.amountPoisha,
+    purpose: "cod_advance", // drift: no purpose column (see header)
+    tokenHash: row.tokenHash,
+    status: row.status.toLowerCase() as PaymentLinkStatus,
+    createdAt: row.createdAt.toISOString(),
+    expiresAt: row.expiresAt.toISOString(),
+    paidAt: row.paidAt ? row.paidAt.toISOString() : null,
+    cancelledAt: null, // drift: no cancelledAt column (see header)
+  };
+}
+
+const linkStatusEnum = (s: PaymentLinkStatus) => s.toUpperCase() as "ACTIVE" | "PAID" | "EXPIRED" | "CANCELLED";
+
+export class PrismaPaymentLinkStore {
+  async add(record: PaymentLinkRecord): Promise<void> {
+    const order = await resolveOrderRef(record.orderId);
+    if (!order) throw new SandboxOrderNotFoundError(record.orderId);
+    await prisma.paymentLink.create({
+      data: {
+        id: record.id,
+        tokenHash: record.tokenHash,
+        orderId: order.id,
+        amountPoisha: record.amountPoisha,
+        status: linkStatusEnum(record.status),
+        expiresAt: new Date(record.expiresAt),
+        paidAt: record.paidAt ? new Date(record.paidAt) : null,
+      },
+    });
   }
 
-  getById(id: string): PaymentLinkRecord | null {
-    return this.byId.get(id) ?? null;
+  async getById(id: string): Promise<PaymentLinkRecord | null> {
+    const row = await prisma.paymentLink.findUnique({
+      where: { id },
+      include: { order: { select: { orderNo: true } } },
+    });
+    return row ? linkRowToRecord(row) : null;
   }
 
-  getByToken(token: string): PaymentLinkRecord | null {
-    const id = this.idByTokenHash.get(hashLinkToken(token));
-    return id ? (this.byId.get(id) ?? null) : null;
+  async getByToken(token: string): Promise<PaymentLinkRecord | null> {
+    const row = await prisma.paymentLink.findUnique({
+      where: { tokenHash: hashLinkToken(token) },
+      include: { order: { select: { orderNo: true } } },
+    });
+    return row ? linkRowToRecord(row) : null;
   }
 
-  update(record: PaymentLinkRecord): void {
-    this.byId.set(record.id, record);
+  async update(record: PaymentLinkRecord): Promise<void> {
+    await prisma.paymentLink.update({
+      where: { id: record.id },
+      data: {
+        status: linkStatusEnum(record.status),
+        paidAt: record.paidAt ? new Date(record.paidAt) : null,
+      },
+    });
   }
 
-  listByOrder(orderId: string): PaymentLinkRecord[] {
-    return [...this.byId.values()].filter((r) => r.orderId === orderId);
+  async listByOrder(orderRef: string): Promise<PaymentLinkRecord[]> {
+    const order = await resolveOrderRef(orderRef);
+    if (!order) return [];
+    const rows = await prisma.paymentLink.findMany({
+      where: { orderId: order.id },
+      include: { order: { select: { orderNo: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    return rows.map(linkRowToRecord);
   }
 }
 
-/** Shared demo store for the admin BD routes (in-memory-demo persistence). */
-export const demoPaymentLinkStore = new InMemoryPaymentLinkStore();
+/** Shared DB-backed store for the admin BD routes + public /pay pages. */
+export const paymentLinkStore = new PrismaPaymentLinkStore();

@@ -1,13 +1,14 @@
 /**
- * POS demo catalog for the API routes — Agent 38.
+ * POS catalog for the API routes — Agent 38; catalog DB swap 2026-10-24.
  *
- * Built from the TEMPORARY MOCK catalog (src/catalog/mock MOCK_PRODUCTS):
- * one entry per product variant, in the exact lookup shape
- * src/pos/register.ts resolveScan() expects. Labelled TEMPORARY MOCK —
- * when the catalog DB service lands, this reads variants from there
- * instead and the scan/sale contracts do not change.
+ * Built from the REAL catalog DB: ACTIVE products from the Prisma
+ * repository (via src/catalog/api getCatalogRepository), one entry per
+ * active variant, in the exact lookup shape src/pos/register.ts
+ * resolveScan() expects. The scan/sale contracts are unchanged. Throws
+ * DbNotReadyError when the DB is unavailable — routes surface it as
+ * 503 DB_NOT_READY; there is no mock fallback.
  */
-import { MOCK_PRODUCTS } from "@/catalog/mock";
+import { getCatalogRepository } from "@/catalog/api";
 
 export interface PosCatalogItem {
   variantId: string;
@@ -17,9 +18,11 @@ export interface PosCatalogItem {
   stock: number;
 }
 
-export function posCatalog(): PosCatalogItem[] {
+export async function posCatalog(): Promise<PosCatalogItem[]> {
+  const repo = await getCatalogRepository();
+  const { products } = await repo.listProducts({ status: "ACTIVE", page: 1, pageSize: 100 });
   const items: PosCatalogItem[] = [];
-  for (const product of MOCK_PRODUCTS) {
+  for (const product of products) {
     for (const variant of product.variants) {
       if (!variant.isActive) continue;
       const attributeText = Object.values(variant.attributes).join(" / ");

@@ -2,9 +2,12 @@
 
 // Cart page client — Agent 33 (Storefront Cart Page).
 // State: the existing guest cart (src/cart/persistence, localStorage).
-// When no guest cart exists yet, a TEMPORARY DEMO cart built from the
-// TEMPORARY MOCK catalog is shown (labelled); the first edit persists it
-// as the real guest cart. Totals preview uses the same pipeline order as
+// When no guest cart exists yet, the honest EMPTY cart state renders —
+// no fabricated demo items. Product details resolve against the real
+// catalog list passed as a prop by the server shell (ACTIVE products
+// from the Prisma repository via src/catalog/server-read); items whose
+// product left the catalog fall back to their add-time snapshot.
+// Totals preview uses the same pipeline order as
 // checkout: subtotal -> item discounts -> coupon -> shipping -> COD fee
 // -> tax -> grand total, computed with checkout/pricing computePricing().
 // Coupon rules run through marketing/service applyCoupon() on DEMO coupon
@@ -18,6 +21,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Money } from "@/components/ui/money";
 import { computePricing } from "@/checkout/pricing";
+import type { PublicProduct } from "@/catalog/types";
 import { getWishlistIds, toggleWishlistId } from "@/catalog/wishlist";
 import { applyCoupon, type CouponRecord } from "@/marketing/service";
 import {
@@ -29,7 +33,6 @@ import { cartSubtotalPoisha, type Cart } from "../types";
 import {
   CART_SHIPPING_ZONES,
   COUPON_REASON_BN,
-  buildDemoCart,
   cartItemDiscountPoisha,
   findDemoCoupon,
   resolveCartLines,
@@ -42,9 +45,8 @@ type CouponState = {
   shippingPoisha: number;
 } | null;
 
-export default function CartPageClient() {
+export default function CartPageClient({ catalogProducts }: { catalogProducts: PublicProduct[] }) {
   const [cart, setCart] = useState<Cart | null>(null);
-  const [isDemoCart, setIsDemoCart] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [zoneId, setZoneId] = useState<CartShippingZone["id"]>("inside_dhaka");
   const [couponInput, setCouponInput] = useState("");
@@ -56,16 +58,17 @@ export default function CartPageClient() {
     const guest = loadGuestCart();
     if (guest && guest.items.length > 0) {
       setCart(guest);
-      setIsDemoCart(false);
       if (guest.couponCode) setCouponInput(guest.couponCode);
     } else {
-      setCart(buildDemoCart());
-      setIsDemoCart(true);
+      setCart(null);
     }
     setLoaded(true);
   }, []);
 
-  const lines = useMemo(() => (cart ? resolveCartLines(cart) : []), [cart]);
+  const lines = useMemo(
+    () => (cart ? resolveCartLines(cart, catalogProducts) : []),
+    [cart, catalogProducts],
+  );
   const zone =
     CART_SHIPPING_ZONES.find((z) => z.id === zoneId) ?? CART_SHIPPING_ZONES[0]!;
 
@@ -101,7 +104,6 @@ export default function CartPageClient() {
     const withTime = { ...next, updatedAt: new Date().toISOString() };
     setCart(withTime);
     if (withTime.ownerType === "guest") saveGuestCart(withTime);
-    setIsDemoCart(false);
   }
 
   function setQuantity(variantId: string, quantity: number) {
@@ -197,7 +199,7 @@ export default function CartPageClient() {
       <main className="mx-auto min-w-0 max-w-7xl px-4 py-6">
         <h1 className="text-xl font-bold">আপনার কার্ট</h1>
         <p className="mt-1 text-xs text-text-subtle">
-          TEMPORARY DEMO — পণ্যের তথ্য mock catalog থেকে আসে; কার্ট এই ব্রাউজারেই সংরক্ষিত থাকে।
+          পণ্যের তথ্য আসল ক্যাটালগ (ডাটাবেস) থেকে আসে; কার্ট এই ব্রাউজারেই সংরক্ষিত থাকে।
         </p>
         <div className="mt-8 rounded-xl border bg-card px-4 py-10 text-center">
           <p aria-hidden="true" className="text-4xl">🛒</p>
@@ -218,8 +220,7 @@ export default function CartPageClient() {
     <main className="mx-auto min-w-0 max-w-7xl px-4 py-6">
       <h1 className="text-xl font-bold">আপনার কার্ট</h1>
       <p className="mt-1 text-xs text-text-subtle">
-        TEMPORARY DEMO — পণ্যের তথ্য mock catalog থেকে আসে; কার্ট এই ব্রাউজারেই সংরক্ষিত থাকে।
-        {isDemoCart ? " এটি একটি ডেমো কার্ট — দোকান থেকে পণ্য যোগ করলে আপনার আসল কার্ট দেখাবে।" : ""}
+        পণ্যের তথ্য আসল ক্যাটালগ (ডাটাবেস) থেকে আসে; কার্ট এই ব্রাউজারেই সংরক্ষিত থাকে।
       </p>
 
       {notice ? (

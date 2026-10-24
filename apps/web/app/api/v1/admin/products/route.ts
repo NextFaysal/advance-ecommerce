@@ -11,6 +11,10 @@ import { productInputSchema, validateCreateInput } from "@/catalog/service";
 
 // GET /api/v1/admin/products — admin list. Cost price returned ONLY
 // when the caller has products.edit_cost_price; otherwise stripped.
+// Status: ?status=DRAFT|ACTIVE|ARCHIVED filters; ?status=ALL — and no
+// status param at all — returns every status, because an admin list
+// that hides drafts by default makes them unmanageable. (The public
+// storefront list is a different route and stays ACTIVE-only.)
 export async function GET(req: Request) {
   const session = await requireAdminSession();
   if (session instanceof NextResponse) return session;
@@ -23,7 +27,7 @@ export async function GET(req: Request) {
     const result = await repo.listProducts({
       query: url.searchParams.get("q") ?? undefined,
       categorySlug: url.searchParams.get("category") ?? undefined,
-      status: url.searchParams.get("status") ?? undefined,
+      status: url.searchParams.get("status") ?? "ALL",
       page: Number(url.searchParams.get("page") ?? "1") || 1,
       pageSize: Number(url.searchParams.get("pageSize") ?? "20") || 20,
     });
@@ -44,8 +48,9 @@ export async function GET(req: Request) {
 // POST /api/v1/admin/products — admin create.
 // Zod validated. Slug unique (checked, DB unique is backstop).
 // Duplicate SKUs in payload rejected. Audit written. Initial stock
-// goes through ledger entries only — see service.ts. Best-effort
-// Meilisearch index after a successful create (never fails the create).
+// goes through ledger entries only — see service.ts. Search-index
+// sync happens inside the repository (fire-and-forget, never fails
+// the create) — see PrismaCatalogRepository.createProduct.
 export async function POST(req: Request) {
   const session = await requireAdminSession();
   if (session instanceof NextResponse) return session;
@@ -97,12 +102,6 @@ export async function POST(req: Request) {
       ip: req.headers.get("x-forwarded-for") ?? undefined,
       userAgent: req.headers.get("user-agent") ?? undefined,
     });
-    try {
-      const { indexProduct } = await import("@/catalog/indexer");
-      await indexProduct(product);
-    } catch {
-      // Indexing is best-effort only.
-    }
     return NextResponse.json(
       { data: { product, ledgerEntries, ledgerPending } },
       { status: 201 },

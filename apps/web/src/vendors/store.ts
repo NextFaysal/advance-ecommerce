@@ -1,6 +1,18 @@
-// In-memory DEMO store — Agent 16. TEMPORARY: replaced by Prisma-backed
-// stores behind these same shapes once Prisma generate succeeds.
+// Vendor store — Agent 16. Vendor RECORDS are DB-backed since
+// 2026-10-24 (PrismaVendorStore in ./db-store.ts, used by the vendor API
+// routes). VendorProduct still lives ONLY here, in memory: the merged
+// schema has NO vendor-product table (products are core Product rows
+// with no vendor link), so product approvals cannot persist yet —
+// reported as schema drift by the DB-swap pass. This demo class also
+// serves the admin page playground (sync, SAMPLE rows).
 import type { Vendor, VendorProduct } from "./types";
+
+export interface VendorStore {
+  listVendors(): Promise<Vendor[]>;
+  getVendor(id: string): Promise<Vendor | undefined>;
+  addVendor(v: Vendor): Promise<Vendor>;
+  setVendorStatus(id: string, status: Vendor["status"]): Promise<void>;
+}
 
 class DemoVendorStore {
   private vendors: Vendor[] = [

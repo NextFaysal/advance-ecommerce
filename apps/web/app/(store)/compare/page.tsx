@@ -5,14 +5,14 @@
  * Selection is the browser-local compare list (max 3) synced via
  * src/storefront-ux/components/CompareTray.tsx; the table itself is
  * built by the pure buildComparison() (src/storefront-ux/compare.ts),
- * which flags rows whose values differ. Products resolve from
- * TEMPORARY MOCK catalog data until the DB swap (labelled on page).
+ * which flags rows whose values differ. Products resolve from the real
+ * public products API (ACTIVE-only) via src/catalog/public-client.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatBdt } from "@advance-ecommerce/validators";
-import { MOCK_PRODUCTS } from "@/catalog/mock";
-import { toPublicProduct, type PublicProduct } from "@/catalog/types";
+import { fetchPublicProducts } from "@/catalog/public-client";
+import type { PublicProduct } from "@/catalog/types";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buildComparison } from "@/storefront-ux/compare";
 import { useCompareIds } from "@/storefront-ux/components/CompareTray";
@@ -20,16 +20,23 @@ import { useCompareIds } from "@/storefront-ux/components/CompareTray";
 export default function ComparePage() {
   const { ids, setIds } = useCompareIds();
   const [loaded, setLoaded] = useState(false);
+  const [catalog, setCatalog] = useState<PublicProduct[]>([]);
 
   useEffect(() => {
     // useCompareIds syncs the ids on mount; this just gates the empty state.
     setLoaded(true);
+    let cancelled = false;
+    void fetchPublicProducts().then((all) => {
+      if (!cancelled) setCatalog(all);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const products: PublicProduct[] = ids
-    .map((id) => MOCK_PRODUCTS.find((p) => p.id === id))
-    .filter((p): p is NonNullable<typeof p> => Boolean(p))
-    .map(toPublicProduct);
+    .map((id) => catalog.find((p) => p.id === id))
+    .filter((p): p is NonNullable<typeof p> => Boolean(p));
   const table = buildComparison(products);
 
   function remove(productId: string) {
@@ -39,7 +46,7 @@ export default function ComparePage() {
   return (
     <main className="mx-auto min-w-0 max-w-7xl px-4 py-6">
       <h1 className="text-xl font-bold">পণ্য তুলনা</h1>
-      <p className="mt-1 text-xs text-slate-400">TEMPORARY — mock catalog data, তুলনার তালিকা এই ব্রাউজারেই থাকে।</p>
+      <p className="mt-1 text-xs text-slate-400">পণ্যের তথ্য আসল ক্যাটালগ থেকে আসে; তুলনার তালিকা এই ব্রাউজারেই থাকে।</p>
 
       {loaded && products.length === 0 ? (
         <div className="mt-6">

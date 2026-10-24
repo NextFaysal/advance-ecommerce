@@ -1,9 +1,9 @@
 // COD settlement report (sandbox) — Agent 9, Step 22.
 // GET /api/v1/admin/payments/cod-settlement?provider=steadfast|pathao|redx|all
-// Permission: payments.view. Data comes from the in-memory sandbox store
-// (simulated shipments only, sandbox: true in the response). The real
-// report must aggregate DB shipments and reconcile against the courier
-// invoice — see src/integrations/sandbox/cod-settlement.ts.
+// Permission: payments.view. Data aggregates the persisted Shipment rows
+// (simulated bookings only, sandbox: true in the response) and is
+// reconciled against the courier invoice in bd/courier-reconciliation.ts
+// — see src/integrations/sandbox/cod-settlement.ts.
 import { NextResponse } from "next/server";
 import { requireAdminPermission } from "@/integrations/sandbox/admin-auth";
 import { buildCodSettlementReport } from "@/integrations/sandbox/cod-settlement";
@@ -25,5 +25,5 @@ export async function GET(req: Request) {
       { status: 400 },
     );
   }
-  return NextResponse.json({ data: buildCodSettlementReport(provider) });
+  return NextResponse.json({ data: await buildCodSettlementReport(provider) });
 }

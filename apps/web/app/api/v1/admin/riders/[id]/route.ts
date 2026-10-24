@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireRiderAdmin, riderGuardError } from "@/riders/guard";
 import { codHandoverLine, computeRiderPerformance, toRiderView } from "@/riders/service";
-import { demoRiderStore } from "@/riders/store";
+import { riderStore } from "@/riders/db-store";
 import type { RiderStatus } from "@/riders/types";
 
 // One rider — Agent 18 (E3). GET: rider (masked) + performance + COD
@@ -18,11 +18,11 @@ const patchSchema = z.object({
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const guard = await requireRiderAdmin("riders.view");
   if (!guard.ok) return NextResponse.json(riderGuardError(guard), { status: guard.status });
-  const rider = demoRiderStore.getRider(params.id);
+  const rider = await riderStore.getRider(params.id);
   if (!rider) {
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "Rider not found." } }, { status: 404 });
   }
-  const deliveries = demoRiderStore.listDeliveries(rider.id);
+  const deliveries = await riderStore.listDeliveries(rider.id);
   return NextResponse.json({
     data: {
       rider: toRiderView(rider),
@@ -30,14 +30,14 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       codHandover: deliveries.filter((d) => d.status === "DELIVERED").map(codHandoverLine),
       deliveries,
     },
-    meta: { persistence: "in-memory-demo" },
+    meta: { persistence: "database" },
   });
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const guard = await requireRiderAdmin("riders.manage");
   if (!guard.ok) return NextResponse.json(riderGuardError(guard), { status: guard.status });
-  const rider = demoRiderStore.getRider(params.id);
+  const rider = await riderStore.getRider(params.id);
   if (!rider) {
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "Rider not found." } }, { status: 404 });
   }
@@ -50,9 +50,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     );
   }
   const updated = { ...rider, status: parsed.data.status };
-  demoRiderStore.replaceRider(updated);
+  await riderStore.replaceRider(updated);
   return NextResponse.json({
     data: { rider: toRiderView(updated) },
-    meta: { persistence: "in-memory-demo" },
+    meta: { persistence: "database" },
   });
 }

@@ -9,9 +9,8 @@
  * Phone in list output is masked by default (phoneForViewer) — full phone
  * only for a viewer with customers.view_full_phone.
  *
- * TEMPORARY MOCK: list reads src/orders/mock.ts. Replace with a Prisma Order
- * query (filters + pagination in SQL) once Agent 6 merges the schema and
- * Prisma generate succeeds. Filters/pagination below mirror that query.
+ * DB-BACKED: list reads real Order rows via src/orders/repository
+ * (filters + pagination in SQL). The bulk POST below is unchanged.
  * Bulk POST registers a real job in src/jobs/bulk-actions.ts and triggers
  * its in-process processor (BullMQ is not installed yet — processBulkJob is
  * the exact function the future worker will run). It returns 202 with the
@@ -25,7 +24,7 @@ import { z } from "zod";
 import { validateSessionToken } from "@/lib/auth";
 import { phoneForViewer, requirePermission, RbacError, type PermissionKey } from "@/lib/rbac";
 import { writeAudit } from "@/lib/audit";
-import { MOCK_ORDERS } from "@/orders/mock";
+import { listOrders } from "@/orders/repository";
 import type { Order } from "@/orders/types";
 import { enqueueBulkJob, processBulkJob } from "@/jobs/bulk-actions";
 
@@ -70,27 +69,19 @@ export async function GET(req: Request) {
     return err("VALIDATION_ERROR", "List query invalid.", 400, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`));
   }
   const q = parsed.data;
-  let rows = [...MOCK_ORDERS];
-  if (q.status) rows = rows.filter((o) => o.status === q.status);
-  if (q.paymentStatus) rows = rows.filter((o) => o.paymentStatus === q.paymentStatus);
-  if (q.paymentMethod) rows = rows.filter((o) => o.paymentMethod === q.paymentMethod);
-  if (q.courier) rows = rows.filter((o) => (o.courier ?? "") === q.courier);
-  if (q.search) {
-    const needle = q.search.toLowerCase();
-    rows = rows.filter(
-      (o) =>
-        o.orderNo.toLowerCase().includes(needle) ||
-        o.customerName.toLowerCase().includes(needle) ||
-        o.customerPhone.includes(q.search as string) ||
-        (o.trackingId ?? "").toLowerCase().includes(needle),
-    );
-  }
-  const total = rows.length;
-  const start = (q.page - 1) * q.pageSize;
-  const pageRows = rows.slice(start, start + q.pageSize).map((o) => publicOrder(o, auth.session.user.permissions));
+  const { rows, total } = await listOrders({
+    status: q.status,
+    paymentStatus: q.paymentStatus,
+    paymentMethod: q.paymentMethod,
+    courier: q.courier,
+    search: q.search,
+    page: q.page,
+    pageSize: q.pageSize,
+  });
+  const pageRows = rows.map((o) => publicOrder(o, auth.session.user.permissions));
   return NextResponse.json({
     data: pageRows,
-    meta: { total, page: q.page, pageSize: q.pageSize, db: "NOT_WIRED", source: "TEMPORARY_MOCK" },
+    meta: { total, page: q.page, pageSize: q.pageSize, db: "PRISMA", source: "DATABASE" },
   });
 }
 

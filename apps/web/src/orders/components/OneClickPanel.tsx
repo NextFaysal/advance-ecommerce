@@ -2,9 +2,11 @@
 
 // One-Click Flow panel — Confirm → Print label → Book courier → Send SMS.
 // Runs the steps in order using src/orders/one-click-flow.ts state:
-//  - Confirm: the real state-machine transition (transitionOrder). From
-//    PENDING it confirms; an already-confirmed order counts as done; a
-//    status that can never confirm fails the step and stops the flow.
+//  - Confirm: PATCH /api/v1/admin/orders/[id] { to: "CONFIRMED" } — the
+//    server runs the state machine and PERSISTS (invalid transitions
+//    come back 422). From PENDING it confirms; an already-confirmed
+//    order counts as done; a rejected confirm fails the step and stops
+//    the flow.
 //  - Print label: builds the label data (print.ts) — the preview/print UI
 //    is the PrintPanel next to this panel.
 //  - Book courier: SANDBOX booking via POST /api/v1/admin/shipments
@@ -25,7 +27,6 @@ import { displayPhone } from "../customer";
 import { initialOneClickFlow, ONE_CLICK_STEPS, setFlowStep } from "../one-click-flow";
 import type { FlowStepId, FlowStepStatus, OneClickFlowState } from "../one-click-flow";
 import { buildPrintData } from "../print";
-import { transitionOrder } from "../state-machine";
 import type { Order } from "../types";
 
 const STEP_LABEL_BN: Record<FlowStepId, string> = {
@@ -87,18 +88,34 @@ export function OneClickPanel({
         setFlow(f);
         return { flow: f, order: currentOrder, ok: true };
       }
-      const result = transitionOrder(currentOrder, "CONFIRMED", "staff-1");
-      if (!result.ok) {
-        note(step, result.error);
-        f = setFlowStep(f, step, "failed", result.error);
+      try {
+        const res = await fetch(`/api/v1/admin/orders/${encodeURIComponent(currentOrder.id)}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ to: "CONFIRMED" }),
+        });
+        const body = (await res.json().catch(() => null)) as
+          | { data: Order }
+          | { error: { code: string; message: string } }
+          | null;
+        if (res.ok && body && "data" in body) {
+          onOrderChange(body.data);
+          note(step, "API দিয়ে কনফার্ম হয়েছে — স্টেট মেশিন যাচাই করে DB-তে সংরক্ষিত হয়েছে।");
+          f = setFlowStep(f, step, "done");
+          setFlow(f);
+          return { flow: f, order: body.data, ok: true };
+        }
+        const message = body && "error" in body ? `${body.error.code}: ${body.error.message}` : `HTTP ${res.status}`;
+        note(step, `কনফার্ম ব্যর্থ: ${message} — কিছুই সেভ হয়নি।`);
+        f = setFlowStep(f, step, "failed", message);
+        setFlow(f);
+        return { flow: f, order: currentOrder, ok: false };
+      } catch {
+        note(step, "কনফার্ম ব্যর্থ: নেটওয়ার্ক ত্রুটি — API-তে পৌঁছানো যায়নি, কিছুই সেভ হয়নি।");
+        f = setFlowStep(f, step, "failed", "network error");
         setFlow(f);
         return { flow: f, order: currentOrder, ok: false };
       }
-      onOrderChange(result.order);
-      note(step, "স্টেট মেশিন দিয়ে কনফার্ম হয়েছে (লোকাল ডেমো — DB-তে সেভ হয়নি)।");
-      f = setFlowStep(f, step, "done");
-      setFlow(f);
-      return { flow: f, order: result.order, ok: true };
     }
 
     if (step === "print_label") {

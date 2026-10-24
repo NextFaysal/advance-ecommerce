@@ -3,14 +3,18 @@ import { z } from "zod";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { buildOrderDraft, extractPhoneFromMessages } from "@/inbox/conversion";
 import { demoInboxFlags, isInboxEnabled } from "@/inbox/flags";
-import { demoConversations, demoMessages, messagesForConversation } from "@/inbox/service";
+import { getConversationDb } from "@/inbox/store";
 
 // Message -> order DRAFT — Agent 14. RBAC: orders.create.
 // A draft is NOT an order. It pre-fills the manual-order form (Step 17); the
 // actual order is created only by POST /api/v1/public/orders after staff
 // confirmation, with a real idempotency key. If the phone was not given
-// explicitly, it is extracted from the thread's inbound messages — and if no
-// valid BD phone exists anywhere, the draft fails (phone-first rule).
+// explicitly, it is resolved from the conversation (captured phone, else
+// extracted from the thread's inbound messages — the DB store derives the
+// captured phone from the stored message bodies) — and if no valid BD
+// phone exists anywhere, the draft fails (phone-first rule).
+// Persistence: conversations/messages come from the Prisma DB store
+// (src/inbox/store.ts); the draft itself is pure logic, never persisted.
 const draftSchema = z.object({
   conversationId: z.string().min(1),
   customerName: z.string().min(2),
@@ -45,14 +49,23 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const conv = demoConversations.find((c) => c.id === parsed.data.conversationId);
-  if (!conv) {
+  let found: Awaited<ReturnType<typeof getConversationDb>>;
+  try {
+    found = await getConversationDb(parsed.data.conversationId);
+  } catch {
+    return NextResponse.json(
+      { error: { code: "DB_NOT_READY", message: "Inbox database is not available." } },
+      { status: 503 },
+    );
+  }
+  if (!found) {
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "Conversation not found." } }, { status: 404 });
   }
+  const { conversation: conv, messages } = found;
   const phoneRaw =
     parsed.data.phone ??
     conv.customerPhone ??
-    extractPhoneFromMessages(messagesForConversation(demoMessages, conv.id)) ??
+    extractPhoneFromMessages(messages) ??
     "";
   const result = buildOrderDraft({
     conversation: conv,

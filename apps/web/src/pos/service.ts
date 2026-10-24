@@ -1,7 +1,12 @@
 /**
- * POS demo registers/shifts/sales — TEMPORARY in-memory, lost on restart.
- * In production these live in pos_registers / pos_shifts / pos_sales tables
- * and offline sales sync to the orders API by idempotencyKey. Agent 14.
+ * POS demo registers/shifts/sales — FIXTURE ONLY. Agent 14.
+ *
+ * PERSISTENCE SWAP DONE: the production path is src/pos/store.ts
+ * (Prisma tables PosRegister / PosShift / PosSale); all POS routes and
+ * the admin page read/write through it. The arrays below remain as
+ * labelled fixtures and are no longer read by any route/page. (Offline
+ * sales sync to the orders API by idempotencyKey is still future work —
+ * POS sales do not create Orders.)
  */
 import type { PosRegister, PosSale, PosShift } from "./types";
 

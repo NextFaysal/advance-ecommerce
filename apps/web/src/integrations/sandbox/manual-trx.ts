@@ -12,12 +12,24 @@
 //     The TrxID itself is never written to an audit record beyond the
 //     submission id (audit.ts sanitises token-like keys, but callers must
 //     not pass the full TrxID either).
-// The DB version must enforce rule 1 with a UNIQUE index on
-// manual_trx_submissions(method, trxId) — this in-memory check is the
-// sandbox equivalent, not a concurrency-safe substitute.
+// Persistence: DB-backed since 2026-10-24 (./db-store.ts). Rule 1 is
+// enforced by the UNIQUE index on manual_trx_submissions(method, trxId)
+// — trxIds are stored normalised (trim + uppercase), so the DB
+// constraint is exactly the duplicate rule; the checks below remain as
+// the friendly first pass and defence in depth.
 import { z } from "zod";
 import type { DuplicateTrxCheck, ManualTrxSubmission } from "../payment";
-import { findManualTrxByMethodAndTrx, normalizeTrxId, sandboxStore } from "./store";
+import { markOrderPayment } from "../../orders/repository";
+import { normalizeTrxId } from "./store";
+import {
+  SandboxOrderNotFoundError,
+  createManualTrxRow,
+  findApprovedManualTrx,
+  findManualTrxByMethodAndTrxDb,
+  getManualTrxById,
+  listManualTrxDb,
+  updateManualTrxReview,
+} from "./db-store";
 import { hash8 } from "./deterministic";
 
 export const manualTrxCreateSchema = z.object({
@@ -36,11 +48,11 @@ export const manualTrxReviewSchema = z.object({
 
 export type ManualTrxReviewInput = z.infer<typeof manualTrxReviewSchema>;
 
-export function checkDuplicateTrx(
+export async function checkDuplicateTrx(
   method: ManualTrxSubmission["method"],
   trxId: string,
-): DuplicateTrxCheck {
-  const existing = findManualTrxByMethodAndTrx(method, trxId);
+): Promise<DuplicateTrxCheck> {
+  const existing = await findManualTrxByMethodAndTrxDb(method, trxId);
   return {
     method,
     trxId: normalizeTrxId(trxId),
@@ -53,10 +65,10 @@ export type CreateManualTrxResult =
   | { ok: true; submission: ManualTrxSubmission }
   | { ok: false; error: string; duplicate: DuplicateTrxCheck };
 
-export function createManualTrxSubmission(
+export async function createManualTrxSubmission(
   raw: unknown,
   idempotencyKey: string,
-): CreateManualTrxResult {
+): Promise<CreateManualTrxResult> {
   const parsed = manualTrxCreateSchema.safeParse(raw);
   if (!parsed.success) {
     return {
@@ -65,24 +77,36 @@ export function createManualTrxSubmission(
       duplicate: { method: "bkash", trxId: "", existingSubmissionId: null, isDuplicate: false },
     };
   }
-  const duplicate = checkDuplicateTrx(parsed.data.method, parsed.data.trxId);
+  const duplicate = await checkDuplicateTrx(parsed.data.method, parsed.data.trxId);
   if (duplicate.isDuplicate) {
     return { ok: false, error: "Duplicate TrxID for this method.", duplicate };
   }
-  const submission: ManualTrxSubmission = {
-    id: `sbx-trx-${hash8(`${parsed.data.method}:${normalizeTrxId(parsed.data.trxId)}:${idempotencyKey}`)}`,
-    orderId: parsed.data.orderId,
-    method: parsed.data.method,
-    trxId: normalizeTrxId(parsed.data.trxId),
-    senderPhone: parsed.data.senderPhone,
-    amountPoisha: parsed.data.amountPoisha,
-    status: "pending",
-    reviewedById: null,
-    reviewNote: null,
-    submittedAt: new Date().toISOString(),
-  };
-  sandboxStore.manualTrx.set(submission.id, submission);
-  return { ok: true, submission };
+  const id = `sbx-trx-${hash8(`${parsed.data.method}:${normalizeTrxId(parsed.data.trxId)}:${idempotencyKey}`)}`;
+  try {
+    const submission = await createManualTrxRow({
+      id,
+      orderRef: parsed.data.orderId,
+      method: parsed.data.method,
+      trxId: parsed.data.trxId,
+      senderPhone: parsed.data.senderPhone,
+      amountPoisha: parsed.data.amountPoisha,
+    });
+    return { ok: true, submission };
+  } catch (err) {
+    if (err instanceof SandboxOrderNotFoundError) {
+      return {
+        ok: false,
+        error: "Order not found for this submission.",
+        duplicate: { method: parsed.data.method, trxId: normalizeTrxId(parsed.data.trxId), existingSubmissionId: null, isDuplicate: false },
+      };
+    }
+    // UNIQUE(method, trxId) backstop: a concurrent create won the race.
+    if (typeof err === "object" && err !== null && (err as { code?: string }).code === "P2002") {
+      const winner = await checkDuplicateTrx(parsed.data.method, parsed.data.trxId);
+      return { ok: false, error: "Duplicate TrxID for this method.", duplicate: winner };
+    }
+    throw err;
+  }
 }
 
 export type ReviewManualTrxResult =
@@ -91,38 +115,45 @@ export type ReviewManualTrxResult =
 
 /**
  * Approve or reject a pending submission. Approving a (method, TrxID) that
- * another submission already approved is refused even if the store somehow
+ * another submission already approved is refused even if the DB somehow
  * holds two pending rows for it (defence in depth for rule 1).
  */
-export function reviewManualTrx(input: ManualTrxReviewInput, reviewerId: string): ReviewManualTrxResult {
-  const submission = sandboxStore.manualTrx.get(input.submissionId);
+export async function reviewManualTrx(
+  input: ManualTrxReviewInput,
+  reviewerId: string,
+): Promise<ReviewManualTrxResult> {
+  const submission = await getManualTrxById(input.submissionId);
   if (!submission) return { ok: false, error: "Submission not found." };
   if (submission.status !== "pending") {
     return { ok: false, error: `Submission already ${submission.status}; it cannot be reviewed again.` };
   }
   if (input.action === "approve") {
-    for (const other of sandboxStore.manualTrx.values()) {
-      if (
-        other.id !== submission.id &&
-        other.method === submission.method &&
-        normalizeTrxId(other.trxId) === normalizeTrxId(submission.trxId) &&
-        other.status === "approved"
-      ) {
-        return { ok: false, error: "This TrxID has already been approved for another submission." };
-      }
+    const approvedElsewhere = await findApprovedManualTrx(submission.method, submission.trxId, submission.id);
+    if (approvedElsewhere) {
+      return { ok: false, error: "This TrxID has already been approved for another submission." };
     }
-    submission.status = "approved";
-    submission.reviewedById = reviewerId;
-    submission.reviewNote = input.reason;
-    return { ok: true, submission, paymentStatus: "PAID" };
+    const updated = await updateManualTrxReview(submission.id, "approved", reviewerId, input.reason);
+    // Order-paid funnel: the APPROVED submission row above is the
+    // persisted payment fact; the funnel recomputes the linked
+    // Order's payment status from persisted rows (an approved amount
+    // below the order total lands as PARTIAL, never a blind PAID) and
+    // publishes payment.succeeded on the transition into PAID. The
+    // "PAID" returned below stays the review-level claim the route
+    // audits/returns; the ORDER's status is whatever the funnel
+    // derived.
+    await markOrderPayment(updated.orderId, {
+      paymentStatus: "PAID",
+      source: "manual_trx_review",
+      reference: updated.id,
+    });
+    return { ok: true, submission: updated, paymentStatus: "PAID" };
   }
-  submission.status = "rejected";
-  submission.reviewedById = reviewerId;
-  submission.reviewNote = input.reason;
-  return { ok: true, submission, paymentStatus: "FAILED" };
+  const updated = await updateManualTrxReview(submission.id, "rejected", reviewerId, input.reason);
+  return { ok: true, submission: updated, paymentStatus: "FAILED" };
 }
 
-export function listManualTrx(status?: ManualTrxSubmission["status"]): ManualTrxSubmission[] {
-  const all = [...sandboxStore.manualTrx.values()];
-  return status ? all.filter((s) => s.status === status) : all;
+export async function listManualTrx(
+  status?: ManualTrxSubmission["status"],
+): Promise<ManualTrxSubmission[]> {
+  return listManualTrxDb(status);
 }

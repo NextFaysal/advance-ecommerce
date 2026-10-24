@@ -1,93 +1,136 @@
 /**
- * Demo staff store — Agent 39.
+ * Staff data access — DB-backed (Prisma User/Role tables).
  *
- * In-memory stand-in for the User/Role tables behind the staff API. ALL
- * ROWS ARE FICTIONAL (demo-labelled, @sample.invalid emails, no real
- * person, no credential material of any kind — passwords/TOTP secrets are
- * never part of this shape). Real wiring (later): User + Role tables via
- * Prisma, invites sent by the configured email provider; this store is
- * deleted, the route contract stays.
+ * This module used to be an in-memory demo store seeded with fictional
+ * rows (@sample.invalid). It now reads/writes the real User and Role
+ * tables. The member shape the staff route returns is unchanged.
+ *
+ * Schema notes (drift, deliberately NOT papered over):
+ * - User has no status enum and no invitedBy/invitedAt columns. Status is
+ *   derived: isActive → ACTIVE; inactive and never logged in → INVITED;
+ *   inactive after a login → SUSPENDED. invitedBy is always null (not
+ *   tracked); invitedAt is the row's createdAt for INVITED members only.
+ * - An invite creates an INACTIVE User row with an unusable random
+ *   password hash (User.passwordHash is required). The invitee cannot log
+ *   in until an admin activates the account and a real password is set
+ *   through the password-reset flow. No email is sent by the invite.
  */
+import { prisma } from "@advance-ecommerce/db";
 
-export type DemoStaffStatus = "ACTIVE" | "INVITED" | "SUSPENDED";
+export type StaffStatus = "ACTIVE" | "INVITED" | "SUSPENDED";
 
-export interface DemoStaffMember {
+export interface StaffMember {
   id: string;
   name: string;
   email: string;
   role: string;
-  status: DemoStaffStatus;
+  status: StaffStatus;
   totpEnabled: boolean;
   lastLoginAt: string | null; // ISO 8601
   invitedBy: string | null;
   invitedAt: string | null; // ISO 8601
 }
 
-export const demoStaffStore: DemoStaffMember[] = [
-  {
-    id: "staff_sample_owner",
-    name: "SAMPLE মালিক (Demo Owner)",
-    email: "owner@sample.invalid",
-    role: "Owner",
-    status: "ACTIVE",
-    totpEnabled: true,
-    lastLoginAt: "2026-10-24T03:15:00.000Z",
+interface StaffUserRow {
+  id: string;
+  name: string | null;
+  email: string | null;
+  twoFactorEnabled: boolean;
+  lastLoginAt: Date | null;
+  isActive: boolean;
+  createdAt: Date;
+  role: { name: string } | null;
+}
+
+function deriveStatus(user: { isActive: boolean; lastLoginAt: Date | null }): StaffStatus {
+  if (user.isActive) return "ACTIVE";
+  return user.lastLoginAt === null ? "INVITED" : "SUSPENDED";
+}
+
+function toStaffMember(user: StaffUserRow): StaffMember {
+  const status = deriveStatus(user);
+  return {
+    id: user.id,
+    name: user.name ?? "",
+    email: user.email ?? "",
+    role: user.role?.name ?? "",
+    status,
+    totpEnabled: user.twoFactorEnabled,
+    lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
     invitedBy: null,
-    invitedAt: null,
-  },
-  {
-    id: "staff_sample_manager",
-    name: "SAMPLE ম্যানেজার (Demo Manager)",
-    email: "manager@sample.invalid",
-    role: "Manager",
-    status: "ACTIVE",
-    totpEnabled: true,
-    lastLoginAt: "2026-10-24T04:02:00.000Z",
-    invitedBy: "staff_sample_owner",
-    invitedAt: "2026-10-20T04:00:00.000Z",
-  },
-  {
-    id: "staff_sample_processor",
-    name: "SAMPLE অর্ডার প্রসেসর (Demo Processor)",
-    email: "processor@sample.invalid",
-    role: "Order Processor",
-    status: "ACTIVE",
-    totpEnabled: false,
-    lastLoginAt: "2026-10-24T05:40:00.000Z",
-    invitedBy: "staff_sample_owner",
-    invitedAt: "2026-10-21T04:00:00.000Z",
-  },
-  {
-    id: "staff_sample_inventory",
-    name: "SAMPLE ইনভেন্টরি (Demo Inventory)",
-    email: "inventory@sample.invalid",
-    role: "Inventory",
-    status: "ACTIVE",
-    totpEnabled: false,
-    lastLoginAt: "2026-10-23T10:11:00.000Z",
-    invitedBy: "staff_sample_manager",
-    invitedAt: "2026-10-21T06:30:00.000Z",
-  },
-  {
-    id: "staff_sample_support",
-    name: "SAMPLE সাপোর্ট (Demo Support)",
-    email: "support@sample.invalid",
-    role: "Support",
-    status: "INVITED",
-    totpEnabled: false,
-    lastLoginAt: null,
-    invitedBy: "staff_sample_manager",
-    invitedAt: "2026-10-24T02:00:00.000Z",
-  },
-  {
-    id: "staff_sample_accountant",
-    name: "SAMPLE হিসাবরক্ষক (Demo Accountant)",
-    email: "accountant@sample.invalid",
-    role: "Accountant",
-    status: "SUSPENDED",
-    totpEnabled: true,
-    lastLoginAt: "2026-10-18T07:45:00.000Z",
-    invitedBy: "staff_sample_owner",
-    invitedAt: "2026-10-15T04:00:00.000Z",
-  },
-];
+    invitedAt: status === "INVITED" ? user.createdAt.toISOString() : null,
+  };
+}
+
+const staffInclude = { role: { select: { name: true } } } as const;
+
+/** All non-deleted staff users, oldest first. */
+export async function listStaffMembers(): Promise<StaffMember[]> {
+  const users = await prisma.user.findMany({
+    where: { deletedAt: null },
+    include: staffInclude,
+    orderBy: { createdAt: "asc" },
+  });
+  return users.map(toStaffMember);
+}
+
+/** One staff member by email (case-insensitive), or null. */
+export async function findStaffMemberByEmail(email: string): Promise<StaffMember | null> {
+  const user = await prisma.user.findFirst({
+    where: { email: email.toLowerCase(), deletedAt: null },
+    include: staffInclude,
+  });
+  return user === null ? null : toStaffMember(user);
+}
+
+/**
+ * Create an invited (inactive) staff user. `passwordHash` must be a hash of
+ * an unguessable random value — never a real credential — because the
+ * invitee sets their own password later via the reset flow.
+ */
+export async function createStaffInvite(input: {
+  name: string;
+  email: string;
+  roleName: string;
+  passwordHash: string;
+}): Promise<StaffMember> {
+  const role = await prisma.role.findUnique({ where: { name: input.roleName } });
+  if (role === null) throw new Error(`Unknown role: ${input.roleName}`);
+  const user = await prisma.user.create({
+    data: {
+      name: input.name,
+      email: input.email.toLowerCase(),
+      passwordHash: input.passwordHash,
+      roleId: role.id,
+      isActive: false,
+    },
+    include: staffInclude,
+  });
+  return toStaffMember(user);
+}
+
+export interface RoleCatalogueEntry {
+  name: string;
+  permissionCount: number;
+  permissions: string[];
+}
+
+/** Role catalogue from the Role/RolePermission tables (seeded from rbac.ts defaults). */
+export async function listRoleCatalogue(): Promise<RoleCatalogueEntry[]> {
+  const roles = await prisma.role.findMany({
+    include: {
+      permissions: { include: { permission: { select: { key: true } } } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  return roles.map((role) => {
+    const permissions = role.permissions.map((rp) => rp.permission.key).sort();
+    return { name: role.name, permissionCount: permissions.length, permissions };
+  });
+}
+
+/** Names of all roles in the database. */
+export async function listRoleNames(): Promise<string[]> {
+  const roles = await prisma.role.findMany({ select: { name: true }, orderBy: { createdAt: "asc" } });
+  return roles.map((r) => r.name);
+}

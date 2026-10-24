@@ -4,15 +4,16 @@
  * /wishlist — customer wishlist page. Agent 19.
  * Uses the existing localStorage wishlist (src/catalog/wishlist.ts):
  * ids load on mount, removing an item re-renders from the same store.
- * Product details resolve from TEMPORARY MOCK catalog data until the
- * public products API/DB swap lands (labelled on the page).
+ * Product details resolve from the real public products API
+ * (ACTIVE-only, cost stripped) via src/catalog/public-client — an id
+ * whose product is no longer ACTIVE simply drops off the list.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { getWishlistIds, toggleWishlistId } from "@/catalog/wishlist";
-import { MOCK_PRODUCTS } from "@/catalog/mock";
-import { toPublicProduct, type PublicProduct } from "@/catalog/types";
+import { fetchPublicProducts } from "@/catalog/public-client";
+import type { PublicProduct } from "@/catalog/types";
 import { publicPriceRangePoisha } from "@/storefront-ux/quick-view";
 
 export default function WishlistPage() {
@@ -20,9 +21,16 @@ export default function WishlistPage() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     const ids = new Set(getWishlistIds());
-    setProducts(MOCK_PRODUCTS.filter((p) => ids.has(p.id)).map(toPublicProduct));
-    setLoaded(true);
+    void fetchPublicProducts().then((all) => {
+      if (cancelled) return;
+      setProducts(all.filter((p) => ids.has(p.id)));
+      setLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function remove(productId: string) {
@@ -33,7 +41,7 @@ export default function WishlistPage() {
   return (
     <main className="mx-auto min-w-0 max-w-7xl px-4 py-6">
       <h1 className="text-xl font-bold">আমার পছন্দের তালিকা</h1>
-      <p className="mt-1 text-xs text-slate-400">TEMPORARY — mock catalog data, wishlist is saved in this browser only.</p>
+      <p className="mt-1 text-xs text-slate-400">পণ্যের তথ্য আসল ক্যাটালগ থেকে আসে; পছন্দের তালিকা শুধু এই ব্রাউজারেই সংরক্ষিত থাকে।</p>
 
       {loaded && products.length === 0 && (
         <div className="mt-8 rounded-xl border bg-slate-50 px-4 py-10 text-center">

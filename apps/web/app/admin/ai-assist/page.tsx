@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
-import { MOCK_PRODUCTS } from "@/catalog/mock";
+import { listActiveProducts } from "@/catalog/server-read";
 import { maxVariantPricePoisha, minVariantPricePoisha, type Product } from "@/catalog/types";
 import { AI_FEATURE_FLAG } from "@/ai/types";
 import { demoAiAssistFlags, isAiAssistEnabled } from "./demo-flag";
@@ -20,7 +20,8 @@ import { AiAssistTools, type SampleProductOption } from "./tools";
 // the template/keyword fallbacks in src/ai directly (client-side, no
 // network), and every output is stamped "template-fallback — মানুষের
 // রিভিউ লাগবে" from the result's own meta. Sample products come from
-// the TEMPORARY MOCK catalog. Real wiring: a provider implementing the
+// the REAL catalog DB (ACTIVE products via src/catalog/server-read).
+// Real wiring: a provider implementing the
 // AiProvider seam (src/ai/types.ts) with its key ENCRYPTED in Admin >
 // Settings; the API routes /api/v1/admin/ai/* swap the engine and the
 // response types do not change.
@@ -37,8 +38,9 @@ function attributesOf(product: Product): Record<string, string[]> {
   return out;
 }
 
-function sampleOptions(): SampleProductOption[] {
-  return MOCK_PRODUCTS.filter((p) => p.status === "ACTIVE").map((p) => ({
+async function sampleOptions(): Promise<SampleProductOption[]> {
+  const products = await listActiveProducts(100);
+  return products.filter((p) => p.status === "ACTIVE").map((p) => ({
     id: p.id,
     label: `${p.title.bn} (${p.title.en}) — নমুনা পণ্য`,
     input: {
@@ -57,7 +59,9 @@ function sampleOptions(): SampleProductOption[] {
   }));
 }
 
-export default function AdminAiAssistPage() {
+export const dynamic = "force-dynamic";
+
+export default async function AdminAiAssistPage() {
   if (!isAiAssistEnabled(demoAiAssistFlags)) {
     return (
       <main>
@@ -77,11 +81,11 @@ export default function AdminAiAssistPage() {
       <p role="note" className="rounded-lg border border-border bg-surface-2 p-3 text-sm">
         ⚠️ <strong>TEMPORARY DEMO:</strong> এই পেজে কোনো আসল AI মডেল নেই। সব আউটপুট{" "}
         <code>src/ai</code>-এর টেমপ্লেট/কিওয়ার্ড ফলব্যাক থেকে আসে এবং প্রতিটিতেই{" "}
-        <strong>template-fallback — মানুষের রিভিউ লাগবে</strong> স্ট্যাম্প থাকে। নমুনা পণ্যগুলো TEMPORARY MOCK
-        ক্যাটালগ থেকে নেওয়া।
+        <strong>template-fallback — মানুষের রিভিউ লাগবে</strong> স্ট্যাম্প থাকে। নমুনা পণ্যগুলো আসল
+        ক্যাটালগ ডাটাবেস থেকে নেওয়া।
       </p>
 
-      <AiAssistTools samples={sampleOptions()} />
+      <AiAssistTools samples={await sampleOptions()} />
 
       <Card className="p-4">
         <h3 className="text-base font-semibold">আসল AI প্রোভাইডার — পরে যুক্ত হবে</h3>

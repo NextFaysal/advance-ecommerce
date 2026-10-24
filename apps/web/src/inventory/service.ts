@@ -1,9 +1,9 @@
 // Inventory service — Agent 10, Steps 23-24.
 // Pure ledger logic on top of Agent 5 ledger rules. Money is integer poisha.
-// Persistence: an explicit InventoryStore interface. The default is an
-// in-memory store (module-level in API routes, non-persistent, marked in
-// meta). A Prisma-backed store must implement the same interface in a DB
-// transaction — that swap is PENDING Prisma generate (see reports/guard.ts).
+// Persistence: an explicit InventoryStore interface (in-memory, below).
+// The Prisma-backed implementation lives in src/inventory/repository.ts:
+// it runs planMovement() inside a DB transaction with a row lock, so the
+// in-memory and DB paths share EXACTLY the same movement rules.
 // Stock changes ONLY via stock_movements; there is no direct quantity edit.
 import { z } from "zod";
 import { commit, release, reserve, restore } from "./ledger";
@@ -72,14 +72,17 @@ const ACTION_TO_MOVEMENT: Record<MovementAction["action"], StockMovementInput["t
   damage: "damage",
 };
 
-export function applyMovement(store: InventoryStore, input: MovementAction): { item: InventoryItem; movement: StockMovement } {
-  const before = store.getItem(input.variantId, input.warehouseId) ?? {
-    variantId: input.variantId,
-    warehouseId: input.warehouseId,
-    quantityOnHand: 0,
-    quantityReserved: 0,
-    quantityAvailable: 0,
-  };
+/**
+ * Pure movement planning: given the current item, compute the next item
+ * and the signed movement quantityDelta. Throws on insufficient stock /
+ * over-commit / over-release (the ledger rules). Shared verbatim by the
+ * in-memory applyMovement() and the Prisma repository (repository.ts),
+ * so both persistence paths enforce identical semantics.
+ */
+export function planMovement(
+  before: InventoryItem,
+  input: MovementAction,
+): { after: InventoryItem; quantityDelta: number; type: StockMovementInput["type"] } {
   let after: InventoryItem;
   switch (input.action) {
     case "reserve": after = reserve(before, input.quantity); break;
@@ -102,12 +105,29 @@ export function applyMovement(store: InventoryStore, input: MovementAction): { i
   // OnHand delta for the movement row: reserve/release only touch reserved.
   const onHandDelta = input.action === "reserve" || input.action === "release" ? 0
     : input.action === "transfer_out" || input.action === "damage" ? -input.quantity : input.quantity;
+  return {
+    after,
+    quantityDelta: onHandDelta === 0 ? input.quantity : onHandDelta,
+    type: ACTION_TO_MOVEMENT[input.action],
+  };
+}
+
+export function applyMovement(store: InventoryStore, input: MovementAction): { item: InventoryItem; movement: StockMovement } {
+  const before = store.getItem(input.variantId, input.warehouseId) ?? {
+    variantId: input.variantId,
+    warehouseId: input.warehouseId,
+    quantityOnHand: 0,
+    quantityReserved: 0,
+    quantityAvailable: 0,
+  };
+  const planned = planMovement(before, input);
+  const after = planned.after;
   const movement: StockMovement = {
     id: `mov_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     variantId: input.variantId,
     warehouseId: input.warehouseId,
-    type: ACTION_TO_MOVEMENT[input.action],
-    quantityDelta: onHandDelta === 0 ? input.quantity : onHandDelta,
+    type: planned.type,
+    quantityDelta: planned.quantityDelta,
     referenceType: input.referenceType,
     referenceId: input.referenceId,
     reason: input.reason,

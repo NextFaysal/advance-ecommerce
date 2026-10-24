@@ -95,7 +95,7 @@ export function CustomerSummaryCard({
           </>
         ) : (
           <p className="text-text-muted">
-            কাস্টমার রেকর্ড পাওয়া যায়নি — শুধু এই অর্ডারের তথ্য দেখানো হচ্ছে। (TEMPORARY DEMO ডেটা)
+            কাস্টমার রেকর্ড পাওয়া যায়নি — শুধু এই অর্ডারের তথ্য দেখানো হচ্ছে।
           </p>
         )}
       </dl>

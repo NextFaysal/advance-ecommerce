@@ -5,10 +5,10 @@
 // "successful" verification is deterministic: verify() with the gateway
 // transaction id issued by initiate() returns PAID for the attempted
 // amount; any other transaction id returns FAILED with paidPoisha 0.
-// Real adapters must replace this file's factory per provider, keep this
-// interface, and add: token/session handling, real signature verification,
-// gateway error mapping, and DB persistence (payment_attempts) — the
-// in-memory sandbox store below is not a substitute for that.
+// Persistence: DB-backed since 2026-10-24 (./db-store.ts) — attempts are
+// PaymentAttempt rows under a Payment parent in the real database; a
+// replayed initiation returns the persisted attempt. Real adapters must
+// replace this file's factory per provider and keep this interface.
 import { z } from "zod";
 import type {
   PaymentGateway,
@@ -20,8 +20,14 @@ import type {
 } from "../payment";
 import type { ProviderConfig, WebhookVerification } from "../types";
 import { assertSandboxMode } from "./live-guard";
+import { markOrderPayment } from "../../orders/repository";
 import { sandboxAttemptId, sandboxGatewayTrxId } from "./deterministic";
-import { sandboxStore, type SandboxPaymentAttempt } from "./store";
+import {
+  applyAttemptStatus,
+  findAttemptById,
+  getOrCreateAttempt,
+  recordRefund,
+} from "./db-store";
 
 export const SANDBOX_PAYMENT_METHODS = ["bkash", "nagad", "sslcommerz"] as const;
 export type SandboxPaymentMethod = (typeof SANDBOX_PAYMENT_METHODS)[number];
@@ -45,26 +51,6 @@ const initiateSchema = z.object({
   idempotencyKey: z.string().min(1),
 });
 
-function getOrCreateAttempt(method: SandboxPaymentMethod, input: PaymentInitiateInput): SandboxPaymentAttempt {
-  const attemptId = sandboxAttemptId(method, input.idempotencyKey);
-  const existing = sandboxStore.payments.get(attemptId);
-  if (existing) return existing; // idempotent replay: same key, same attempt
-  const attempt: SandboxPaymentAttempt = {
-    attemptId,
-    method,
-    orderId: input.orderId,
-    amountPoisha: input.amountPoisha,
-    paidPoisha: 0,
-    refundedPoisha: 0,
-    gatewayTransactionId: sandboxGatewayTrxId(method, input.idempotencyKey),
-    idempotencyKey: input.idempotencyKey,
-    status: "UNPAID",
-    createdAt: new Date().toISOString(),
-  };
-  sandboxStore.payments.set(attemptId, attempt);
-  return attempt;
-}
-
 export function createSandboxPaymentGateway(method: SandboxPaymentMethod): PaymentGateway {
   const config = sandboxPaymentConfig(method);
   return {
@@ -74,7 +60,14 @@ export function createSandboxPaymentGateway(method: SandboxPaymentMethod): Payme
       assertSandboxMode(config);
       const parsed = initiateSchema.safeParse(input);
       if (!parsed.success) throw new Error("Invalid payment initiate input.");
-      const attempt = getOrCreateAttempt(method, parsed.data);
+      const attempt = await getOrCreateAttempt({
+        method,
+        orderRef: parsed.data.orderId,
+        amountPoisha: parsed.data.amountPoisha,
+        attemptId: sandboxAttemptId(method, parsed.data.idempotencyKey),
+        gatewayTransactionId: sandboxGatewayTrxId(method, parsed.data.idempotencyKey),
+        idempotencyKey: parsed.data.idempotencyKey,
+      });
       return {
         paymentAttemptId: attempt.attemptId,
         redirectUrl: `/sandbox/checkout/${method}?attempt=${attempt.attemptId}`,
@@ -84,34 +77,64 @@ export function createSandboxPaymentGateway(method: SandboxPaymentMethod): Payme
     },
     async verify(input: PaymentVerifyInput): Promise<PaymentVerifyResult> {
       assertSandboxMode(config);
-      const attempt = sandboxStore.payments.get(input.paymentAttemptId);
+      const attempt = await findAttemptById(input.paymentAttemptId);
       if (!attempt || attempt.method !== method) {
         return { status: "FAILED", paidPoisha: 0 };
       }
       if (attempt.status === "PAID" || attempt.status === "PARTIALLY_REFUNDED" || attempt.status === "REFUNDED") {
+        // Idempotent re-verify: no payment-side write happens here,
+        // but re-running the order-paid funnel is itself idempotent
+        // (alreadyApplied, no duplicate event) and self-heals an
+        // order whose funnel call was missed earlier.
+        await markOrderPayment(attempt.orderId, {
+          paymentStatus: attempt.status,
+          source: "gateway_verify",
+          reference: attempt.attemptId,
+        });
         return { status: attempt.status, paidPoisha: attempt.paidPoisha }; // idempotent re-verify
       }
       if (input.gatewayTransactionId !== attempt.gatewayTransactionId) {
-        attempt.status = "FAILED";
+        await applyAttemptStatus(attempt.attemptId, "FAILED");
         return { status: "FAILED", paidPoisha: 0 };
       }
-      attempt.status = "PAID";
-      attempt.paidPoisha = attempt.amountPoisha;
-      return { status: "PAID", paidPoisha: attempt.paidPoisha };
+      await applyAttemptStatus(attempt.attemptId, "PAID", attempt.amountPoisha);
+      // Order-paid funnel: payment side is persisted above; the
+      // funnel recomputes the linked Order's payment status from the
+      // persisted rows and publishes payment.succeeded on the
+      // transition into PAID.
+      await markOrderPayment(attempt.orderId, {
+        paymentStatus: "PAID",
+        source: "gateway_verify",
+        reference: attempt.attemptId,
+      });
+      return { status: "PAID", paidPoisha: attempt.amountPoisha };
     },
     async refund(input: PaymentRefundInput) {
       assertSandboxMode(config);
       const amount = z.number().int().positive().parse(input.amountPoisha);
-      // Refunds are keyed by payment (attempt) id in the sandbox store.
-      const attempt = sandboxStore.payments.get(input.paymentId);
+      // Refunds are keyed by payment (attempt) id, as in the old store.
+      const attempt = await findAttemptById(input.paymentId);
       if (!attempt || attempt.method !== method) throw new Error("Sandbox payment not found.");
       if (attempt.paidPoisha === 0) throw new Error("Cannot refund an unpaid payment.");
       if (attempt.refundedPoisha + amount > attempt.paidPoisha) {
         throw new Error("Refund exceeds paid amount.");
       }
-      attempt.refundedPoisha += amount;
-      attempt.status = attempt.refundedPoisha >= attempt.paidPoisha ? "REFUNDED" : "PARTIALLY_REFUNDED";
-      return { status: attempt.status, refundedPoisha: attempt.refundedPoisha };
+      const result = await recordRefund({
+        attemptId: attempt.attemptId,
+        amountPoisha: amount,
+        reason: input.reason,
+      });
+      if (!result) throw new Error("Sandbox payment not found.");
+      // Order-paid funnel: the Refund row is persisted above; the
+      // funnel recomputes the linked Order's payment status
+      // (REFUNDED / PARTIALLY_REFUNDED by sums). Refunds never
+      // publish payment.succeeded.
+      await markOrderPayment(attempt.orderId, {
+        paymentStatus: result.status,
+        source: "gateway_refund",
+        reference: attempt.attemptId,
+      });
+      return { status: result.status, refundedPoisha: result.refundedPoisha };
     },
     async handleWebhook(_verification: WebhookVerification): Promise<boolean> {
       // Direct adapter webhook calls are not used in sandbox: routes must go

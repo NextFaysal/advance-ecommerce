@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { MOCK_PRODUCTS } from "@/catalog/mock";
+import { fetchPublicProducts } from "@/catalog/public-client";
 import { addToCompare, removeFromCompare, toggleCompare, MAX_COMPARE_PRODUCTS } from "../compare";
 
 const STORAGE_KEY = "advance-ecommerce:compare";
@@ -96,9 +96,23 @@ export function CompareToggleButton({ productId }: { productId: string }) {
 
 export function CompareTray() {
   const { ids, setIds } = useCompareIds();
+  // Chip labels resolve from the real public catalog (ACTIVE products via
+  // the public API); an id that no longer resolves falls back to the id.
+  const [titles, setTitles] = useState<ReadonlyMap<string, string>>(new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchPublicProducts().then((products) => {
+      if (!cancelled) setTitles(new Map(products.map((p) => [p.id, p.title.bn])));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   if (ids.length === 0) return null;
 
-  const labelFor = (id: string) => MOCK_PRODUCTS.find((p) => p.id === id)?.title.bn ?? id;
+  const labelFor = (id: string) => titles.get(id) ?? id;
 
   return (
     <div className="fixed inset-x-0 bottom-16 z-40 px-4 md:bottom-4">

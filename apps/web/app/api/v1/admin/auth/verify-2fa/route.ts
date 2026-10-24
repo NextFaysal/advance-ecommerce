@@ -32,7 +32,9 @@ export async function POST(req: Request) {
   const res = NextResponse.json({ data: { status: "ok" } });
   res.cookies.set("admin_session", token, {
     httpOnly: true,
-    path: "/admin",
+    // Path must be "/": the guards read this cookie on /api/v1/admin/*
+    // routes, and browsers never send a Path=/admin cookie to /api/*.
+    path: "/",
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     maxAge: 7 * 24 * 60 * 60,

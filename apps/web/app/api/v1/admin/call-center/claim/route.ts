@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
-import { claimAssignedTask, toQueueItemView } from "@/callcenter/queue";
-import { claimNextTaskInStore, demoCallTasks } from "@/callcenter/service";
+import { toQueueItemView } from "@/callcenter/queue";
+import { claimNextTaskDb, claimTaskDb, type DbCallTask } from "@/callcenter/store";
 
 // Claim a call task — Agent 58 (G3 assignment enforcement).
 // POST with no body (or no taskId) claims the highest-priority UNASSIGNED
@@ -11,42 +11,53 @@ import { claimNextTaskInStore, demoCallTasks } from "@/callcenter/service";
 // be recorded (see outcome route: unassigned -> 409 TASK_UNASSIGNED).
 // A task assigned to another agent can never be claimed (403
 // TASK_ASSIGNED_TO_OTHER) — supervisors use the outcome override instead.
+// Persistence: Prisma DB via src/callcenter/store.ts; the claim persists
+// with a conditional update so two agents cannot claim the same task.
+function locked() {
+  return NextResponse.json(
+    { error: { code: "FEATURE_LOCKED", message: "Call center module is locked for this install (module.call_center is OFF)." } },
+    { status: 403 },
+  );
+}
+
+function view(task: DbCallTask, canViewFullPhone: boolean) {
+  return toQueueItemView(task, canViewFullPhone && task.phoneResolved === true);
+}
+
 export async function POST(req: Request) {
   const guard = await requireAdmin("orders.update_status");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  if (!isCallCenterEnabled(demoCallCenterFlags)) {
-    return NextResponse.json(
-      { error: { code: "FEATURE_LOCKED", message: "Call center module is locked for this install (module.call_center is OFF)." } },
-      { status: 403 },
-    );
-  }
+  if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   const canViewFullPhone = guard.permissions.includes("customers.view_full_phone");
   const body = (await req.json().catch(() => ({}))) as { taskId?: unknown };
-  const now = new Date().toISOString();
 
-  if (typeof body.taskId === "string") {
-    const idx = demoCallTasks.findIndex((t) => t.id === body.taskId);
-    const task = demoCallTasks[idx];
-    if (idx === -1 || !task) {
-      return NextResponse.json({ error: { code: "NOT_FOUND", message: "Call task not found." } }, { status: 404 });
+  try {
+    if (typeof body.taskId === "string") {
+      const result = await claimTaskDb(body.taskId, guard.userId);
+      if (!result.ok) {
+        if (result.code === "NOT_FOUND") {
+          return NextResponse.json({ error: { code: "NOT_FOUND", message: "Call task not found." } }, { status: 404 });
+        }
+        return NextResponse.json(
+          { error: { code: result.code, message: result.error } },
+          { status: result.code === "TASK_ASSIGNED_TO_OTHER" ? 403 : 409 },
+        );
+      }
+      return NextResponse.json({
+        data: { task: view(result.task, canViewFullPhone), alreadyMine: result.alreadyMine },
+        meta: { persistence: "database" },
+      });
     }
-    const result = claimAssignedTask(task, guard.userId, now);
-    if (!result.ok) {
-      return NextResponse.json(
-        { error: { code: result.code, message: result.error } },
-        { status: result.code === "TASK_ASSIGNED_TO_OTHER" ? 403 : 409 },
-      );
-    }
-    demoCallTasks[idx] = result.task;
+
+    const claimed = await claimNextTaskDb(guard.userId);
     return NextResponse.json({
-      data: { task: toQueueItemView(result.task, canViewFullPhone), alreadyMine: result.alreadyMine },
-      meta: { persistence: "in-memory-demo" },
+      data: { task: claimed ? view(claimed, canViewFullPhone) : null },
+      meta: { persistence: "database" },
     });
+  } catch {
+    return NextResponse.json(
+      { error: { code: "DB_NOT_READY", message: "Call-center database is not available." } },
+      { status: 503 },
+    );
   }
-
-  const claimed = claimNextTaskInStore(guard.userId, now);
-  return NextResponse.json({
-    data: { task: claimed ? toQueueItemView(claimed, canViewFullPhone) : null },
-    meta: { persistence: "in-memory-demo" },
-  });
 }

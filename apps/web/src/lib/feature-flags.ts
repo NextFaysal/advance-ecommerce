@@ -8,14 +8,15 @@
  * hand after `module.advanced_orders` was added to the seed. New flag
  * consumers MUST read through here; do not create another flag store.
  *
- * DB SWAP POINT: this module is where the DB-backed reader lands. The
- * reader is built by `createFeatureFlagReader(source)` over a
- * `FeatureFlagSource`; today the only source is the in-memory demo
- * source below (all flags OFF, state lost on restart). When Prisma
- * wiring lands, implement ONE `FeatureFlagSource` that reads/writes the
- * `feature_flags` table and pass it to `createFeatureFlagReader(...)` —
- * no consumer changes: every consumer calls the reader functions, never
- * a source directly.
+ * DB SWAP (landed): the reader is built by `createFeatureFlagReader`
+ * over a `FeatureFlagSource`. The shared source below delegates to an
+ * in-memory source until the DB source (src/lib/feature-flags-db.ts —
+ * Prisma-backed, installed at server start via instrumentation and by
+ * the feature-flags API store) is installed through
+ * `installFeatureFlagSource(...)`. No consumer changes: every consumer
+ * calls the reader functions, never a source directly. Enabled state
+ * persists in the FeatureFlag table; the seed is the catalogue truth
+ * (19 keys, all OFF by default).
  *
  * CATALOGUE: FEATURE_FLAG_DEFINITIONS mirrors FEATURE_FLAGS in
  * packages/db/prisma/seed.ts EXACTLY (19 keys, descriptions verbatim) —
@@ -136,11 +137,65 @@ export function createFeatureFlagReader(source: FeatureFlagSource): FeatureFlagR
   };
 }
 
-/** The shared demo source — the ONE in-memory flag store (see header). */
-export const demoFeatureFlagSource: FeatureFlagSource = new InMemoryFeatureFlagSource();
+/**
+ * The shared flag source behind the default reader. Delegates to an
+ * in-memory source (all OFF — fail-closed) until a persistent source is
+ * installed via installFeatureFlagSource(); after installation every
+ * read/write goes to the installed source. This indirection is what
+ * lets the Prisma-backed source live in a server-only module
+ * (feature-flags-db.ts) without this module — imported by client-safe
+ * adapters — ever importing Prisma.
+ */
+export class SharedFeatureFlagSource implements FeatureFlagSource {
+  private fallback: FeatureFlagSource = new InMemoryFeatureFlagSource();
+  private installed: FeatureFlagSource | null = null;
 
-/** Default reader over the demo source; the DB swap replaces the source, not these calls. */
-export const featureFlags: FeatureFlagReader = createFeatureFlagReader(demoFeatureFlagSource);
+  install(source: FeatureFlagSource): void {
+    this.installed = source;
+  }
+
+  get isInstalled(): boolean {
+    return this.installed !== null;
+  }
+
+  private get active(): FeatureFlagSource {
+    return this.installed ?? this.fallback;
+  }
+
+  isKnown(key: string): boolean {
+    return this.active.isKnown(key);
+  }
+  isEnabled(key: string): boolean {
+    return this.active.isEnabled(key);
+  }
+  getFlag(key: string): FeatureFlagRecord | null {
+    return this.active.getFlag(key);
+  }
+  listFlags(): FeatureFlagRecord[] {
+    return this.active.listFlags();
+  }
+  setEnabled(key: string, enabled: boolean): void {
+    this.active.setEnabled(key, enabled);
+  }
+}
+
+export const sharedFeatureFlagSource = new SharedFeatureFlagSource();
+
+/** Installs the persistent (DB) source behind the shared reader. */
+export function installFeatureFlagSource(source: FeatureFlagSource): void {
+  sharedFeatureFlagSource.install(source);
+}
+
+/**
+ * Back-compat alias: before the DB swap this WAS the in-memory demo
+ * source; it now names the shared delegating source, so existing
+ * imports keep reading/writing the one app-wide flag state.
+ */
+export const demoFeatureFlagSource: FeatureFlagSource = sharedFeatureFlagSource;
+
+/** Default reader over the shared source; the DB source is installed
+ *  behind it (see header), never by changing these calls. */
+export const featureFlags: FeatureFlagReader = createFeatureFlagReader(sharedFeatureFlagSource);
 
 export function isFeatureEnabled(key: string): boolean {
   return featureFlags.isFeatureEnabled(key);

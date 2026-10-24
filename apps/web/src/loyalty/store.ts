@@ -1,5 +1,8 @@
 /**
- * Loyalty demo store (Agent 36) — in-memory only, TEMPORARY DEMO.
+ * Loyalty demo store (Agent 36) — in-memory SAMPLE data for the admin
+ * page playground. The RUNTIME store is DB-backed since 2026-10-24:
+ * PrismaLoyaltyStore + delivered-order hooks in ./db-store.ts, used by
+ * the loyalty API route. The arrays below are unchanged page fixtures.
  *
  * FLAG NOTE (updated 2026-10-24): `module.loyalty` HAS been added to the
  * seed FEATURE_FLAGS catalogue (OFF by default) by the main agent.

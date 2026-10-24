@@ -228,23 +228,45 @@ policies live in `apps/web/src/jobs/workers.ts` + `handlers.ts`; the
 production handler dependencies are assembled in
 `apps/web/src/jobs/worker-deps.ts`.
 
-### One-time unblock (do these by hand — nothing installs itself)
+### One-time unblock — DONE (verified 2026-10-24)
 
 ```bash
-# 1. Install the two packages (only missing piece of the daemon):
-cd apps/web && pnpm add bullmq ioredis
+# 1. Packages installed: bullmq 6.4.1 + ioredis 6.0.0 are
+#    dependencies of apps/web (package.json + pnpm-lock.yaml).
+#    The "worker" script ("tsx scripts/worker.ts") exists.
+#    On THIS dev VM pnpm is not on PATH — the working invocation is:
+#      npx --yes pnpm@10.0.0 <args>     (matches the repo's
+#      "packageManager": "pnpm@10.0.0" pin)
+#    VM quirk behind the install: the workspace overlay refuses
+#    chown TO gid 65534 (nogroup), which pnpm's atomic lockfile
+#    write performs to preserve file ownership. Workaround used:
+#    chown root:root on pnpm-lock.yaml, the package.json files and
+#    node_modules/.modules.yaml + node_modules/.pnpm/lock.yaml
+#    (gid 65534 -> 0 makes pnpm's preserve-chown target gid 0,
+#    which is permitted). Content was never touched.
 
-# 2. Add this script to apps/web/package.json "scripts":
-#      "worker": "tsx scripts/worker.ts"
+# 2. Redis locally on this VM (no docker here):
+sudo apt-get install -y redis-server        # 7.0.15, one-time
+sudo redis-server /etc/redis/redis.conf --daemonize yes
+redis-cli ping                              # -> PONG
+#    Stop it again with:  redis-cli shutdown nosave
+#    (Elsewhere, docker-compose in §2 provides Redis on port 6379.)
 
-# 3. Make sure REDIS_URL is in the server env (apps/web/.env.local
+# 3. REDIS_URL must be in the server env (apps/web/.env.local
 #    locally — never commit it). Shape: redis://<host>:6379
-#    (docker-compose in §2 provides Redis on port 6379.)
 
-# 4. Generate the Prisma client (§4a) — the web app needs it anyway;
-#    the worker itself starts without it (the settings service is
-#    lazy-loaded and degrades to env/default provider names), but
-#    DB-backed stores below need it.
+# 4. Prisma client is generated (§4a) — the web app needs it
+#    anyway; the worker itself starts without it (the settings
+#    service is lazy-loaded and degrades to env/default provider
+#    names), but DB-backed stores below need it.
+
+# Verified startup (2026-10-24, local Redis + local Postgres):
+# the worker printed the Redis target, registered all 11 queues
+# (sms-send, email-send, courier-booking, courier-status-sync,
+# webhook-delivery, import-export, report-generation,
+# notification-retry, abandoned-cart-followup, automation-run,
+# bulk-actions), BullMQ created its bull:* keys in Redis, and a
+# SIGTERM produced the graceful "Worker closed cleanly" exit 0.
 ```
 
 ### Run
@@ -273,11 +295,11 @@ reason — that is the truth, not an error to hide:
 | SMS / email provider resolvers | **Wired — sandbox adapters** | No real SMS/email adapter exists yet (interfaces only). The resolver reads the admin-configured provider name (`sms.provider` / `email.provider`, env fallback `SMS_PROVIDER` / `EMAIL_PROVIDER`) and returns the sandbox adapter carrying that name; sends are simulated `queued`. Real adapters slot into `worker-deps.ts` behind the same resolvers. |
 | Courier provider | **Wired — sandbox factory** | Steadfast / Pathao / RedX via the sandbox factory. Paperfly / eCourier have no adapter at all and fail the job with `NO_ADAPTER:<name>` (retry + dead-letter, never a fake booking). |
 | Bulk actions runner | **Wired — real** | `getBulkJob(id)` → `processBulkJob(job)` (`src/jobs/bulk-actions.ts`), the same executor the admin route triggers in-process. Note: the registry is in-process, so a bulk job id this worker process has never seen fails `BULK_JOB_NOT_FOUND` — bulk jobs move to a DB table with the Prisma wiring. |
-| Webhook fanout | Omitted → `skipped` | `src/extensibility/webhooks.ts` has signing + delivery classification only; nothing performs outbound delivery yet. |
-| Report runner | Omitted → `skipped` | `src/reports/service.ts` aggregates rows it is handed; no job-shaped runner loads data or writes a report file. |
-| Automation runner | Omitted → `skipped` | `src/automation/engine.ts` evaluates rules and describes effects but deliberately applies nothing; no dispatch executes a queued automation job yet. |
-| Import/export runner | Omitted → `skipped` | Catalog CSV import is synchronous route logic; no fileRef-based job executor exists. |
-| Notification retry runner | Omitted → `skipped` | No notification-log store / retry executor exists yet. |
+| Webhook fanout | **Wired — real** | `src/jobs/runners.ts`: delivers to the DB-registered subscriptions (`webhookSubscriptionStore`), signing + classification from `src/extensibility/webhooks.ts`; retrying deliveries throw so BullMQ applies the queue backoff, exhausted deliveries are marked `dead`. Attempts live in an in-memory delivery-log store in runners.ts — there is still no WebhookDeliveryLog table (schema follow-up). Subscriptions with `hasSecret` sign with the Admin Settings secret `webhook.secret.<subscriptionId>`; when it cannot be resolved the delivery is failed `signing_secret_unavailable`, never sent unsigned. |
+| Report runner | **Wired — real** | `src/jobs/runners.ts`: `fetchSalesRows` (DB) → `aggregateSales`; returns a computed-summary ref (type, Dhaka range, orders, poisha totals). The reports module has no result/file store, so no file is faked — the admin export route renders the CSV from the same bundle on demand. |
+| Automation runner | **Wired — real** | `src/jobs/runners.ts`: `workflowId` = AutomationRule id (DB store), the event is built from the entity (order / variant / cart), the engine evaluates, and the run log persists through the store (masked phones). `dryRun: true` jobs are evaluated but never persisted. Effects stay described in the run log, as with the admin runs route. |
+| Import/export runner | **Wired — real (products)** | `src/jobs/runners.ts`: catalog CSV via `src/catalog/import.ts` + the Prisma CatalogRepository. `fileRef` is a file name inside the local job-files dir (env `AE_JOB_FILES_DIR`, default `./job-files`); exports are written in import format so they round-trip. Imports are all-or-nothing: any invalid row → nothing created, error-report CSV written next to the source as `<fileRef>.errors.csv`. Orders/customers jobs fail `UNSUPPORTED_ENTITY` — no such service exists yet. |
+| Notification retry runner | **Wired — real** | `src/jobs/runners.ts`: FAILED `NotificationLog` rows are re-driven through the configured (sandbox) SMS/email resolvers; success returns the row to `QUEUED` with the provider stamped — never `SENT`, because sandbox sends are simulated. Failed re-drives throw so the queue's DEFAULT_RETRY policy (3 attempts) applies, then dead-letter with the row still FAILED + `errorRef` stamped. |
 
 ### Production notes (before running more than one worker process)
 
@@ -299,13 +321,18 @@ Scripts (Step 35): `apps/web/scripts/backup-db.ts` and
 there is deliberately **no backup button in the admin UI**, because a
 button without this machinery behind it would be a fake feature.
 
-> **Honest status (2026-10-24):** the scripts exist and their
-> dry-run / refusal / guard paths are smoke-tested, but **no real
-> backup and no restore drill has been performed yet** — there is no
-> live database (Prisma blocker, §8) and `pg_dump` / `pg_restore` are
-> not installed on this machine. Do not claim a backup exists until a
-> real run below has produced a `.dump` file and its checksum has been
-> verified.
+> **Status (2026-10-24):** the scripts' dry-run / refusal / guard
+> paths were smoke-tested first; the **first real backup and restore
+> drill were performed on 2026-10-24** against the local scratch
+> database. Backup `backup-20261024-193902.dump` (368,258 bytes,
+> pg_dump custom format, SHA-256 sidecar verified) was restored via
+> `restore-db.ts --confirm` into scratch DB
+> `advance_ecommerce_drill`: all 95 tables restored and spot-checked
+> row counts matched the source exactly (Division 8, District 64,
+> Upazila 504, Union 4,963, Permission 61, Role 7, FeatureFlag 19,
+> Order 16, Customer 15, Product 1); `prisma validate` passed against
+> the restored DB. The drill DB was dropped afterwards; the backup
+> file is kept in `backups/db/`.
 
 ### Prerequisites
 
@@ -399,6 +426,10 @@ first. The script enforces this discipline:
    verified before anything runs; a mismatch refuses the restore. A
    missing sidecar warns loudly but does not block.
 
+Note: the dump path is resolved relative to the process cwd, and
+`pnpm --filter web exec` runs from `apps/web` — pass an absolute
+path (or one relative to `apps/web`), not a repo-root-relative one.
+
 ### Restore drill (do this before you ever need it)
 
 A backup that has never been restored is a hope, not a backup.
@@ -414,9 +445,10 @@ Drill, once the local DB exists and then monthly in production:
 4. Drop the scratch database and record the date + result in
    `docs/QA-CHECKLIST.md` (Backup / restore section).
 
-**Drill status: NOT yet performed** (blocked on §8 like everything
-DB-backed). First real backup + first drill are checklist items in
-`docs/QA-CHECKLIST.md`.
+**Drill status: performed 2026-10-24** against the local scratch DB
+(see the status note at the top of this section) — restored into a
+scratch database, row counts matched the source, scratch DB dropped.
+Repeat monthly in production.
 
 ## 12. OpenAPI drift check
 
@@ -454,3 +486,177 @@ disk = 142 registry entries (139 published + 3 documented exclusions),
 zero drift. Fixture self-test: set `CHECK_OPENAPI_API_ROOT` to a copied
 api tree to watch the check fail (exit 1) without touching the real
 routes.
+
+## 13. Vercel + Neon deployment
+
+Prepared 2026-10-24. **Nothing is deployed yet** — no Vercel or Neon
+account exists for this project today. Every account step below is the
+owner's; everything repo-side is already in place.
+
+### Shape of the deployment
+
+- **Vercel** runs only the Next.js app (storefront + admin + API).
+- **Neon** is the production Postgres.
+- **Redis** in production: Upstash (serverless, BullMQ-compatible) or
+  a Redis on the worker host; `REDIS_URL` points there.
+- **The BullMQ worker cannot run on Vercel.** It is a long-running
+  daemon (§10) and Vercel functions are serverless. It needs its own
+  always-on host (a small VPS, Fly.io, Render, Railway — anywhere
+  `pnpm --filter web worker` can stay running) with the same
+  `DATABASE_URL` + `REDIS_URL`. Until it runs somewhere, queued jobs
+  (SMS/email sends, courier booking, bulk actions) do not process;
+  the web app itself works.
+
+### vercel.json — what it does, and the rootDirectory truth
+
+`rootDirectory` **cannot** be set in `vercel.json` — it is not part
+of Vercel's config schema; it is a per-project dashboard setting.
+The committed `vercel.json` (repo root) therefore assumes the project
+Root Directory stays at the **repository root** (the import default):
+its `installCommand` is `pnpm install --frozen-lockfile`, its
+`buildCommand` is
+`pnpm --filter @advance-ecommerce/db db:generate && pnpm --filter web build`,
+and it sets `outputDirectory: apps/web/.next`, `framework: nextjs`,
+and `regions: ["sin1"]` (Singapore — the closest Vercel region to
+Bangladesh users; change it in the file if ever needed).
+
+If the owner instead prefers Root Directory = `apps/web`: Project →
+Settings → General → **Root Directory** → set `apps/web`, then MOVE
+`vercel.json` into `apps/web`, change its `buildCommand` to
+`pnpm --filter @advance-ecommerce/db db:generate && pnpm build`, and
+remove `outputDirectory`. Pick ONE layout — the repo ships the
+repo-root layout; do not mix the two.
+
+Build notes:
+
+- `prisma generate` runs on Vercel's builders, whose network reaches
+  `binaries.prisma.sh` normally. Do **NOT** set
+  `PRISMA_ENGINES_MIRROR` in production — that mirror is only a
+  workaround for this dev VM's blocked route to the Prisma CDN.
+- `prisma migrate deploy` is deliberately **NOT** in the build
+  command yet. The DB persistence swaps are still landing module by
+  module; auto-migrating on every deploy right now would apply
+  schema ahead of the code that uses it. Run migrations manually
+  (Step 4) until the swaps are complete, then revisit.
+
+### Step 1 — Fresh Neon project (owner)
+
+Create a **new** Neon project and database. The database credentials
+that were pasted into chat earlier in this project are compromised:
+never use them anywhere, for anything; if that old project is still
+around, delete it or rotate its password. No credential value is
+recorded in this repo, by design.
+
+In the Neon dashboard, take BOTH connection strings of the new
+database: the **pooled** one (host contains `-pooler`) for the app's
+runtime `DATABASE_URL`, and the **direct** one (no `-pooler`) for
+migrations and the seed. The Prisma schema declares a single
+`url = env("DATABASE_URL")` (there is no `directUrl`), so migrations
+are run with the direct string substituted just for that command.
+
+### Step 2 — Import the repo into Vercel (owner)
+
+1. vercel.com → sign in → **Add New → Project** → import
+   **NextFaysal/advance-ecommerce** (grant the GitHub App access to
+   the repo during import if prompted).
+2. Leave **Root Directory** at the repository root (see above).
+3. Framework preset Next.js; install/build commands come from the
+   committed `vercel.json` — don't override them in the dashboard
+   unless the file is updated in the same change.
+4. Add every env var from Step 3 **before** the first deploy, then
+   Deploy.
+
+### Step 3 — Production env checklist (owner, Vercel dashboard)
+
+**Golden rule: production values are typed into the Vercel
+dashboard (Project → Settings → Environment Variables → Production)
+by the owner — never pasted into chat, never committed to the repo,
+never written into `vercel.json`.** If a value is ever exposed,
+rotate it at the provider first, then update Vercel.
+
+| Variable | Required | Value comes from | Notes |
+|---|---|---|---|
+| `DATABASE_URL` | Yes | Neon dashboard — **pooled** string | Runtime database connection. |
+| `REDIS_URL` | Yes (queues/worker) | Upstash console (`rediss://` TLS URL) | Same value on Vercel and on the worker host. |
+| `NEXTAUTH_SECRET` | Yes | Owner generates: `openssl rand -base64 32` | Keep only in Vercel + owner's password manager. |
+| `NEXTAUTH_URL` | Yes | The production URL | `https://<domain>` — must match the final domain exactly. |
+| `NEXT_PUBLIC_APP_URL` | Yes | Same production URL | Public value. |
+| `NEXT_PUBLIC_APP_NAME` | Recommended | Owner's store name | Public value. |
+| `AUTH_ENCRYPTION_KEY` | Yes | Owner generates: `openssl rand -hex 32` (64 hex chars) | Encrypts TOTP secrets, signs the pending-2FA cookie. Rotating it forces every staff member to re-enrol 2FA — plan rotations. |
+| `SETTINGS_ENCRYPTION_KEY` | Yes | Owner generates: `openssl rand -hex 32` — a **different** value from `AUTH_ENCRYPTION_KEY` | Encrypts Admin > Settings secrets at rest. |
+| `ADMIN_PATH` | Optional | Default `/admin` | Only change together with the admin docs. |
+| `TZ` / `DEFAULT_LOCALE` / `DEFAULT_CURRENCY` | Fixed | `Asia/Dhaka` / `bn` / `BDT` | Set explicitly so a platform default can never drift them. |
+| `OTP_EXPIRY_MINUTES` / `OTP_MAX_ATTEMPTS` | Optional | Defaults `5` / `5` | |
+| `MEILISEARCH_HOST` / `MEILISEARCH_API_KEY` | Optional at launch | Meilisearch Cloud or self-hosted | Without them, search uses the Postgres fallback. |
+| `S3_ENDPOINT` / `S3_REGION` / `S3_BUCKET` / `NEXT_PUBLIC_CDN_URL` | When uploads go live | Cloudflare R2 dashboard (endpoint + bucket name); region `auto` | The R2 access keys themselves are provider credentials: they belong in **Admin > Settings** (encrypted in DB), not in env. |
+| `EMAIL_PROVIDER` / `EMAIL_FROM` | At launch | `resend` + a verified sender address | The Resend API key goes in **Admin > Settings**, not env. |
+| `SMS_PROVIDER` | At launch | Provider name, e.g. `bulksmsbd` | Its API credentials go in **Admin > Settings**, not env. |
+| `NODE_ENV` | — | Set by Vercel automatically | Nothing to add. |
+
+Not Vercel env: `BACKUP_DIR` / `BACKUP_RETENTION` belong to the
+machine running the §11 backup scripts; `PRISMA_ENGINES_MIRROR`
+must never be set in production (see above).
+
+### Step 4 — Apply migrations to Neon (manual, per schema release)
+
+From a trusted shell with the repo checked out, using the **direct**
+Neon string (owner types it in their own shell; never saved into the
+repo):
+
+```bash
+cd packages/db
+DATABASE_URL="<direct Neon connection string>" npx prisma migrate deploy
+```
+
+Only after this succeeds should the app's pooled `DATABASE_URL`
+matter — the tables must exist before the first login.
+
+### Step 5 — Domain + SSL (owner)
+
+Vercel project → **Settings → Domains** → add the store's domain →
+set the DNS records Vercel displays at the registrar → SSL is issued
+automatically (Let's Encrypt). Then set `NEXTAUTH_URL` and
+`NEXT_PUBLIC_APP_URL` to the final `https://` domain and redeploy.
+
+### Step 6 — Seed + first Owner on production
+
+Once, against production, from the owner's shell with the direct
+Neon string as `DATABASE_URL` (same pattern as Step 4):
+
+```bash
+pnpm db:seed   # roles, 61 permissions, 19 feature flags, BD geo — no staff user, by design
+```
+
+Then create the first Owner with
+`packages/db/scripts/create-first-owner.ts`: it reads its
+credentials from env in the owner's shell only, and refuses to run
+if an Owner already exists. Staff accounts are created afterwards
+from **Admin > Staff** — there is no public admin registration.
+
+### Step 7 — Post-deploy smoke checklist
+
+- [ ] `https://<domain>/` loads the storefront (Bangla UI, BDT prices).
+- [ ] `/admin/login` loads; the first Owner logs in (password, then
+      TOTP enrolment) and reaches the dashboard.
+- [ ] After login, `GET /api/v1/admin/system/health` returns ok
+      booleans (database reachable — values only, no internals).
+- [ ] Place a test order on the storefront (COD checkout): it
+      appears in **Admin > Orders**. (This needs the orders
+      persistence swap deployed — if the order only exists as demo
+      data, the swap is not in the deployed build yet; do not
+      announce the launch.)
+- [ ] On the worker host, `pnpm --filter web worker` starts and
+      lists all 11 queues, and the test order's SMS/email jobs are
+      consumed. Until real provider credentials are saved in
+      Admin > Settings, sends are the sandbox adapters (simulated
+      `queued`) — by design, not a fault.
+- [ ] `/api/openapi.json` loads; `/track` and a landing page open.
+- [ ] First production backup taken the same day (§11 scripts,
+      direct Neon string).
+
+### Not done by this section
+
+No accounts exist yet, no deploy has run, and no production secret
+exists anywhere in this repo. Real payment/courier/SMS adapters are
+provider-account work: their credentials are entered in
+Admin > Settings after launch, never in env or files.

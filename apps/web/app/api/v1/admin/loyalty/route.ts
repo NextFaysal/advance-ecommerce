@@ -5,44 +5,51 @@ import {
   adjustPointsSchema,
   availableBalance,
   buildAdjustEntry,
-  demoAffiliates,
-  demoCommissionEntries,
   demoLoyaltyFlag,
-  demoMembers,
-  demoReferrals,
   lifetimeEarnedPoints,
-  loyaltyLedgerStore,
   summarizeAffiliatePayout,
   tierForLifetimePoints,
 } from "@/loyalty/index";
+import { loyaltyStore } from "@/loyalty/db-store";
 
 // Loyalty + Referral + Affiliate — Agent 36, Step 27 gap.
-// RBAC: marketing.coupon. Persistence: in-memory demo store (labelled).
-// The ledger is append-only: POST appends an ADJUST entry, never edits one.
+// RBAC: marketing.coupon. DB-backed (Prisma) since 2026-10-24: members
+// are the customers holding ledger rows, balances are DERIVED by
+// folding the append-only ledger, and POST appends an ADJUST entry —
+// it never edits one. An empty DB returns empty lists, not samples.
 export async function GET() {
   const guard = await requireAdmin("marketing.coupon");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   const nowIso = new Date().toISOString();
-  const members = demoMembers.map((m) => {
-    const entries = loyaltyLedgerStore.filter((e) => e.customerId === m.customerId);
-    const lifetime = lifetimeEarnedPoints(entries);
-    return {
-      customerId: m.customerId,
-      name: m.name,
-      balance: availableBalance(entries, nowIso),
-      lifetimeEarned: lifetime,
-      tier: tierForLifetimePoints(lifetime).id,
-    };
-  });
-  const affiliateSummaries = demoAffiliates.map((a) => summarizeAffiliatePayout(demoCommissionEntries, a.id));
+  const memberRows = await loyaltyStore.listMembers();
+  const members = await Promise.all(
+    memberRows.map(async (m) => {
+      const entries = await loyaltyStore.listEntries(m.customerId);
+      const lifetime = lifetimeEarnedPoints(entries);
+      return {
+        customerId: m.customerId,
+        name: m.name,
+        balance: availableBalance(entries, nowIso),
+        lifetimeEarned: lifetime,
+        tier: tierForLifetimePoints(lifetime).id,
+      };
+    }),
+  );
+  const [referrals, affiliates, commissions] = await Promise.all([
+    loyaltyStore.listReferrals(),
+    loyaltyStore.listAffiliates(),
+    loyaltyStore.listCommissions(),
+  ]);
+  const affiliateSummaries = affiliates.map((a) => summarizeAffiliatePayout(commissions, a.id));
   return NextResponse.json({
-    data: { config: DEFAULT_LOYALTY_CONFIG, flag: demoLoyaltyFlag, members, referrals: demoReferrals, affiliates: demoAffiliates, affiliateSummaries },
-    meta: { persistence: "in-memory-demo", source: "TEMPORARY_DEMO" },
+    data: { config: DEFAULT_LOYALTY_CONFIG, flag: demoLoyaltyFlag, members, referrals, affiliates, affiliateSummaries },
+    meta: { persistence: "database" },
   });
 }
 
 // POST = points adjustment outline. Reason is required (schema) and the
-// resulting balance can never go negative (buildAdjustEntry enforces it).
+// resulting balance can never go negative (buildAdjustEntry enforces it
+// against the DB-derived balance).
 export async function POST(req: Request) {
   const guard = await requireAdmin("marketing.coupon");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
@@ -55,7 +62,7 @@ export async function POST(req: Request) {
     );
   }
   const nowIso = new Date().toISOString();
-  const entries = loyaltyLedgerStore.filter((e) => e.customerId === parsed.data.customerId);
+  const entries = await loyaltyStore.listEntries(parsed.data.customerId);
   const result = buildAdjustEntry({
     id: `pts_adj_${Date.now()}`,
     customerId: parsed.data.customerId,
@@ -67,10 +74,10 @@ export async function POST(req: Request) {
   if (!result.ok) {
     return NextResponse.json({ error: { code: result.code, message: result.message } }, { status: 422 });
   }
-  loyaltyLedgerStore.push(result.entry);
-  const balance = availableBalance([...entries, result.entry], nowIso);
+  const saved = await loyaltyStore.appendEntry(result.entry);
+  const balance = availableBalance([...entries, saved], nowIso);
   return NextResponse.json(
-    { data: { entry: result.entry, balance }, meta: { persistence: "in-memory-demo" } },
+    { data: { entry: saved, balance }, meta: { persistence: "database" } },
     { status: 201 },
   );
 }

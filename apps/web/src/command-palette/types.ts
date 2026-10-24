@@ -6,9 +6,10 @@
  * into, so the component renders and keyboard-navigates one flat list.
  *
  * Display rule (project-wide): a result's title/subtitle must NEVER carry
- * a full phone number — customers/orders show the masked phone only. The
- * full digits may exist inside `keywords` so staff can search by phone,
- * but keywords are never rendered.
+ * a full phone number — customers/orders show the masked phone only. Since
+ * the orders/customers sources became the real admin APIs (which return
+ * masked phones by default), the full number never enters the palette
+ * index at all — not even inside `keywords`.
  */
 
 export type PaletteGroupId = "pages" | "orders" | "products" | "customers" | "actions";
@@ -35,9 +36,9 @@ export const PALETTE_GROUP_LABELS: Record<PaletteGroupId, { bn: string; en: stri
 export type PaletteSource =
   | "nav-config"
   | "actions"
-  | "TEMPORARY_MOCK:orders"
-  | "TEMPORARY_MOCK:catalog"
-  | "TEMPORARY_MOCK:customers"
+  | "orders-db"
+  | "catalog-db"
+  | "customers-db"
   | "ai-search-parser";
 
 export interface PaletteResult {

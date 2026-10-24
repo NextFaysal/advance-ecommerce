@@ -6,6 +6,8 @@
 // (method, TrxID) can never be approved twice, and a reason is required.
 // The review is audited with the submission id and before/after status
 // only — the full TrxID is never written to the audit record.
+// Persistence: database (manual_trx_submissions; UNIQUE(method, trxId)
+// is the duplicate backstop).
 import { NextResponse } from "next/server";
 import { requireAdminPermission } from "@/integrations/sandbox/admin-auth";
 import {
@@ -27,7 +29,7 @@ export async function GET(req: Request) {
   const filter = allowed.includes(status as (typeof allowed)[number])
     ? (status as (typeof allowed)[number])
     : undefined;
-  return NextResponse.json({ data: listManualTrx(filter), meta: { sandbox: true } });
+  return NextResponse.json({ data: await listManualTrx(filter), meta: { sandbox: true, persistence: "database" } });
 }
 
 export async function POST(req: Request) {
@@ -38,8 +40,8 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return errorResponse(400, "INVALID_INPUT", "submissionId, action (approve/reject) and a reason are required.");
   }
-  const before = listManualTrx().find((s) => s.id === parsed.data.submissionId) ?? null;
-  const result = reviewManualTrx(parsed.data, guard.user.id);
+  const before = (await listManualTrx()).find((s) => s.id === parsed.data.submissionId) ?? null;
+  const result = await reviewManualTrx(parsed.data, guard.user.id);
   if (!result.ok) return errorResponse(409, "REVIEW_FAILED", result.error);
   await writeAudit({
     actorId: guard.user.id,
@@ -54,6 +56,6 @@ export async function POST(req: Request) {
   });
   return NextResponse.json({
     data: { submission: result.submission, paymentStatus: result.paymentStatus },
-    meta: { sandbox: true },
+    meta: { sandbox: true, persistence: "database" },
   });
 }

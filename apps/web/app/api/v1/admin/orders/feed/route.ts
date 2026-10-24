@@ -15,10 +15,12 @@
  * events do NOT cross processes or survive restarts. The Redis pub/sub
  * swap is documented in the bus module header; only that module and
  * this subscription change when it lands.
- * Emitted today: order.created, order.status_changed. The contract
- * names payment.succeeded and stock.low are NOT emitted yet — no
- * server-side mutation funnel marks an order paid or writes the stock
- * ledger (see event-bus.ts header) — and nothing here fakes them.
+ * Emitted today: order.created, order.status_changed,
+ * payment.succeeded (published by the markOrderPayment funnel in
+ * src/orders/repository.ts, only on the transition into PAID). The
+ * contract name stock.low is NOT emitted yet — no server-side
+ * mutation writes the stock ledger (see event-bus.ts header) — and
+ * nothing here fakes it.
  * The initial event is named feed.connected, NOT one of the contract
  * event names, so a client can never mistake it for a real order event.
  */

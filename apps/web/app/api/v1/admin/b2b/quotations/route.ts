@@ -1,22 +1,22 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { b2bGuardError, requireB2bAdmin } from "@/b2b/guard";
-import { demoB2bStore } from "@/b2b/store";
+import { b2bStore } from "@/b2b/db-store";
 import { createQuotationSchema, type Quotation } from "@/b2b/types";
 import { effectiveQuotationStatus, quotationTotalPoisha, quotationTransition } from "@/b2b/service";
 
 // B2B quotations — Agent 16. Flow: DRAFT -> SENT -> ACCEPTED -> CONVERTED
 // (to an order, by the order service — conversion itself is not done here),
-// or REJECTED / EXPIRED. Demo persistence, labelled in meta.
+// or REJECTED / EXPIRED. DB-backed (Prisma) since 2026-10-24.
 
 export async function GET() {
   const guard = await requireB2bAdmin("b2b.view");
   if (!guard.ok) return NextResponse.json(b2bGuardError(guard), { status: guard.status });
   const today = new Date().toISOString().slice(0, 10);
-  const quotations = demoB2bStore.listQuotations().map((q) => ({
+  const quotations = (await b2bStore.listQuotations()).map((q) => ({
     ...q, effectiveStatus: effectiveQuotationStatus(q, today),
   }));
-  return NextResponse.json({ data: { quotations }, meta: { persistence: "in-memory-demo" } });
+  return NextResponse.json({ data: { quotations }, meta: { persistence: "database" } });
 }
 
 export async function POST(req: Request) {
@@ -30,9 +30,9 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  if (!demoB2bStore.getCustomer(parsed.data.b2bCustomerId)) {
+  if (!(await b2bStore.getCustomer(parsed.data.b2bCustomerId))) {
     return NextResponse.json(
-      { error: { code: "CUSTOMER_NOT_FOUND", message: "B2B customer not found in the demo store." } },
+      { error: { code: "CUSTOMER_NOT_FOUND", message: "B2B customer not found." } },
       { status: 404 },
     );
   }
@@ -45,8 +45,8 @@ export async function POST(req: Request) {
     createdAt: now,
     updatedAt: now,
   };
-  demoB2bStore.addQuotation(quotation);
-  return NextResponse.json({ data: { quotation }, meta: { persistence: "in-memory-demo" } }, { status: 201 });
+  const saved = await b2bStore.addQuotation(quotation);
+  return NextResponse.json({ data: { quotation: saved }, meta: { persistence: "database" } }, { status: 201 });
 }
 
 const transitionSchema = z.object({
@@ -66,7 +66,7 @@ export async function PATCH(req: Request) {
       { status: 400 },
     );
   }
-  const quotation = demoB2bStore.listQuotations().find((q) => q.id === parsed.data.quotationId);
+  const quotation = await b2bStore.getQuotation(parsed.data.quotationId);
   if (!quotation) {
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "Quotation not found." } }, { status: 404 });
   }
@@ -88,6 +88,6 @@ export async function PATCH(req: Request) {
     convertedOrderId: parsed.data.convertedOrderId ?? quotation.convertedOrderId,
     updatedAt: new Date().toISOString(),
   };
-  demoB2bStore.replaceQuotation(updated);
-  return NextResponse.json({ data: { quotation: updated }, meta: { persistence: "in-memory-demo" } });
+  await b2bStore.replaceQuotation(updated);
+  return NextResponse.json({ data: { quotation: updated }, meta: { persistence: "database" } });
 }

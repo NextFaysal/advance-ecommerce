@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { demoResellerFlags, isResellerEnabled } from "@/reseller/flags";
-import { demoDashboards, demoWalletEntries, findDemoReseller } from "@/reseller/service";
+import { buildDashboardsDb, listWithdrawals, requestWithdrawalDb } from "@/reseller/store";
 import { withdrawalRequestSchema } from "@/reseller/types";
-import { requestWithdrawal } from "@/reseller/wallet";
-import { demoWithdrawals } from "@/reseller/service";
 
 // Resellers — Agent 14, Step 46 (A5). RBAC: resellers.view (list) /
 // resellers.manage (withdrawal creation). The shared guard accepts one
 // permission, so reports.view is not kept as a legacy alias.
-// Feature flag: module.reseller (demo store, defaults OFF -> 403 FEATURE_LOCKED).
-// Persistence: in-memory demo (see src/reseller/service.ts).
+// Feature flag: module.reseller (defaults OFF -> 403 FEATURE_LOCKED).
+// Persistence: Prisma DB via src/reseller/store.ts (the pure wallet
+// rules in src/reseller/wallet.ts still decide every money action,
+// including the G1 status guards).
 function locked() {
   return NextResponse.json(
     { error: { code: "FEATURE_LOCKED", message: "Reseller module is locked for this install (module.reseller is OFF)." } },
@@ -18,14 +18,26 @@ function locked() {
   );
 }
 
+function dbNotReady() {
+  return NextResponse.json(
+    { error: { code: "DB_NOT_READY", message: "Reseller database is not available." } },
+    { status: 503 },
+  );
+}
+
 export async function GET() {
   const guard = await requireAdmin("resellers.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!isResellerEnabled(demoResellerFlags)) return locked();
-  return NextResponse.json({
-    data: { dashboards: demoDashboards(), withdrawals: demoWithdrawals },
-    meta: { persistence: "in-memory-demo", module: "module.reseller" },
-  });
+  try {
+    const [dashboards, withdrawals] = await Promise.all([buildDashboardsDb(), listWithdrawals()]);
+    return NextResponse.json({
+      data: { dashboards, withdrawals },
+      meta: { persistence: "database", module: "module.reseller" },
+    });
+  } catch {
+    return dbNotReady();
+  }
 }
 
 /** POST a withdrawal request for a reseller (admin-assisted / reseller-panel proxy in this slice). */
@@ -41,29 +53,21 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const now = new Date().toISOString();
-  const suffix = `${Date.now()}`;
-  const result = requestWithdrawal(
-    demoWalletEntries.filter((e) => e.resellerId === body.resellerId),
-    demoWithdrawals,
-    {
-      id: `wd-${suffix}`,
-      holdEntryId: `wlt-${suffix}-hold`,
+  try {
+    const result = await requestWithdrawalDb({
       resellerId: body.resellerId,
-      reseller: findDemoReseller(body.resellerId),
       amountPoisha: parsed.data.amountPoisha,
       method: parsed.data.method,
       accountRefMasked: parsed.data.accountRefMasked,
-      createdAt: now,
-    },
-  );
-  if (!result.ok) {
-    return NextResponse.json({ error: { code: "WITHDRAWAL_REJECTED", message: result.error } }, { status: 422 });
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: { code: "WITHDRAWAL_REJECTED", message: result.error } }, { status: 422 });
+    }
+    return NextResponse.json(
+      { data: { withdrawal: result.request }, meta: { persistence: "database" } },
+      { status: 201 },
+    );
+  } catch {
+    return dbNotReady();
   }
-  demoWithdrawals.push(result.request);
-  demoWalletEntries.push(result.holdEntry);
-  return NextResponse.json(
-    { data: { withdrawal: result.request }, meta: { persistence: "in-memory-demo" } },
-    { status: 201 },
-  );
 }

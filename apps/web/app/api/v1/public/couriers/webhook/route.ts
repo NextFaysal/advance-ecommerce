@@ -3,14 +3,20 @@
 // Same contract as the payment webhook: raw body + HMAC signature verified
 // first (unverified => logged, 401, never applied), idempotency key makes
 // replays return duplicate:true without applying twice, and every attempt
-// is logged in the sandbox store with a reason only.
+// is logged with a reason only.
 // Body: { trackingId, rawStatus, idempotencyKey? }
 // rawStatus is mapped per provider (sandbox/status-mapping.ts), the
 // shipment status only moves forward (or to FAILED/RETURNING/RETURNED),
-// and the linked order status only moves through the order state machine
-// (canTransition) — an illegal order move is logged, not coerced.
+// and the linked order status is only ever READ here (for the transition
+// check in status-mapping.ts) — applying an order transition stays with
+// the orders module, which owns the order state machine; nothing in this
+// route writes Order rows.
 // Secret: Admin Settings (encrypted) if configured, otherwise the local
 // env SANDBOX_WEBHOOK_TEST_SECRET (sandbox only). No hardcoded secret.
+// Persistence: DB-backed (2026-10-24) — the mapped status updates the
+// Shipment row and appends a ShipmentEvent carrying the webhook
+// idempotency key (UNIQUE — the DB backstop against a replayed webhook
+// applying twice, even across process restarts).
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { processWebhook, WEBHOOK_HEADERS } from "@/integrations/sandbox/webhook";
@@ -19,7 +25,11 @@ import {
   canApplyShipmentStatus,
   mapCourierRawStatus,
 } from "@/integrations/sandbox/status-mapping";
-import { sandboxStore } from "@/integrations/sandbox/store";
+import {
+  applyShipmentStatus,
+  findShipmentByTracking,
+  findShipmentEventByIdempotencyKey,
+} from "@/integrations/sandbox/db-store";
 import { SANDBOX_COURIER_PROVIDERS } from "@/integrations/sandbox/courier-provider";
 import { getSetting } from "@/lib/settings";
 
@@ -73,7 +83,7 @@ export async function POST(req: Request) {
     );
   }
   const secret = await webhookSecret(provider);
-  const result = processWebhook({
+  const result = await processWebhook({
     channel: "courier",
     provider,
     rawBody,
@@ -81,21 +91,35 @@ export async function POST(req: Request) {
     timestamp: req.headers.get(WEBHOOK_HEADERS.timestamp) ?? undefined,
     idempotencyKey,
     secret,
-    apply: () => {
-      const shipment = [...sandboxStore.shipments.values()].find(
-        (s) => s.trackingId === parsed.data.trackingId && s.provider === provider,
-      );
+    apply: async () => {
+      // DB backstop: a ShipmentEvent already carrying this key means the
+      // webhook was applied by an earlier process/run — never apply twice.
+      const priorEvent = await findShipmentEventByIdempotencyKey(idempotencyKey);
+      if (priorEvent) return { applied: false, reason: "duplicate_idempotency_key" };
+      const shipment = await findShipmentByTracking(parsed.data.trackingId, provider);
       if (!shipment) return { applied: false, reason: "shipment_not_found" };
       const mapped = mapCourierRawStatus(provider, parsed.data.rawStatus);
       if (mapped === null) return { applied: false, reason: "unknown_raw_status" };
       if (!canApplyShipmentStatus(shipment.status, mapped)) {
         return { applied: false, reason: `invalid_shipment_transition:${shipment.status}->${mapped}` };
       }
-      shipment.status = mapped;
-      shipment.statusHistory.push(mapped);
+      try {
+        await applyShipmentStatus(shipment.shipmentId, mapped, {
+          eventIdempotencyKey: idempotencyKey,
+          providerRawStatus: parsed.data.rawStatus,
+        });
+      } catch (err) {
+        if (typeof err === "object" && err !== null && (err as { code?: string }).code === "P2002") {
+          return { applied: false, reason: "duplicate_idempotency_key" };
+        }
+        throw err;
+      }
+      // The order-side move is evaluated against the linked order's real
+      // current status and reported in the reason, exactly as before —
+      // but the transition itself is applied by the orders module, not
+      // here (this route never writes Order rows).
       const orderMove = applyShipmentToOrderStatus(shipment.orderStatus, mapped);
-      if (orderMove.applied) shipment.orderStatus = orderMove.next;
-      return { applied: true, reason: orderMove.reason };
+      return { applied: true, reason: orderMove.applied ? null : orderMove.reason };
     },
   });
   return NextResponse.json(

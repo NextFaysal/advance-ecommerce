@@ -2,14 +2,14 @@ import { NextResponse } from "next/server";
 import { requireRiderAdmin, riderGuardError } from "@/riders/guard";
 import { chooseRider } from "@/riders/assignment";
 import { toRiderView } from "@/riders/service";
-import { demoRiderStore } from "@/riders/store";
+import { riderStore } from "@/riders/db-store";
 import { assignDeliverySchema, type RiderDelivery } from "@/riders/types";
 
 // Auto-assignment — Agent 18 (E3). Picks the best rider with the pure
 // scoring in src/riders/assignment.ts (nearest stub-zone distance, then
 // lowest current load). INACTIVE / SUSPENDED riders and unreachable zones
 // are excluded there. 422 when nobody is eligible — staff then assign
-// manually outside this endpoint. Demo persistence, labelled.
+// manually outside this endpoint. DB-backed (Prisma) since 2026-10-24.
 
 export async function POST(req: Request) {
   const guard = await requireRiderAdmin("riders.manage");
@@ -22,8 +22,8 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const riders = demoRiderStore.listRiders();
-  const deliveries = demoRiderStore.listDeliveries();
+  const riders = await riderStore.listRiders();
+  const deliveries = await riderStore.listDeliveries();
   const candidate = chooseRider(riders, deliveries, parsed.data.zoneId);
   if (!candidate) {
     return NextResponse.json(
@@ -48,14 +48,14 @@ export async function POST(req: Request) {
     codAmountPoisha: parsed.data.codAmountPoisha,
     assignedAt: now,
   };
-  demoRiderStore.addDelivery(delivery);
-  if (rider.status === "ACTIVE") demoRiderStore.replaceRider({ ...rider, status: "ON_DELIVERY" });
+  const savedDelivery = await riderStore.addDelivery(delivery);
+  if (rider.status === "ACTIVE") await riderStore.replaceRider({ ...rider, status: "ON_DELIVERY" });
   return NextResponse.json({
     data: {
-      delivery,
+      delivery: savedDelivery,
       rider: toRiderView(rider),
       match: { distanceKm: candidate.distanceKm, activeLoad: candidate.activeLoad, score: candidate.score },
     },
-    meta: { persistence: "in-memory-demo" },
+    meta: { persistence: "database" },
   }, { status: 201 });
 }

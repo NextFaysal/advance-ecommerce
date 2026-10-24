@@ -9,7 +9,8 @@ import { vendorApiStore } from "./store";
 // Vendors — Agent 18 (follow-up to Agent 16's src-only vendors module).
 // Paid add-on: module.multi_vendor is checked first by the guard (403
 // FEATURE_LOCKED when off). Phones are masked in every response; the full
-// number is never returned by these routes. Demo persistence, labelled.
+// number is never returned by these routes. Vendor records are
+// DB-backed (Prisma) since 2026-10-24.
 
 const createVendorSchema = z.object({
   shopName: z.string().min(2),
@@ -21,10 +22,10 @@ const createVendorSchema = z.object({
 export async function GET() {
   const guard = await requireVendorAdmin("vendors.view");
   if (!guard.ok) return NextResponse.json(vendorGuardError(guard), { status: guard.status });
-  const vendors = vendorApiStore.listVendors().map((v) => ({ ...v, phone: maskPhone(v.phone) }));
+  const vendors = (await vendorApiStore.listVendors()).map((v) => ({ ...v, phone: maskPhone(v.phone) }));
   return NextResponse.json({
     data: { flags: demoVendorFlags.list(), vendors },
-    meta: { persistence: "in-memory-demo", source: "TEMPORARY_DEMO_STORE" },
+    meta: { persistence: "database" },
   });
 }
 
@@ -55,9 +56,9 @@ export async function POST(req: Request) {
     commissionBps: parsed.data.commissionBps,
     createdAt: new Date().toISOString(),
   };
-  vendorApiStore.addVendor(vendor);
+  const saved = await vendorApiStore.addVendor(vendor);
   return NextResponse.json(
-    { data: { vendor: { ...vendor, phone: maskPhone(vendor.phone) } }, meta: { persistence: "in-memory-demo" } },
+    { data: { vendor: { ...saved, phone: maskPhone(saved.phone) } }, meta: { persistence: "database" } },
     { status: 201 },
   );
 }

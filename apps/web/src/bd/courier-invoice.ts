@@ -47,9 +47,21 @@
  * agreed amount, that agreement is recorded as a SEPARATE
  * DisputeAdjustment record; the original row amounts stay untouched.
  *
- * Persistence: in-memory demo store only (labelled as such in every API
- * response). The DB swap point is the store object at the bottom of
- * this file — runs/disputes/adjustments map 1:1 to future tables.
+ * Persistence: DB-backed since 2026-10-24 (the store section at the
+ * bottom of this file) — run headers, disputes and adjustments persist
+ * in courier_invoice_runs / courier_disputes / dispute_adjustments.
+ *
+ * SCHEMA DRIFT (reported, worked around — schema NOT changed):
+ *  - The schema has no table for a run's reconciled ROWS (nor for the
+ *    invalid-row detail / error-report CSV / imported tracking-id set):
+ *    run headers persist; row detail lives in a process-local cache and
+ *    is re-derivable only by re-import. Dispute history entries,
+ *    dispute createdBy, and adjustment note/recordedBy/shipmentId have
+ *    no columns either — they survive in the same cache in-process and
+ *    read back reduced after a restart.
+ *  - CourierDispute.expectedPoisha / invoicedPoisha are NOT NULL: a
+ *    missing side (missing_in_invoice / extra_in_invoice) is stored as
+ *    0 — semantically "nothing invoiced / nothing expected".
  */
 import { z } from "zod";
 import { parseCsv, buildErrorReportCsv, type ImportRowError } from "../catalog/import";
@@ -61,7 +73,8 @@ import {
   type ReconciledRow,
 } from "./courier-reconciliation";
 import { courierChargePoisha } from "../integrations/sandbox/courier-provider";
-import { sandboxStore, type SandboxShipment } from "../integrations/sandbox/store";
+import type { SandboxShipment } from "../integrations/sandbox/store";
+import { findShipmentCharge, listShipments } from "../integrations/sandbox/db-store";
 
 // ── CSV row parsing ───────────────────────────────────────────────────
 
@@ -261,33 +274,39 @@ export function parseCourierInvoiceCsv(
 // ── Expected rows from the sandbox shipment / COD shapes ─────────────
 
 /**
- * Build reconciliation "expected" rows from sandbox shipments of one
- * courier, mirroring src/integrations/sandbox/cod-settlement.ts:
- * charge = courierChargePoisha("district", weightGrams) (the sandbox
- * carries no zone, so the district base is used — same caveat as the
- * COD settlement report). DELIVERED shipments expect the COD amount
- * minus the delivery charge; RETURNED shipments expect no COD and a
- * return charge equal to that charge. Shipments in any other status
- * are not billable yet and are counted as skipped, never dropped
+ * Build reconciliation "expected" rows from the persisted shipments of
+ * one courier, mirroring src/integrations/sandbox/cod-settlement.ts:
+ * the charge is the Shipment row's stored chargePoisha (the real
+ * courierChargePoisha() output from booking); rows without a stored
+ * charge fall back to courierChargePoisha("district", weightGrams)
+ * (the sandbox carries no zone, so the district base is used — same
+ * caveat as the COD settlement report). DELIVERED shipments expect the
+ * COD amount minus the delivery charge; RETURNED shipments expect no
+ * COD and a return charge equal to that charge. Shipments in any other
+ * status are not billable yet and are counted as skipped, never dropped
  * silently.
  */
-export function buildExpectedFromSandbox(courierKey: string): {
+export async function buildExpectedFromSandbox(courierKey: string): Promise<{
   expected: ExpectedShipment[];
   skippedCount: number;
-} {
+}> {
   const expected: ExpectedShipment[] = [];
   let skippedCount = 0;
-  for (const shipment of sandboxStore.shipments.values()) {
-    if (shipment.provider !== courierKey) continue;
-    const built = expectedFromSandboxShipment(shipment);
+  const shipments = await listShipments(courierKey);
+  for (const shipment of shipments) {
+    const storedCharge = await findShipmentCharge(shipment.shipmentId);
+    const built = expectedFromSandboxShipment(shipment, storedCharge > 0 ? storedCharge : undefined);
     if (built) expected.push(built);
     else skippedCount++;
   }
   return { expected, skippedCount };
 }
 
-export function expectedFromSandboxShipment(shipment: SandboxShipment): ExpectedShipment | null {
-  const charge = courierChargePoisha("district", shipment.weightGrams);
+export function expectedFromSandboxShipment(
+  shipment: SandboxShipment,
+  chargeOverride?: number,
+): ExpectedShipment | null {
+  const charge = chargeOverride ?? courierChargePoisha("district", shipment.weightGrams);
   if (shipment.status === "DELIVERED") {
     return {
       shipmentId: shipment.shipmentId,
@@ -337,7 +356,7 @@ export interface CourierInvoiceRun {
   rows: RunRow[];
   summary: CourierReconciliation["summary"];
   /** Always this literal for the current implementation. */
-  persistence: "in-memory-demo";
+  persistence: "database";
 }
 
 let runSeq = 0;
@@ -391,7 +410,7 @@ export function runCourierInvoiceImport(input: {
     importedTrackingIds: parsed.validRows.map((r) => r.trackingId),
     rows: reconciliation.rows.map((r) => ({ ...r, rowId: `${runId}:${r.shipmentId}` })),
     summary: reconciliation.summary,
-    persistence: "in-memory-demo",
+    persistence: "database",
   };
 }
 
@@ -570,44 +589,267 @@ export function transitionDispute(
   return { ok: true, value: { dispute: next, adjustment } };
 }
 
-// ── In-memory demo store (DB swap point) ──────────────────────────────
+// ── Prisma-backed store (DB swap 2026-10-24) ─────────────────────────
+//
+// Run HEADERS, disputes and adjustments persist in the DB tables. The
+// full run detail (rows, invalid rows, error-report CSV), the dispute
+// history and the imported-tracking-id set have no schema columns (see
+// the module header's drift notes), so they are kept in a process-local
+// detail cache alongside the DB writes; reads merge cache-first and
+// fall back to the persisted header/rows.
 
-export interface CourierInvoiceStore {
-  runs: Map<string, CourierInvoiceRun>;
-  disputes: Map<string, CourierDispute>;
-  adjustments: DisputeAdjustment[];
-  /** `${courierKey}:${trackingId}` imported in any earlier run. */
-  importedTrackingIds: Set<string>;
-}
+import { prisma } from "@advance-ecommerce/db";
 
-/** TEMPORARY in-memory demo store — resets on process restart; swap for DB tables behind these shapes. */
-export const courierInvoiceStore: CourierInvoiceStore = {
-  runs: new Map(),
-  disputes: new Map(),
-  adjustments: [],
-  importedTrackingIds: new Set(),
-};
+const runDetailCache = new Map<string, CourierInvoiceRun>();
+const disputeDetailCache = new Map<string, CourierDispute>();
+const adjustmentDetailCache = new Map<string, DisputeAdjustment>();
+/** `${courierKey}:${trackingId}` imported in any earlier run (process-local; drift-noted). */
+const importedTrackingIdSet = new Set<string>();
 
-export function importedTrackingIdsFor(courierKey: string): Set<string> {
+export async function importedTrackingIdsFor(courierKey: string): Promise<Set<string>> {
   const out = new Set<string>();
-  for (const key of courierInvoiceStore.importedTrackingIds) {
+  for (const key of importedTrackingIdSet) {
     const prefix = `${courierKey}:`;
     if (key.startsWith(prefix)) out.add(key.slice(prefix.length));
   }
   return out;
 }
 
-export function recordRun(run: CourierInvoiceRun): void {
-  courierInvoiceStore.runs.set(run.runId, run);
+export async function recordRun(run: CourierInvoiceRun): Promise<void> {
+  runDetailCache.set(run.runId, run);
   for (const trackingId of run.importedTrackingIds) {
-    courierInvoiceStore.importedTrackingIds.add(`${run.courierKey}:${trackingId}`);
+    importedTrackingIdSet.add(`${run.courierKey}:${trackingId}`);
+  }
+  await prisma.courierInvoiceRun.create({
+    data: {
+      id: run.runId,
+      courierKey: run.courierKey,
+      rowsTotal: run.totalRows,
+      rowsValid: run.validRowCount,
+      matchedTotalPoisha: run.summary.matchedTotalPoisha,
+      disputedTotalPoisha: run.summary.disputedTotalPoisha,
+    },
+  });
+}
+
+interface InvoiceRunRowShape {
+  id: string;
+  courierKey: string;
+  rowsTotal: number;
+  rowsValid: number;
+  matchedTotalPoisha: number;
+  disputedTotalPoisha: number;
+  createdAt: Date;
+}
+
+function runHeaderToRun(row: InvoiceRunRowShape): CourierInvoiceRun {
+  return {
+    runId: row.id,
+    courierKey: row.courierKey,
+    importedAt: row.createdAt.toISOString(),
+    totalRows: row.rowsTotal,
+    validRowCount: row.rowsValid,
+    invalidRows: [],
+    errorReportCsv: "",
+    orderIdMismatches: [],
+    skippedShipments: 0,
+    importedTrackingIds: [],
+    rows: [],
+    summary: {
+      expectedTotalPoisha: row.matchedTotalPoisha + row.disputedTotalPoisha,
+      invoicedTotalPoisha: row.matchedTotalPoisha + row.disputedTotalPoisha,
+      matchedTotalPoisha: row.matchedTotalPoisha,
+      disputedTotalPoisha: row.disputedTotalPoisha,
+      matchedCount: 0,
+      disputedCount: 0,
+      missingCount: 0,
+      extraCount: 0,
+    },
+    persistence: "database",
+  };
+}
+
+export async function listInvoiceRuns(): Promise<CourierInvoiceRun[]> {
+  const rows = await prisma.courierInvoiceRun.findMany({ orderBy: { createdAt: "asc" } });
+  return rows.map((row) => runDetailCache.get(row.id) ?? runHeaderToRun(row));
+}
+
+export async function getInvoiceRun(runId: string): Promise<CourierInvoiceRun | null> {
+  const cached = runDetailCache.get(runId);
+  if (cached) return cached;
+  const row = await prisma.courierInvoiceRun.findUnique({ where: { id: runId } });
+  return row ? runHeaderToRun(row) : null;
+}
+
+/* ------------------------------ disputes ------------------------------ */
+
+interface DisputeRowShape {
+  id: string;
+  runId: string;
+  trackingId: string;
+  expectedPoisha: number;
+  invoicedPoisha: number;
+  reason: string;
+  status: string;
+  evidenceRef: string | null;
+  createdAt: Date;
+}
+
+async function disputeRowToTs(row: DisputeRowShape): Promise<CourierDispute> {
+  const cached = disputeDetailCache.get(row.id);
+  if (cached && cached.status === row.status) return cached;
+  const shipment = await prisma.shipment.findUnique({
+    where: { trackingId: row.trackingId },
+    select: { id: true },
+  });
+  const shipmentId = shipment?.id ?? `unknown:${row.trackingId}`;
+  const run = await prisma.courierInvoiceRun.findUnique({
+    where: { id: row.runId },
+    select: { courierKey: true },
+  });
+  return {
+    disputeId: row.id,
+    runId: row.runId,
+    rowId: `${row.runId}:${shipmentId}`,
+    shipmentId,
+    courierKey: run?.courierKey ?? "",
+    reason: row.reason,
+    status: (disputeStatuses as readonly string[]).includes(row.status)
+      ? (row.status as DisputeStatus)
+      : "OPEN",
+    evidenceRefs: row.evidenceRef ? [row.evidenceRef] : [],
+    expectedPayablePoisha: row.expectedPoisha,
+    invoicedPayablePoisha: row.invoicedPoisha,
+    createdBy: cached?.createdBy ?? "",
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.createdAt.toISOString(),
+    history: cached?.history ?? [
+      { from: null, to: (row.status as DisputeStatus) ?? "OPEN", at: row.createdAt.toISOString(), by: "", note: row.reason },
+    ],
+  };
+}
+
+async function trackingIdForDispute(dispute: CourierDispute): Promise<string> {
+  if (dispute.shipmentId.startsWith("unknown:")) return dispute.shipmentId.slice("unknown:".length);
+  const shipment = await prisma.shipment.findUnique({
+    where: { id: dispute.shipmentId },
+    select: { trackingId: true },
+  });
+  return shipment?.trackingId ?? dispute.shipmentId;
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return typeof err === "object" && err !== null && (err as { code?: string }).code === "P2002";
+}
+
+export async function saveDispute(dispute: CourierDispute): Promise<CourierDispute> {
+  const trackingId = await trackingIdForDispute(dispute);
+  const data = {
+    runId: dispute.runId,
+    trackingId,
+    expectedPoisha: dispute.expectedPayablePoisha ?? 0,
+    invoicedPoisha: dispute.invoicedPayablePoisha ?? 0,
+    reason: dispute.reason,
+    status: dispute.status,
+    evidenceRef: dispute.evidenceRefs[dispute.evidenceRefs.length - 1] ?? null,
+  };
+  try {
+    await prisma.courierDispute.create({ data: { id: dispute.disputeId, ...data } });
+    disputeDetailCache.set(dispute.disputeId, dispute);
+    return dispute;
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err;
+    // The process-local dsp-N sequence can collide with a persisted id
+    // after a restart; suffix and retry once rather than losing the row.
+    const created: CourierDispute = {
+      ...dispute,
+      disputeId: `${dispute.disputeId}-${Math.floor(Math.random() * 1e6).toString(36)}`,
+    };
+    await prisma.courierDispute.create({ data: { id: created.disputeId, ...data } });
+    disputeDetailCache.set(created.disputeId, created);
+    return created;
   }
 }
 
-/** Test/support only: clear the demo store. Never call from a route. */
-export function resetCourierInvoiceStore(): void {
-  courierInvoiceStore.runs.clear();
-  courierInvoiceStore.disputes.clear();
-  courierInvoiceStore.adjustments = [];
-  courierInvoiceStore.importedTrackingIds.clear();
+export async function updateDispute(dispute: CourierDispute): Promise<CourierDispute> {
+  await prisma.courierDispute.update({
+    where: { id: dispute.disputeId },
+    data: {
+      status: dispute.status,
+      evidenceRef: dispute.evidenceRefs[dispute.evidenceRefs.length - 1] ?? null,
+    },
+  });
+  disputeDetailCache.set(dispute.disputeId, dispute);
+  return dispute;
+}
+
+export async function getDispute(disputeId: string): Promise<CourierDispute | null> {
+  const row = await prisma.courierDispute.findUnique({ where: { id: disputeId } });
+  return row ? disputeRowToTs(row) : null;
+}
+
+export async function listDisputes(): Promise<CourierDispute[]> {
+  const rows = await prisma.courierDispute.findMany({ orderBy: { createdAt: "asc" } });
+  return Promise.all(rows.map(disputeRowToTs));
+}
+
+/* ---------------------------- adjustments ----------------------------- */
+
+interface AdjustmentRowShape {
+  id: string;
+  disputeId: string;
+  direction: string;
+  amountPoisha: number;
+  createdAt: Date;
+}
+
+function adjustmentRowToTs(row: AdjustmentRowShape): DisputeAdjustment {
+  const cached = adjustmentDetailCache.get(row.id);
+  if (cached) return cached;
+  return {
+    adjustmentId: row.id,
+    disputeId: row.disputeId,
+    shipmentId: "",
+    direction: row.direction as DisputeAdjustment["direction"],
+    amountPoisha: row.amountPoisha,
+    note: "",
+    recordedBy: "",
+    recordedAt: row.createdAt.toISOString(),
+  };
+}
+
+export async function saveAdjustment(adjustment: DisputeAdjustment): Promise<DisputeAdjustment> {
+  try {
+    await prisma.disputeAdjustment.create({
+      data: {
+        id: adjustment.adjustmentId,
+        disputeId: adjustment.disputeId,
+        direction: adjustment.direction,
+        amountPoisha: adjustment.amountPoisha,
+      },
+    });
+    adjustmentDetailCache.set(adjustment.adjustmentId, adjustment);
+    return adjustment;
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err;
+    const created: DisputeAdjustment = {
+      ...adjustment,
+      adjustmentId: `${adjustment.adjustmentId}-${Math.floor(Math.random() * 1e6).toString(36)}`,
+    };
+    await prisma.disputeAdjustment.create({
+      data: {
+        id: created.adjustmentId,
+        disputeId: created.disputeId,
+        direction: created.direction,
+        amountPoisha: created.amountPoisha,
+      },
+    });
+    adjustmentDetailCache.set(created.adjustmentId, created);
+    return created;
+  }
+}
+
+export async function listAdjustments(): Promise<DisputeAdjustment[]> {
+  const rows = await prisma.disputeAdjustment.findMany({ orderBy: { createdAt: "asc" } });
+  return rows.map(adjustmentRowToTs);
 }

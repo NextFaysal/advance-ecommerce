@@ -2,19 +2,19 @@ import { NextResponse } from "next/server";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { preOrderSchema, type PreOrder } from "@/advanced-orders/types";
 import { preOrderDuePoisha, validatePreOrderDeposit } from "@/advanced-orders/exchange-merge";
-import { demoAdvancedOrderStore } from "@/advanced-orders/store";
+import { advancedOrderStore } from "@/advanced-orders/db-store";
 
-// Pre-orders — Agent 16, Step 48 (A9). In-memory demo persistence, labelled.
+// Pre-orders — Agent 16, Step 48 (A9). DB-backed (Prisma) since 2026-10-24.
 
 export async function GET() {
   const guard = await requireAdmin("orders.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  const preOrders = demoAdvancedOrderStore.listPreOrders().map((p) => ({
+  const preOrders = (await advancedOrderStore.listPreOrders()).map((p) => ({
     ...p,
     totalPoisha: p.unitPricePoisha * p.quantity,
     duePoisha: preOrderDuePoisha(p),
   }));
-  return NextResponse.json({ data: { preOrders }, meta: { persistence: "in-memory-demo" } });
+  return NextResponse.json({ data: { preOrders }, meta: { persistence: "database" } });
 }
 
 export async function POST(req: Request) {
@@ -43,9 +43,9 @@ export async function POST(req: Request) {
     fulfilledQty: 0,
     createdAt: new Date().toISOString(),
   };
-  demoAdvancedOrderStore.addPreOrder(preOrder);
+  const saved = await advancedOrderStore.addPreOrder(preOrder);
   return NextResponse.json(
-    { data: { preOrder, totalPoisha, duePoisha: preOrderDuePoisha(preOrder) }, meta: { persistence: "in-memory-demo" } },
+    { data: { preOrder: saved, totalPoisha, duePoisha: preOrderDuePoisha(saved) }, meta: { persistence: "database" } },
     { status: 201 },
   );
 }

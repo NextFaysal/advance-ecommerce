@@ -9,14 +9,15 @@
  * palette's link convention; the subtitle says plainly that it is a
  * filtered view so nobody mistakes it for a guaranteed server filter.
  *
- *   "#100245"            -> the matching demo order itself, else a
- *                           filtered orders link for that number
+ *   "#100245"            -> the matching order itself (from the real
+ *                           orders the caller loaded), else a filtered
+ *                           orders link for that number
  *   "@nusrat"            -> customers link filtered by that name
  *   "> rider"            -> matching quick actions from the action list
  *   "gotokal er ..."     -> date hint yesterday, etc. (parser's job)
  */
 import { parseCommandQuery, type ParsedCommandQuery } from "../ai/search";
-import { MOCK_ORDERS } from "../orders/mock";
+import type { Order } from "../orders/types";
 import { PALETTE_ACTIONS } from "./index-builder";
 import { normalizeQueryText } from "./scoring";
 import type { PaletteResult } from "./types";
@@ -46,13 +47,16 @@ function ordersHref(parsed: ParsedCommandQuery, fallbackText: string): string {
  * parser found nothing structured (pure free text is left to the fuzzy
  * search — it is never "interpreted" here).
  */
-export function buildNaturalLanguageResults(queryRaw: string): PaletteResult[] {
+export function buildNaturalLanguageResults(
+  queryRaw: string,
+  orders: readonly Order[] = [],
+): PaletteResult[] {
   const parsed = parseCommandQuery(queryRaw);
   const results: PaletteResult[] = [];
 
-  // "#100245" — jump straight to the order when the demo data has it.
+  // "#100245" — jump straight to the order when the loaded data has it.
   if (parsed.orderNo) {
-    const match = MOCK_ORDERS.find((o) => o.orderNo.endsWith(parsed.orderNo ?? ""));
+    const match = orders.find((o) => o.orderNo.endsWith(parsed.orderNo ?? ""));
     if (match) {
       results.push({
         id: `nl:order:${match.id}`,
@@ -122,7 +126,7 @@ export function buildNaturalLanguageResults(queryRaw: string): PaletteResult[] {
       group: "actions",
       titleBn: `${parts.filter(Boolean).join(" ")} দেখুন`,
       titleEn: "View filtered orders",
-      subtitle: "প্রাকৃতিক ভাষা থেকে তৈরি ফিল্টার লিংক (ডেমো)",
+      subtitle: "প্রাকৃতিক ভাষা থেকে তৈরি ফিল্টার লিংক",
       href: ordersHref(parsed, parsed.text),
       icon: "ListFilter",
       keywords: [parsed.text],

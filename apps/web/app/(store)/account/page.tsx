@@ -1,36 +1,28 @@
-// TEMPORARY MOCK account page — replace with the logged-in customer's real
-// orders/addresses/wallet when the API owner wires /api/v1/public/account.
-// Phone is masked by default; full phone needs customers.view_full_phone.
-import { MOCK_CUSTOMERS, MOCK_ORDERS } from "../../../src/orders/mock";
-import { customerAovPoisha, customerSuccessRate, displayPhone } from "../../../src/orders/customer";
-import { formatBdt } from "../../../src/checkout/pricing";
-
+// Customer account page — HONEST NOT-WIRED state.
+// There is no customer login/session and no /api/v1/public/account API
+// yet, so this page must not present anyone's sample data as "your
+// account" (it previously rendered a mock customer + mock orders as if
+// they were the visitor's). Until customer auth lands, customers can
+// track a real order with its order number + phone at /track.
 export default function AccountPage() {
-  const customer = MOCK_CUSTOMERS[0];
-  if (!customer) return <main style={{ padding: 24 }}>No customer found (mock).</main>;
-  const orders = MOCK_ORDERS.filter((o) => o.customerPhone === customer.phone);
   return (
     <main style={{ padding: 24, maxWidth: 720, fontFamily: "system-ui" }}>
       <h1>Amar Account</h1>
+      <p>
+        Customer login ekhono chalu hoy ni — tai account page e ekhono apnar order ba profile dekha jacche na.
+        Kono sample/demo data ekhane dekhano hoy na.
+      </p>
       <section>
-        <h2>{customer.name}</h2>
-        <p>Phone (masked): {displayPhone(customer.phone, false)}</p>
-        <p>Total orders: {customer.totalOrders} | Delivered: {customer.deliveredOrders} | Success rate: {customerSuccessRate(customer)}%</p>
-        <p>Lifetime value: {formatBdt(customer.lifetimeValuePoisha)} | AOV: {formatBdt(customerAovPoisha(customer))}</p>
-        <p>Tags: {customer.tags.join(", ") || "—"}</p>
+        <h2>Order track korun</h2>
+        <p>
+          Order number ar phone diye apnar ashol order er obostha dekhte{" "}
+          <a href="/track">Order Track</a> page e jan.
+        </p>
       </section>
-      <section>
-        <h2>Amar Order</h2>
-        <ul>
-          {orders.map((order) => (
-            <li key={order.id}>
-              {order.orderNo} — {order.status} — {formatBdt(order.totalPoisha)} — {order.paymentMethod} / {order.paymentStatus}
-            </li>
-          ))}
-        </ul>
-        {orders.length === 0 && <p>Kono order pai ni.</p>}
-      </section>
-      <p>TEMPORARY MOCK data — ashol account API wire hole ei page real data dekhabe.</p>
+      <p>
+        (Developer note: wire this page to the logged-in customer&apos;s real orders/addresses/wallet when
+        customer auth and /api/v1/public/account exist.)
+      </p>
     </main>
   );
 }

@@ -3,12 +3,12 @@ import { z } from "zod";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { DEMO_SENSITIVE_ACTIONS, filterDemoAuditEntries, type AuditFilters } from "./store";
 
-// Audit log list — Agent 39.
-// RBAC: audit.view. Persistence: in-memory demo store (labelled), seeded
-// with fictional rows shaped like src/lib/audit.ts records. Sensitive
-// actions are flagged `sensitive: true` (they required a reason when
-// written). before/after snapshots in the store are already sanitized —
-// secret-like values only ever appear as "[REDACTED]".
+// Audit log list — Agent 39, DB-backed since the Prisma persistence swap.
+// RBAC: audit.view. Persistence: the AuditLog table via Prisma (see
+// ./store.ts). Sensitive actions are flagged `sensitive: true` (they
+// required a reason when written). before/after snapshots were sanitized
+// on write by src/lib/audit.ts — secret-like values only ever appear as
+// "[REDACTED]".
 
 const querySchema = z.object({
   actor: z.string().trim().min(1).optional(),
@@ -46,7 +46,7 @@ export async function GET(req: Request) {
     }
   }
 
-  const all = filterDemoAuditEntries(filters);
+  const all = await filterDemoAuditEntries(filters);
   const rows = all.slice((page - 1) * pageSize, page * pageSize);
 
   return NextResponse.json({
@@ -57,9 +57,9 @@ export async function GET(req: Request) {
     meta: {
       page,
       pageSize,
-      persistence: "in-memory-demo",
-      source: "TEMPORARY_DEMO",
-      note: "Demo store seeded with fictional rows. Real wiring reads the AuditLog table via getAuditLogs() in src/lib/audit.ts.",
+      persistence: "database",
+      source: "AuditLog table via Prisma",
+      note: "Real audit records from the AuditLog table. Snapshots were sanitized on write by src/lib/audit.ts (secret-like values appear only as [REDACTED]).",
     },
   });
 }

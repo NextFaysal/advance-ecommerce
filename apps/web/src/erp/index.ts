@@ -3,3 +3,4 @@ export * from "./types";
 export * from "./accounts";
 export * from "./ledger";
 export * from "./vat";
+export * from "./store";

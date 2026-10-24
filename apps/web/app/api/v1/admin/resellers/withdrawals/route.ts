@@ -2,13 +2,15 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { demoResellerFlags, isResellerEnabled } from "@/reseller/flags";
-import { demoWalletEntries, demoWithdrawals, findDemoReseller } from "@/reseller/service";
-import { reviewWithdrawal } from "@/reseller/wallet";
+import { reviewWithdrawalDb } from "@/reseller/store";
 
 // Withdrawal review — Agent 14. RBAC: resellers.manage (dedicated
 // money-out permission for withdrawal review actions).
 // Status flow: PENDING -> APPROVED -> PAID, or PENDING|APPROVED -> REJECTED
-// (releases the hold back to the reseller balance). See src/reseller/wallet.ts.
+// (releases the hold back to the reseller balance). The pure state machine
+// is src/reseller/wallet.ts reviewWithdrawal; persistence is the Prisma
+// store (src/reseller/store.ts). Review-to-PAID on a non-ACTIVE reseller
+// is refused by the wallet guard with a status-specific reason (G1).
 const reviewSchema = z.object({
   withdrawalId: z.string().min(1),
   action: z.enum(["APPROVED", "PAID", "REJECTED"]),
@@ -31,30 +33,26 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const idx = demoWithdrawals.findIndex((w) => w.id === parsed.data.withdrawalId);
-  const existing = demoWithdrawals[idx];
-  if (idx === -1 || !existing) {
-    return NextResponse.json({ error: { code: "NOT_FOUND", message: "Withdrawal not found." } }, { status: 404 });
-  }
-  const result = reviewWithdrawal(
-    demoWalletEntries.filter((e) => e.resellerId === existing.resellerId),
-    existing,
-    {
+  try {
+    const result = await reviewWithdrawalDb(parsed.data.withdrawalId, {
       action: parsed.data.action,
-      reseller: findDemoReseller(existing.resellerId),
       reviewedBy: guard.userId,
-      reviewedAt: new Date().toISOString(),
       note: parsed.data.note,
-      releaseEntryId: `wlt-${Date.now()}-release`,
-    },
-  );
-  if (!result.ok) {
-    return NextResponse.json({ error: { code: "REVIEW_REJECTED", message: result.error } }, { status: 422 });
+    });
+    if (!result.ok) {
+      if (result.notFound) {
+        return NextResponse.json({ error: { code: "NOT_FOUND", message: "Withdrawal not found." } }, { status: 404 });
+      }
+      return NextResponse.json({ error: { code: "REVIEW_REJECTED", message: result.error } }, { status: 422 });
+    }
+    return NextResponse.json({
+      data: { withdrawal: result.request },
+      meta: { persistence: "database" },
+    });
+  } catch {
+    return NextResponse.json(
+      { error: { code: "DB_NOT_READY", message: "Reseller database is not available." } },
+      { status: 503 },
+    );
   }
-  demoWithdrawals[idx] = result.request;
-  if (result.releaseEntry) demoWalletEntries.push(result.releaseEntry);
-  return NextResponse.json({
-    data: { withdrawal: result.request },
-    meta: { persistence: "in-memory-demo" },
-  });
 }

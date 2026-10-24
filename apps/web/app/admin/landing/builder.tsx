@@ -1,24 +1,26 @@
 "use client";
 // Landing builder UI — Agent 53.
-// TEMPORARY DEMO: all editing is page-local state seeded from the
-// in-memory demo store (src/landing/store.ts) — changes are lost on
-// reload and are NOT posted to the API from this page; the API
-// (GET/POST /api/v1/admin/landing, PATCH .../[id]) exists with the same
-// contracts for when the DB store lands. Validation shown here comes
+// All editing is page-local state seeded from the DB-backed store via
+// the server parent's `initialPages` prop (src/landing/store.ts is
+// Prisma-backed now) — edits are lost on reload and are NOT posted to
+// the API from this page; the API (GET/POST /api/v1/admin/landing,
+// PATCH .../[id]) persists with the same contracts. Validation shown
+// here comes
 // from the REAL validateLandingPage() — the same function the API and
-// the publish transition run.
+// the publish transition run. The product catalog is NOT demo data:
+// the server parent passes ACTIVE products from the real catalog DB
+// (src/catalog/server-read) as the `catalogProducts` prop.
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { MOCK_PRODUCTS } from "@/catalog/mock";
+import type { Product } from "@/catalog/types";
 import {
   LANDING_SECTION_LABELS, createEmptySection,
   type LandingPage, type LandingSection, type LandingSectionType, type LandingStatus,
 } from "@/landing/types";
 import { transitionLandingStatus, validateLandingPage } from "@/landing/validate";
 import { buildLandingViewModel } from "@/landing/render";
-import { landingStore } from "@/landing/store";
 import { LandingView } from "@/landing/components/LandingView";
 
 const SECTION_TYPES = Object.keys(LANDING_SECTION_LABELS) as LandingSectionType[];
@@ -61,8 +63,8 @@ function TextArea({ label, value, onChange }: { label: string; value: string; on
   );
 }
 
-export default function LandingBuilder() {
-  const [pages, setPages] = useState<LandingPage[]>(() => clone(landingStore.list()));
+export default function LandingBuilder({ catalogProducts, initialPages }: { catalogProducts: Product[]; initialPages: LandingPage[] }) {
+  const [pages, setPages] = useState<LandingPage[]>(() => clone(initialPages));
   const [selectedId, setSelectedId] = useState<string>(pages[0]?.id ?? "");
   const [paletteType, setPaletteType] = useState<LandingSectionType>("benefits");
   const [notice, setNotice] = useState<string | null>(null);
@@ -73,11 +75,11 @@ export default function LandingBuilder() {
     [pages, selectedId],
   );
   const validation = useMemo(
-    () => (selected ? validateLandingPage(selected, MOCK_PRODUCTS, otherSlugs) : null),
+    () => (selected ? validateLandingPage(selected, catalogProducts, otherSlugs) : null),
     [selected, otherSlugs],
   );
   const view = useMemo(
-    () => (selected ? buildLandingViewModel(selected, MOCK_PRODUCTS) : null),
+    () => (selected ? buildLandingViewModel(selected, catalogProducts) : null),
     [selected],
   );
 
@@ -105,7 +107,7 @@ export default function LandingBuilder() {
   }
 
   function createDraft() {
-    const firstProduct = MOCK_PRODUCTS[0];
+    const firstProduct = catalogProducts[0];
     const page: LandingPage = {
       id: `lp_local_${Date.now().toString(36)}`,
       slug: `new-campaign-${pages.length + 1}`,
@@ -126,7 +128,7 @@ export default function LandingBuilder() {
 
   function changeStatus(to: LandingStatus) {
     if (!selected) return;
-    const result = transitionLandingStatus(selected, to, MOCK_PRODUCTS, otherSlugs);
+    const result = transitionLandingStatus(selected, to, catalogProducts, otherSlugs);
     if (!result.ok) {
       setNotice(`⚠ ${result.messageBn}${result.validation ? ` (${result.validation.errors.length}টি সমস্যা নিচে দেখুন)` : ""}`);
       return;
@@ -251,14 +253,14 @@ export default function LandingBuilder() {
                     {section.type === "product_offer" ? (
                       <div className="grid gap-3 sm:grid-cols-2">
                         <label className="block">
-                          <span className="mb-1 block text-xs font-medium text-text-muted">পণ্য (TEMPORARY MOCK ক্যাটালগ)</span>
+                          <span className="mb-1 block text-xs font-medium text-text-muted">পণ্য (আসল ক্যাটালগ — ডাটাবেস)</span>
                           <select
                             value={section.productId}
                             onChange={(e) => updateSection(section.id, (s) => (s.type === "product_offer" ? { ...s, productId: e.target.value, variantId: null } : s))}
                             className="h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm"
                           >
                             <option value="">— পণ্য বেছে নিন —</option>
-                            {MOCK_PRODUCTS.map((p) => <option key={p.id} value={p.id}>{p.title.bn} ({p.id})</option>)}
+                            {catalogProducts.map((p) => <option key={p.id} value={p.id}>{p.title.bn} ({p.id})</option>)}
                           </select>
                         </label>
                         <label className="block">
@@ -269,7 +271,7 @@ export default function LandingBuilder() {
                             className="h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm"
                           >
                             <option value="">প্রথম স্টক-থাকা ভেরিয়েন্ট (অটো)</option>
-                            {(MOCK_PRODUCTS.find((p) => p.id === section.productId)?.variants ?? []).map((v) => (
+                            {(catalogProducts.find((p) => p.id === section.productId)?.variants ?? []).map((v) => (
                               <option key={v.id} value={v.id}>{Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড"} — {v.sku}</option>
                             ))}
                           </select>

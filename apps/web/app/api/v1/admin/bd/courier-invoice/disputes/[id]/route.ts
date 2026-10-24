@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { guardError, requireAdmin } from "@/reports/guard";
-import { courierInvoiceStore, disputeStatuses, transitionDispute } from "@/bd/courier-invoice";
+import {
+  disputeStatuses,
+  getDispute,
+  saveAdjustment,
+  transitionDispute,
+  updateDispute,
+} from "@/bd/courier-invoice";
 
 // PATCH /api/v1/admin/bd/courier-invoice/disputes/[id] — Agent 50.
 // RBAC: reports.accounting.
@@ -9,7 +15,8 @@ import { courierInvoiceStore, disputeStatuses, transitionDispute } from "@/bd/co
 // ACCEPTED/REJECTED -> CLOSED. An adjustment may be supplied ONLY on
 // the ACCEPTED transition and is stored as a separate adjustment
 // record — the dispute's snapshotted amounts and the run row's amounts
-// are never edited.
+// are never edited. Persistence: DB-backed (courier_disputes /
+// dispute_adjustments).
 const transitionRequestSchema = z.object({
   to: z.enum(disputeStatuses),
   note: z.string().optional(),
@@ -33,7 +40,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       { status: 400 },
     );
   }
-  const dispute = courierInvoiceStore.disputes.get(params.id);
+  const dispute = await getDispute(params.id);
   if (!dispute) {
     return NextResponse.json(
       { error: { code: "DISPUTE_NOT_FOUND", message: `No dispute with id ${params.id}.` } },
@@ -44,10 +51,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!result.ok) {
     return NextResponse.json({ error: { code: result.code, message: result.message } }, { status: 422 });
   }
-  courierInvoiceStore.disputes.set(result.value.dispute.disputeId, result.value.dispute);
-  if (result.value.adjustment) courierInvoiceStore.adjustments.push(result.value.adjustment);
+  const savedDispute = await updateDispute(result.value.dispute);
+  const savedAdjustment = result.value.adjustment ? await saveAdjustment(result.value.adjustment) : null;
   return NextResponse.json({
-    data: { dispute: result.value.dispute, adjustment: result.value.adjustment },
-    meta: { persistence: "in-memory-demo" },
+    data: { dispute: savedDispute, adjustment: savedAdjustment },
+    meta: { persistence: "database" },
   });
 }

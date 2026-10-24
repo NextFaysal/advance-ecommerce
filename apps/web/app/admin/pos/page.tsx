@@ -1,16 +1,19 @@
 import { PageHeader } from "@/components/ui/page-header";
-import { MOCK_PRODUCTS } from "@/catalog/mock";
+import { listActiveProducts } from "@/catalog/server-read";
 import { demoPosFlags, isPosEnabled } from "@/pos/flags";
 import { openShiftForRegister } from "@/pos/register";
-import { DEMO_REGISTERS, demoSales, demoShifts } from "@/pos/service";
+import { listRegistersDb, listSalesDb, listShiftsDb } from "@/pos/store";
 import PosRegisterClient, { type PosCatalogEntry } from "./register-client";
 
 // POS register — Agent 38 (module built by Agent 14 in src/pos).
 // Locked state: while module.pos is OFF (seeded default, paid add-on),
 // the page renders the lock panel, matching the API's 403 FEATURE_LOCKED.
-// Unlocked: the register screen below works on the src/pos demo store
-// (TEMPORARY, in-memory) and the TEMPORARY MOCK catalog, labelled.
-export default function AdminPosPage() {
+// Unlocked: the register screen below works on the Prisma DB store
+// (src/pos/store.ts) for shifts/sales, and the product catalog is the
+// REAL catalog DB (ACTIVE products via src/catalog/server-read).
+export const dynamic = "force-dynamic";
+
+export default async function AdminPosPage() {
   if (!isPosEnabled(demoPosFlags)) {
     return (
       <main>
@@ -23,12 +26,17 @@ export default function AdminPosPage() {
     );
   }
 
-  const register = DEMO_REGISTERS[0]!;
-  const initialShift = openShiftForRegister(demoShifts, register.id);
-  const initialSales = initialShift ? demoSales.filter((s) => s.shiftId === initialShift.id) : [];
+  const [registers, shifts, sales] = await Promise.all([
+    listRegistersDb(),
+    listShiftsDb(),
+    listSalesDb(),
+  ]);
+  const register = registers[0]!;
+  const initialShift = openShiftForRegister(shifts, register.id);
+  const initialSales = initialShift ? sales.filter((s) => s.shiftId === initialShift.id) : [];
 
   const catalog: PosCatalogEntry[] = [];
-  for (const product of MOCK_PRODUCTS) {
+  for (const product of await listActiveProducts(100)) {
     for (const variant of product.variants) {
       if (!variant.isActive) continue;
       const attributeText = Object.values(variant.attributes).join(" / ");
@@ -46,7 +54,7 @@ export default function AdminPosPage() {
     <main>
       <PageHeader
         title="পয়েন্ট অব সেল (POS)"
-        description="TEMPORARY DEMO — ডেটা src/pos ইন-মেমরি ডেমো স্টোরে থাকে (রিস্টার্টে মুছে যায়), পণ্য TEMPORARY MOCK ক্যাটালগ থেকে। POS বিক্রি এখানে ডেমো রেকর্ড — আসল Order তৈরি হয় না।"
+        description="শিফট/বিক্রির ডেটা আসল ডাটাবেসে থাকে (src/pos/store.ts), পণ্যের ক্যাটালগও আসল ডাটাবেস থেকে আসে। POS বিক্রি এখানে ডাটাবেস রেকর্ড — আসল Order তৈরি হয় না।"
         breadcrumb="Admin / Sales"
       />
       <PosRegisterClient

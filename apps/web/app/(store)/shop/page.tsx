@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ProductCard } from "@/catalog/ProductCard";
-import { applyProductFilter, type SortOption } from "@/catalog/search";
-import { MOCK_CATEGORIES, getMockActiveProducts } from "@/catalog/mock";
+import type { SortOption } from "@/catalog/search";
+import { listCategories, listPublicProducts } from "@/catalog/server-read";
+
+// Data: real catalog DB (ACTIVE products only) via the Prisma
+// repository — the same filter contract as GET /api/v1/public/products.
+// An empty DB renders the honest empty state below, never mock data.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Shop — Advance Ecommerce",
@@ -23,7 +28,7 @@ function parsePoisha(value: string | string[] | undefined): number | undefined {
   return Number.isInteger(n) && n >= 0 ? n : undefined;
 }
 
-export default function ShopPage({
+export default async function ShopPage({
   searchParams,
 }: {
   searchParams: { category?: string | string[]; brand?: string | string[]; sort?: string | string[]; min?: string | string[]; max?: string | string[]; instock?: string | string[]; q?: string | string[] };
@@ -31,15 +36,23 @@ export default function ShopPage({
   const category = Array.isArray(searchParams.category) ? searchParams.category[0] : searchParams.category;
   const brand = Array.isArray(searchParams.brand) ? searchParams.brand[0] : searchParams.brand;
   const q = Array.isArray(searchParams.q) ? searchParams.q[0] : searchParams.q;
-  const products = applyProductFilter(getMockActiveProducts(), {
-    query: q,
-    categorySlug: category,
-    brandName: brand,
-    sort: parseSort(searchParams.sort),
-    minPricePoisha: parsePoisha(searchParams.min),
-    maxPricePoisha: parsePoisha(searchParams.max),
-    inStockOnly: searchParams.instock === "1",
-  });
+  // PUBLIC shape only (listPublicProducts strips costPoisha): the full
+  // repository Product must never reach ProductCard's serialized props.
+  const [result, categories] = await Promise.all([
+    listPublicProducts({
+      query: q,
+      categorySlug: category,
+      brandName: brand,
+      sort: parseSort(searchParams.sort),
+      minPricePoisha: parsePoisha(searchParams.min),
+      maxPricePoisha: parsePoisha(searchParams.max),
+      inStockOnly: searchParams.instock === "1",
+      page: 1,
+      pageSize: 100,
+    }),
+    listCategories(),
+  ]);
+  const products = result.products;
 
   return (
     <main className="mx-auto min-w-0 max-w-7xl px-4 py-6">
@@ -48,7 +61,7 @@ export default function ShopPage({
       {/* Filters — server-driven via query params, so links are shareable/SEO-friendly */}
       <div className="mt-4 flex flex-wrap gap-2">
         <Link href="/shop" className="rounded-full border px-3 py-1 text-sm">সব</Link>
-        {MOCK_CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <Link key={c.slug} href={`/shop?category=${c.slug}`} className="rounded-full border px-3 py-1 text-sm">
             {c.name.bn}
           </Link>
@@ -71,7 +84,6 @@ export default function ShopPage({
           ))}
         </div>
       )}
-      <p className="mt-6 text-xs text-slate-500">TEMPORARY MOCK — Step 10 Meilisearch আসলে এই ফিল্টার Meilisearch query হবে।</p>
     </main>
   );
 }

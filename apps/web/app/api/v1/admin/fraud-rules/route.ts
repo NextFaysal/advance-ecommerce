@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { featureGuardError, requireFeatureAdmin } from "@/automation/guard";
 import { maskPhone, normalizeBdPhone } from "@/checkout/validation";
-import { demoFraudListStore } from "@/fraud/lists";
+import { fraudListStore } from "@/fraud/lists";
 import { SCORE_WEIGHTS } from "@/fraud/scoring";
 import { createListEntrySchema, type FraudListEntry } from "@/fraud/types";
 
@@ -10,7 +10,8 @@ import { createListEntrySchema, type FraudListEntry } from "@/fraud/types";
 // .fraud_scoring flag in the demo flag store (403 FEATURE_LOCKED when off).
 // Phone entries are stored normalized and returned MASKED (full numbers
 // need customers.view_full_phone, same rule as the customer module).
-// Persistence is the in-memory demo store, labelled in meta.
+// Persistence is DB-backed (FraudListEntry table via fraudListStore),
+// labelled in meta.
 // RBAC (pending catalogue addition, see src/automation/guard.ts):
 // fraud.view for reads, fraud.manage for writes.
 
@@ -21,7 +22,7 @@ function presentEntry(entry: FraudListEntry): FraudListEntry {
 export async function GET() {
   const guard = await requireFeatureAdmin("module.fraud_scoring", "fraud.view");
   if (!guard.ok) return NextResponse.json(featureGuardError(guard), { status: guard.status });
-  const snapshot = demoFraudListStore.snapshot();
+  const snapshot = await fraudListStore.snapshot();
   return NextResponse.json({
     data: {
       weights: SCORE_WEIGHTS,
@@ -29,7 +30,7 @@ export async function GET() {
       blacklist: snapshot.blacklist.map(presentEntry),
       whitelist: snapshot.whitelist.map(presentEntry),
     },
-    meta: { persistence: "in-memory-demo" },
+    meta: { persistence: "database" },
   });
 }
 
@@ -65,9 +66,9 @@ export async function POST(req: Request) {
     createdBy: guard.userId,
     createdAt: new Date().toISOString(),
   };
-  demoFraudListStore.add(input.list, entry);
+  const stored = await fraudListStore.add(input.list, entry);
   return NextResponse.json(
-    { data: { entry: presentEntry(entry), list: input.list }, meta: { persistence: "in-memory-demo" } },
+    { data: { entry: presentEntry(stored), list: input.list }, meta: { persistence: "database" } },
     { status: 201 },
   );
 }
