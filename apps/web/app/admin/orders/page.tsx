@@ -65,6 +65,51 @@ const inputCls =
   "h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
 const labelCls = "mb-1.5 block text-small font-medium text-text-main";
 
+/** Sortable column header (table v2): click toggles direction; the
+ *  chevron points up for ascending, down for descending, and stays
+ *  faint while the column is not the active sort. */
+function SortHeader({
+  label,
+  sortKey,
+  sort,
+  onSort,
+}: {
+  label: string;
+  sortKey: "date" | "total" | "status";
+  sort: { key: "date" | "total" | "status"; dir: "asc" | "desc" } | null;
+  onSort: (key: "date" | "total" | "status") => void;
+}) {
+  const active = sort?.key === sortKey;
+  return (
+    <th
+      scope="col"
+      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
+      className="px-4 py-3 text-caption font-semibold text-text-muted"
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        aria-label={`${label} অনুযায়ী সাজান`}
+        className={`flex items-center gap-1 transition motion-fast hover:text-brand-700 ${active ? "text-brand-700" : ""}`}
+      >
+        {label}
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`h-3.5 w-3.5 ${active ? "" : "opacity-40"} ${active && sort.dir === "asc" ? "rotate-180" : ""}`}
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+    </th>
+  );
+}
+
 export default function AdminOrdersPage() {
   const [allOrders, setAllOrders] = useState<Order[]>([]);
   const [total, setTotal] = useState(0);
@@ -73,6 +118,10 @@ export default function AdminOrdersPage() {
   const [filter, setFilter] = useState<"ALL" | OrderStatus>("ALL");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"table" | "kanban">("table");
+  /* Table v2 (Design v3): client-side sort over the loaded rows
+   * (date / total / status) + a density toggle. null sort = API order. */
+  const [sort, setSort] = useState<{ key: "date" | "total" | "status"; dir: "asc" | "desc" } | null>(null);
+  const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
   const [manualResult, setManualResult] = useState<string>("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -117,7 +166,7 @@ export default function AdminOrdersPage() {
 
   const orders = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return allOrders.filter((o) => {
+    const filtered = allOrders.filter((o) => {
       if (filter !== "ALL" && o.status !== filter) return false;
       if (!needle) return true;
       return (
@@ -127,7 +176,25 @@ export default function AdminOrdersPage() {
         o.address.division.toLowerCase().includes(needle)
       );
     });
-  }, [allOrders, filter, search]);
+    if (!sort) return filtered;
+    const mul = sort.dir === "asc" ? 1 : -1;
+    const statusRank = (s: OrderStatus) => {
+      const idx = (STATUSES as string[]).indexOf(s);
+      return idx === -1 ? STATUSES.length : idx;
+    };
+    return [...filtered].sort((a, b) => {
+      if (sort.key === "date") return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * mul;
+      if (sort.key === "total") return (a.totalPoisha - b.totalPoisha) * mul;
+      return (statusRank(a.status) - statusRank(b.status)) * mul;
+    });
+  }, [allOrders, filter, search, sort]);
+
+  function toggleSort(key: "date" | "total" | "status") {
+    setSort((prev) => {
+      if (prev?.key !== key) return { key, dir: key === "status" ? "asc" : "desc" };
+      return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
+    });
+  }
 
   const countFor = useCallback(
     (s: "ALL" | OrderStatus) => (s === "ALL" ? allOrders.length : allOrders.filter((o) => o.status === s).length),
@@ -249,6 +316,23 @@ export default function AdminOrdersPage() {
                   </button>
                 ))}
               </div>
+              {view === "table" ? (
+                <div className="flex rounded-md bg-surface-2 p-1" role="group" aria-label="টেবিলের ঘনত্ব">
+                  {(["comfortable", "compact"] as const).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setDensity(d)}
+                      aria-pressed={density === d}
+                      className={`min-h-[36px] rounded-[9px] px-3 text-small font-semibold transition motion-fast ${
+                        density === d ? "bg-card text-brand-700 shadow-sm" : "text-text-muted hover:text-text-main"
+                      }`}
+                    >
+                      {d === "comfortable" ? "স্বাভাবিক" : "ঘন"}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
               {STATUSES.map((s) => {
@@ -306,8 +390,11 @@ export default function AdminOrdersPage() {
               ) : null}
             </div>
           ) : view === "table" ? (
-            <div className="overflow-auto rounded-lg border border-border bg-card shadow-card" style={{ maxHeight: "72vh" }}>
-              <table className="w-full min-w-[860px] border-collapse text-sm">
+            <>
+            {/* Desktop table — hidden under md, where the card list below
+             *  takes over so a 360px screen never scrolls sideways. */}
+            <div className="hidden overflow-auto rounded-lg border border-border bg-card shadow-card md:block" style={{ maxHeight: "72vh" }}>
+              <table className={`w-full min-w-[860px] border-collapse text-sm ${density === "compact" ? "[&_td]:py-1.5 [&_th]:py-2" : ""}`}>
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-surface-2 text-left [&>th]:border-b [&>th]:border-border">
                     <th scope="col" className="w-11 px-4 py-3">
@@ -319,9 +406,13 @@ export default function AdminOrdersPage() {
                         className="h-4 w-4 rounded accent-[#4F46E5]"
                       />
                     </th>
-                    {["অর্ডার", "গ্রাহক", "মোট", "পেমেন্ট", "স্ট্যাটাস", "ঝুঁকি", "কুরিয়ার"].map((h) => (
-                      <th key={h} scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">{h}</th>
-                    ))}
+                    <SortHeader label="অর্ডার" sortKey="date" sort={sort} onSort={toggleSort} />
+                    <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">গ্রাহক</th>
+                    <SortHeader label="মোট" sortKey="total" sort={sort} onSort={toggleSort} />
+                    <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">পেমেন্ট</th>
+                    <SortHeader label="স্ট্যাটাস" sortKey="status" sort={sort} onSort={toggleSort} />
+                    <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">ঝুঁকি</th>
+                    <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">কুরিয়ার</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -379,6 +470,60 @@ export default function AdminOrdersPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile card list (under md) — same rows, same selection;
+             *  no horizontal scrolling on narrow screens. */}
+            <div className="space-y-3 md:hidden">
+              {orders.map((o) => {
+                const meta = STATUS_META[o.status] ?? { label: o.status, tone: "neutral" as const, dot: "#94A3B8" };
+                const level = riskLevel(o.riskScore);
+                return (
+                  <article key={o.id} className={`rounded-lg border border-border bg-card p-4 shadow-card ${selected.has(o.id) ? "ring-1 ring-brand-300" : ""}`}>
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(o.id)}
+                        onChange={() => toggleSelected(o.id)}
+                        aria-label={`${o.orderNo} সিলেক্ট করুন`}
+                        className="mt-0.5 h-4 w-4 shrink-0 rounded accent-[#4F46E5]"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <a href={`/admin/orders/${o.id}`} className="font-mono text-small font-semibold text-brand-700 hover:underline">
+                            {o.orderNo}
+                          </a>
+                          <Badge tone={meta.tone}>
+                            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: meta.dot }} />
+                            {meta.label}
+                          </Badge>
+                        </div>
+                        <p className="mt-1.5 truncate text-small font-medium leading-snug">{o.customerName}</p>
+                        <p className="text-caption text-text-muted">
+                          {displayPhone(o.customerPhone, false)} · {o.address.district}, {o.address.division}
+                        </p>
+                        <div className="mt-2.5 flex items-center gap-2 border-t border-border pt-2.5">
+                          <span className="font-mono text-small font-bold tabular-nums">{formatBdt(o.totalPoisha)}</span>
+                          <Badge tone="neutral">{PAYMENT_METHOD_LABEL[o.paymentMethod] ?? o.paymentMethod}</Badge>
+                          <Badge tone={level === "High" ? "danger" : level === "Medium" ? "warning" : "success"}>
+                            {level === "High" ? "বেশি ঝুঁকি" : level === "Medium" ? "মাঝারি ঝুঁকি" : "কম ঝুঁকি"}
+                          </Badge>
+                          <a
+                            href={`/admin/orders/${o.id}`}
+                            aria-label={`${o.orderNo} বিস্তারিত দেখুন`}
+                            className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-surface-2 text-text-muted transition motion-fast hover:bg-brand-50 hover:text-brand-700"
+                          >
+                            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                              <path d="m9 18 6-6-6-6" />
+                            </svg>
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            </>
           ) : (
             <div className="flex gap-3 overflow-x-auto pb-2">
               {STATUSES.filter((s) => s !== "ALL").map((status) => {

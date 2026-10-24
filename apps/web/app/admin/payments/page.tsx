@@ -5,6 +5,7 @@ import { Money, formatPoisha } from "@/components/ui/money";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { DataTable } from "@/components/ui/table";
+import { Icon } from "@/components/ui/icon";
 import type { PaymentStatus } from "@/integrations/payment";
 import {
   COURIER_LABELS_BN,
@@ -34,21 +35,21 @@ import { ManualTrxReviewQueue } from "./review-queue";
 
 const PAYMENT_STATUS_META: Record<
   PaymentStatus,
-  { labelBn: string; labelEn: string; icon: string; tone: "warning" | "info" | "success" | "danger" | "brand" }
+  { labelBn: string; labelEn: string; tone: "warning" | "info" | "success" | "danger" | "brand" }
 > = {
-  UNPAID: { labelBn: "অপরিশোধিত", labelEn: "UNPAID", icon: "◷", tone: "warning" },
-  PARTIAL: { labelBn: "আংশিক পরিশোধ", labelEn: "PARTIAL", icon: "◐", tone: "info" },
-  PAID: { labelBn: "পরিশোধিত", labelEn: "PAID", icon: "✓", tone: "success" },
-  FAILED: { labelBn: "ব্যর্থ", labelEn: "FAILED", icon: "⚠", tone: "danger" },
-  REFUNDED: { labelBn: "ফেরত দেওয়া", labelEn: "REFUNDED", icon: "↩", tone: "info" },
-  PARTIALLY_REFUNDED: { labelBn: "আংশিক ফেরত", labelEn: "PARTIALLY_REFUNDED", icon: "◑", tone: "brand" },
+  UNPAID: { labelBn: "অপরিশোধিত", labelEn: "UNPAID", tone: "warning" },
+  PARTIAL: { labelBn: "আংশিক পরিশোধ", labelEn: "PARTIAL", tone: "info" },
+  PAID: { labelBn: "পরিশোধিত", labelEn: "PAID", tone: "success" },
+  FAILED: { labelBn: "ব্যর্থ", labelEn: "FAILED", tone: "danger" },
+  REFUNDED: { labelBn: "ফেরত দেওয়া", labelEn: "REFUNDED", tone: "info" },
+  PARTIALLY_REFUNDED: { labelBn: "আংশিক ফেরত", labelEn: "PARTIALLY_REFUNDED", tone: "brand" },
 };
 
 function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
   const s = PAYMENT_STATUS_META[status];
   return (
     <Badge tone={s.tone}>
-      <span aria-hidden="true">{s.icon}</span> {s.labelBn} ({s.labelEn})
+      {s.labelBn} ({s.labelEn})
     </Badge>
   );
 }
@@ -84,7 +85,7 @@ export default function PaymentsPage() {
     disputed:
       s.disputedPoisha > 0 ? (
         <span className="inline-flex items-center gap-1 font-medium text-rose-700">
-          <span aria-hidden="true">⚠</span> <Money poisha={s.disputedPoisha} />
+          <Icon name="alert" size={14} /> <Money poisha={s.disputedPoisha} />
         </span>
       ) : (
         "—"
@@ -103,27 +104,27 @@ export default function PaymentsPage() {
           label="আজ সংগৃহীত (ডেমো)"
           value={formatPoisha(txSummary.collectedTodayPoisha)}
           delta="আজ, Asia/Dhaka"
-          icon="💰"
+          icon={<Icon name="banknote" size={22} />}
         />
         <StatCard
           label="ম্যানুয়াল যাচাই বাকি"
           value={String(pendingManualCount)}
           delta="TrxID কিউ"
           deltaTone={pendingManualCount > 0 ? "down" : "up"}
-          icon="🧾"
+          icon={<Icon name="clock" size={22} />}
         />
         <StatCard
           label="COD বকেয়া (কুরিয়ারের কাছে)"
           value={formatPoisha(codOutstanding)}
           delta="pending সেটেলমেন্ট"
-          icon="🚚"
+          icon={<Icon name="truck" size={22} />}
         />
         <StatCard
           label="আজ ফেরত (ডেমো)"
           value={formatPoisha(txSummary.refundedTodayPoisha)}
           delta="আজ, Asia/Dhaka"
           deltaTone="down"
-          icon="↩"
+          icon={<Icon name="rotate-ccw" size={22} />}
         />
       </div>
 
@@ -142,12 +143,12 @@ export default function PaymentsPage() {
       />
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">ম্যানুয়াল TrxID যাচাই কিউ</h2>
+        <h2 className="text-h3">ম্যানুয়াল TrxID যাচাই কিউ</h2>
         <ManualTrxReviewQueue submissions={demoManualSubmissions} />
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">COD সেটেলমেন্ট — কুরিয়ার অনুযায়ী</h2>
+        <h2 className="text-h3">COD সেটেলমেন্ট — কুরিয়ার অনুযায়ী</h2>
         <DataTable
           caption="নমুনা (TEMPORARY DEMO) — বিতর্কিত পরিমাণ আলাদা দেখানো হয়, বকেয়া/পরিশোধিত মোটে কখনো মেশানো হয় না"
           columns={[
@@ -157,22 +158,23 @@ export default function PaymentsPage() {
             { key: "charge", header: "কুরিয়ার চার্জ" },
             { key: "outstanding", header: "বকেয়া পাওনা" },
             { key: "settled", header: "পরিশোধিত" },
-            { key: "disputed", header: "বিতর্কিত ⚠" },
+            { key: "disputed", header: "বিতর্কিত" },
           ]}
           rows={codRows}
         />
         {disputedRows.map((r) => (
-          <p key={r.shipmentId} className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
-            ⚠️ বিতর্কিত: শিপমেন্ট <span className="font-mono">{r.shipmentId}</span> (অর্ডার #{r.orderId},{" "}
+          <p key={r.shipmentId} className="flex items-start gap-1.5 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            <span aria-hidden="true" className="mt-px shrink-0"><Icon name="alert" size={13} /></span>
+            <span>বিতর্কিত: শিপমেন্ট <span className="font-mono">{r.shipmentId}</span> (অর্ডার #{r.orderId},{" "}
             {COURIER_LABELS_BN[r.provider]}) — কুরিয়ারের দাবি <Money poisha={r.collectedPoisha} />, পাওনা{" "}
             <Money poisha={r.payablePoisha} />। এই পরিমাণ নিজে থেকে সমন্বয় করা হয়নি — কুরিয়ার ইনভয়েসের সঙ্গে
-            মিলিয়ে নিষ্পত্তি করুন।
+            মিলিয়ে নিষ্পত্তি করুন।</span>
           </p>
         ))}
       </section>
 
-      <Card>
-        <h2 className="font-semibold">পেমেন্ট লিংক ও দৈনিক ক্যাশ ক্লোজিং</h2>
+      <Card className="shadow-card">
+        <h2 className="text-h3">পেমেন্ট লিংক ও দৈনিক ক্যাশ ক্লোজিং</h2>
         <p className="mt-1 text-sm text-text-muted">
           পেমেন্ট লিংক তৈরি/তালিকা, bKash/Nagad SMS যাচাই এবং দৈনিক ক্যাশ ক্লোজিং BD Tools-এ আছে — এখানে আবার
           বানানো হয়নি।

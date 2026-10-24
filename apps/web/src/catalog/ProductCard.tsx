@@ -12,6 +12,7 @@ import { toggleWishlistId } from "./wishlist";
 import type { PublicProduct } from "./types";
 import { minVariantPricePoisha } from "./types";
 import { AddToCartButton } from "@/cart/components/AddToCartButton";
+import { QuickView } from "./QuickView";
 
 function StarIcon({ filled }: { filled: boolean }) {
   return (
@@ -187,32 +188,17 @@ export function ProductCard({ product }: { product: PublicProduct }) {
         ) : null}
         <button
           type="button"
-          onClick={() => setShowQuickView((v) => !v)}
-          aria-expanded={showQuickView}
-          className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-muted transition hover:bg-surface-2 hover:text-text-main"
+          onClick={() => setShowQuickView(true)}
+          aria-haspopup="dialog"
+          className="min-h-[44px] rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-muted transition hover:bg-surface-2 hover:text-text-main"
         >
           ঝটপট দেখুন
         </button>
       </div>
 
-      {showQuickView && (
-        <div role="dialog" aria-label="ঝটপট দেখা" className="mx-3.5 mb-3.5 rounded-xl bg-surface-2 p-3">
-          <p className="line-clamp-4 break-words text-sm leading-6 [overflow-wrap:anywhere]">
-            {product.description.bn}
-          </p>
-          <p className="mt-2 text-xs text-text-muted">
-            ভেরিয়েন্ট: {product.variants.map((v) => Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড").join(", ")}
-          </p>
-          <div className="mt-2 flex items-center gap-3">
-            <Link href={`/product/${product.slug}`} className="text-sm font-semibold text-brand-700 hover:underline">
-              বিস্তারিত দেখুন →
-            </Link>
-            <button type="button" onClick={() => setShowQuickView(false)} className="text-sm text-text-muted hover:text-text-main">
-              বন্ধ করুন
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Quick view (Design v3) — real modal with variant picker +
+          add-to-cart; replaces the old inline expand panel. */}
+      <QuickView product={product} open={showQuickView} onClose={() => setShowQuickView(false)} />
     </article>
   );
 }

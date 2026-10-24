@@ -193,8 +193,9 @@ export default async function ProductPage({ params }: { params: { slug: string }
           titleBn={product.title.bn}
         />
 
-        {/* Buy box — sticky on desktop */}
-        <div className="min-w-0 lg:sticky lg:top-24">
+        {/* Buy box — sticky on desktop (offset clears the taller
+            v3 header: main row + mega-menu row) */}
+        <div className="min-w-0 lg:sticky lg:top-[8.5rem]">
           <h1 className="break-words text-[28px] font-extrabold leading-snug text-text-main [overflow-wrap:anywhere]">
             {product.title.bn}
           </h1>

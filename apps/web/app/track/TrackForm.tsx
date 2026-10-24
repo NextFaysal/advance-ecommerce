@@ -9,6 +9,13 @@
 import { useState } from "react";
 import { formatBdt } from "@advance-ecommerce/validators";
 import type { TrackingView } from "@/storefront-ux/order-tracking";
+import { Icon } from "@/components/ui/icon";
+
+// Mobile polish (Design v3 §3): 48px fields and submit, token colours,
+// and a connected result timeline. Presentation only — the lookup call
+// and the TrackingView rendering contract are unchanged.
+const TRACK_INPUT_CLASS =
+  "mt-1.5 h-12 w-full rounded-xl border border-border bg-card px-4 text-sm text-text-main outline-none transition placeholder:text-text-subtle focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30";
 
 type State =
   | { phase: "idle" }
@@ -47,19 +54,20 @@ export default function TrackForm() {
 
   return (
     <div>
-      <form onSubmit={submit} className="rounded-xl border bg-white px-4 py-5 shadow-sm">
-        <label className="block text-sm font-semibold" htmlFor="track-order-no">
+      <form onSubmit={submit} className="rounded-2xl border border-border bg-card px-5 py-5 shadow-card">
+        <label className="block text-sm font-semibold text-text-main" htmlFor="track-order-no">
           অর্ডার নম্বর
         </label>
         <input
           id="track-order-no"
+          autoComplete="off"
           placeholder="ORD-100245"
           value={orderNo}
           onChange={(e) => setOrderNo(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+          className={TRACK_INPUT_CLASS}
           required
         />
-        <label className="mt-4 block text-sm font-semibold" htmlFor="track-phone">
+        <label className="mt-4 block text-sm font-semibold text-text-main" htmlFor="track-phone">
           মোবাইল নম্বর (অর্ডারের সময় দেওয়া)
         </label>
         <input
@@ -69,55 +77,68 @@ export default function TrackForm() {
           placeholder="01XXXXXXXXX"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+          className={TRACK_INPUT_CLASS}
           required
         />
         <button
           type="submit"
           disabled={state.phase === "submitting"}
-          className="mt-4 w-full rounded-lg bg-[#4F46E5] px-4 py-3 font-semibold text-white disabled:opacity-60"
+          className="brand-gradient mt-5 h-12 w-full rounded-xl text-base font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
         >
           {state.phase === "submitting" ? "খুঁজছি…" : "অর্ডার ট্র্যাক করুন"}
         </button>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2.5 text-xs leading-5 text-text-muted">
           নিরাপত্তার জন্য অল্প সময়ের মধ্যে বারবার চেষ্টা সীমিত রাখা হয়েছে।
         </p>
         {state.phase === "error" && (
-          <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
             {state.message}
           </p>
         )}
       </form>
 
       {state.phase === "done" && (
-        <section className="mt-4 rounded-xl border bg-white px-4 py-5 shadow-sm">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="font-bold">{state.view.orderNo}</h2>
-            <span className="rounded-full bg-[#EEF0FE] px-3 py-1 text-sm font-medium text-[#4F46E5]">
+        <section className="mt-4 rounded-2xl border border-border bg-card px-5 py-5 shadow-card">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-display text-lg font-bold text-text-main">{state.view.orderNo}</h2>
+            <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-semibold text-brand-700">
               {state.view.statusLabelBn}
             </span>
           </div>
-          <p className="mt-1 text-sm text-slate-500">ফোন: {state.view.maskedPhone}</p>
+          <p className="mt-1 text-sm text-text-muted">ফোন: {state.view.maskedPhone}</p>
 
-          <ol className="mt-4 space-y-3">
-            {state.view.timeline.map((step) => (
-              <li key={step.status} className="flex items-start gap-3">
+          <ol className="mt-5 space-y-4">
+            {state.view.timeline.map((step, idx) => (
+              <li key={step.status} className="relative flex items-start gap-3">
+                {idx < state.view.timeline.length - 1 && (
+                  <span aria-hidden className="absolute -bottom-4 left-[13px] top-7 w-0.5 bg-border" />
+                )}
                 <span
                   aria-hidden
-                  className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs text-white ${
+                  className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
                     step.state === "done"
-                      ? "bg-green-500"
+                      ? "bg-emerald-500 text-white"
                       : step.state === "current"
-                        ? "bg-[#4F46E5]"
-                        : "bg-slate-300"
+                        ? "bg-brand-600 text-white ring-4 ring-brand-100"
+                        : "border-2 border-border bg-card"
                   }`}
                 >
-                  {step.state === "done" ? "✓" : step.state === "current" ? "•" : ""}
+                  {step.state === "done" ? (
+                    <Icon name="check" size={14} strokeWidth={2.5} />
+                  ) : step.state === "current" ? (
+                    <span className="h-2 w-2 rounded-full bg-white" />
+                  ) : null}
                 </span>
-                <span>
-                  <span className={step.state === "upcoming" ? "text-slate-400" : "font-medium"}>{step.labelBn}</span>
+                <span className="min-w-0 pt-0.5">
+                  <span
+                    className={
+                      step.state === "upcoming" ? "text-sm text-text-subtle" : "text-sm font-semibold text-text-main"
+                    }
+                  >
+                    {step.labelBn}
+                  </span>
                   {step.at && (
-                    <span className="block text-xs text-slate-500">
+                    <span className="block text-xs text-text-muted">
                       {new Date(step.at).toLocaleString("bn-BD", { timeZone: "Asia/Dhaka" })}
                     </span>
                   )}
@@ -127,28 +148,28 @@ export default function TrackForm() {
           </ol>
 
           {state.view.shipmentStatusLabelBn && (
-            <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+            <p className="mt-5 rounded-xl bg-surface-2 px-3.5 py-2.5 text-sm text-text-main">
               কুরিয়ার: {state.view.courier ?? "—"}
               {state.view.trackingId ? ` • ট্র্যাকিং: ${state.view.trackingId}` : ""} • {state.view.shipmentStatusLabelBn}
             </p>
           )}
 
-          <h3 className="mt-4 text-sm font-semibold">পণ্য</h3>
-          <ul className="mt-1 space-y-1 text-sm">
+          <h3 className="mt-5 text-sm font-semibold text-text-main">পণ্য</h3>
+          <ul className="mt-1.5 space-y-1.5 text-sm">
             {state.view.items.map((item, i) => (
               <li key={i} className="flex justify-between gap-2">
-                <span>
+                <span className="min-w-0">
                   {item.productName} × {item.quantity}
                 </span>
-                <span>{formatBdt(item.unitPricePoisha * item.quantity)}</span>
+                <span className="shrink-0 tabular-nums">{formatBdt(item.unitPricePoisha * item.quantity)}</span>
               </li>
             ))}
           </ul>
-          <p className="mt-2 flex justify-between border-t pt-2 font-semibold">
+          <p className="mt-3 flex justify-between border-t border-border pt-3 font-semibold text-text-main">
             <span>মোট</span>
-            <span>{formatBdt(state.view.totalPoisha)}</span>
+            <span className="tabular-nums">{formatBdt(state.view.totalPoisha)}</span>
           </p>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1.5 text-sm text-text-muted">
             পেমেন্ট: {state.view.paymentMethod} / {state.view.paymentStatus}
           </p>
         </section>

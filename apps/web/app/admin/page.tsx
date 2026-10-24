@@ -11,12 +11,20 @@
 // pending-actions and low-stock lists, recent orders. Every number
 // below comes from the same getDashboardData() call as before; charts
 // visualize only those aggregates (no invented time series).
+//
+// Design v3 note: the revenue AREA chart stays unbuilt on purpose —
+// DashboardData carries only nested period aggregates (today ⊂ week ⊂
+// 30 days), no daily series, and the period values double as the KPI
+// "sparklines" for the same reason (a line through nested cumulative
+// totals would fabricate a trend). When src/reports grows a daily
+// series, swap the period bars for the area chart + KPI sparklines.
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Money, formatPoisha } from "@/components/ui/money";
+import { CountUp } from "@/components/ui/count-up";
 import { Phone } from "@/components/ui/phone";
 import { StatusBadge, type OrderStatus as BadgeOrderStatus } from "@/components/ui/status-badge";
 import { ADMIN_NAV, isLockedAddOn } from "@/admin-nav/config";
@@ -126,7 +134,7 @@ const STATUS_COLORS: Partial<Record<OrderStatus, string>> = {
 function KpiCard({
   label, value, icon, accent, children,
 }: {
-  label: string; value: string; icon: string; accent: string; children?: ReactNode;
+  label: string; value: ReactNode; icon: string; accent: string; children?: ReactNode;
 }) {
   return (
     <Card className="shadow-card transition motion-base hover:shadow-lift">
@@ -222,24 +230,24 @@ export default async function AdminHome() {
 
       {/* KPI row */}
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="মোট বিক্রয় (৩০ দিন)" value={formatPoisha(totals.revenuePoisha)} icon="Banknote" accent="bg-brand-50 text-brand-600">
+        <KpiCard label="মোট বিক্রয় (৩০ দিন)" value={<CountUp value={totals.revenuePoisha} format={formatPoisha} />} icon="Banknote" accent="bg-brand-50 text-brand-600">
           <PeriodStrip items={[
             { label: "আজ", value: formatPoisha(data.today.revenuePoisha) },
             { label: "সপ্তাহ", value: formatPoisha(data.week.revenuePoisha) },
           ]} />
         </KpiCard>
-        <KpiCard label="অর্ডার (৩০ দিন)" value={String(totals.orders)} icon="ShoppingCart" accent="bg-violet-500/10 text-violet-600">
+        <KpiCard label="অর্ডার (৩০ দিন)" value={<CountUp value={totals.orders} format={(n) => String(Math.round(n))} />} icon="ShoppingCart" accent="bg-violet-500/10 text-violet-600">
           <PeriodStrip items={[
             { label: "আজ", value: `${data.today.orders}টি` },
             { label: "সপ্তাহ", value: `${data.week.orders}টি` },
           ]} />
         </KpiCard>
-        <KpiCard label="মোট লাভ (৩০ দিন)" value={formatPoisha(totals.grossProfitPoisha)} icon="TrendingUp" accent="bg-emerald-50 text-emerald-600">
+        <KpiCard label="মোট লাভ (৩০ দিন)" value={<CountUp value={totals.grossProfitPoisha} format={formatPoisha} />} icon="TrendingUp" accent="bg-emerald-50 text-emerald-600">
           <p className="mt-3 border-t border-border pt-3 text-caption text-text-muted">
             নিট আয় {formatPoisha(totals.netRevenuePoisha)} · বিক্রিত পণ্য {totals.units}টি
           </p>
         </KpiCard>
-        <KpiCard label="গড় অর্ডার মূল্য" value={formatPoisha(aovPoisha)} icon="Calculator" accent="bg-sky-50 text-sky-600">
+        <KpiCard label="গড় অর্ডার মূল্য" value={<CountUp value={aovPoisha} format={formatPoisha} />} icon="Calculator" accent="bg-sky-50 text-sky-600">
           <p className="mt-3 border-t border-border pt-3 text-caption text-text-muted">
             রিফান্ড {formatPoisha(totals.refundPoisha)} · শিপিং চার্জ {formatPoisha(totals.shippingPoisha)}
           </p>
@@ -262,23 +270,33 @@ export default async function AdminHome() {
             </Link>
           </div>
           <div className="mt-6 space-y-5">
-            {revenueBars.map((bar) => (
-              <div key={bar.label}>
-                <div className="mb-1.5 flex items-baseline justify-between gap-2 text-small">
-                  <span className="font-medium text-text-main">{bar.label}</span>
-                  <span className="text-text-muted">
-                    <span className="font-mono font-bold tabular-nums text-text-main">{formatPoisha(bar.revenue)}</span>
-                    {" · "}{bar.orders}টি অর্ডার
-                  </span>
-                </div>
-                <div className="h-3.5 overflow-hidden rounded-full bg-surface-2">
+            {revenueBars.map((bar) => {
+              const pct = Math.round((bar.revenue / revenueMax) * 100);
+              return (
+                <div key={bar.label} className="group">
+                  <div className="mb-1.5 flex items-baseline justify-between gap-2 text-small">
+                    <span className="font-medium text-text-main">{bar.label}</span>
+                    <span className="flex items-baseline gap-2 text-text-muted">
+                      <span className="rounded-full bg-brand-50 px-2 py-0.5 font-mono text-caption font-semibold tabular-nums text-brand-700">
+                        {pct}%
+                      </span>
+                      <span className="font-mono font-bold tabular-nums text-text-main">{formatPoisha(bar.revenue)}</span>
+                      <span>{" · "}{bar.orders}টি অর্ডার</span>
+                    </span>
+                  </div>
                   <div
-                    className="brand-gradient h-full rounded-full transition-all motion-base"
-                    style={{ width: `${Math.max(2, Math.round((bar.revenue / revenueMax) * 100))}%` }}
-                  />
+                    className="h-4 overflow-hidden rounded-full bg-surface-2 shadow-[inset_0_1px_2px_rgba(49,46,129,0.08)]"
+                    role="img"
+                    aria-label={`${bar.label}: ${formatPoisha(bar.revenue)}, ${bar.orders}টি অর্ডার`}
+                  >
+                    <div
+                      className="brand-gradient h-full rounded-full shadow-sm transition-all motion-base group-hover:brightness-110"
+                      style={{ width: `${Math.max(2, pct)}%` }}
+                    />
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <div className="mt-6 grid grid-cols-2 gap-3 border-t border-border pt-4 sm:grid-cols-4">
             {[

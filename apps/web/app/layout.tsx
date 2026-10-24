@@ -1,5 +1,5 @@
 import "./globals.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import RegisterSW from "./register-sw";
 import TrackingShell from "./tracking-shell";
 import StorefrontShell from "./storefront-shell";
@@ -11,9 +11,28 @@ export const metadata: Metadata = {
   icons: [{ rel: "icon", type: "image/svg+xml", url: "/favicon.svg" }],
 };
 
+// Browser chrome colour for the PWA / mobile browser UI. Matches the
+// web manifest theme_color (#4F46E5) in light mode; brand-900 in dark.
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#4F46E5" },
+    { media: "(prefers-color-scheme: dark)", color: "#312E81" },
+  ],
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="bn">
+    <html lang="bn" suppressHydrationWarning>
+      {/* Theme bootstrap (Design v3): apply the stored/system dark-mode
+          preference BEFORE first paint so the ThemeToggle never flashes
+          light. Must stay in sync with src/components/ui/theme-toggle.tsx
+          (same localStorage key "theme", same .dark class on <html>). */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html:
+            '(function(){try{var t=localStorage.getItem("theme");if(t==="dark"||(!t&&window.matchMedia("(prefers-color-scheme: dark)").matches)){document.documentElement.classList.add("dark")}}catch(e){}})();',
+        }}
+      />
       {/* Brand fonts via Google Fonts CDN. The self-hosted woff2 files
           exist locally (public/fonts/) but are NOT in the deployed repo
           (binary files could not be pushed), so production rendered in

@@ -217,7 +217,7 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
   }
 
   return (
-    <main className="mx-auto min-w-0 max-w-7xl px-4 py-6">
+    <main className="mx-auto min-w-0 max-w-7xl px-4 pb-32 pt-6 lg:pb-6">
       <h1 className="text-xl font-bold">আপনার কার্ট</h1>
       <p className="mt-1 text-xs text-text-subtle">
         পণ্যের তথ্য আসল ক্যাটালগ (ডাটাবেস) থেকে আসে; কার্ট এই ব্রাউজারেই সংরক্ষিত থাকে।
@@ -232,10 +232,13 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
         {/* Line items */}
         <div className="min-w-0">
-          <ul className="divide-y divide-border rounded-lg border border-border bg-card">
+          <ul className="flex flex-col gap-3 lg:gap-0 lg:divide-y lg:divide-border lg:rounded-xl lg:border lg:border-border lg:bg-card lg:shadow-card">
             {lines.map((line) => (
-              <li key={line.item.variantId} className="flex gap-3 p-3 sm:gap-4 sm:p-4">
-                <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-surface-2 px-1 text-center text-xs text-text-muted">
+              <li
+                key={line.item.variantId}
+                className="flex gap-3 rounded-xl border border-border bg-card p-3 shadow-card sm:gap-4 sm:p-4 lg:rounded-none lg:border-0 lg:shadow-none"
+              >
+                <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-surface-2 px-1 text-center text-xs text-text-muted sm:h-24 sm:w-24">
                   {line.titleBn}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -266,11 +269,11 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
                         aria-label="পরিমাণ কমান"
                         disabled={line.item.quantity <= 1}
                         onClick={() => setQuantity(line.item.variantId, line.item.quantity - 1)}
-                        className="flex h-10 w-10 items-center justify-center text-lg disabled:opacity-40"
+                        className="flex h-11 w-11 items-center justify-center text-lg disabled:opacity-40"
                       >
                         −
                       </button>
-                      <span className="w-8 text-center text-sm font-medium tabular-nums" aria-label="পরিমাণ">
+                      <span className="w-10 text-center text-sm font-medium tabular-nums" aria-label="পরিমাণ">
                         {line.item.quantity}
                       </span>
                       <button
@@ -278,7 +281,7 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
                         aria-label="পরিমাণ বাড়ান"
                         disabled={line.outOfStock || line.item.quantity >= line.stockCap}
                         onClick={() => setQuantity(line.item.variantId, line.item.quantity + 1)}
-                        className="flex h-10 w-10 items-center justify-center text-lg disabled:opacity-40"
+                        className="flex h-11 w-11 items-center justify-center text-lg disabled:opacity-40"
                       >
                         +
                       </button>
@@ -434,6 +437,26 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
             কেনাকাটা চালিয়ে যান
           </Link>
         </Card>
+      </div>
+
+      {/* Sticky total + checkout bar — small screens only, directly
+          above the shell's mobile bottom nav. Desktop keeps the summary
+          card's own checkout button. */}
+      <div className="fixed inset-x-0 bottom-16 z-40 border-t border-border bg-card/95 px-4 py-3 shadow-[0_-4px_16px_rgba(49,46,129,0.08)] backdrop-blur lg:hidden">
+        <div className="mx-auto flex max-w-7xl items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-text-muted">সর্বমোট ({zone.labelBn} ডেলিভারিসহ)</p>
+            <p className="text-base font-bold leading-6">
+              <Money poisha={pricing.grandTotalPoisha} />
+            </p>
+          </div>
+          <Link
+            href="/checkout"
+            className="brand-gradient flex h-12 shrink-0 items-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition hover:opacity-90"
+          >
+            চেকআউট করুন
+          </Link>
+        </div>
       </div>
     </main>
   );

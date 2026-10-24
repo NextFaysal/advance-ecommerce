@@ -14,9 +14,9 @@ export const metadata: Metadata = {
 
 export default function TrackPage() {
   return (
-    <main className="mx-auto w-full max-w-md px-4 py-8">
-      <h1 className="text-xl font-bold">অর্ডার ট্র্যাক করুন</h1>
-      <p className="mt-1 text-sm text-slate-500">
+    <main className="mx-auto w-full max-w-md px-4 py-8 sm:py-10">
+      <h1 className="font-display text-2xl font-bold text-text-main">অর্ডার ট্র্যাক করুন</h1>
+      <p className="mt-1.5 text-sm leading-6 text-text-muted">
         অর্ডার নম্বর ও অর্ডারের সময় দেওয়া মোবাইল নম্বর দিন।
       </p>
       <div className="mt-4">

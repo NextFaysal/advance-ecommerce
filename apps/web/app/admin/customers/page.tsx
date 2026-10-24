@@ -147,7 +147,10 @@ export default function AdminCustomersPage() {
       )}
 
       {loadState === "ready" && visible.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
+        <>
+        {/* Desktop table — hidden under md (card list below takes over,
+         *  so a 360px screen never scrolls sideways). */}
+        <div className="hidden overflow-x-auto rounded-lg border border-border bg-card shadow-card md:block">
           <table className="w-full min-w-[760px] border-collapse text-left text-sm">
             <thead>
               <tr className="bg-surface-2 text-left [&>th]:border-b [&>th]:border-border">
@@ -190,6 +193,53 @@ export default function AdminCustomersPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Mobile card list (under md) — tap selects the customer, same
+         *  as tapping a table row on desktop. */}
+        <div className="space-y-3 md:hidden">
+          {visible.map((c) => {
+            const isSelected = selected?.id === c.id;
+            return (
+              <article
+                key={c.id}
+                onClick={() => setSelectedId(c.id)}
+                aria-selected={isSelected}
+                className={`cursor-pointer rounded-lg border border-border bg-card p-4 shadow-card transition motion-fast ${isSelected ? "bg-brand-50/70 ring-1 ring-brand-300" : ""}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="min-w-0 truncate font-medium leading-snug">{c.name}</p>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {c.blocked ? <Badge tone="danger">ব্লক করা</Badge> : null}
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-text-subtle">
+                      <path d="m9 18 6-6-6-6" />
+                    </svg>
+                  </span>
+                </div>
+                <p className="mt-1 font-mono text-small tabular-nums text-text-muted">{displayPhone(c.phone, false)}</p>
+                <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-3 text-center">
+                  <span>
+                    <span className="block text-caption text-text-subtle">অর্ডার</span>
+                    <span className="font-mono font-semibold tabular-nums">{c.totalOrders}</span>
+                  </span>
+                  <span>
+                    <span className="block text-caption text-text-subtle">সাফল্যের হার</span>
+                    <span className="font-mono font-semibold tabular-nums">{customerSuccessRate(c)}%</span>
+                  </span>
+                  <span>
+                    <span className="block text-caption text-text-subtle">মোট কেনাকাটা</span>
+                    <span className="font-mono font-semibold tabular-nums">{formatBdt(c.lifetimeValuePoisha)}</span>
+                  </span>
+                </div>
+                {c.tags.length > 0 ? (
+                  <p className="mt-3 flex flex-wrap gap-1">
+                    {c.tags.map((t) => <Badge key={t} tone="brand">{t}</Badge>)}
+                  </p>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+        </>
       )}
 
       {loadState === "ready" && selected && (

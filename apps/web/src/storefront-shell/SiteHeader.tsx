@@ -16,18 +16,39 @@
 // Design refresh (Direction A): gradient announcement bar (scrolls away),
 // sticky polished header, icon-in-field search, and a mobile bottom nav
 // (hidden on /product/* where the PDP sticky buy bar owns the bottom).
+//
+// Design v3 (A+ Aurora Premium):
+// - The sticky header turns `.glass` once the page is scrolled (>8px);
+//   at the very top it stays a solid card surface.
+// - ThemeToggle (dark mode) sits with the account/wishlist/cart icons.
+// - The cart badge pops (`.animate-badge-pop`, re-keyed by count).
+// - Mega menu: the shell passes `categories` (public categories API);
+//   desktop gets a "সব ক্যাটাগরি" panel of tinted tiles, mobile gets a
+//   category section inside the menu. No categories → no menu at all.
+// - Search: desktop dropdown panel + mobile full-screen overlay with
+//   trending terms and live suggestions from the EXISTING public
+//   products API (GET /api/v1/public/products?q=). Submitting still
+//   goes to /search?q= exactly as before.
 
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { formatBdt } from "@advance-ecommerce/validators";
 import { getWishlistIds } from "@/catalog/wishlist";
 import { GUEST_CART_KEY, loadGuestCart } from "@/cart/persistence";
 import { cartItemCount } from "@/cart/types";
 import { CART_UPDATED_EVENT } from "@/cart/components/AddToCartButton";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
+import type { Category, PublicProduct } from "@/catalog/types";
+import { minVariantPricePoisha } from "@/catalog/types";
 
 export interface SiteHeaderProps {
   brandName?: string;
   /** Overrides the guest-cart localStorage count when provided. */
   cartCount?: number;
+  /** Public categories for the mega menu; absent/empty hides the menu. */
+  categories?: ReadonlyArray<Category>;
 }
 
 const NAV_LINKS = [
@@ -37,10 +58,29 @@ const NAV_LINKS = [
   { href: "/contact", labelBn: "যোগাযোগ" },
 ] as const;
 
-function CountBadge({ count }: { count: number }) {
+// Sensible BD storefront trending terms (static copy, not fake data —
+// they are just search shortcuts into the real /search route).
+const TRENDING_TERMS = [
+  "শাড়ি",
+  "পাঞ্জাবি",
+  "থ্রি-পিস",
+  "স্মার্টওয়াচ",
+  "ওয়্যারলেস ইয়ারবাডস",
+  "জুতা",
+  "হাতঘড়ি",
+  "ব্যাগ",
+] as const;
+
+function CountBadge({ count, pop = false }: { count: number; pop?: boolean }) {
   if (count <= 0) return null;
   return (
-    <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-600 px-1 text-[11px] font-bold text-white">
+    <span
+      // Re-keying by the count remounts the span, replaying the pop.
+      key={pop ? count : undefined}
+      className={`absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-600 px-1 text-[11px] font-bold text-white ${
+        pop ? "animate-badge-pop" : ""
+      }`}
+    >
       {count > 99 ? "99+" : count}
     </span>
   );
@@ -141,11 +181,150 @@ function MenuIcon({ open }: { open: boolean }) {
   );
 }
 
-export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount }: SiteHeaderProps) {
+function GridIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M5 5l14 14M19 5L5 19" />
+    </svg>
+  );
+}
+
+/** Shared body of the desktop search panel + mobile search overlay. */
+function SearchPanelContent({
+  query,
+  searching,
+  suggestions,
+  onNavigate,
+}: {
+  query: string;
+  searching: boolean;
+  suggestions: ReadonlyArray<PublicProduct>;
+  onNavigate: () => void;
+}): ReactNode {
+  const q = query.trim();
+  if (q.length < 2) {
+    return (
+      <div>
+        <p className="px-2 text-xs font-bold text-text-subtle">জনপ্রিয় খোঁজ</p>
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          {TRENDING_TERMS.map((term) => (
+            <Link
+              key={term}
+              href={`/search?q=${encodeURIComponent(term)}`}
+              onClick={onNavigate}
+              className="inline-flex min-h-[44px] items-center rounded-full border border-border bg-surface-2 px-4 text-sm font-medium text-text-main transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
+            >
+              {term}
+            </Link>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {searching && suggestions.length === 0 ? (
+        <p className="px-2 py-3 text-sm text-text-muted">খুঁজছি…</p>
+      ) : suggestions.length > 0 ? (
+        <ul>
+          {suggestions.map((p) => {
+            const thumb = p.images[0]?.url ?? p.variants.find((v) => v.imageUrl)?.imageUrl ?? null;
+            return (
+              <li key={p.id}>
+                <Link
+                  href={`/product/${p.slug}`}
+                  onClick={onNavigate}
+                  className="flex min-h-[44px] items-center gap-3 rounded-xl px-2 py-2 transition hover:bg-surface-2"
+                >
+                  {thumb ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={thumb} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" />
+                  ) : (
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-brand-300">
+                      <ShopIcon />
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-text-main">{p.title.bn}</span>
+                    {p.brandName ? (
+                      <span className="block truncate text-xs text-text-subtle">{p.brandName}</span>
+                    ) : null}
+                  </span>
+                  <span className="shrink-0 text-sm font-bold tabular-nums text-brand-700">
+                    {formatBdt(minVariantPricePoisha(p))}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="break-words px-2 py-3 text-sm text-text-muted [overflow-wrap:anywhere]">
+          “{q}” দিয়ে কোনো পণ্য পাওয়া যায়নি
+        </p>
+      )}
+      <Link
+        href={`/search?q=${encodeURIComponent(q)}`}
+        onClick={onNavigate}
+        className="mt-1 flex min-h-[44px] items-center rounded-xl px-2 text-sm font-semibold text-brand-700 transition hover:bg-brand-50"
+      >
+        সব ফলাফল দেখুন →
+      </Link>
+    </div>
+  );
+}
+
+export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount, categories }: SiteHeaderProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [wishlistCount, setWishlistCount] = useState(0);
   const [localCartCount, setLocalCartCount] = useState(0);
+  const [scrolled, setScrolled] = useState(false);
+  const [megaOpen, setMegaOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<ReadonlyArray<PublicProduct>>([]);
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     const refresh = () => {
@@ -171,7 +350,54 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount 
     };
   }, []);
 
+  // Glass header once scrolled past a few pixels; solid at the top.
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Panels/menus never survive a navigation.
+  useEffect(() => {
+    setMenuOpen(false);
+    setMegaOpen(false);
+    setSearchOpen(false);
+    setMobileSearchOpen(false);
+  }, [pathname]);
+
+  // Live search suggestions — debounced, aborted on change; the public
+  // products API is the same search the /search page is built on.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setSuggestions([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => {
+      fetch(`/api/v1/public/products?q=${encodeURIComponent(q)}&pageSize=6`, { signal: ctrl.signal })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json: { data?: unknown } | null) => {
+          setSuggestions(json && Array.isArray(json.data) ? (json.data as PublicProduct[]) : []);
+        })
+        .catch(() => {
+          if (!ctrl.signal.aborted) setSuggestions([]);
+        })
+        .finally(() => {
+          if (!ctrl.signal.aborted) setSearching(false);
+        });
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [query]);
+
   const effectiveCartCount = cartCount ?? localCartCount;
+  const hasCategories = Boolean(categories && categories.length > 0);
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : (pathname?.startsWith(href) ?? false);
   // On product pages the PDP's own sticky buy bar owns the bottom edge —
@@ -203,7 +429,11 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount 
         </div>
       </div>
 
-      <header className="sticky top-0 z-40 border-b border-border bg-card/90 shadow-sm backdrop-blur">
+      <header
+        className={`sticky top-0 z-40 transition-shadow duration-200 ${
+          scrolled ? "glass" : "border-b border-border bg-card shadow-sm"
+        }`}
+      >
         <div className="mx-auto flex h-16 max-w-[1440px] items-center gap-3 px-4 sm:gap-4 sm:px-6">
           {/* Brand */}
           <a href="/" className="flex shrink-0 items-center gap-2" aria-label={brandName}>
@@ -215,28 +445,74 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount 
             </span>
           </a>
 
-          {/* Search — plain GET form to the existing /search route */}
-          <form action="/search" method="get" role="search" className="min-w-0 flex-1 sm:max-w-xl">
-            <label className="sr-only" htmlFor="site-search">
-              পণ্য খুঁজুন
-            </label>
-            <div className="relative">
-              <input
-                id="site-search"
-                name="q"
-                type="search"
-                placeholder="পণ্য খুঁজুন…"
-                className="h-11 w-full rounded-full border border-border bg-surface-2 pl-4 pr-12 text-sm text-text-main outline-none transition focus:border-brand-500 focus:bg-white"
-              />
-              <button
-                type="submit"
-                aria-label="খুঁজুন"
-                className="brand-gradient absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:opacity-90"
-              >
+          {/* Search — GET form to the existing /search route, upgraded
+              with a suggestions panel (desktop) / overlay (mobile) */}
+          <div
+            className="relative min-w-0 flex-1 sm:max-w-xl"
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSearchOpen(false);
+            }}
+          >
+            {/* Mobile trigger — opens the full-screen search overlay */}
+            <button
+              type="button"
+              onClick={() => setMobileSearchOpen(true)}
+              aria-label="পণ্য খুঁজুন"
+              className="flex h-11 w-full items-center gap-2 rounded-full border border-border bg-surface-2 pl-4 pr-1.5 text-sm text-text-subtle sm:hidden"
+            >
+              <span className="min-w-0 flex-1 truncate text-left">পণ্য খুঁজুন…</span>
+              <span className="brand-gradient flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white">
                 <SearchIcon />
-              </button>
-            </div>
-          </form>
+              </span>
+            </button>
+
+            {/* Desktop form + dropdown panel */}
+            <form
+              action="/search"
+              method="get"
+              role="search"
+              className="relative hidden sm:block"
+              onSubmit={() => setSearchOpen(false)}
+            >
+              <label className="sr-only" htmlFor="site-search">
+                পণ্য খুঁজুন
+              </label>
+              <div className="relative">
+                <input
+                  id="site-search"
+                  name="q"
+                  type="search"
+                  autoComplete="off"
+                  placeholder="পণ্য খুঁজুন…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onFocus={() => setSearchOpen(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setSearchOpen(false);
+                  }}
+                  className="h-11 w-full rounded-full border border-border bg-surface-2 pl-4 pr-12 text-sm text-text-main outline-none transition focus:border-brand-500 focus:bg-white"
+                />
+                <button
+                  type="submit"
+                  aria-label="খুঁজুন"
+                  className="brand-gradient absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:opacity-90"
+                >
+                  <SearchIcon />
+                </button>
+              </div>
+
+              {searchOpen ? (
+                <div className="absolute inset-x-0 top-[calc(100%+10px)] z-40 max-h-[min(70vh,540px)] overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-pop">
+                  <SearchPanelContent
+                    query={query}
+                    searching={searching}
+                    suggestions={suggestions}
+                    onNavigate={() => setSearchOpen(false)}
+                  />
+                </div>
+              ) : null}
+            </form>
+          </div>
 
           {/* Desktop nav */}
           <nav aria-label="প্রধান নেভিগেশন" className="ml-2 hidden items-center gap-1 lg:flex">
@@ -257,6 +533,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount 
           </nav>
 
           <span className="ml-auto flex items-center gap-1 lg:ml-0">
+            <ThemeToggle />
             <a
               href="/account"
               aria-label="অ্যাকাউন্ট"
@@ -278,7 +555,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount 
               className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-main"
             >
               <CartIcon />
-              <CountBadge count={effectiveCartCount} />
+              <CountBadge count={effectiveCartCount} pop />
             </a>
             <button
               type="button"
@@ -292,7 +569,67 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount 
           </span>
         </div>
 
-        {/* Mobile menu — simple disclosure */}
+        {/* Mega menu row — desktop only, only when real categories exist */}
+        {hasCategories ? (
+          <div
+            className="relative mx-auto hidden max-w-[1440px] px-4 sm:px-6 lg:block"
+            onMouseLeave={() => setMegaOpen(false)}
+          >
+            <div className="flex items-center gap-2 border-t border-border/60 py-1.5">
+              <button
+                type="button"
+                aria-expanded={megaOpen}
+                aria-haspopup="true"
+                onMouseEnter={() => setMegaOpen(true)}
+                onClick={() => setMegaOpen((v) => !v)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setMegaOpen(false);
+                }}
+                className="brand-gradient flex min-h-[44px] items-center gap-2 rounded-lg px-4 text-sm font-bold text-white shadow-sm transition hover:opacity-90"
+              >
+                <GridIcon />
+                সব ক্যাটাগরি
+                <ChevronDownIcon />
+              </button>
+              <a href="/shop" className="rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition hover:text-brand-700">
+                সব পণ্য
+              </a>
+              <a href="/track" className="rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition hover:text-brand-700">
+                অর্ডার ট্র্যাক
+              </a>
+            </div>
+
+            {megaOpen ? (
+              <div className="absolute inset-x-4 top-full z-40 sm:inset-x-6" onMouseEnter={() => setMegaOpen(true)}>
+                <div className="grid grid-cols-3 gap-3 rounded-2xl border border-border bg-card p-4 shadow-pop xl:grid-cols-4">
+                  {categories!.map((c, i) => (
+                    <a
+                      key={c.slug}
+                      href={`/shop?category=${c.slug}`}
+                      onClick={() => setMegaOpen(false)}
+                      className={`cat-tint-${(i % 8) + 1} flex items-center gap-3 rounded-xl p-3 transition duration-200 hover:-translate-y-0.5 hover:shadow-md`}
+                    >
+                      {c.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={c.imageUrl} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" />
+                      ) : (
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white/80 text-base font-extrabold text-text-main shadow-sm">
+                          {c.name.bn.charAt(0)}
+                        </span>
+                      )}
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-bold">{c.name.bn}</span>
+                        <span className="block text-xs opacity-75">{c.productCount}টি পণ্য</span>
+                      </span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/* Mobile menu — simple disclosure (+ category section, v3) */}
         {menuOpen ? (
           <nav aria-label="মোবাইল নেভিগেশন" className="border-t border-border bg-card px-4 py-2 lg:hidden">
             {NAV_LINKS.map((link) => (
@@ -315,9 +652,82 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount 
             <a href="/wishlist" className="block rounded-lg px-3 py-2.5 text-sm text-text-main hover:bg-surface-2">
               উইশলিস্ট
             </a>
+            {hasCategories ? (
+              <div className="mt-1 border-t border-border pt-1">
+                <p className="px-3 pb-1 pt-2.5 text-xs font-bold text-text-subtle">ক্যাটাগরি</p>
+                {categories!.map((c) => (
+                  <a
+                    key={c.slug}
+                    href={`/shop?category=${c.slug}`}
+                    className="flex min-h-[44px] items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm text-text-main hover:bg-surface-2"
+                  >
+                    <span className="min-w-0 truncate">{c.name.bn}</span>
+                    <span className="shrink-0 text-xs text-text-subtle">{c.productCount}টি পণ্য</span>
+                  </a>
+                ))}
+              </div>
+            ) : null}
           </nav>
         ) : null}
       </header>
+
+      {/* Mobile search overlay — full-screen, same GET /search contract */}
+      {mobileSearchOpen ? (
+        <div role="dialog" aria-modal="true" aria-label="পণ্য খুঁজুন" className="fixed inset-0 z-50 flex flex-col bg-card sm:hidden">
+          <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+            <form
+              action="/search"
+              method="get"
+              role="search"
+              className="min-w-0 flex-1"
+              onSubmit={() => setMobileSearchOpen(false)}
+            >
+              <label className="sr-only" htmlFor="site-search-mobile">
+                পণ্য খুঁজুন
+              </label>
+              <div className="relative">
+                <input
+                  id="site-search-mobile"
+                  name="q"
+                  type="search"
+                  autoComplete="off"
+                  autoFocus
+                  placeholder="পণ্য খুঁজুন…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setMobileSearchOpen(false);
+                  }}
+                  className="h-11 w-full rounded-full border border-border bg-surface-2 pl-4 pr-12 text-sm text-text-main outline-none transition focus:border-brand-500 focus:bg-white"
+                />
+                <button
+                  type="submit"
+                  aria-label="খুঁজুন"
+                  className="brand-gradient absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:opacity-90"
+                >
+                  <SearchIcon />
+                </button>
+              </div>
+            </form>
+            <button
+              type="button"
+              aria-label="বন্ধ করুন"
+              onClick={() => setMobileSearchOpen(false)}
+              className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-text-muted transition hover:bg-surface-2 hover:text-text-main"
+            >
+              <CloseIcon />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <SearchPanelContent
+              query={query}
+              searching={searching}
+              suggestions={suggestions}
+              onNavigate={() => setMobileSearchOpen(false)}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {/* Mobile bottom nav — hidden on product pages (PDP buy bar wins) */}
       {showBottomNav ? (
@@ -339,7 +749,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount 
                 >
                   <span className="relative">
                     {item.icon}
-                    <CountBadge count={item.badge} />
+                    <CountBadge count={item.badge} pop={item.href === "/cart"} />
                   </span>
                   {item.label}
                 </a>

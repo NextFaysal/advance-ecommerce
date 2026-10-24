@@ -15,7 +15,7 @@
  */
 "use strict";
 
-var CACHE_VERSION = "v1";
+var CACHE_VERSION = "v2";
 var STATIC_CACHE = "advance-ecommerce-static-" + CACHE_VERSION;
 var PAGE_CACHE = "advance-ecommerce-pages-" + CACHE_VERSION;
 var OFFLINE_URL = "/offline";

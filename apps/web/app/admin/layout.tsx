@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { ADMIN_NAV, groupBySection, isLockedAddOn, type AdminNavItem } from "@/admin-nav/config";
-import { CommandPalette } from "@/command-palette";
+import { AdminCommandPalette, CommandPaletteTrigger } from "@/admin/command-palette";
 
 // Navigation comes from src/admin-nav/config.ts (single source).
 // Showing an item here is UX only — every admin API route still enforces
@@ -95,7 +95,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="min-h-screen bg-bg-app text-text-main">
-      <CommandPalette />
+      <AdminCommandPalette />
       <div className="flex">
         {/* Sidebar — full-height, sticky; hidden on phone (bottom nav instead) */}
         <aside className="sticky top-0 hidden h-screen w-[272px] shrink-0 flex-col border-r border-border bg-card md:flex">
@@ -199,14 +199,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               </span>
             </nav>
             <div className="relative ml-auto hidden w-full max-w-sm lg:block">
-              <span aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle">
-                <Icon name="Search" className="h-4 w-4" />
-              </span>
-              <input
-                aria-label="Global search"
-                placeholder="খুঁজুন…  ⌘K"
-                className="h-10 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
-              />
+              <CommandPaletteTrigger />
             </div>
             <span className="ml-auto flex items-center gap-1.5 lg:ml-0">
               <button

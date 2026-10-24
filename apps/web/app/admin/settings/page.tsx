@@ -1,7 +1,9 @@
+import type { ReactNode } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Icon } from "@/components/ui/icon";
 
 // Settings index — Agent 25.
 // Landing page for Admin > Settings: a general summary (the built-in
@@ -14,7 +16,7 @@ import { Card } from "@/components/ui/card";
 
 interface SettingsCardInfo {
   href: string;
-  icon: string;
+  icon: ReactNode;
   titleBn: string;
   titleEn: string;
   description: string;
@@ -25,7 +27,7 @@ interface SettingsCardInfo {
 const CARDS: SettingsCardInfo[] = [
   {
     href: "/admin/settings/payments",
-    icon: "💳",
+    icon: <Icon name="credit-card" size={22} />,
     titleBn: "পেমেন্ট",
     titleEn: "Payments",
     description: "COD, bKash, Nagad, Rocket, Upay, SSLCommerz, AamarPay, ShurjoPay — পদ্ধতি চালু/বন্ধ, sandbox/live মোড।",
@@ -33,7 +35,7 @@ const CARDS: SettingsCardInfo[] = [
   },
   {
     href: "/admin/settings/shipping",
-    icon: "🚚",
+    icon: <Icon name="truck" size={22} />,
     titleBn: "কুরিয়ার / শিপিং",
     titleEn: "Courier / Shipping",
     description: "Steadfast, Pathao, RedX, Paperfly, eCourier — জোন ও চার্জ, কুরিয়ার অ্যাকাউন্ট সংযোগ।",
@@ -41,7 +43,7 @@ const CARDS: SettingsCardInfo[] = [
   },
   {
     href: "/admin/settings/notifications",
-    icon: "🔔",
+    icon: <Icon name="bell" size={22} />,
     titleBn: "নোটিফিকেশন",
     titleEn: "Notifications",
     description: "SMS (BulkSMSBD, SSL Wireless, Greenweb) ও ইমেইল (Resend + SMTP) প্রোভাইডার এবং টেমপ্লেট।",
@@ -49,7 +51,7 @@ const CARDS: SettingsCardInfo[] = [
   },
   {
     href: "/admin/settings/integrations",
-    icon: "🔌",
+    icon: <Icon name="settings" size={22} />,
     titleBn: "ইন্টিগ্রেশন",
     titleEn: "Integrations",
     description: "স্টোরেজ (Cloudflare R2), সার্চ (Meilisearch) ও অন্যান্য বাইরের সেবার সংযোগ অবস্থা।",
@@ -57,7 +59,7 @@ const CARDS: SettingsCardInfo[] = [
   },
   {
     href: "/admin/settings/tracking",
-    icon: "📈",
+    icon: <Icon name="chart" size={22} />,
     titleBn: "ট্র্যাকিং",
     titleEn: "Tracking",
     description: "Meta Pixel + CAPI, GA4, TikTok — পিক্সেল আইডি ও সার্ভার-সাইড ইভেন্ট সেটিংস।",
@@ -75,10 +77,10 @@ export default function AdminSettingsPage() {
       />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="ভাষা (ডিফল্ট)" value="বাংলা (bn)" delta="fallback: English" icon="🌐" />
-        <StatCard label="মুদ্রা" value="BDT (৳)" delta="পয়সা (integer) হিসাব" icon="৳" />
-        <StatCard label="সময় অঞ্চল" value="Asia/Dhaka" delta="সব তারিখ/সময়" icon="🕐" />
-        <StatCard label="সাব-পেজ" value={String(CARDS.length)} delta="নিচে কার্ড আকারে" icon="🧩" />
+        <StatCard label="ভাষা (ডিফল্ট)" value="বাংলা (bn)" delta="fallback: English" icon={<span className="text-base font-bold">বাং</span>} />
+        <StatCard label="মুদ্রা" value="BDT (৳)" delta="পয়সা (integer) হিসাব" icon={<Icon name="banknote" size={22} />} />
+        <StatCard label="সময় অঞ্চল" value="Asia/Dhaka" delta="সব তারিখ/সময়" icon={<Icon name="clock" size={22} />} />
+        <StatCard label="সাব-পেজ" value={String(CARDS.length)} delta="নিচে কার্ড আকারে" icon={<Icon name="grid" size={22} />} />
       </div>
 
       <Card className="mb-6">
@@ -107,7 +109,7 @@ export default function AdminSettingsPage() {
         {CARDS.map((card) => (
           <Card key={card.href}>
             <div className="flex items-start justify-between">
-              <span aria-hidden="true" className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-brand-50 text-xl">
+              <span aria-hidden="true" className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-brand-50 text-brand-600 shadow-sm">
                 {card.icon}
               </span>
               <Badge tone={card.demoConfigured ? "success" : "warning"}>

@@ -3,6 +3,8 @@ import Link from "next/link";
 import { ProductCard } from "@/catalog/ProductCard";
 import { listActivePublicProducts, listCategories } from "@/catalog/server-read";
 import type { Category } from "@/catalog/types";
+import { Reveal } from "@/components/ui/reveal";
+import { CountUp } from "@/components/ui/count-up";
 
 // NOTE on route groups: Next.js forbids both app/page.tsx and app/(store)/page.tsx
 // (both map to "/"). So the storefront home lives HERE, and only shop/product/search
@@ -214,6 +216,9 @@ export default async function Home() {
     listActivePublicProducts(8),
     listCategories(),
   ]);
+  // Real catalogue totals for the hero stat row (Design v3) — summed
+  // from the same category fetch; the row hides when the store is empty.
+  const totalProducts = categories.reduce((sum, c) => sum + c.productCount, 0);
   // Flash sale = products whose default purchasable variant carries a
   // compare-at price. Derived from the same fetch — no extra query.
   const flashProducts = products.filter((p) =>
@@ -262,10 +267,36 @@ export default async function Home() {
                 <span className="text-emerald-600"><CheckIcon /></span> ১০০% অরিজিনাল পণ্য
               </li>
             </ul>
+
+            {/* Real catalogue stats — animated counters (v3); hidden
+                entirely while the catalogue is empty. */}
+            {totalProducts > 0 ? (
+              <dl className="mt-8 flex flex-wrap gap-x-10 gap-y-4 border-t border-brand-100 pt-5">
+                <div>
+                  <dd className="text-2xl font-extrabold tabular-nums text-text-main">
+                    <CountUp value={totalProducts} />+
+                  </dd>
+                  <dt className="mt-0.5 text-xs font-medium text-text-muted">পণ্যের কালেকশন</dt>
+                </div>
+                <div>
+                  <dd className="text-2xl font-extrabold tabular-nums text-text-main">
+                    <CountUp value={categories.length} />
+                  </dd>
+                  <dt className="mt-0.5 text-xs font-medium text-text-muted">ক্যাটাগরি</dt>
+                </div>
+                <div>
+                  <dd className="text-2xl font-extrabold tabular-nums text-text-main">
+                    <CountUp value={64} />
+                  </dd>
+                  <dt className="mt-0.5 text-xs font-medium text-text-muted">জেলায় হোম ডেলিভারি</dt>
+                </div>
+              </dl>
+            ) : null}
           </div>
 
-          {/* Visual composition — layered brand cards (no fake products) */}
-          <div className="brand-gradient relative hidden min-h-[320px] overflow-hidden rounded-3xl p-6 shadow-md lg:block" aria-hidden="true">
+          {/* Visual composition — layered brand cards over the animated
+              aurora background (Design v3, A+); no fake products */}
+          <div className="aurora relative hidden min-h-[320px] overflow-hidden rounded-3xl p-6 shadow-md lg:block" aria-hidden="true">
             <div className="absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/15" />
             <div className="absolute -bottom-14 -left-8 h-52 w-52 rounded-full bg-black/10" />
             <div className="relative flex h-full flex-col justify-between gap-4">
@@ -293,6 +324,7 @@ export default async function Home() {
       </section>
 
       {/* ---------- Trust row ---------- */}
+      <Reveal delay={60}>
       <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="আমাদের সুবিধা">
         {TRUST_ITEMS.map((item) => (
           <div key={item.title} className="flex gap-3.5 rounded-2xl border border-border bg-card p-4 shadow-sm">
@@ -306,9 +338,11 @@ export default async function Home() {
           </div>
         ))}
       </section>
+      </Reveal>
 
       {/* ---------- Categories ---------- */}
       {categories.length > 0 ? (
+        <Reveal delay={120}>
         <section className="mt-12">
           <SectionHeading eyebrow="ক্যাটাগরি" title="পছন্দ অনুযায়ী কিনুন" href="/shop" linkLabel="সব পণ্য দেখুন" />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
@@ -317,10 +351,12 @@ export default async function Home() {
             ))}
           </div>
         </section>
+        </Reveal>
       ) : null}
 
       {/* ---------- Flash sale (only when discounted stock exists) ---------- */}
       {flashProducts.length > 0 ? (
+        <Reveal delay={60}>
         <section className="mt-12">
           <SectionHeading eyebrow="সীমিত সময়ের অফার" title="ফ্ল্যাশ সেল" href="/shop" linkLabel="সব অফার দেখুন" />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
@@ -329,10 +365,12 @@ export default async function Home() {
             ))}
           </div>
         </section>
+        </Reveal>
       ) : null}
 
       {/* ---------- Featured products ---------- */}
       {products.length > 0 ? (
+        <Reveal delay={120}>
         <section className="mt-12">
           <SectionHeading eyebrow="বাছাই করা" title="জনপ্রিয় পণ্য" href="/shop" linkLabel="সব দেখুন" />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
@@ -341,9 +379,11 @@ export default async function Home() {
             ))}
           </div>
         </section>
+        </Reveal>
       ) : null}
 
       {/* ---------- Why us (inverse band) ---------- */}
+      <Reveal delay={60}>
       <section className="mt-14 rounded-3xl bg-brand-900 px-6 py-10 shadow-md sm:px-10">
         <SectionHeading eyebrow="কেন আমরাই" title="আস্থার সাথে কেনাকাটা" inverse />
         <div className="mt-7 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -372,8 +412,10 @@ export default async function Home() {
           </Link>
         </div>
       </section>
+      </Reveal>
 
       {/* ---------- Testimonials ---------- */}
+      <Reveal delay={120}>
       <section className="mt-14">
         <SectionHeading eyebrow="কাস্টমারদের কথা" title="যারা কিনেছেন, তারা বলছেন" />
         <div className="mt-5 grid gap-3 md:grid-cols-3">
@@ -395,8 +437,10 @@ export default async function Home() {
           ))}
         </div>
       </section>
+      </Reveal>
 
       {/* ---------- Newsletter ---------- */}
+      <Reveal delay={60}>
       <section id="newsletter" className="brand-soft-gradient mb-10 mt-14 rounded-3xl px-6 py-10 shadow-sm sm:px-10">
         <div className="grid items-center gap-6 lg:grid-cols-2">
           <div>
@@ -427,6 +471,7 @@ export default async function Home() {
           </form>
         </div>
       </section>
+      </Reveal>
     </main>
   );
 }

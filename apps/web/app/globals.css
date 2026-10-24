@@ -211,3 +211,124 @@
     animation: none;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Design System v3 additions (12-design-v3-plan.md §2 — A+ Aurora)     */
+/* Motion + glass + dark-mode foundation (M0). Transform/opacity only. */
+/* ------------------------------------------------------------------ */
+
+@layer utilities {
+  /* Aurora hero background — the brand gradient base with two layers of
+     indigo/violet/pink radial blobs drifting slowly above it (pseudos sit
+     at z-index -1 inside an isolated stacking context: above the element's
+     own background, below its content). Content needs no positioning.
+     Usage: <section className="aurora text-white">…</section> */
+  .aurora {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background-color: #4f46e5;
+    background-image: var(--brand-gradient);
+  }
+  .aurora::before,
+  .aurora::after {
+    content: "";
+    position: absolute;
+    inset: -18%;
+    z-index: -1;
+    pointer-events: none;
+    will-change: transform, opacity;
+  }
+  .aurora::before {
+    background-image:
+      radial-gradient(42% 55% at 18% 22%, rgba(99, 102, 241, 0.85) 0%, transparent 70%),
+      radial-gradient(38% 48% at 82% 16%, rgba(236, 72, 153, 0.6) 0%, transparent 70%),
+      radial-gradient(55% 60% at 55% 90%, rgba(139, 92, 246, 0.7) 0%, transparent 72%);
+    animation: aurora-drift 18s ease-in-out infinite alternate;
+  }
+  .aurora::after {
+    background-image:
+      radial-gradient(30% 38% at 74% 66%, rgba(56, 189, 248, 0.4) 0%, transparent 70%),
+      radial-gradient(34% 42% at 24% 78%, rgba(236, 72, 153, 0.45) 0%, transparent 70%);
+    opacity: 0.85;
+    animation: aurora-drift 26s ease-in-out infinite alternate-reverse;
+  }
+
+  /* Glassmorphism — for the sticky header once scrolled, floating cards
+     over the aurora, and overlay panels. `.dark` variant below. */
+  .glass {
+    background-color: rgba(255, 255, 255, 0.7);
+    -webkit-backdrop-filter: blur(12px) saturate(1.6);
+    backdrop-filter: blur(12px) saturate(1.6);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: 0 8px 32px -12px rgba(49, 46, 129, 0.18);
+  }
+
+  /* Reveal-on-scroll (driven by ui/reveal.tsx). SAFETY PATTERN: `.reveal`
+     alone is fully visible — the hidden state applies ONLY under
+     `.reveal-init`, which the component adds on mount right before it
+     starts observing. If JS fails or never runs, content stays visible. */
+  .reveal {
+    transition:
+      opacity 600ms ease-out var(--reveal-delay, 0ms),
+      transform 600ms cubic-bezier(0.22, 1, 0.36, 1) var(--reveal-delay, 0ms);
+  }
+  .reveal.reveal-init {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  .reveal.reveal-init.is-revealed {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Cart badge pop — add `.animate-badge-pop` when the count changes
+     (re-mount or re-trigger by key change). */
+  .animate-badge-pop { animation: badge-pop 450ms cubic-bezier(0.21, 1.02, 0.73, 1) both; }
+
+  /* Marquee — the track must be a flex row (w-max) whose content is
+     duplicated exactly twice; the loop shifts by one copy (-50%).
+     Pauses on hover. */
+  .animate-marquee { animation: marquee 28s linear infinite; }
+  .animate-marquee:hover { animation-play-state: paused; }
+}
+
+.dark .glass {
+  background-color: rgba(19, 20, 43, 0.62);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px -12px rgba(0, 0, 0, 0.55);
+}
+
+@keyframes aurora-drift {
+  from { transform: translate3d(-3%, -2%, 0) scale(1); }
+  50% { transform: translate3d(2%, 3%, 0) scale(1.08); }
+  to { transform: translate3d(4%, -3%, 0) scale(1.14); }
+}
+@keyframes badge-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.35); }
+  65% { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora::before,
+  .aurora::after,
+  .animate-badge-pop,
+  .animate-marquee {
+    animation: none;
+  }
+  /* Reveal: no transition, and the pre-reveal state must never hide
+     content for reduced-motion users. */
+  .reveal {
+    transition: none;
+  }
+  .reveal.reveal-init {
+    opacity: 1;
+    transform: none;
+  }
+}

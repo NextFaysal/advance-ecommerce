@@ -62,7 +62,10 @@ export default async function AdminProductsPage() {
           </Link>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
+        <>
+        {/* Desktop table — hidden under md (card list below takes over,
+         *  so a 360px screen never scrolls sideways). */}
+        <div className="hidden overflow-x-auto rounded-lg border border-border bg-card shadow-card md:block">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
             <thead>
               <tr className="bg-surface-2 text-left [&>th]:border-b [&>th]:border-border">
@@ -96,6 +99,39 @@ export default async function AdminProductsPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Mobile card list (under md) — same products, same fields. */}
+        <div className="space-y-3 md:hidden">
+          {products.map((p) => {
+            const stock = p.variants.reduce((s, v) => s + v.stock, 0);
+            const meta = STATUS_META[p.status] ?? { label: p.status, tone: "neutral" as const };
+            return (
+              <article key={p.id} className="rounded-lg border border-border bg-card p-4 shadow-card">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="break-words font-medium leading-snug [overflow-wrap:anywhere]">{p.title.bn}</p>
+                    <p className="mt-0.5 font-mono text-caption text-text-subtle">/{p.slug}</p>
+                  </div>
+                  <Badge tone={meta.tone}>{meta.label}</Badge>
+                </div>
+                <div className="mt-3 flex items-center gap-4 border-t border-border pt-3 text-small">
+                  <span>
+                    <span className="block text-caption text-text-subtle">দাম (থেকে)</span>
+                    <span className="font-mono font-semibold tabular-nums">{formatBdt(minVariantPricePoisha(p))}</span>
+                  </span>
+                  <span>
+                    <span className="block text-caption text-text-subtle">স্টক</span>
+                    <span className={`font-mono tabular-nums ${stock <= 0 ? "font-semibold text-rose-600" : ""}`}>
+                      {stock}
+                      {stock <= 0 ? <span className="ml-1.5 text-caption text-rose-500">স্টক শেষ</span> : null}
+                    </span>
+                  </span>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+        </>
       )}
       <p className="mt-4 text-caption leading-relaxed text-text-subtle">
         ডেটা আসল ক্যাটালগ ডাটাবেস থেকে আসে। বাল্ক ইমপোর্ট/এক্সপোর্ট ও ইনলাইন দাম/স্টক এডিট API রুটে আছে।

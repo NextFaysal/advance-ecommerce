@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ProductCard } from "@/catalog/ProductCard";
 import type { SortOption } from "@/catalog/search";
 import { listCategories, listPublicProducts } from "@/catalog/server-read";
+import { MobileFilterDrawer } from "./MobileFilterDrawer";
 
 // Data: real catalog DB (ACTIVE products only) via the Prisma
 // repository — the same filter contract as GET /api/v1/public/products.
@@ -246,6 +247,72 @@ export default async function ShopPage({
   if (inStockOnly)
     activeChips.push({ key: "instock", label: "শুধু স্টকে আছে", href: buildHref(current, { instock: undefined }) });
 
+  // Filter panel content — rendered ONCE as a node, then placed in the
+  // desktop sidebar card and (Design v3) inside the mobile filter
+  // drawer. Same GET-param links in both, so behaviour is identical.
+  const filterPanel = (
+    <>
+      <FilterSection title="ক্যাটাগরি">
+        <SidebarLink href={buildHref(current, { category: undefined })} active={!category}>
+          সব ক্যাটাগরি
+        </SidebarLink>
+        {categories.map((c) => (
+          <SidebarLink
+            key={c.slug}
+            href={buildHref(current, { category: c.slug })}
+            active={category === c.slug}
+            count={c.productCount}
+          >
+            {c.name.bn}
+          </SidebarLink>
+        ))}
+      </FilterSection>
+
+      <FilterSection title="মূল্য">
+        <SidebarLink href={buildHref(current, { min: undefined, max: undefined })} active={!hasPriceFilter}>
+          সব দাম
+        </SidebarLink>
+        {PRICE_RANGES.map((range) => {
+          const active = minPoisha === range.min && maxPoisha === range.max && hasPriceFilter;
+          return (
+            <SidebarLink
+              key={range.label}
+              href={buildHref(current, {
+                min: range.min !== undefined ? String(range.min) : undefined,
+                max: range.max !== undefined ? String(range.max) : undefined,
+              })}
+              active={active}
+            >
+              {range.label}
+            </SidebarLink>
+          );
+        })}
+      </FilterSection>
+
+      {brands.length > 0 ? (
+        <FilterSection title="ব্র্যান্ড">
+          <SidebarLink href={buildHref(current, { brand: undefined })} active={!brand}>
+            সব ব্র্যান্ড
+          </SidebarLink>
+          {brands.map((b) => (
+            <SidebarLink key={b} href={buildHref(current, { brand: b })} active={brand === b}>
+              {b}
+            </SidebarLink>
+          ))}
+        </FilterSection>
+      ) : null}
+
+      <FilterSection title="প্রাপ্যতা">
+        <SidebarLink href={buildHref(current, { instock: undefined })} active={!inStockOnly}>
+          সব পণ্য
+        </SidebarLink>
+        <SidebarLink href={buildHref(current, { instock: "1" })} active={inStockOnly}>
+          শুধু স্টকে আছে
+        </SidebarLink>
+      </FilterSection>
+    </>
+  );
+
   return (
     <main className="mx-auto min-w-0 max-w-[1440px] px-4 py-6 sm:px-6 lg:py-8">
       {/* Breadcrumb */}
@@ -261,68 +328,25 @@ export default async function ShopPage({
         ) : null}
       </nav>
 
+      {/* Mobile filter row (Design v3) — drawer on small screens;
+          the sort form stays visible in the results header below. */}
+      <div className="mt-4 flex items-center justify-between gap-3 lg:hidden">
+        <MobileFilterDrawer
+          resultCount={result.total}
+          clearHref={hasAnyFilter || q ? "/shop" : undefined}
+        >
+          {filterPanel}
+        </MobileFilterDrawer>
+        {activeChips.length > 0 ? (
+          <span className="text-[13px] font-medium text-brand-700">{activeChips.length}টি ফিল্টার সক্রিয়</span>
+        ) : null}
+      </div>
+
       <div className="mt-4 grid gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
-        {/* ---------- Filter sidebar ---------- */}
-        <aside className="min-w-0">
-          <div className="rounded-2xl border border-border bg-card px-4 py-1 shadow-sm lg:sticky lg:top-24">
-            <FilterSection title="ক্যাটাগরি">
-              <SidebarLink href={buildHref(current, { category: undefined })} active={!category}>
-                সব ক্যাটাগরি
-              </SidebarLink>
-              {categories.map((c) => (
-                <SidebarLink
-                  key={c.slug}
-                  href={buildHref(current, { category: c.slug })}
-                  active={category === c.slug}
-                  count={c.productCount}
-                >
-                  {c.name.bn}
-                </SidebarLink>
-              ))}
-            </FilterSection>
-
-            <FilterSection title="মূল্য">
-              <SidebarLink href={buildHref(current, { min: undefined, max: undefined })} active={!hasPriceFilter}>
-                সব দাম
-              </SidebarLink>
-              {PRICE_RANGES.map((range) => {
-                const active = minPoisha === range.min && maxPoisha === range.max && hasPriceFilter;
-                return (
-                  <SidebarLink
-                    key={range.label}
-                    href={buildHref(current, {
-                      min: range.min !== undefined ? String(range.min) : undefined,
-                      max: range.max !== undefined ? String(range.max) : undefined,
-                    })}
-                    active={active}
-                  >
-                    {range.label}
-                  </SidebarLink>
-                );
-              })}
-            </FilterSection>
-
-            {brands.length > 0 ? (
-              <FilterSection title="ব্র্যান্ড">
-                <SidebarLink href={buildHref(current, { brand: undefined })} active={!brand}>
-                  সব ব্র্যান্ড
-                </SidebarLink>
-                {brands.map((b) => (
-                  <SidebarLink key={b} href={buildHref(current, { brand: b })} active={brand === b}>
-                    {b}
-                  </SidebarLink>
-                ))}
-              </FilterSection>
-            ) : null}
-
-            <FilterSection title="প্রাপ্যতা">
-              <SidebarLink href={buildHref(current, { instock: undefined })} active={!inStockOnly}>
-                সব পণ্য
-              </SidebarLink>
-              <SidebarLink href={buildHref(current, { instock: "1" })} active={inStockOnly}>
-                শুধু স্টকে আছে
-              </SidebarLink>
-            </FilterSection>
+        {/* ---------- Filter sidebar (desktop) ---------- */}
+        <aside className="hidden min-w-0 lg:block">
+          <div className="rounded-2xl border border-border bg-card px-4 py-1 shadow-sm lg:sticky lg:top-[8.5rem]">
+            {filterPanel}
           </div>
         </aside>
 
