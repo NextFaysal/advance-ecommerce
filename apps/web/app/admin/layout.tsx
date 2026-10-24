@@ -81,10 +81,11 @@ function isActiveItem(pathname: string, item: AdminNavItem): boolean {
 }
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  // Auth screens (login / 2FA) render WITHOUT the admin shell: an
-  // unauthenticated visitor must never see the navigation or topbar.
+  // Auth screens (login / 2FA / invite acceptance) render WITHOUT the
+  // admin shell: an unauthenticated visitor must never see the
+  // navigation or topbar.
   const pathname = (await headers()).get("x-pathname") ?? "";
-  if (pathname.startsWith("/admin/login")) {
+  if (pathname.startsWith("/admin/login") || pathname.startsWith("/admin/accept-invite")) {
     return <div className="min-h-screen bg-bg-app text-text-main">{children}</div>;
   }
 

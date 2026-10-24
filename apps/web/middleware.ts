@@ -8,7 +8,10 @@ import { NextResponse, type NextRequest } from "next/server";
 //   validateSessionToken + requirePermission (src/lib/auth.ts / rbac.ts).
 //   Middleware only prevents unauthenticated page shells from rendering.
 // - /admin is noindex via robots handling in the admin layout metadata.
-const PUBLIC_ADMIN_PATHS = ["/admin/login"];
+// /admin/accept-invite is public for the same reason as login: the
+// invitee has no session yet — the one-time invite token is the
+// credential, validated server-side by the accept API.
+const PUBLIC_ADMIN_PATHS = ["/admin/login", "/admin/accept-invite"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

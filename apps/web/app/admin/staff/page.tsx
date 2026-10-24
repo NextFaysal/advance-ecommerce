@@ -184,7 +184,7 @@ export default function AdminStaffPage() {
         })}
       </div>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">নতুন স্টাফ আমন্ত্রণ (আউটলাইন)</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold">নতুন স্টাফ আমন্ত্রণ</h2>
       <Card>
         <InviteForm />
       </Card>

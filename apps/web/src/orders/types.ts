@@ -63,6 +63,13 @@ export type OrderNote = {
 export type Order = {
   id: string;
   orderNo: string;
+  /** Owning Customer row id (Order.customerId). Populated by the
+   *  repository mapper from the order's customer relation; optional
+   *  because client-side fixtures may not carry it. */
+  customerId?: string;
+  /** Create channel recorded on the row (Order.source): "website" for
+   *  public checkout, "manual" for staff-created orders. */
+  source?: string;
   customerName: string;
   /** Normalized +8801XXXXXXXXX. Display must be masked unless the viewer has customers.view_full_phone. */
   customerPhone: string;

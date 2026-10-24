@@ -1,9 +1,13 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { listAllProducts } from "@/catalog/server-read";
 import { minVariantPricePoisha } from "@/catalog/types";
+import { validateSessionToken } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
+import { DeleteProductButton } from "./delete-product-button";
 
 // Admin product list — staff view, so cost is NOT shown here by default either:
 // cost visibility is a field-level permission (Step 4 RBAC) and is gated
@@ -22,8 +26,22 @@ const STATUS_META: Record<string, { label: string; tone: "success" | "warning" |
   ARCHIVED: { label: "আর্কাইভ", tone: "neutral" },
 };
 
+/** The delete action renders only for viewers holding products.delete;
+ *  the API enforces the same permission regardless. */
+async function viewerCanDeleteProducts(): Promise<boolean> {
+  try {
+    const token = cookies().get("admin_session")?.value;
+    if (!token) return false;
+    const session = await validateSessionToken(token);
+    return session ? hasPermission(session.user.permissions, "products.delete") : false;
+  } catch {
+    return false;
+  }
+}
+
 export default async function AdminProductsPage() {
   const products = await listAllProducts();
+  const canDelete = await viewerCanDeleteProducts();
   return (
     <main className="min-w-0">
       <PageHeader
@@ -73,6 +91,9 @@ export default async function AdminProductsPage() {
                 <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">দাম (থেকে)</th>
                 <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">স্টক</th>
                 <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">স্ট্যাটাস</th>
+                {canDelete && (
+                  <th scope="col" className="px-4 py-3 text-right text-caption font-semibold text-text-muted">অ্যাকশন</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -93,6 +114,11 @@ export default async function AdminProductsPage() {
                     <td className="px-4 py-3">
                       <Badge tone={meta.tone}>{meta.label}</Badge>
                     </td>
+                    {canDelete && (
+                      <td className="px-4 py-3 text-right">
+                        <DeleteProductButton productId={p.id} productTitle={p.title.bn} />
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -126,6 +152,11 @@ export default async function AdminProductsPage() {
                       {stock <= 0 ? <span className="ml-1.5 text-caption text-rose-500">স্টক শেষ</span> : null}
                     </span>
                   </span>
+                  {canDelete && (
+                    <span className="ml-auto">
+                      <DeleteProductButton productId={p.id} productTitle={p.title.bn} />
+                    </span>
+                  )}
                 </div>
               </article>
             );

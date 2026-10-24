@@ -26,7 +26,7 @@ import type { Category, Product, ProductImage, ProductVariant, PublicProduct } f
 import { toPublicProduct } from "./types";
 import type { ProductFilter } from "./search";
 import { applyProductFilter } from "./search";
-import { syncProductSearchIndex } from "./indexer";
+import { removeProductFromSearchIndex, syncProductSearchIndex } from "./indexer";
 import { MOCK_CATEGORIES, MOCK_PRODUCTS } from "./mock";
 
 export const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -269,6 +269,13 @@ export interface CatalogRepository {
     input: ProductUpdateInput,
     actorId: string | null,
   ): Promise<{ product: Product; ledgerEntries: StockLedgerEntry[]; ledgerPending: boolean }>;
+  /**
+   * SOFT delete only: sets deletedAt on the product and its live
+   * variants (never a hard delete — order history references variants).
+   * Returns null when no product row exists at all; `alreadyDeleted`
+   * distinguishes a first delete from an idempotent repeat.
+   */
+  deleteProduct(id: string): Promise<{ product: Product; alreadyDeleted: boolean } | null>;
 }
 
 /**
@@ -317,6 +324,9 @@ export class MockCatalogRepository implements CatalogRepository {
   }
   async updateProduct(): Promise<never> {
     throw new DbNotReadyError("Product update requires migrated catalog tables + generated Prisma client.");
+  }
+  async deleteProduct(): Promise<never> {
+    throw new DbNotReadyError("Product delete requires migrated catalog tables + generated Prisma client.");
   }
 }
 
@@ -927,6 +937,41 @@ export class PrismaCatalogRepository implements CatalogRepository {
     // makes the indexer delete the document.
     syncProductSearchIndex(result.product);
     return result;
+  }
+
+  async deleteProduct(id: string) {
+    // Look the row up INCLUDING soft-deleted ones: getProductById
+    // returns null for both missing and deleted, and the route must
+    // distinguish "not found" (404) from "already deleted" (idempotent
+    // success) — so this reads the raw row directly.
+    const row = await this.client.product.findUnique({
+      where: { id },
+      include: PRODUCT_INCLUDE,
+    });
+    if (!row) return null;
+    const product = mapRowToProduct(mapPrismaRowToProductRow(row));
+    if (row.deletedAt !== null) {
+      return { product, alreadyDeleted: true };
+    }
+    const now = new Date();
+    await this.client.$transaction(async (tx) => {
+      // Soft-delete the live variants too — the same treatment
+      // updateProduct gives dropped variants: order history keeps its
+      // references, but the orders repository's variant snapshots
+      // filter deletedAt, so a deleted product can never be ordered
+      // again. A hard delete is never performed here.
+      for (const v of product.variants) {
+        await tx.productVariant.update({
+          where: { id: v.id },
+          data: { deletedAt: now, isActive: false },
+        });
+      }
+      await tx.product.update({ where: { id }, data: { deletedAt: now } });
+    });
+    // Search-index removal (repository layer, fire-and-forget — same
+    // contract as the create/update sync hooks).
+    removeProductFromSearchIndex(id);
+    return { product, alreadyDeleted: false };
   }
 }
 

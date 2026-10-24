@@ -78,3 +78,50 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return handleServiceError(error);
   }
 }
+
+// DELETE /api/v1/admin/products/[id] — SOFT delete only (the repository
+// sets deletedAt on the product and its live variants; a hard delete is
+// forbidden because order history references variants). `reason` is
+// required: products.delete is a sensitive action in the audit lib,
+// same rule as products.price_change on PATCH. Deleting an already
+// soft-deleted product is an idempotent success (alreadyDeleted: true),
+// never an error; a missing product is a 404.
+export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+  const session = await requireAdminSession();
+  if (session instanceof NextResponse) return session;
+  if (!hasPermission(session.permissions, "products.delete")) {
+    return apiError("FORBIDDEN", "Missing permission: products.delete", 403);
+  }
+  const body = (await req.json().catch(() => ({}))) as { reason?: unknown };
+  const reason = typeof body?.reason === "string" ? body.reason.trim() : "";
+  if (reason === "") {
+    return apiError("REASON_REQUIRED", "A reason is required to delete a product (products.delete).", 400);
+  }
+  try {
+    const repo = await getCatalogRepository();
+    const result = await repo.deleteProduct(params.id);
+    if (!result) return apiError("NOT_FOUND", "Product not found.", 404);
+    await writeCatalogAudit({
+      actorId: session.userId,
+      action: "products.delete",
+      entityId: result.product.id,
+      beforeJson: { slug: result.product.slug, status: result.product.status },
+      afterJson: { deleted: true, alreadyDeleted: result.alreadyDeleted },
+      reason,
+      ip: req.headers.get("x-forwarded-for") ?? undefined,
+      userAgent: req.headers.get("user-agent") ?? undefined,
+    });
+    // Search-index removal is owned by the repository layer
+    // (PrismaCatalogRepository.deleteProduct, fire-and-forget).
+    return NextResponse.json({
+      data: {
+        id: result.product.id,
+        slug: result.product.slug,
+        deleted: true,
+        alreadyDeleted: result.alreadyDeleted,
+      },
+    });
+  } catch (error) {
+    return handleServiceError(error);
+  }
+}

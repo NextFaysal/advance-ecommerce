@@ -7,13 +7,17 @@
 // computed from those real rows — an empty DB shows an honest empty
 // state, never sample rows. Bulk actions go through the BulkActionBar
 // (real job pipeline, per-order results from the Jobs API). The manual
-// order form below is validation-only: there is NO admin manual-create
-// endpoint yet, and the form says so instead of pretending to create.
+// order form below validates with manualOrderSchema and POSTs to the
+// admin create endpoint (POST /api/v1/admin/orders without an `action`
+// field), which persists through the same repository path as public
+// checkout (DB snapshots, fraud scoring, one transaction, source
+// "manual"); on success the list reloads so the order appears, on
+// failure the server's message is shown in the form.
 //
 // Presentation (Design Refresh R3): Tailwind table system — sticky
 // header, status pills, payment/risk badges, filter chips with real
 // counts, designed empty/loading states. Data flow unchanged.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Order, OrderStatus } from "../../../src/orders/types";
 import { MANUAL_ORDER_STEPS, manualOrderSchema } from "../../../src/orders/manual-order";
 import { displayPhone, riskLevel } from "../../../src/orders/customer";
@@ -123,6 +127,12 @@ export default function AdminOrdersPage() {
   const [sort, setSort] = useState<{ key: "date" | "total" | "status"; dir: "asc" | "desc" } | null>(null);
   const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
   const [manualResult, setManualResult] = useState<string>("");
+  const [manualOk, setManualOk] = useState(false);
+  const [manualBusy, setManualBusy] = useState(false);
+  // One idempotency key per manual-create attempt: kept across retries
+  // (a double submit replays the stored order instead of duplicating
+  // it) and rotated after a successful create.
+  const manualKeyRef = useRef<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
@@ -222,7 +232,19 @@ export default function AdminOrdersPage() {
     });
   }
 
-  function onManualSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function newIdempotencyKey(): string {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+      return crypto.randomUUID();
+    }
+    // Fallback UUID v4 shape for older browsers.
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+
+  async function onManualSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
     const parsed = manualOrderSchema.safeParse({
@@ -238,11 +260,51 @@ export default function AdminOrdersPage() {
       paymentMethod: data.get("paymentMethod"),
       note: data.get("note") || undefined,
     });
-    setManualResult(
-      parsed.success
-        ? "ফর্মটি সঠিক আছে। কিন্তু অ্যাডমিন ম্যানুয়াল-ক্রিয়েট API এখনো তৈরি হয়নি — তাই কোনো অর্ডার তৈরি হয়নি। (API গ্যাপ: POST /api/v1/admin/orders শুধু বাল্ক জব নেয়।)"
-        : parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(" | "),
-    );
+    if (!parsed.success) {
+      setManualOk(false);
+      setManualResult(parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(" | "));
+      return;
+    }
+    if (!manualKeyRef.current) manualKeyRef.current = newIdempotencyKey();
+    setManualBusy(true);
+    setManualResult("");
+    try {
+      const res = await fetch("/api/v1/admin/orders", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...parsed.data, idempotencyKey: manualKeyRef.current }),
+      });
+      const body = (await res.json().catch(() => null)) as
+        | {
+            data?: { order?: Order | null };
+            meta?: { idempotentReplay?: boolean };
+            error?: { code: string; message: string };
+          }
+        | null;
+      if (res.ok && body?.data?.order) {
+        const order = body.data.order;
+        setManualOk(true);
+        setManualResult(
+          body.meta?.idempotentReplay
+            ? `এই অর্ডারটি আগেই তৈরি হয়েছে: ${order.orderNo} — মোট ${formatBdt(order.totalPoisha)}। নিচের তালিকায় দেখুন।`
+            : `অর্ডার তৈরি হয়েছে: ${order.orderNo} — মোট ${formatBdt(order.totalPoisha)}। নিচের তালিকায় দেখুন।`,
+        );
+        manualKeyRef.current = null;
+        await load();
+      } else {
+        setManualOk(false);
+        setManualResult(
+          body?.error
+            ? `${body.error.code}: ${body.error.message}`
+            : `HTTP ${res.status} — অর্ডার তৈরি হয়নি।`,
+        );
+      }
+    } catch {
+      setManualOk(false);
+      setManualResult("নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি। আবার চেষ্টা করুন; একই চেষ্টায় ডুপ্লিকেট অর্ডার হবে না।");
+    } finally {
+      setManualBusy(false);
+    }
   }
 
   return (
@@ -566,17 +628,16 @@ export default function AdminOrdersPage() {
         </>
       )}
 
-      {/* Manual order — validation-only until the admin create API exists */}
+      {/* Manual order — posts to the admin create endpoint */}
       <Card className="mt-8 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-h3">ম্যানুয়াল অর্ডার</h2>
             <p className="mt-0.5 text-small text-text-muted">লক্ষ্য: ৩০ সেকেন্ডে অর্ডার নেওয়া। ধাপ: {MANUAL_ORDER_STEPS.join(" → ")}</p>
           </div>
-          <Badge tone="warning">শুধু যাচাই — API গ্যাপ</Badge>
         </div>
-        <p className="mt-3 rounded-md bg-amber-50 px-3.5 py-2.5 text-small leading-relaxed text-amber-800">
-          এই ফর্মটি শুধু তথ্য যাচাই করে — অ্যাডমিন ম্যানুয়াল-ক্রিয়েট API এখনো তৈরি হয়নি, তাই সাবমিটে কোনো অর্ডার তৈরি হবে না।
+        <p className="mt-3 rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
+          সাবমিটে আসল অর্ডার তৈরি হয় — পণ্যের নাম, SKU ও স্টক ডাটাবেস থেকে যাচাই হয়, ফ্রড স্কোরিং চলে এবং অর্ডারটি ওয়েবসাইট অর্ডারের মতোই সংরক্ষিত হয় (সোর্স: ম্যানুয়াল)। একক দাম কর্মী দিতে পারেন; ক্যাটালগ দাম থেকে ভিন্ন হলে তা অর্ডার নোটে লেখা থাকে। ম্যানুয়াল অর্ডারে কুপন ও ডেলিভারি চার্জ প্রযোজ্য নয় — মোট = পণ্যের মোট দাম।
         </p>
         <form onSubmit={onManualSubmit} className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div><label className={labelCls} htmlFor="mo-phone">ফোন</label><input id="mo-phone" name="phone" placeholder="01XXXXXXXXX" required className={inputCls} /></div>
@@ -596,11 +657,18 @@ export default function AdminOrdersPage() {
           </div>
           <div><label className={labelCls} htmlFor="mo-note">নোট (ঐচ্ছিক)</label><input id="mo-note" name="note" placeholder="নোট" className={inputCls} /></div>
           <div className="flex items-end">
-            <Button type="submit" variant="primary" className="w-full">ম্যানুয়াল অর্ডার যাচাই করুন</Button>
+            <Button type="submit" variant="primary" className="w-full" disabled={manualBusy}>
+              {manualBusy ? "তৈরি হচ্ছে…" : "ম্যানুয়াল অর্ডার তৈরি করুন"}
+            </Button>
           </div>
         </form>
         {manualResult && (
-          <p role="status" className="mt-4 rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed">
+          <p
+            role="status"
+            className={`mt-4 rounded-md px-3.5 py-2.5 text-small leading-relaxed ${
+              manualOk ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-700"
+            }`}
+          >
             {manualResult}
           </p>
         )}

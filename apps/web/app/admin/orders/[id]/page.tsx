@@ -7,14 +7,16 @@
 // server-side and persists: invalid transitions come back 422 and are
 // shown, never applied locally. The allowed-transition buttons are
 // computed from the same state-machine table the server enforces.
-// Customer profile aggregates are NOT shown: the order payload carries
-// no customerId, so the summary card renders its order-only view
-// instead of looking a customer up in sample data.
+// The order payload carries customerId (from the order's customer
+// relation), so the customer profile aggregates are loaded from
+// GET /api/v1/admin/customers/[customerId] and the summary card gets
+// its full view; if that fetch is not permitted (customers.view) the
+// card falls back to its order-only view.
 //
 // Presentation (Design Refresh R3): header summary band, card sections
 // for items / customer / timeline / actions / notes. Data flow unchanged.
 import { useCallback, useEffect, useState } from "react";
-import type { Order, OrderStatus } from "../../../../src/orders/types";
+import type { Customer, Order, OrderStatus } from "../../../../src/orders/types";
 import { nextStepLabel, nextStepTarget, ORDER_TRANSITIONS } from "../../../../src/orders/state-machine";
 import { displayPhone, riskLevel } from "../../../../src/orders/customer";
 import { formatBdt } from "../../../../src/checkout/pricing";
@@ -69,6 +71,7 @@ function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: stri
 
 export default function AdminOrderDetailPage({ params }: { params: { id: string } }) {
   const [order, setOrder] = useState<Order | null>(null);
+  const [customer, setCustomer] = useState<Customer | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "error" | "notfound" | "ready">("loading");
   const [loadError, setLoadError] = useState("");
   const [message, setMessage] = useState<string>("");
@@ -83,6 +86,20 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
       if (res.ok && body && "data" in body) {
         setOrder(body.data);
         setLoadState("ready");
+        // Customer aggregates via customerId (best-effort: a viewer
+        // without customers.view keeps the order-only card).
+        setCustomer(null);
+        if (body.data.customerId) {
+          try {
+            const cres = await fetch(`/api/v1/admin/customers/${encodeURIComponent(body.data.customerId)}`);
+            const cbody = (await cres.json().catch(() => null)) as
+              | { data?: { customer?: Customer } }
+              | null;
+            if (cres.ok && cbody?.data?.customer) setCustomer(cbody.data.customer);
+          } catch {
+            // Order-only fallback — the card renders without aggregates.
+          }
+        }
       } else if (res.status === 404) {
         setLoadState("notfound");
       } else {
@@ -253,14 +270,22 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
             </div>
           </Card>
 
-          {/* Customer summary — shared component */}
+          {/* Customer summary — shared component (full aggregates when
+              the customer fetch succeeded) */}
           <div className="[&_section]:shadow-card">
-            <CustomerSummaryCard order={order} />
+            <CustomerSummaryCard order={order} customer={customer ?? undefined} />
           </div>
-          <p className="-mt-2 px-1 text-caption leading-relaxed text-text-subtle">
-            নোট: গ্রাহক প্রোফাইল কার্ড এখানে শুধু অর্ডার-ভিত্তিক তথ্য দেখায় — অর্ডার API-তে customerId থাকে না,
-            তাই গ্রাহকের ইতিহাস (মোট অর্ডার, সাফল্যের হার) এখানে আনা হয়নি।
-          </p>
+          {order.customerId && (
+            <p className="-mt-2 px-1 text-caption leading-relaxed text-text-subtle">
+              <a
+                href={`/admin/customers?search=${encodeURIComponent(order.customerName)}`}
+                className="font-medium text-brand-700 hover:underline"
+              >
+                গ্রাহকের প্রোফাইল ও সব অর্ডার দেখুন
+              </a>
+              {customer ? "" : " — এই ভিউতে গ্রাহকের ইতিহাস দেখার অনুমতি না থাকলে কার্ডে শুধু এই অর্ডারের তথ্য দেখায়।"}
+            </p>
+          )}
 
           {/* Timeline — shared component */}
           <Card className="shadow-card">

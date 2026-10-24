@@ -140,6 +140,8 @@ function orderRowToOrder(row: OrderRow): Order {
   return {
     id: row.id,
     orderNo: row.orderNo,
+    customerId: row.customerId,
+    ...(row.source ? { source: row.source } : {}),
     customerName: row.customerName,
     customerPhone: row.customerPhone,
     address,
@@ -345,6 +347,9 @@ export interface CreateOrderRecordInput {
    *  row is written only when this code exists as a DB Coupon row. */
   appliedCoupon: { code: string; discountPoisha: number } | null;
   note?: string;
+  /** Create channel stored on Order.source. Defaults to "website"
+   *  (public checkout); the admin manual-create route passes "manual". */
+  source?: string;
 }
 
 export type CreateOrderRecordResult =
@@ -457,7 +462,7 @@ export async function createOrderRecord(
           taxPoisha: input.pricing.taxPoisha,
           totalPoisha: input.pricing.totalPoisha,
           riskScore: input.riskScore,
-          source: "website",
+          source: input.source ?? "website",
           idempotencyKey: input.idempotencyKey,
           items: {
             create: input.items.map((i) => ({

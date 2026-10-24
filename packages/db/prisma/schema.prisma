@@ -149,6 +149,15 @@ model User {
   lastLoginAt         DateTime?
   isActive            Boolean   @default(true)
   deletedAt           DateTime?
+  // Staff invite lifecycle (additive): an invited user is created inactive
+  // with only the SHA-256 hash of a random invite token; the raw token is
+  // shown once to the inviter and never stored or logged. Accepting the
+  // invite sets a real password, activates the account and clears these.
+  inviteTokenHash     String?
+  inviteExpiresAt     DateTime?
+  invitedById         String?
+  invitedBy           User?     @relation("UserInvites", fields: [invitedById], references: [id])
+  invitesSent         User[]    @relation("UserInvites")
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
   sessions            Session[]
@@ -163,6 +172,7 @@ model User {
   stockMovements      StockMovement[] @relation("MovementActor")
   @@index([phone])
   @@index([deletedAt])
+  @@index([inviteTokenHash])
 }
 
 model Role {

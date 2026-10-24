@@ -216,6 +216,27 @@ export async function deleteProductFromIndex(productId: string): Promise<IndexRe
 }
 
 /**
+ * Repository-layer removal hook for product deletion: fire-and-forget
+ * wrapper around deleteProductFromIndex with the same failure contract
+ * as syncProductSearchIndex (log, never fail the catalog write).
+ */
+export function removeProductFromSearchIndex(productId: string): void {
+  void deleteProductFromIndex(productId)
+    .then((result) => {
+      if (!result.ok && !result.skipped) {
+        console.error(
+          `[search-index] delete failed for product ${productId}: ${result.reason ?? "unknown"}`,
+        );
+      }
+    })
+    .catch((error: unknown) => {
+      console.error(
+        `[search-index] delete error for product ${productId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+}
+
+/**
  * Repository-layer sync hook: fire-and-forget wrapper around
  * indexProduct with failure logging. A Meilisearch outage must never
  * fail (or even slow down) a catalog write — failures are logged and
