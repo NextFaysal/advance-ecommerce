@@ -1,15 +1,16 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { Icon } from "./icon";
 
 type Variant = "primary" | "gradient" | "secondary" | "outline" | "ghost" | "destructive";
 type Size = "sm" | "md" | "lg";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-brand-600 text-white hover:bg-brand-700 shadow-sm",
-  gradient: "brand-gradient text-white shadow-sm",
+  primary: "bg-brand-600 text-white shadow-md hover:bg-brand-700 hover:shadow-lift",
+  gradient: "brand-gradient text-white shadow-md hover:shadow-lift hover:brightness-105",
   secondary: "bg-brand-50 text-brand-700 hover:bg-brand-100",
-  outline: "border border-border bg-transparent hover:bg-surface-2",
-  ghost: "bg-transparent hover:bg-surface-2",
-  destructive: "bg-rose-500 text-white hover:bg-rose-600",
+  outline: "border border-border bg-card text-text-main hover:bg-surface-2 hover:shadow-card",
+  ghost: "bg-transparent text-text-main hover:bg-surface-2",
+  destructive: "bg-rose-500 text-white shadow-md hover:bg-rose-600 hover:shadow-lift",
 };
 
 const sizes: Record<Size, string> = {
@@ -36,9 +37,10 @@ export function Button({
     <button
       {...props}
       disabled={disabled || loading}
-      className={`inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md font-medium transition motion-base active:scale-[0.98] disabled:opacity-50 ${variants[variant]} ${sizes[size]} ${className}`}
+      aria-busy={loading || undefined}
+      className={`inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md font-semibold transition motion-base focus-visible:ring-[3px] focus-visible:ring-brand-500/40 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 ${variants[variant]} ${sizes[size]} ${className}`}
     >
-      {loading ? <span aria-hidden="true">◌</span> : null}
+      {loading ? <Icon name="spinner" size={16} className="animate-spin" /> : null}
       {children}
     </button>
   );

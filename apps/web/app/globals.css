@@ -32,6 +32,10 @@
   --radius: 0.75rem;
   --brand-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 55%, #ec4899 100%);
   --brand-soft-gradient: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%);
+  /* Elevation system v2 — soft, indigo-tinted shadows (see tailwind shadow-card/lift/pop). */
+  --shadow-card: 0 1px 2px rgba(49, 46, 129, 0.05), 0 8px 24px -12px rgba(79, 70, 229, 0.14);
+  --shadow-lift: 0 2px 4px rgba(49, 46, 129, 0.06), 0 16px 32px -12px rgba(79, 70, 229, 0.22);
+  --shadow-pop: 0 4px 12px rgba(49, 46, 129, 0.08), 0 24px 48px -12px rgba(49, 46, 129, 0.28);
   --font-sans: "Plus Jakarta Sans", "Hind Siliguri", "Noto Sans Bengali", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
@@ -55,6 +59,9 @@
   --border: 236 31% 24%;
   --input: 236 31% 24%;
   --ring: 239 84% 72%;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px -12px rgba(0, 0, 0, 0.45);
+  --shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.4), 0 16px 32px -12px rgba(0, 0, 0, 0.55);
+  --shadow-pop: 0 4px 12px rgba(0, 0, 0, 0.45), 0 24px 48px -12px rgba(0, 0, 0, 0.6);
 }
 
 @layer base {
@@ -95,5 +102,112 @@
   .motion-base { transition-duration: 220ms; }
   @media (prefers-reduced-motion: reduce) {
     .motion-fast, .motion-base { transition-duration: 0ms; }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Design System v2 additions (11-design-refresh-plan.md §2)           */
+/* ------------------------------------------------------------------ */
+
+@layer utilities {
+  /* Display typeface for headlines — Hind Siliguri carries the Bengali
+     glyphs; Jakarta is the Latin fallback in the stack. */
+  .font-display {
+    font-family: "Hind Siliguri", "Plus Jakarta Sans", "Noto Sans Bengali", system-ui, sans-serif;
+  }
+
+  /* Editorial section heading system (§2.1): eyebrow + title + lead. */
+  .section-eyebrow {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: hsl(var(--primary));
+  }
+  .section-title {
+    font-family: "Hind Siliguri", "Plus Jakarta Sans", "Noto Sans Bengali", system-ui, sans-serif;
+    font-size: 1.5rem;
+    line-height: 2.1rem;
+    font-weight: 700;
+    color: hsl(var(--foreground));
+  }
+  .section-lead {
+    font-size: 0.9375rem;
+    line-height: 1.6rem;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* Category tint palette (§2.2) — soft bg + deep fg pairs for tiles/chips.
+     Usage: <div className="cat-tint-3">…</div> — assign by category index % 8. */
+  .cat-tint-1 { background-color: #eef2ff; color: #4338ca; }
+  .cat-tint-2 { background-color: #f5f3ff; color: #6d28d9; }
+  .cat-tint-3 { background-color: #fdf2f8; color: #be185d; }
+  .cat-tint-4 { background-color: #fffbeb; color: #b45309; }
+  .cat-tint-5 { background-color: #ecfdf5; color: #047857; }
+  .cat-tint-6 { background-color: #f0f9ff; color: #0369a1; }
+  .cat-tint-7 { background-color: #fff1f2; color: #be123c; }
+  .cat-tint-8 { background-color: #f0fdf9; color: #0f766e; }
+
+  /* Skeleton shimmer — gradient sweep, replaces the flat pulse. */
+  .skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+    background-color: hsl(var(--muted));
+  }
+  .skeleton-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    animation: ds-shimmer 1.6s infinite;
+  }
+
+  /* Entry animations for overlays (transform/opacity only, §2.5). */
+  .anim-fade-in { animation: ds-fade-in 180ms ease-out both; }
+  .anim-pop-in { animation: ds-pop-in 220ms cubic-bezier(0.21, 1.02, 0.73, 1) both; }
+  .anim-drawer-in { animation: ds-drawer-in 280ms cubic-bezier(0.32, 0.72, 0.24, 1) both; }
+  .anim-rise { animation: ds-rise 320ms ease-out both; }
+}
+
+.dark .cat-tint-1 { background-color: rgba(99, 102, 241, 0.16); color: #a5b4fc; }
+.dark .cat-tint-2 { background-color: rgba(139, 92, 246, 0.16); color: #c4b5fd; }
+.dark .cat-tint-3 { background-color: rgba(236, 72, 153, 0.14); color: #f9a8d4; }
+.dark .cat-tint-4 { background-color: rgba(245, 158, 11, 0.14); color: #fcd34d; }
+.dark .cat-tint-5 { background-color: rgba(16, 185, 129, 0.14); color: #6ee7b7; }
+.dark .cat-tint-6 { background-color: rgba(14, 165, 233, 0.14); color: #7dd3fc; }
+.dark .cat-tint-7 { background-color: rgba(244, 63, 94, 0.14); color: #fda4af; }
+.dark .cat-tint-8 { background-color: rgba(20, 184, 166, 0.14); color: #5eead4; }
+.dark .skeleton-shimmer::after {
+  background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+}
+
+@keyframes ds-shimmer {
+  100% { transform: translateX(100%); }
+}
+@keyframes ds-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ds-pop-in {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes ds-drawer-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes ds-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer::after,
+  .anim-fade-in,
+  .anim-pop-in,
+  .anim-drawer-in,
+  .anim-rise {
+    animation: none;
   }
 }

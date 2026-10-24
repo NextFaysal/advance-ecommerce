@@ -1,23 +1,45 @@
 "use client";
 
+import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { Button } from "./button";
+import { Icon } from "./icon";
 
+/**
+ * Modal (Design System v2) — pop-in animation, pop shadow, divided
+ * header/footer, Bangla default action labels. Escape closes.
+ */
 export function Modal({ open, onClose, title, children, onConfirm }: {
   open: boolean; onClose: () => void; title: string; children: ReactNode; onConfirm?: () => void;
 }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
-    <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 backdrop-blur-sm sm:items-center" onClick={onClose}>
-      <div className="w-full max-w-[560px] rounded-xl bg-card p-5 shadow-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{title}</h2>
-          <button type="button" aria-label="Close dialog" onClick={onClose} className="min-h-[44px] min-w-[44px] rounded-md hover:bg-surface-2">✕</button>
+    <div role="dialog" aria-modal="true" aria-label={title} className="anim-fade-in fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 backdrop-blur-sm sm:items-center" onClick={onClose}>
+      <div className="anim-pop-in w-full max-w-[560px] rounded-xl bg-card shadow-pop" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <h2 className="font-display text-lg font-semibold text-text-main">{title}</h2>
+          <button
+            type="button"
+            aria-label="বন্ধ করুন"
+            onClick={onClose}
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-text-muted transition motion-fast hover:bg-surface-2 hover:text-text-main"
+          >
+            <Icon name="x" size={20} />
+          </button>
         </div>
-        <div className="mt-4">{children}</div>
-        <div className="mt-5 flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          {onConfirm ? <Button onClick={onConfirm}>Confirm</Button> : null}
+        <div className="px-5 py-4">{children}</div>
+        <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
+          <Button variant="outline" onClick={onClose}>বাতিল</Button>
+          {onConfirm ? <Button onClick={onConfirm}>নিশ্চিত করুন</Button> : null}
         </div>
       </div>
     </div>

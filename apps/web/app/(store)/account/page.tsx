@@ -7,22 +7,18 @@
 export default function AccountPage() {
   return (
     <main style={{ padding: 24, maxWidth: 720, fontFamily: "system-ui" }}>
-      <h1>Amar Account</h1>
+      <h1>আমার অ্যাকাউন্ট</h1>
       <p>
-        Customer login ekhono chalu hoy ni — tai account page e ekhono apnar order ba profile dekha jacche na.
-        Kono sample/demo data ekhane dekhano hoy na.
+        কাস্টমার লগইন এখনো চালু হয়নি — তাই এই পেজে এখন আপনার অর্ডার বা প্রোফাইল দেখা যাচ্ছে না।
+        এখানে কোনো নমুনা বা ডেমো তথ্য দেখানো হয় না।
       </p>
       <section>
-        <h2>Order track korun</h2>
+        <h2>অর্ডার ট্র্যাক করুন</h2>
         <p>
-          Order number ar phone diye apnar ashol order er obostha dekhte{" "}
-          <a href="/track">Order Track</a> page e jan.
+          অর্ডার নম্বর ও ফোন নম্বর দিয়ে আপনার আসল অর্ডারের অবস্থা দেখতে{" "}
+          <a href="/track">অর্ডার ট্র্যাক</a> পেজে যান।
         </p>
       </section>
-      <p>
-        (Developer note: wire this page to the logged-in customer&apos;s real orders/addresses/wallet when
-        customer auth and /api/v1/public/account exist.)
-      </p>
     </main>
   );
 }

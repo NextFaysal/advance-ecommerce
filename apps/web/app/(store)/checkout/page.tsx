@@ -9,6 +9,18 @@ import { cartSubtotalPoisha } from "../../../src/cart/types";
 import { findStockProblems } from "../../../src/checkout/stock";
 import { computePricing, formatBdt } from "../../../src/checkout/pricing";
 import { newIdempotencyKey, validateCheckoutForm } from "../../../src/checkout";
+import { BkashMark, CodMark, NagadMark, SslCommerzMark } from "@/components/brand-marks";
+
+const PAYMENT_TILE_STYLE: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  border: "1px solid #CBD5E1",
+  borderRadius: 10,
+  padding: "6px 10px 6px 8px",
+  cursor: "pointer",
+  fontWeight: 600,
+};
 
 const MOCK_CART: Cart = {
   ownerKey: "guest-demo",
@@ -75,10 +87,10 @@ export default function CheckoutPage() {
 
   return (
     <main style={{ padding: 24, maxWidth: 720, fontFamily: "system-ui" }}>
-      <h1>Checkout — এক পেজে অর্ডার</h1>
-      <p>Phone required, email optional. Address: Division &gt; District &gt; Upazila &gt; Union (optional).</p>
+      <h1>চেকআউট — এক পেজেই অর্ডার</h1>
+      <p>ফোন নম্বর আবশ্যক, ইমেইল ঐচ্ছিক। ঠিকানা দিন ধাপে ধাপে: বিভাগ › জেলা › উপজেলা › ইউনিয়ন (ঐচ্ছিক)।</p>
 
-      <h2>Cart</h2>
+      <h2>আপনার কার্ট</h2>
       <ul>
         {cart.items.map((item) => (
           <li key={item.variantId}>
@@ -86,48 +98,69 @@ export default function CheckoutPage() {
           </li>
         ))}
       </ul>
-      <p>Subtotal: {formatBdt(pricing.subtotalPoisha)} | Shipping: {formatBdt(pricing.shippingPoisha)} | Total: {formatBdt(pricing.grandTotalPoisha)}</p>
+      <p>সাবটোটাল: {formatBdt(pricing.subtotalPoisha)} | ডেলিভারি চার্জ: {formatBdt(pricing.shippingPoisha)} | সর্বমোট: {formatBdt(pricing.grandTotalPoisha)}</p>
       {stockProblems.length > 0 && (
-        <p role="alert">Stock problem: {stockProblems.map((p) => `${p.name} (asked ${p.requested}, available ${p.available})`).join(", ")}</p>
+        <p role="alert">স্টক সমস্যা: {stockProblems.map((p) => `${p.name} (চেয়েছেন ${p.requested}টি, স্টকে আছে ${p.available}টি)`).join(", ")}</p>
       )}
 
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
-        <label>Nam * <input name="customerName" required /></label>
-        <label>Mobile * <input name="phone" placeholder="01XXXXXXXXX" required /></label>
-        <label>Email (optional) <input name="email" type="email" /></label>
-        <label>Division * <input name="division" required /></label>
-        <label>District * <input name="district" required /></label>
-        <label>Upazila * <input name="upazila" required /></label>
-        <label>Union (optional) <input name="union" /></label>
-        <label>Thikana * <input name="addressLine" required /></label>
-        <label>Note <input name="note" /></label>
-        <label>Shipping
+        <label>আপনার নাম * <input name="customerName" required /></label>
+        <label>মোবাইল নম্বর * <input name="phone" placeholder="01XXXXXXXXX" required /></label>
+        <label>ইমেইল (ঐচ্ছিক) <input name="email" type="email" /></label>
+        <label>বিভাগ * <input name="division" required /></label>
+        <label>জেলা * <input name="district" required /></label>
+        <label>উপজেলা * <input name="upazila" required /></label>
+        <label>ইউনিয়ন (ঐচ্ছিক) <input name="union" /></label>
+        <label>বিস্তারিত ঠিকানা * <input name="addressLine" required /></label>
+        <label>নোট (ঐচ্ছিক) <input name="note" /></label>
+        <label>ডেলিভারি এলাকা
           <select name="shippingMethod" defaultValue="inside_dhaka">
-            <option value="inside_dhaka">Inside Dhaka</option>
-            <option value="outside_dhaka">Outside Dhaka</option>
-            <option value="pickup">Pickup</option>
+            <option value="inside_dhaka">ঢাকার ভিতরে</option>
+            <option value="outside_dhaka">ঢাকার বাইরে</option>
+            <option value="pickup">পিকআপ (নিজে এসে নেবেন)</option>
           </select>
         </label>
-        <label>Payment
-          <select name="paymentMethod" defaultValue="cod">
-            <option value="cod">Cash on Delivery</option>
-            <option value="bkash">bKash</option>
-            <option value="nagad">Nagad</option>
-            <option value="sslcommerz">SSLCommerz</option>
-            <option value="aamarpay">AamarPay</option>
-            <option value="shurjopay">ShurjoPay</option>
-          </select>
-        </label>
-        <label>Coupon <input name="couponCode" /></label>
-        <p>Idempotency key (one per attempt): <code>{idempotencyKey}</code></p>
-        <button type="submit" disabled={stockProblems.length > 0}>Order Confirm korun</button>
+        <fieldset style={{ border: 0, margin: 0, padding: 0 }}>
+          <legend style={{ marginBottom: 8 }}>পেমেন্ট মাধ্যম</legend>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <label style={PAYMENT_TILE_STYLE}>
+              <input type="radio" name="paymentMethod" value="cod" defaultChecked />
+              <CodMark />
+            </label>
+            <label style={PAYMENT_TILE_STYLE}>
+              <input type="radio" name="paymentMethod" value="bkash" />
+              <BkashMark />
+            </label>
+            <label style={PAYMENT_TILE_STYLE}>
+              <input type="radio" name="paymentMethod" value="nagad" />
+              <NagadMark />
+            </label>
+            <label style={PAYMENT_TILE_STYLE}>
+              <input type="radio" name="paymentMethod" value="sslcommerz" />
+              <SslCommerzMark />
+            </label>
+            <label style={PAYMENT_TILE_STYLE}>
+              <input type="radio" name="paymentMethod" value="aamarpay" />
+              AamarPay
+            </label>
+            <label style={PAYMENT_TILE_STYLE}>
+              <input type="radio" name="paymentMethod" value="shurjopay" />
+              ShurjoPay
+            </label>
+          </div>
+          <p style={{ marginTop: 8, color: "#475569", fontSize: 14 }}>
+            নিরাপদ পেমেন্ট: পণ্য হাতে পেয়ে টাকা দিন (ক্যাশ অন ডেলিভারি), অথবা বিকাশ, নগদ ও কার্ডে অনলাইনে পরিশোধ করুন।
+          </p>
+        </fieldset>
+        <label>কুপন কোড (ঐচ্ছিক) <input name="couponCode" /></label>
+        <button type="submit" disabled={stockProblems.length > 0}>অর্ডার নিশ্চিত করুন</button>
       </form>
 
       {errors.length > 0 && (
         <ul role="alert">{errors.map((err) => <li key={err}>{err}</li>)}</ul>
       )}
       {submitted && (
-        <p role="status">Form validation pass hoyeche. TEMPORARY MOCK: ashol order toiri hobe jokhon API route wire hobe — ekhon kono order DB te jay ni.</p>
+        <p role="status">ধন্যবাদ! ফর্মের তথ্য যাচাই সম্পন্ন হয়েছে। (ডেমো অবস্থা: এই পেজ থেকে এখনো আসল অর্ডার তৈরি হয় না — API সংযোগ সম্পন্ন হলে অর্ডারটি ডেটাবেসে সংরক্ষিত হবে।)</p>
       )}
     </main>
   );

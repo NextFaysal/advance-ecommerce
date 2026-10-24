@@ -4,7 +4,12 @@
 // Server Component. NO contact details are printed here on purpose:
 // support phone/email/address belong to the per-client settings and the
 // /contact page, never hardcoded in the shell (do not invent them).
-// Payment/courier mentions are text badges only — no logos or images.
+// Design refresh (Direction A): brand intro column, single-language
+// (Bangla) headings and links per the bn-default locale — no mixed
+// "দোকান Shop" style labels — and a marked slot where the parent wires
+// in real payment/courier brand marks (SVG logo chips, plan §2.4).
+
+import { CourierMarks, PaymentMarks } from "@/components/brand-marks";
 
 export interface SiteFooterProps {
   brandName?: string;
@@ -14,64 +19,40 @@ export interface SiteFooterProps {
 
 const COLUMNS: ReadonlyArray<{
   headingBn: string;
-  headingEn: string;
-  links: ReadonlyArray<{ href: string; labelBn: string; labelEn: string }>;
+  links: ReadonlyArray<{ href: string; labelBn: string }>;
 }> = [
   {
     headingBn: "দোকান",
-    headingEn: "Shop",
     links: [
-      { href: "/shop", labelBn: "সব পণ্য", labelEn: "All Products" },
-      { href: "/search", labelBn: "পণ্য খুঁজুন", labelEn: "Search" },
-      { href: "/wishlist", labelBn: "উইশলিস্ট", labelEn: "Wishlist" },
-      { href: "/compare", labelBn: "তুলনা করুন", labelEn: "Compare" },
-      { href: "/recently-viewed", labelBn: "সম্প্রতি দেখা", labelEn: "Recently Viewed" },
+      { href: "/shop", labelBn: "সব পণ্য" },
+      { href: "/search", labelBn: "পণ্য খুঁজুন" },
+      { href: "/wishlist", labelBn: "উইশলিস্ট" },
+      { href: "/compare", labelBn: "তুলনা করুন" },
+      { href: "/recently-viewed", labelBn: "সম্প্রতি দেখা" },
     ],
   },
   {
     headingBn: "সাহায্য",
-    headingEn: "Help",
     links: [
-      { href: "/track", labelBn: "অর্ডার ট্র্যাক করুন", labelEn: "Track Order" },
-      { href: "/faq", labelBn: "সাধারণ জিজ্ঞাসা", labelEn: "FAQ" },
-      { href: "/contact", labelBn: "যোগাযোগ", labelEn: "Contact" },
-      { href: "/shipping-policy", labelBn: "ডেলিভারি নীতিমালা", labelEn: "Shipping Policy" },
-      { href: "/refund-policy", labelBn: "রিটার্ন ও রিফান্ড", labelEn: "Returns & Refunds" },
+      { href: "/track", labelBn: "অর্ডার ট্র্যাক করুন" },
+      { href: "/faq", labelBn: "সাধারণ জিজ্ঞাসা" },
+      { href: "/contact", labelBn: "যোগাযোগ" },
+      { href: "/shipping-policy", labelBn: "ডেলিভারি নীতিমালা" },
+      { href: "/refund-policy", labelBn: "রিটার্ন ও রিফান্ড" },
     ],
   },
   {
     headingBn: "আইনি",
-    headingEn: "Legal",
     links: [
-      { href: "/privacy", labelBn: "গোপনীয়তা নীতি", labelEn: "Privacy Policy" },
-      { href: "/terms", labelBn: "শর্তাবলি", labelEn: "Terms & Conditions" },
+      { href: "/privacy", labelBn: "গোপনীয়তা নীতি" },
+      { href: "/terms", labelBn: "শর্তাবলি" },
     ],
   },
   {
     headingBn: "আমাদের সম্পর্কে",
-    headingEn: "About",
-    links: [{ href: "/about", labelBn: "আমাদের কথা", labelEn: "About Us" }],
+    links: [{ href: "/about", labelBn: "আমাদের কথা" }],
   },
 ];
-
-const PAYMENT_BADGES = ["ক্যাশ অন ডেলিভারি (COD)", "বিকাশ", "নগদ", "রকেট", "SSLCommerz"] as const;
-const COURIER_BADGES = ["স্টেডফাস্ট", "পাঠাও", "রেডএক্স", "পেপারফ্লাই", "ইকুরিয়ার"] as const;
-
-function BadgeRow({ label, items }: { label: string; items: readonly string[] }) {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs font-medium text-text-muted">{label}</span>
-      {items.map((item) => (
-        <span
-          key={item}
-          className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-xs text-text-main"
-        >
-          {item}
-        </span>
-      ))}
-    </div>
-  );
-}
 
 export default function SiteFooter({
   brandName = "Advance Ecommerce",
@@ -80,18 +61,35 @@ export default function SiteFooter({
   const year = new Date().getFullYear();
   return (
     <footer className="border-t border-border bg-card">
-      <div className="mx-auto max-w-[1440px] px-4 py-10 sm:px-6">
-        <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
+      <div className="mx-auto max-w-[1440px] px-4 py-12 sm:px-6">
+        <div className="grid gap-10 lg:grid-cols-[1.3fr_1fr_1fr_1fr_1fr]">
+          {/* Brand intro */}
+          <div className="min-w-0">
+            <a href="/" className="flex items-center gap-2" aria-label={brandName}>
+              <span className="brand-gradient flex h-10 w-10 items-center justify-center rounded-lg text-lg font-bold text-white shadow-sm">
+                {brandName.charAt(0)}
+              </span>
+              <span className="text-base font-bold text-text-main">{brandName}</span>
+            </a>
+            <p className="mt-3 max-w-xs break-words text-sm leading-6 text-text-muted">
+              বাংলাদেশের ক্রেতাদের জন্য তৈরি অনলাইন শপ — যাচাই করা অরিজিনাল পণ্য, ক্যাশ অন ডেলিভারি আর সারাদেশে হোম ডেলিভারি।
+            </p>
+            <a
+              href="/track"
+              className="mt-4 inline-block rounded-lg bg-brand-50 px-3.5 py-2 text-sm font-semibold text-brand-700 transition hover:bg-brand-100"
+            >
+              অর্ডার ট্র্যাক করুন
+            </a>
+          </div>
+
           {COLUMNS.map((col) => (
-            <nav key={col.headingEn} aria-label={col.headingEn}>
-              <p className="text-sm font-bold text-text-main">
-                {col.headingBn}
-                <span className="ml-2 text-xs font-normal text-text-subtle">{col.headingEn}</span>
-              </p>
-              <ul className="mt-3 space-y-2">
+            <nav key={col.headingBn} aria-label={col.headingBn}>
+              <p className="text-sm font-bold text-text-main">{col.headingBn}</p>
+              <span aria-hidden="true" className="brand-gradient mt-2 block h-0.5 w-8 rounded-full" />
+              <ul className="mt-3.5 space-y-2.5">
                 {col.links.map((link) => (
                   <li key={link.href}>
-                    <a href={link.href} className="text-sm text-text-muted hover:text-brand-700">
+                    <a href={link.href} className="text-sm text-text-muted transition hover:text-brand-700">
                       {link.labelBn}
                     </a>
                   </li>
@@ -101,9 +99,18 @@ export default function SiteFooter({
           ))}
         </div>
 
-        <div className="mt-10 space-y-3 border-t border-border pt-6">
-          <BadgeRow label="পেমেন্ট:" items={PAYMENT_BADGES} />
-          <BadgeRow label="ডেলিভারি পার্টনার:" items={COURIER_BADGES} />
+        {/* Payment + courier brand marks (design plan §2.4): colour chips
+            from src/components/brand-marks.tsx — clean colour marks with
+            the partner names, not copied official logo artwork. */}
+        <div data-brand-marks-slot="payment-courier" className="mt-10 space-y-3 border-t border-border pt-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-text-muted">পেমেন্ট:</span>
+            <PaymentMarks />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-text-muted">ডেলিভারি পার্টনার:</span>
+            <CourierMarks />
+          </div>
         </div>
 
         <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-6 text-xs text-text-subtle">

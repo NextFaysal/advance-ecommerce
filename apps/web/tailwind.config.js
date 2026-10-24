@@ -38,6 +38,22 @@ module.exports = {
         sm: "0 1px 2px rgba(79,70,229,0.06)",
         md: "0 4px 12px rgba(79,70,229,0.08)",
         lg: "0 12px 32px rgba(49,46,129,0.14)",
+        /* Elevation system v2 (§2.3) — values live in globals.css vars so
+           dark mode can deepen them without touching component classes. */
+        card: "var(--shadow-card)",
+        lift: "var(--shadow-lift)",
+        pop: "var(--shadow-pop)",
+      },
+      /* Type scale v2 (§2.1) — named sizes for headings/editorial use.
+         Body text stays on Tailwind's default scale (text-sm/text-base). */
+      fontSize: {
+        display: ["2.5rem", { lineHeight: "3rem", fontWeight: "700" }],
+        h1: ["2rem", { lineHeight: "2.5rem", fontWeight: "700" }],
+        h2: ["1.5rem", { lineHeight: "2rem", fontWeight: "700" }],
+        h3: ["1.25rem", { lineHeight: "1.75rem", fontWeight: "600" }],
+        body: ["0.9375rem", { lineHeight: "1.5rem" }],
+        small: ["0.8125rem", { lineHeight: "1.25rem" }],
+        caption: ["0.75rem", { lineHeight: "1rem" }],
       },
       fontFamily: {
         sans: ["var(--font-sans)"],

@@ -80,7 +80,7 @@ export default function TrackForm() {
           {state.phase === "submitting" ? "খুঁজছি…" : "অর্ডার ট্র্যাক করুন"}
         </button>
         <p className="mt-2 text-xs text-slate-500">
-          নিরাপত্তার জন্য অল্প সময়ে বারবার চেষ্টা সীমিত (rate limit) করা আছে।
+          নিরাপত্তার জন্য অল্প সময়ের মধ্যে বারবার চেষ্টা সীমিত রাখা হয়েছে।
         </p>
         {state.phase === "error" && (
           <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">

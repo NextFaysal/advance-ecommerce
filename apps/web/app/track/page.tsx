@@ -1,7 +1,7 @@
 /**
  * /track — public order tracking page. Agent 19.
  * Bangla-first, mobile-first. Data comes from POST /api/v1/public/track
- * (TEMPORARY MOCK orders until the order DB is wired — badge says so).
+ * (real order data from the DB; phone is only ever shown masked).
  */
 import type { Metadata } from "next";
 import TrackForm from "./TrackForm";
@@ -19,7 +19,6 @@ export default function TrackPage() {
       <p className="mt-1 text-sm text-slate-500">
         অর্ডার নম্বর ও অর্ডারের সময় দেওয়া মোবাইল নম্বর দিন।
       </p>
-      <p className="mt-1 text-xs text-slate-400">TEMPORARY DEMO — mock order data.</p>
       <div className="mt-4">
         <TrackForm />
       </div>
