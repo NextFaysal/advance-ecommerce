@@ -166,7 +166,7 @@ export function QuickView({
                         ? "cursor-not-allowed border-border bg-surface-2 text-text-subtle"
                         : active
                           ? "border-brand-600 bg-brand-50 font-semibold text-brand-700"
-                          : "border-border bg-white text-text-main hover:border-brand-300"
+                          : "border-border bg-surface text-text-main hover:border-brand-300"
                     }`}
                   >
                     {variantLabel(v)} — <span className="tabular-nums">{formatBdt(v.pricePoisha)}</span>

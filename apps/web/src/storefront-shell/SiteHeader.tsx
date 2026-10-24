@@ -24,7 +24,10 @@
 // - The cart badge pops (`.animate-badge-pop`, re-keyed by count).
 // - Mega menu: the shell passes `categories` (public categories API);
 //   desktop gets a "সব ক্যাটাগরি" panel of tinted tiles, mobile gets a
-//   category section inside the menu. No categories → no menu at all.
+//   category section inside the menu. The desktop row renders ALWAYS
+//   (v3 QA fix): while the fetch is in flight (`categories` undefined)
+//   the panel shows a loading shimmer instead of the row popping in
+//   late and shifting the layout.
 // - Search: desktop dropdown panel + mobile full-screen overlay with
 //   trending terms and live suggestions from the EXISTING public
 //   products API (GET /api/v1/public/products?q=). Submitting still
@@ -47,7 +50,9 @@ export interface SiteHeaderProps {
   brandName?: string;
   /** Overrides the guest-cart localStorage count when provided. */
   cartCount?: number;
-  /** Public categories for the mega menu; absent/empty hides the menu. */
+  /** Public categories for the mega menu; `undefined` while the shell's
+      fetch is still in flight (the row renders, the panel shows a
+      loading state). An empty array means no categories exist. */
   categories?: ReadonlyArray<Category>;
 }
 
@@ -490,7 +495,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                   onKeyDown={(e) => {
                     if (e.key === "Escape") setSearchOpen(false);
                   }}
-                  className="h-11 w-full rounded-full border border-border bg-surface-2 pl-4 pr-12 text-sm text-text-main outline-none transition focus:border-brand-500 focus:bg-white"
+                  className="h-11 w-full rounded-full border border-border bg-surface-2 pl-4 pr-12 text-sm text-text-main outline-none transition focus:border-brand-500 focus:bg-surface"
                 />
                 <button
                   type="submit"
@@ -569,12 +574,14 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
           </span>
         </div>
 
-        {/* Mega menu row — desktop only, only when real categories exist */}
-        {hasCategories ? (
-          <div
-            className="relative mx-auto hidden max-w-[1440px] px-4 sm:px-6 lg:block"
-            onMouseLeave={() => setMegaOpen(false)}
-          >
+        {/* Mega menu row — desktop only. Rendered ALWAYS (v3 QA fix):
+            the categories fetch can take seconds on a cold start, and
+            gating the whole row on it made the row pop in late with a
+            layout shift. The panel below handles the loading state. */}
+        <div
+          className="relative mx-auto hidden max-w-[1440px] px-4 sm:px-6 lg:block"
+          onMouseLeave={() => setMegaOpen(false)}
+        >
             <div className="flex items-center gap-2 border-t border-border/60 py-1.5">
               <button
                 type="button"
@@ -601,8 +608,27 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
 
             {megaOpen ? (
               <div className="absolute inset-x-4 top-full z-40 sm:inset-x-6" onMouseEnter={() => setMegaOpen(true)}>
+                {categories === undefined ? (
+                  /* Fetch still in flight — shimmer tiles in the same
+                     grid so the panel opens at its final size. */
+                  <div
+                    role="status"
+                    className="grid grid-cols-3 gap-3 rounded-2xl border border-border bg-card p-4 shadow-pop xl:grid-cols-4"
+                  >
+                    <span className="sr-only">ক্যাটাগরি লোড হচ্ছে…</span>
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <div key={i} aria-hidden="true" className="flex items-center gap-3 rounded-xl bg-surface-2 p-3">
+                        <span className="skeleton-shimmer h-11 w-11 shrink-0 rounded-lg" />
+                        <span className="min-w-0 flex-1">
+                          <span className="skeleton-shimmer block h-3.5 w-3/4 rounded" />
+                          <span className="skeleton-shimmer mt-2 block h-3 w-1/2 rounded" />
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : categories.length > 0 ? (
                 <div className="grid grid-cols-3 gap-3 rounded-2xl border border-border bg-card p-4 shadow-pop xl:grid-cols-4">
-                  {categories!.map((c, i) => (
+                  {categories.map((c, i) => (
                     <a
                       key={c.slug}
                       href={`/shop?category=${c.slug}`}
@@ -613,7 +639,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={c.imageUrl} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" />
                       ) : (
-                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white/80 text-base font-extrabold text-text-main shadow-sm">
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface/80 text-base font-extrabold text-text-main shadow-sm">
                           {c.name.bn.charAt(0)}
                         </span>
                       )}
@@ -624,10 +650,24 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                     </a>
                   ))}
                 </div>
+                ) : (
+                  /* Fetch resolved with no categories — the panel still
+                     opens (the row is always present) with a quiet note
+                     instead of a blank box. */
+                  <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-pop">
+                    <p className="text-sm text-text-muted">এখনো কোনো ক্যাটাগরি যোগ হয়নি</p>
+                    <a
+                      href="/shop"
+                      onClick={() => setMegaOpen(false)}
+                      className="mt-2 inline-block text-sm font-semibold text-brand-700 hover:underline"
+                    >
+                      সব পণ্য দেখুন →
+                    </a>
+                  </div>
+                )}
               </div>
             ) : null}
-          </div>
-        ) : null}
+        </div>
 
         {/* Mobile menu — simple disclosure (+ category section, v3) */}
         {menuOpen ? (
@@ -652,10 +692,17 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
             <a href="/wishlist" className="block rounded-lg px-3 py-2.5 text-sm text-text-main hover:bg-surface-2">
               উইশলিস্ট
             </a>
-            {hasCategories ? (
+            {categories === undefined ? (
               <div className="mt-1 border-t border-border pt-1">
                 <p className="px-3 pb-1 pt-2.5 text-xs font-bold text-text-subtle">ক্যাটাগরি</p>
-                {categories!.map((c) => (
+                <p role="status" className="px-3 py-2.5 text-sm text-text-muted">
+                  লোড হচ্ছে…
+                </p>
+              </div>
+            ) : hasCategories ? (
+              <div className="mt-1 border-t border-border pt-1">
+                <p className="px-3 pb-1 pt-2.5 text-xs font-bold text-text-subtle">ক্যাটাগরি</p>
+                {categories.map((c) => (
                   <a
                     key={c.slug}
                     href={`/shop?category=${c.slug}`}
@@ -698,7 +745,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                   onKeyDown={(e) => {
                     if (e.key === "Escape") setMobileSearchOpen(false);
                   }}
-                  className="h-11 w-full rounded-full border border-border bg-surface-2 pl-4 pr-12 text-sm text-text-main outline-none transition focus:border-brand-500 focus:bg-white"
+                  className="h-11 w-full rounded-full border border-border bg-surface-2 pl-4 pr-12 text-sm text-text-main outline-none transition focus:border-brand-500 focus:bg-surface"
                 />
                 <button
                   type="submit"

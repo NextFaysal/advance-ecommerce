@@ -55,9 +55,9 @@ export default function RecentlyViewedPage() {
           <Link
             key={e.productId}
             href={`/product/${e.slug}`}
-            className="block rounded-xl border bg-white p-3 shadow-sm"
+            className="block rounded-xl border bg-card p-3 shadow-sm"
           >
-            <div className="flex h-32 items-center justify-center rounded-lg bg-[#F8F9FD] px-2 text-center text-sm text-slate-500">
+            <div className="flex h-32 items-center justify-center rounded-lg bg-bg-app px-2 text-center text-sm text-slate-500">
               {e.titleBn}
             </div>
             <h2 className="mt-2 break-words font-medium [overflow-wrap:anywhere]">{e.titleBn}</h2>

@@ -44,7 +44,7 @@ export default function WishlistPage() {
       <p className="mt-1 text-xs text-slate-400">পণ্যের তথ্য আসল ক্যাটালগ থেকে আসে; পছন্দের তালিকা শুধু এই ব্রাউজারেই সংরক্ষিত থাকে।</p>
 
       {loaded && products.length === 0 && (
-        <div className="mt-8 rounded-xl border bg-slate-50 px-4 py-10 text-center">
+        <div className="mt-8 rounded-xl border bg-surface-2 px-4 py-10 text-center">
           <p className="font-medium">আপনার পছন্দের তালিকা খালি</p>
           <p className="mt-1 text-sm text-slate-500">পছন্দের পণ্যে হার্ট চিহ্ন চাপলেই এখানে যোগ হবে।</p>
           <Link href="/shop" className="mt-4 inline-block rounded-lg bg-[#4F46E5] px-4 py-2 font-semibold text-white">
@@ -55,9 +55,9 @@ export default function WishlistPage() {
 
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
         {products.map((p) => (
-          <article key={p.id} className="rounded-xl border bg-white p-3 shadow-sm">
+          <article key={p.id} className="rounded-xl border bg-card p-3 shadow-sm">
             <Link href={`/product/${p.slug}`} className="block">
-              <div className="flex h-32 items-center justify-center rounded-lg bg-[#F8F9FD] text-sm text-slate-500">
+              <div className="flex h-32 items-center justify-center rounded-lg bg-bg-app text-sm text-slate-500">
                 {p.title.bn}
               </div>
               <h2 className="mt-2 break-words font-medium [overflow-wrap:anywhere]">{p.title.bn}</h2>

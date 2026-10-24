@@ -251,7 +251,7 @@ export default async function Home() {
               </Link>
               <Link
                 href="/shop?sort=newest"
-                className="rounded-xl border border-border bg-white px-6 py-3.5 text-[15px] font-bold text-text-main shadow-sm transition hover:bg-surface-2"
+                className="rounded-xl border border-border bg-surface px-6 py-3.5 text-[15px] font-bold text-text-main shadow-sm transition hover:bg-surface-2"
               >
                 নতুন কালেকশন দেখুন
               </Link>
@@ -460,7 +460,7 @@ export default async function Home() {
               type="email"
               required
               placeholder="আপনার ইমেইল লিখুন"
-              className="h-12 min-w-0 flex-1 rounded-xl border border-border bg-white px-4 text-sm text-text-main shadow-sm outline-none focus:border-brand-500"
+              className="h-12 min-w-0 flex-1 rounded-xl border border-border bg-surface px-4 text-sm text-text-main shadow-sm outline-none focus:border-brand-500"
             />
             <button
               type="submit"

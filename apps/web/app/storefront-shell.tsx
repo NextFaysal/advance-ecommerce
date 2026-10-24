@@ -22,8 +22,9 @@ import InstallPrompt from "@/pwa/install-prompt";
 // component (it needs usePathname), and the middleware only sets
 // x-pathname for /admin + /dashboard, so a server-side pathname read
 // here would break the /product/* bottom-nav rule — the fetch stays
-// client-side against the public API. Any failure, or an empty list,
-// simply leaves the mega menu unrendered (no fake categories).
+// client-side against the public API. Until it resolves, `categories`
+// stays undefined and SiteHeader shows its loading state (the header
+// row itself always renders; no fake categories are ever invented).
 const HIDDEN_PREFIXES = ["/admin", "/offline"];
 
 export default function StorefrontShell({ children }: { children: ReactNode }) {

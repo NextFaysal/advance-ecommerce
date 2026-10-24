@@ -38,6 +38,15 @@
   --shadow-pop: 0 4px 12px rgba(49, 46, 129, 0.08), 0 24px 48px -12px rgba(49, 46, 129, 0.28);
   --font-sans: "Plus Jakarta Sans", "Hind Siliguri", "Noto Sans Bengali", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  /* RGB triplets for the static-hex colours in tailwind.config.js — the
+     config references them as rgb(var(--c-…) / <alpha-value>) so these
+     surfaces/text flip in `.dark` (values here = the original hex). */
+  --c-surface: 255 255 255;
+  --c-surface-2: 243 244 251;
+  --c-bg-app: 248 249 253;
+  --c-text-main: 31 32 55;
+  --c-text-muted: 91 95 122;
+  --c-text-subtle: 96 103 132;
 }
 
 .dark {
@@ -62,6 +71,13 @@
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px -12px rgba(0, 0, 0, 0.45);
   --shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.4), 0 16px 32px -12px rgba(0, 0, 0, 0.55);
   --shadow-pop: 0 4px 12px rgba(0, 0, 0, 0.45), 0 24px 48px -12px rgba(0, 0, 0, 0.6);
+  /* Dark values for the tailwind.config.js hex colours (see :root note). */
+  --c-surface: 23 24 48;
+  --c-surface-2: 30 32 64;
+  --c-bg-app: 13 14 26;
+  --c-text-main: 237 237 247;
+  --c-text-muted: 166 169 196;
+  --c-text-subtle: 138 142 168;
 }
 
 @layer base {
@@ -244,14 +260,14 @@
       radial-gradient(42% 55% at 18% 22%, rgba(99, 102, 241, 0.85) 0%, transparent 70%),
       radial-gradient(38% 48% at 82% 16%, rgba(236, 72, 153, 0.6) 0%, transparent 70%),
       radial-gradient(55% 60% at 55% 90%, rgba(139, 92, 246, 0.7) 0%, transparent 72%);
-    animation: aurora-drift 18s ease-in-out infinite alternate;
+    animation: aurora-drift 10s ease-in-out infinite alternate;
   }
   .aurora::after {
     background-image:
       radial-gradient(30% 38% at 74% 66%, rgba(56, 189, 248, 0.4) 0%, transparent 70%),
       radial-gradient(34% 42% at 24% 78%, rgba(236, 72, 153, 0.45) 0%, transparent 70%);
     opacity: 0.85;
-    animation: aurora-drift 26s ease-in-out infinite alternate-reverse;
+    animation: aurora-drift 14s ease-in-out infinite alternate-reverse;
   }
 
   /* Glassmorphism — for the sticky header once scrolled, floating cards
@@ -299,10 +315,16 @@
   box-shadow: 0 8px 32px -12px rgba(0, 0, 0, 0.55);
 }
 
+/* The soft brand gradient is a near-white wash in light mode; in dark mode
+   it becomes a deep indigo panel (text on it flips light via the tokens). */
+.dark .brand-soft-gradient {
+  background-image: linear-gradient(135deg, #1b1c3a 0%, #241b45 100%);
+}
+
 @keyframes aurora-drift {
-  from { transform: translate3d(-3%, -2%, 0) scale(1); }
-  50% { transform: translate3d(2%, 3%, 0) scale(1.08); }
-  to { transform: translate3d(4%, -3%, 0) scale(1.14); }
+  from { transform: translate3d(-5%, -3%, 0) scale(1); }
+  50% { transform: translate3d(3%, 4%, 0) scale(1.09); }
+  to { transform: translate3d(6%, -4%, 0) scale(1.15); }
 }
 @keyframes badge-pop {
   0% { transform: scale(1); }

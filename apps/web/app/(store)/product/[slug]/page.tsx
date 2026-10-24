@@ -252,7 +252,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
                     className={`rounded-xl border px-3 py-1.5 text-[13px] ${
                       soldOut
                         ? "border-border bg-surface-2 text-text-subtle"
-                        : "border-border bg-white text-text-main"
+                        : "border-border bg-surface text-text-main"
                     }`}
                   >
                     {Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড"} —{" "}

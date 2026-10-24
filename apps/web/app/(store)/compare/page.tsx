@@ -63,10 +63,10 @@ export default function ComparePage() {
       ) : null}
 
       {products.length > 0 ? (
-        <div className="mt-4 overflow-x-auto rounded-xl border bg-white">
+        <div className="mt-4 overflow-x-auto rounded-xl border bg-card">
           <table className="w-full min-w-[560px] text-left text-sm">
             <thead>
-              <tr className="border-b bg-[#F8F9FD]">
+              <tr className="border-b bg-bg-app">
                 <th className="px-3 py-3 font-semibold">বৈশিষ্ট্য</th>
                 {products.map((p) => (
                   <th key={p.id} className="px-3 py-3">

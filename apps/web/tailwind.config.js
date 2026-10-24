@@ -26,14 +26,18 @@ module.exports = {
         card: "hsl(var(--card))",
         muted: "hsl(var(--muted))",
         border: "hsl(var(--border))",
-        surface: "#FFFFFF",
-        "surface-2": "#F3F4FB",
-        "bg-app": "#F8F9FD",
-        "text-main": "#1F2037",
-        "text-muted": "#5B5F7A",
-        /* v3 contrast fix: #8A8EA8 was only ~3.2:1 on white; #606784 is
+        /* These six resolve through RGB-triplet vars in globals.css
+           (:root = the original hex values; `.dark` overrides them) so
+           surfaces and text flip in dark mode; <alpha-value> keeps
+           opacity modifiers (bg-surface/80 etc.) working. */
+        surface: "rgb(var(--c-surface) / <alpha-value>)",
+        "surface-2": "rgb(var(--c-surface-2) / <alpha-value>)",
+        "bg-app": "rgb(var(--c-bg-app) / <alpha-value>)",
+        "text-main": "rgb(var(--c-text-main) / <alpha-value>)",
+        "text-muted": "rgb(var(--c-text-muted) / <alpha-value>)",
+        /* v3 contrast fix: the light triplet 96 103 132 (#606784) is
            ~5.6:1 on white (and >5:1 on bg-app), passing WCAG AA 4.5:1. */
-        "text-subtle": "#606784",
+        "text-subtle": "rgb(var(--c-text-subtle) / <alpha-value>)",
       },
       borderRadius: { sm: "8px", md: "12px", lg: "16px", xl: "20px" },
       boxShadow: {
