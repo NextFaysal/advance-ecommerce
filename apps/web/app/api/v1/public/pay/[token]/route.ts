@@ -16,6 +16,9 @@ import { z } from "zod";
 import { normalizeBdPhone } from "@advance-ecommerce/validators";
 import { ensureDemoPaymentLink, initiateSandboxPay, resolvePayLink } from "@/storefront-ux/pay-link-view";
 
+// Live data only: never prerender/cache this GET at build time.
+export const dynamic = "force-dynamic";
+
 const payBodySchema = z.object({
   method: z.enum(["bkash", "nagad", "sslcommerz"]),
   phone: z.string().min(11).max(15),
