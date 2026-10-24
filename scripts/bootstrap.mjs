@@ -29,4 +29,14 @@ try {
 } catch {
   console.log("[bootstrap] owner step exited non-zero (already exists?) — continuing");
 }
+// Owner-login recovery, separately gated: RESET_OWNER=1 replaces the
+// existing Owner's email+password from FIRST_OWNER_* (or creates the
+// Owner if none exists). Used when the first-owner password is lost —
+// Vercel never reveals sensitive env values back, so the operator sets
+// fresh FIRST_OWNER_* values and this step applies them.
+if (process.env.RESET_OWNER === "1") {
+  console.log("[bootstrap] resetting owner login from FIRST_OWNER_* env");
+  run("pnpm --filter @advance-ecommerce/db exec tsx scripts/reset-owner.ts");
+}
+
 console.log("[bootstrap] done");
