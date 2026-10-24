@@ -3,7 +3,6 @@
   "buildCommand": "DATABASE_URL=$DATABASE_URL_UNPOOLED pnpm --filter @advance-ecommerce/db exec prisma migrate deploy && pnpm --filter @advance-ecommerce/db db:generate && pnpm --filter web build",
   "framework": "nextjs",
   "installCommand": "pnpm install --frozen-lockfile",
-  "outputDirectory": "apps/web/.next",
   "regions": [
     "sin1"
   ]
