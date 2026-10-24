@@ -1,10 +1,10 @@
 // Vendor store — Agent 16. Vendor RECORDS are DB-backed since
 // 2026-10-24 (PrismaVendorStore in ./db-store.ts, used by the vendor API
-// routes). VendorProduct still lives ONLY here, in memory: the merged
-// schema has NO vendor-product table (products are core Product rows
-// with no vendor link), so product approvals cannot persist yet —
-// reported as schema drift by the DB-swap pass. This demo class also
-// serves the admin page playground (sync, SAMPLE rows).
+// routes), and VendorProduct / commission lines / refunds are DB-backed
+// since the `advanced_modules_completion` migration (2026-10-25) added
+// their tables — db-store.ts covers all of them. THIS demo class is now
+// only the admin page playground's sync fixture source (SAMPLE rows);
+// no API route reads it.
 import type { Vendor, VendorProduct } from "./types";
 
 export interface VendorStore {

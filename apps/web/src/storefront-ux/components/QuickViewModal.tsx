@@ -8,9 +8,11 @@
 import Link from "next/link";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { Modal } from "@/components/ui/modal";
+import { useDigitText } from "@/components/ui/numerals";
 import type { QuickViewData } from "../types";
 
 export function QuickViewModal({ data, onClose }: { data: QuickViewData | null; onClose: () => void }) {
+  const digits = useDigitText();
   return (
     <Modal open={data !== null} onClose={onClose} title="দ্রুত দেখুন">
       {data ? (
@@ -24,14 +26,16 @@ export function QuickViewModal({ data, onClose }: { data: QuickViewData | null; 
             ★ {data.ratingAverage ?? "—"} ({data.reviewCount} রিভিউ){data.brandName ? ` • ${data.brandName}` : ""}
           </p>
           <p className="mt-2 text-xl font-bold text-[#4F46E5]">
-            {data.maxPricePoisha > data.minPricePoisha
-              ? `${formatBdt(data.minPricePoisha)} — ${formatBdt(data.maxPricePoisha)}`
-              : formatBdt(data.minPricePoisha)}
+            {digits(
+              data.maxPricePoisha > data.minPricePoisha
+                ? `${formatBdt(data.minPricePoisha)} — ${formatBdt(data.maxPricePoisha)}`
+                : formatBdt(data.minPricePoisha),
+            )}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {data.variants.map((v) => (
               <span key={v.variantId} className="rounded-full border px-3 py-1 text-sm">
-                {v.label} — {formatBdt(v.pricePoisha)}
+                {v.label} — {digits(formatBdt(v.pricePoisha))}
                 {v.inStock ? ` (স্টক: ${v.stock})` : " (স্টক শেষ)"}
               </span>
             ))}

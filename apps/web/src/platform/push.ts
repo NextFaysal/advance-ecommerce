@@ -1,11 +1,13 @@
 /**
  * Web Push — base types, payload builder, trigger map (Agent 37).
  *
- * SANDBOX ONLY: the sender in this module records intent in memory and
- * performs NO network call. There are deliberately no VAPID keys, no key
- * generation, and no push-service endpoint calls anywhere in this file —
- * real sending arrives later behind the PushSender interface, with keys
- * supplied from encrypted Admin Settings (server-side only).
+ * The sender in THIS module is the sandbox one: it records intent in
+ * memory and performs NO network call. The REAL sender (RFC 8291
+ * encryption + VAPID, keys from server env) and the subscription
+ * persistence live in src/platform/push-server.ts (2026-10-25) — use
+ * sendWebPush / sendPushToCustomer there for production sends; this
+ * module stays the source of the payload templates and types both
+ * senders share.
  *
  * Subscription `keys` below are the browser-issued Web Push subscription
  * keys (p256dh/auth). They identify a subscription; they are stored

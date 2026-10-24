@@ -9,8 +9,9 @@ import { vendorApiStore } from "../store";
 // One vendor — Agent 18. GET: vendor (masked phone) + its products with
 // approval states. PATCH: vendor status transition and/or a product
 // approval decision, both validated against the state machines in
-// src/vendors/service.ts. Vendor record is DB-backed; products remain
-// in-memory (no vendor-product table in the schema) — meta says mixed.
+// src/vendors/service.ts. Vendor record AND products are DB-backed
+// (VendorProduct table since the advanced_modules_completion
+// migration, 2026-10-25).
 
 const VENDOR_STATUS_TRANSITIONS: Record<VendorStatus, readonly VendorStatus[]> = {
   PENDING: ["ACTIVE", "REJECTED"],
@@ -40,7 +41,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       vendor: { ...vendor, phone: maskPhone(vendor.phone) },
       products: await vendorApiStore.listProducts(vendor.id),
     },
-    meta: { persistence: "mixed", source: "vendor:database, products:in-memory-no-schema-table" },
+    meta: { persistence: "database" },
   });
 }
 
@@ -94,6 +95,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       vendor: updated ? { ...updated, phone: maskPhone(updated.phone) } : null,
       products: await vendorApiStore.listProducts(vendor.id),
     },
-    meta: { persistence: "mixed", source: "vendor:database, products:in-memory-no-schema-table" },
+    meta: { persistence: "database" },
   });
 }

@@ -20,6 +20,7 @@ import { cartSubtotalPoisha } from "../../../src/cart/types";
 import { clearGuestCart, loadGuestCart } from "../../../src/cart/persistence";
 import { findStockProblems } from "../../../src/checkout/stock";
 import { computePricing, formatBdt } from "../../../src/checkout/pricing";
+import { useDigitText } from "@/components/ui/numerals";
 import { newIdempotencyKey, validateCheckoutForm } from "../../../src/checkout";
 import { BkashMark, CodMark, NagadMark, SslCommerzMark } from "@/components/brand-marks";
 import { Icon } from "@/components/ui/icon";
@@ -51,6 +52,7 @@ type PlacedOrder = {
 };
 
 export default function CheckoutPage() {
+  const digits = useDigitText();
   const [cart, setCart] = useState<Cart | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
@@ -209,12 +211,12 @@ export default function CheckoutPage() {
             </div>
             <div className="flex justify-between">
               <dt className="text-text-muted">সর্বমোট</dt>
-              <dd className="font-semibold tabular-nums">{formatBdt(placedOrder.totalPoisha)}</dd>
+              <dd className="font-semibold tabular-nums">{digits(formatBdt(placedOrder.totalPoisha))}</dd>
             </div>
           </dl>
           {placedOrder.paymentMethod === "cod" ? (
             <p className="mt-4 text-sm leading-6 text-text-muted">
-              পণ্য হাতে পেয়ে ডেলিভারি ম্যানকে <strong>{formatBdt(placedOrder.totalPoisha)}</strong> পরিশোধ করুন।
+              পণ্য হাতে পেয়ে ডেলিভারি ম্যানকে <strong>{digits(formatBdt(placedOrder.totalPoisha))}</strong> পরিশোধ করুন।
             </p>
           ) : (
             <p className="mt-4 text-sm leading-6 text-text-muted">
@@ -287,22 +289,22 @@ export default function CheckoutPage() {
                 {item.name} <span className="text-text-muted">({item.sku})</span>
                 <span className="text-text-muted"> × {item.quantity}</span>
               </span>
-              <span className="shrink-0 font-medium tabular-nums">{formatBdt(item.unitPricePoisha * item.quantity)}</span>
+              <span className="shrink-0 font-medium tabular-nums">{digits(formatBdt(item.unitPricePoisha * item.quantity))}</span>
             </li>
           ))}
         </ul>
         <dl className="mt-3 space-y-1.5 border-t border-border pt-3 text-sm">
           <div className="flex justify-between">
             <dt className="text-text-muted">সাবটোটাল</dt>
-            <dd className="tabular-nums">{formatBdt(pricing.subtotalPoisha)}</dd>
+            <dd className="tabular-nums">{digits(formatBdt(pricing.subtotalPoisha))}</dd>
           </div>
           <div className="flex justify-between">
             <dt className="text-text-muted">ডেলিভারি চার্জ</dt>
-            <dd className="tabular-nums">{formatBdt(pricing.shippingPoisha)}</dd>
+            <dd className="tabular-nums">{digits(formatBdt(pricing.shippingPoisha))}</dd>
           </div>
           <div className="flex justify-between pt-1 text-base font-bold text-text-main">
             <dt>সর্বমোট</dt>
-            <dd className="tabular-nums">{formatBdt(pricing.grandTotalPoisha)}</dd>
+            <dd className="tabular-nums">{digits(formatBdt(pricing.grandTotalPoisha))}</dd>
           </div>
         </dl>
         <p className="mt-2 text-xs text-text-subtle">
@@ -435,7 +437,7 @@ export default function CheckoutPage() {
           <div className="min-w-0 flex-1">
             <p className="text-xs text-text-muted">মোট {totalQuantity}টি পণ্য</p>
             <p className="text-base font-bold leading-6 text-text-main">
-              সর্বমোট <span className="tabular-nums">{formatBdt(pricing.grandTotalPoisha)}</span>
+              সর্বমোট <span className="tabular-nums">{digits(formatBdt(pricing.grandTotalPoisha))}</span>
             </p>
           </div>
           <button

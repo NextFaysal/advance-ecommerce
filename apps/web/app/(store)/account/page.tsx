@@ -23,6 +23,7 @@ import {
 import AuthForms from "@/customer-auth/components/AuthForms";
 import AddressManager from "@/customer-auth/components/AddressManager";
 import LogoutButton from "@/customer-auth/components/LogoutButton";
+import PushSubscribeToggle from "@/pwa/push-subscribe";
 import { formatPoisha } from "@/components/ui/money";
 
 export const dynamic = "force-dynamic";
@@ -163,6 +164,10 @@ export default async function AccountPage() {
         <div className="mt-3">
           <AddressManager addresses={addresses} />
         </div>
+      </section>
+
+      <section className="mt-6" aria-label="পুশ নোটিফিকেশন">
+        <PushSubscribeToggle />
       </section>
     </main>
   );

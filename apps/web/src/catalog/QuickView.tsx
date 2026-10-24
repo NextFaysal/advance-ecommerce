@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { Modal } from "@/components/ui/modal";
+import { useDigitText } from "@/components/ui/numerals";
 import { AddToCartButton } from "@/cart/components/AddToCartButton";
 import type { PublicProduct, PublicVariant } from "./types";
 
@@ -71,6 +72,7 @@ export function QuickView({
   open: boolean;
   onClose: () => void;
 }) {
+  const digits = useDigitText();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Reset the picker to the card default every time the modal opens
@@ -137,9 +139,9 @@ export function QuickView({
 
         {/* Price */}
         <p className="mt-3 flex flex-wrap items-baseline gap-x-2.5">
-          <span className="text-2xl font-extrabold tabular-nums text-brand-700">{formatBdt(price)}</span>
+          <span className="text-2xl font-extrabold tabular-nums text-brand-700">{digits(formatBdt(price))}</span>
           {compareAt !== null && compareAt > price ? (
-            <span className="text-sm tabular-nums text-text-subtle line-through">{formatBdt(compareAt)}</span>
+            <span className="text-sm tabular-nums text-text-subtle line-through">{digits(formatBdt(compareAt))}</span>
           ) : null}
         </p>
         <p className={`mt-1 text-sm font-medium ${inStock ? "text-emerald-600" : "text-rose-600"}`}>
@@ -169,7 +171,7 @@ export function QuickView({
                           : "border-border bg-surface text-text-main hover:border-brand-300"
                     }`}
                   >
-                    {variantLabel(v)} — <span className="tabular-nums">{formatBdt(v.pricePoisha)}</span>
+                    {variantLabel(v)} — <span className="tabular-nums">{digits(formatBdt(v.pricePoisha))}</span>
                     {soldOut ? " (স্টক শেষ)" : ""}
                   </button>
                 );

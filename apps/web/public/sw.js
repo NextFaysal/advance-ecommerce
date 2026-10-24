@@ -1,7 +1,8 @@
 /**
  * Service worker — Advance Ecommerce (Agent 12, Step 30 base).
  *
- * Offline shell ONLY. No push handlers, no secrets, no API caching.
+ * Offline shell + Web Push handlers (push slice, 2026-10-25 — see the
+ * bottom of this file). No secrets, no API caching.
  * Keep CACHE_VERSION and the cache names in sync with
  * apps/web/src/pwa/config.ts.
  *
@@ -15,7 +16,7 @@
  */
 "use strict";
 
-var CACHE_VERSION = "v2";
+var CACHE_VERSION = "v3";
 var STATIC_CACHE = "advance-ecommerce-static-" + CACHE_VERSION;
 var PAGE_CACHE = "advance-ecommerce-pages-" + CACHE_VERSION;
 var OFFLINE_URL = "/offline";
@@ -116,6 +117,46 @@ self.addEventListener("fetch", function (event) {
   }
 });
 
-// Push notifications are intentionally NOT handled in this base worker.
-// A push slice must add its own handler later and must never put order,
-// payment, or credential data in a notification payload handled here.
+// Push notifications (added by the web-push slice, 2026-10-25).
+// The server composes the payload from the Bangla templates in
+// src/platform/push.ts — title/body/url/icon/tag ONLY. Payloads must
+// never carry credential data; an order number in the body text is the
+// most specific identifier a template produces. CACHE_VERSION is NOT
+// bumped by this addition alone — the parent coordinates the bump at
+// integration time (see src/pwa/config.ts).
+self.addEventListener("push", function (event) {
+  var data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data = { body: event.data.text() };
+    }
+  }
+  var title = data.title || "Advance Ecommerce";
+  var options = {
+    body: data.body || "",
+    icon: data.icon || "/icons/icon-192.png",
+    data: { url: data.url || "/" },
+  };
+  if (data.tag) options.tag = data.tag;
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", function (event) {
+  event.notification.close();
+  var target = (event.notification.data && event.notification.data.url) || "/";
+  var targetUrl = new URL(target, self.location.origin).href;
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then(function (windowClients) {
+        for (var i = 0; i < windowClients.length; i += 1) {
+          var client = windowClients[i];
+          if (client.url === targetUrl && "focus" in client) return client.focus();
+        }
+        if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
+        return undefined;
+      })
+  );
+});

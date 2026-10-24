@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { toggleWishlistId } from "./wishlist";
+import { useDigitText } from "@/components/ui/numerals";
 import type { PublicProduct } from "./types";
 import { minVariantPricePoisha } from "./types";
 import { AddToCartButton } from "@/cart/components/AddToCartButton";
@@ -72,6 +73,7 @@ function BagIcon() {
 // shape), so a full admin Product cannot be passed here by accident:
 // cost prices can never ride this component's serialized props.
 export function ProductCard({ product }: { product: PublicProduct }) {
+  const digits = useDigitText();
   const [wishlisted, setWishlisted] = useState(false);
   const [showQuickView, setShowQuickView] = useState(false);
   const price = minVariantPricePoisha(product);
@@ -131,7 +133,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
           )}
           {discountPct > 0 ? (
             <span className="absolute left-2.5 top-2.5 rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
-              -{discountPct}%
+              {digits(`-${discountPct}%`)}
             </span>
           ) : null}
           {!inStock ? (
@@ -159,9 +161,9 @@ export function ProductCard({ product }: { product: PublicProduct }) {
             </span>
           </p>
           <p className="mt-1.5 flex flex-wrap items-baseline gap-x-2">
-            <span className="text-[15px] font-bold tabular-nums text-brand-700">{formatBdt(price)}</span>
+            <span className="text-[15px] font-bold tabular-nums text-brand-700">{digits(formatBdt(price))}</span>
             {compareAt !== null && compareAt > price ? (
-              <span className="text-xs tabular-nums text-text-subtle line-through">{formatBdt(compareAt)}</span>
+              <span className="text-xs tabular-nums text-text-subtle line-through">{digits(formatBdt(compareAt))}</span>
             ) : null}
           </p>
           <p className={`mt-1 text-xs font-medium ${inStock ? "text-emerald-600" : "text-rose-600"}`}>

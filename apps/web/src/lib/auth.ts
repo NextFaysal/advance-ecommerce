@@ -271,7 +271,29 @@ export async function authenticateStaff(
     data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
   });
   await logAttempt(true);
-  return user.twoFactorEnabled ? { status: "needs_2fa", userId: user.id } : { status: "ok", userId: user.id };
+  // Gate on a USABLE second factor, not the bare flag: a legacy row can
+  // carry twoFactorEnabled = true with twoFactorSecret = null, and
+  // verifyTotp can never pass without a secret — demanding the TOTP
+  // step for such a row would lock the account out permanently. The
+  // backfill script (packages/db/scripts/backfill-totp-secrets.ts)
+  // resets those flags; until it runs, this guard keeps login possible
+  // (password-only — the account has no second factor to check).
+  return hasUsableTotp(user)
+    ? { status: "needs_2fa", userId: user.id }
+    : { status: "ok", userId: user.id };
+}
+
+/**
+ * True only when the account has a second factor that can actually be
+ * verified: the flag is on AND a secret is stored. Used by the login
+ * flow (above) and by staff reporting (app/api/v1/admin/staff/store.ts)
+ * so neither traps nor misreports a legacy flag-without-secret row.
+ */
+export function hasUsableTotp(user: {
+  twoFactorEnabled: boolean;
+  twoFactorSecret: string | null;
+}): boolean {
+  return user.twoFactorEnabled && user.twoFactorSecret !== null;
 }
 
 /* ------------------------------------------------------------------ */

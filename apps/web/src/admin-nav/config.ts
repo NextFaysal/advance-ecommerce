@@ -491,6 +491,20 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: null,
   },
   {
+    // Self-service: every signed-in staff member manages their OWN 2FA
+    // here, so no permission gate (the API enforces the session and
+    // only ever touches the caller's own account).
+    id: "security",
+    path: "/admin/security",
+    labelBn: "নিরাপত্তা (2FA)",
+    labelEn: "Security (2FA)",
+    icon: "Lock",
+    section: "system",
+    permission: null,
+    featureFlag: null,
+    badge: null,
+  },
+  {
     id: "audit",
     path: "/admin/audit",
     labelBn: "অডিট লগ",

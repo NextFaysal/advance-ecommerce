@@ -12,11 +12,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { getWishlistIds, toggleWishlistId } from "@/catalog/wishlist";
+import { useDigitText } from "@/components/ui/numerals";
 import { fetchPublicProducts } from "@/catalog/public-client";
 import type { PublicProduct } from "@/catalog/types";
 import { publicPriceRangePoisha } from "@/storefront-ux/quick-view";
 
 export default function WishlistPage() {
+  const digits = useDigitText();
   const [products, setProducts] = useState<PublicProduct[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -61,7 +63,7 @@ export default function WishlistPage() {
                 {p.title.bn}
               </div>
               <h2 className="mt-2 break-words font-medium [overflow-wrap:anywhere]">{p.title.bn}</h2>
-              <p className="mt-1 font-bold text-[#4F46E5]">{formatBdt(publicPriceRangePoisha(p).min)} থেকে</p>
+              <p className="mt-1 font-bold text-[#4F46E5]">{digits(formatBdt(publicPriceRangePoisha(p).min))} থেকে</p>
             </Link>
             <button
               type="button"

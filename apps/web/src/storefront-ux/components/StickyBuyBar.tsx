@@ -10,6 +10,7 @@
  */
 import { useEffect, useState } from "react";
 import { formatBdt } from "@advance-ecommerce/validators";
+import { useDigitText } from "@/components/ui/numerals";
 import { stickyBarState, type StickyBarState } from "../sticky-bar";
 
 export function StickyBuyBar({
@@ -24,6 +25,7 @@ export function StickyBuyBar({
   inStock: boolean;
   buyBoxId?: string;
 }) {
+  const digits = useDigitText();
   const [state, setState] = useState<StickyBarState>({ visible: false, reason: "buy_box_visible" });
 
   useEffect(() => {
@@ -64,7 +66,7 @@ export function StickyBuyBar({
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{titleBn}</p>
-          <p className="text-base font-bold text-[#4F46E5]">{formatBdt(pricePoisha)} থেকে</p>
+          <p className="text-base font-bold text-[#4F46E5]">{digits(formatBdt(pricePoisha))} থেকে</p>
         </div>
         {/* Checkout (Step 12) wires this to cart/order creation, same as the buy box. */}
         <button type="button" className="shrink-0 rounded-lg bg-[#4F46E5] px-5 py-3 text-sm font-bold text-white">

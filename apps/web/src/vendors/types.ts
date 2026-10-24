@@ -24,6 +24,12 @@ export interface VendorProduct {
   pricePoisha: number;
   approval: VendorProductApproval;
   rejectionReason?: string;
+  /** Catalog links (VendorProduct.productId / variantId columns):
+   *  set when the listing is tied to a core Product / ProductVariant.
+   *  The delivered-order commission hook matches order items through
+   *  variantId. Absent for free-standing listings. */
+  productId?: string;
+  variantId?: string;
 }
 
 export type CommissionLine = {
@@ -34,6 +40,18 @@ export type CommissionLine = {
   commissionPoisha: number;
   vendorEarningPoisha: number;
 };
+
+/** A refund charged back to a vendor (VendorRefund row). Payout
+ *  summaries subtract the SUM of these for the vendor. */
+export interface VendorRefund {
+  id: string;
+  vendorId: string;
+  /** The refunded order, when the chargeback is tied to one. */
+  orderId: string | null;
+  amountPoisha: number;
+  reason: string;
+  createdAt: string;
+}
 
 export type VendorPayoutSummary = {
   vendorId: string;

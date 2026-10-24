@@ -70,6 +70,10 @@ export type Order = {
   /** Create channel recorded on the row (Order.source): "website" for
    *  public checkout, "manual" for staff-created orders. */
   source?: string;
+  /** Reseller attribution (Order.resellerId): set when the order is
+   *  recorded as a reseller sale. The delivered-order hook credits
+   *  this reseller's wallet (commission + margin) on DELIVERED. */
+  resellerId?: string;
   customerName: string;
   /** Normalized +8801XXXXXXXXX. Display must be masked unless the viewer has customers.view_full_phone. */
   customerPhone: string;

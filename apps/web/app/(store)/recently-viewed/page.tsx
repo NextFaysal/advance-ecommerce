@@ -10,10 +10,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { EmptyState } from "@/components/ui/empty-state";
+import { useDigitText } from "@/components/ui/numerals";
 import { clearRecentlyViewed, getRecentlyViewed } from "@/storefront-ux/recently-viewed";
 import type { RecentlyViewedEntry } from "@/storefront-ux/types";
 
 export default function RecentlyViewedPage() {
+  const digits = useDigitText();
   const [entries, setEntries] = useState<RecentlyViewedEntry[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -62,7 +64,7 @@ export default function RecentlyViewedPage() {
             </div>
             <h2 className="mt-2 break-words font-medium [overflow-wrap:anywhere]">{e.titleBn}</h2>
             <p className="mt-0.5 text-xs text-slate-500">{e.titleEn}</p>
-            <p className="mt-1 font-bold text-[#4F46E5]">{formatBdt(e.pricePoisha)} থেকে</p>
+            <p className="mt-1 font-bold text-[#4F46E5]">{digits(formatBdt(e.pricePoisha))} থেকে</p>
           </Link>
         ))}
       </div>

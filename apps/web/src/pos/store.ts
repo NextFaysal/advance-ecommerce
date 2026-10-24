@@ -10,8 +10,14 @@
  * and persists the results.
  *
  * POS sales still do NOT create Orders: `syncedOrderId` stays null and
- * route meta keeps `createsOrder: false`. The offline sync (queued
- * sales -> orders API by idempotencyKey) remains future work.
+ * route meta keeps `createsOrder: false`. `syncedOrderId` is about
+ * ORDER CONVERSION, not sync: an Order requires a customer phone and
+ * a full BD address, which a walk-in counter sale does not have —
+ * fabricating them would corrupt customer data, so conversion stays
+ * future work by design. The OFFLINE SYNC itself is implemented: the
+ * browser queues sales in localStorage (src/pos/offline-queue.ts) and
+ * flushes them to the POS sale API (src/pos/sync.ts), which dedupes
+ * on the sale's idempotencyKey — see rowToSale for how status reads.
  *
  * Deliberate TS <-> schema mappings (drift per docs/AGENT14-REVIEW.md):
  * - PosRegister.status ("ACTIVE") <-> TS isActive. Schema `location`
@@ -22,10 +28,16 @@
  *   `varianceNote`.
  * - PosSale carries `receiptNo` + `itemsJson` in the schema instead of
  *   TS lines/registerId/status/offline: lines live in itemsJson,
- *   registerId is derived from the parent shift, status/offline are
- *   derived from syncedOrderId (set -> SYNCED / offline false; null ->
- *   QUEUED_OFFLINE / offline true). VOIDED has no schema representation
- *   (nothing sets it in this slice either).
+ *   registerId is derived from the parent shift. status/offline are
+ *   the CLIENT sync state: a row that exists in this store has by
+ *   definition been delivered to the server (the sale API is the only
+ *   write path), so it reads SYNCED / offline false. QUEUED_OFFLINE
+ *   exists only in the browser's localStorage queue before the flush
+ *   (src/pos/offline-queue.ts). An earlier version derived status from
+ *   syncedOrderId, which nothing ever sets — every recorded sale read
+ *   QUEUED_OFFLINE forever, i.e. the UI claimed a delivered sale was
+ *   still pending. VOIDED has no schema representation (nothing sets
+ *   it in this slice either).
  * - First-run provisioning: when NO register exists at all, the demo
  *   era's default register ("Main Outlet — Counter 1") is created so
  *   the POS works out of the box, mirroring the old demo store's
@@ -76,7 +88,6 @@ function rowToShift(row: ShiftRow): PosShift {
 
 function rowToSale(row: SaleRow, registerId: string): PosSale {
   const lines = (Array.isArray(row.itemsJson) ? row.itemsJson : []) as unknown as PosSaleLine[];
-  const synced = row.syncedOrderId !== null;
   return {
     id: row.id,
     shiftId: row.shiftId,
@@ -87,9 +98,12 @@ function rowToSale(row: SaleRow, registerId: string): PosSale {
     totalPoisha: row.totalPoisha,
     paymentMethod: row.paymentMethod as PosPaymentMethod,
     tenderedPoisha: row.tenderedPoisha ?? undefined,
-    status: synced ? "SYNCED" : "QUEUED_OFFLINE",
+    // Persisted == delivered to the server == SYNCED (see header).
+    // QUEUED_OFFLINE is a client-queue-only state and is never read
+    // back from the DB; syncedOrderId (order conversion) is separate.
+    status: "SYNCED",
     createdAt: row.createdAt.toISOString(),
-    offline: !synced,
+    offline: false,
   };
 }
 

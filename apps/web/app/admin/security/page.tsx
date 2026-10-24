@@ -1,0 +1,53 @@
+import { cookies } from "next/headers";
+import { prisma } from "@advance-ecommerce/db";
+import { PageHeader } from "@/components/ui/page-header";
+import { hasUsableTotp, validateSessionToken } from "@/lib/auth";
+import TotpEnrollCard from "./totp-enroll-card";
+
+// Account security — self-service TOTP 2FA enrolment for the signed-in
+// staff member. The server side passes only serializable status props
+// to the client card; the secret itself is fetched by the card from
+// POST /api/v1/admin/auth/2fa/enroll (shown once) and never rendered
+// from the server. Status uses hasUsableTotp: a legacy flag-without-
+// secret row reports "বন্ধ আছে" and can enrol from here — never a trap.
+export const dynamic = "force-dynamic";
+
+export default async function AdminSecurityPage() {
+  const token = cookies().get("admin_session")?.value;
+  const session = token ? await validateSessionToken(token) : null;
+
+  if (!session) {
+    return (
+      <main>
+        <PageHeader title="নিরাপত্তা" description="আপনার অ্যাকাউন্টের দুই-ধাপ যাচাই (2FA)" breadcrumb="Admin / System" />
+        <p role="status" className="text-sm text-text-muted">
+          এই পেজ দেখতে আগে লগইন করুন।
+        </p>
+      </main>
+    );
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { email: true, phone: true, twoFactorEnabled: true, twoFactorSecret: true },
+  });
+  const totpEnabled = user ? hasUsableTotp(user) : false;
+  const enrolmentPending = user !== null && user.twoFactorSecret !== null && !user.twoFactorEnabled;
+
+  return (
+    <main>
+      <PageHeader
+        title="নিরাপত্তা"
+        description="আপনার নিজের অ্যাকাউন্টের দুই-ধাপ যাচাই (TOTP 2FA) — অন্য কারো 2FA এখান থেকে বদলানো যায় না।"
+        breadcrumb="Admin / System"
+      />
+      <div className="max-w-2xl">
+        <TotpEnrollCard
+          totpEnabled={totpEnabled}
+          enrolmentPending={enrolmentPending}
+          accountLabel={user?.email ?? user?.phone ?? session.user.id}
+        />
+      </div>
+    </main>
+  );
+}

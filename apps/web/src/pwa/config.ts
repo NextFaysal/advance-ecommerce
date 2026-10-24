@@ -41,7 +41,7 @@ export const PWA_SHORTCUTS = [
 ] as const;
 
 /** Bump CACHE_VERSION whenever the offline shell changes. */
-export const CACHE_VERSION = "v2";
+export const CACHE_VERSION = "v3";
 export const STATIC_CACHE = `advance-ecommerce-static-${CACHE_VERSION}`;
 export const PAGE_CACHE = `advance-ecommerce-pages-${CACHE_VERSION}`;
 

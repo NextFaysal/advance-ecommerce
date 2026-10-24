@@ -10,12 +10,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { fetchPublicProductBySlug } from "@/catalog/public-client";
+import { useDigitText } from "@/components/ui/numerals";
 import { getRecentlyViewed } from "../recently-viewed";
 import { buildQuickViewData } from "../quick-view";
 import type { QuickViewData, RecentlyViewedEntry } from "../types";
 import { QuickViewModal } from "./QuickViewModal";
 
 export function RecentlyViewedRail({ excludeProductId }: { excludeProductId?: string }) {
+  const digits = useDigitText();
   const [entries, setEntries] = useState<RecentlyViewedEntry[]>([]);
   const [quickView, setQuickView] = useState<QuickViewData | null>(null);
 
@@ -46,7 +48,7 @@ export function RecentlyViewedRail({ excludeProductId }: { excludeProductId?: st
                 {e.titleBn}
               </div>
               <h3 className="mt-2 truncate text-sm font-medium">{e.titleBn}</h3>
-              <p className="mt-1 text-sm font-bold text-[#4F46E5]">{formatBdt(e.pricePoisha)} থেকে</p>
+              <p className="mt-1 text-sm font-bold text-[#4F46E5]">{digits(formatBdt(e.pricePoisha))} থেকে</p>
             </Link>
             <button
               type="button"

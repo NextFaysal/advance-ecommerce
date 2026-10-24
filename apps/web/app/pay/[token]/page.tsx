@@ -11,6 +11,7 @@
  */
 import type { Metadata } from "next";
 import { ensureDemoPaymentLink, resolvePayLink } from "@/storefront-ux/pay-link-view";
+import { DigitText } from "@/components/ui/numerals";
 import PayForm from "./PayForm";
 
 export const metadata: Metadata = {
@@ -37,7 +38,9 @@ export default async function PayPage({ params }: { params: { token: string } })
       {resolved.ok && (
         <section className="mt-6 rounded-xl border bg-white px-4 py-5 shadow-sm">
           <p className="text-sm text-slate-500">{resolved.view.purposeLabelBn}</p>
-          <p className="mt-1 text-3xl font-bold text-[#4F46E5]">{resolved.view.amountFormatted}</p>
+          <p className="mt-1 text-3xl font-bold text-[#4F46E5]">
+            <DigitText text={resolved.view.amountFormatted} />
+          </p>
           <p className="mt-2 text-sm">
             অর্ডার: <span className="font-medium">{resolved.view.orderId}</span>
           </p>

@@ -5,6 +5,14 @@
 
 const STORAGE_KEY = "advance-ecommerce:wishlist";
 
+/**
+ * Same-tab change notification (the `storage` event never fires in the
+ * tab that wrote). Mirrors the compare module's CHANGE_EVENT pattern:
+ * the header badge and any mounted toggle buttons subscribe to this so
+ * a toggle anywhere updates everywhere in the tab instantly.
+ */
+export const WISHLIST_CHANGE_EVENT = "advance-ecommerce:wishlist-changed";
+
 export function getWishlistIds(): string[] {
   if (typeof window === "undefined") return [];
   try {
@@ -24,6 +32,7 @@ export function toggleWishlistId(productId: string): string[] {
     : [...current, productId];
   if (typeof window !== "undefined") {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    window.dispatchEvent(new Event(WISHLIST_CHANGE_EVENT));
   }
   return next;
 }

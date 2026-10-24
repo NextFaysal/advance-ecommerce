@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { formatBdt, fromPoisha } from "@advance-ecommerce/validators";
+import { fromPoisha } from "@advance-ecommerce/validators";
 import { tryCatalogRepository } from "@/catalog/server-read";
 import { maxVariantPricePoisha, minVariantPricePoisha, toPublicProduct } from "@/catalog/types";
 import { RecordRecentlyViewed } from "@/storefront-ux/components/RecordRecentlyViewed";
@@ -11,6 +11,8 @@ import { CompareToggleButton, CompareTray } from "@/storefront-ux/components/Com
 import { SizeGuideButton } from "@/storefront-ux/components/SizeGuideModal";
 import { BackInStockForm } from "@/storefront-ux/components/BackInStockForm";
 import { BuyBoxActions } from "@/cart/components/BuyBoxActions";
+import { WishlistToggleButton } from "@/catalog/WishlistToggleButton";
+import { BdtAmount, DigitText } from "@/components/ui/numerals";
 import type { RecentlyViewedEntry } from "@/storefront-ux/types";
 import { Gallery } from "./Gallery";
 
@@ -226,16 +228,22 @@ export default async function ProductPage({ params }: { params: { slug: string }
             {/* Price */}
             <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="text-3xl font-extrabold tabular-nums text-brand-700">
-                {formatBdt(minPrice)}
-                {hasPriceRange ? <span className="text-xl"> – {formatBdt(maxPrice)}</span> : null}
+                <BdtAmount poisha={minPrice} />
+                {hasPriceRange ? (
+                  <span className="text-xl">
+                    {" "}
+                    – <BdtAmount poisha={maxPrice} />
+                  </span>
+                ) : null}
               </span>
               {bestDiscount ? (
                 <>
-                  <span className="text-base tabular-nums text-text-subtle line-through">
-                    {formatBdt(bestDiscount.compare)}
-                  </span>
+                  <BdtAmount
+                    poisha={bestDiscount.compare}
+                    className="text-base tabular-nums text-text-subtle line-through"
+                  />
                   <span className="rounded-full bg-rose-600 px-2.5 py-1 text-xs font-bold text-white">
-                    {discountPct}% ছাড়
+                    <DigitText text={`${discountPct}%`} /> ছাড়
                   </span>
                 </>
               ) : null}
@@ -256,7 +264,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
                     }`}
                   >
                     {Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড"} —{" "}
-                    <span className="font-semibold tabular-nums">{formatBdt(v.pricePoisha)}</span>
+                    <BdtAmount poisha={v.pricePoisha} className="font-semibold tabular-nums" />
                     {soldOut ? " (স্টক শেষ)" : ""}
                   </span>
                 );
@@ -275,6 +283,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
+              <WishlistToggleButton productId={product.id} />
               <CompareToggleButton productId={product.id} />
               {hasSizeGuide ? <SizeGuideButton /> : null}
             </div>

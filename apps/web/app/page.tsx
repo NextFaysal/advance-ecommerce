@@ -5,6 +5,7 @@ import { listActivePublicProducts, listCategories } from "@/catalog/server-read"
 import type { Category } from "@/catalog/types";
 import { Reveal } from "@/components/ui/reveal";
 import { CountUp } from "@/components/ui/count-up";
+import { NewsletterForm } from "@/newsletter/components/NewsletterForm";
 
 // NOTE on route groups: Next.js forbids both app/page.tsx and app/(store)/page.tsx
 // (both map to "/"). So the storefront home lives HERE, and only shop/product/search
@@ -449,26 +450,9 @@ export default async function Home() {
               নতুন পণ্য, ফ্ল্যাশ সেল আর বিশেষ ছাড়ের খবর সরাসরি আপনার ইমেইলে। স্প্যাম পাঠাই না — শুধু দরকারি অফার।
             </p>
           </div>
-          {/* NOTE for parent: no newsletter endpoint exists yet — this
-              form is presentational until /api newsletter signup lands. */}
-          <form action="#newsletter" method="get" className="flex flex-col gap-3 sm:flex-row">
-            <label className="sr-only" htmlFor="newsletter-email">
-              আপনার ইমেইল
-            </label>
-            <input
-              id="newsletter-email"
-              type="email"
-              required
-              placeholder="আপনার ইমেইল লিখুন"
-              className="h-12 min-w-0 flex-1 rounded-xl border border-border bg-surface px-4 text-sm text-text-main shadow-sm outline-none focus:border-brand-500"
-            />
-            <button
-              type="submit"
-              className="brand-gradient h-12 shrink-0 rounded-xl px-6 text-sm font-bold text-white shadow-md transition hover:opacity-90"
-            >
-              সাবস্ক্রাইব করুন
-            </button>
-          </form>
+          {/* Real subscribe form → POST /api/v1/public/newsletter
+              (src/newsletter). Renders its own success/error states. */}
+          <NewsletterForm source="homepage" />
         </div>
       </section>
       </Reveal>

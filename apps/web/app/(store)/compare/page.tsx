@@ -14,10 +14,12 @@ import { formatBdt } from "@advance-ecommerce/validators";
 import { fetchPublicProducts } from "@/catalog/public-client";
 import type { PublicProduct } from "@/catalog/types";
 import { EmptyState } from "@/components/ui/empty-state";
+import { useDigitText } from "@/components/ui/numerals";
 import { buildComparison } from "@/storefront-ux/compare";
 import { useCompareIds } from "@/storefront-ux/components/CompareTray";
 
 export default function ComparePage() {
+  const digits = useDigitText();
   const { ids, setIds } = useCompareIds();
   const [loaded, setLoaded] = useState(false);
   const [catalog, setCatalog] = useState<PublicProduct[]>([]);
@@ -99,7 +101,7 @@ export default function ComparePage() {
                     </th>
                     {r.values.map((v, i) => (
                       <td key={`${r.key}-${i}`} className="px-3 py-2 tabular-nums">
-                        {v === null ? "—" : r.key === "price" ? formatBdt(Number(v)) : v}
+                        {v === null ? "—" : r.key === "price" ? digits(formatBdt(Number(v))) : v}
                       </td>
                     ))}
                   </tr>

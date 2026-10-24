@@ -57,6 +57,7 @@
  */
 import { prisma } from "@advance-ecommerce/db";
 import { riskLevel } from "./customer";
+import { runDeliveredOrderHooks } from "./delivered-hooks";
 import { publishPaymentSucceeded } from "./event-bus";
 import { transitionOrder, type TransitionResult } from "./state-machine";
 import type {
@@ -142,6 +143,7 @@ function orderRowToOrder(row: OrderRow): Order {
     orderNo: row.orderNo,
     customerId: row.customerId,
     ...(row.source ? { source: row.source } : {}),
+    ...(row.resellerId ? { resellerId: row.resellerId } : {}),
     customerName: row.customerName,
     customerPhone: row.customerPhone,
     address,
@@ -350,6 +352,11 @@ export interface CreateOrderRecordInput {
   /** Create channel stored on Order.source. Defaults to "website"
    *  (public checkout); the admin manual-create route passes "manual". */
   source?: string;
+  /** Reseller attribution stored on Order.resellerId. No caller passes
+   *  this yet — checkout has no reseller attribution mechanism (no
+   *  reseller code/link capture exists); the field is here so a future
+   *  attribution path records it at create instead of patching later. */
+  resellerId?: string;
 }
 
 export type CreateOrderRecordResult =
@@ -463,6 +470,7 @@ export async function createOrderRecord(
           totalPoisha: input.pricing.totalPoisha,
           riskScore: input.riskScore,
           source: input.source ?? "website",
+          resellerId: input.resellerId ?? null,
           idempotencyKey: input.idempotencyKey,
           items: {
             create: input.items.map((i) => ({
@@ -568,6 +576,14 @@ export async function applyOrderTransition(
       },
     });
   });
+  // Delivered-order fan-out (loyalty EARN + referral reward, reseller
+  // wallet credit, vendor commission lines) — only on the transition
+  // INTO DELIVERED, after the status commit. The hook never throws, so
+  // a credit failure can never fail the delivery itself; every credit
+  // is idempotent per order (see src/orders/delivered-hooks.ts).
+  if (to === "DELIVERED") {
+    await runDeliveredOrderHooks(row.id);
+  }
   return { kind: "ok", order: result.order, from: order.status };
 }
 
@@ -621,6 +637,13 @@ export async function saveOrder(order: Order): Promise<void> {
       }
     }
   });
+  // Bulk actions persist through here, not applyOrderTransition: when
+  // THIS save moved the stored status INTO DELIVERED, run the same
+  // delivered-order fan-out (exactly-once is enforced inside the
+  // credit functions; see src/orders/delivered-hooks.ts).
+  if (row.status !== "DELIVERED" && order.status === "DELIVERED") {
+    await runDeliveredOrderHooks(order.id);
+  }
 }
 
 /* ------------------------------------------------------------------ */

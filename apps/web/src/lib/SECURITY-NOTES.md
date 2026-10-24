@@ -63,11 +63,20 @@ in production).
   lowercase, so detection cannot misfire) and accepts legacy values
   as-is, so existing staff are not locked out. Legacy values are
   upgraded the moment the user re-enrols (enrolment always writes the
-  envelope). Optional ops follow-up, not yet done: a one-off backfill
-  script that re-encrypts remaining plaintext rows in place (it needs
-  DB access and `AUTH_ENCRYPTION_KEY`; until it runs, plaintext rows
-  remain exactly as exposed as before this change — no worse, no
-  better).
+  envelope). The one-off backfill now exists:
+  `packages/db/scripts/backfill-totp-secrets.ts` (idempotent, `--dry-run`
+  supported) re-encrypts remaining plaintext rows in place and repairs
+  the two lockout states (flag on with no secret; corrupt or
+  undecryptable secret) by resetting 2FA so the user can re-enrol. It
+  needs DB access and `AUTH_ENCRYPTION_KEY`; until it runs, plaintext
+  rows remain exactly as exposed as before this change — no worse, no
+  better. Belt-and-braces in the runtime: `authenticateStaff()` gates
+  the TOTP step on `hasUsableTotp()` (flag AND secret), and staff
+  reporting shows the same usable state, so a legacy flag-without-
+  secret row can neither trap a login nor misreport as protected.
+  Self-service enrolment is wired end-to-end: Admin > Security (2FA)
+  (`/admin/security`) over `POST /api/v1/admin/auth/2fa/enroll` +
+  `/confirm` (session-guarded, own account only).
 
 ## 3. Pending-2FA cookie signing (HMAC-SHA256)
 

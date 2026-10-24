@@ -3,19 +3,26 @@
 /**
  * POS register screen — Agent 38, on the src/pos contracts (Agent 14).
  *
- * Everything runs through the pure register logic in src/pos/register.ts
- * (saleTotal / createSale / closeShift / expectedCashPoisha /
- * buildPosReceipt) — this component holds session state only, seeded
- * from the src/pos demo store by the server page. Sales made here are
- * DEMO records in page state: no real Order is created, nothing is
- * persisted, and the matching API contract lives at /api/v1/admin/pos.
+ * Shifts open/close through the real API (/api/v1/admin/pos/shift ->
+ * src/pos/store.ts); the server page seeds the current shift + its
+ * recorded sales from the DB. Sale MATH stays pure register logic
+ * (saleTotal / createSale / expectedCashPoisha / buildPosReceipt).
  *
- * Offline design note (labelled, not a claim): the register is designed
- * offline-first — sales carry a client idempotency key and QUEUED_OFFLINE
- * status and would sync to the orders API when the network returns. This
- * demo performs NO real sync.
+ * Offline sync is REAL, not a design note: completing a sale writes it
+ * to the durable browser queue (src/pos/offline-queue.ts, localStorage)
+ * with its client idempotency key, then flushes to POST
+ * /api/v1/admin/pos/sale (src/pos/sync.ts). Online, the flush lands
+ * immediately and the sale shows SYNCED; offline, it stays
+ * QUEUED_OFFLINE in the queue — across reloads — and syncs when the
+ * network returns (auto-flush on mount + on the `online` event + a
+ * manual button). The server dedupes on the idempotencyKey, so a
+ * retry after a lost response can never double-record. A shift cannot
+ * be closed while its sales are still queued: the server counts
+ * expected cash from its own records, and a queued sale is not in
+ * them yet. A POS sale is a DB record — it does NOT create a
+ * storefront Order (a walk-in sale has no customer phone/address).
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -26,11 +33,12 @@ import { DataTable } from "@/components/ui/table";
 import {
   buildPosReceipt,
   changeDue,
-  closeShift,
   createSale,
   expectedCashPoisha,
   saleTotal,
 } from "@/pos/register";
+import { enqueuePosSale, loadQueuedPosSales } from "@/pos/offline-queue";
+import { flushQueuedPosSales } from "@/pos/sync";
 import type {
   CreatePosSaleInput,
   PosPaymentMethod,
@@ -68,7 +76,14 @@ function takaInputToPoisha(raw: string): number | null {
 
 function newIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
-  return `pos-${Date.now()}-${Math.floor(Math.random() * 1_000_000_000)}`;
+  // UUID-v4 fallback: the sale API validates idempotencyKey as a UUID,
+  // so a non-UUID fallback key would make the sale unsyncable forever.
+  const bytes = new Uint8Array(16);
+  (crypto as unknown as Crypto).getRandomValues(bytes);
+  bytes[6] = ((bytes[6] as number) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] as number) & 0x3f) | 0x80;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function dhakaTime(iso: string): string {
@@ -88,6 +103,14 @@ export default function PosRegisterClient({
 }) {
   const [shift, setShift] = useState<PosShift | null>(initialShift);
   const [sales, setSales] = useState<PosSale[]>(initialSales);
+  // Offline queue mirror: localStorage (src/pos/offline-queue.ts) is
+  // the source of truth; this state is its render copy — locally built
+  // display sales with QUEUED_OFFLINE status, hydrated on mount.
+  const [pendingSales, setPendingSales] = useState<PosSale[]>([]);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [online, setOnline] = useState(true);
+  const syncingRef = useRef(false);
   const [lastClosedShift, setLastClosedShift] = useState<PosShift | null>(null);
   const [lines, setLines] = useState<PosSaleLine[]>([]);
   const [query, setQuery] = useState("");
@@ -141,6 +164,59 @@ export default function PosRegisterClient({
     setMessage(null);
   }
 
+  function refreshPending() {
+    setPendingSales(loadQueuedPosSales().map((q) => q.sale));
+  }
+
+  /**
+   * Flush the offline queue to the sale API. Server-confirmed sales
+   * (fresh or idempotent duplicates) move into `sales` as SYNCED;
+   * failures stay queued and the first error is surfaced in the sync
+   * panel. Re-entrant calls collapse into the running flush.
+   */
+  async function flushQueue(): Promise<void> {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    setSyncing(true);
+    try {
+      const report = await flushQueuedPosSales();
+      if (report.synced.length > 0) {
+        setSales((prev) => {
+          const byKey = new Map(prev.map((s) => [s.idempotencyKey, s]));
+          for (const entry of report.synced) byKey.set(entry.sale.idempotencyKey, entry.sale);
+          return [...byKey.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        });
+      }
+      setSyncError(report.failed.length > 0 ? (report.failed[0]?.message ?? null) : null);
+      refreshPending();
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
+    }
+  }
+
+  // Mount-once: hydrate the queue mirror, flush whatever a previous
+  // session left behind, and keep flushing on reconnect. The closure
+  // only touches stable setters and live localStorage reads, so the
+  // first-render instance stays correct for the component's lifetime.
+  useEffect(() => {
+    refreshPending();
+    setOnline(typeof navigator === "undefined" ? true : navigator.onLine);
+    void flushQueue();
+    const onOnline = () => {
+      setOnline(true);
+      void flushQueue();
+    };
+    const onOffline = () => setOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function addItem(item: PosCatalogEntry) {
     setError(null);
     if (item.stock <= 0) {
@@ -184,7 +260,7 @@ export default function PosRegisterClient({
     );
   }
 
-  function completeSale() {
+  async function completeSale() {
     if (!shift) {
       flashError("আগে শিফট খুলুন — খোলা শিফট ছাড়া বিক্রি হবে না।");
       return;
@@ -207,12 +283,19 @@ export default function PosRegisterClient({
       tenderedPoisha: paymentMethod === "CASH" ? (tenderedPoisha ?? undefined) : undefined,
       offline: true,
     };
-    const result = createSale(input, { id: `pos_local_${Date.now()}`, createdAt: new Date().toISOString() });
+    const result = createSale(input, {
+      id: `pos_local_${input.idempotencyKey}`,
+      createdAt: new Date().toISOString(),
+    });
     if (!result.ok) {
       flashError(result.error);
       return;
     }
-    setSales((prev) => [...prev, result.sale]);
+    // Durable FIRST: the sale lands in the localStorage queue before
+    // any network attempt, so going offline (or the tab closing) at
+    // this exact moment can never lose a completed sale.
+    enqueuePosSale({ input, sale: result.sale });
+    refreshPending();
     setReceipt(buildPosReceipt(result.sale));
     setLastChangePoisha(
       paymentMethod === "CASH" && tenderedPoisha !== null ? tenderedPoisha - result.sale.totalPoisha : null,
@@ -221,65 +304,117 @@ export default function PosRegisterClient({
     setDiscountTaka("");
     setTenderedTaka("");
     setError(null);
-    setMessage(`বিক্রি সম্পন্ন — মোট ${formatPoisha(result.sale.totalPoisha)} (ডেমো রেকর্ড, আসল Order তৈরি হয়নি)।`);
+    await flushQueue();
+    const stillQueued = loadQueuedPosSales().some((q) => q.input.idempotencyKey === input.idempotencyKey);
+    setMessage(
+      stillQueued
+        ? `বিক্রি অফলাইনে জমা হয়েছে — মোট ${formatPoisha(result.sale.totalPoisha)}। নেটওয়ার্ক ফিরলেই সিঙ্ক হবে।`
+        : `বিক্রি সম্পন্ন ও সিঙ্ক হয়েছে — মোট ${formatPoisha(result.sale.totalPoisha)}।`,
+    );
   }
 
-  function openShift() {
+  async function openShift() {
     const floatPoisha = takaInputToPoisha(floatTaka);
     if (floatPoisha === null) {
       flashError("শুরুর ফ্লোট ঠিকমতো লিখুন।");
       return;
     }
-    setShift({
-      id: `shift_local_${Date.now()}`,
-      registerId: register.id,
-      openedBy: "current-staff (demo)",
-      openedAt: new Date().toISOString(),
-      openingFloatPoisha: floatPoisha,
-      status: "OPEN",
-    });
-    setSales([]);
-    setLastClosedShift(null);
-    setError(null);
-    setMessage(`শিফট খোলা হয়েছে — ফ্লোট ${formatPoisha(floatPoisha)}।`);
+    try {
+      const res = await fetch("/api/v1/admin/pos/shift", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "open", registerId: register.id, openingFloatPoisha: floatPoisha }),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        data?: { shift?: PosShift };
+        error?: { message?: string };
+      };
+      if (!res.ok || !body.data?.shift) {
+        flashError(body.error?.message ?? "শিফট খোলা যায়নি — আবার চেষ্টা করুন।");
+        return;
+      }
+      setShift(body.data.shift);
+      setSales([]);
+      setLastClosedShift(null);
+      setError(null);
+      setMessage(`শিফট খোলা হয়েছে — ফ্লোট ${formatPoisha(floatPoisha)}।`);
+    } catch {
+      flashError(
+        "সার্ভারে পৌঁছানো যাচ্ছে না — শিফট খুলতে নেটওয়ার্ক লাগবে (বিক্রি অফলাইনে জমা হয়, কিন্তু শিফট সার্ভারেই খোলে)।",
+      );
+    }
   }
 
-  function closeCurrentShift() {
+  async function closeCurrentShift() {
     if (!shift) return;
     const counted = takaInputToPoisha(countedTaka);
     if (counted === null) {
       flashError("গণনা করা নগদ ঠিকমতো লিখুন।");
       return;
     }
-    const result = closeShift(shift, sales, {
-      countedCashPoisha: counted,
-      closedBy: "current-staff (demo)",
-      closedAt: new Date().toISOString(),
-      note: closeNote || undefined,
-    });
-    if (!result.ok) {
-      flashError(result.error);
+    // The server counts expected cash from ITS records; a sale still
+    // sitting in this browser's queue is invisible to it. Flush first,
+    // and refuse to close while this shift has queued sales — closing
+    // anyway would misstate the drawer.
+    await flushQueue();
+    const stillPending = loadQueuedPosSales().filter((q) => q.input.shiftId === shift.id);
+    if (stillPending.length > 0) {
+      flashError(
+        `এই শিফটের ${stillPending.length}টি বিক্রি এখনো সিঙ্ক হয়নি — আগে সিঙ্ক করুন (নেটওয়ার্ক দেখুন), তারপর শিফট বন্ধ করুন।`,
+      );
       return;
     }
-    setLastClosedShift(result.shift);
-    setShift(null);
-    setCountedTaka("");
-    setCloseNote("");
-    setError(null);
-    setMessage("শিফট বন্ধ হয়েছে — হিসাব নিচে দেখুন। পার্থক্য থাকলে তা যেমন ছিল তেমনই রিপোর্ট করা হয়েছে, মিলিয়ে দেওয়া হয়নি।");
+    try {
+      const res = await fetch("/api/v1/admin/pos/shift", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "close",
+          shiftId: shift.id,
+          countedCashPoisha: counted,
+          note: closeNote || undefined,
+        }),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        data?: { shift?: PosShift };
+        error?: { message?: string };
+      };
+      if (!res.ok || !body.data?.shift) {
+        flashError(body.error?.message ?? "শিফট বন্ধ করা যায়নি — আবার চেষ্টা করুন।");
+        return;
+      }
+      setLastClosedShift(body.data.shift);
+      setShift(null);
+      setCountedTaka("");
+      setCloseNote("");
+      setError(null);
+      setMessage("শিফট বন্ধ হয়েছে — হিসাব নিচে দেখুন। পার্থক্য থাকলে তা যেমন ছিল তেমনই রিপোর্ট করা হয়েছে, মিলিয়ে দেওয়া হয়নি।");
+    } catch {
+      flashError("সার্ভারে পৌঁছানো যাচ্ছে না — শিফট বন্ধ করতে নেটওয়ার্ক লাগবে।");
+    }
   }
 
-  const expectedCash = shift ? expectedCashPoisha(shift, sales) : 0;
+  // Server-recorded sales + still-queued local sales (deduped by
+  // idempotencyKey — a just-flushed sale appears in both for one
+  // render). Queued sales count toward expected cash: the money is in
+  // the drawer whether or not the server has seen it yet.
+  const displaySales = useMemo(() => {
+    const serverKeys = new Set(sales.map((s) => s.idempotencyKey));
+    const queued = pendingSales.filter((p) => !serverKeys.has(p.idempotencyKey));
+    return [...sales, ...queued].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }, [sales, pendingSales]);
+
+  const expectedCash = shift ? expectedCashPoisha(shift, displaySales) : 0;
   const cashSalesPoisha = shift ? expectedCash - shift.openingFloatPoisha : 0;
 
-  const saleRows = sales.map((sale) => ({
+  const saleRows = displaySales.map((sale) => ({
     time: dhakaTime(sale.createdAt),
     items: String(sale.lines.reduce((sum, l) => sum + l.quantity, 0)),
     method: PAYMENT_METHODS.find((m) => m.id === sale.paymentMethod)?.labelBn ?? sale.paymentMethod,
     total: <Money poisha={sale.totalPoisha} />,
     status: (
       <Badge tone={sale.status === "QUEUED_OFFLINE" ? "warning" : sale.status === "VOIDED" ? "danger" : "success"}>
-        {sale.status === "QUEUED_OFFLINE" ? "অফলাইন কিউতে" : sale.status}
+        {sale.status === "QUEUED_OFFLINE" ? "সিঙ্ক বাকি" : sale.status === "VOIDED" ? "বাতিল" : "সিঙ্ক হয়েছে"}
       </Badge>
     ),
   }));
@@ -455,22 +590,41 @@ export default function PosRegisterClient({
           </Card>
 
           <Card className="p-4">
-            <h2 className="text-base font-semibold">অফলাইন নোট (ডিজাইন)</h2>
-            <p className="mt-1 text-sm text-text-muted">
-              রেজিস্টারটি অফলাইন-ফার্স্ট ডিজাইনের: নেটওয়ার্ক না থাকলেও বিক্রি জমা হয়, প্রতিটি বিক্রি{" "}
-              <code>QUEUED_OFFLINE</code> অবস্থায় client idempotency key সহ থাকে এবং নেটওয়ার্ক ফিরলে অর্ডার API-তে sync হওয়ার কথা।
-              এই ডেমোতে আসল কোনো sync হয় না — এটি শুধু ডিজাইন নোট।
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-base font-semibold">সিঙ্ক অবস্থা</h2>
+              <Badge tone={online ? "success" : "danger"}>{online ? "অনলাইন" : "অফলাইন"}</Badge>
+            </div>
+            {pendingSales.length > 0 ? (
+              <p className="mt-2 text-sm text-amber-700">
+                সিঙ্ক বাকি: {pendingSales.length}টি বিক্রি এই ডিভাইসের কিউতে আছে — নেটওয়ার্ক ফিরলেই পাঠিয়ে দেওয়া হবে।
+              </p>
+            ) : (
+              <p className="mt-2 text-sm text-emerald-700">সব বিক্রি সিঙ্ক হয়েছে।</p>
+            )}
+            {syncError ? <p className="mt-1 text-sm text-rose-600">শেষ সিঙ্কে সমস্যা: {syncError}</p> : null}
+            <Button
+              variant="secondary"
+              className="mt-3 w-full"
+              onClick={() => void flushQueue()}
+              disabled={syncing || pendingSales.length === 0}
+            >
+              {syncing ? "সিঙ্ক হচ্ছে…" : "এখনই সিঙ্ক করুন"}
+            </Button>
+            <p className="mt-2 text-xs text-text-muted">
+              অফলাইনে করা বিক্রি এই ব্রাউজারেই জমা থাকে (localStorage), প্রতিটির আলাদা idempotency key থাকে — সিঙ্ক
+              আবার চালালেও একই বিক্রি দুবার রেকর্ড হয় না। সিঙ্ক মানে বিক্রিটি POS ডাটাবেসে রেকর্ড হওয়া; এটি অনলাইন
+              Order তৈরি করে না।
             </p>
           </Card>
         </div>
       </div>
 
-      <h2 className="mb-3 mt-6 text-lg font-semibold">এই শিফটের বিক্রি ({sales.length})</h2>
-      {sales.length === 0 ? (
+      <h2 className="mb-3 mt-6 text-lg font-semibold">এই শিফটের বিক্রি ({displaySales.length})</h2>
+      {displaySales.length === 0 ? (
         <EmptyState title="এখনো কোনো বিক্রি হয়নি" description="বিক্রি সম্পন্ন হলে এই তালিকায় দেখা যাবে।" />
       ) : (
         <DataTable
-          caption="এই শিফটের POS বিক্রি — ডেমো রেকর্ড, আসল Order নয়"
+          caption="এই শিফটের POS বিক্রি — 'সিঙ্ক হয়েছে' মানে সার্ভার ডাটাবেসে রেকর্ড; 'সিঙ্ক বাকি' মানে এই ডিভাইসের কিউতে"
           columns={[
             { key: "time", header: "সময়" },
             { key: "items", header: "আইটেম" },

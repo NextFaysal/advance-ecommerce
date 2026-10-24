@@ -5,10 +5,10 @@ import { vendorApiStore } from "../../store";
 
 // Vendor payout summary — Agent 18. Uses Agent 16's summarizePayout():
 // commission in basis points floored to whole poisha, refunds reduce the
-// payout, net payable never below zero. The vendor record is DB-backed;
-// commission lines have NO schema table (orders carry no vendor link),
-// so lines/refunds remain in-memory and the summary is computed over
-// whatever lines the process holds — meta labels this honestly.
+// payout, net payable never below zero. Vendor record, commission lines
+// (VendorCommissionLine, written by the delivered-order hook) and refund
+// chargebacks (VendorRefund) are all DB-backed since the
+// advanced_modules_completion migration (2026-10-25).
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const guard = await requireVendorAdmin("vendors.view");
@@ -21,6 +21,6 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const summary = summarizePayout(vendor.id, lines, await vendorApiStore.refundsPoisha(vendor.id));
   return NextResponse.json({
     data: { summary, lines },
-    meta: { persistence: "mixed", source: "vendor:database, commission-lines:in-memory-no-schema-table" },
+    meta: { persistence: "database" },
   });
 }

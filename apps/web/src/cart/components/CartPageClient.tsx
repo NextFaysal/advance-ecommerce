@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Money } from "@/components/ui/money";
+import { useBengaliNumerals } from "@/components/ui/numerals";
 import { computePricing } from "@/checkout/pricing";
 import type { PublicProduct } from "@/catalog/types";
 import { getWishlistIds, toggleWishlistId } from "@/catalog/wishlist";
@@ -46,6 +47,7 @@ type CouponState = {
 } | null;
 
 export default function CartPageClient({ catalogProducts }: { catalogProducts: PublicProduct[] }) {
+  const bengaliDigits = useBengaliNumerals();
   const [cart, setCart] = useState<Cart | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [zoneId, setZoneId] = useState<CartShippingZone["id"]>("inside_dhaka");
@@ -254,10 +256,10 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
                   ) : null}
                   <p className="text-xs text-text-subtle">SKU: {line.item.sku}</p>
                   <p className="mt-1 text-sm">
-                    <Money poisha={line.item.unitPricePoisha} />
+                    <Money bengaliDigits={bengaliDigits} poisha={line.item.unitPricePoisha} />
                     {line.discountPoishaPerUnit > 0 && line.variant?.compareAtPoisha ? (
                       <span className="ml-2 text-text-subtle line-through">
-                        <Money poisha={line.variant.compareAtPoisha} />
+                        <Money bengaliDigits={bengaliDigits} poisha={line.variant.compareAtPoisha} />
                       </span>
                     ) : null}
                   </p>
@@ -292,7 +294,7 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
                       <span className="text-xs text-text-muted">স্টকে যা আছে সব নেওয়া হয়েছে</span>
                     ) : null}
                     <span className="ml-auto text-sm font-semibold">
-                      <Money poisha={line.item.unitPricePoisha * line.item.quantity} />
+                      <Money bengaliDigits={bengaliDigits} poisha={line.item.unitPricePoisha * line.item.quantity} />
                     </span>
                   </div>
 
@@ -340,7 +342,7 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
                   }`}
                 >
                   {z.labelBn}
-                  <span className="block text-xs text-text-muted"><Money poisha={z.chargePoisha} /></span>
+                  <span className="block text-xs text-text-muted"><Money bengaliDigits={bengaliDigits} poisha={z.chargePoisha} /></span>
                 </button>
               ))}
             </div>
@@ -381,18 +383,18 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
           <dl className="mt-4 space-y-2 border-t border-border pt-3 text-sm">
             <div className="flex justify-between">
               <dt className="text-text-muted">সাবটোটাল</dt>
-              <dd><Money poisha={pricing.subtotalPoisha + itemDiscountPoisha} /></dd>
+              <dd><Money bengaliDigits={bengaliDigits} poisha={pricing.subtotalPoisha + itemDiscountPoisha} /></dd>
             </div>
             {itemDiscountPoisha > 0 ? (
               <div className="flex justify-between">
                 <dt className="text-text-muted">পণ্যের ছাড়</dt>
-                <dd className="text-brand-700">−<Money poisha={itemDiscountPoisha} /></dd>
+                <dd className="text-brand-700">−<Money bengaliDigits={bengaliDigits} poisha={itemDiscountPoisha} /></dd>
               </div>
             ) : null}
             {pricing.couponDiscountPoisha > 0 ? (
               <div className="flex justify-between">
                 <dt className="text-text-muted">কুপন ছাড় {coupon ? `(${coupon.record.code})` : ""}</dt>
-                <dd className="text-brand-700">−<Money poisha={pricing.couponDiscountPoisha} /></dd>
+                <dd className="text-brand-700">−<Money bengaliDigits={bengaliDigits} poisha={pricing.couponDiscountPoisha} /></dd>
               </div>
             ) : null}
             <div className="flex justify-between">
@@ -401,23 +403,23 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
                 {couponEval && couponEval.shippingPoisha === 0 && zone.chargePoisha > 0 ? (
                   <span className="font-medium text-brand-700">ফ্রি</span>
                 ) : (
-                  <Money poisha={pricing.shippingPoisha} />
+                  <Money bengaliDigits={bengaliDigits} poisha={pricing.shippingPoisha} />
                 )}
               </dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-text-muted">ক্যাশ অন ডেলিভারি ফি</dt>
-              <dd><Money poisha={pricing.codFeePoisha} /></dd>
+              <dd><Money bengaliDigits={bengaliDigits} poisha={pricing.codFeePoisha} /></dd>
             </div>
             {pricing.taxPoisha > 0 ? (
               <div className="flex justify-between">
                 <dt className="text-text-muted">ভ্যাট/ট্যাক্স</dt>
-                <dd><Money poisha={pricing.taxPoisha} /></dd>
+                <dd><Money bengaliDigits={bengaliDigits} poisha={pricing.taxPoisha} /></dd>
               </div>
             ) : null}
             <div className="flex justify-between border-t border-border pt-2 text-base font-bold">
               <dt>সর্বমোট</dt>
-              <dd><Money poisha={pricing.grandTotalPoisha} /></dd>
+              <dd><Money bengaliDigits={bengaliDigits} poisha={pricing.grandTotalPoisha} /></dd>
             </div>
           </dl>
 
@@ -447,7 +449,7 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
           <div className="min-w-0 flex-1">
             <p className="text-xs text-text-muted">সর্বমোট ({zone.labelBn} ডেলিভারিসহ)</p>
             <p className="text-base font-bold leading-6">
-              <Money poisha={pricing.grandTotalPoisha} />
+              <Money bengaliDigits={bengaliDigits} poisha={pricing.grandTotalPoisha} />
             </p>
           </div>
           <Link

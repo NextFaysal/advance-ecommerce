@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { Button } from "@/components/ui/button";
+import { useDigitText } from "@/components/ui/numerals";
 import { addItemToGuestCart } from "./AddToCartButton";
 
 export interface BuyBoxVariant {
@@ -50,6 +51,7 @@ export function BuyBoxActions({
   variants,
 }: BuyBoxActionsProps) {
   const router = useRouter();
+  const digits = useDigitText();
   const activeVariants = useMemo(
     () => variants.filter((v) => v.isActive),
     [variants],
@@ -134,7 +136,7 @@ export function BuyBoxActions({
                     : "border-border text-text-main hover:bg-surface-2"
                 }`}
               >
-                {variantLabel(v)} — {formatBdt(v.pricePoisha)}
+                {variantLabel(v)} — {digits(formatBdt(v.pricePoisha))}
                 {v.stock > 0 ? ` (স্টক: ${v.stock})` : " (স্টক শেষ)"}
               </button>
             );
@@ -143,11 +145,11 @@ export function BuyBoxActions({
       </div>
 
       <p className="text-lg font-bold text-brand-700">
-        {formatBdt(selected.pricePoisha)}
+        {digits(formatBdt(selected.pricePoisha))}
         {selected.compareAtPoisha !== null &&
         selected.compareAtPoisha > selected.pricePoisha ? (
           <span className="ml-2 text-sm font-normal text-text-subtle line-through">
-            {formatBdt(selected.compareAtPoisha)}
+            {digits(formatBdt(selected.compareAtPoisha))}
           </span>
         ) : null}
       </p>

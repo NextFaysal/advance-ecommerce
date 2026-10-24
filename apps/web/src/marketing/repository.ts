@@ -1,6 +1,6 @@
 /**
- * Marketing repository — DB-backed persistence (Prisma) for coupons
- * and campaigns.
+ * Marketing repository — DB-backed persistence (Prisma) for coupons,
+ * campaigns and flash sales (flash-sale section at the bottom).
  *
  * COUPONS: definitions live in the Coupon table; usage lives in
  * CouponUsage (written by the orders create transaction — see
@@ -42,6 +42,12 @@
 import { prisma } from "@advance-ecommerce/db";
 import type { Campaign } from "./campaign";
 import type { CouponInput } from "./coupon";
+import type {
+  FlashSaleInput,
+  FlashSaleItemDisplay,
+  FlashSaleWithItems,
+  LiveFlashSale,
+} from "./flash-sale";
 import type { CouponRecord, CreateCampaignInput } from "./service";
 
 /* ------------------------------------------------------------------ */
@@ -297,4 +303,275 @@ export async function createCampaignDb(
   // The create response echoes the submitted recipientCount; it is not
   // persisted (no column) — see header drift note.
   return campaignRowToCampaign(row, input.recipientCount);
+}
+
+/* ------------------------------------------------------------------ */
+/* Flash sales                                                         */
+/* ------------------------------------------------------------------ */
+/**
+ * FLASH SALES: definitions live in FlashSale + FlashSaleItem (the
+ * schema puts salePricePoisha/stockCap/soldCount on the ITEM, keyed
+ * by variant, @@unique([flashSaleId, variantId])). Reads assemble the
+ * display shape (product titles/slug/image + variant sku/regular
+ * price) in one include — no N+1. Writes replace the item set
+ * wholesale inside a transaction; soldCount is never writable through
+ * this module (the order path owns it). Deletes are soft (deletedAt),
+ * matching Coupon/Campaign. The variant is the source of truth for
+ * productId: a create/update payload may omit productId, and a
+ * supplied value that disagrees with the variant's product is
+ * rejected ("variant_product_mismatch").
+ */
+
+const flashSaleInclude = {
+  items: {
+    orderBy: { createdAt: "asc" as const },
+    include: {
+      product: {
+        include: {
+          images: { orderBy: { sortOrder: "asc" as const }, take: 1 },
+        },
+      },
+      variant: true,
+    },
+  },
+};
+
+/** Structural minimum of a FlashSaleItem row with product+variant
+ *  included — declared locally so both the plain and the filtered
+ *  (live-read) includes can feed the same mapper. */
+interface FlashSaleItemRowLike {
+  id: string;
+  flashSaleId: string;
+  productId: string;
+  variantId: string;
+  salePricePoisha: number;
+  stockCap: number;
+  soldCount: number;
+  createdAt: Date;
+  product: {
+    titleBn: string;
+    titleEn: string;
+    slug: string;
+    status: string;
+    images: { url: string }[];
+  };
+  variant: {
+    sku: string;
+    attributes: unknown;
+    pricePoisha: number;
+    stock: number;
+    imageUrl: string | null;
+    isActive: boolean;
+  };
+}
+
+interface FlashSaleRowLike {
+  id: string;
+  name: string;
+  startsAt: Date;
+  endsAt: Date;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  items: FlashSaleItemRowLike[];
+}
+
+function flashSaleItemRowToDisplay(item: FlashSaleItemRowLike): FlashSaleItemDisplay {
+  return {
+    id: item.id,
+    flashSaleId: item.flashSaleId,
+    productId: item.productId,
+    variantId: item.variantId,
+    salePricePoisha: item.salePricePoisha,
+    stockCap: item.stockCap,
+    soldCount: item.soldCount,
+    createdAt: item.createdAt.toISOString(),
+    productTitleBn: item.product.titleBn,
+    productTitleEn: item.product.titleEn,
+    productSlug: item.product.slug,
+    productStatus: item.product.status,
+    imageUrl: item.variant.imageUrl ?? item.product.images[0]?.url ?? null,
+    variantSku: item.variant.sku,
+    variantAttributes: item.variant.attributes,
+    regularPricePoisha: item.variant.pricePoisha,
+    variantStock: item.variant.stock,
+    variantIsActive: item.variant.isActive,
+    remaining: Math.max(0, item.stockCap - item.soldCount),
+  };
+}
+
+function flashSaleRowToWithItems(row: FlashSaleRowLike): FlashSaleWithItems {
+  return {
+    id: row.id,
+    name: row.name,
+    startsAt: row.startsAt.toISOString(),
+    endsAt: row.endsAt.toISOString(),
+    isActive: row.isActive,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    items: row.items.map(flashSaleItemRowToDisplay),
+  };
+}
+
+async function loadFlashSaleById(id: string): Promise<FlashSaleWithItems | null> {
+  const row = await prisma.flashSale.findFirst({
+    where: { id, deletedAt: null },
+    include: flashSaleInclude,
+  });
+  return row ? flashSaleRowToWithItems(row) : null;
+}
+
+export async function listFlashSalesDb(): Promise<FlashSaleWithItems[]> {
+  const rows = await prisma.flashSale.findMany({
+    where: { deletedAt: null },
+    orderBy: { startsAt: "desc" },
+    include: flashSaleInclude,
+  });
+  return rows.map(flashSaleRowToWithItems);
+}
+
+export async function getFlashSaleDb(id: string): Promise<FlashSaleWithItems | null> {
+  return loadFlashSaleById(id);
+}
+
+/**
+ * Resolves each input item's variant to its product. Throws
+ * Error("variant_not_found") for an unknown/soft-deleted variant and
+ * Error("variant_product_mismatch") when a supplied productId
+ * disagrees — routes map these to 400s; anything else propagates.
+ */
+async function resolveFlashSaleItems(
+  items: FlashSaleInput["items"],
+): Promise<{ productId: string; variantId: string; salePricePoisha: number; stockCap: number }[]> {
+  const variants = await prisma.productVariant.findMany({
+    where: { id: { in: items.map((i) => i.variantId) }, deletedAt: null },
+    select: { id: true, productId: true },
+  });
+  const productByVariant = new Map(variants.map((v) => [v.id, v.productId]));
+  return items.map((item) => {
+    const productId = productByVariant.get(item.variantId);
+    if (!productId) throw new Error("variant_not_found");
+    if (item.productId !== undefined && item.productId !== productId) {
+      throw new Error("variant_product_mismatch");
+    }
+    return {
+      productId,
+      variantId: item.variantId,
+      salePricePoisha: item.salePricePoisha,
+      stockCap: item.stockCap,
+    };
+  });
+}
+
+export async function createFlashSaleDb(input: FlashSaleInput): Promise<FlashSaleWithItems> {
+  const items = await resolveFlashSaleItems(input.items);
+  const row = await prisma.flashSale.create({
+    data: {
+      name: input.name,
+      startsAt: new Date(input.startsAt),
+      endsAt: new Date(input.endsAt),
+      isActive: input.isActive,
+      items: { create: items },
+    },
+  });
+  const created = await loadFlashSaleById(row.id);
+  if (!created) throw new Error("flash_sale_create_failed");
+  return created;
+}
+
+/** Full replace: fields + the whole item set, in one transaction.
+ *  Returns null when the sale does not exist (or is soft-deleted). */
+export async function updateFlashSaleDb(
+  id: string,
+  input: FlashSaleInput,
+): Promise<FlashSaleWithItems | null> {
+  const existing = await prisma.flashSale.findFirst({
+    where: { id, deletedAt: null },
+    select: { id: true },
+  });
+  if (!existing) return null;
+  const items = await resolveFlashSaleItems(input.items);
+  await prisma.$transaction([
+    prisma.flashSale.update({
+      where: { id },
+      data: {
+        name: input.name,
+        startsAt: new Date(input.startsAt),
+        endsAt: new Date(input.endsAt),
+        isActive: input.isActive,
+      },
+    }),
+    prisma.flashSaleItem.deleteMany({ where: { flashSaleId: id } }),
+    prisma.flashSaleItem.createMany({
+      data: items.map((item) => ({ flashSaleId: id, ...item })),
+    }),
+  ]);
+  return loadFlashSaleById(id);
+}
+
+export async function setFlashSaleActiveDb(
+  id: string,
+  isActive: boolean,
+): Promise<FlashSaleWithItems | null> {
+  const existing = await prisma.flashSale.findFirst({
+    where: { id, deletedAt: null },
+    select: { id: true },
+  });
+  if (!existing) return null;
+  await prisma.flashSale.update({ where: { id }, data: { isActive } });
+  return loadFlashSaleById(id);
+}
+
+/** Soft delete (deletedAt). Returns false when missing/already deleted. */
+export async function deleteFlashSaleDb(id: string): Promise<boolean> {
+  const result = await prisma.flashSale.updateMany({
+    where: { id, deletedAt: null },
+    data: { deletedAt: new Date() },
+  });
+  return result.count > 0;
+}
+
+/**
+ * The storefront live read: the soonest-ending sale that is active,
+ * not soft-deleted and inside its window at `now`, with only
+ * purchasable items attached (product ACTIVE + not deleted, variant
+ * active + not deleted). Returns null when no sale is live — or when
+ * the live sale has no purchasable item left to show.
+ */
+export async function getLiveFlashSale(now: Date = new Date()): Promise<LiveFlashSale | null> {
+  const row = await prisma.flashSale.findFirst({
+    where: {
+      deletedAt: null,
+      isActive: true,
+      startsAt: { lte: now },
+      endsAt: { gte: now },
+    },
+    orderBy: { endsAt: "asc" },
+    include: {
+      items: {
+        where: {
+          product: { status: "ACTIVE", deletedAt: null },
+          variant: { isActive: true, deletedAt: null },
+        },
+        orderBy: { createdAt: "asc" },
+        include: {
+          product: {
+            include: {
+              images: { orderBy: { sortOrder: "asc" }, take: 1 },
+            },
+          },
+          variant: true,
+        },
+      },
+    },
+  });
+  if (!row || row.items.length === 0) return null;
+  const withItems = flashSaleRowToWithItems(row);
+  return {
+    id: withItems.id,
+    name: withItems.name,
+    startsAt: withItems.startsAt,
+    endsAt: withItems.endsAt,
+    items: withItems.items,
+  };
 }

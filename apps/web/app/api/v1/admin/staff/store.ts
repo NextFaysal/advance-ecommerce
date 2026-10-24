@@ -45,6 +45,8 @@ interface StaffUserRow {
   email: string | null;
   phone: string | null;
   twoFactorEnabled: boolean;
+  /** Selected only to judge whether the 2FA flag is usable — never surfaced. */
+  twoFactorSecret: string | null;
   lastLoginAt: Date | null;
   isActive: boolean;
   inviteTokenHash: string | null;
@@ -73,7 +75,11 @@ function toStaffMember(user: StaffUserRow): StaffMember {
     phone: user.phone ?? "",
     role: user.role?.name ?? "",
     status,
-    totpEnabled: user.twoFactorEnabled,
+    // Report a USABLE 2FA state, not the bare flag: a legacy row with
+    // the flag on but no stored secret cannot verify any code, so
+    // showing "2FA চালু" for it would misreport (see hasUsableTotp in
+    // src/lib/auth.ts and the TOTP backfill script).
+    totpEnabled: user.twoFactorEnabled && user.twoFactorSecret !== null,
     lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
     invitedBy: user.invitedBy ? (user.invitedBy.name ?? user.invitedBy.email ?? null) : null,
     invitePending: !user.isActive && user.inviteTokenHash !== null,

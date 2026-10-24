@@ -386,6 +386,7 @@ model Product {
   images           ProductImage[]
   variants         ProductVariant[]
   flashSaleItems   FlashSaleItem[]
+  vendorProducts   VendorProduct[]
   @@index([categoryId])
   @@index([status])
 }
@@ -413,6 +414,7 @@ model ProductVariant {
   stockMovements  StockMovement[]
   flashSaleItems  FlashSaleItem[]
   purchaseOrderItems PurchaseOrderItem[]
+  vendorProducts  VendorProduct[]
   @@index([productId])
 }
 
@@ -555,6 +557,10 @@ model Order {
   riskScore        Int          @default(0)
   assigneeId       String?
   assignee         User?        @relation("OrderAssignee", fields: [assigneeId], references: [id])
+  // Reseller attribution (nullable: set only when the order is recorded
+  // as a reseller sale; the delivered-order hook credits this reseller).
+  resellerId       String?
+  reseller         Reseller?    @relation(fields: [resellerId], references: [id])
   source           String?
   idempotencyKey   String       @unique
   deletedAt        DateTime?
@@ -571,7 +577,10 @@ model Order {
   couponUsages     CouponUsage[]
   notificationLogs NotificationLog[]
   paymentLinks     PaymentLink[]
+  vendorCommissionLines VendorCommissionLine[]
+  vendorRefunds    VendorRefund[]
   @@index([customerId])
+  @@index([resellerId])
   @@index([status])
   @@index([paymentStatus])
   @@index([createdAt])
@@ -1167,6 +1176,9 @@ model Vendor {
   deletedAt        DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+  products         VendorProduct[]
+  commissionLines  VendorCommissionLine[]
+  refunds          VendorRefund[]
 }
 
 model B2bCustomer {
@@ -1484,6 +1496,7 @@ model Reseller {
   priceEntries ResellerPriceEntry[]
   walletEntries ResellerWalletEntry[]
   withdrawals ResellerWithdrawal[]
+  orders Order[]
 }
 
 model ResellerPriceEntry {
@@ -1583,4 +1596,92 @@ model LandingPage {
   sectionsJson Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ---- Advanced modules completion (vendors persistence, reseller
+// ---- attribution, web push subscriptions) ----
+// VendorProduct links a vendor to a catalog Product / ProductVariant
+// (nullable: a vendor listing may exist before its catalog rows do) and
+// carries the approval state machine from src/vendors/types.ts verbatim
+// (approval is a free String: PENDING_REVIEW / APPROVED / REJECTED /
+// CHANGES_REQUESTED).
+model VendorProduct {
+  id              String         @id @default(cuid())
+  vendorId        String
+  vendor          Vendor         @relation(fields: [vendorId], references: [id])
+  productId       String?
+  product         Product?       @relation(fields: [productId], references: [id])
+  variantId       String?
+  variant         ProductVariant? @relation(fields: [variantId], references: [id])
+  productName     String
+  sku             String
+  pricePoisha     Int
+  approval        String         @default("PENDING_REVIEW")
+  rejectionReason String?
+  deletedAt       DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  @@index([vendorId, approval])
+  @@index([variantId])
+}
+
+// One commission line per (order, vendor): the delivered-order hook
+// aggregates a vendor's items in an order into ONE line, and the unique
+// constraint is the exactly-once backstop for commission crediting.
+model VendorCommissionLine {
+  id                  String   @id @default(cuid())
+  orderId             String
+  order               Order    @relation(fields: [orderId], references: [id])
+  vendorId            String
+  vendor              Vendor   @relation(fields: [vendorId], references: [id])
+  grossPoisha         Int
+  commissionBps       Int
+  commissionPoisha    Int
+  vendorEarningPoisha Int
+  createdAt           DateTime @default(now())
+  @@unique([orderId, vendorId])
+  @@index([vendorId, createdAt])
+}
+
+// A refund charged back to a vendor; payout summaries subtract the SUM
+// of these rows for the vendor (never below zero — see vendors/service).
+model VendorRefund {
+  id           String   @id @default(cuid())
+  vendorId     String
+  vendor       Vendor   @relation(fields: [vendorId], references: [id])
+  orderId      String?
+  order        Order?   @relation(fields: [orderId], references: [id])
+  amountPoisha Int
+  reason       String
+  createdAt    DateTime @default(now())
+  @@index([vendorId, createdAt])
+  @@index([orderId])
+}
+
+// Browser Web Push subscriptions (RFC 8291). endpoint is the identity
+// (a browser re-subscribing rotates keys on the same endpoint, so
+// subscribe upserts by endpoint). customerId is set when the subscribe
+// call carried a valid customer_session; anonymous subscriptions keep
+// it null. p256dh/auth are the browser-issued subscription keys —
+// server-side only, never logged or returned to other clients.
+model PushSubscription {
+  id         String   @id @default(cuid())
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  customerId String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@index([customerId])
+}
+
+model NewsletterSubscriber {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  source         String    @default("homepage")
+  status         String    @default("subscribed")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  unsubscribedAt DateTime?
 }

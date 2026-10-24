@@ -38,11 +38,12 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { formatBdt } from "@advance-ecommerce/validators";
-import { getWishlistIds } from "@/catalog/wishlist";
+import { WISHLIST_CHANGE_EVENT, getWishlistIds } from "@/catalog/wishlist";
 import { GUEST_CART_KEY, loadGuestCart } from "@/cart/persistence";
 import { cartItemCount } from "@/cart/types";
 import { CART_UPDATED_EVENT } from "@/cart/components/AddToCartButton";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { NumeralsToggle, useDigitText } from "@/components/ui/numerals";
 import type { Category, PublicProduct } from "@/catalog/types";
 import { minVariantPricePoisha } from "@/catalog/types";
 
@@ -244,6 +245,7 @@ function SearchPanelContent({
   suggestions: ReadonlyArray<PublicProduct>;
   onNavigate: () => void;
 }): ReactNode {
+  const digits = useDigitText();
   const q = query.trim();
   if (q.length < 2) {
     return (
@@ -295,7 +297,7 @@ function SearchPanelContent({
                     ) : null}
                   </span>
                   <span className="shrink-0 text-sm font-bold tabular-nums text-brand-700">
-                    {formatBdt(minVariantPricePoisha(p))}
+                    {digits(formatBdt(minVariantPricePoisha(p)))}
                   </span>
                 </Link>
               </li>
@@ -348,10 +350,13 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
     // Same-tab add-to-cart writes dispatch this event (storage does not
     // fire in the tab that wrote), so the count updates instantly.
     window.addEventListener(CART_UPDATED_EVENT, refresh);
+    // Same story for wishlist toggles (card / PDP / wishlist page).
+    window.addEventListener(WISHLIST_CHANGE_EVENT, refresh);
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", refresh);
       window.removeEventListener(CART_UPDATED_EVENT, refresh);
+      window.removeEventListener(WISHLIST_CHANGE_EVENT, refresh);
     };
   }, []);
 
@@ -538,6 +543,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
           </nav>
 
           <span className="ml-auto flex items-center gap-1 lg:ml-0">
+            <NumeralsToggle />
             <ThemeToggle />
             <a
               href="/account"

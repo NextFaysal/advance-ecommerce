@@ -5,12 +5,17 @@ import { createPosSaleSchema } from "@/pos/types";
 import { posGuardError, requirePosAdmin } from "../guard";
 
 // POS sale — Agent 38, on src/pos/register.ts createSale() rules.
-// The sale is recorded in the Prisma DB (src/pos/store.ts) ONLY. It does
-// NOT create a real Order: in production, offline POS sales sync to the
-// orders API by idempotencyKey (the store is keyed on it here too — a
-// replayed key returns the first sale with duplicate: true, never a
-// second record). Receipt data is the shared orders PrintData shape via
-// buildPosReceipt().
+// This POST is also the OFFLINE SYNC endpoint: the register queues
+// sales in the browser while offline (src/pos/offline-queue.ts) and
+// flushes them here when the network returns (src/pos/sync.ts). The
+// store is keyed on the sale's client idempotencyKey — a replayed key
+// returns the first sale with duplicate: true, never a second record,
+// so a flush retry after a lost response is always safe.
+// The sale is recorded in the Prisma DB (src/pos/store.ts) ONLY. It
+// does NOT create a real Order (createsOrder: false stays honest):
+// an Order requires a customer phone + address that a walk-in sale
+// does not have. Receipt data is the shared orders PrintData shape
+// via buildPosReceipt().
 export async function POST(req: Request) {
   const guard = await requirePosAdmin("pos.manage");
   if (!guard.ok) return NextResponse.json(posGuardError(guard), { status: guard.status });
@@ -66,7 +71,7 @@ export async function POST(req: Request) {
       meta: {
         persistence: "database",
         createsOrder: false,
-        note: "Database record only — no real Order is created. Production: offline sales sync to the orders API by idempotencyKey.",
+        note: "Database record only — no real Order is created. This POST is the offline-sync endpoint: queued sales flush here by idempotencyKey.",
       },
     },
     { status: 201 },
