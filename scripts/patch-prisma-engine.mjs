@@ -24,8 +24,6 @@ if (!engineAbs) {
   console.log("[patch-prisma-engine] engine not found — skipping");
   process.exit(0);
 }
-const engineRel = path.relative(repoRoot, engineAbs).split(path.sep).join("/");
-
 const nextDir = path.join(repoRoot, "apps", "web", ".next");
 let patched = 0;
 (function walk(dir) {
@@ -33,9 +31,13 @@ let patched = 0;
     const p = path.join(dir, e.name);
     if (e.isDirectory()) walk(p);
     else if (e.name.endsWith(".nft.json")) {
+      // nft "files" entries are relative to the MANIFEST'S OWN directory
+      // (e.g. "../../../../../node_modules/..."), so the engine entry
+      // must be computed per manifest.
+      const rel = path.relative(path.dirname(p), engineAbs).split(path.sep).join("/");
       const j = JSON.parse(readFileSync(p, "utf8"));
-      if (Array.isArray(j.files) && !j.files.includes(engineRel)) {
-        j.files.push(engineRel);
+      if (Array.isArray(j.files) && !j.files.includes(rel)) {
+        j.files.push(rel);
         writeFileSync(p, JSON.stringify(j));
         patched++;
       }
@@ -43,4 +45,4 @@ let patched = 0;
   }
 })(nextDir);
 cpSync(engineAbs, path.join(nextDir, "server", path.basename(engineAbs)));
-console.log(`[patch-prisma-engine] engine ${engineRel} added to ${patched} nft manifests and copied to .next/server`);
+console.log(`[patch-prisma-engine] engine added to ${patched} nft manifests and copied to .next/server`);
