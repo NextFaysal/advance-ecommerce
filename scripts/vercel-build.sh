@@ -31,7 +31,35 @@ pnpm --filter web build
 ENGINE="$(find node_modules/.pnpm -path '*node_modules/.prisma/client/libquery_engine-*.so.node' -print -quit || true)"
 if [ -n "${ENGINE:-}" ]; then
   cp "$ENGINE" apps/web/.next/server/
-  echo "[build] prisma engine copied: $ENGINE"
+  echo "[build] prisma engine copied to .next/server: $ENGINE"
+  # Next packages each serverless function from its route's .nft.json
+  # file manifest, and nft tracing does not include the Prisma engine
+  # for every route in this pnpm monorepo (some routes then fail at
+  # runtime: "could not locate the Query Engine"). Add the engine's
+  # repo-relative path to every manifest so it is packaged into every
+  # function at the exact location the client searches first.
+  ENGINE_PATH="$ENGINE" node -e '
+    const fs = require("fs");
+    const path = require("path");
+    const engine = process.env.ENGINE_PATH;
+    const root = "apps/web/.next";
+    let patched = 0;
+    (function walk(dir) {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name.endsWith(".nft.json")) {
+          const j = JSON.parse(fs.readFileSync(p, "utf8"));
+          if (Array.isArray(j.files) && !j.files.includes(engine)) {
+            j.files.push(engine);
+            fs.writeFileSync(p, JSON.stringify(j));
+            patched++;
+          }
+        }
+      }
+    })(root);
+    console.log("[build] nft manifests patched with prisma engine:", patched);
+  '
 else
   echo "[build] WARNING: prisma query engine not found to copy"
 fi
