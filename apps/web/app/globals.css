@@ -1,4 +1,5 @@
-@import "../src/styles/fonts.css";
+/* Brand @font-face faces are loaded via Google Fonts CDN in app/layout.tsx
+   (self-hosted files in public/fonts/ are not in the deployed repo yet). */
 
 @tailwind base;
 @tailwind components;

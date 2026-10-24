@@ -90,84 +90,149 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <main style={{ maxWidth: 420, margin: "64px auto", padding: 24, fontFamily: "system-ui" }}>
-      <h1>Admin Login</h1>
-      <p>Staff only. Email ba phone number + password diye login korun.</p>
+    <main className="flex min-h-screen">
+      {/* Brand panel — desktop only */}
+      <aside className="brand-gradient relative hidden w-[44%] flex-col justify-between overflow-hidden p-10 text-white lg:flex">
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/20 text-xl font-extrabold backdrop-blur">
+            A
+          </span>
+          <span className="text-lg font-bold">Advance Ecommerce</span>
+        </div>
+        <div>
+          <h2 className="max-w-md text-4xl font-extrabold leading-snug">
+            আপনার দোকান,
+            <br />
+            এক ড্যাশবোর্ডেই সব।
+          </h2>
+          <p className="mt-4 max-w-md text-sm leading-relaxed text-white/85">
+            অর্ডার, পেমেন্ট, কুরিয়ার আর কাস্টমার — সবকিছু এক জায়গা থেকে পরিচালনা করুন। ক্যাশ অন ডেলিভারি থেকে bKash অটো-ভেরিফাই পর্যন্ত, বাংলাদেশি ব্যবসার জন্যই তৈরি।
+          </p>
+          <ul className="mt-8 space-y-2 text-sm text-white/90">
+            <li>✓ সারাদেশে কুরিয়ার ট্র্যাকিং</li>
+            <li>✓ দৈনিক ক্যাশ ক্লোজিং ও রিপোর্ট</li>
+            <li>✓ ফ্রড স্কোরিং ও অটোমেশন</li>
+          </ul>
+        </div>
+        <p className="text-xs text-white/70">© 2026 Advance Ecommerce</p>
+      </aside>
 
-      {step === "login" && (
-        <form onSubmit={handleLogin}>
-          <label htmlFor="identifier">Email / Phone</label>
-          <input
-            id="identifier"
-            type="text"
-            autoComplete="username"
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-            required
-            style={{ display: "block", width: "100%", padding: 10, margin: "8px 0 16px" }}
-          />
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            type={showPassword ? "text" : "password"}
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={8}
-            style={{ display: "block", width: "100%", padding: 10, margin: "8px 0 16px" }}
-          />
-          <label>
-            <input type="checkbox" checked={showPassword} onChange={(e) => setShowPassword(e.target.checked)} />{" "}
-            Show password
-          </label>
-          <button
-            type="submit"
-            disabled={loading}
-            style={{ display: "block", width: "100%", padding: 12, marginTop: 16, background: "#4F46E5", color: "#fff", border: 0, borderRadius: 8 }}
-          >
-            {loading ? "Logging in…" : "Login"}
-          </button>
-        </form>
-      )}
+      {/* Form panel */}
+      <section className="flex flex-1 items-center justify-center px-6 py-12">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 shadow-lg">
+          <div className="mb-6 flex items-center gap-3 lg:hidden">
+            <span className="brand-gradient flex h-10 w-10 items-center justify-center rounded-xl text-lg font-extrabold text-white">
+              A
+            </span>
+            <span className="font-bold text-text-main">Advance Ecommerce</span>
+          </div>
+          <h1 className="text-2xl font-bold text-text-main">অ্যাডমিন লগইন</h1>
+          <p className="mt-1 text-sm text-text-muted">শুধুমাত্র স্টাফদের জন্য। ইমেইল বা ফোন নম্বর ও পাসওয়ার্ড দিয়ে লগইন করুন।</p>
 
-      {step === "totp" && (
-        <form onSubmit={handleTotp}>
-          <label htmlFor="code">2FA Code (6 digit, authenticator app)</label>
-          <input
-            id="code"
-            type="text"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-            required
-            pattern="\d{6}"
-            style={{ display: "block", width: "100%", padding: 10, margin: "8px 0 16px", letterSpacing: 4 }}
-          />
-          <button
-            type="submit"
-            disabled={loading || code.length !== 6}
-            style={{ display: "block", width: "100%", padding: 12, marginTop: 16, background: "#4F46E5", color: "#fff", border: 0, borderRadius: 8 }}
-          >
-            {loading ? "Verifying…" : "Verify"}
-          </button>
-        </form>
-      )}
+          {step === "login" && (
+            <form onSubmit={handleLogin} className="mt-6 space-y-4">
+              <div>
+                <label htmlFor="identifier" className="mb-1.5 block text-sm font-medium text-text-main">
+                  ইমেইল / ফোন
+                </label>
+                <input
+                  id="identifier"
+                  type="text"
+                  autoComplete="username"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  required
+                  className="h-12 w-full rounded-xl border border-border bg-bg-app px-4 text-sm text-text-main outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+                  placeholder="owner@example.com"
+                />
+              </div>
+              <div>
+                <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-text-main">
+                  পাসওয়ার্ড
+                </label>
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  className="h-12 w-full rounded-xl border border-border bg-bg-app px-4 text-sm text-text-main outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+                  placeholder="••••••••"
+                />
+              </div>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-text-muted">
+                <input
+                  type="checkbox"
+                  checked={showPassword}
+                  onChange={(e) => setShowPassword(e.target.checked)}
+                  className="h-4 w-4 rounded border-border accent-[#4F46E5]"
+                />
+                পাসওয়ার্ড দেখুন
+              </label>
+              <button
+                type="submit"
+                disabled={loading}
+                className="brand-gradient h-12 w-full rounded-xl text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
+              >
+                {loading ? "লগইন হচ্ছে…" : "লগইন"}
+              </button>
+            </form>
+          )}
 
-      {message !== "" && (
-        <p role="alert" style={{ color: "#E11D48", marginTop: 16 }}>
-          {message}
-        </p>
-      )}
-      {step === "error" && (
-        <button type="button" onClick={() => setStep("login")} style={{ marginTop: 12 }}>
-          Back to login
-        </button>
-      )}
-      <p style={{ fontSize: 13, color: "#555", marginTop: 24 }}>
-        Rate limit: 5 bar bhul login korle account 30 minute lock hobe. Suspicious login hole admin ke janano hobe.
-      </p>
+          {step === "totp" && (
+            <form onSubmit={handleTotp} className="mt-6 space-y-4">
+              <div>
+                <label htmlFor="code" className="mb-1.5 block text-sm font-medium text-text-main">
+                  2FA কোড (৬ সংখ্যা, authenticator app থেকে)
+                </label>
+                <input
+                  id="code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  required
+                  pattern="\d{6}"
+                  className="h-12 w-full rounded-xl border border-border bg-bg-app px-4 text-center text-lg tracking-[0.5em] text-text-main outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading || code.length !== 6}
+                className="brand-gradient h-12 w-full rounded-xl text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
+              >
+                {loading ? "যাচাই হচ্ছে…" : "যাচাই করুন"}
+              </button>
+            </form>
+          )}
+
+          {message !== "" && (
+            <p role="alert" className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
+              {message}
+            </p>
+          )}
+          {step === "error" && (
+            <button
+              type="button"
+              onClick={() => setStep("login")}
+              className="mt-3 text-sm font-medium text-brand-600 hover:underline"
+            >
+              লগইনে ফিরে যান
+            </button>
+          )}
+          <p className="mt-6 border-t border-border pt-4 text-xs leading-relaxed text-text-subtle">
+            নিরাপত্তা: ৫ বার ভুল লগইন করলে অ্যাকাউন্ট ৩০ মিনিটের জন্য লক হবে। সন্দেহজনক লগইন হলে অ্যাডমিনকে জানানো হবে।
+          </p>
+          <p className="mt-3 text-xs text-text-subtle">
+            <a href="/" className="font-medium text-brand-600 hover:underline">
+              ← দোকানে ফিরে যান
+            </a>
+          </p>
+        </div>
+      </section>
     </main>
   );
 }

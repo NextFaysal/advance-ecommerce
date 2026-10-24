@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { headers } from "next/headers";
 import { ADMIN_NAV, groupBySection, isLockedAddOn } from "@/admin-nav/config";
 import { CommandPalette } from "@/command-palette";
 
@@ -11,7 +12,13 @@ const mobileNav = ADMIN_NAV.filter((item) =>
   ["/admin", "/admin/orders", "/admin/products", "/admin/customers", "/admin/modules"].includes(item.path),
 );
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  // Auth screens (login / 2FA) render WITHOUT the admin shell: an
+  // unauthenticated visitor must never see the navigation or topbar.
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  if (pathname.startsWith("/admin/login")) {
+    return <div className="min-h-screen bg-bg-app text-text-main">{children}</div>;
+  }
   return (
     <div className="min-h-screen bg-bg-app text-text-main">
       <CommandPalette />

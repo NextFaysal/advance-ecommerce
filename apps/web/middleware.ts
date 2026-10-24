@@ -24,7 +24,11 @@ export function middleware(req: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
   }
-  return NextResponse.next();
+  // Expose the pathname so layouts can adapt (the admin layout renders
+  // a bare auth screen for /admin/login instead of the full shell).
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-pathname", pathname);
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {

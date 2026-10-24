@@ -14,22 +14,17 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="bn">
-      {/* Self-hosted font preloads: the two critical first-paint faces
-          (Latin UI 400 + Bangla UI 400). Faces are declared in
-          src/styles/fonts.css; files live in public/fonts/. */}
+      {/* Brand fonts via Google Fonts CDN. The self-hosted woff2 files
+          exist locally (public/fonts/) but are NOT in the deployed repo
+          (binary files could not be pushed), so production rendered in
+          fallback fonts. Until the binaries reach the repo by a real
+          git push, the CDN faces below are the live source; family
+          names match src/styles/fonts.css and the --font-* tokens. */}
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       <link
-        rel="preload"
-        href="/fonts/plus-jakarta-sans/plus-jakarta-sans-variable-latin.woff2"
-        as="font"
-        type="font/woff2"
-        crossOrigin="anonymous"
-      />
-      <link
-        rel="preload"
-        href="/fonts/hind-siliguri/hind-siliguri-400-bengali.woff2"
-        as="font"
-        type="font/woff2"
-        crossOrigin="anonymous"
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200..800&family=Hind+Siliguri:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;700&family=JetBrains+Mono:wght@400..800&display=swap"
+        rel="stylesheet"
       />
       <body>
         <RegisterSW />
