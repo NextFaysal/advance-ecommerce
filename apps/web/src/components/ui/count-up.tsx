@@ -14,23 +14,38 @@ import { useEffect, useRef, useState } from "react";
  * `value` changes while idle/finished, the display follows it; mid-run
  * it lands on the latest value.
  *
- * `format` renders every frame — the default groups digits en-IN style
- * (1,25,000). Pass a formatter for money / Bengali digits, e.g.
- *   <CountUp value={totalPoisha} format={(n) => formatMoney(n)} />
+ * `format` selects a built-in formatter — it MUST stay a serializable
+ * string union, never a function: this component is a client component
+ * and server components cannot pass functions across the RSC boundary
+ * (doing so crashed /admin at runtime — "Functions cannot be passed
+ * directly to Client Components"). Variants: "number" groups digits
+ * en-IN style (1,25,000); "poisha" renders money via formatPoisha;
+ * "plain" is a bare rounded integer.
  */
+import { formatPoisha } from "./money";
+
 const defaultFormat = (n: number): string => Math.round(n).toLocaleString("en-IN");
+
+const FORMATTERS = {
+  number: defaultFormat,
+  poisha: formatPoisha,
+  plain: (n: number): string => String(Math.round(n)),
+} as const;
+
+export type CountUpFormat = keyof typeof FORMATTERS;
 
 export function CountUp({
   value,
-  format = defaultFormat,
+  format = "number",
   durationMs = 900,
   className = "",
 }: {
   value: number;
-  format?: (n: number) => string;
+  format?: CountUpFormat;
   durationMs?: number;
   className?: string;
 }) {
+  const formatValue = FORMATTERS[format];
   const ref = useRef<HTMLSpanElement | null>(null);
   const valueRef = useRef(value);
   const phaseRef = useRef<"idle" | "running" | "done">("idle");
@@ -85,7 +100,7 @@ export function CountUp({
 
   return (
     <span ref={ref} className={className}>
-      {format(display)}
+      {formatValue(display)}
     </span>
   );
 }

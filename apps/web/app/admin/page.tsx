@@ -230,24 +230,24 @@ export default async function AdminHome() {
 
       {/* KPI row */}
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="মোট বিক্রয় (৩০ দিন)" value={<CountUp value={totals.revenuePoisha} format={formatPoisha} />} icon="Banknote" accent="bg-brand-50 text-brand-600">
+        <KpiCard label="মোট বিক্রয় (৩০ দিন)" value={<CountUp value={totals.revenuePoisha} format="poisha" />} icon="Banknote" accent="bg-brand-50 text-brand-600">
           <PeriodStrip items={[
             { label: "আজ", value: formatPoisha(data.today.revenuePoisha) },
             { label: "সপ্তাহ", value: formatPoisha(data.week.revenuePoisha) },
           ]} />
         </KpiCard>
-        <KpiCard label="অর্ডার (৩০ দিন)" value={<CountUp value={totals.orders} format={(n) => String(Math.round(n))} />} icon="ShoppingCart" accent="bg-violet-500/10 text-violet-600">
+        <KpiCard label="অর্ডার (৩০ দিন)" value={<CountUp value={totals.orders} format="plain" />} icon="ShoppingCart" accent="bg-violet-500/10 text-violet-600">
           <PeriodStrip items={[
             { label: "আজ", value: `${data.today.orders}টি` },
             { label: "সপ্তাহ", value: `${data.week.orders}টি` },
           ]} />
         </KpiCard>
-        <KpiCard label="মোট লাভ (৩০ দিন)" value={<CountUp value={totals.grossProfitPoisha} format={formatPoisha} />} icon="TrendingUp" accent="bg-emerald-50 text-emerald-600">
+        <KpiCard label="মোট লাভ (৩০ দিন)" value={<CountUp value={totals.grossProfitPoisha} format="poisha" />} icon="TrendingUp" accent="bg-emerald-50 text-emerald-600">
           <p className="mt-3 border-t border-border pt-3 text-caption text-text-muted">
             নিট আয় {formatPoisha(totals.netRevenuePoisha)} · বিক্রিত পণ্য {totals.units}টি
           </p>
         </KpiCard>
-        <KpiCard label="গড় অর্ডার মূল্য" value={<CountUp value={aovPoisha} format={formatPoisha} />} icon="Calculator" accent="bg-sky-50 text-sky-600">
+        <KpiCard label="গড় অর্ডার মূল্য" value={<CountUp value={aovPoisha} format="poisha" />} icon="Calculator" accent="bg-sky-50 text-sky-600">
           <p className="mt-3 border-t border-border pt-3 text-caption text-text-muted">
             রিফান্ড {formatPoisha(totals.refundPoisha)} · শিপিং চার্জ {formatPoisha(totals.shippingPoisha)}
           </p>
