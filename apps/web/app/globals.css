@@ -1,0 +1,98 @@
+@import "../src/styles/fonts.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* D0 tokens — Part II wins on conflict. No component may use a hex/spacing/shadow outside these tokens. */
+:root {
+  --background: 230 60% 98%;
+  --foreground: 238 28% 16%;
+  --card: 0 0% 100%;
+  --card-foreground: 238 28% 16%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 238 28% 16%;
+  --primary: 243 75% 59%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 226 100% 97%;
+  --secondary-foreground: 243 75% 40%;
+  --muted: 232 45% 96%;
+  --muted-foreground: 233 14% 42%;
+  --accent: 258 90% 66%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 347 77% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 161 94% 30%;
+  --warning: 32 95% 44%;
+  --info: 201 98% 37%;
+  --border: 230 35% 93%;
+  --input: 230 35% 90%;
+  --ring: 239 84% 67%;
+  --radius: 0.75rem;
+  --brand-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 55%, #ec4899 100%);
+  --brand-soft-gradient: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%);
+  --font-sans: "Plus Jakarta Sans", "Hind Siliguri", "Noto Sans Bengali", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+.dark {
+  --background: 236 37% 9%;
+  --foreground: 236 100% 96%;
+  --card: 238 33% 14%;
+  --card-foreground: 236 100% 96%;
+  --popover: 238 33% 14%;
+  --popover-foreground: 236 100% 96%;
+  --primary: 239 84% 67%;
+  --primary-foreground: 236 37% 9%;
+  --secondary: 238 30% 20%;
+  --secondary-foreground: 236 100% 90%;
+  --muted: 238 30% 18%;
+  --muted-foreground: 234 25% 70%;
+  --accent: 258 90% 70%;
+  --accent-foreground: 236 37% 9%;
+  --destructive: 349 90% 62%;
+  --border: 236 31% 24%;
+  --input: 236 31% 24%;
+  --ring: 239 84% 72%;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-size: 14px;
+    line-height: 1.57;
+  }
+  /* Bangla tuning: line-height >= 1.6, letter-spacing 0, never uppercase. */
+  .bangla,
+  [lang="bn"] {
+    line-height: 1.6;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  * {
+    outline-color: hsl(var(--ring));
+  }
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .brand-gradient {
+    background-image: var(--brand-gradient);
+  }
+  .brand-soft-gradient {
+    background-image: var(--brand-soft-gradient);
+  }
+  /* Motion tokens (Part II): transform/opacity only, max 400ms in workflows. */
+  .motion-fast { transition-duration: 150ms; }
+  .motion-base { transition-duration: 220ms; }
+  @media (prefers-reduced-motion: reduce) {
+    .motion-fast, .motion-base { transition-duration: 0ms; }
+  }
+}

@@ -1,0 +1,104 @@
+// Media pipeline outline — Agent 8 (Step 9 contract).
+// No real upload happens here and no credential is read or stored.
+// R2 is S3-compatible; the real upload (signed URL / direct upload +
+// WebP/AVIF encode + thumbnail) is wired by the storage adapter owner.
+// What this module DOES define, so admin + storefront agree:
+//  - R2 key layout, CDN URL derivation, variant derivation names
+//  - sortOrder reorder (drag-reorder in admin), per-variant image pick
+//  - validation: allowed types, max size, alt text required for SEO
+
+export interface MediaVariant {
+  /** e.g. "thumb" 320w, "medium" 800w, "large" 1600w, "original" */
+  name: "thumb" | "medium" | "large" | "original";
+  url: string;
+  width: number;
+  format: "webp" | "avif" | "original";
+}
+
+export interface MediaAsset {
+  key: string; // R2 object key, e.g. products/<productId>/<file>.webp
+  originalUrl: string;
+  cdnUrl: string;
+  altBn: string;
+  altEn: string;
+  sortOrder: number;
+  variants: MediaVariant[];
+}
+
+const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB original, before encode
+
+export function validateMediaFile(input: { mime: string; sizeBytes: number; altBn: string; altEn: string }): string[] {
+  const errors: string[] = [];
+  if (!ALLOWED_MIME.has(input.mime)) errors.push(`Unsupported image type: ${input.mime}`);
+  if (input.sizeBytes <= 0 || input.sizeBytes > MAX_IMAGE_BYTES) errors.push("Image must be > 0 and <= 10 MB");
+  if (!input.altBn.trim() && !input.altEn.trim()) errors.push("Alt text (bn or en) is required");
+  return errors;
+}
+
+/** R2 key layout — deterministic, no user input in the path except a slugified filename. */
+export function buildR2Key(productSlug: string, filename: string): string {
+  const safe = filename.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return `products/${productSlug}/${Date.now()}-${safe || "image"}`;
+}
+
+/**
+ * Derive CDN URLs for one stored asset. This is a pure URL builder:
+ * it does NOT upload, encode, or call R2. The storage adapter must
+ * produce exactly these variant files (WebP primary, AVIF where the
+ * encoder supports it) or the storefront will 404 on a variant URL.
+ */
+export function buildMediaVariants(input: {
+  cdnBaseUrl: string; // from Admin > Settings > Storage (CDN URL), env fallback only
+  key: string; // R2 key without extension handling — base name
+  altBn: string;
+  altEn: string;
+  sortOrder: number;
+}): MediaAsset {
+  const base = input.cdnBaseUrl.replace(/\/+$/, "");
+  const stem = input.key.replace(/\.[a-z0-9]+$/i, "");
+  const variants: MediaVariant[] = [
+    { name: "thumb", url: `${base}/${stem}-thumb.webp`, width: 320, format: "webp" },
+    { name: "medium", url: `${base}/${stem}-medium.webp`, width: 800, format: "webp" },
+    { name: "large", url: `${base}/${stem}-large.webp`, width: 1600, format: "webp" },
+    { name: "original", url: `${base}/${input.key}`, width: 0, format: "original" },
+  ];
+  return {
+    key: input.key,
+    originalUrl: `${base}/${input.key}`,
+    cdnUrl: `${base}/${stem}-medium.webp`,
+    altBn: input.altBn,
+    altEn: input.altEn,
+    sortOrder: input.sortOrder,
+    variants,
+  };
+}
+
+/** Drag-reorder: given ordered image ids, return new sortOrder values (0..n-1). */
+export function reorderImages(orderedIds: string[]): { id: string; sortOrder: number }[] {
+  return orderedIds.map((id, index) => ({ id, sortOrder: index }));
+}
+
+/** Per-variant image: variant imageUrl wins, otherwise first product image, otherwise null. */
+export function resolveVariantImage(
+  variantImageUrl: string | null,
+  productImages: { url: string; sortOrder: number }[],
+): string | null {
+  if (variantImageUrl) return variantImageUrl;
+  const sorted = [...productImages].sort((a, b) => a.sortOrder - b.sortOrder);
+  return sorted[0]?.url ?? null;
+}
+
+/** Signed-upload request shape (storage adapter implements it; no key here). */
+export interface SignedUploadRequest {
+  productSlug: string;
+  filename: string;
+  mime: string;
+  sizeBytes: number;
+}
+export interface SignedUploadResponse {
+  /** Client uploads directly to this URL; server never proxies the bytes. */
+  uploadUrl: string;
+  key: string;
+  expiresInSeconds: number;
+}

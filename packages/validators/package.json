@@ -1,0 +1,1 @@
+{"devDependencies":{"typescript":"^5.6.0"},"main":"./src/index.ts","name":"@advance-ecommerce/validators","scripts":{"typecheck":"tsc --noEmit"},"types":"./src/index.ts","version":"0.1.0"}

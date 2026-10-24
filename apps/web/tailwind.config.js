@@ -1,0 +1,50 @@
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: ["./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
+  darkMode: ["class"],
+  theme: {
+    extend: {
+      colors: {
+        brand: {
+          50: "#EEF2FF", 100: "#E0E7FF", 200: "#C7D2FE", 300: "#A5B4FC",
+          400: "#818CF8", 500: "#6366F1", 600: "#4F46E5", 700: "#4338CA",
+          800: "#3730A3", 900: "#312E81",
+        },
+        violet: { 500: "#8B5CF6", 600: "#7C3AED" },
+        pink: { 500: "#EC4899" },
+        amber: { 500: "#F59E0B" },
+        emerald: { 500: "#10B981" },
+        sky: { 500: "#0EA5E9" },
+        rose: { 500: "#F43F5E" },
+        teal: { 500: "#14B8A6" },
+        orange: { 500: "#F97316" },
+        success: "hsl(var(--success))",
+        warning: "hsl(var(--warning))",
+        info: "hsl(var(--info))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        card: "hsl(var(--card))",
+        muted: "hsl(var(--muted))",
+        border: "hsl(var(--border))",
+        surface: "#FFFFFF",
+        "surface-2": "#F3F4FB",
+        "bg-app": "#F8F9FD",
+        "text-main": "#1F2037",
+        "text-muted": "#5B5F7A",
+        "text-subtle": "#8A8EA8",
+      },
+      borderRadius: { sm: "8px", md: "12px", lg: "16px", xl: "20px" },
+      boxShadow: {
+        sm: "0 1px 2px rgba(79,70,229,0.06)",
+        md: "0 4px 12px rgba(79,70,229,0.08)",
+        lg: "0 12px 32px rgba(49,46,129,0.14)",
+      },
+      fontFamily: {
+        sans: ["var(--font-sans)"],
+        mono: ["var(--font-mono)"],
+      },
+      spacing: { 4: "4px", 8: "8px", 12: "12px", 16: "16px", 20: "20px", 24: "24px", 32: "32px", 40: "40px", 48: "48px", 64: "64px" },
+    },
+  },
+  plugins: [],
+};

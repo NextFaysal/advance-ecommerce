@@ -1,0 +1,28 @@
+# Local dev only — production e alada managed service use hobe (Nazmul bolle)
+# No real credentials here. Local default gulo sudhu local Docker er jonno.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ecommerce
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+  meilisearch:
+    image: getmeili/meilisearch:latest
+    environment:
+      MEILI_MASTER_KEY: local-dev-only
+    ports:
+      - "7700:7700"
+    volumes:
+      - meili:/meili_data
+volumes:
+  pgdata:
+  meili:
