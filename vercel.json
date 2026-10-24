@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "DATABASE_URL=$DATABASE_URL_UNPOOLED pnpm --filter @advance-ecommerce/db exec prisma migrate deploy && pnpm --filter @advance-ecommerce/db db:generate && pnpm --filter web build && cp node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/.prisma/client/libquery_engine-*.so.node apps/web/.next/server/",
+  "buildCommand": "bash scripts/vercel-build.sh",
   "framework": "nextjs",
   "installCommand": "pnpm install --frozen-lockfile",
   "regions": [
