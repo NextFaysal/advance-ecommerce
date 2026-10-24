@@ -4,81 +4,55 @@ import { DataTable } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Money, formatPoisha } from "@/components/ui/money";
 import { Phone } from "@/components/ui/phone";
+import { Icon } from "@/components/ui/icon";
 import { demoVendorFlags } from "@/vendors/flags";
-import { demoVendorStore } from "@/vendors/store";
-import { computeCommission, summarizePayout } from "@/vendors/service";
-import type { Vendor, VendorProduct } from "@/vendors/types";
+import { vendorStore } from "@/vendors/db-store";
+import { summarizePayout } from "@/vendors/service";
+import type { VendorPayoutSummary } from "@/vendors/types";
 
-// Multi-vendor admin — Agent 25, Step 48 (A12).
+// Multi-vendor admin — Step 48 (A12).
 // Locked state: while module.multi_vendor is OFF (seeded default, paid
 // add-on), the page renders the lock panel, matching the vendor API's
-// 403 FEATURE_LOCKED. When unlocked: vendors come from the Agent 16 demo
-// store plus page-local SAMPLE rows (labelled); the payout summary is
-// computed with the real computeCommission()/summarizePayout() — those
-// assert the flag, which is why they only run in the unlocked branch.
-// Commission is basis points, floored to whole poisha; refunds reduce
-// the payout and it never goes below zero. Phones masked via <Phone>.
+// 403 FEATURE_LOCKED. When unlocked, EVERYTHING below is real DB data
+// read server-side from the Prisma vendor store (src/vendors/db-store):
+// vendors (Vendor), listings (VendorProduct), commission lines
+// (VendorCommissionLine, written by the delivered-order hook) and
+// refund chargebacks (VendorRefund). Payout summaries are computed
+// with the real summarizePayout() — commission in basis points,
+// floored to whole poisha; refunds reduce the payout and it never
+// goes below zero. Phones masked via <Phone>.
+// Known data limit (stated on the page too): the Vendor table stores
+// one `name` (the shop name) — ownerName is accepted by the create
+// API but is NOT persisted separately, so it reads back empty and the
+// table shows "—" instead of inventing a name.
+export const dynamic = "force-dynamic";
 
-const SAMPLE_VENDORS: Vendor[] = [
-  {
-    id: "vendor_sample_active",
-    shopName: "SAMPLE Active Gadget Shop",
-    ownerName: "Demo Seller",
-    phone: "+8801700000021",
-    status: "ACTIVE",
-    commissionBps: 1200,
-    createdAt: "2026-09-05T00:00:00.000Z",
-  },
-  {
-    id: "vendor_sample_suspended",
-    shopName: "SAMPLE Suspended Fashion",
-    ownerName: "Demo Seller",
-    phone: "+8801700000022",
-    status: "SUSPENDED",
-    commissionBps: 1000,
-    createdAt: "2026-08-12T00:00:00.000Z",
-  },
-];
+const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "neutral"> = {
+  ACTIVE: "success",
+  PENDING: "warning",
+  SUSPENDED: "danger",
+  REJECTED: "neutral",
+};
+const STATUS_LABEL: Record<string, string> = {
+  ACTIVE: "সক্রিয় (ACTIVE)",
+  PENDING: "অপেক্ষমাণ (PENDING)",
+  SUSPENDED: "স্থগিত (SUSPENDED)",
+  REJECTED: "প্রত্যাখ্যাত (REJECTED)",
+};
+const APPROVAL_TONE: Record<string, "success" | "warning" | "info" | "danger"> = {
+  APPROVED: "success",
+  PENDING_REVIEW: "warning",
+  CHANGES_REQUESTED: "info",
+  REJECTED: "danger",
+};
 
-const SAMPLE_PRODUCTS: VendorProduct[] = [
-  {
-    id: "vprod_sample_review",
-    vendorId: "vendor_sample_active",
-    productName: "SAMPLE Wireless Earbuds",
-    sku: "SAMPLE-VP-101",
-    pricePoisha: 185000,
-    approval: "PENDING_REVIEW",
-  },
-  {
-    id: "vprod_sample_approved",
-    vendorId: "vendor_sample_active",
-    productName: "SAMPLE Phone Case",
-    sku: "SAMPLE-VP-102",
-    pricePoisha: 45000,
-    approval: "APPROVED",
-  },
-  {
-    id: "vprod_sample_changes",
-    vendorId: "vendor_demo_1",
-    productName: "SAMPLE Vendor Product",
-    sku: "SAMPLE-VP-1",
-    pricePoisha: 45000,
-    approval: "CHANGES_REQUESTED",
-    rejectionReason: "SAMPLE: ছবি ও বিবরণ হালনাগাদ প্রয়োজন",
-  },
-];
-
-/** Demo gross order amounts (poisha) for the payout vendor. */
-const SAMPLE_GROSS_POISHA: readonly number[] = [250000, 185000, 99000];
-const SAMPLE_REFUNDS_POISHA = 5000;
-
-export default function AdminVendorsPage() {
+export default async function AdminVendorsPage() {
   if (!demoVendorFlags.isEnabled("module.multi_vendor")) {
     return (
       <main>
         <PageHeader title="ভেন্ডর (মাল্টি-ভেন্ডর)" description="Vendor management, approvals and payouts (A12)" />
         <p role="status">
-          🔒 এই মডিউলটি এই ইনস্টলে লক করা আছে। মাল্টি-ভেন্ডর একটি পেইড অ্যাড-অন —
+          এই মডিউলটি এই ইনস্টলে লক করা আছে। মাল্টি-ভেন্ডর একটি পেইড অ্যাড-অন —
           খুলতে Admin &gt; Settings থেকে <code>module.multi_vendor</code> ফিচার ফ্ল্যাগ চালু করুন।
           (This module is locked — enable the <code>module.multi_vendor</code> feature flag to unlock it.)
         </p>
@@ -86,117 +60,160 @@ export default function AdminVendorsPage() {
     );
   }
 
-  const vendors: Vendor[] = [...demoVendorStore.listVendors(), ...SAMPLE_VENDORS];
-  const products: VendorProduct[] = [...demoVendorStore.listProducts(), ...SAMPLE_PRODUCTS];
-  const shopName = (id: string) => vendors.find((v) => v.id === id)?.shopName ?? id;
-  const pendingProducts = products.filter((p) => p.approval === "PENDING_REVIEW");
-
-  const payoutVendor = SAMPLE_VENDORS[0] as Vendor;
-  const commissionLines = SAMPLE_GROSS_POISHA.map((gross, i) =>
-    computeCommission(`order_sample_${i + 1}`, payoutVendor, gross),
+  const vendors = await vendorStore.listVendors();
+  const products = await vendorStore.listProducts();
+  const payouts: { vendorId: string; summary: VendorPayoutSummary }[] = await Promise.all(
+    vendors.map(async (v) => ({
+      vendorId: v.id,
+      summary: summarizePayout(
+        v.id,
+        await vendorStore.listCommissionLines(v.id),
+        await vendorStore.refundsPoisha(v.id),
+      ),
+    })),
   );
-  const payout = summarizePayout(payoutVendor.id, commissionLines, SAMPLE_REFUNDS_POISHA);
+  const payoutOf = (id: string) => payouts.find((p) => p.vendorId === id)?.summary;
+  const shopName = (id: string) => vendors.find((v) => v.id === id)?.shopName ?? id;
+  const productCountOf = (id: string) => products.filter((p) => p.vendorId === id).length;
+
+  const pendingProducts = products.filter((p) => p.approval === "PENDING_REVIEW");
+  const totalGross = payouts.reduce((s, p) => s + p.summary.grossPoisha, 0);
+  const totalNet = payouts.reduce((s, p) => s + p.summary.netPayablePoisha, 0);
+  const totalLines = payouts.reduce((s, p) => s + p.summary.orderCount, 0);
 
   const vendorRows = vendors.map((v) => ({
     shop: <span className="font-medium">{v.shopName}</span>,
-    owner: v.ownerName,
+    owner: v.ownerName !== "" ? v.ownerName : "—",
     phone: <Phone phone={v.phone} />,
     commission: `${(v.commissionBps / 100).toFixed(1)}%`,
+    products: <span className="font-mono tabular-nums">{productCountOf(v.id)}</span>,
     status: (
-      <Badge
-        tone={
-          v.status === "ACTIVE"
-            ? "success"
-            : v.status === "PENDING"
-              ? "warning"
-              : v.status === "SUSPENDED"
-                ? "danger"
-                : "neutral"
-        }
-      >
-        {v.status}
-      </Badge>
+      <Badge tone={STATUS_TONE[v.status] ?? "neutral"}>{STATUS_LABEL[v.status] ?? v.status}</Badge>
     ),
   }));
 
   const productRows = products.map((p) => ({
     product: <span className="font-medium">{p.productName}</span>,
-    sku: <span className="font-mono">{p.sku}</span>,
+    sku: <span className="font-mono text-xs">{p.sku}</span>,
     shop: shopName(p.vendorId),
     price: <Money poisha={p.pricePoisha} />,
     approval: (
-      <Badge
-        tone={
-          p.approval === "APPROVED"
-            ? "success"
-            : p.approval === "PENDING_REVIEW"
-              ? "warning"
-              : p.approval === "CHANGES_REQUESTED"
-                ? "info"
-                : "danger"
-        }
-      >
-        {p.approval}
-      </Badge>
+      <Badge tone={APPROVAL_TONE[p.approval] ?? "warning"}>{p.approval}</Badge>
     ),
     note: p.rejectionReason ?? "—",
+  }));
+
+  const payoutRows = payouts.map(({ vendorId, summary }) => ({
+    shop: <span className="font-medium">{shopName(vendorId)}</span>,
+    orders: <span className="font-mono tabular-nums">{summary.orderCount}</span>,
+    gross: <Money poisha={summary.grossPoisha} />,
+    commission: <Money poisha={summary.commissionPoisha} />,
+    refunds: <Money poisha={summary.refundsPoisha} />,
+    net: (
+      <span className="font-semibold">
+        <Money poisha={summary.netPayablePoisha} />
+      </span>
+    ),
   }));
 
   return (
     <main>
       <PageHeader
         title="ভেন্ডর (মাল্টি-ভেন্ডর)"
-        description="TEMPORARY DEMO — ডেমো স্টোর + নমুনা (SAMPLE) সারি। কমিশন ও পেআউট আসল সার্ভিস ফাংশন দিয়ে হিসাব করা; ফোন মুখোশ করা। (Vendors)"
+        description="আসল ডেটা — Vendor, VendorProduct, VendorCommissionLine ও VendorRefund টেবিল থেকে। কমিশন ও পেআউট আসল সার্ভিস ফাংশন দিয়ে হিসাব করা; ফোন মাস্ক করা। (Vendors)"
         breadcrumb="Admin / Add-on Modules"
       />
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="ভেন্ডর (ডেমো)" value={String(vendors.length)} delta={`${vendors.filter((v) => v.status === "ACTIVE").length} সক্রিয়`} icon="🏪" />
-        <StatCard label="পণ্য রিভিউ বাকি" value={String(pendingProducts.length)} delta="অনুমোদনের সারিতে" deltaTone="down" icon="🔎" />
-        <StatCard label="পেআউট — মোট বিক্রি (নমুনা)" value={formatPoisha(payout.grossPoisha)} delta={`${payout.orderCount}টি অর্ডার`} icon="🧾" />
-        <StatCard label="পেআউট — নিট পাওনা" value={formatPoisha(payout.netPayablePoisha)} delta="কমিশন ও রিফান্ড বাদে" icon="৳" />
+        <StatCard
+          label="মোট ভেন্ডর"
+          value={String(vendors.length)}
+          delta={`${vendors.filter((v) => v.status === "ACTIVE").length} সক্রিয়`}
+          icon={<Icon name="store" size={22} />}
+        />
+        <StatCard
+          label="পণ্য রিভিউ বাকি"
+          value={String(pendingProducts.length)}
+          delta="অনুমোদনের সারিতে"
+          deltaTone="down"
+          icon={<Icon name="package" size={22} />}
+        />
+        <StatCard
+          label="মোট বিক্রি (সব ভেন্ডর)"
+          value={formatPoisha(totalGross)}
+          delta={`${totalLines}টি কমিশন লাইন`}
+          icon={<Icon name="chart" size={22} />}
+        />
+        <StatCard
+          label="নিট পাওনা (সব ভেন্ডর)"
+          value={formatPoisha(totalNet)}
+          delta="কমিশন ও রিফান্ড বাদে"
+          icon={<Icon name="banknote" size={22} />}
+        />
       </div>
 
       <h2 className="mb-3 text-lg font-semibold">ভেন্ডর তালিকা</h2>
-      <DataTable
-        caption="ভেন্ডর — শুধু ACTIVE ভেন্ডরের APPROVED পণ্যই স্টোরফ্রন্টে বিক্রি হয় (isSellable নিয়ম)"
-        columns={[
-          { key: "shop", header: "দোকান" },
-          { key: "owner", header: "মালিক" },
-          { key: "phone", header: "ফোন" },
-          { key: "commission", header: "কমিশন" },
-          { key: "status", header: "অবস্থা" },
-        ]}
-        rows={vendorRows}
-      />
+      {vendors.length === 0 ? (
+        <div className="rounded-lg border border-border bg-card px-6 py-12 text-center shadow-card">
+          <h3 className="text-h3">কোনো ভেন্ডর নেই</h3>
+          <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
+            ডাটাবেসে এখনো কোনো ভেন্ডর যোগ হয়নি। Vendor API (POST /api/v1/admin/vendors) দিয়ে
+            প্রথম ভেন্ডর তৈরি করলেই এখানে দেখা যাবে।
+          </p>
+        </div>
+      ) : (
+        <DataTable
+          caption="ভেন্ডর — শুধু ACTIVE ভেন্ডরের APPROVED পণ্যই স্টোরফ্রন্টে বিক্রি হয় (isSellable নিয়ম)। মালিকের নাম DB-তে আলাদা করে সংরক্ষিত হয় না, তাই না থাকলে '—' দেখানো হয়।"
+          columns={[
+            { key: "shop", header: "দোকান" },
+            { key: "owner", header: "মালিক" },
+            { key: "phone", header: "ফোন" },
+            { key: "commission", header: "কমিশন" },
+            { key: "products", header: "পণ্য" },
+            { key: "status", header: "অবস্থা" },
+          ]}
+          rows={vendorRows}
+        />
+      )}
 
       <h2 className="mb-3 mt-8 text-lg font-semibold">পণ্য অনুমোদন</h2>
-      <DataTable
-        caption="পণ্য অনুমোদনের সারি — অনুমোদিত পণ্যে সম্পাদনা হলেই আবার PENDING_REVIEW-তে ফেরে; সিদ্ধান্ত Vendor API দিয়ে"
-        columns={[
-          { key: "product", header: "পণ্য" },
-          { key: "sku", header: "SKU" },
-          { key: "shop", header: "দোকান" },
-          { key: "price", header: "দাম" },
-          { key: "approval", header: "অনুমোদন" },
-          { key: "note", header: "নোট / কারণ" },
-        ]}
-        rows={productRows}
-      />
+      {products.length === 0 ? (
+        <p className="rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
+          কোনো ভেন্ডর পণ্য এখনো জমা পড়েনি — ভেন্ডর পণ্য যোগ করলে অনুমোদনের সারিতে এখানে দেখা যাবে।
+        </p>
+      ) : (
+        <DataTable
+          caption="পণ্য অনুমোদনের সারি — অনুমোদিত পণ্যে সম্পাদনা হলেই আবার PENDING_REVIEW-তে ফেরে; সিদ্ধান্ত Vendor API দিয়ে"
+          columns={[
+            { key: "product", header: "পণ্য" },
+            { key: "sku", header: "SKU" },
+            { key: "shop", header: "দোকান" },
+            { key: "price", header: "দাম" },
+            { key: "approval", header: "অনুমোদন" },
+            { key: "note", header: "নোট / কারণ" },
+          ]}
+          rows={productRows}
+        />
+      )}
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">পেআউট সারাংশ — {payoutVendor.shopName} (নমুনা)</h2>
-      <DataTable
-        caption="পেআউট = মোট বিক্রি − কমিশন − রিফান্ড; কখনো শূন্যের নিচে নয় (summarizePayout)"
-        columns={[
-          { key: "label", header: "খাত" },
-          { key: "amount", header: "পরিমাণ" },
-        ]}
-        rows={[
-          { label: "মোট বিক্রি (gross)", amount: <Money poisha={payout.grossPoisha} /> },
-          { label: `কমিশন (${(payoutVendor.commissionBps / 100).toFixed(1)}%)`, amount: <Money poisha={payout.commissionPoisha} /> },
-          { label: "রিফান্ড (বাদ)", amount: <Money poisha={payout.refundsPoisha} /> },
-          { label: <span className="font-semibold">নিট পাওনা</span>, amount: <Money poisha={payout.netPayablePoisha} /> },
-        ]}
-      />
+      <h2 className="mb-3 mt-8 text-lg font-semibold">পেআউট সারাংশ — ভেন্ডর অনুযায়ী</h2>
+      {vendors.length === 0 ? (
+        <p className="rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
+          ভেন্ডর না থাকায় পেআউট সারাংশ নেই। ডেলিভার্ড অর্ডার থেকে কমিশন লাইন তৈরি হলেই এখানে হিসাব দেখা যাবে।
+        </p>
+      ) : (
+        <DataTable
+          caption="পেআউট = মোট বিক্রি − কমিশন − রিফান্ড; কখনো শূন্যের নিচে নয় (summarizePayout)। কমিশন লাইন আসল ডেলিভার্ড অর্ডার থেকে, রিফান্ড VendorRefund টেবিল থেকে।"
+          columns={[
+            { key: "shop", header: "দোকান" },
+            { key: "orders", header: "অর্ডার (লাইন)" },
+            { key: "gross", header: "মোট বিক্রি" },
+            { key: "commission", header: "কমিশন" },
+            { key: "refunds", header: "রিফান্ড (বাদ)" },
+            { key: "net", header: "নিট পাওনা" },
+          ]}
+          rows={payoutRows}
+        />
+      )}
     </main>
   );
 }

@@ -16,8 +16,78 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  ColumnPicker,
+  SavedViewsBar,
+  TABLE_PREFS_NOTE,
+  useHiddenColumns,
+  useSavedViews,
+  type SavedView,
+} from "../../../src/admin/table-prefs";
 
 type LoadState = "loading" | "error" | "ready";
+
+/* Table v2 remainder: client-side sort (name / orders / success rate /
+ * LTV) + saved views (search + sort) + column visibility, persisted
+ * per staff user in localStorage (see src/admin/table-prefs.tsx).
+ * Every desktop-table column except the customer name can be hidden. */
+type CustomerSortKey = "name" | "orders" | "success" | "ltv";
+type CustomerSort = { key: CustomerSortKey; dir: "asc" | "desc" };
+interface CustomerViewState {
+  search: string;
+  sort: CustomerSort | null;
+}
+const CUSTOMER_PICKER_COLUMNS = [
+  { key: "phone", label: "ফোন (মাস্ক করা)" },
+  { key: "orders", label: "অর্ডার" },
+  { key: "success", label: "সাফল্যের হার" },
+  { key: "ltv", label: "মোট কেনাকাটা (LTV)" },
+  { key: "aov", label: "গড় অর্ডার (AOV)" },
+  { key: "tags", label: "ট্যাগ" },
+] as const;
+const CUSTOMER_HIDEABLE_KEYS = CUSTOMER_PICKER_COLUMNS.map((c) => c.key);
+
+function SortTh({
+  label,
+  sortKey,
+  sort,
+  onSort,
+}: {
+  label: string;
+  sortKey: CustomerSortKey;
+  sort: CustomerSort | null;
+  onSort: (key: CustomerSortKey) => void;
+}) {
+  const active = sort?.key === sortKey;
+  return (
+    <th
+      scope="col"
+      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
+      className="px-4 py-3 text-caption font-semibold text-text-muted"
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        aria-label={`${label} অনুযায়ী সাজান`}
+        className={`flex items-center gap-1 transition motion-fast hover:text-brand-700 ${active ? "text-brand-700" : ""}`}
+      >
+        {label}
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`h-3.5 w-3.5 ${active ? "" : "opacity-40"} ${active && sort.dir === "asc" ? "rotate-180" : ""}`}
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+    </th>
+  );
+}
 
 const PROFILE_TABS = ["অর্ডার", "ঠিকানা", "ওয়ালেট ও পয়েন্ট", "নোট", "কার্যকলাপ"];
 const QUICK_ACTIONS = ["কল", "SMS", "WhatsApp", "ব্লক/আনব্লক", "নোট যোগ", "ট্যাগ যোগ"];
@@ -28,7 +98,28 @@ export default function AdminCustomersPage() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<CustomerSort | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const customerViews = useSavedViews<CustomerViewState>("customers");
+  const customerCols = useHiddenColumns("customers", CUSTOMER_HIDEABLE_KEYS);
+
+  function toggleSort(key: CustomerSortKey) {
+    setSort((prev) => {
+      if (prev?.key !== key) return { key, dir: key === "name" ? "asc" : "desc" };
+      return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
+    });
+  }
+
+  function applyCustomerView(view: SavedView<CustomerViewState>) {
+    const s = view.state;
+    setSearch(typeof s?.search === "string" ? s.search : "");
+    const savedSort = s?.sort;
+    setSort(
+      savedSort && (["name", "orders", "success", "ltv"] as string[]).includes(savedSort.key)
+        ? { key: savedSort.key, dir: savedSort.dir === "asc" ? "asc" : "desc" }
+        : null,
+    );
+  }
 
   const load = useCallback(async (initialSearch: string) => {
     setLoadState("loading");
@@ -65,11 +156,20 @@ export default function AdminCustomersPage() {
 
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    if (!needle) return customers;
-    return customers.filter(
-      (c) => c.name.toLowerCase().includes(needle) || c.tags.some((t) => t.toLowerCase().includes(needle)),
-    );
-  }, [customers, search]);
+    const filtered = !needle
+      ? customers
+      : customers.filter(
+          (c) => c.name.toLowerCase().includes(needle) || c.tags.some((t) => t.toLowerCase().includes(needle)),
+        );
+    if (!sort) return filtered;
+    const mul = sort.dir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      if (sort.key === "name") return a.name.localeCompare(b.name) * mul;
+      if (sort.key === "orders") return (a.totalOrders - b.totalOrders) * mul;
+      if (sort.key === "success") return (customerSuccessRate(a) - customerSuccessRate(b)) * mul;
+      return (a.lifetimeValuePoisha - b.lifetimeValuePoisha) * mul;
+    });
+  }, [customers, search, sort]);
 
   const selected = visible.find((c) => c.id === selectedId) ?? visible[0];
 
@@ -98,6 +198,25 @@ export default function AdminCustomersPage() {
             className="h-11 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
           />
         </div>
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3">
+          <SavedViewsBar<CustomerViewState>
+            views={customerViews.views}
+            ready={customerViews.ready}
+            currentState={{ search, sort }}
+            onApply={applyCustomerView}
+            onSave={customerViews.saveView}
+            onDelete={customerViews.deleteView}
+          />
+          <span className="ml-auto">
+            <ColumnPicker
+              columns={CUSTOMER_PICKER_COLUMNS}
+              hidden={customerCols.hidden}
+              onToggle={customerCols.toggleColumn}
+              ready={customerCols.ready}
+            />
+          </span>
+        </div>
+        <p className="mt-2 text-caption leading-relaxed text-text-subtle">{TABLE_PREFS_NOTE}</p>
       </Card>
 
       {loadState === "loading" && (
@@ -154,9 +273,25 @@ export default function AdminCustomersPage() {
           <table className="w-full min-w-[760px] border-collapse text-left text-sm">
             <thead>
               <tr className="bg-surface-2 text-left [&>th]:border-b [&>th]:border-border">
-                {["নাম", "ফোন (মাস্ক করা)", "অর্ডার", "সাফল্যের হার", "মোট কেনাকাটা (LTV)", "গড় অর্ডার (AOV)", "ট্যাগ"].map((h) => (
-                  <th key={h} scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">{h}</th>
-                ))}
+                <SortTh label="নাম" sortKey="name" sort={sort} onSort={toggleSort} />
+                {customerCols.isVisible("phone") ? (
+                  <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">ফোন (মাস্ক করা)</th>
+                ) : null}
+                {customerCols.isVisible("orders") ? (
+                  <SortTh label="অর্ডার" sortKey="orders" sort={sort} onSort={toggleSort} />
+                ) : null}
+                {customerCols.isVisible("success") ? (
+                  <SortTh label="সাফল্যের হার" sortKey="success" sort={sort} onSort={toggleSort} />
+                ) : null}
+                {customerCols.isVisible("ltv") ? (
+                  <SortTh label="মোট কেনাকাটা (LTV)" sortKey="ltv" sort={sort} onSort={toggleSort} />
+                ) : null}
+                {customerCols.isVisible("aov") ? (
+                  <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">গড় অর্ডার (AOV)</th>
+                ) : null}
+                {customerCols.isVisible("tags") ? (
+                  <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">ট্যাগ</th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -173,20 +308,32 @@ export default function AdminCustomersPage() {
                       <span className="font-medium leading-snug">{c.name}</span>
                       {c.blocked ? <span className="ml-2 inline-flex"><Badge tone="danger">ব্লক করা</Badge></span> : null}
                     </td>
-                    <td className="px-4 py-3 font-mono text-small tabular-nums text-text-muted">{displayPhone(c.phone, false)}</td>
-                    <td className="px-4 py-3 font-mono tabular-nums">{c.totalOrders}</td>
-                    <td className="px-4 py-3 font-mono tabular-nums">{customerSuccessRate(c)}%</td>
-                    <td className="px-4 py-3 font-mono font-semibold tabular-nums">{formatBdt(c.lifetimeValuePoisha)}</td>
-                    <td className="px-4 py-3 font-mono tabular-nums">{formatBdt(customerAovPoisha(c))}</td>
-                    <td className="px-4 py-3">
-                      {c.tags.length > 0 ? (
-                        <span className="flex flex-wrap gap-1">
-                          {c.tags.map((t) => <Badge key={t} tone="brand">{t}</Badge>)}
-                        </span>
-                      ) : (
-                        <span className="text-text-subtle">—</span>
-                      )}
-                    </td>
+                    {customerCols.isVisible("phone") ? (
+                      <td className="px-4 py-3 font-mono text-small tabular-nums text-text-muted">{displayPhone(c.phone, false)}</td>
+                    ) : null}
+                    {customerCols.isVisible("orders") ? (
+                      <td className="px-4 py-3 font-mono tabular-nums">{c.totalOrders}</td>
+                    ) : null}
+                    {customerCols.isVisible("success") ? (
+                      <td className="px-4 py-3 font-mono tabular-nums">{customerSuccessRate(c)}%</td>
+                    ) : null}
+                    {customerCols.isVisible("ltv") ? (
+                      <td className="px-4 py-3 font-mono font-semibold tabular-nums">{formatBdt(c.lifetimeValuePoisha)}</td>
+                    ) : null}
+                    {customerCols.isVisible("aov") ? (
+                      <td className="px-4 py-3 font-mono tabular-nums">{formatBdt(customerAovPoisha(c))}</td>
+                    ) : null}
+                    {customerCols.isVisible("tags") ? (
+                      <td className="px-4 py-3">
+                        {c.tags.length > 0 ? (
+                          <span className="flex flex-wrap gap-1">
+                            {c.tags.map((t) => <Badge key={t} tone="brand">{t}</Badge>)}
+                          </span>
+                        ) : (
+                          <span className="text-text-subtle">—</span>
+                        )}
+                      </td>
+                    ) : null}
                   </tr>
                 );
               })}

@@ -5,6 +5,11 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { SiteFooter, SiteHeader } from "@/storefront-shell";
 import type { Category } from "@/catalog/types";
+import type {
+  FooterMenuGroup,
+  SiteContentConfigured,
+  SiteMenuItem,
+} from "@/cms/site-content-types";
 import InstallPrompt from "@/pwa/install-prompt";
 
 // Storefront shell mount (integration for Agent 31): header + footer on
@@ -27,9 +32,16 @@ import InstallPrompt from "@/pwa/install-prompt";
 // row itself always renders; no fake categories are ever invented).
 const HIDDEN_PREFIXES = ["/admin", "/offline"];
 
+interface SiteContentResponse {
+  headerMenu: SiteMenuItem[];
+  footerMenu: FooterMenuGroup[];
+  configured: SiteContentConfigured;
+}
+
 export default function StorefrontShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [categories, setCategories] = useState<ReadonlyArray<Category> | undefined>(undefined);
+  const [siteContent, setSiteContent] = useState<SiteContentResponse | undefined>(undefined);
 
   useEffect(() => {
     let live = true;
@@ -48,14 +60,41 @@ export default function StorefrontShell({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // CMS site content (Admin → Content): header/footer menus saved by
+  // the owner. Menus are passed down ONLY for sections the owner has
+  // actually configured (API meta.configured) — until then the header
+  // and footer render their built-in defaults, which are identical to
+  // the API's default payload, so nothing shifts when this resolves.
+  useEffect(() => {
+    let live = true;
+    fetch("/api/v1/public/site-content")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json: { data?: SiteContentResponse; meta?: { configured?: SiteContentConfigured } } | null) => {
+        if (live && json?.data && json.meta?.configured) {
+          setSiteContent({ ...json.data, configured: json.meta.configured });
+        }
+      })
+      .catch(() => {
+        // Built-in default menus stay — never block the shell on this.
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const hidden = HIDDEN_PREFIXES.some((p) => pathname?.startsWith(p));
   if (hidden) return <>{children}</>;
   const isProductPage = pathname?.startsWith("/product/") ?? false;
   return (
     <div className={isProductPage ? undefined : "pb-16 lg:pb-0"}>
-      <SiteHeader categories={categories} />
+      <SiteHeader
+        categories={categories}
+        headerMenu={siteContent?.configured.headerMenu ? siteContent.headerMenu : undefined}
+      />
       {children}
-      <SiteFooter />
+      <SiteFooter
+        footerMenu={siteContent?.configured.footerMenu ? siteContent.footerMenu : undefined}
+      />
       <InstallPrompt />
     </div>
   );

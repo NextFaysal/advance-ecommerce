@@ -1,13 +1,11 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { formatBdt } from "@advance-ecommerce/validators";
 import { listAllProducts } from "@/catalog/server-read";
 import { minVariantPricePoisha } from "@/catalog/types";
 import { validateSessionToken } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PageHeader } from "@/components/ui/page-header";
-import { Badge } from "@/components/ui/badge";
-import { DeleteProductButton } from "./delete-product-button";
+import { ProductsTable, type ProductRow } from "./products-table";
 
 // Admin product list — staff view, so cost is NOT shown here by default either:
 // cost visibility is a field-level permission (Step 4 RBAC) and is gated
@@ -16,15 +14,12 @@ import { DeleteProductButton } from "./delete-product-button";
 // (admins legitimately see DRAFT/ARCHIVED here; the public read path
 // stays ACTIVE-only). An empty DB renders the honest empty state.
 //
-// Presentation (Design Refresh R3): PageHeader + token table system,
-// status tone badges, designed empty state. Data read unchanged.
+// Presentation: PageHeader + the interactive ProductsTable (client):
+// search / status filter / sort + table-v2 saved views and column
+// visibility. This server page maps catalog products to plain
+// serializable rows (title, slug, min price, total stock, status) —
+// no function props cross the server/client boundary.
 export const dynamic = "force-dynamic";
-
-const STATUS_META: Record<string, { label: string; tone: "success" | "warning" | "neutral" | "brand" }> = {
-  ACTIVE: { label: "সক্রিয়", tone: "success" },
-  DRAFT: { label: "খসড়া", tone: "warning" },
-  ARCHIVED: { label: "আর্কাইভ", tone: "neutral" },
-};
 
 /** The delete action renders only for viewers holding products.delete;
  *  the API enforces the same permission regardless. */
@@ -42,6 +37,14 @@ async function viewerCanDeleteProducts(): Promise<boolean> {
 export default async function AdminProductsPage() {
   const products = await listAllProducts();
   const canDelete = await viewerCanDeleteProducts();
+  const rows: ProductRow[] = products.map((p) => ({
+    id: p.id,
+    title: p.title.bn,
+    slug: p.slug,
+    pricePoisha: minVariantPricePoisha(p),
+    stock: p.variants.reduce((s, v) => s + v.stock, 0),
+    status: p.status,
+  }));
   return (
     <main className="min-w-0">
       <PageHeader
@@ -80,89 +83,7 @@ export default async function AdminProductsPage() {
           </Link>
         </div>
       ) : (
-        <>
-        {/* Desktop table — hidden under md (card list below takes over,
-         *  so a 360px screen never scrolls sideways). */}
-        <div className="hidden overflow-x-auto rounded-lg border border-border bg-card shadow-card md:block">
-          <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-            <thead>
-              <tr className="bg-surface-2 text-left [&>th]:border-b [&>th]:border-border">
-                <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">পণ্য</th>
-                <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">দাম (থেকে)</th>
-                <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">স্টক</th>
-                <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">স্ট্যাটাস</th>
-                {canDelete && (
-                  <th scope="col" className="px-4 py-3 text-right text-caption font-semibold text-text-muted">অ্যাকশন</th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((p) => {
-                const stock = p.variants.reduce((s, v) => s + v.stock, 0);
-                const meta = STATUS_META[p.status] ?? { label: p.status, tone: "neutral" as const };
-                return (
-                  <tr key={p.id} className="border-t border-border transition motion-fast first:border-t-0 hover:bg-surface-2/70">
-                    <td className="min-w-0 px-4 py-3">
-                      <span className="block break-words font-medium leading-snug [overflow-wrap:anywhere]">{p.title.bn}</span>
-                      <span className="font-mono text-caption text-text-subtle">/{p.slug}</span>
-                    </td>
-                    <td className="px-4 py-3 font-mono font-semibold tabular-nums">{formatBdt(minVariantPricePoisha(p))}</td>
-                    <td className="px-4 py-3">
-                      <span className={`font-mono tabular-nums ${stock <= 0 ? "font-semibold text-rose-600" : ""}`}>{stock}</span>
-                      {stock <= 0 ? <span className="ml-1.5 text-caption text-rose-500">স্টক শেষ</span> : null}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge tone={meta.tone}>{meta.label}</Badge>
-                    </td>
-                    {canDelete && (
-                      <td className="px-4 py-3 text-right">
-                        <DeleteProductButton productId={p.id} productTitle={p.title.bn} />
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile card list (under md) — same products, same fields. */}
-        <div className="space-y-3 md:hidden">
-          {products.map((p) => {
-            const stock = p.variants.reduce((s, v) => s + v.stock, 0);
-            const meta = STATUS_META[p.status] ?? { label: p.status, tone: "neutral" as const };
-            return (
-              <article key={p.id} className="rounded-lg border border-border bg-card p-4 shadow-card">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="break-words font-medium leading-snug [overflow-wrap:anywhere]">{p.title.bn}</p>
-                    <p className="mt-0.5 font-mono text-caption text-text-subtle">/{p.slug}</p>
-                  </div>
-                  <Badge tone={meta.tone}>{meta.label}</Badge>
-                </div>
-                <div className="mt-3 flex items-center gap-4 border-t border-border pt-3 text-small">
-                  <span>
-                    <span className="block text-caption text-text-subtle">দাম (থেকে)</span>
-                    <span className="font-mono font-semibold tabular-nums">{formatBdt(minVariantPricePoisha(p))}</span>
-                  </span>
-                  <span>
-                    <span className="block text-caption text-text-subtle">স্টক</span>
-                    <span className={`font-mono tabular-nums ${stock <= 0 ? "font-semibold text-rose-600" : ""}`}>
-                      {stock}
-                      {stock <= 0 ? <span className="ml-1.5 text-caption text-rose-500">স্টক শেষ</span> : null}
-                    </span>
-                  </span>
-                  {canDelete && (
-                    <span className="ml-auto">
-                      <DeleteProductButton productId={p.id} productTitle={p.title.bn} />
-                    </span>
-                  )}
-                </div>
-              </article>
-            );
-          })}
-        </div>
-        </>
+        <ProductsTable products={rows} canDelete={canDelete} />
       )}
       <p className="mt-4 text-caption leading-relaxed text-text-subtle">
         ডেটা আসল ক্যাটালগ ডাটাবেস থেকে আসে। বাল্ক ইমপোর্ট/এক্সপোর্ট ও ইনলাইন দাম/স্টক এডিট API রুটে আছে।

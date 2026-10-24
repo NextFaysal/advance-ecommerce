@@ -46,6 +46,7 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { NumeralsToggle, useDigitText } from "@/components/ui/numerals";
 import type { Category, PublicProduct } from "@/catalog/types";
 import { minVariantPricePoisha } from "@/catalog/types";
+import { DEFAULT_HEADER_MENU, type SiteMenuItem } from "@/cms/site-content-types";
 
 export interface SiteHeaderProps {
   brandName?: string;
@@ -55,14 +56,12 @@ export interface SiteHeaderProps {
       fetch is still in flight (the row renders, the panel shows a
       loading state). An empty array means no categories exist. */
   categories?: ReadonlyArray<Category>;
+  /** Owner-configured header menu (Admin → Content, CMS site content),
+   *  already visible-filtered by the public API. Omit / pass undefined
+   *  to render the built-in default menu (DEFAULT_HEADER_MENU) —
+   *  identical links, so the header never waits on the CMS fetch. */
+  headerMenu?: ReadonlyArray<SiteMenuItem>;
 }
-
-const NAV_LINKS = [
-  { href: "/shop", labelBn: "দোকান" },
-  { href: "/track", labelBn: "অর্ডার ট্র্যাক" },
-  { href: "/faq", labelBn: "জিজ্ঞাসা" },
-  { href: "/contact", labelBn: "যোগাযোগ" },
-] as const;
 
 // Sensible BD storefront trending terms (static copy, not fake data —
 // they are just search shortcuts into the real /search route).
@@ -320,7 +319,11 @@ function SearchPanelContent({
   );
 }
 
-export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount, categories }: SiteHeaderProps) {
+export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount, categories, headerMenu }: SiteHeaderProps) {
+  // CMS menu when the owner configured one; the built-in defaults
+  // otherwise (same items the public API returns as its fallback).
+  const navItems: ReadonlyArray<SiteMenuItem> =
+    headerMenu && headerMenu.length > 0 ? headerMenu : DEFAULT_HEADER_MENU;
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [wishlistCount, setWishlistCount] = useState(0);
@@ -524,22 +527,54 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
             </form>
           </div>
 
-          {/* Desktop nav */}
+          {/* Desktop nav — CMS header menu (Admin → Content) or the
+              built-in defaults; items with children get a hover/focus
+              dropdown with the child links. */}
           <nav aria-label="প্রধান নেভিগেশন" className="ml-2 hidden items-center gap-1 lg:flex">
-            {NAV_LINKS.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                aria-current={isActive(link.href) ? "page" : undefined}
-                className={`rounded-lg px-3 py-2 text-sm transition ${
-                  isActive(link.href)
-                    ? "bg-brand-50 font-semibold text-brand-700"
-                    : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                }`}
-              >
-                {link.labelBn}
-              </a>
-            ))}
+            {navItems.map((link) => {
+              const linkClass = `rounded-lg px-3 py-2 text-sm transition ${
+                isActive(link.href)
+                  ? "bg-brand-50 font-semibold text-brand-700"
+                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+              }`;
+              if (link.children.length === 0) {
+                return (
+                  <a
+                    key={link.id}
+                    href={link.href}
+                    aria-current={isActive(link.href) ? "page" : undefined}
+                    className={linkClass}
+                  >
+                    {link.labelBn}
+                  </a>
+                );
+              }
+              return (
+                <span key={link.id} className="group relative">
+                  <a
+                    href={link.href}
+                    aria-current={isActive(link.href) ? "page" : undefined}
+                    className={`${linkClass} inline-flex items-center gap-1`}
+                  >
+                    {link.labelBn}
+                    <ChevronDownIcon />
+                  </a>
+                  <span className="invisible absolute left-0 top-full z-40 block min-w-52 pt-1 opacity-0 transition group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
+                    <span className="block overflow-hidden rounded-xl border border-border bg-card py-1.5 shadow-pop">
+                      {link.children.map((child) => (
+                        <a
+                          key={child.id}
+                          href={child.href}
+                          className="block px-4 py-2.5 text-sm text-text-main transition hover:bg-surface-2"
+                        >
+                          {child.labelBn}
+                        </a>
+                      ))}
+                    </span>
+                  </span>
+                </span>
+              );
+            })}
           </nav>
 
           <span className="ml-auto flex items-center gap-1 lg:ml-0">
@@ -678,19 +713,29 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
         {/* Mobile menu — simple disclosure (+ category section, v3) */}
         {menuOpen ? (
           <nav aria-label="মোবাইল নেভিগেশন" className="border-t border-border bg-card px-4 py-2 lg:hidden">
-            {NAV_LINKS.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                aria-current={isActive(link.href) ? "page" : undefined}
-                className={`block rounded-lg px-3 py-2.5 text-sm ${
-                  isActive(link.href)
-                    ? "bg-brand-50 font-semibold text-brand-700"
-                    : "text-text-main hover:bg-surface-2"
-                }`}
-              >
-                {link.labelBn}
-              </a>
+            {navItems.map((link) => (
+              <span key={link.id} className="block">
+                <a
+                  href={link.href}
+                  aria-current={isActive(link.href) ? "page" : undefined}
+                  className={`block rounded-lg px-3 py-2.5 text-sm ${
+                    isActive(link.href)
+                      ? "bg-brand-50 font-semibold text-brand-700"
+                      : "text-text-main hover:bg-surface-2"
+                  }`}
+                >
+                  {link.labelBn}
+                </a>
+                {link.children.map((child) => (
+                  <a
+                    key={child.id}
+                    href={child.href}
+                    className="block rounded-lg py-2.5 pl-8 pr-3 text-sm text-text-muted hover:bg-surface-2"
+                  >
+                    {child.labelBn}
+                  </a>
+                ))}
+              </span>
             ))}
             <a href="/account" className="block rounded-lg px-3 py-2.5 text-sm text-text-main hover:bg-surface-2">
               অ্যাকাউন্ট

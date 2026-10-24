@@ -211,8 +211,12 @@ export class CmsStore {
 /** Shared DB-backed singleton for the CMS API routes + admin content page. */
 export const cmsStore = new CmsStore();
 
-// Menu builder stub: ordered items, max one level of nesting for v1 CMS.
-// (Menu persistence is not part of the CMS tables; this stays a stub.)
+// Legacy menu shape (ordered items, max one level of nesting).
+// Menu PERSISTENCE now lives in src/cms/site-content.ts (Setting
+// table, cms.* keys — the schema has no Menu model) with the admin
+// builder on /admin/content and the storefront reading it live.
+// buildMenu below is kept only for API compatibility; nothing renders
+// storefront navigation from this module anymore.
 export const menuItemSchema = z.object({
   labelBn: z.string().min(1), labelEn: z.string().min(1), href: z.string().min(1),
   children: z.array(z.object({ labelBn: z.string().min(1), labelEn: z.string().min(1), href: z.string().min(1) })).default([]),

@@ -1,14 +1,16 @@
 "use client";
 // Landing builder UI — Agent 53.
-// All editing is page-local state seeded from the DB-backed store via
-// the server parent's `initialPages` prop (src/landing/store.ts is
-// Prisma-backed now) — edits are lost on reload and are NOT posted to
-// the API from this page; the API (GET/POST /api/v1/admin/landing,
-// PATCH .../[id]) persists with the same contracts. Validation shown
-// here comes
-// from the REAL validateLandingPage() — the same function the API and
-// the publish transition run. The product catalog is NOT demo data:
-// the server parent passes ACTIVE products from the real catalog DB
+// Editing state is seeded from the DB-backed store via the server
+// parent's `initialPages` prop (src/landing/store.ts is Prisma-backed)
+// and PERSISTS through the API: "সংরক্ষণ করুন" posts a new page
+// (POST /api/v1/admin/landing) or patches the full body of an existing
+// one (PATCH .../[id]); status buttons patch { status } through the
+// same route's status flow. A page created here but not yet saved
+// carries an `lp_local_` id and is labelled অসংরক্ষিত until its first
+// save. Validation shown here comes from the REAL
+// validateLandingPage() — the same function the API and the publish
+// transition run. The product catalog is NOT demo data: the server
+// parent passes ACTIVE products from the real catalog DB
 // (src/catalog/server-read) as the `catalogProducts` prop.
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -68,6 +70,8 @@ export default function LandingBuilder({ catalogProducts, initialPages }: { cata
   const [selectedId, setSelectedId] = useState<string>(pages[0]?.id ?? "");
   const [paletteType, setPaletteType] = useState<LandingSectionType>("benefits");
   const [notice, setNotice] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const selected = pages.find((p) => p.id === selectedId) ?? null;
   const otherSlugs = useMemo(
@@ -84,7 +88,55 @@ export default function LandingBuilder({ catalogProducts, initialPages }: { cata
   );
 
   function updateSelected(mutator: (page: LandingPage) => LandingPage) {
+    setDirty(true);
     setPages((prev) => prev.map((p) => (p.id === selectedId ? { ...mutator(p), updatedAt: new Date().toISOString() } : p)));
+  }
+
+  async function apiErrorMessage(res: Response): Promise<string> {
+    const json = (await res.json().catch(() => null)) as { error?: { message?: string; details?: unknown } } | null;
+    const details = Array.isArray(json?.error?.details) ? ` (${json.error.details.length}টি সমস্যা)` : "";
+    return `${json?.error?.message ?? `HTTP ${res.status}`}${details}`;
+  }
+
+  /** Persist the selected page: POST for a not-yet-saved local draft,
+   *  full-body PATCH otherwise (the API validates + store.update()). */
+  async function saveSelected() {
+    if (!selected || saving) return;
+    setSaving(true);
+    try {
+      const payload = {
+        slug: selected.slug,
+        titleBn: selected.titleBn,
+        titleEn: selected.titleEn,
+        status: selected.status,
+        sections: selected.sections,
+      };
+      const isLocal = selected.id.startsWith("lp_local_");
+      const res = isLocal
+        ? await fetch("/api/v1/admin/landing", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...payload, status: "DRAFT" }),
+          })
+        : await fetch(`/api/v1/admin/landing/${selected.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+      if (!res.ok) {
+        setNotice(`⚠ সংরক্ষণ ব্যর্থ: ${await apiErrorMessage(res)}`);
+        return;
+      }
+      const json = (await res.json()) as { data: { page: LandingPage } };
+      setPages((prev) => prev.map((p) => (p.id === selected.id ? json.data.page : p)));
+      setSelectedId(json.data.page.id);
+      setDirty(false);
+      setNotice("✓ ডাটাবেসে সংরক্ষিত হয়েছে।");
+    } catch {
+      setNotice("⚠ সংরক্ষণ ব্যর্থ — নেটওয়ার্ক সমস্যা, আবার চেষ্টা করুন।");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function updateSection(sectionId: string, mutator: (s: LandingSection) => LandingSection) {
@@ -123,31 +175,59 @@ export default function LandingBuilder({ catalogProducts, initialPages }: { cata
     };
     setPages((prev) => [page, ...prev]);
     setSelectedId(page.id);
-    setNotice("নতুন খসড়া ল্যান্ডিং পেজ তৈরি হয়েছে (শুধু এই পেজের স্টেটে)।");
+    setDirty(true);
+    setNotice("নতুন খসড়া ল্যান্ডিং পেজ তৈরি হয়েছে — 'সংরক্ষণ করুন' চাপলে ডাটাবেসে সেভ হবে।");
   }
 
-  function changeStatus(to: LandingStatus) {
-    if (!selected) return;
+  async function changeStatus(to: LandingStatus) {
+    if (!selected || saving) return;
+    if (selected.id.startsWith("lp_local_")) {
+      setNotice("⚠ এই পেজটি এখনো ডাটাবেসে সেভ হয়নি — আগে 'সংরক্ষণ করুন' চাপুন, তারপর অবস্থা বদলান।");
+      return;
+    }
+    // Local transition check first (instant feedback, same rules the
+    // API applies); the PATCH below is what actually persists.
     const result = transitionLandingStatus(selected, to, catalogProducts, otherSlugs);
     if (!result.ok) {
       setNotice(`⚠ ${result.messageBn}${result.validation ? ` (${result.validation.errors.length}টি সমস্যা নিচে দেখুন)` : ""}`);
       return;
     }
-    setPages((prev) => prev.map((p) => (p.id === selectedId ? result.page : p)));
-    setNotice(to === "PUBLISHED" ? "প্রকাশ হয়েছে (ডেমো স্টেটে) — পাবলিক URL: /lp/" + result.page.slug : "অবস্থা বদল হয়েছে (ডেমো স্টেটে)।");
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/v1/admin/landing/${selected.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: to }),
+      });
+      if (!res.ok) {
+        setNotice(`⚠ অবস্থা বদল ব্যর্থ: ${await apiErrorMessage(res)}`);
+        return;
+      }
+      const json = (await res.json()) as { data: { page: LandingPage } };
+      setPages((prev) => prev.map((p) => (p.id === selectedId ? json.data.page : p)));
+      setNotice(to === "PUBLISHED" ? "প্রকাশ হয়েছে — পাবলিক URL: /lp/" + json.data.page.slug : "অবস্থা বদল হয়েছে (ডাটাবেসে সংরক্ষিত)।");
+    } catch {
+      setNotice("⚠ অবস্থা বদল ব্যর্থ — নেটওয়ার্ক সমস্যা, আবার চেষ্টা করুন।");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button type="button" onClick={createDraft}>+ নতুন ল্যান্ডিং পেজ</Button>
+        <Button type="button" variant="secondary" onClick={saveSelected} disabled={!selected || saving}>
+          {saving ? "সংরক্ষণ হচ্ছে…" : "সংরক্ষণ করুন"}
+        </Button>
+        {dirty ? <span className="text-xs font-medium text-amber-600">অসংরক্ষিত পরিবর্তন আছে</span> : null}
       </div>
       {notice ? <p role="status" className="rounded-lg bg-surface-2 px-4 py-2 text-sm">{notice}</p> : null}
 
       <div className="grid gap-6 xl:grid-cols-2">
         <div className="space-y-6">
           <Card>
-            <h2 className="mb-3 font-semibold">ল্যান্ডিং পেজসমূহ (ডেমো স্টোর)</h2>
+            <h2 className="mb-3 font-semibold">ল্যান্ডিং পেজসমূহ (ডাটাবেস)</h2>
             <ul className="space-y-2">
               {pages.map((p) => (
                 <li key={p.id}>
@@ -158,7 +238,9 @@ export default function LandingBuilder({ catalogProducts, initialPages }: { cata
                   >
                     <span>
                       <span className="font-medium">{p.titleBn}</span>
-                      <span className="block font-mono text-xs text-text-muted">/lp/{p.slug} · {p.sections.length} সেকশন</span>
+                      <span className="block font-mono text-xs text-text-muted">
+                        /lp/{p.slug} · {p.sections.length} সেকশন{p.id.startsWith("lp_local_") ? " · অসংরক্ষিত (লোকাল)" : ""}
+                      </span>
                     </span>
                     {statusBadge(p.status)}
                   </button>

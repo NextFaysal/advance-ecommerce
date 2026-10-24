@@ -28,6 +28,14 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PaymentBadge, type PaymentStatus as UiPaymentStatus } from "@/components/ui/status-badge";
+import {
+  ColumnPicker,
+  SavedViewsBar,
+  TABLE_PREFS_NOTE,
+  useHiddenColumns,
+  useSavedViews,
+  type SavedView,
+} from "../../../src/admin/table-prefs";
 
 const STATUSES: ("ALL" | OrderStatus)[] = [
   "ALL", "PENDING", "CONFIRMED", "PROCESSING", "PACKED", "SHIPPED",
@@ -64,6 +72,26 @@ const PAYMENT_METHOD_LABEL: Record<string, string> = {
 const UI_PAYMENT_STATUSES: readonly string[] = ["UNPAID", "PARTIAL", "PAID", "FAILED", "REFUNDED"];
 
 type LoadState = "loading" | "error" | "ready";
+
+/* Table v2 remainder: saved views capture the status filter + search +
+ * sort below; column visibility covers every desktop-table column
+ * except the order number itself (the row's identity). Both persist
+ * per staff user in localStorage (see src/admin/table-prefs.tsx). */
+type OrderSort = { key: "date" | "total" | "status"; dir: "asc" | "desc" };
+interface OrderViewState {
+  filter: string;
+  search: string;
+  sort: OrderSort | null;
+}
+const ORDER_PICKER_COLUMNS = [
+  { key: "customer", label: "গ্রাহক" },
+  { key: "total", label: "মোট" },
+  { key: "payment", label: "পেমেন্ট" },
+  { key: "status", label: "স্ট্যাটাস" },
+  { key: "risk", label: "ঝুঁকি" },
+  { key: "courier", label: "কুরিয়ার" },
+] as const;
+const ORDER_HIDEABLE_KEYS = ORDER_PICKER_COLUMNS.map((c) => c.key);
 
 const inputCls =
   "h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
@@ -126,6 +154,8 @@ export default function AdminOrdersPage() {
    * (date / total / status) + a density toggle. null sort = API order. */
   const [sort, setSort] = useState<{ key: "date" | "total" | "status"; dir: "asc" | "desc" } | null>(null);
   const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
+  const orderViews = useSavedViews<OrderViewState>("orders");
+  const orderCols = useHiddenColumns("orders", ORDER_HIDEABLE_KEYS);
   const [manualResult, setManualResult] = useState<string>("");
   const [manualOk, setManualOk] = useState(false);
   const [manualBusy, setManualBusy] = useState(false);
@@ -204,6 +234,20 @@ export default function AdminOrdersPage() {
       if (prev?.key !== key) return { key, dir: key === "status" ? "asc" : "desc" };
       return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
     });
+  }
+
+  function applyOrderView(view: SavedView<OrderViewState>) {
+    const s = view.state;
+    if (s && (STATUSES as string[]).includes(s.filter)) {
+      setFilter(s.filter as "ALL" | OrderStatus);
+    }
+    setSearch(typeof s?.search === "string" ? s.search : "");
+    const savedSort = s?.sort;
+    setSort(
+      savedSort && (["date", "total", "status"] as string[]).includes(savedSort.key)
+        ? { key: savedSort.key, dir: savedSort.dir === "asc" ? "asc" : "desc" }
+        : null,
+    );
   }
 
   const countFor = useCallback(
@@ -420,6 +464,30 @@ export default function AdminOrdersPage() {
                 {orders.length}টি অর্ডার দেখানো হচ্ছে (মোট {total}টি; প্রথম ১০০টি লোড হয়)
               </span>
             </div>
+            {/* Table v2: saved views + column visibility (table view only
+             *  for columns; views also make sense from kanban, so the bar
+             *  itself is always shown). */}
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3">
+              <SavedViewsBar<OrderViewState>
+                views={orderViews.views}
+                ready={orderViews.ready}
+                currentState={{ filter, search, sort }}
+                onApply={applyOrderView}
+                onSave={orderViews.saveView}
+                onDelete={orderViews.deleteView}
+              />
+              {view === "table" ? (
+                <span className="ml-auto">
+                  <ColumnPicker
+                    columns={ORDER_PICKER_COLUMNS}
+                    hidden={orderCols.hidden}
+                    onToggle={orderCols.toggleColumn}
+                    ready={orderCols.ready}
+                  />
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-2 text-caption leading-relaxed text-text-subtle">{TABLE_PREFS_NOTE}</p>
           </Card>
 
           {/* Bulk bar — renders itself only when orders are selected */}
@@ -469,12 +537,24 @@ export default function AdminOrdersPage() {
                       />
                     </th>
                     <SortHeader label="অর্ডার" sortKey="date" sort={sort} onSort={toggleSort} />
-                    <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">গ্রাহক</th>
-                    <SortHeader label="মোট" sortKey="total" sort={sort} onSort={toggleSort} />
-                    <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">পেমেন্ট</th>
-                    <SortHeader label="স্ট্যাটাস" sortKey="status" sort={sort} onSort={toggleSort} />
-                    <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">ঝুঁকি</th>
-                    <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">কুরিয়ার</th>
+                    {orderCols.isVisible("customer") ? (
+                      <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">গ্রাহক</th>
+                    ) : null}
+                    {orderCols.isVisible("total") ? (
+                      <SortHeader label="মোট" sortKey="total" sort={sort} onSort={toggleSort} />
+                    ) : null}
+                    {orderCols.isVisible("payment") ? (
+                      <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">পেমেন্ট</th>
+                    ) : null}
+                    {orderCols.isVisible("status") ? (
+                      <SortHeader label="স্ট্যাটাস" sortKey="status" sort={sort} onSort={toggleSort} />
+                    ) : null}
+                    {orderCols.isVisible("risk") ? (
+                      <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">ঝুঁকি</th>
+                    ) : null}
+                    {orderCols.isVisible("courier") ? (
+                      <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">কুরিয়ার</th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -498,34 +578,46 @@ export default function AdminOrdersPage() {
                           </a>
                           <span className="block text-caption text-text-subtle">{o.address.district}, {o.address.division}</span>
                         </td>
-                        <td className="px-4 py-3">
-                          <span className="block font-medium leading-snug">{o.customerName}</span>
-                          <span className="block text-caption text-text-muted">{displayPhone(o.customerPhone, false)}</span>
-                        </td>
-                        <td className="px-4 py-3 font-mono font-semibold tabular-nums">{formatBdt(o.totalPoisha)}</td>
-                        <td className="px-4 py-3">
-                          <span className="flex flex-wrap items-center gap-1.5">
-                            <Badge tone="neutral">{PAYMENT_METHOD_LABEL[o.paymentMethod] ?? o.paymentMethod}</Badge>
-                            {UI_PAYMENT_STATUSES.includes(o.paymentStatus)
-                              ? <PaymentBadge status={o.paymentStatus as UiPaymentStatus} />
-                              : <Badge tone="neutral">{o.paymentStatus}</Badge>}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <Badge tone={meta.tone}>
-                            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: meta.dot }} />
-                            {meta.label}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="flex items-center gap-1.5">
-                            <Badge tone={level === "High" ? "danger" : level === "Medium" ? "warning" : "success"}>
-                              {level === "High" ? "বেশি ঝুঁকি" : level === "Medium" ? "মাঝারি ঝুঁকি" : "কম ঝুঁকি"}
+                        {orderCols.isVisible("customer") ? (
+                          <td className="px-4 py-3">
+                            <span className="block font-medium leading-snug">{o.customerName}</span>
+                            <span className="block text-caption text-text-muted">{displayPhone(o.customerPhone, false)}</span>
+                          </td>
+                        ) : null}
+                        {orderCols.isVisible("total") ? (
+                          <td className="px-4 py-3 font-mono font-semibold tabular-nums">{formatBdt(o.totalPoisha)}</td>
+                        ) : null}
+                        {orderCols.isVisible("payment") ? (
+                          <td className="px-4 py-3">
+                            <span className="flex flex-wrap items-center gap-1.5">
+                              <Badge tone="neutral">{PAYMENT_METHOD_LABEL[o.paymentMethod] ?? o.paymentMethod}</Badge>
+                              {UI_PAYMENT_STATUSES.includes(o.paymentStatus)
+                                ? <PaymentBadge status={o.paymentStatus as UiPaymentStatus} />
+                                : <Badge tone="neutral">{o.paymentStatus}</Badge>}
+                            </span>
+                          </td>
+                        ) : null}
+                        {orderCols.isVisible("status") ? (
+                          <td className="px-4 py-3">
+                            <Badge tone={meta.tone}>
+                              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: meta.dot }} />
+                              {meta.label}
                             </Badge>
-                            <span className="font-mono text-caption tabular-nums text-text-muted">{o.riskScore}</span>
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-text-muted">{o.courier ?? "—"}</td>
+                          </td>
+                        ) : null}
+                        {orderCols.isVisible("risk") ? (
+                          <td className="px-4 py-3">
+                            <span className="flex items-center gap-1.5">
+                              <Badge tone={level === "High" ? "danger" : level === "Medium" ? "warning" : "success"}>
+                                {level === "High" ? "বেশি ঝুঁকি" : level === "Medium" ? "মাঝারি ঝুঁকি" : "কম ঝুঁকি"}
+                              </Badge>
+                              <span className="font-mono text-caption tabular-nums text-text-muted">{o.riskScore}</span>
+                            </span>
+                          </td>
+                        ) : null}
+                        {orderCols.isVisible("courier") ? (
+                          <td className="px-4 py-3 text-text-muted">{o.courier ?? "—"}</td>
+                        ) : null}
                       </tr>
                     );
                   })}

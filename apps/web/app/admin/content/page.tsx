@@ -3,23 +3,22 @@ import { StatCard } from "@/components/ui/stat-card";
 import { DataTable } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { buildMenu, cmsStore, type CmsPage, type MenuItem } from "@/reports/cms";
+import { cmsStore, type CmsPage } from "@/reports/cms";
+import { readSiteContent } from "@/cms/site-content";
+import SiteContentEditor from "./site-content-editor";
 
 // Content / CMS admin — Step 29.
 // The page/post list is REAL: the DB-backed CMS store (Prisma
 // CmsPage/CmsPost, the same store the Pages API uses). An empty DB
 // shows honest zeros and an empty table. Create/edit happens through
 // /api/v1/admin/pages (slug rename records an SEO redirect there).
-// Menu is still a builder stub: ordered items, at most one level of
-// nesting for v1 — it is labelled as a stub in the UI.
+// Menus + homepage hero slides are REAL too: the site-content editor
+// below is seeded from the DB (Setting table, cms.* keys —
+// src/cms/site-content.ts) and saves through
+// PUT /api/v1/admin/site-content; the storefront header/footer and
+// the homepage hero read the same store. Unconfigured sections fall
+// back to built-in defaults, labelled as defaults in the editor.
 export const dynamic = "force-dynamic";
-
-const SAMPLE_MENU: MenuItem[] = buildMenu([
-  { labelBn: "হোম", labelEn: "Home", href: "/", children: [] },
-  { labelBn: "শপ", labelEn: "Shop", href: "/shop", children: [] },
-  { labelBn: "আমাদের সম্পর্কে", labelEn: "About Us", href: "/about-us", children: [] },
-  { labelBn: "ব্লগ", labelEn: "Blog", href: "/blog", children: [] },
-]);
 
 function seoSummary(p: CmsPage): string {
   const hasTitle = p.seo.title.trim().length > 0;
@@ -31,6 +30,7 @@ function seoSummary(p: CmsPage): string {
 export default async function AdminContentPage() {
   const all = await cmsStore.list();
   const redirects = await cmsStore.listRedirects();
+  const siteContent = await readSiteContent();
   const pages = all.filter((p) => p.kind === "page");
   const posts = all.filter((p) => p.kind === "post");
   const published = all.filter((p) => p.status === "published").length;
@@ -90,26 +90,16 @@ export default async function AdminContentPage() {
 
       <div className="mt-6">
         <Card>
-          <h3 className="mb-1 font-semibold">মেনু (স্টাব)</h3>
-          <p className="mb-3 text-sm text-text-muted">
-            মেনু বিল্ডার এখন স্টাব: সাজানো আইটেমের তালিকা, v1-এ সর্বোচ্চ এক স্তরের নেস্টিং
-            (<code>buildMenu</code>, src/reports/cms.ts)। ড্র্যাগ-ড্রপ সম্পাদনা পরের ধাপে;
-            আসল মেনু DB-তে সংরক্ষিত হবে।
-          </p>
-          <ul className="flex flex-wrap gap-2">
-            {SAMPLE_MENU.map((item) => (
-              <li key={item.href} className="rounded-full bg-surface-2 px-3 py-1 text-sm">
-                {item.labelBn} <span className="font-mono text-xs text-text-muted">{item.href}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-sm text-text-muted">
+          <p className="text-sm text-text-muted">
             {redirects.length === 0
               ? "রিডাইরেক্ট: বর্তমানে কোনো রিডাইরেক্ট নেই — স্লাগ বদলালে API স্বয়ংক্রিয়ভাবে পুরনো → নতুন স্লাগের রিডাইরেক্ট রেকর্ড করে।"
               : `রিডাইরেক্ট (${redirects.length}): ${redirects.map((r) => `/${r.from} → /${r.to}`).join(" · ")}`}
           </p>
         </Card>
       </div>
+
+      <h2 className="mb-3 mt-8 text-lg font-semibold">মেনু ও হোমপেজ হিরো</h2>
+      <SiteContentEditor initial={siteContent.content} configured={siteContent.configured} />
     </main>
   );
 }

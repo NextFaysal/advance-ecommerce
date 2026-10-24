@@ -6,6 +6,9 @@ import type { Category } from "@/catalog/types";
 import { Reveal } from "@/components/ui/reveal";
 import { CountUp } from "@/components/ui/count-up";
 import { NewsletterForm } from "@/newsletter/components/NewsletterForm";
+import { FlashSaleCountdownSection } from "@/marketing/flash-sale-section";
+import { HeroSlides } from "@/cms/HeroSlides";
+import { getActiveHeroSlides } from "@/cms/site-content";
 
 // NOTE on route groups: Next.js forbids both app/page.tsx and app/(store)/page.tsx
 // (both map to "/"). So the storefront home lives HERE, and only shop/product/search
@@ -212,10 +215,46 @@ const TESTIMONIALS = [
   },
 ] as const;
 
+/* Hero right-column visual — layered brand cards over the aurora
+   background (Design v3, A+); no fake products. Shared by the static
+   hero and the CMS campaign slider (as its no-image fallback). */
+function HeroVisual() {
+  return (
+    <div className="aurora relative hidden min-h-[320px] overflow-hidden rounded-3xl p-6 shadow-md lg:block" aria-hidden="true">
+      <div className="absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/15" />
+      <div className="absolute -bottom-14 -left-8 h-52 w-52 rounded-full bg-black/10" />
+      <div className="relative flex h-full flex-col justify-between gap-4">
+        <div className="w-56 rounded-2xl bg-white/95 p-4 shadow-lg">
+          <p className="flex items-center gap-2 text-sm font-bold text-[#1F2037]">
+            <span className="text-brand-600"><CashIcon size={20} /></span> ক্যাশ অন ডেলিভারি
+          </p>
+          <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">পণ্য হাতে পেয়ে টাকা দিন — কোনো অগ্রিম ঝামেলা নেই।</p>
+        </div>
+        <div className="ml-auto w-60 rounded-2xl bg-white/95 p-4 shadow-lg">
+          <p className="flex items-center gap-2 text-sm font-bold text-[#1F2037]">
+            <span className="text-brand-600"><TruckIcon size={20} /></span> দ্রুত ডেলিভারি
+          </p>
+          <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">সারাদেশের সব জেলায় নির্ভরযোগ্য কুরিয়ার পার্টনার।</p>
+        </div>
+        <div className="w-52 rounded-2xl bg-white/95 p-4 shadow-lg">
+          <p className="flex items-center gap-2 text-sm font-bold text-[#1F2037]">
+            <span className="text-brand-600"><ShieldIcon size={20} /></span> যাচাইকৃত মান
+          </p>
+          <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">প্রতিটি অর্ডার পাঠানোর আগে মান যাচাই করা হয়।</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default async function Home() {
-  const [products, categories] = await Promise.all([
+  const [products, categories, heroSlides] = await Promise.all([
     listActivePublicProducts(8),
     listCategories(),
+    // CMS hero campaign slides (Admin → Content). Fail-safe: the
+    // store degrades to [] on any DB problem, and [] renders the
+    // static hero below — byte-identical to the pre-CMS homepage.
+    getActiveHeroSlides(),
   ]);
   // Real catalogue totals for the hero stat row (Design v3) — summed
   // from the same category fetch; the row hides when the store is empty.
@@ -226,9 +265,39 @@ export default async function Home() {
     p.variants.some((v) => v.isActive && v.compareAtPoisha !== null && v.compareAtPoisha > v.pricePoisha),
   );
 
+  // Real catalogue stats — animated counters (v3); hidden entirely
+  // while the catalogue is empty. Used by both hero variants.
+  const heroStats = totalProducts > 0 ? (
+    <dl className="mt-8 flex flex-wrap gap-x-10 gap-y-4 border-t border-brand-100 pt-5">
+      <div>
+        <dd className="text-2xl font-extrabold tabular-nums text-text-main">
+          <CountUp value={totalProducts} />+
+        </dd>
+        <dt className="mt-0.5 text-xs font-medium text-text-muted">পণ্যের কালেকশন</dt>
+      </div>
+      <div>
+        <dd className="text-2xl font-extrabold tabular-nums text-text-main">
+          <CountUp value={categories.length} />
+        </dd>
+        <dt className="mt-0.5 text-xs font-medium text-text-muted">ক্যাটাগরি</dt>
+      </div>
+      <div>
+        <dd className="text-2xl font-extrabold tabular-nums text-text-main">
+          <CountUp value={64} />
+        </dd>
+        <dt className="mt-0.5 text-xs font-medium text-text-muted">জেলায় হোম ডেলিভারি</dt>
+      </div>
+    </dl>
+  ) : null;
+
   return (
     <main className="mx-auto min-w-0 max-w-[1440px] px-4 sm:px-6">
       {/* ---------- Hero ---------- */}
+      {heroSlides.length > 0 ? (
+        /* CMS campaign slides (Admin → Content) replace the static
+           hero copy while at least one slide is active. */
+        <HeroSlides slides={heroSlides} visual={<HeroVisual />} stats={heroStats} />
+      ) : (
       <section className="brand-soft-gradient mt-5 overflow-hidden rounded-3xl shadow-sm">
         <div className="grid items-center gap-8 p-6 sm:p-10 lg:grid-cols-2 lg:p-12">
           <div className="min-w-0">
@@ -269,60 +338,18 @@ export default async function Home() {
               </li>
             </ul>
 
-            {/* Real catalogue stats — animated counters (v3); hidden
-                entirely while the catalogue is empty. */}
-            {totalProducts > 0 ? (
-              <dl className="mt-8 flex flex-wrap gap-x-10 gap-y-4 border-t border-brand-100 pt-5">
-                <div>
-                  <dd className="text-2xl font-extrabold tabular-nums text-text-main">
-                    <CountUp value={totalProducts} />+
-                  </dd>
-                  <dt className="mt-0.5 text-xs font-medium text-text-muted">পণ্যের কালেকশন</dt>
-                </div>
-                <div>
-                  <dd className="text-2xl font-extrabold tabular-nums text-text-main">
-                    <CountUp value={categories.length} />
-                  </dd>
-                  <dt className="mt-0.5 text-xs font-medium text-text-muted">ক্যাটাগরি</dt>
-                </div>
-                <div>
-                  <dd className="text-2xl font-extrabold tabular-nums text-text-main">
-                    <CountUp value={64} />
-                  </dd>
-                  <dt className="mt-0.5 text-xs font-medium text-text-muted">জেলায় হোম ডেলিভারি</dt>
-                </div>
-              </dl>
-            ) : null}
+            {heroStats}
           </div>
 
-          {/* Visual composition — layered brand cards over the animated
-              aurora background (Design v3, A+); no fake products */}
-          <div className="aurora relative hidden min-h-[320px] overflow-hidden rounded-3xl p-6 shadow-md lg:block" aria-hidden="true">
-            <div className="absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/15" />
-            <div className="absolute -bottom-14 -left-8 h-52 w-52 rounded-full bg-black/10" />
-            <div className="relative flex h-full flex-col justify-between gap-4">
-              <div className="w-56 rounded-2xl bg-white/95 p-4 shadow-lg">
-                <p className="flex items-center gap-2 text-sm font-bold text-[#1F2037]">
-                  <span className="text-brand-600"><CashIcon size={20} /></span> ক্যাশ অন ডেলিভারি
-                </p>
-                <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">পণ্য হাতে পেয়ে টাকা দিন — কোনো অগ্রিম ঝামেলা নেই।</p>
-              </div>
-              <div className="ml-auto w-60 rounded-2xl bg-white/95 p-4 shadow-lg">
-                <p className="flex items-center gap-2 text-sm font-bold text-[#1F2037]">
-                  <span className="text-brand-600"><TruckIcon size={20} /></span> দ্রুত ডেলিভারি
-                </p>
-                <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">সারাদেশের সব জেলায় নির্ভরযোগ্য কুরিয়ার পার্টনার।</p>
-              </div>
-              <div className="w-52 rounded-2xl bg-white/95 p-4 shadow-lg">
-                <p className="flex items-center gap-2 text-sm font-bold text-[#1F2037]">
-                  <span className="text-brand-600"><ShieldIcon size={20} /></span> যাচাইকৃত মান
-                </p>
-                <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">প্রতিটি অর্ডার পাঠানোর আগে মান যাচাই করা হয়।</p>
-              </div>
-            </div>
-          </div>
+          <HeroVisual />
         </div>
       </section>
+      )}
+
+      {/* ---------- Flash sale countdown (CMS flash-sale module) ----------
+          Self-fetching server wrapper: renders the live sale's
+          countdown section, or nothing when no sale is live. */}
+      <FlashSaleCountdownSection />
 
       {/* ---------- Trust row ---------- */}
       <Reveal delay={60}>

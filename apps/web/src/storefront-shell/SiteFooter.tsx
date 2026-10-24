@@ -10,59 +10,35 @@
 // in real payment/courier brand marks (SVG logo chips, plan §2.4).
 
 import { CourierMarks, PaymentMarks } from "@/components/brand-marks";
+import { DEFAULT_FOOTER_MENU, type FooterMenuGroup } from "@/cms/site-content-types";
 
 export interface SiteFooterProps {
   brandName?: string;
   /** "Powered by" line — OFF by default (white-label installs). */
   showPoweredBy?: boolean;
+  /** Owner-configured footer menu (Admin → Content, CMS site
+   *  content), already visible-filtered by the public API. Omit to
+   *  render the built-in default columns (DEFAULT_FOOTER_MENU) —
+   *  the same links, so the footer never waits on the CMS fetch. */
+  footerMenu?: ReadonlyArray<FooterMenuGroup>;
 }
-
-const COLUMNS: ReadonlyArray<{
-  headingBn: string;
-  links: ReadonlyArray<{ href: string; labelBn: string }>;
-}> = [
-  {
-    headingBn: "দোকান",
-    links: [
-      { href: "/shop", labelBn: "সব পণ্য" },
-      { href: "/search", labelBn: "পণ্য খুঁজুন" },
-      { href: "/wishlist", labelBn: "উইশলিস্ট" },
-      { href: "/compare", labelBn: "তুলনা করুন" },
-      { href: "/recently-viewed", labelBn: "সম্প্রতি দেখা" },
-    ],
-  },
-  {
-    headingBn: "সাহায্য",
-    links: [
-      { href: "/track", labelBn: "অর্ডার ট্র্যাক করুন" },
-      { href: "/faq", labelBn: "সাধারণ জিজ্ঞাসা" },
-      { href: "/contact", labelBn: "যোগাযোগ" },
-      { href: "/shipping-policy", labelBn: "ডেলিভারি নীতিমালা" },
-      { href: "/refund-policy", labelBn: "রিটার্ন ও রিফান্ড" },
-    ],
-  },
-  {
-    headingBn: "আইনি",
-    links: [
-      { href: "/privacy", labelBn: "গোপনীয়তা নীতি" },
-      { href: "/terms", labelBn: "শর্তাবলি" },
-    ],
-  },
-  {
-    headingBn: "আমাদের সম্পর্কে",
-    links: [{ href: "/about", labelBn: "আমাদের কথা" }],
-  },
-];
 
 export default function SiteFooter({
   brandName = "Advance Ecommerce",
   showPoweredBy = false,
+  footerMenu,
 }: SiteFooterProps) {
   const year = new Date().getFullYear();
+  const columns: ReadonlyArray<FooterMenuGroup> =
+    footerMenu && footerMenu.length > 0 ? footerMenu : DEFAULT_FOOTER_MENU;
+  // The built-in layout is brand + 4 fixed columns; an owner menu
+  // with a different group count uses a wrapping grid instead (the
+  // default render below is byte-identical to the pre-CMS footer).
+  const customLayout = footerMenu !== undefined && footerMenu.length > 0 && footerMenu.length !== 4;
   return (
     <footer className="border-t border-border bg-card">
       <div className="mx-auto max-w-[1440px] px-4 py-12 sm:px-6">
-        <div className="grid gap-10 lg:grid-cols-[1.3fr_1fr_1fr_1fr_1fr]">
+        <div className={customLayout ? "grid gap-10 sm:grid-cols-2 lg:grid-cols-3" : "grid gap-10 lg:grid-cols-[1.3fr_1fr_1fr_1fr_1fr]"}>
           {/* Brand intro */}
           <div className="min-w-0">
             <a href="/" className="flex items-center gap-2" aria-label={brandName}>
@@ -82,13 +58,13 @@ export default function SiteFooter({
             </a>
           </div>
 
-          {COLUMNS.map((col) => (
-            <nav key={col.headingBn} aria-label={col.headingBn}>
+          {columns.map((col) => (
+            <nav key={col.id} aria-label={col.headingBn}>
               <p className="text-sm font-bold text-text-main">{col.headingBn}</p>
               <span aria-hidden="true" className="brand-gradient mt-2 block h-0.5 w-8 rounded-full" />
               <ul className="mt-3.5 space-y-2.5">
                 {col.links.map((link) => (
-                  <li key={link.href}>
+                  <li key={link.id}>
                     <a href={link.href} className="text-sm text-text-muted transition hover:text-brand-700">
                       {link.labelBn}
                     </a>

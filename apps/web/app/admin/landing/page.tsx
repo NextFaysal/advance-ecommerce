@@ -9,12 +9,11 @@ import { listActiveProducts } from "@/catalog/server-read";
 // sellers. Separate simpler section model from the CMS — see
 // src/landing/types.ts. Pages persist in the DB (Prisma LandingPage via
 // src/landing/store) and are passed to the builder as initial state;
-// builder editing itself is page-local state (changes are not posted
-// to the API from this page yet — the landing API carries the same
-// contracts and DOES persist). Permission convention mirrors CMS:
-// content.page (the API guards on it; nav item uses it too). The
-// product catalog is REAL: ACTIVE products from the catalog DB are
-// passed to the builder.
+// the builder saves through the landing API (POST creates, full-body
+// PATCH updates, { status } PATCH transitions) — see builder.tsx.
+// Permission convention mirrors CMS: content.page (the API guards on
+// it; nav item uses it too). The product catalog is REAL: ACTIVE
+// products from the catalog DB are passed to the builder.
 export const dynamic = "force-dynamic";
 
 export default async function AdminLandingPage() {
@@ -26,7 +25,7 @@ export default async function AdminLandingPage() {
     <main>
       <PageHeader
         title="ল্যান্ডিং পেজ বিল্ডার"
-        description="ক্যাম্পেইন ল্যান্ডিং পেজ: সেকশন যোগ/সরানো/সাজানো, লাইভ প্রিভিউ, প্রকাশ টগল। যাচাই আসল validateLandingPage() দিয়ে হয়; পেজগুলো ডাটাবেসে সংরক্ষিত, তবে এই বিল্ডারের সম্পাদনা এখনো পেজের স্টেটেই থাকে। (Landing Page Builder)"
+        description="ক্যাম্পেইন ল্যান্ডিং পেজ: সেকশন যোগ/সরানো/সাজানো, লাইভ প্রিভিউ, প্রকাশ টগল। যাচাই আসল validateLandingPage() দিয়ে হয়; 'সংরক্ষণ করুন' চাপলে সম্পাদনা ডাটাবেসে সেভ হয়। (Landing Page Builder)"
         breadcrumb="Admin / Marketing"
       />
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-3">
