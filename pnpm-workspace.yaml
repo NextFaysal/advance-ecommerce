@@ -1,3 +1,11 @@
 packages:
   - "apps/*"
   - "packages/*"
+onlyBuiltDependencies:
+  - "@prisma/engines"
+  - "@prisma/client"
+  - "prisma"
+  - "esbuild"
+  - "sharp"
+  - "@next/swc"
+  - "core-js"
