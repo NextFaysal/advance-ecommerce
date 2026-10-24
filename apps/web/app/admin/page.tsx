@@ -12,12 +12,12 @@
 // below comes from the same getDashboardData() call as before; charts
 // visualize only those aggregates (no invented time series).
 //
-// Design v3 note: the revenue AREA chart stays unbuilt on purpose —
-// DashboardData carries only nested period aggregates (today ⊂ week ⊂
-// 30 days), no daily series, and the period values double as the KPI
-// "sparklines" for the same reason (a line through nested cumulative
-// totals would fabricate a trend). When src/reports grows a daily
-// series, swap the period bars for the area chart + KPI sparklines.
+// Daily series (backlog #10): DashboardData.dailySeries now carries
+// REAL per-day revenue/orders bucketed from the same rows + status
+// filter as the totals, so the revenue panel renders a true area chart
+// (src/admin/revenue-chart.tsx) and the KPI cards carry true daily
+// sparklines — still no invented trend anywhere. The আজ/সপ্তাহ figures
+// live in the KPI period strips.
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
@@ -28,6 +28,7 @@ import { CountUp } from "@/components/ui/count-up";
 import { Phone } from "@/components/ui/phone";
 import { StatusBadge, type OrderStatus as BadgeOrderStatus } from "@/components/ui/status-badge";
 import { ADMIN_NAV, isLockedAddOn } from "@/admin-nav/config";
+import { RevenueChart, Sparkline } from "@/admin/revenue-chart";
 import { getDashboardData } from "@/reports/dashboard";
 import type { OrderStatus } from "@/orders/types";
 
@@ -132,9 +133,9 @@ const STATUS_COLORS: Partial<Record<OrderStatus, string>> = {
 };
 
 function KpiCard({
-  label, value, icon, accent, children,
+  label, value, icon, accent, children, sparkline,
 }: {
-  label: string; value: ReactNode; icon: string; accent: string; children?: ReactNode;
+  label: string; value: ReactNode; icon: string; accent: string; children?: ReactNode; sparkline?: ReactNode;
 }) {
   return (
     <Card className="shadow-card transition motion-base hover:shadow-lift">
@@ -142,6 +143,7 @@ function KpiCard({
         <span aria-hidden="true" className={`flex h-11 w-11 items-center justify-center rounded-md ${accent}`}>
           <Icon name={icon} className="h-5 w-5" />
         </span>
+        {sparkline ? <span className="pt-1" aria-hidden="true">{sparkline}</span> : null}
       </div>
       <p className="mt-3 text-caption font-medium text-text-muted">{label}</p>
       <p className="font-mono text-2xl font-bold tabular-nums leading-8">{value}</p>
@@ -183,14 +185,12 @@ export default async function AdminHome() {
     return seg;
   });
 
-  /* Revenue period bars — আজ / এই সপ্তাহ / শেষ ৩০ দিন (nested totals, labelled as such). */
-  const revenueBars = [
-    { label: "আজ", revenue: data.today.revenuePoisha, orders: data.today.orders },
-    { label: "এই সপ্তাহ (৭ দিন)", revenue: data.week.revenuePoisha, orders: data.week.orders },
-    { label: "শেষ ৩০ দিন", revenue: totals.revenuePoisha, orders: totals.orders },
-  ];
-  const revenueMax = Math.max(1, ...revenueBars.map((b) => b.revenue));
   const aovPoisha = totals.orders > 0 ? Math.round(totals.revenuePoisha / totals.orders) : 0;
+  /* KPI sparklines — the REAL daily series (per-day AOV derived from
+   * the same two series; a day with no orders is 0, not skipped). */
+  const revenueSpark = data.dailySeries.map((d) => d.revenuePoisha);
+  const ordersSpark = data.dailySeries.map((d) => d.orders);
+  const aovSpark = data.dailySeries.map((d) => (d.orders > 0 ? Math.round(d.revenuePoisha / d.orders) : 0));
 
   const pendingActions = [
     { label: "মুলতুবি অর্ডার নিশ্চিত করা বাকি", count: data.pendingCount, href: "/admin/orders?status=PENDING", icon: "Clock", accent: "bg-amber-50 text-amber-600" },
@@ -230,13 +230,13 @@ export default async function AdminHome() {
 
       {/* KPI row */}
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="মোট বিক্রয় (৩০ দিন)" value={<CountUp value={totals.revenuePoisha} format="poisha" />} icon="Banknote" accent="bg-brand-50 text-brand-600">
+        <KpiCard label="মোট বিক্রয় (৩০ দিন)" value={<CountUp value={totals.revenuePoisha} format="poisha" />} icon="Banknote" accent="bg-brand-50 text-brand-600" sparkline={<Sparkline values={revenueSpark} stroke="#6366F1" />}>
           <PeriodStrip items={[
             { label: "আজ", value: formatPoisha(data.today.revenuePoisha) },
             { label: "সপ্তাহ", value: formatPoisha(data.week.revenuePoisha) },
           ]} />
         </KpiCard>
-        <KpiCard label="অর্ডার (৩০ দিন)" value={<CountUp value={totals.orders} format="plain" />} icon="ShoppingCart" accent="bg-violet-500/10 text-violet-600">
+        <KpiCard label="অর্ডার (৩০ দিন)" value={<CountUp value={totals.orders} format="plain" />} icon="ShoppingCart" accent="bg-violet-500/10 text-violet-600" sparkline={<Sparkline values={ordersSpark} stroke="#8B5CF6" />}>
           <PeriodStrip items={[
             { label: "আজ", value: `${data.today.orders}টি` },
             { label: "সপ্তাহ", value: `${data.week.orders}টি` },
@@ -247,7 +247,7 @@ export default async function AdminHome() {
             নিট আয় {formatPoisha(totals.netRevenuePoisha)} · বিক্রিত পণ্য {totals.units}টি
           </p>
         </KpiCard>
-        <KpiCard label="গড় অর্ডার মূল্য" value={<CountUp value={aovPoisha} format="poisha" />} icon="Calculator" accent="bg-sky-50 text-sky-600">
+        <KpiCard label="গড় অর্ডার মূল্য" value={<CountUp value={aovPoisha} format="poisha" />} icon="Calculator" accent="bg-sky-50 text-sky-600" sparkline={<Sparkline values={aovSpark} stroke="#0EA5E9" />}>
           <p className="mt-3 border-t border-border pt-3 text-caption text-text-muted">
             রিফান্ড {formatPoisha(totals.refundPoisha)} · শিপিং চার্জ {formatPoisha(totals.shippingPoisha)}
           </p>
@@ -261,7 +261,7 @@ export default async function AdminHome() {
             <div>
               <h2 className="text-h3">বিক্রয় চিত্র</h2>
               <p className="mt-0.5 text-caption text-text-muted">
-                {data.range.from} → {data.range.to} · প্রতিটি বার ওই সময়ের মোট বিক্রয় (অর্ডার আইটেম থেকে)।
+                {data.range.from} → {data.range.to} · প্রতিদিনের বিক্রয় (অর্ডার আইটেম থেকে, Asia/Dhaka)। যেকোনো দিনের ওপর কার্সর রাখলেই ওই দিনের হিসাব দেখা যাবে।
               </p>
             </div>
             <Link href="/admin/reports" className="flex items-center gap-1 text-small font-semibold text-brand-700 hover:underline">
@@ -269,34 +269,8 @@ export default async function AdminHome() {
               <Icon name="ChevronRight" className="h-4 w-4" />
             </Link>
           </div>
-          <div className="mt-6 space-y-5">
-            {revenueBars.map((bar) => {
-              const pct = Math.round((bar.revenue / revenueMax) * 100);
-              return (
-                <div key={bar.label} className="group">
-                  <div className="mb-1.5 flex items-baseline justify-between gap-2 text-small">
-                    <span className="font-medium text-text-main">{bar.label}</span>
-                    <span className="flex items-baseline gap-2 text-text-muted">
-                      <span className="rounded-full bg-brand-50 px-2 py-0.5 font-mono text-caption font-semibold tabular-nums text-brand-700">
-                        {pct}%
-                      </span>
-                      <span className="font-mono font-bold tabular-nums text-text-main">{formatPoisha(bar.revenue)}</span>
-                      <span>{" · "}{bar.orders}টি অর্ডার</span>
-                    </span>
-                  </div>
-                  <div
-                    className="h-4 overflow-hidden rounded-full bg-surface-2 shadow-[inset_0_1px_2px_rgba(49,46,129,0.08)]"
-                    role="img"
-                    aria-label={`${bar.label}: ${formatPoisha(bar.revenue)}, ${bar.orders}টি অর্ডার`}
-                  >
-                    <div
-                      className="brand-gradient h-full rounded-full shadow-sm transition-all motion-base group-hover:brightness-110"
-                      style={{ width: `${Math.max(2, pct)}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+          <div className="mt-4">
+            <RevenueChart data={data.dailySeries} />
           </div>
           <div className="mt-6 grid grid-cols-2 gap-3 border-t border-border pt-4 sm:grid-cols-4">
             {[

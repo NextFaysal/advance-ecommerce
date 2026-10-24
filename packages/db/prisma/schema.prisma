@@ -430,22 +430,48 @@ model ProductAttribute {
 
 // ---------------------------------------------------------------- Customer / Cart
 model Customer {
-  id              String    @id @default(cuid())
-  name            String
-  phone           String    @unique
-  email           String?
-  tags            String[]
-  blocked         Boolean   @default(false)
-  blacklistReason String?
-  deletedAt       DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  addresses       Address[]
-  carts           Cart[]
-  orders          Order[]
-  couponUsages    CouponUsage[]
+  id                  String    @id @default(cuid())
+  name                String
+  phone               String    @unique
+  email               String?
+  tags                String[]
+  blocked             Boolean   @default(false)
+  blacklistReason     String?
+  // Customer account auth (nullable: guest customers created by checkout
+  // have no password until they register with the same phone).
+  passwordHash        String?
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  addresses           Address[]
+  carts               Cart[]
+  orders              Order[]
+  couponUsages        CouponUsage[]
+  sessions            CustomerSession[]
   @@index([phone])
   @@index([deletedAt])
+}
+
+// Customer web sessions — mirrors the staff Session model, but keyed to
+// Customer and NEVER interchangeable with staff sessions (separate table,
+// separate cookie `customer_session`).
+model CustomerSession {
+  id         String    @id @default(cuid())
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  tokenHash  String    @unique
+  userAgent  String?
+  ip         String?
+  deviceName String?
+  lastUsedAt DateTime  @default(now())
+  revokedAt  DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  @@index([customerId])
+  @@index([expiresAt])
 }
 
 model Address {
