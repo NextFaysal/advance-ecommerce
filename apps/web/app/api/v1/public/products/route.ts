@@ -35,16 +35,6 @@ export async function GET(req: Request) {
       meta: { total: result.total, page: result.page, pageSize: result.pageSize, engine: result.engine },
     });
   } catch (error) {
-    // TEMP DIAGNOSTIC (remove after go-live debugging): token-gated error
-    // reveal so the production failure can be read without log access.
-    const diag = req.headers.get("x-diag");
-    if (diag && process.env["DIAG_TOKEN"] && diag === process.env["DIAG_TOKEN"]) {
-      const e = error as Error;
-      return NextResponse.json(
-        { diag: { name: e?.name, message: e?.message, stack: String(e?.stack ?? "").split("\n").slice(0, 6) } },
-        { status: 500 },
-      );
-    }
     return handleServiceError(error);
   }
 }
