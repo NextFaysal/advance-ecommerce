@@ -301,22 +301,22 @@ export default async function Home() {
             <div className="absolute -bottom-14 -left-8 h-52 w-52 rounded-full bg-black/10" />
             <div className="relative flex h-full flex-col justify-between gap-4">
               <div className="w-56 rounded-2xl bg-white/95 p-4 shadow-lg">
-                <p className="flex items-center gap-2 text-sm font-bold text-text-main">
+                <p className="flex items-center gap-2 text-sm font-bold text-[#1F2037]">
                   <span className="text-brand-600"><CashIcon size={20} /></span> ক্যাশ অন ডেলিভারি
                 </p>
-                <p className="mt-1 text-xs leading-5 text-text-muted">পণ্য হাতে পেয়ে টাকা দিন — কোনো অগ্রিম ঝামেলা নেই।</p>
+                <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">পণ্য হাতে পেয়ে টাকা দিন — কোনো অগ্রিম ঝামেলা নেই।</p>
               </div>
               <div className="ml-auto w-60 rounded-2xl bg-white/95 p-4 shadow-lg">
-                <p className="flex items-center gap-2 text-sm font-bold text-text-main">
+                <p className="flex items-center gap-2 text-sm font-bold text-[#1F2037]">
                   <span className="text-brand-600"><TruckIcon size={20} /></span> দ্রুত ডেলিভারি
                 </p>
-                <p className="mt-1 text-xs leading-5 text-text-muted">সারাদেশের সব জেলায় নির্ভরযোগ্য কুরিয়ার পার্টনার।</p>
+                <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">সারাদেশের সব জেলায় নির্ভরযোগ্য কুরিয়ার পার্টনার।</p>
               </div>
               <div className="w-52 rounded-2xl bg-white/95 p-4 shadow-lg">
-                <p className="flex items-center gap-2 text-sm font-bold text-text-main">
+                <p className="flex items-center gap-2 text-sm font-bold text-[#1F2037]">
                   <span className="text-brand-600"><ShieldIcon size={20} /></span> যাচাইকৃত মান
                 </p>
-                <p className="mt-1 text-xs leading-5 text-text-muted">প্রতিটি অর্ডার পাঠানোর আগে মান যাচাই করা হয়।</p>
+                <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">প্রতিটি অর্ডার পাঠানোর আগে মান যাচাই করা হয়।</p>
               </div>
             </div>
           </div>
