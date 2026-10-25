@@ -24,12 +24,15 @@
  * completed (DONE/SKIPPED) task does NOT block a genuinely new
  * episode — an order that fails delivery twice gets a second task.
  * Creations for the same (orderId, kind) are serialized in-process so
- * two events delivered back-to-back cannot race the check-then-create.
- * Honest limit: there is no DB unique constraint backing this (a
- * partial unique index on active rows needs a raw-SQL migration —
- * reported as the schema follow-up), and the event bus itself is
- * single-process (see event-bus.ts header), so this guarantee is
- * exactly as strong as the bus's own single-node scope.
+ * two events delivered back-to-back cannot race the check-then-create,
+ * AND the dedupe is backed at the DB level by the partial unique index
+ * "CallTask_orderId_kind_active_key" on (orderId, kind) WHERE status
+ * IN ('QUEUED','IN_CALL') — added by the wave-5 migration
+ * 20261025043359_reviews_and_small_fixes. If two processes ever race
+ * past the check-then-create, the index rejects the second insert
+ * (P2002) and the handler's catch-all swallows it, so the guarantee
+ * holds beyond this process too; the event bus itself remains
+ * single-process (see event-bus.ts header).
  *
  * Assignment: tasks are created UNASSIGNED (assignedToId null) — the
  * module's existing pattern is the unassigned pool + claim (G3), so

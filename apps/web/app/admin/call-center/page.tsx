@@ -3,6 +3,7 @@ import { toQueueItemView } from "@/callcenter/queue";
 import { loadCallTasks } from "@/callcenter/store";
 import { CONFIRMATION_SCRIPT } from "@/callcenter/types";
 import { formatBdt } from "@/checkout/pricing";
+import { CallCenterWorkbench } from "./workbench";
 
 // Call center admin — Agent 14, Step 46 (A10).
 // Locked state: while module.call_center is OFF (seeded default, paid
@@ -11,6 +12,10 @@ import { formatBdt } from "@/checkout/pricing";
 // only ever served by the API to callers with customers.view_full_phone.
 // Data: Prisma DB via src/callcenter/store.ts (tasks store masked phones
 // only; names/totals come from the linked orders).
+// Wave 8: the agent workbench (./workbench.tsx, client) is mounted below
+// in the unlocked branch only — it drives the claim/outcome/manual APIs
+// so an agent can actually work the queue; this page's table + script
+// remain the supervisor view.
 export default async function AdminCallCenterPage() {
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
@@ -29,6 +34,8 @@ export default async function AdminCallCenterPage() {
     <main style={{ padding: 24, fontFamily: "system-ui" }}>
       <h1>Call Center — Queue</h1>
       <p>Live data from the database. Highest priority first: failed delivery, then pending orders, abandoned checkouts, manual.</p>
+      <CallCenterWorkbench />
+      <h2>সব টাস্ক (Supervisor Queue)</h2>
       <table>
         <thead>
           <tr>
