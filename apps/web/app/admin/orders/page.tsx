@@ -310,13 +310,22 @@ export default function AdminOrdersPage() {
       return;
     }
     if (!manualKeyRef.current) manualKeyRef.current = newIdempotencyKey();
+    // Optional reseller attribution (wave 7): the admin create API
+    // accepts resellerCode since wave 6; the shared manualOrderSchema
+    // does not carry it, so it rides alongside parsed.data and is
+    // sent ONLY when staff actually typed a code.
+    const resellerCode = String(data.get("resellerCode") ?? "").trim();
     setManualBusy(true);
     setManualResult("");
     try {
       const res = await fetch("/api/v1/admin/orders", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...parsed.data, idempotencyKey: manualKeyRef.current }),
+        body: JSON.stringify({
+          ...parsed.data,
+          idempotencyKey: manualKeyRef.current,
+          ...(resellerCode ? { resellerCode } : {}),
+        }),
       });
       const body = (await res.json().catch(() => null)) as
         | {
@@ -748,6 +757,7 @@ export default function AdminOrdersPage() {
             </select>
           </div>
           <div><label className={labelCls} htmlFor="mo-note">নোট (ঐচ্ছিক)</label><input id="mo-note" name="note" placeholder="নোট" className={inputCls} /></div>
+          <div><label className={labelCls} htmlFor="mo-reseller">রিসেলার কোড (ঐচ্ছিক) — Reseller code</label><input id="mo-reseller" name="resellerCode" placeholder="যেমন: TESTAB24" className={inputCls} /></div>
           <div className="flex items-end">
             <Button type="submit" variant="primary" className="w-full" disabled={manualBusy}>
               {manualBusy ? "তৈরি হচ্ছে…" : "ম্যানুয়াল অর্ডার তৈরি করুন"}

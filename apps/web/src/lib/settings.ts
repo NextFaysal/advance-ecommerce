@@ -34,7 +34,8 @@ export type SettingCategory =
   | "courier"
   | "notification"
   | "branding"
-  | "seo";
+  | "seo"
+  | "accounting";
 
 export const STORAGE_PROVIDERS = ["r2", "s3"] as const;
 export const EMAIL_PROVIDERS = ["resend", "smtp"] as const;
@@ -62,6 +63,12 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   "email.from_name": { category: "email", value: "", isPublic: true },
   "sms.provider": { category: "sms", value: "", isPublic: false },
   "sms.sender_id": { category: "sms", value: "", isPublic: false },
+  // VAT rate in basis points (1500 = 15%). EMPTY default = NOT
+  // configured — there is deliberately no built-in rate: order creation
+  // records a VAT split (Order.vatPoisha / vatRateBps) only while this
+  // key holds a valid rate in the DB; the ERP sales-VAT report reads
+  // only orders that carry a recorded split.
+  "accounting.vat_rate_bps": { category: "accounting", value: "", isPublic: false },
 };
 
 /** Env fallback map: setting key -> env var name. No secret value lives here. */
@@ -90,7 +97,7 @@ export function isKnownSettingKey(key: string): boolean {
 
 function settingCategoryForKey(key: string): SettingCategory {
   const prefix = key.split(".")[0] as SettingCategory;
-  const allowed: SettingCategory[] = ["general", "storage", "email", "sms", "payment", "courier", "notification", "branding", "seo"];
+  const allowed: SettingCategory[] = ["general", "storage", "email", "sms", "payment", "courier", "notification", "branding", "seo", "accounting"];
   return allowed.includes(prefix) ? prefix : "general";
 }
 

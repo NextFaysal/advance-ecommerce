@@ -6,8 +6,9 @@ import { Card } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
 import { Icon } from "@/components/ui/icon";
 import { accountByCode } from "@/erp/accounts";
-import { erpStore } from "@/erp/db-store";
+import { erpStore, listSalesVatRows } from "@/erp/db-store";
 import { accountBalances } from "@/erp/ledger";
+import { buildVatReport } from "@/erp/vat";
 import type { AccountType, JournalEntry } from "@/erp/types";
 
 // Admin > ERP-lite — Agent 20, Step 49 (A16) UI over Agent 17's ledger;
@@ -18,14 +19,17 @@ import type { AccountType, JournalEntry } from "@/erp/types";
 // the real accountBalances() over the persisted entries. Posted entries
 // are append-only in the store (corrections happen via reversal).
 //
-// VAT — STILL NOT WIRED, and deliberately shows NO numbers: the VAT
-// report builder (src/erp/vat.ts) needs per-row VAT splits
-// {netPoisha, vatPoisha, vatRateBps} for sales and purchases, and no
-// such data exists anywhere in the schema — Order rows carry totals
-// only (no VAT split) and there is no purchase/invoice table for input
-// VAT. The exact schema gap is stated in the VAT card below instead of
-// demo rows. (Also pre-existing, unchanged here: this page and the
-// erp-journal API gate on RBAC reports.accounting, not module.erp_lite.)
+// VAT — sales side wired in wave 7: order creation records a VAT
+// split on the Order row (vatPoisha + vatRateBps, migration
+// 20261025112500_b2b_credit_dates_and_order_vat) ONLY while a rate is
+// configured in Settings (accounting.vat_rate_bps); the card below
+// renders buildVatReport over those recorded rows for the report
+// period (latest accounting period, else the current Dhaka month).
+// Purchase-side VAT is still not tracked — there is no purchase /
+// invoice ledger in the system — and the card says so instead of
+// netting a fabricated input figure. (Also pre-existing, unchanged
+// here: this page and the erp-journal API gate on RBAC
+// reports.accounting, not module.erp_lite.)
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +47,17 @@ const STATUS_TEXT: Record<JournalEntry["status"], { label: string; tone: "succes
   reversed: { label: "রিভার্স করা", tone: "neutral" },
 };
 
+/** Current accounting period ("YYYY-MM") on the Asia/Dhaka calendar. */
+function currentDhakaPeriod(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(new Date());
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}`;
+}
+
 function entryTotals(entry: JournalEntry): { debit: number; credit: number } {
   return {
     debit: entry.lines.reduce((s, l) => s + l.debitPoisha, 0),
@@ -57,6 +72,17 @@ export default async function AdminErpPage() {
     erpStore.listPeriods(),
   ]);
   const balances = accountBalances(entries);
+  // VAT report period: the latest accounting period on record, else
+  // the current Dhaka month. Rows are the orders carrying a recorded
+  // VAT split; buildVatReport applies the exact date-range filter.
+  const vatPeriod = periods.length > 0 ? (periods[periods.length - 1] as { period: string }).period : currentDhakaPeriod();
+  const [vatYear, vatMonth] = vatPeriod.split("-").map(Number);
+  const vatFrom = `${vatPeriod}-01`;
+  const vatLastDay = new Date(Date.UTC(vatYear as number, vatMonth as number, 0)).getUTCDate();
+  const vatTo = `${vatPeriod}-${String(vatLastDay).padStart(2, "0")}`;
+  const vatRows = await listSalesVatRows(vatFrom, vatTo);
+  const vatRowsInPeriod = vatRows.filter((r) => r.date >= vatFrom && r.date <= vatTo);
+  const vatReport = vatRowsInPeriod.length > 0 ? buildVatReport(vatRows, vatFrom, vatTo) : null;
   const postedCount = entries.filter((e) => e.status === "posted").length;
   const draftCount = entries.filter((e) => e.status === "draft").length;
   const trialDebit = balances.reduce((s, b) => s + b.debitPoisha, 0);
@@ -168,18 +194,56 @@ export default async function AdminErpPage() {
 
       <div className="mt-8 grid gap-4 lg:grid-cols-2">
         <Card>
-          <h3 className="text-base font-semibold">VAT সারাংশ — এখনো ডেটা উৎস নেই</h3>
-          <p className="mt-2 text-sm text-text-muted">
-            VAT রিপোর্ট বিল্ডার (<code className="font-mono text-xs">src/erp/vat.ts</code>) তৈরি আছে, কিন্তু
-            তার ইনপুট — বিক্রয় ও ক্রয়ের সারি অনুযায়ী VAT বিভাজন (netPoisha, vatPoisha, vatRateBps) —
-            এই সিস্টেমে কোথাও সংরক্ষিত হয় না: অর্ডার টেবিলে শুধু মোট টাকা থাকে (VAT বিভাজন নেই) এবং
-            ক্রয়/ইনভয়েসের কোনো টেবিলই নেই। তাই এখানে কোনো সংখ্যা দেখানো হচ্ছে না — ডেমো সংখ্যা
-            দেখানো হতো বিভ্রান্তিকর।
+          <h3 className="text-base font-semibold">VAT সারাংশ — বিক্রয় (Sales VAT)</h3>
+          <p className="mt-1 font-mono text-xs text-text-muted">
+            পিরিয়ড: {vatFrom} → {vatTo} · উৎস: অর্ডারে সংরক্ষিত VAT বিভাজন (vatPoisha / vatRateBps)
           </p>
-          <p className="mt-2 text-sm text-text-muted">
-            যা লাগবে: অর্ডার/ক্রয়ে VAT বিভাজনের কলাম (vatPoisha + vatRateBps) অথবা আলাদা VAT লেজার
-            টেবিল — মাইগ্রেশন প্রয়োজন, এই পেজের কাজের বাইরে।
-          </p>
+          {vatReport ? (
+            <>
+              <dl className="mt-3 space-y-2 text-sm">
+                <div className="flex items-baseline justify-between gap-4">
+                  <dt className="text-text-muted">আউটপুট VAT (বিক্রয়ে আদায়)</dt>
+                  <dd><Money poisha={vatReport.outputVatPoisha} /></dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-4">
+                  <dt className="text-text-muted">বিক্রয়ের নিট (VAT ছাড়া)</dt>
+                  <dd><Money poisha={vatReport.salesNetPoisha} /></dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-4 border-t border-border pt-2 font-medium">
+                  <dt>নিট প্রদেয় (শুধু বিক্রয় VAT থেকে)</dt>
+                  <dd><Money poisha={vatReport.netPayablePoisha} /></dd>
+                </div>
+              </dl>
+              {vatReport.byRate.length > 0 ? (
+                <ul className="mt-3 space-y-1 text-sm text-text-muted">
+                  {vatReport.byRate.map((r) => (
+                    <li key={r.vatRateBps} className="flex items-baseline justify-between gap-4">
+                      <span>হার {r.vatRateBps / 100}% — বিক্রয় VAT</span>
+                      <Money poisha={r.salesVatPoisha} />
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <p className="mt-3 text-sm text-text-muted">
+                ইনপুট VAT (ক্রয়): এই সিস্টেমে ক্রয়/ইনভয়েসের কোনো লেজার নেই — তাই ইনপুট VAT
+                হিসাবের বাইরে এবং ওপরের নিট প্রদেয় থেকে কোনো ক্রয় VAT বাদ দেওয়া হয়নি।
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="mt-2 text-sm text-text-muted">
+                এই পিরিয়ডে VAT বিভাজনসহ কোনো অর্ডার নেই। VAT বিভাজন রেকর্ড হয় অর্ডার তৈরির
+                সময় — শুধুমাত্র যখন Settings-এ <code className="font-mono text-xs">accounting.vat_rate_bps</code>{" "}
+                হার সেট করা থাকে। হার সেট করার আগের অর্ডারগুলোতে কোনো বিভাজন নেই, এবং পরে তা
+                অনুমান করে বসানো হয় না — তাই হার সেট করে নতুন অর্ডার এলেই এখানে আসল সংখ্যা
+                দেখা যাবে।
+              </p>
+              <p className="mt-2 text-sm text-text-muted">
+                ক্রয় দিকের VAT-এর জন্য ক্রয়/ইনভয়েস লেজার প্রয়োজন — এই সিস্টেমে সেটি এখনো নেই,
+                তাই এই রিপোর্ট শুধু বিক্রয়ের।
+              </p>
+            </>
+          )}
         </Card>
 
         <div>

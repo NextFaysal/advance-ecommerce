@@ -200,6 +200,7 @@ export const API_ROUTE_REGISTRY: readonly ApiRouteEntry[] = [
   r("GET", "/api/v1/admin/inbox", "admin", "Unified F-commerce inbox conversations"),
   r("POST", "/api/v1/admin/inbox/draft", "admin", "Convert an inbox conversation into an order draft"),
   r("GET", "/api/v1/admin/contact-messages", "admin", "List contact-form submissions (newest first; phone masked without customers.view_full_phone)"),
+  r("GET", "/api/v1/admin/newsletter/subscribers", "admin", "List newsletter subscribers (newest first, with totals)"),
   r("GET", "/api/v1/admin/modules", "admin", "Module catalogue with per-pack enabled state"),
   r("POST", "/api/v1/admin/modules", "admin", "Validate and save a business-pack configuration"),
   r("GET", "/api/v1/admin/modules/erp-journal", "admin", "List ERP journal entries"),

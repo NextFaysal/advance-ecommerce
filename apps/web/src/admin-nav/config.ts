@@ -287,6 +287,21 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: null,
   },
   {
+    // Newsletter subscribers (wave 7): the admin list over the
+    // NewsletterSubscriber table that the storefront form has filled
+    // since wave 3a. Permission matches the page's API guard
+    // (GET /api/v1/admin/newsletter/subscribers, marketing.coupon).
+    id: "newsletter",
+    path: "/admin/newsletter",
+    labelBn: "নিউজলেটার",
+    labelEn: "Newsletter",
+    icon: "Inbox",
+    section: "marketing",
+    permission: "marketing.coupon",
+    featureFlag: null,
+    badge: null,
+  },
+  {
     // Landing Page Builder (Agent 53): core marketing, no feature flag.
     // Permission mirrors the CMS convention: content.page — the landing
     // API guards on content.page, same as the CMS Pages API.

@@ -598,6 +598,14 @@ model Order {
   shippingPoisha   Int          @default(0)
   codFeePoisha     Int          @default(0)
   taxPoisha        Int          @default(0)
+  // Recorded VAT split (wave 7): written at order-create time ONLY when
+  // a VAT rate is configured in Settings (accounting.vat_rate_bps).
+  // totalPoisha is VAT-inclusive, so vatPoisha is the VAT portion of
+  // the total at vatRateBps. NULL on every order placed without a
+  // configured rate — the ERP sales-VAT report reads only rows where
+  // both are set, and never reconstructs a split after the fact.
+  vatPoisha        Int?
+  vatRateBps       Int?
   totalPoisha      Int
   courier          String?
   trackingId       String?
@@ -1234,8 +1242,13 @@ model B2bCustomer {
   companyName     String
   contactName     String
   phone           String    @unique
+  tradeLicenseNo  String?
   creditLimitPoisha Int     @default(0)
   duePoisha       Int       @default(0)
+  // Oldest unpaid invoice due date (date-only semantics; the TS layer
+  // reads it back as an ISO date string). NULL = no dated dues known —
+  // checkCredit's overdue-by-date rule only fires when this is set.
+  oldestDueDate   DateTime?
   status          String    @default("PENDING_APPROVAL")
   deletedAt       DateTime?
   createdAt       DateTime  @default(now())

@@ -20,11 +20,11 @@ import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 // the B2B API serves); the page-local SAMPLE rows are gone.
 // Credit state is computed with the real checkCredit() and quotation
 // status with effectiveQuotationStatus(). Phones are masked via <Phone>.
-// KNOWN SCHEMA GAP (labelled on the page, not hidden): the B2bCustomer
-// table has no oldestDueDate column, so persisted customers never carry
-// a due date and checkCredit's overdue-by-date rule cannot fire — the
-// overdue count therefore reflects limit/status rules only until the
-// column lands (needs a migration; reported, not faked).
+// oldestDueDate + tradeLicenseNo are persisted columns since migration
+// 20261025112500_b2b_credit_dates_and_order_vat (wave 7), so the
+// overdue-by-date rule in checkCredit fires for stored customers too —
+// the overdue count below reflects the full rule (limit + status +
+// due date), not a degraded subset.
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +76,14 @@ export default async function AdminB2bPage() {
         </Badge>
       ),
       limit: <Money poisha={c.creditLimitPoisha} />,
-      outstanding: <Money poisha={c.outstandingPoisha} />,
+      outstanding: (
+        <span>
+          <Money poisha={c.outstandingPoisha} />
+          {c.oldestDueDate ? (
+            <span className="block text-xs text-text-muted">সবচেয়ে পুরনো মেয়াদ: {c.oldestDueDate}</span>
+          ) : null}
+        </span>
+      ),
       available: <Money poisha={credit.availablePoisha} />,
       creditState: credit.overdue ? (
         <Badge tone="danger">ওভারডিউ — ক্রেডিট বন্ধ</Badge>
@@ -119,7 +126,9 @@ export default async function AdminB2bPage() {
     contact: c.contactName,
     phone: <Phone phone={c.phone} />,
     applied: c.createdAt.slice(0, 10),
-    note: "যাচাই: ট্রেড লাইসেন্স ও ক্রেডিট সীমা — সিদ্ধান্ত B2B API দিয়ে (PATCH customers)",
+    note: c.tradeLicenseNo
+      ? `ট্রেড লাইসেন্স: ${c.tradeLicenseNo} — যাচাই করে সিদ্ধান্ত B2B API দিয়ে (PATCH customers)`
+      : "যাচাই: ট্রেড লাইসেন্স ও ক্রেডিট সীমা — সিদ্ধান্ত B2B API দিয়ে (PATCH customers)",
   }));
 
   return (
@@ -132,15 +141,14 @@ export default async function AdminB2bPage() {
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="B2B গ্রাহক" value={String(customers.length)} delta={`${approvalQueue.length} অনুমোদনের অপেক্ষায়`} icon={<Icon name="users" size={22} />} />
         <StatCard label="মোট বকেয়া" value={formatPoisha(totalOutstanding)} delta="সব গ্রাহক মিলিয়ে" icon={<Icon name="banknote" size={22} />} />
-        <StatCard label="ওভারডিউ গ্রাহক" value={String(overdueCount)} delta={overdueCount > 0 ? "ক্রেডিট বন্ধ আছে" : "সীমা/অবস্থা অনুযায়ী কেউ নেই"} deltaTone={overdueCount > 0 ? "down" : "up"} icon={<Icon name="clock" size={22} />} />
+        <StatCard label="ওভারডিউ গ্রাহক" value={String(overdueCount)} delta={overdueCount > 0 ? "ক্রেডিট বন্ধ আছে" : "মেয়াদ/সীমা/অবস্থা অনুযায়ী কেউ নেই"} deltaTone={overdueCount > 0 ? "down" : "up"} icon={<Icon name="clock" size={22} />} />
         <StatCard label="কোটেশন" value={String(quotations.length)} delta="সক্রিয় তালিকা নিচে" icon={<Icon name="tag" size={22} />} />
       </div>
 
-      <p className="mb-6 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-        সীমাবদ্ধতা (লুকানো নয়): B2bCustomer টেবিলে বকেয়ার মেয়াদ-তারিখ (oldestDueDate) কলাম নেই — তাই
-        সংরক্ষিত গ্রাহকদের ক্ষেত্রে মেয়াদ-ভিত্তিক ওভারডিউ শনাক্তকরণ কাজ করে না; ওপরের ওভারডিউ সংখ্যা শুধু
-        ক্রেডিট-সীমা ও অনুমোদন-অবস্থার নিয়মে হিসাব করা। কলামটি যোগ হলে (মাইগ্রেশন প্রয়োজন) মেয়াদ-ভিত্তিক
-        নিয়মও সক্রিয় হবে।
+      <p className="mb-6 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+        ক্রেডিট নিয়ম পুরোপুরি সক্রিয়: বকেয়ার মেয়াদ-তারিখ (oldestDueDate) ও ট্রেড লাইসেন্স নম্বর এখন
+        ডাটাবেসে সংরক্ষিত হয় — তাই মেয়াদ পেরিয়ে যাওয়া বকেয়া থাকলেই checkCredit() নতুন ক্রেডিট অর্ডার
+        বন্ধ করে, এবং ওপরের ওভারডিউ সংখ্যায় মেয়াদ-ভিত্তিক নিয়মও অন্তর্ভুক্ত।
       </p>
 
       {customers.length === 0 ? (

@@ -56,6 +56,7 @@
  * impossible.
  */
 import { prisma } from "@advance-ecommerce/db";
+import { getSetting } from "../lib/settings";
 import { riskLevel } from "./customer";
 import { runDeliveredOrderHooks } from "./delivered-hooks";
 import { publishPaymentSucceeded } from "./event-bus";
@@ -371,6 +372,43 @@ export type CreateOrderRecordResult =
     }
   | { replayed: true; existing: OrderRow };
 
+/* ------------------------------------------------------------------ */
+/* VAT split recording (wave 7)                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Split a VAT-INCLUSIVE total into its VAT portion at a rate in basis
+ * points: vat = round(total * rate / (10000 + rate)); the remainder is
+ * the net. Pure — the ERP sales-VAT report's rows are derived from
+ * exactly these recorded figures (net = totalPoisha − vatPoisha).
+ */
+export function computeVatInclusiveSplit(
+  totalPoisha: number,
+  vatRateBps: number,
+): { vatPoisha: number; netPoisha: number } {
+  const vatPoisha = Math.round((totalPoisha * vatRateBps) / (10000 + vatRateBps));
+  return { vatPoisha, netPoisha: totalPoisha - vatPoisha };
+}
+
+/**
+ * The configured VAT rate (Settings key `accounting.vat_rate_bps`,
+ * basis points), or null when not configured. There is NO default
+ * rate: an unset/blank/invalid value means order creation records no
+ * VAT split. A settings-read failure also resolves to null — VAT
+ * bookkeeping must never break checkout.
+ */
+async function readConfiguredVatRateBps(): Promise<number | null> {
+  try {
+    const raw = await getSetting("accounting.vat_rate_bps");
+    if (raw === null || raw.trim() === "") return null;
+    const rate = Number.parseInt(raw, 10);
+    if (!Number.isInteger(rate) || rate <= 0 || rate > 10000) return null;
+    return rate;
+  } catch {
+    return null;
+  }
+}
+
 function isUniqueViolation(e: unknown, field?: string): boolean {
   if (typeof e !== "object" || e === null || !("code" in e)) return false;
   const err = e as { code?: string; meta?: { target?: unknown } };
@@ -419,6 +457,12 @@ export async function createOrderRecord(
         select: { id: true },
       })
     : null;
+  // VAT split: recorded only when a rate is configured in Settings —
+  // computed from the VAT-inclusive total and stored on the Order row
+  // in the create transaction below (NULL when unconfigured).
+  const vatRateBps = await readConfiguredVatRateBps();
+  const vatSplit =
+    vatRateBps !== null ? computeVatInclusiveSplit(input.pricing.totalPoisha, vatRateBps) : null;
   const orderNo = await nextOrderNo();
   let noteId: string | null = null;
   try {
@@ -468,6 +512,8 @@ export async function createOrderRecord(
           shippingPoisha: input.pricing.shippingPoisha,
           codFeePoisha: input.pricing.codFeePoisha,
           taxPoisha: input.pricing.taxPoisha,
+          vatPoisha: vatSplit ? vatSplit.vatPoisha : null,
+          vatRateBps: vatSplit ? vatRateBps : null,
           totalPoisha: input.pricing.totalPoisha,
           riskScore: input.riskScore,
           source: input.source ?? "website",

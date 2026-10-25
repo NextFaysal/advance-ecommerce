@@ -2,6 +2,7 @@ import { demoResellerFlags, isResellerEnabled } from "@/reseller/flags";
 import { buildDashboardsDb, listPriceEntries, listWithdrawals } from "@/reseller/store";
 import { computeMargin } from "@/reseller/pricing";
 import { formatBdt } from "@/checkout/pricing";
+import { CreateResellerForm } from "./create-reseller-form";
 
 // Resellers admin — Agent 14, Step 46 (A5).
 // Locked state: while module.reseller is OFF (the seeded default — this is a
@@ -13,6 +14,9 @@ import { formatBdt } from "@/checkout/pricing";
 // Wave 6: each row also shows the reseller's attribution code and its
 // ?ref= share link — orders placed through that link inside 30 days
 // persist Order.resellerId and credit this reseller on DELIVERED.
+// Wave 7: the create form below (CreateResellerForm) POSTs to
+// /api/v1/admin/resellers — the create endpoint that did not exist
+// before; new rows start PENDING_APPROVAL with their code generated.
 export default async function AdminResellersPage() {
   if (!isResellerEnabled(demoResellerFlags)) {
     return (
@@ -38,6 +42,7 @@ export default async function AdminResellersPage() {
     <main style={{ padding: 24, fontFamily: "system-ui" }}>
       <h1>Resellers</h1>
       <p>Live data from the database (src/reseller/store.ts).</p>
+      <CreateResellerForm />
       <table>
         <thead>
           <tr>

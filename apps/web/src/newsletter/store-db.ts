@@ -57,6 +57,11 @@ interface NewsletterSubscriberDelegate {
     where: { email: string };
     data: { status: string; unsubscribedAt: null; source: string };
   }): Promise<NewsletterSubscriberRow>;
+  findMany(args: {
+    orderBy: { createdAt: "desc" };
+    take: number;
+  }): Promise<NewsletterSubscriberRow[]>;
+  count(args?: { where?: { status: string } }): Promise<number>;
 }
 
 function delegate(): NewsletterSubscriberDelegate {
@@ -116,3 +121,28 @@ export class PrismaNewsletterStore implements NewsletterStore {
 
 /** The store the public route uses. */
 export const newsletterStore: NewsletterStore = new PrismaNewsletterStore();
+
+export interface NewsletterSubscriberList {
+  subscribers: NewsletterSubscriber[];
+  /** Every subscriber row, regardless of the page size below. */
+  total: number;
+  /** Rows whose status is "subscribed" (the rest are unsubscribed —
+   * those are the only two statuses the module writes). */
+  subscribedTotal: number;
+}
+
+/**
+ * Admin list read (wave 7): newest subscribers first, with the true
+ * totals for the admin page/API stats. Same delegate pattern as the
+ * subscribe path — throws NewsletterStoreUnavailableError when the
+ * generated delegate is absent, never returns invented rows.
+ */
+export async function listNewsletterSubscribers(take = 50): Promise<NewsletterSubscriberList> {
+  const store = delegate();
+  const [rows, total, subscribedTotal] = await Promise.all([
+    store.findMany({ orderBy: { createdAt: "desc" }, take }),
+    store.count(),
+    store.count({ where: { status: "subscribed" } }),
+  ]);
+  return { subscribers: rows.map(rowToSubscriber), total, subscribedTotal };
+}

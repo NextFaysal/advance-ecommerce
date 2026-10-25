@@ -31,7 +31,7 @@ import { prisma } from "@advance-ecommerce/db";
 import { DEFAULT_CHART_OF_ACCOUNTS } from "./accounts";
 import { PeriodLockedError, UnbalancedEntryError, periodOf } from "./ledger";
 import { UnknownAccountError, type ErpStore } from "./store";
-import type { Account, AccountingPeriod, JournalEntry } from "./types";
+import type { Account, AccountingPeriod, JournalEntry, VatRow } from "./types";
 
 type EntryRow = Awaited<ReturnType<typeof prisma.erpJournalEntry.findMany>>[number];
 type EntryRowWithLines = EntryRow & {
@@ -177,3 +177,57 @@ export class PrismaErpStore implements ErpStore {
 
 /** Shared Prisma instance used by the ERP journal API route. */
 export const erpStore: ErpStore = new PrismaErpStore();
+
+/* ------------------------------------------------------------------ */
+/* Sales VAT rows (wave 7)                                             */
+/* ------------------------------------------------------------------ */
+
+/** "YYYY-MM-DD" on the Asia/Dhaka calendar for a stored timestamp. */
+function dhakaDateOf(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+/**
+ * Sales-side VAT rows for buildVatReport: orders that carry a RECORDED
+ * VAT split (Order.vatPoisha / vatRateBps, written at create time only
+ * when a rate was configured in Settings — see src/orders/repository).
+ * Orders without a recorded split contribute NOTHING here: the split
+ * is never reconstructed after the fact. Cancelled and soft-deleted
+ * orders are excluded (the dashboard's sales convention). Purchase
+ * rows do not exist — there is no purchase/invoice ledger yet — so the
+ * report built from these rows is sales-VAT only.
+ */
+export async function listSalesVatRows(fromDate: string, toDate: string): Promise<VatRow[]> {
+  // Coarse UTC window around the Dhaka date range (Dhaka is UTC+6, so
+  // ±2 days always covers it); buildVatReport applies the exact
+  // Dhaka-date filter to the mapped rows.
+  const from = new Date(`${fromDate}T00:00:00.000Z`);
+  from.setUTCDate(from.getUTCDate() - 2);
+  const to = new Date(`${toDate}T00:00:00.000Z`);
+  to.setUTCDate(to.getUTCDate() + 2);
+  const rows = await prisma.order.findMany({
+    where: {
+      vatPoisha: { not: null },
+      vatRateBps: { not: null },
+      deletedAt: null,
+      status: { not: "CANCELLED" },
+      createdAt: { gte: from, lt: to },
+    },
+    select: { createdAt: true, totalPoisha: true, vatPoisha: true, vatRateBps: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map((r) => ({
+    date: dhakaDateOf(r.createdAt),
+    kind: "sale" as const,
+    netPoisha: r.totalPoisha - (r.vatPoisha ?? 0),
+    vatPoisha: r.vatPoisha ?? 0,
+    vatRateBps: r.vatRateBps ?? 0,
+  }));
+}

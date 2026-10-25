@@ -11,11 +11,11 @@
  *    "PENDING_APPROVAL" reads back as "PENDING"). Quotation lines ride
  *    in itemsJson verbatim; validUntil is a DateTime read back as a
  *    date-only string, matching the TS contract's ISO-date shape.
- *  - tradeLicenseNo and oldestDueDate have NO columns: they echo on
- *    write (the approval PATCH response is built from the caller's
- *    object) but are absent on read-back. Credit checks therefore see
- *    oldestDueDate as undefined after a restart — overdue detection
- *    degrades to limit-only until an invoice table lands. Reported.
+ *  - tradeLicenseNo and oldestDueDate are real columns since migration
+ *    20261025112500_b2b_credit_dates_and_order_vat (wave 7): they persist
+ *    on write and read back — oldestDueDate as a date-only ISO string,
+ *    the same shape as Quotation.validUntil — so checkCredit's
+ *    overdue-by-date rule now fires for persisted customers.
  *  - Soft delete (deletedAt) is respected on every read.
  *  - Wholesale price tiers (WholesalePriceList) remain pure pricing
  *    inputs — no tier table exists and no route persists them.
@@ -43,9 +43,11 @@ function rowToCustomer(row: B2bCustomerRow): B2bCustomer {
     businessName: row.companyName,
     contactName: row.contactName,
     phone: row.phone,
+    tradeLicenseNo: row.tradeLicenseNo ?? undefined,
     approvalStatus: approvalFromDb(row.status),
     creditLimitPoisha: row.creditLimitPoisha,
     outstandingPoisha: row.duePoisha,
+    oldestDueDate: row.oldestDueDate ? row.oldestDueDate.toISOString().slice(0, 10) : undefined,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -88,8 +90,10 @@ export class PrismaB2bStore implements B2bStore {
         companyName: c.businessName,
         contactName: c.contactName,
         phone: c.phone,
+        tradeLicenseNo: c.tradeLicenseNo ?? null,
         creditLimitPoisha: c.creditLimitPoisha,
         duePoisha: c.outstandingPoisha,
+        oldestDueDate: c.oldestDueDate ? new Date(c.oldestDueDate) : null,
         status: c.approvalStatus,
       },
     });
@@ -104,12 +108,14 @@ export class PrismaB2bStore implements B2bStore {
         companyName: c.businessName,
         contactName: c.contactName,
         phone: c.phone,
+        tradeLicenseNo: c.tradeLicenseNo ?? null,
         creditLimitPoisha: c.creditLimitPoisha,
         duePoisha: c.outstandingPoisha,
+        oldestDueDate: c.oldestDueDate ? new Date(c.oldestDueDate) : null,
         status: c.approvalStatus,
       },
     });
-    return { ...rowToCustomer(row), tradeLicenseNo: c.tradeLicenseNo, oldestDueDate: c.oldestDueDate };
+    return rowToCustomer(row);
   }
 
   async listQuotations(): Promise<Quotation[]> {
