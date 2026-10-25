@@ -23,6 +23,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Icon, type IconName } from "@/components/ui/icon";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SkeletonTable } from "@/components/ui/skeleton";
 import { formatPoisha } from "@/components/ui/money";
 
 type ReturnStatus = "REQUESTED" | "APPROVED" | "REJECTED" | "RECEIVED" | "COMPLETED" | "CLOSED";
@@ -60,13 +63,22 @@ interface ReturnView {
   createdAt: string;
 }
 
-const STATUS_UI: Record<string, { label: string; tone: "success" | "warning" | "danger" | "info" | "neutral" }> = {
-  REQUESTED: { label: "অনুরোধ এসেছে", tone: "warning" },
-  APPROVED: { label: "অনুমোদিত — পণ্য আসছে", tone: "info" },
-  REJECTED: { label: "বাতিল", tone: "danger" },
-  RECEIVED: { label: "পণ্য পৌঁছেছে", tone: "info" },
-  COMPLETED: { label: "সম্পন্ন (রিফান্ড PENDING)", tone: "success" },
-  CLOSED: { label: "বন্ধ (রিফান্ড নেই)", tone: "neutral" },
+/* OD6 (doc 19 §3-S6) — return states in the OD0 visual shape
+ * ({ tone, icon, labelBn }): same Badge tones as ORDER_STATUS_VISUAL,
+ * icons verified against src/components/ui/icon.tsx. Return-specific
+ * states live here, not in labels.ts, because the RMA lifecycle is not
+ * the order state machine. */
+const RETURN_STATUS_VISUAL: Record<
+  string,
+  { tone: "success" | "warning" | "danger" | "info" | "neutral"; icon: IconName; label: string }
+> = {
+  REQUESTED: { tone: "warning", icon: "clock", label: "অনুরোধ এসেছে" },
+  APPROVED: { tone: "info", icon: "check", label: "অনুমোদিত — পণ্য আসছে" },
+  REJECTED: { tone: "danger", icon: "x", label: "বাতিল" },
+  RECEIVED: { tone: "info", icon: "package", label: "পণ্য পৌঁছেছে" },
+  COMPLETED: { tone: "success", icon: "check", label: "সম্পন্ন (রিফান্ড PENDING)" },
+  CLOSED: { tone: "neutral", icon: "x", label: "বন্ধ (রিফান্ড নেই)" },
+  EXCHANGED: { tone: "info", icon: "refresh-ccw", label: "এক্সচেঞ্জ করা" },
 };
 
 const FILTERS: { key: string; label: string }[] = [
@@ -200,7 +212,7 @@ export default function AdminReturnsPage() {
               status === f.key
                 ? "border-brand-500 bg-brand-50 text-brand-700"
                 : "border-border bg-card text-text-muted hover:text-text-main"
-            }`}
+            } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
           >
             {f.label}
             <span className="ml-1.5 text-caption text-text-subtle">
@@ -226,34 +238,46 @@ export default function AdminReturnsPage() {
         </p>
       )}
 
+      {rows === null ? (
+        <div className="mt-4">
+          <SkeletonTable rows={5} />
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="mt-4">
+          <EmptyState
+            title="এই তালিকায় কোনো রিটার্ন নেই"
+            description="এই ফিল্টারে কোনো রিটার্ন অনুরোধ পাওয়া যায়নি। নতুন অনুরোধ এলে এখানে দেখা যাবে।"
+          />
+        </div>
+      ) : (
       <Card className="mt-4 overflow-hidden p-0">
-        {rows === null ? (
-          <p className="px-4 py-8 text-center text-small text-text-muted">লোড হচ্ছে…</p>
-        ) : rows.length === 0 ? (
-          <p className="px-4 py-8 text-center text-small text-text-muted">
-            এই তালিকায় কোনো রিটার্ন নেই।
-          </p>
-        ) : (
           <ul className="divide-y divide-border">
             {rows.map((row) => {
-              const ui = STATUS_UI[row.status] ?? { label: row.status, tone: "neutral" as const };
+              const ui = RETURN_STATUS_VISUAL[row.status] ?? { label: row.status, tone: "neutral" as const, icon: "info" as IconName };
               const expanded = expandedId === row.id;
               const busy = busyId === row.id;
               return (
                 <li key={row.id} className="px-4 py-3.5">
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
                     <Link href={`/admin/orders/${row.orderId}`} className="font-mono text-small font-semibold text-brand-700 hover:underline">
                       {row.orderNo}
                     </Link>
                     <span className="text-small text-text-main">{row.customerName}</span>
                     <span className="text-small text-text-muted">{row.customerPhoneMasked}</span>
-                    <Badge tone={ui.tone}>{ui.label}</Badge>
-                    <Badge tone="neutral">{row.source === "customer" ? "কাস্টমারের অনুরোধ" : "অ্যাডমিন"}</Badge>
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <Badge tone={ui.tone} icon={<Icon name={ui.icon} size={12} />}>{ui.label}</Badge>
+                      <Badge tone="neutral">{row.source === "customer" ? "কাস্টমারের অনুরোধ" : "অ্যাডমিন"}</Badge>
+                      {row.refundId ? (
+                        <Badge tone="info" icon={<Icon name="banknote" size={12} />}>
+                          রিফান্ড রেকর্ড সংযুক্ত
+                        </Badge>
+                      ) : null}
+                    </span>
                     <span className="text-small text-text-muted">
                       {row.items.reduce((s, i) => s + i.quantity, 0)}টি পণ্য · {formatPoisha(row.goodsValuePoisha)}
                     </span>
                     <span className="text-caption text-text-subtle">{fmtDate(row.createdAt)}</span>
-                    <Button size="sm" variant="outline" className="ml-auto" onClick={() => expand(row)}>
+                    <Button size="sm" variant="outline" className="w-full sm:ml-auto sm:w-auto" onClick={() => expand(row)}>
                       {expanded ? "বন্ধ করুন" : "বিস্তারিত"}
                     </Button>
                   </div>
@@ -274,51 +298,44 @@ export default function AdminReturnsPage() {
                         ) : null}
                       </p>
 
-                      <table className="mt-3 w-full text-small">
-                        <thead>
-                          <tr className="text-left text-caption text-text-subtle">
-                            <th className="pb-1.5 pr-2 font-medium">পণ্য</th>
-                            <th className="pb-1.5 pr-2 font-medium">পরিমাণ</th>
-                            <th className="pb-1.5 pr-2 font-medium">মূল্য</th>
-                            <th className="pb-1.5 font-medium">অবস্থা (বুঝে নেওয়ার সময়)</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {row.items.map((item) => (
-                            <tr key={item.id} className="border-t border-border/60">
-                              <td className="py-1.5 pr-2">
-                                {item.productName}
-                                <span className="block text-caption text-text-subtle">{item.sku}</span>
-                              </td>
-                              <td className="py-1.5 pr-2">×{item.quantity}</td>
-                              <td className="py-1.5 pr-2">{formatPoisha(item.lineValuePoisha)}</td>
-                              <td className="py-1.5">
-                                {row.status === "APPROVED" ? (
-                                  <select
-                                    className={selectCls}
-                                    value={conditions[item.orderItemId] ?? "restockable"}
-                                    onChange={(e) =>
-                                      setConditions((prev) => ({
-                                        ...prev,
-                                        [item.orderItemId]: e.target.value as "restockable" | "damaged",
-                                      }))
-                                    }
-                                  >
-                                    <option value="restockable">ভালো — স্টকে ফিরবে</option>
-                                    <option value="damaged">নষ্ট — স্টকে যাবে না</option>
-                                  </select>
-                                ) : item.condition === "restockable" ? (
-                                  "ভালো (স্টকে ফিরেছে)"
-                                ) : item.condition === "damaged" ? (
-                                  "নষ্ট"
-                                ) : (
-                                  "—"
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <ul className="mt-3 divide-y divide-border/60 border-t border-border/60 text-small">
+                        {row.items.map((item) => (
+                          <li key={item.id} className="flex flex-col gap-1.5 py-2 sm:flex-row sm:items-center sm:gap-3">
+                            <span className="min-w-0 flex-1">
+                              {item.productName}
+                              <span className="block text-caption text-text-subtle">{item.sku}</span>
+                            </span>
+                            <span className="text-text-muted">
+                              ×{item.quantity} · {formatPoisha(item.lineValuePoisha)}
+                            </span>
+                            {row.status === "APPROVED" ? (
+                              <select
+                                className={selectCls}
+                                value={conditions[item.orderItemId] ?? "restockable"}
+                                onChange={(e) =>
+                                  setConditions((prev) => ({
+                                    ...prev,
+                                    [item.orderItemId]: e.target.value as "restockable" | "damaged",
+                                  }))
+                                }
+                              >
+                                <option value="restockable">ভালো — স্টকে ফিরবে</option>
+                                <option value="damaged">নষ্ট — স্টকে যাবে না</option>
+                              </select>
+                            ) : item.condition === "restockable" ? (
+                              <Badge tone="success" icon={<Icon name="check" size={12} />}>
+                                ভালো (স্টকে ফিরেছে)
+                              </Badge>
+                            ) : item.condition === "damaged" ? (
+                              <Badge tone="danger" icon={<Icon name="alert" size={12} />}>
+                                নষ্ট
+                              </Badge>
+                            ) : (
+                              <span className="text-text-subtle">—</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
 
                       {(row.status === "APPROVED" || row.status === "REQUESTED" || row.status === "RECEIVED") && (
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -374,8 +391,8 @@ export default function AdminReturnsPage() {
               );
             })}
           </ul>
-        )}
       </Card>
+        )}
 
       <div className="mt-4 flex items-center justify-between text-small text-text-muted">
         <span>

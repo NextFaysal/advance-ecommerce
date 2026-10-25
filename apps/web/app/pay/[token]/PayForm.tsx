@@ -57,8 +57,10 @@ export default function PayForm({ token }: { token: string }) {
           {METHODS.map((m) => (
             <label
               key={m.key}
-              className={`cursor-pointer rounded-lg border px-2 py-2 text-center text-sm ${
-                method === m.key ? "border-[#4F46E5] bg-[#EEF0FE] font-semibold" : "border-slate-300"
+              className={`cursor-pointer rounded-lg border px-2 py-2.5 text-center text-sm transition ${
+                method === m.key
+                  ? "border-brand-600 bg-brand-50 font-semibold text-brand-700 ring-1 ring-brand-600"
+                  : "border-border bg-card text-text-main hover:border-brand-300"
               }`}
             >
               <input
@@ -85,14 +87,14 @@ export default function PayForm({ token }: { token: string }) {
         placeholder="01XXXXXXXXX"
         value={phone}
         onChange={(e) => setPhone(e.target.value)}
-        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+        className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-text-main"
         required
       />
 
       <button
         type="submit"
         disabled={state.phase === "submitting"}
-        className="mt-4 w-full rounded-lg bg-[#4F46E5] px-4 py-3 font-semibold text-white disabled:opacity-60"
+        className="mt-4 w-full rounded-lg bg-brand-600 px-4 py-3 font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
       >
         {state.phase === "submitting" ? "অপেক্ষা করুন…" : "পেমেন্ট করুন"}
       </button>

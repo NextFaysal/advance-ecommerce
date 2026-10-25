@@ -18,6 +18,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SkeletonCard } from "@/components/ui/skeleton";
 import { formatBdt } from "../../../src/checkout/pricing";
 
 interface AbandonedItem {
@@ -58,6 +60,17 @@ function ageLabel(ageMinutes: number): string {
   const hours = Math.floor(ageMinutes / 60);
   if (hours < 24) return `${hours} ঘণ্টা আগে`;
   return `${Math.floor(hours / 24)} দিন আগে`;
+}
+
+/* OD6 (doc 19 §3-S6) — age ramp in the aging panel's language
+ * (app/admin/orders/aging-panel.tsx): the longer a capture has sat,
+ * the hotter the chip. Thresholds mirror ageChipClass there. */
+function ageChipClass(ageMinutes: number): string {
+  const ageHours = ageMinutes / 60;
+  if (ageHours >= 7 * 24) return "bg-rose-100 text-rose-800";
+  if (ageHours >= 5 * 24) return "bg-orange-100 text-orange-800";
+  if (ageHours >= 48) return "bg-amber-100 text-amber-800";
+  return "bg-yellow-50 text-yellow-800";
 }
 
 export default function AdminAbandonedPage() {
@@ -140,12 +153,12 @@ export default function AdminAbandonedPage() {
       />
 
       {notice && (
-        <p role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+        <p role="status" className="mb-4 rounded-md bg-success-50 px-3.5 py-2.5 text-small text-success-700">
           {notice}
         </p>
       )}
       {actionError && (
-        <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+        <p role="alert" className="mb-4 rounded-md bg-danger-50 px-3.5 py-2.5 text-small text-danger-700">
           {actionError}
         </p>
       )}
@@ -156,23 +169,53 @@ export default function AdminAbandonedPage() {
         </Card>
       )}
 
-      {rows === null && !loadError && <p className="text-sm text-text-muted">লোড হচ্ছে…</p>}
+      {rows === null && !loadError && (
+        <div className="grid gap-3" aria-hidden="true">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      )}
 
       {rows !== null && rows.length === 0 && !loadError && (
-        <Card>
-          <h3 className="font-semibold">এখন কোনো খোলা পরিত্যক্ত চেকআউট নেই</h3>
-          <p className="mt-1 text-sm leading-relaxed text-text-muted">
-            ক্রেতা চেকআউটে সঠিক ফোন নম্বর লিখে কার্টে পণ্য রেখে অর্ডার শেষ না করে চলে গেলেই
-            এখানে একটি সারি আসবে। অর্ডার হয়ে যাওয়া বা বাতিল করা ক্যাপচার এই তালিকায় থাকে না।
-          </p>
-        </Card>
+        <EmptyState
+          title="এখন কোনো খোলা পরিত্যক্ত চেকআউট নেই"
+          description="ক্রেতা চেকআউটে সঠিক ফোন নম্বর লিখে কার্টে পণ্য রেখে অর্ডার শেষ না করে চলে গেলেই এখানে একটি সারি আসবে। অর্ডার হয়ে যাওয়া বা বাতিল করা ক্যাপচার এই তালিকায় থাকে না।"
+        />
       )}
 
       {rows !== null && rows.length > 0 && (
         <>
-          <p className="mb-3 text-sm text-text-muted">
-            মোট {total}টি খোলা ক্যাপচার{total > rows.length ? ` (সর্বশেষ ${rows.length}টি দেখানো হচ্ছে)` : ""}
-          </p>
+          {/* Recovery strip (OD6): everything below is computed ONLY
+              from the rows this page loaded. The API returns no grand
+              total value, so when the list is truncated the money is
+              labelled as this page's sum — never presented as the
+              all-captures total. */}
+          <Card className="mb-3">
+            <div className="flex flex-wrap gap-x-8 gap-y-3">
+              <div>
+                <p className="text-caption font-medium text-text-subtle">খোলা ক্যাপচার</p>
+                <p className="mt-0.5 text-lg font-bold text-text-main">{total}টি</p>
+              </div>
+              <div>
+                <p className="text-caption font-medium text-text-subtle">
+                  সম্ভাব্য বিক্রি{total > rows.length ? ` (এই পেজে — সর্বশেষ ${rows.length}টি)` : ""}
+                </p>
+                <p className="mt-0.5 text-lg font-bold text-text-main">
+                  {formatBdt(rows.reduce((s, r) => s + r.subtotalPoisha, 0))}
+                </p>
+              </div>
+              <div>
+                <p className="text-caption font-medium text-text-subtle">সবচেয়ে পুরনো</p>
+                <p className="mt-0.5">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-caption font-semibold ${ageChipClass(Math.max(...rows.map((r) => r.ageMinutes)))}`}
+                  >
+                    {ageLabel(Math.max(...rows.map((r) => r.ageMinutes)))}
+                  </span>
+                </p>
+              </div>
+            </div>
+          </Card>
           <ul className="grid gap-3">
             {rows.map((row) => (
               <li key={row.id}>
@@ -183,10 +226,16 @@ export default function AdminAbandonedPage() {
                         {row.customerName ?? "নাম দেয়নি"}{" "}
                         <span className="ml-1 font-normal text-text-muted">{row.customerPhoneMasked}</span>
                       </p>
-                      <p className="mt-0.5 text-small text-text-muted">
-                        শেষ কার্যকলাপ {ageLabel(row.ageMinutes)}
-                        {row.address?.district ? ` · ${row.address.district}` : " · জেলা পাওয়া যায়নি"}
-                        {row.address?.upazila ? `, ${row.address.upazila}` : ""}
+                      <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-text-muted">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-caption font-semibold ${ageChipClass(row.ageMinutes)}`}
+                        >
+                          শেষ কার্যকলাপ {ageLabel(row.ageMinutes)}
+                        </span>
+                        <span>
+                          {row.address?.district ? row.address.district : "জেলা পাওয়া যায়নি"}
+                          {row.address?.upazila ? `, ${row.address.upazila}` : ""}
+                        </span>
                       </p>
                     </div>
                     <div className="ml-auto text-right">
@@ -207,12 +256,12 @@ export default function AdminAbandonedPage() {
                     ))}
                   </ul>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                     <button
                       type="button"
                       disabled={busyId === row.id || row.hasCallTask}
                       onClick={() => void act(row.id, "call-task")}
-                      className="rounded-md border border-border bg-white px-3 py-1.5 text-small font-medium text-text-main transition disabled:opacity-50"
+                      className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-small font-medium text-text-main transition disabled:opacity-50 sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
                       {row.hasCallTask ? "কল টাস্ক তৈরি আছে" : "কল টাস্ক তৈরি করুন"}
                     </button>
@@ -220,7 +269,7 @@ export default function AdminAbandonedPage() {
                       type="button"
                       disabled={busyId === row.id}
                       onClick={() => void act(row.id, "convert")}
-                      className="rounded-md bg-brand-600 px-3 py-1.5 text-small font-medium text-white transition disabled:opacity-50"
+                      className="w-full rounded-md bg-brand-600 px-3 py-1.5 text-small font-medium text-white transition disabled:opacity-50 sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
                       অর্ডারে রূপান্তর করুন
                     </button>
@@ -228,13 +277,13 @@ export default function AdminAbandonedPage() {
                       type="button"
                       disabled={busyId === row.id}
                       onClick={() => void act(row.id, "dismiss")}
-                      className="rounded-md border border-rose-200 bg-white px-3 py-1.5 text-small font-medium text-rose-600 transition disabled:opacity-50"
+                      className="w-full rounded-md border border-rose-200 bg-surface px-3 py-1.5 text-small font-medium text-rose-600 transition disabled:opacity-50 sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
                       বাতিল করুন
                     </button>
                     <Link
                       href="/admin/call-center"
-                      className="ml-auto self-center text-small font-medium text-brand-700 hover:underline"
+                      className="self-center text-small font-medium text-brand-700 hover:underline sm:ml-auto"
                     >
                       কল সেন্টারে যান
                     </Link>

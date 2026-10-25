@@ -469,7 +469,7 @@ export default function RemittancePage() {
               const open = openBatchId === b.id;
               return (
                 <div key={b.id} className="rounded-lg border border-border p-3">
-                  <button type="button" onClick={() => void toggleBatch(b)} className="flex w-full flex-wrap items-center gap-3 text-left">
+                  <button type="button" onClick={() => void toggleBatch(b)} className="flex w-full flex-wrap items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                     <span className="font-medium capitalize text-text-main">{b.provider}</span>
                     <Badge tone={ui.tone}>{ui.label}</Badge>
                     <span className="text-small text-text-muted">

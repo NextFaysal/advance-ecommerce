@@ -20,6 +20,7 @@
  * the copy says approval is a staff decision.
  */
 import { useCallback, useEffect, useState } from "react";
+import { Icon } from "@/components/ui/icon";
 
 type GrantStatus = "active" | "expired" | "exhausted" | "revoked";
 
@@ -105,7 +106,7 @@ function ReissueForm({
           type="button"
           disabled={busy}
           onClick={submit}
-          className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+          className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
           {busy ? "পাঠানো হচ্ছে…" : "অনুরোধ পাঠান"}
         </button>
@@ -142,7 +143,15 @@ export default function DownloadsSection() {
       className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card"
       aria-label="আমার ডাউনলোড"
     >
-      <h2 className="text-base font-bold text-text-main">আমার ডাউনলোড</h2>
+      <h2 className="flex items-center gap-2.5 text-base font-bold text-text-main">
+        <span
+          aria-hidden="true"
+          className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white"
+        >
+          <Icon name="box" size={18} />
+        </span>
+        আমার ডাউনলোড
+      </h2>
       <p className="mt-1.5 text-sm leading-6 text-text-muted">
         কেনা ডিজিটাল পণ্যের ফাইল এখান থেকে সরাসরি ডাউনলোড করা যায় — আলাদা লিংক সংরক্ষণ করার
         দরকার নেই, লগইন থাকলেই হবে। প্রতিটি ডাউনলোডের মেয়াদ ও সর্বোচ্চ সংখ্যা পাশে দেখানো আছে।
@@ -157,27 +166,35 @@ export default function DownloadsSection() {
       <ul className="mt-4 space-y-3">
         {downloads.map((d) => (
           <li key={d.grantId} className="rounded-xl border border-border px-4 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-text-main">{d.productName}</p>
-                <p className="mt-0.5 truncate text-xs text-text-muted">{d.fileName}</p>
-                <p className="mt-1 text-xs leading-5 text-text-muted">
-                  অর্ডার{" "}
-                  <a
-                    href={`/track?orderNo=${encodeURIComponent(d.orderNo)}`}
-                    className="font-semibold text-brand-700 hover:underline"
-                  >
-                    {d.orderNo}
-                  </a>{" "}
-                  · কেনা: {formatDate(d.issuedAt)} · মেয়াদ: {formatDate(d.expiresAt)} · বাকি{" "}
-                  {d.downloadsLeft}/{d.maxDownloads}টি ডাউনলোড
-                </p>
-              </div>
+            <div className="flex items-start gap-3">
               <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_TONE[d.status]}`}
+                aria-hidden="true"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700"
               >
-                {d.statusLabel.bn}
+                <Icon name="box" size={16} />
               </span>
+              <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-text-main">{d.productName}</p>
+                  <p className="mt-0.5 truncate text-xs text-text-muted">{d.fileName}</p>
+                  <p className="mt-1 text-xs leading-5 text-text-muted">
+                    অর্ডার{" "}
+                    <a
+                      href={`/track?orderNo=${encodeURIComponent(d.orderNo)}`}
+                      className="font-semibold text-brand-700 hover:underline"
+                    >
+                      {d.orderNo}
+                    </a>{" "}
+                    · কেনা: {formatDate(d.issuedAt)} · মেয়াদ: {formatDate(d.expiresAt)} · বাকি{" "}
+                    {d.downloadsLeft}/{d.maxDownloads}টি ডাউনলোড
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_TONE[d.status]}`}
+                >
+                  {d.statusLabel.bn}
+                </span>
+              </div>
             </div>
 
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -188,7 +205,7 @@ export default function DownloadsSection() {
                 >
                   <button
                     type="submit"
-                    className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+                    className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                   >
                     ডাউনলোড করুন
                   </button>
@@ -203,7 +220,7 @@ export default function DownloadsSection() {
                   <button
                     type="button"
                     onClick={() => setOpenGrantId(openGrantId === d.grantId ? null : d.grantId)}
-                    className="rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-brand-700 hover:bg-brand-50"
+                    className="rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-brand-700 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                   >
                     নতুন লিংক চাই
                   </button>

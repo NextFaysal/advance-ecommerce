@@ -15,11 +15,20 @@
  *     orders    GET /api/v1/admin/orders?search=<q>&pageSize=5
  *     customers GET /api/v1/admin/customers?search=<q>&pageSize=5
  *     products  GET /api/v1/admin/products?q=<q>&status=ACTIVE&pageSize=5
- *   Top 5 per type. Phones arrive masked from the APIs and are passed
+ *   (The orders endpoint accepts `search` and `q` as the same server
+ *   search — order no / phone suffix / district; the orders list page
+ *   sends `q`.) Top 5 per type. Order rows render the OD0
+ *   OrderStatusBadge. Phones arrive masked from the APIs and are passed
  *   through displayPhone() again — a full number is never rendered here.
  *
+ *   সাম্প্রতিক (recent) — OD8 (doc 19 S8): the last 5 orders opened
+ *   from this palette, remembered in localStorage (this browser only;
+ *   order no / customer / status / total — never a phone). Shown when
+ *   the query is empty.
+ *
  * Keyboard: ↑/↓ move (wrap-around), Enter opens, Esc closes. Mouse hover
- * syncs the active row. No data is written anywhere; navigation only.
+ * syncs the active row. No server data is written anywhere; navigation
+ * only (recents are a local browser convenience).
  *
  * NOTE: this replaces the older src/command-palette module as the
  * shell's palette (the layout mounts this one). The old module is left
@@ -31,10 +40,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ADMIN_NAV, isLockedAddOn, type AdminNavItem } from "@/admin-nav/config";
 import { Icon, type IconName } from "@/components/ui/icon";
-import type { Customer, Order } from "@/orders/types";
+import type { Customer, Order, OrderStatus } from "@/orders/types";
 import { displayPhone } from "@/orders/customer";
 import { formatBdt } from "@/checkout/pricing";
 import { minVariantPricePoisha, type Product } from "@/catalog/types";
+import { OrderStatusBadge } from "@/orders/components/OrderStatusBadge";
 
 /** Window event the topbar trigger dispatches to open the palette. */
 export const OPEN_COMMAND_PALETTE_EVENT = "admin:open-command-palette";
@@ -42,23 +52,7 @@ export const OPEN_COMMAND_PALETTE_EVENT = "admin:open-command-palette";
 const RECORD_LIMIT = 5;
 const DEBOUNCE_MS = 250;
 
-const ORDER_STATUS_LABEL: Record<string, string> = {
-  PENDING: "অপেক্ষমাণ",
-  CONFIRMED: "নিশ্চিত",
-  PROCESSING: "প্রসেসিং",
-  PACKED: "প্যাক করা",
-  SHIPPED: "পাঠানো হয়েছে",
-  DELIVERED: "ডেলিভার্ড",
-  FAILED: "ব্যর্থ",
-  RETURN_REQUESTED: "রিটার্ন অনুরোধ",
-  RETURNING: "রিটার্ন আসছে",
-  RETURNED: "রিটার্ন হয়েছে",
-  CANCELLED: "বাতিল",
-  REFUNDED: "রিফান্ড",
-  EXCHANGED: "এক্সচেঞ্জ",
-};
-
-type PaletteGroupId = "pages" | "orders" | "products" | "customers";
+type PaletteGroupId = "recent" | "pages" | "orders" | "products" | "customers";
 
 interface PaletteEntry {
   id: string;
@@ -68,6 +62,47 @@ interface PaletteEntry {
   href: string;
   icon: IconName;
   locked?: boolean;
+  /** Orders only: rendered as the OD0 OrderStatusBadge in the row. */
+  orderStatus?: OrderStatus;
+  /** Orders only: the snapshot kept for the সাম্প্রতিক (recent) list. */
+  orderSnapshot?: RecentOrder;
+}
+
+/** One remembered order for the recent list — only what the orders
+ *  list payload already shows (no phone is ever stored). */
+interface RecentOrder {
+  id: string;
+  orderNo: string;
+  customerName: string;
+  status: OrderStatus;
+  totalPoisha: number;
+}
+
+const RECENTS_KEY = "admin-palette:recent-orders";
+const RECENT_LIMIT = 5;
+
+function loadRecents(): RecentOrder[] {
+  try {
+    const raw = window.localStorage.getItem(RECENTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as RecentOrder[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((r) => r && typeof r.id === "string" && typeof r.orderNo === "string")
+      .slice(0, RECENT_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function saveRecent(order: RecentOrder): RecentOrder[] {
+  const next = [order, ...loadRecents().filter((r) => r.id !== order.id)].slice(0, RECENT_LIMIT);
+  try {
+    window.localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
+  } catch {
+    // Private mode / quota — recents are a convenience, never fatal.
+  }
+  return next;
 }
 
 interface PaletteGroup {
@@ -112,11 +147,30 @@ function orderEntries(orders: Order[]): PaletteEntry[] {
     id: `order:${o.id}`,
     group: "orders" as const,
     title: o.orderNo,
-    subtitle: `${o.customerName} · ${displayPhone(o.customerPhone, false)} · ${
-      ORDER_STATUS_LABEL[o.status] ?? o.status
-    } · ${formatBdt(o.totalPoisha)}`,
+    subtitle: `${o.customerName} · ${displayPhone(o.customerPhone, false)} · ${formatBdt(o.totalPoisha)}`,
     href: `/admin/orders/${o.id}`,
     icon: "cart" as IconName,
+    orderStatus: o.status,
+    orderSnapshot: {
+      id: o.id,
+      orderNo: o.orderNo,
+      customerName: o.customerName,
+      status: o.status,
+      totalPoisha: o.totalPoisha,
+    },
+  }));
+}
+
+function recentEntries(recents: RecentOrder[]): PaletteEntry[] {
+  return recents.map((r) => ({
+    id: `recent:${r.id}`,
+    group: "recent" as const,
+    title: r.orderNo,
+    subtitle: `${r.customerName} · ${formatBdt(r.totalPoisha)}`,
+    href: `/admin/orders/${r.id}`,
+    icon: "clock" as IconName,
+    orderStatus: r.status,
+    orderSnapshot: r,
   }));
 }
 
@@ -161,6 +215,7 @@ export function AdminCommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [records, setRecords] = useState<RecordResults>(EMPTY_RECORDS);
+  const [recents, setRecents] = useState<RecentOrder[]>([]);
   const [searching, setSearching] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -184,11 +239,14 @@ export function AdminCommandPalette() {
     };
   }, []);
 
-  /* Fresh state + autofocus on every open. */
+  /* Fresh state + autofocus on every open. Recents are read here
+   * (not during render) so localStorage is only touched client-side
+   * after the palette actually opens. */
   useEffect(() => {
     if (!open) return;
     setQuery("");
     setRecords(EMPTY_RECORDS);
+    setRecents(loadRecents());
     setSearching(false);
     setActiveIndex(0);
     const timer = window.setTimeout(() => inputRef.current?.focus(), 30);
@@ -225,13 +283,18 @@ export function AdminCommandPalette() {
 
   const groups = useMemo<PaletteGroup[]>(() => {
     const all: PaletteGroup[] = [
+      // Recents only make sense before the staff member starts
+      // typing; a live search replaces them.
+      ...(query.trim().length === 0
+        ? [{ id: "recent" as const, label: "সাম্প্রতিক", entries: recentEntries(recents) }]
+        : []),
       { id: "pages", label: "পেজ", entries: pageEntries(query) },
       { id: "orders", label: "অর্ডার", entries: orderEntries(records.orders) },
       { id: "products", label: "পণ্য", entries: productEntries(records.products) },
       { id: "customers", label: "গ্রাহক", entries: customerEntries(records.customers) },
     ];
     return all.filter((g) => g.entries.length > 0);
-  }, [query, records]);
+  }, [query, records, recents]);
 
   const flat = useMemo(() => groups.flatMap((g) => g.entries), [groups]);
 
@@ -250,6 +313,7 @@ export function AdminCommandPalette() {
 
   const activate = (entry: PaletteEntry | undefined) => {
     if (!entry) return;
+    if (entry.orderSnapshot) setRecents(saveRecent(entry.orderSnapshot));
     setOpen(false);
     router.push(entry.href);
   };
@@ -351,7 +415,7 @@ export function AdminCommandPalette() {
                         role="option"
                         aria-selected={active}
                         data-palette-index={indexAtRender}
-                        className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition motion-fast ${
+                        className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition motion-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${
                           active ? "bg-brand-50 text-brand-700" : "text-text-main hover:bg-surface-2"
                         }`}
                         onMouseEnter={() => setActiveIndex(indexAtRender)}
@@ -371,6 +435,11 @@ export function AdminCommandPalette() {
                             <span className="block truncate text-caption text-text-muted">{entry.subtitle}</span>
                           ) : null}
                         </span>
+                        {entry.orderStatus ? (
+                          <span className="shrink-0">
+                            <OrderStatusBadge status={entry.orderStatus} />
+                          </span>
+                        ) : null}
                         {entry.locked ? (
                           <span className="flex shrink-0 items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-caption font-semibold text-amber-700">
                             অ্যাড-অন

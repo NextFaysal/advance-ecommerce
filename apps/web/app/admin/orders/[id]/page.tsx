@@ -22,6 +22,7 @@
 // by orderId, serialisable props only). On mobile the rail stacks
 // above the tabs and the tab list scrolls horizontally.
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Customer, Order, OrderStatus } from "../../../../src/orders/types";
 import { nextStepLabel, nextStepTarget, ORDER_TRANSITIONS } from "../../../../src/orders/state-machine";
 import { displayPhone, riskLevel } from "../../../../src/orders/customer";
@@ -111,6 +112,7 @@ function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: stri
 }
 
 export default function AdminOrderDetailPage({ params }: { params: { id: string } }) {
+  const router = useRouter();
   const [order, setOrder] = useState<DetailOrder | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "error" | "notfound" | "ready">("loading");
@@ -123,6 +125,8 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
   // (key change) with the payment tab as the default. Ordinary tab
   // clicks never touch this state.
   const [tabSeed, setTabSeed] = useState<{ id: string; n: number }>({ id: "actions", n: 0 });
+  // OD8 (doc 19 S8) — the "?" shortcut hint popover in the header.
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   const load = useCallback(async () => {
     setLoadState("loading");
@@ -161,6 +165,71 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
   useEffect(() => {
     void load();
   }, [load]);
+
+  /* OD8 (doc 19 S8) — workspace keyboard shortcuts. Every key drives
+   * an EXISTING handler only: tab jumps reuse the rail's tabSeed
+   * re-seed, and "p" goes to the print centre URL the list/preview
+   * already link to for one order. Guards: never while typing in an
+   * input/textarea/select/contentEditable, never with a modifier held
+   * (⌘K stays the palette's), never while a modal/drawer (role
+   * dialog) is open. "?" toggles the hint popover in the header. */
+  useEffect(() => {
+    if (!order) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const t = event.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)
+      ) {
+        return;
+      }
+      if (event.key === "Escape") {
+        setShowShortcuts(false);
+        return;
+      }
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      const jump = (id: string) => setTabSeed((s) => ({ id, n: s.n + 1 }));
+      switch (event.key.toLowerCase()) {
+        case "?":
+          setShowShortcuts((v) => !v);
+          break;
+        case "p":
+          setShowShortcuts(false);
+          router.push(`/admin/orders/print?ids=${order.id}`);
+          break;
+        case "a":
+          setShowShortcuts(false);
+          jump("actions");
+          break;
+        case "m":
+          setShowShortcuts(false);
+          jump("payment");
+          break;
+        case "s":
+          setShowShortcuts(false);
+          jump("shipments");
+          break;
+        case "r":
+          setShowShortcuts(false);
+          jump("returns");
+          break;
+        case "e":
+          setShowShortcuts(false);
+          jump("management");
+          break;
+        case "h":
+          setShowShortcuts(false);
+          jump("history");
+          break;
+        default:
+          return;
+      }
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [order, router]);
 
   async function applyTransition(to: OrderStatus) {
     if (!order || busy) return;
@@ -305,6 +374,48 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
                 {nextLabel}
               </Button>
             )}
+            {/* OD8 — keyboard shortcut hint ("?" toggles; the keys
+                themselves are wired in the effect above). */}
+            <div className="relative mt-3">
+              <button
+                type="button"
+                aria-label="কীবোর্ড শর্টকাটের তালিকা"
+                aria-expanded={showShortcuts}
+                onClick={() => setShowShortcuts((v) => !v)}
+                className="inline-flex items-center gap-1.5 text-caption font-medium text-text-muted transition motion-fast hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+              >
+                <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center rounded-full border border-border font-mono text-[11px] font-bold">?</span>
+                কীবোর্ড শর্টকাট
+              </button>
+              {showShortcuts ? (
+                <div className="absolute right-0 top-[calc(100%+8px)] z-30 w-72 rounded-lg border border-border bg-card p-3.5 text-left shadow-pop">
+                  <p className="text-small font-semibold">কীবোর্ড শর্টকাট</p>
+                  <ul className="mt-2 space-y-1.5 text-small text-text-muted">
+                    {[
+                      ["P", "প্রিন্ট সেন্টার (এই অর্ডার)"],
+                      ["E", "পরিচালনা ট্যাব"],
+                      ["A", "কাজ ট্যাব"],
+                      ["M", "পেমেন্ট ও রিফান্ড ট্যাব"],
+                      ["S", "শিপমেন্ট ট্যাব"],
+                      ["R", "রিটার্ন ট্যাব"],
+                      ["H", "ইতিহাস ট্যাব"],
+                      ["⌘K", "অর্ডার খুঁজুন (যেকোনো পেজ থেকে)"],
+                      ["?", "এই তালিকা খুলুন / বন্ধ করুন"],
+                    ].map(([key, label]) => (
+                      <li key={key} className="flex items-center justify-between gap-3">
+                        <span>{label}</span>
+                        <kbd className="shrink-0 rounded border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-caption font-medium text-text-main">
+                          {key}
+                        </kbd>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2.5 border-t border-border pt-2 text-caption leading-relaxed text-text-subtle">
+                    কোনো ইনপুটে লিখছেন এমন সময় বা কোনো পপআপ খোলা থাকলে শর্টকাট কাজ করে না।
+                  </p>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </Card>

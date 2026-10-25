@@ -106,7 +106,7 @@ export function PosSalesPanel() {
                 rangeKey === o.key
                   ? "bg-brand-600 text-white"
                   : "border border-border bg-card hover:bg-surface-2"
-              }`}
+              } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
             >
               {o.label}
             </button>

@@ -179,7 +179,7 @@ export default function ReorderButton({ orderId, orderNo }: { orderId: string; o
         type="button"
         onClick={handleReorder}
         disabled={phase.kind === "loading"}
-        className="inline-flex min-h-10 items-center rounded-lg border border-brand-600 px-3.5 py-1.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 disabled:opacity-60"
+        className="inline-flex min-h-10 items-center rounded-lg border border-brand-600 px-3.5 py-1.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
       >
         {phase.kind === "loading" ? "কার্টে যোগ হচ্ছে…" : "আবার অর্ডার করুন"}
       </button>

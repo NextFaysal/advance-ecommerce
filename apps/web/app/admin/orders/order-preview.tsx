@@ -172,7 +172,7 @@ export function OrderPreviewDrawer({
           <button
             type="button"
             onClick={() => setNonce((n) => n + 1)}
-            className="mt-3 rounded-md border border-border bg-card px-3.5 py-2 text-small font-semibold text-text-main transition motion-fast hover:border-brand-300 hover:text-brand-700"
+            className="mt-3 rounded-md border border-border bg-card px-3.5 py-2 text-small font-semibold text-text-main transition motion-fast hover:border-brand-300 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             আবার চেষ্টা করুন
           </button>

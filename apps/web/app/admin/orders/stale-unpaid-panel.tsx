@@ -14,6 +14,8 @@
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Badge } from "../../../src/components/ui/badge";
+import { Icon } from "../../../src/components/ui/icon";
 import { formatBdt } from "../../../src/checkout/pricing";
 
 interface StaleRow {
@@ -31,6 +33,22 @@ interface StaleRow {
 interface StaleResponse {
   data: StaleRow[];
   meta: { total: number; hours: number; autoCancelActive: boolean };
+}
+
+/* OD6 (doc 19 §3-S6) — age ramp + label in the aging panel's language
+ * (app/admin/orders/aging-panel.tsx): identical thresholds and the
+ * "{age} ধরে আটকে" phrasing, so a stuck order reads the same here as
+ * on the aging board. */
+function ageChipClass(ageHours: number): string {
+  if (ageHours >= 7 * 24) return "bg-rose-100 text-rose-800";
+  if (ageHours >= 5 * 24) return "bg-orange-100 text-orange-800";
+  if (ageHours >= 48) return "bg-amber-100 text-amber-800";
+  return "bg-yellow-50 text-yellow-800";
+}
+
+function ageLabel(ageHours: number): string {
+  if (ageHours >= 48) return `${Math.floor(ageHours / 24)} দিন`;
+  return `${Math.round(ageHours)} ঘণ্টা`;
 }
 
 const METHOD_LABEL: Record<string, string> = {
@@ -73,16 +91,16 @@ export function StaleUnpaidPanel() {
   return (
     <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-card" aria-label="বকেয়া অনপেইড অর্ডার">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="inline-flex items-center rounded-full bg-amber-500 px-2.5 py-0.5 text-small font-semibold text-white">
-          {meta.total}টি
-        </span>
+        <Badge tone="warning" icon={<Icon name="clock" size={12} />}>
+          {meta.total}টি বকেয়া
+        </Badge>
         <p className="text-body font-medium text-amber-900">
           অগ্রিম/প্রিপেইড বকেয়া অর্ডার {meta.hours} ঘণ্টার বেশি পুরনো
         </p>
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="ml-auto rounded-md border border-amber-300 bg-white px-3 py-1.5 text-small font-medium text-amber-900"
+          className="ml-auto rounded-md border border-amber-300 bg-surface px-3 py-1.5 text-small font-medium text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           aria-expanded={expanded}
         >
           {expanded ? "লুকান" : "তালিকা দেখুন"}
@@ -92,24 +110,31 @@ export function StaleUnpaidPanel() {
         স্বয়ংক্রিয় বাতিল চালু নেই — VPS ওয়ার্কার এলে চালু হবে। তালিকা ধরে ম্যানুয়ালি ফলো-আপ করুন।
       </p>
       {expanded && (
-        <ul className="mt-3 divide-y divide-amber-200 rounded-md border border-amber-200 bg-white">
+        <ul className="mt-3 divide-y divide-amber-200 rounded-md border border-amber-200 bg-surface">
           {data.map((row) => (
-            <li key={row.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-small">
-              <Link href={`/admin/orders/${row.id}`} className="font-semibold text-indigo-700 hover:underline">
+            <li key={row.id} className="flex flex-col gap-1.5 px-3 py-2 text-small sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
+              <Link href={`/admin/orders/${row.id}`} className="font-semibold text-brand-700 hover:underline">
                 {row.orderNo}
               </Link>
-              <span className="text-text-muted">{row.ageHours} ঘণ্টা পুরনো</span>
-              <span>{METHOD_LABEL[row.paymentMethod] ?? row.paymentMethod}</span>
-              <span>
-                মোট {formatBdt(row.totalPoisha)}
-                {row.advanceRequiredPoisha > 0 && (
-                  <>
-                    {" "}· অগ্রিম {formatBdt(row.advanceRequiredPoisha)}
-                    {row.advanceSatisfied ? " (পরিশোধিত)" : " (বাকি)"}
-                  </>
-                )}
+              <span
+                className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-caption font-semibold ${ageChipClass(row.ageHours)}`}
+              >
+                {ageLabel(row.ageHours)} ধরে আটকে
               </span>
-              <span className="ml-auto text-text-muted">{row.customerPhoneMasked}</span>
+              <span>{METHOD_LABEL[row.paymentMethod] ?? row.paymentMethod}</span>
+              <span>মোট {formatBdt(row.totalPoisha)}</span>
+              {row.advanceRequiredPoisha > 0 ? (
+                row.advanceSatisfied ? (
+                  <Badge tone="success" icon={<Icon name="check" size={12} />}>
+                    অগ্রিম পরিশোধিত {formatBdt(row.advanceRequiredPoisha)}
+                  </Badge>
+                ) : (
+                  <Badge tone="warning" icon={<Icon name="clock" size={12} />}>
+                    অগ্রিম বাকি {formatBdt(row.advanceRequiredPoisha)}
+                  </Badge>
+                )
+              ) : null}
+              <span className="text-text-muted sm:ml-auto">{row.customerPhoneMasked}</span>
             </li>
           ))}
           {meta.total > data.length && (

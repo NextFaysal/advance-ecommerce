@@ -379,7 +379,7 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
               <label key={l.orderItemId} className="flex flex-wrap items-center gap-3 text-sm">
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded accent-[#4F46E5]"
+                  className="h-4 w-4 rounded accent-brand-600"
                   checked={!!selected[l.orderItemId]}
                   onChange={(e) => setSelected((s) => ({ ...s, [l.orderItemId]: e.target.checked }))}
                 />

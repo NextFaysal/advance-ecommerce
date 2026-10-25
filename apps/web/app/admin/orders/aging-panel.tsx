@@ -129,12 +129,12 @@ export function AgingPanel() {
           const expanded = expandedKey === bucket.key;
           const ramp = BUCKET_RAMP[bucket.key] ?? BUCKET_RAMP.pending_old;
           return (
-            <div key={bucket.key} className={`overflow-hidden rounded-md border bg-white ${ramp.header}`}>
+            <div key={bucket.key} className={`overflow-hidden rounded-md border bg-surface ${ramp.header}`}>
               <button
                 type="button"
                 onClick={() => setExpandedKey(expanded ? null : bucket.key)}
                 aria-expanded={expanded}
-                className="flex w-full flex-wrap items-center gap-2 px-3 py-2.5 text-left"
+                className="flex w-full flex-wrap items-center gap-2 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-small font-semibold tabular-nums ${ramp.chip}`}>
                   <Icon name={ramp.icon} size={13} />

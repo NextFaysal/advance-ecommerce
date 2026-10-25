@@ -940,7 +940,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                           type="button"
                           disabled={out || !v.isActive}
                           onClick={() => addLine(p, v)}
-                          className="ml-auto min-h-[36px] rounded-md bg-brand-600 px-3 text-small font-semibold text-white transition motion-fast hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-text-subtle"
+                          className="ml-auto min-h-[36px] rounded-md bg-brand-600 px-3 text-small font-semibold text-white transition motion-fast hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-text-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                         >
                           {added ? "আরও একটা যোগ করুন" : "যোগ করুন"}
                         </button>
@@ -977,7 +977,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                       type="button"
                       onClick={() => removeLine(l.variantId)}
                       aria-label={`${l.productTitleBn} সরান`}
-                      className="min-h-[36px] rounded-md border border-border px-3 text-small font-semibold text-rose-600 transition motion-fast hover:bg-rose-50"
+                      className="min-h-[36px] rounded-md border border-border px-3 text-small font-semibold text-rose-600 transition motion-fast hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
                       সরান
                     </button>
@@ -1055,7 +1055,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                   type="checkbox"
                   checked={overrideOn}
                   onChange={(e) => setOverrideOn(e.target.checked)}
-                  className="h-4 w-4 rounded accent-[#4F46E5]"
+                  className="h-4 w-4 rounded accent-brand-600"
                 />
                 নিজে ডেলিভারি চার্জ বসান (override) — যেমন ফ্রি ডেলিভারির প্রতিশ্রুতি দিলে ০ বসান; নোটে লেখা থাকবে
               </label>
@@ -1117,7 +1117,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                   type="checkbox"
                   checked={giftOn}
                   onChange={(e) => setGiftOn(e.target.checked)}
-                  className="h-4 w-4 rounded accent-[#4F46E5]"
+                  className="h-4 w-4 rounded accent-brand-600"
                 />
                 উপহার হিসেবে পাঠানো হবে 🎁
               </label>

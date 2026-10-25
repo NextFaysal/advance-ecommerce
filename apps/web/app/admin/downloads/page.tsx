@@ -27,6 +27,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Icon, type IconName } from "@/components/ui/icon";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SkeletonCard } from "@/components/ui/skeleton";
 
 interface ReissueItem {
   id: string;
@@ -60,17 +63,26 @@ interface OrderGrant {
   reissuePending: boolean;
 }
 
-const REQUEST_UI: Record<string, { label: string; tone: "success" | "warning" | "danger" | "neutral" }> = {
-  PENDING: { label: "অপেক্ষমাণ", tone: "warning" },
-  APPROVED: { label: "অনুমোদিত", tone: "success" },
-  REJECTED: { label: "বাতিল", tone: "danger" },
+/* OD6 (doc 19 §3-S6) — request + grant states in the OD0 visual shape
+ * ({ tone, icon, labelBn }); icons verified against
+ * src/components/ui/icon.tsx. */
+const REQUEST_VISUAL: Record<
+  string,
+  { tone: "success" | "warning" | "danger" | "neutral"; icon: IconName; label: string }
+> = {
+  PENDING: { tone: "warning", icon: "clock", label: "অপেক্ষমাণ" },
+  APPROVED: { tone: "success", icon: "check", label: "অনুমোদিত" },
+  REJECTED: { tone: "danger", icon: "x", label: "বাতিল" },
 };
 
-const GRANT_UI: Record<string, { label: string; tone: "success" | "warning" | "danger" | "neutral" }> = {
-  active: { label: "সক্রিয়", tone: "success" },
-  expired: { label: "মেয়াদ শেষ", tone: "warning" },
-  exhausted: { label: "ডাউনলোড শেষ", tone: "warning" },
-  revoked: { label: "বাতিলকৃত", tone: "danger" },
+const GRANT_VISUAL: Record<
+  string,
+  { tone: "success" | "warning" | "danger" | "neutral"; icon: IconName; label: string }
+> = {
+  active: { tone: "success", icon: "check", label: "সক্রিয়" },
+  expired: { tone: "warning", icon: "clock", label: "মেয়াদ শেষ" },
+  exhausted: { tone: "warning", icon: "alert", label: "ডাউনলোড শেষ" },
+  revoked: { tone: "danger", icon: "x", label: "বাতিলকৃত" },
 };
 
 const FILTERS: { key: string; label: string }[] = [
@@ -194,21 +206,21 @@ export default function AdminDownloadsPage() {
       />
 
       {notice !== null ? (
-        <Card className="border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800">
+        <p role="status" className="rounded-md bg-success-50 px-3.5 py-2.5 text-small text-success-700">
           {notice}
           {oneTimeLink !== null ? (
             <span className="mt-2 block">
               <span className="font-semibold">একবারের ডাউনলোড লিংক (শুধু এখনই দেখা যাচ্ছে):</span>{" "}
-              <code className="break-all rounded bg-white/70 px-1.5 py-0.5 text-xs">{oneTimeLink}</code>
+              <code className="break-all rounded bg-surface/70 px-1.5 py-0.5 text-xs">{oneTimeLink}</code>
             </span>
           ) : null}
-        </Card>
+        </p>
       ) : null}
       {actionError !== null ? (
-        <Card className="border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">{actionError}</Card>
+        <p role="alert" className="rounded-md bg-danger-50 px-3.5 py-2.5 text-small text-danger-700">{actionError}</p>
       ) : null}
       {loadError !== null ? (
-        <Card className="border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">{loadError}</Card>
+        <p role="alert" className="rounded-md bg-danger-50 px-3.5 py-2.5 text-small text-danger-700">{loadError}</p>
       ) : null}
 
       <Card className="p-4">
@@ -227,7 +239,7 @@ export default function AdminDownloadsPage() {
             {lookupBusy ? "খোঁজা হচ্ছে…" : "খুঁজুন"}
           </Button>
         </div>
-        {lookupError !== null ? <p className="mt-2 text-sm leading-6 text-red-700">{lookupError}</p> : null}
+        {lookupError !== null ? <p className="mt-2 text-sm leading-6 text-danger-700">{lookupError}</p> : null}
         {lookupResult !== null ? (
           lookupResult.grants.length === 0 ? (
             <p className="mt-3 text-sm leading-6 text-text-muted">
@@ -250,7 +262,12 @@ export default function AdminDownloadsPage() {
                       {g.reissuePending ? " · রি-ইস্যু অনুরোধ অপেক্ষমাণ" : ""}
                     </span>
                   </span>
-                  <Badge tone={GRANT_UI[g.status]?.tone ?? "neutral"}>{GRANT_UI[g.status]?.label ?? g.status}</Badge>
+                  <Badge
+                    tone={GRANT_VISUAL[g.status]?.tone ?? "neutral"}
+                    icon={<Icon name={GRANT_VISUAL[g.status]?.icon ?? "info"} size={12} />}
+                  >
+                    {GRANT_VISUAL[g.status]?.label ?? g.status}
+                  </Badge>
                 </li>
               ))}
             </ul>
@@ -267,23 +284,36 @@ export default function AdminDownloadsPage() {
               setStatus(f.key);
               setPage(1);
             }}
-            className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${
+            className={`rounded-full border px-3.5 py-1.5 text-small font-medium transition ${
               status === f.key
-                ? "border-brand-600 bg-brand-600 text-white"
-                : "border-border bg-card text-text-main hover:bg-brand-50"
-            }`}
+                ? "border-brand-500 bg-brand-50 text-brand-700"
+                : "border-border bg-card text-text-muted hover:text-text-main"
+            } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
           >
             {f.label}
-            {f.key !== "" && counts[f.key] !== undefined ? ` (${counts[f.key]})` : ""}
+            {f.key === "" ? (
+              counts.ALL !== undefined ? (
+                <span className="ml-1.5 text-caption text-text-subtle">{counts.ALL}</span>
+              ) : null
+            ) : (
+              <span className="ml-1.5 text-caption text-text-subtle">{counts[f.key] ?? 0}</span>
+            )}
           </button>
         ))}
         <span className="ml-auto text-xs text-text-muted">মোট {total}টি</span>
       </div>
 
       {rows === null ? (
-        <p className="text-sm text-text-muted">লোড হচ্ছে…</p>
+        <div className="space-y-3" aria-hidden="true">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
       ) : rows.length === 0 ? (
-        <Card className="p-5 text-sm leading-6 text-text-muted">এই ফিল্টারে কোনো অনুরোধ নেই।</Card>
+        <EmptyState
+          title="এই ফিল্টারে কোনো অনুরোধ নেই"
+          description="ডাউনলোড রি-ইস্যুর নতুন অনুরোধ এলে এখানে দেখা যাবে। গ্রাহক তাদের অ্যাকাউন্টের ডাউনলোড অংশ থেকে অনুরোধ পাঠান।"
+        />
       ) : (
         <ul className="space-y-3">
           {rows.map((row) => (
@@ -317,11 +347,17 @@ export default function AdminDownloadsPage() {
                     ) : null}
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1.5">
-                    <Badge tone={REQUEST_UI[row.status]?.tone ?? "neutral"}>
-                      {REQUEST_UI[row.status]?.label ?? row.status}
+                    <Badge
+                      tone={REQUEST_VISUAL[row.status]?.tone ?? "neutral"}
+                      icon={<Icon name={REQUEST_VISUAL[row.status]?.icon ?? "info"} size={12} />}
+                    >
+                      {REQUEST_VISUAL[row.status]?.label ?? row.status}
                     </Badge>
-                    <Badge tone={GRANT_UI[row.grantStatus]?.tone ?? "neutral"}>
-                      গ্রান্ট: {GRANT_UI[row.grantStatus]?.label ?? row.grantStatus}
+                    <Badge
+                      tone={GRANT_VISUAL[row.grantStatus]?.tone ?? "neutral"}
+                      icon={<Icon name={GRANT_VISUAL[row.grantStatus]?.icon ?? "info"} size={12} />}
+                    >
+                      গ্রান্ট: {GRANT_VISUAL[row.grantStatus]?.label ?? row.grantStatus}
                     </Badge>
                   </div>
                 </div>
@@ -339,6 +375,7 @@ export default function AdminDownloadsPage() {
                         type="button"
                         disabled={busyId === row.id}
                         onClick={() => void decide(row, "approve")}
+                        className="flex-1 sm:flex-initial"
                       >
                         {busyId === row.id ? "হচ্ছে…" : "অনুমোদন — নতুন গ্রান্ট"}
                       </Button>
@@ -347,6 +384,7 @@ export default function AdminDownloadsPage() {
                         variant="outline"
                         disabled={busyId === row.id}
                         onClick={() => void decide(row, "reject")}
+                        className="flex-1 sm:flex-initial"
                       >
                         বাতিল
                       </Button>

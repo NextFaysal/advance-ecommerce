@@ -150,7 +150,7 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
                 type="button"
                 disabled={busyId === d.id}
                 onClick={() => window.location.assign(`/admin/orders?draft=${d.id}`)}
-                className="min-h-[36px] rounded-md border border-border bg-card px-3 font-semibold transition motion-fast hover:bg-surface-2 disabled:opacity-50"
+                className="min-h-[36px] rounded-md border border-border bg-card px-3 font-semibold transition motion-fast hover:bg-surface-2 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 আবার খুলুন
               </button>
@@ -158,7 +158,7 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
                 type="button"
                 disabled={busyId === d.id}
                 onClick={() => void convert(d.id)}
-                className="min-h-[36px] rounded-md bg-brand-600 px-3 font-semibold text-white transition motion-fast hover:bg-brand-700 disabled:opacity-50"
+                className="min-h-[36px] rounded-md bg-brand-600 px-3 font-semibold text-white transition motion-fast hover:bg-brand-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 {busyId === d.id ? "হচ্ছে…" : "অর্ডারে রূপান্তর"}
               </button>
@@ -166,7 +166,7 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
                 type="button"
                 disabled={busyId === d.id}
                 onClick={() => void discard(d.id)}
-                className="min-h-[36px] rounded-md border border-border bg-card px-3 font-semibold text-rose-600 transition motion-fast hover:bg-rose-50 disabled:opacity-50"
+                className="min-h-[36px] rounded-md border border-border bg-card px-3 font-semibold text-rose-600 transition motion-fast hover:bg-rose-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 বাতিল
               </button>

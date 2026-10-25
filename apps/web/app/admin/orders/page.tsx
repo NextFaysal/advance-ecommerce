@@ -138,7 +138,7 @@ function SortHeader({
         type="button"
         onClick={() => onSort(sortKey)}
         aria-label={`${label} অনুযায়ী সাজান`}
-        className={`flex items-center gap-1 transition motion-fast hover:text-brand-700 ${active ? "text-brand-700" : ""}`}
+        className={`flex items-center gap-1 transition motion-fast hover:text-brand-700 ${active ? "text-brand-700" : ""} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
       >
         {label}
         <svg
@@ -426,7 +426,7 @@ export default function AdminOrdersPage() {
                     aria-pressed={view === v}
                     className={`min-h-[36px] rounded-[9px] px-3.5 text-small font-semibold transition motion-fast ${
                       view === v ? "bg-card text-brand-700 shadow-sm" : "text-text-muted hover:text-text-main"
-                    }`}
+                    } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
                   >
                     {v === "table" ? "টেবিল" : "কানবান"}
                   </button>
@@ -442,7 +442,7 @@ export default function AdminOrdersPage() {
                       aria-pressed={density === d}
                       className={`min-h-[36px] rounded-[9px] px-3 text-small font-semibold transition motion-fast ${
                         density === d ? "bg-card text-brand-700 shadow-sm" : "text-text-muted hover:text-text-main"
-                      }`}
+                      } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
                     >
                       {d === "comfortable" ? "স্বাভাবিক" : "ঘন"}
                     </button>
@@ -470,7 +470,7 @@ export default function AdminOrdersPage() {
                       aria-pressed={active}
                       className={`flex min-h-[32px] items-center gap-1.5 rounded-full px-3 text-caption font-semibold transition motion-fast ${
                         active ? "bg-brand-600 text-white shadow-sm" : "border border-border bg-card text-text-muted hover:border-brand-300 hover:text-brand-700"
-                      }`}
+                      } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
                     >
                       সব
                       <span className={`font-mono tabular-nums ${active ? "text-white/85" : "text-text-subtle"}`}>{chip.count ?? "—"}</span>
@@ -488,7 +488,7 @@ export default function AdminOrdersPage() {
                       active
                         ? "bg-brand-600 text-white shadow-sm"
                         : `border border-border bg-card text-text-muted hover:border-brand-300 hover:text-brand-700 ${chip.dimmed ? "opacity-55 hover:opacity-100" : ""}`
-                    }`}
+                    } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
                   >
                     <Icon name={visual.icon} size={12} className={active ? "text-white" : "text-text-subtle"} />
                     {visual.labelBn}
@@ -528,7 +528,7 @@ export default function AdminOrdersPage() {
           {loadError ? (
             <div role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-small text-rose-700">
               তালিকা রিফ্রেশ হয়নি: {loadError}
-              <button type="button" onClick={() => void load()} className="ml-3 font-semibold underline">
+              <button type="button" onClick={() => void load()} className="ml-3 font-semibold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                 আবার চেষ্টা করুন
               </button>
             </div>
@@ -608,7 +608,7 @@ export default function AdminOrdersPage() {
                         checked={allVisibleSelected}
                         onChange={toggleSelectAllVisible}
                         aria-label="দৃশ্যমান সব অর্ডার সিলেক্ট করুন"
-                        className="h-4 w-4 rounded accent-[#4F46E5]"
+                        className="h-4 w-4 rounded accent-brand-600"
                       />
                     </th>
                     <SortHeader label="অর্ডার" sortKey="date" sort={sort} onSort={toggleSort} cellClassName={ORDER_DENSITY[density].headerCell} />
@@ -647,7 +647,7 @@ export default function AdminOrdersPage() {
                             checked={selected.has(o.id)}
                             onChange={() => toggleSelected(o.id)}
                             aria-label={`${o.orderNo} সিলেক্ট করুন`}
-                            className="h-4 w-4 rounded accent-[#4F46E5]"
+                            className="h-4 w-4 rounded accent-brand-600"
                           />
                         </td>
                         <td className={ORDER_DENSITY[density].cell}>
@@ -717,7 +717,7 @@ export default function AdminOrdersPage() {
                         checked={selected.has(o.id)}
                         onChange={() => toggleSelected(o.id)}
                         aria-label={`${o.orderNo} সিলেক্ট করুন`}
-                        className="mt-0.5 h-4 w-4 shrink-0 rounded accent-[#4F46E5]"
+                        className="mt-0.5 h-4 w-4 shrink-0 rounded accent-brand-600"
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">

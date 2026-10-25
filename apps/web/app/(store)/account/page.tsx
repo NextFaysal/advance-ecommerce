@@ -23,11 +23,22 @@ import {
 import ReorderButton from "./reorder-button";
 import ReturnsSection from "./returns-section";
 import DownloadsSection from "./downloads-section";
+import CustomerTrackingStepper from "./tracking-stepper";
 import AuthForms from "@/customer-auth/components/AuthForms";
 import AddressManager from "@/customer-auth/components/AddressManager";
 import LogoutButton from "@/customer-auth/components/LogoutButton";
 import PushSubscribeToggle from "@/pwa/push-subscribe";
-import { BdtAmount } from "@/components/ui/numerals";
+import { Icon } from "@/components/ui/icon";
+import { Money } from "@/components/ui/money";
+import {
+  OrderPaymentBadge,
+  OrderStatusBadge,
+} from "@/orders/components/OrderStatusBadge";
+import {
+  ORDER_STATUS_VISUAL,
+  PAYMENT_STATUS_VISUAL,
+} from "@/orders/components/labels";
+import type { OrderStatus, PaymentStatus } from "@/orders/types";
 
 export const dynamic = "force-dynamic";
 
@@ -37,46 +48,96 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const ORDER_STATUS_BN: Record<string, string> = {
-  PENDING: "অর্ডার পেয়েছি",
-  CONFIRMED: "কনফার্ম হয়েছে",
-  PROCESSING: "প্রসেসিং চলছে",
-  PACKED: "প্যাক করা হয়েছে",
-  SHIPPED: "পাঠানো হয়েছে",
-  DELIVERED: "ডেলিভারি হয়েছে",
-  CANCELLED: "বাতিল হয়েছে",
-  FAILED: "ব্যর্থ হয়েছে",
-  RETURNED: "রিটার্ন পৌঁছেছে",
-  REFUNDED: "রিফান্ড হয়েছে",
-};
-
 function formatDate(iso: string): string {
   return new Intl.DateTimeFormat("bn-BD", { dateStyle: "medium" }).format(new Date(iso));
 }
 
-function OrderRow({ order }: { order: AccountOrderSummary }) {
+function isOrderStatus(status: string): status is OrderStatus {
+  return status in ORDER_STATUS_VISUAL;
+}
+
+function isPaymentStatus(status: string): status is PaymentStatus {
+  return status in PAYMENT_STATUS_VISUAL;
+}
+
+/**
+ * One order as a designed card (doc 19 OD7): item tile, OD0 status +
+ * payment badges, the customer tracking stepper, and a money-lite
+ * block. ONLY figures the account payload actually carries are shown
+ * (totalPoisha; the COD due equals the total only while UNPAID — a
+ * PARTIAL order's paid amount is not in the payload, so no due figure
+ * is invented for it). The payload carries no delivery slot either:
+ * `deliverySlotLabel` is accepted so the chip lights up unchanged if
+ * a future wave adds the field to AccountOrderSummary.
+ */
+function OrderCard({
+  order,
+}: {
+  order: AccountOrderSummary & { deliverySlotLabel?: string | null };
+}) {
+  const firstInitial = order.firstItemName ? [...order.firstItemName][0] : null;
+  const codDuePoisha =
+    order.paymentMethod === "cod" && order.paymentStatus === "UNPAID"
+      ? order.totalPoisha
+      : null;
   return (
-    <li className="px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-text-main">
-            <a href={`/track?orderNo=${encodeURIComponent(order.orderNo)}`} className="hover:text-brand-700 hover:underline">
+    <li className="px-4 py-4 sm:px-5">
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden="true"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-base font-bold text-brand-700"
+        >
+          {firstInitial ?? <Icon name="package" size={20} />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+            <a
+              href={`/track?orderNo=${encodeURIComponent(order.orderNo)}`}
+              className="text-sm font-semibold text-text-main hover:text-brand-700 hover:underline"
+            >
               {order.orderNo}
             </a>
-            <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
-              {ORDER_STATUS_BN[order.status] ?? order.status}
-            </span>
-          </p>
+            {isOrderStatus(order.status) ? (
+              <OrderStatusBadge status={order.status} />
+            ) : (
+              <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
+                {order.status}
+              </span>
+            )}
+            {isPaymentStatus(order.paymentStatus) && order.paymentStatus !== "PAID" ? (
+              <OrderPaymentBadge status={order.paymentStatus} />
+            ) : null}
+            {order.deliverySlotLabel ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-text-muted">
+                <Icon name="clock" size={12} />
+                ডেলিভারি স্লট: {order.deliverySlotLabel}
+              </span>
+            ) : null}
+          </div>
           <p className="mt-1 truncate text-xs leading-5 text-text-muted">
             {formatDate(order.createdAt)} · {order.itemCount}টি পণ্য
             {order.firstItemName ? ` · ${order.firstItemName}` : ""}
           </p>
         </div>
         <p className="shrink-0 text-sm font-bold text-text-main">
-          <BdtAmount poisha={order.totalPoisha} />
+          <Money poisha={order.totalPoisha} />
         </p>
       </div>
-      <div className="mt-2.5">
+
+      <CustomerTrackingStepper status={order.status} />
+
+      {codDuePoisha !== null ? (
+        <div className="mt-3 flex items-baseline justify-between rounded-lg bg-amber-50 px-3 py-2 text-sm">
+          <span className="font-medium text-amber-800">
+            ডেলিভারির সময় বকেয়া (ক্যাশ অন ডেলিভারি)
+          </span>
+          <span className="font-semibold text-amber-700">
+            <Money poisha={codDuePoisha} />
+          </span>
+        </div>
+      ) : null}
+
+      <div className="mt-3">
         <ReorderButton orderId={order.id} orderNo={order.orderNo} />
       </div>
     </li>
@@ -146,7 +207,15 @@ export default async function AccountPage() {
 
       <section className="mt-6 rounded-2xl border border-border bg-card shadow-card" aria-label="আমার অর্ডার">
         <div className="flex items-center justify-between px-5 pt-5">
-          <h2 className="text-base font-bold text-text-main">আমার অর্ডার</h2>
+          <h2 className="flex items-center gap-2.5 text-base font-bold text-text-main">
+            <span
+              aria-hidden="true"
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white"
+            >
+              <Icon name="package" size={18} />
+            </span>
+            আমার অর্ডার
+          </h2>
           <span className="text-xs font-medium text-text-muted">মোট {total}টি</span>
         </div>
         {orders.length === 0 ? (
@@ -157,7 +226,7 @@ export default async function AccountPage() {
         ) : (
           <ul className="mt-2 divide-y divide-border pb-2">
             {orders.map((o) => (
-              <OrderRow key={o.id} order={o} />
+              <OrderCard key={o.id} order={o} />
             ))}
           </ul>
         )}

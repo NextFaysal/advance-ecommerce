@@ -436,8 +436,8 @@ function PrintCentreInner() {
   }, [invoices]);
 
   const toggleBtnCls = (active: boolean) =>
-    `rounded-md px-3 py-1.5 text-small font-semibold transition ${
-      active ? "bg-brand-600 text-white" : "bg-white text-text-muted ring-1 ring-border hover:text-text-main"
+    `rounded-md px-3 py-1.5 text-small font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${
+      active ? "bg-brand-600 text-white" : "bg-surface text-text-muted ring-1 ring-border hover:text-text-main"
     }`;
 
   return (
@@ -496,7 +496,7 @@ function PrintCentreInner() {
             type="button"
             onClick={() => window.print()}
             disabled={!invoices || invoices.length === 0}
-            className="rounded-md bg-brand-600 px-4 py-2 text-small font-semibold text-white disabled:opacity-50"
+            className="rounded-md bg-brand-600 px-4 py-2 text-small font-semibold text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             আবার প্রিন্ট করুন
           </button>

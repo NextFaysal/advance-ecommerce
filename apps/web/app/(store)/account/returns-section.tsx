@@ -21,6 +21,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { BdtAmount } from "@/components/ui/numerals";
+import { Icon } from "@/components/ui/icon";
 
 interface OrderProp {
   id: string;
@@ -259,7 +260,7 @@ function ReturnApplyForm({
           type="button"
           disabled={busy}
           onClick={submit}
-          className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+          className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
           {busy ? "জমা হচ্ছে…" : "আবেদন জমা দিন"}
         </button>
@@ -294,7 +295,15 @@ export default function ReturnsSection({ orders }: { orders: OrderProp[] }) {
       className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card"
       aria-label="আমার রিটার্নসমূহ"
     >
-      <h2 className="text-base font-bold text-text-main">আমার রিটার্নসমূহ</h2>
+      <h2 className="flex items-center gap-2.5 text-base font-bold text-text-main">
+        <span
+          aria-hidden="true"
+          className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white"
+        >
+          <Icon name="rotate-ccw" size={18} />
+        </span>
+        আমার রিটার্নসমূহ
+      </h2>
       <p className="mt-1.5 text-sm leading-6 text-text-muted">
         ডেলিভারি সম্পন্ন অর্ডারের পণ্য ফেরত বা বদলির আবেদন এখান থেকে করা যায়। আবেদনের অবস্থা এই
         তালিকাতেই সবসময় হালনাগাদ থাকে।
@@ -318,31 +327,41 @@ export default function ReturnsSection({ orders }: { orders: OrderProp[] }) {
         <ul className="mt-4 space-y-3">
           {returns.map((r) => (
             <li key={r.id} className="rounded-xl border border-border px-4 py-3">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-text-main">
-                  <a
-                    href={`/track?orderNo=${encodeURIComponent(r.orderNo)}`}
-                    className="hover:text-brand-700 hover:underline"
-                  >
-                    {r.orderNo}
-                  </a>
-                  <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
-                    {r.statusLabel.bn}
-                  </span>
-                </p>
-                <span className="shrink-0 text-xs text-text-muted">{formatDate(r.createdAt)}</span>
+              <div className="flex items-start gap-3">
+                <span
+                  aria-hidden="true"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700"
+                >
+                  <Icon name="rotate-ccw" size={16} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-text-main">
+                      <a
+                        href={`/track?orderNo=${encodeURIComponent(r.orderNo)}`}
+                        className="hover:text-brand-700 hover:underline"
+                      >
+                        {r.orderNo}
+                      </a>
+                      <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
+                        {r.statusLabel.bn}
+                      </span>
+                    </p>
+                    <span className="shrink-0 text-xs text-text-muted">{formatDate(r.createdAt)}</span>
+                  </div>
+                  {r.lines.length > 0 ? (
+                    <ul className="mt-1.5 space-y-0.5 text-xs leading-5 text-text-muted">
+                      {r.lines.map((line, i) => (
+                        <li key={i}>
+                          {line.productName} × {line.quantity} —{" "}
+                          <BdtAmount poisha={line.unitPricePoisha * line.quantity} />
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {r.reason ? <p className="mt-1 text-xs leading-5 text-text-muted">কারণ: {r.reason}</p> : null}
+                </div>
               </div>
-              {r.lines.length > 0 ? (
-                <ul className="mt-1.5 space-y-0.5 text-xs leading-5 text-text-muted">
-                  {r.lines.map((line, i) => (
-                    <li key={i}>
-                      {line.productName} × {line.quantity} —{" "}
-                      <BdtAmount poisha={line.unitPricePoisha * line.quantity} />
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              {r.reason ? <p className="mt-1 text-xs leading-5 text-text-muted">কারণ: {r.reason}</p> : null}
             </li>
           ))}
         </ul>
@@ -355,11 +374,19 @@ export default function ReturnsSection({ orders }: { orders: OrderProp[] }) {
             {deliveredOrders.map((order) => (
               <li key={order.id} className="rounded-xl border border-border px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-text-main">{order.orderNo}</p>
+                  <p className="flex items-center gap-2.5 text-sm font-medium text-text-main">
+                    <span
+                      aria-hidden="true"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50 text-brand-700"
+                    >
+                      <Icon name="package" size={15} />
+                    </span>
+                    {order.orderNo}
+                  </p>
                   <button
                     type="button"
                     onClick={() => setOpenOrderId(openOrderId === order.id ? null : order.id)}
-                    className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-brand-700 hover:bg-brand-50"
+                    className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-brand-700 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                   >
                     রিটার্নের আবেদন
                   </button>

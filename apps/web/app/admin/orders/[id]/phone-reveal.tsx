@@ -70,7 +70,7 @@ export function PhoneReveal({
         type="button"
         onClick={() => void reveal()}
         disabled={state.kind === "loading"}
-        className="rounded-md border border-border bg-card px-2 py-1 text-caption font-semibold text-brand-700 transition motion-fast hover:border-brand-300 disabled:opacity-50"
+        className="rounded-md border border-border bg-card px-2 py-1 text-caption font-semibold text-brand-700 transition motion-fast hover:border-brand-300 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
       >
         {state.kind === "loading" ? "লোড হচ্ছে…" : "নম্বর দেখুন"}
       </button>
