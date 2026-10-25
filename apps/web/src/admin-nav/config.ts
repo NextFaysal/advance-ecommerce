@@ -135,6 +135,20 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: null,
   },
   {
+    id: "remittance",
+    path: "/admin/remittance",
+    labelBn: "কুরিয়ার রেমিট্যান্স",
+    labelEn: "COD Remittance",
+    icon: "Calculator",
+    section: "sales",
+    // The remittance API guards reads on payments.view and every
+    // money-write (create / receive / close) on payments.remit;
+    // nav uses payments.view as the read gate, like payments itself.
+    permission: "payments.view",
+    featureFlag: null,
+    badge: null,
+  },
+  {
     id: "shipments",
     path: "/admin/shipments",
     labelBn: "শিপমেন্ট",

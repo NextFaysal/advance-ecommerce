@@ -51,6 +51,7 @@ export const PERMISSIONS = [
   "payments.verify_manual",
   "payments.refund",
   "payments.export",
+  "payments.remit",
   // Shipments / courier
   "shipments.view",
   "shipments.book",
@@ -113,7 +114,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, readonly PermissionKey[]> 
     "products.view", "products.create", "products.edit", "products.import", "products.export",
     "customers.view", "customers.edit", "customers.view_full_phone",
     "inventory.view", "inventory.adjust", "inventory.purchase_order",
-    "payments.view", "payments.verify_manual",
+    "payments.view", "payments.verify_manual", "payments.remit",
     "shipments.view", "shipments.book", "shipments.cancel",
     "marketing.coupon", "marketing.campaign", "marketing.banner",
     "content.page", "content.blog", "content.media",
@@ -146,7 +147,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, readonly PermissionKey[]> 
   Accountant: [
     "orders.view", "orders.export",
     "returns.view",
-    "payments.view", "payments.refund", "payments.export",
+    "payments.view", "payments.refund", "payments.export", "payments.remit",
     "shipments.view",
     "reports.view", "reports.export", "reports.accounting",
   ],

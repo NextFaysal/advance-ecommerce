@@ -39,6 +39,7 @@ import { ManualOrderBuilder } from "./manual-order-builder";
 import { OrderImportCard } from "./order-import-card";
 import { StaleUnpaidPanel } from "./stale-unpaid-panel";
 import { AgingPanel } from "./aging-panel";
+import { KpiPanel } from "./kpi-panel";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -352,6 +353,7 @@ export default function AdminOrdersPage() {
 
       <StaleUnpaidPanel />
       <AgingPanel />
+      <KpiPanel />
 
       {loadState === "loading" && (
         <div role="status" aria-label="অর্ডার লোড হচ্ছে" className="overflow-hidden rounded-lg border border-border bg-card shadow-card">

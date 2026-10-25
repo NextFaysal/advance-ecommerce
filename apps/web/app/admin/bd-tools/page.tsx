@@ -10,8 +10,11 @@
  *  3. পেমেন্ট লিংক     — DB-backed paymentLinkStore (payment_links table);
  *     the list is the newest real links across all orders (listRecent) —
  *     no demo link is seeded for this page any more
- *  4. ক্যাশ ক্লোজিং    — staff enter the day's physical counts in the
- *     client panel; POST /api/v1/admin/bd/cash-closing computes with
+ *  4. ক্যাশ ক্লোজিং    — the cash expectation is DERIVED from the
+ *     day's records server-side (deriveDrawerCash: POS cash sales +
+ *     rider COD hand-ins − cash refunds SENT); staff enter only the
+ *     physical counts in the client panel; POST
+ *     /api/v1/admin/bd/cash-closing computes with
  *     buildDailyCashClosing() and persists to daily_cash_closings;
  *     saved closings are read back below the form
  *  5. কুরিয়ার রিকনসিলিয়েশন — the latest PERSISTED invoice run from
@@ -34,6 +37,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { Tabs } from "@/components/ui/tabs";
 import { Icon } from "@/components/ui/icon";
 import { paymentLinkStore, withEffectiveStatus } from "@/bd/payment-link";
+import { deriveDrawerCash } from "@/bd/cash-closing-derive";
 import { listDisputes, listInvoiceRuns, type CourierInvoiceRun } from "@/bd/courier-invoice";
 import { listAttempts } from "@/integrations/sandbox/db-store";
 import { AddressParserPanel } from "./address-parser-panel";
@@ -222,13 +226,14 @@ function CourierReconciliationPanel({ run, openDisputes }: { run: CourierInvoice
 
 export default async function BdToolsPage() {
   const todayYmd = dhakaYmd(new Date().toISOString());
-  const [links, closings, suggested, runs, disputes, courierStats] = await Promise.all([
+  const [links, closings, suggested, runs, disputes, courierStats, initialDerived] = await Promise.all([
     initialPaymentLinks(),
     savedClosings(),
     todaysRecordedReceipts(todayYmd),
     listInvoiceRuns(),
     listDisputes(),
     buildCourierStatsFromDb(),
+    deriveDrawerCash(todayYmd),
   ]);
   const latestRun =
     runs.length > 0
@@ -255,7 +260,12 @@ export default async function BdToolsPage() {
               id: "cash-closing",
               label: "ক্যাশ ক্লোজিং",
               content: (
-                <CashClosingPanel todayYmd={todayYmd} recentClosings={closings} suggested={suggested} />
+                <CashClosingPanel
+                  todayYmd={todayYmd}
+                  recentClosings={closings}
+                  suggested={suggested}
+                  initialDerived={initialDerived}
+                />
               ),
             },
             {

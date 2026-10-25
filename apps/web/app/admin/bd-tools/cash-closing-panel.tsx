@@ -1,32 +1,36 @@
 "use client";
 
 /**
- * BD Tools — দৈনিক ক্যাশ ক্লোজিং panel (real wiring, 2026-10-25).
+ * BD Tools — দৈনিক ক্যাশ ক্লোজিং panel (real wiring, 2026-10-25;
+ * cash channel auto-derived in doc 17 batch O8-2).
  *
- * The old panel rendered buildDailyCashClosing() over a hard-coded
- * DEMO input. This one is the real flow: staff enter the day's physical
- * counts (opening cash, cash sales/refunds, expenses, deposits, counted
- * drawer cash, and per-channel expected/actual for bKash, Nagad and
- * courier COD) and submit to POST /api/v1/admin/bd/cash-closing, which
- * validates with dailyCashClosingInputSchema, computes with the same
- * buildDailyCashClosing() service and UPSERTS the result into the
- * daily_cash_closings table (one closing per date — a re-count corrects
- * the day). The returned closing is rendered below the form; the list
- * of previously saved closings comes from the server page as props.
+ * The cash expectation used to be typed by hand (cash sales, cash
+ * refunds, expenses, deposits), so the closing compared a count
+ * against the staff's own guess. Now the server derives the drawer
+ * expectation from the day's records — POS cash sales + rider COD
+ * hand-ins − cash refunds SENT (src/bd/cash-closing-derive) — and
+ * this panel only collects PHYSICAL facts: the counted drawer cash,
+ * an optional opening-count override, the other channels' expected /
+ * actual (bKash / Nagad / courier COD receivable), and a sign-off
+ * note, which the API REQUIRES when the counted cash differs from
+ * the derived expectation. The derived breakdown renders next to the
+ * count input, per source line, with record counts.
  *
- * Prefill honesty: the bKash/Nagad "expected" fields start from the
- * day's recorded payment attempts (server-computed suggestion, passed
- * as props) — labelled as a system-record estimate and fully editable;
- * every other field starts empty/zero because drawer counts are
- * physical facts only staff know.
+ * The breakdown is computed live by the server for the chosen date
+ * (GET /api/v1/admin/bd/cash-closing?date=). It is not stored —
+ * daily_cash_closings has no column for it; only the derived
+ * expected figure itself is persisted (expectedCashPoisha).
+ * Courier-collected COD never enters the drawer expectation: that
+ * money sits with the courier and belongs to the remittance ledger.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Money } from "@/components/ui/money";
 import { DataTable } from "@/components/ui/table";
 import type { DailyCashClosing } from "@/bd/cash-closing";
+import type { DerivedDrawerCash } from "@/bd/cash-closing-derive";
 import { CHANNEL_LABELS_BN, formatDateBn } from "./labels";
 
 export interface StoredClosingView {
@@ -40,8 +44,11 @@ export interface CashClosingPanelProps {
   /** Today, yyyy-mm-dd (Asia/Dhaka), from the server page. */
   todayYmd: string;
   recentClosings: StoredClosingView[];
-  /** Recorded payment-attempt totals for today — editable estimates. */
+  /** Recorded payment-attempt totals for today — editable estimates
+   *  for the bKash / Nagad channels only. */
   suggested: { bkashExpectedPoisha: number; nagadExpectedPoisha: number };
+  /** Server-derived drawer expectation for todayYmd. */
+  initialDerived: DerivedDrawerCash;
 }
 
 /** Taka string -> integer poisha, zero allowed (closing fields are counts). */
@@ -82,15 +89,14 @@ function TakaField({
   );
 }
 
-export function CashClosingPanel({ todayYmd, recentClosings, suggested }: CashClosingPanelProps) {
+export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialDerived }: CashClosingPanelProps) {
   const router = useRouter();
   const [date, setDate] = useState(todayYmd);
-  const [opening, setOpening] = useState("0");
-  const [cashSales, setCashSales] = useState("0");
-  const [cashRefunds, setCashRefunds] = useState("0");
-  const [expenses, setExpenses] = useState("0");
-  const [deposited, setDeposited] = useState("0");
+  const [derived, setDerived] = useState<DerivedDrawerCash>(initialDerived);
+  const [derivedLoading, setDerivedLoading] = useState(false);
+  const [opening, setOpening] = useState(poishaToTaka(initialDerived.openingCashPoisha));
   const [counted, setCounted] = useState("0");
+  const [note, setNote] = useState("");
   const [bkashExpected, setBkashExpected] = useState(poishaToTaka(suggested.bkashExpectedPoisha));
   const [bkashActual, setBkashActual] = useState("0");
   const [nagadExpected, setNagadExpected] = useState(poishaToTaka(suggested.nagadExpectedPoisha));
@@ -103,14 +109,51 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested }: CashCl
   const [error, setError] = useState<string | null>(null);
   const [closing, setClosing] = useState<DailyCashClosing | null>(null);
 
+  // Refetch the derived breakdown whenever the closing date changes.
+  useEffect(() => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date === derived.date) return;
+    let cancelled = false;
+    setDerivedLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/v1/admin/bd/cash-closing?date=${date}`);
+        if (!res.ok) return;
+        const payload = (await res.json()) as { data?: { derived?: DerivedDrawerCash } };
+        if (!cancelled && payload.data?.derived) {
+          setDerived(payload.data.derived);
+          setOpening(poishaToTaka(payload.data.derived.openingCashPoisha));
+        }
+      } catch {
+        // Keep the last breakdown on screen; the expected figure is
+        // recomputed server-side at submit time regardless.
+      } finally {
+        if (!cancelled) setDerivedLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
+
+  const openingPoisha = takaToPoisha(opening);
+  const countedPoisha = takaToPoisha(counted);
+  const tolerancePoisha = takaToPoisha(tolerance) ?? 0;
+  // Live preview of the expectation with the (possibly overridden)
+  // opening count: derived.expected uses the derived opening, so
+  // adjust by the difference.
+  const previewExpected =
+    openingPoisha === null
+      ? null
+      : derived.expectedCashPoisha - derived.openingCashPoisha + openingPoisha;
+  const previewVariance =
+    countedPoisha === null || previewExpected === null ? null : countedPoisha - previewExpected;
+  const noteRequired = previewVariance !== null && Math.abs(previewVariance) > tolerancePoisha;
+
   async function submit() {
     setError(null);
     const fields: Array<[string, string]> = [
       ["openingCashPoisha", opening],
-      ["cashSalesPoisha", cashSales],
-      ["cashRefundsPoisha", cashRefunds],
-      ["expensesPoisha", expenses],
-      ["cashDepositedPoisha", deposited],
       ["countedCashPoisha", counted],
       ["bkashExpected", bkashExpected],
       ["bkashActual", bkashActual],
@@ -134,6 +177,10 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested }: CashCl
       setError("তারিখ yyyy-mm-dd আকারে লিখুন।");
       return;
     }
+    if (noteRequired && !note.trim()) {
+      setError("গণনা করা নগদ হিসাবের সঙ্গে মেলেনি — পার্থক্যের কারণ লিখে নোট দিন, তারপর জমা দিন।");
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch("/api/v1/admin/bd/cash-closing", {
@@ -142,26 +189,24 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested }: CashCl
         body: JSON.stringify({
           date,
           openingCashPoisha: parsed.get("openingCashPoisha"),
-          cashSalesPoisha: parsed.get("cashSalesPoisha"),
-          cashRefundsPoisha: parsed.get("cashRefundsPoisha"),
-          expensesPoisha: parsed.get("expensesPoisha"),
-          cashDepositedPoisha: parsed.get("cashDepositedPoisha"),
           countedCashPoisha: parsed.get("countedCashPoisha"),
           bkash: { expectedPoisha: parsed.get("bkashExpected"), actualPoisha: parsed.get("bkashActual") },
           nagad: { expectedPoisha: parsed.get("nagadExpected"), actualPoisha: parsed.get("nagadActual") },
           courierCodReceivable: { expectedPoisha: parsed.get("courierCodExpected"), actualPoisha: parsed.get("courierCodActual") },
           customerDuePoisha: parsed.get("customerDuePoisha"),
           tolerancePoisha: parsed.get("tolerancePoisha"),
+          note: note.trim() ? note.trim() : undefined,
         }),
       });
       const payload = (await res.json().catch(() => null)) as
-        | { data?: { closing: DailyCashClosing }; error?: { message?: string } }
+        | { data?: { closing: DailyCashClosing; derived: DerivedDrawerCash }; error?: { message?: string } }
         | null;
       if (!res.ok || !payload?.data) {
         setError(payload?.error?.message ?? `ক্লোজিং সংরক্ষণ হয়নি (HTTP ${res.status})।`);
         return;
       }
       setClosing(payload.data.closing);
+      setDerived(payload.data.derived);
       router.refresh();
     } catch {
       setError("নেটওয়ার্ক সমস্যা — ক্লোজিং পাঠানো যায়নি, আবার চেষ্টা করুন।");
@@ -187,26 +232,95 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested }: CashCl
   return (
     <div className="space-y-5">
       <p className="text-sm text-text-muted">
-        দিনের শেষে ড্রয়ার ও চ্যানেলের আসল গণনা লিখে ক্লোজিং জমা দিন — হিসাব{" "}
-        <span className="font-mono text-xs">buildDailyCashClosing()</span> দিয়ে হয় এবং ফলাফল{" "}
-        <span className="font-mono text-xs">daily_cash_closings</span> টেবিলে সংরক্ষিত থাকে (এক তারিখে
-        একটিই ক্লোজিং — আবার জমা দিলে সেই দিনের রেকর্ড সংশোধিত হয়)। অমিল কখনো নিজে থেকে ঠিক করা হয়
-        না। বিকাশ/নগদ "থাকার কথা" ঘরে আজকের রেকর্ডকৃত পেমেন্টের হিসাব আগাম বসানো আছে — এটি সিস্টেমের
-        অনুমান, বদলে দেওয়া যায়; বাকি ঘরগুলো শারীরিক গণনা থেকে আসে।
+        দিনের শেষে ড্রয়ারের আসল গণনা লিখে ক্লোজিং জমা দিন। <strong>নগদের "থাকার কথা" এখন সিস্টেম
+        নিজে হিসাব করে</strong> — দিনের রেকর্ড থেকে: POS নগদ বিক্রয় + রাইডারের হস্তান্তর করা COD −
+        নগদে পাঠানো ফেরত। আগের মতো হাতে লিখে দেওয়া হয় না, তাই গণনার সঙ্গে মিলিয়ে দেখাটা সত্যিকারের
+        যাচাই। হিসাব <span className="font-mono text-xs">buildDailyCashClosing()</span> দিয়ে হয় এবং
+        ফলাফল <span className="font-mono text-xs">daily_cash_closings</span> টেবিলে সংরক্ষিত থাকে (এক
+        তারিখে একটিই ক্লোজিং — আবার জমা দিলে সেই দিনের রেকর্ড সংশোধিত হয়)। অমিল কখনো নিজে থেকে ঠিক
+        করা হয় না; নগদে অমিল থাকলে কারণ লিখে নোট দেওয়া বাধ্যতামূলক। বিকাশ/নগদ "থাকার কথা" ঘরে আজকের
+        রেকর্ডকৃত পেমেন্টের হিসাব আগাম বসানো আছে — এটি সিস্টেমের অনুমান, বদলে দেওয়া যায়।
       </p>
 
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="rounded-lg border border-border bg-surface-2 p-4">
+          <h3 className="text-sm font-semibold">
+            সিস্টেমের হিসাব — ড্রয়ারে থাকার কথা ({formatDateBn(derived.date)})
+            {derivedLoading ? <span className="ml-2 text-xs font-normal text-text-muted">হিসাব আসছে…</span> : null}
+          </h3>
+          <dl className="mt-3 space-y-2 text-sm">
+            <div className="flex items-baseline justify-between gap-3">
+              <dt className="text-text-muted">
+                শুরুর নগদ{" "}
+                <span className="text-xs">
+                  ({derived.openingSource === "previous_closing" ? "আগের ক্লোজিংয়ের গণনা থেকে" : "আগের ক্লোজিং নেই — ০ ধরা হয়েছে"})
+                </span>
+              </dt>
+              <dd><Money poisha={derived.openingCashPoisha} /></dd>
+            </div>
+            {derived.lines.map((line) => (
+              <div key={line.key} className="flex items-baseline justify-between gap-3">
+                <dt className="text-text-muted">
+                  {line.direction === "in" ? "+ " : "− "}
+                  {line.labelBn}{" "}
+                  <span className="text-xs">({line.recordCount}টি রেকর্ড থেকে)</span>
+                </dt>
+                <dd><Money poisha={line.amountPoisha} /></dd>
+              </div>
+            ))}
+            <div className="flex items-baseline justify-between gap-3 border-t border-border pt-2 font-medium">
+              <dt>মোট থাকার কথা (Expected)</dt>
+              <dd><Money poisha={previewExpected ?? derived.expectedCashPoisha} /></dd>
+            </div>
+            {previewVariance !== null ? (
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="text-text-muted">গণনার সঙ্গে পার্থক্য</dt>
+                <dd>
+                  {previewVariance === 0 ? (
+                    <Badge tone="success">মিলেছে</Badge>
+                  ) : (
+                    <Badge tone="danger">
+                      পার্থক্য <Money poisha={previewVariance} />
+                    </Badge>
+                  )}
+                </dd>
+              </div>
+            ) : null}
+          </dl>
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-text-muted">
+            {derived.exclusionsBn.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+            <li>খরচ বা ব্যাংকে জমার কোনো রেকর্ড সিস্টেমে নেই — এমন কিছু ঘটলে নোটে লিখে রাখুন।</li>
+          </ul>
+        </div>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-text-muted">তারিখ (yyyy-mm-dd)</span>
+              <input type="text" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
+            </label>
+            <TakaField label="শুরুর নগদ (টাকা) — গণনা, বদলানো যায়" value={opening} onChange={setOpening} />
+            <TakaField label="গণনা করা নগদ (টাকা)" value={counted} onChange={setCounted} />
+            <TakaField label="সহনশীলতা / টলারেন্স (টাকা)" value={tolerance} onChange={setTolerance} />
+          </div>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-text-muted">
+              নোট {noteRequired ? <span className="text-rose-600">(অমিল আছে — নোট বাধ্যতামূলক)</span> : "(ঐচ্ছিক)"}
+            </span>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              className={inputClass}
+              placeholder="পার্থক্যের কারণ বা দিনের উল্লেখযোগ্য নগদ ঘটনা…"
+            />
+          </label>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <label className="block">
-          <span className="mb-1 block text-xs font-medium text-text-muted">তারিখ (yyyy-mm-dd)</span>
-          <input type="text" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
-        </label>
-        <TakaField label="শুরুর নগদ (টাকা)" value={opening} onChange={setOpening} />
-        <TakaField label="নগদ বিক্রয় (টাকা)" value={cashSales} onChange={setCashSales} />
-        <TakaField label="নগদ ফেরত (টাকা)" value={cashRefunds} onChange={setCashRefunds} />
-        <TakaField label="খরচ (টাকা)" value={expenses} onChange={setExpenses} />
-        <TakaField label="ব্যাংকে জমা (টাকা)" value={deposited} onChange={setDeposited} />
-        <TakaField label="গণনা করা নগদ (টাকা)" value={counted} onChange={setCounted} />
-        <TakaField label="সহনশীলতা / টলারেন্স (টাকা)" value={tolerance} onChange={setTolerance} />
         <TakaField label="বিকাশ — থাকার কথা (টাকা)" value={bkashExpected} onChange={setBkashExpected} />
         <TakaField label="বিকাশ — আসলে আছে (টাকা)" value={bkashActual} onChange={setBkashActual} />
         <TakaField label="নগদ — থাকার কথা (টাকা)" value={nagadExpected} onChange={setNagadExpected} />

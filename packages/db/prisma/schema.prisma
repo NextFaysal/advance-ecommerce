@@ -200,6 +200,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   assignedOrders      Order[]   @relation("OrderAssignee")
   approvedPayments    Payment[] @relation("PaymentApprover")
+  remittanceBatches   RemittanceBatch[] @relation("RemittanceCreator")
   reviewedTrx         ManualTrxSubmission[] @relation("TrxReviewer")
   statusChanges       OrderStatusHistory[] @relation("StatusChanger")
   orderNotes          OrderNote[] @relation("NoteAuthor")
@@ -801,6 +802,7 @@ model Order {
   manualTrx        ManualTrxSubmission[]
   shipments        Shipment[]
   returns          Return[]
+  remittanceItems  RemittanceItem[]
   couponUsages     CouponUsage[]
   notificationLogs NotificationLog[]
   paymentLinks     PaymentLink[]
@@ -948,6 +950,7 @@ model Payment {
   attempts              PaymentAttempt[]
   manualTrx             ManualTrxSubmission[]
   refunds               Refund[]
+  remittanceItem        RemittanceItem?
   @@unique([method, gatewayTransactionId])
   @@index([orderId])
   @@index([status])
@@ -1015,6 +1018,58 @@ model Refund {
   updatedAt    DateTime @updatedAt
   returns      Return[]
   @@index([paymentId])
+  @@index([orderId])
+}
+
+// ------------------------------------------------- COD remittance (doc 17, O8)
+// A remittance batch settles COD cash a courier (or the own-rider
+// channel, provider "rider") collected on delivered orders and later
+// sent back to the shop. Items link the batch to the EXACT Payment
+// rows it covers (paymentId unique — a collection can sit in exactly
+// one batch), so "expected" is always Σ recorded collections, never a
+// guess from order totals. variancePoisha = expected − received − fee,
+// stored at receive time; a batch whose variance is non-zero can only
+// be CLOSED with a note — the discrepancy is written down, never
+// silently absorbed. See src/orders/remittance.ts.
+enum RemittanceStatus {
+  OPEN
+  RECEIVED
+  CLOSED
+}
+
+model RemittanceBatch {
+  id             String           @id @default(cuid())
+  provider       String
+  periodStart    DateTime
+  periodEnd      DateTime
+  expectedPoisha Int
+  receivedPoisha Int?
+  feePoisha      Int?
+  variancePoisha Int?
+  status         RemittanceStatus @default(OPEN)
+  receivedAt     DateTime?
+  note           String?
+  createdById    String?
+  createdBy      User?            @relation("RemittanceCreator", fields: [createdById], references: [id])
+  deletedAt      DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  items          RemittanceItem[]
+  @@index([provider, status])
+  @@index([status])
+}
+
+model RemittanceItem {
+  id             String          @id @default(cuid())
+  batchId        String
+  batch          RemittanceBatch @relation(fields: [batchId], references: [id])
+  orderId        String
+  order          Order           @relation(fields: [orderId], references: [id])
+  paymentId      String          @unique
+  payment        Payment         @relation(fields: [paymentId], references: [id])
+  expectedPoisha Int
+  createdAt      DateTime        @default(now())
+  @@index([batchId])
   @@index([orderId])
 }
 
@@ -1368,6 +1423,7 @@ model DailyCashClosing {
   actualCashPoisha  Int
   differencePoisha  Int
   hasMismatch       Boolean   @default(false)
+  breakdownJson     Json?
   note              String?
   closedById        String?
   createdAt         DateTime  @default(now())

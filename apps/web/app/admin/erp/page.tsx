@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
 import { Icon } from "@/components/ui/icon";
+import { DeliveryCostsPanel } from "./delivery-costs-panel";
 import { accountByCode } from "@/erp/accounts";
 import { erpStore, listSalesVatRows } from "@/erp/db-store";
 import { accountBalances } from "@/erp/ledger";
@@ -277,6 +278,9 @@ export default async function AdminErpPage() {
         ]}
         rows={accountRows}
       />
+
+      <h2 className="mb-3 mt-8 text-lg font-semibold">ব্যর্থ ডেলিভারির খরচ (Failed-delivery costs)</h2>
+      <DeliveryCostsPanel />
     </main>
   );
 }
