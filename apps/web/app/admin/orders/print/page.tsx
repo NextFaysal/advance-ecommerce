@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Print centre — invoices for the orders selected on the list page
- * (doc 17, batch O6-2). Opened in a new tab as
- * /admin/orders/print?ids=<id,id,...> from the list's
+ * Print centre v2 — invoices + packing slips for the orders selected
+ * on the list page (doc 17, batch O6-2; design OD5, doc 19). Opened in
+ * a new tab as /admin/orders/print?ids=<id,id,...> from the list's
  * "ইনভয়েস প্রিন্ট / Print invoices" button.
  *
  * Each order is fetched from the existing detail API
@@ -12,6 +12,21 @@
  * visibility trick the barcode labels studio uses) so no admin
  * chrome reaches paper, with a page break between invoices.
  * window.print() fires once after every fetch settles.
+ *
+ * OD5 design additions (presentation ONLY — the money computation in
+ * toInvoice below is a contract and is unchanged):
+ * - Brand block: store tile + the store name from the SAME settings
+ *   source the platform uses (admin settings publicSettings,
+ *   `general.store_name`). That key's default is EMPTY and there is
+ *   no logo/contact setting anywhere in the settings registry, so
+ *   when no name is set the masthead honestly prints without one (a
+ *   screen-only hint says where the name comes from) — no invented
+ *   brand, logo or phone number is ever printed.
+ * - Packing-slip variant: items + big-type address, NO money at all.
+ * - Format choice: A4 (default) or thermal 4×6 — @page size + sheet
+ *   width via print CSS classes. The isolation rules and the print
+ *   root structure are byte-identical to v1; only the @page line and
+ *   an additive thermal width rule differ.
  *
  * Money lines, honestly: the detail API's order view exposes the
  * persisted shippingPoisha / discountPoisha split (doc 18, F1 — the
@@ -29,12 +44,10 @@
  * The customer phone prints exactly as the detail API returned it:
  * full for viewers holding customers.view_full_phone, masked
  * otherwise — the API's own policy, not re-decided here.
- *
- * The invoice markup is NEW (the pre-existing PrintPanel on the
- * order detail is a simplified on-screen preview, not an invoice).
  */
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { Icon } from "@/components/ui/icon";
 import { formatBdt } from "../../../../src/checkout/pricing";
 
 const MAX_INVOICES = 50;
@@ -133,6 +146,227 @@ function formatDate(iso: string): string {
     : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+function addressText(order: InvoiceOrder): string {
+  return [
+    order.address.addressLine,
+    order.address.union,
+    order.address.upazila,
+    order.address.district,
+    order.address.division,
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+type PrintVariant = "invoice" | "slip";
+type PrintFormat = "a4" | "thermal";
+
+function InvoiceSheet({
+  invoice,
+  storeName,
+  format,
+}: {
+  invoice: LoadedInvoice;
+  storeName: string;
+  format: PrintFormat;
+}) {
+  const { order, subtotalPoisha, shippingPoisha, discountPoisha, otherPoisha, netAdjustmentPoisha, paidPoisha, duePoisha } = invoice;
+  return (
+    <section
+      className={`invoice-sheet mb-8 rounded-lg border border-border bg-white p-6 text-text-main shadow-card print:mb-0 print:rounded-none print:border-0 print:shadow-none ${
+        format === "thermal" ? "invoice-sheet--thermal mx-auto w-full max-w-[104mm]" : ""
+      }`}
+    >
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-brand-600 pb-4">
+        <div className="flex items-center gap-3">
+          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white">
+            <Icon name="store" size={22} />
+          </span>
+          <div>
+            {storeName && <p className="text-h2 font-bold leading-tight">{storeName}</p>}
+            <p className="text-small font-semibold uppercase tracking-wide text-text-muted">ইনভয়েস / Invoice</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="font-mono text-body font-bold">{order.orderNo}</p>
+          <p className="text-small text-text-muted">{formatDate(order.createdAt)}</p>
+        </div>
+      </header>
+
+      <div className="mt-4 text-small leading-relaxed">
+        <p className="font-semibold">{order.customerName}</p>
+        <p>{order.customerPhone}</p>
+        <p className="text-text-muted">{addressText(order)}</p>
+        <p className="mt-1 text-text-muted">
+          পেমেন্ট: {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
+        </p>
+      </div>
+
+      <table className="mt-5 w-full text-left text-small">
+        <thead>
+          <tr className="border-b border-border text-text-muted">
+            <th scope="col" className="py-2 font-medium">পণ্য</th>
+            <th scope="col" className="py-2 text-center font-medium">পরিমাণ</th>
+            <th scope="col" className="py-2 text-right font-medium">একক দাম</th>
+            <th scope="col" className="py-2 text-right font-medium">মোট</th>
+          </tr>
+        </thead>
+        <tbody>
+          {order.items.map((item) => (
+            <tr key={item.variantId} className="border-b border-border/60">
+              <td className="py-2">
+                <span className="font-medium">{item.productName}</span>
+                <span className="block text-caption text-text-muted">{item.sku}</span>
+              </td>
+              <td className="py-2 text-center tabular-nums">{item.quantity}</td>
+              <td className="py-2 text-right tabular-nums">{formatBdt(item.unitPricePoisha)}</td>
+              <td className="py-2 text-right font-medium tabular-nums">
+                {formatBdt(item.unitPricePoisha * item.quantity)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="mt-4 rounded-lg border border-border bg-slate-50/60 px-4 py-3 print:bg-transparent">
+        <dl className="space-y-1.5 text-small">
+          <div className="flex justify-between">
+            <dt className="text-text-muted">সাবটোটাল (পণ্য)</dt>
+            <dd className="tabular-nums">{formatBdt(subtotalPoisha)}</dd>
+          </div>
+          {shippingPoisha !== null && discountPoisha !== null ? (
+            <>
+              <div className="flex justify-between">
+                <dt className="text-text-muted">ডেলিভারি চার্জ</dt>
+                <dd className="tabular-nums">{formatBdt(shippingPoisha)}</dd>
+              </div>
+              {discountPoisha > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-text-muted">ছাড়</dt>
+                  <dd className="tabular-nums">−{formatBdt(discountPoisha)}</dd>
+                </div>
+              )}
+              {otherPoisha !== 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-text-muted">সিওডি ফি ও অন্যান্য চার্জ</dt>
+                  <dd className="tabular-nums">{formatBdt(otherPoisha)}</dd>
+                </div>
+              )}
+            </>
+          ) : (
+            netAdjustmentPoisha !== 0 && (
+              <div className="flex justify-between">
+                <dt className="text-text-muted">ডেলিভারি চার্জ ও সমন্বয় (ছাড় বাদে নিট)</dt>
+                <dd className="tabular-nums">{formatBdt(netAdjustmentPoisha)}</dd>
+              </div>
+            )
+          )}
+          <div className="flex justify-between border-t border-border pt-2 text-body font-bold">
+            <dt>সর্বমোট</dt>
+            <dd className="tabular-nums">{formatBdt(order.totalPoisha)}</dd>
+          </div>
+          {paidPoisha > 0 && (
+            <div className="flex justify-between">
+              <dt className="text-text-muted">পরিশোধিত</dt>
+              <dd className="tabular-nums">{formatBdt(paidPoisha)}</dd>
+            </div>
+          )}
+        </dl>
+      </div>
+
+      {order.paymentStatus !== "PAID" && duePoisha > 0 ? (
+        <div className="mt-5 rounded-md border-2 border-amber-400 bg-amber-50 px-4 py-3">
+          <p className="flex items-center gap-2 text-body font-bold text-amber-900">
+            <Icon name="banknote" size={20} />
+            <span>
+              সংগ্রহ করুন / Amount due: {formatBdt(duePoisha)}
+            </span>
+          </p>
+          <p className="mt-1 text-caption text-amber-800">
+            ডেলিভারির সময় কাস্টমারের কাছ থেকে এই পরিমাণ টাকা সংগ্রহ করতে হবে।
+          </p>
+        </div>
+      ) : (
+        <p className="mt-5 flex items-center gap-2 rounded-md bg-emerald-50 px-4 py-3 text-small font-semibold text-emerald-800">
+          <Icon name="check" size={16} />
+          সম্পূর্ণ পরিশোধিত / Paid in full
+        </p>
+      )}
+    </section>
+  );
+}
+
+function PackingSlipSheet({
+  invoice,
+  storeName,
+  format,
+}: {
+  invoice: LoadedInvoice;
+  storeName: string;
+  format: PrintFormat;
+}) {
+  const { order } = invoice;
+  const totalQuantity = order.items.reduce((sum, i) => sum + i.quantity, 0);
+  return (
+    <section
+      className={`invoice-sheet mb-8 rounded-lg border border-border bg-white p-6 text-text-main shadow-card print:mb-0 print:rounded-none print:border-0 print:shadow-none ${
+        format === "thermal" ? "invoice-sheet--thermal mx-auto w-full max-w-[104mm]" : ""
+      }`}
+    >
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-brand-600 pb-4">
+        <div className="flex items-center gap-3">
+          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white">
+            <Icon name="package" size={22} />
+          </span>
+          <div>
+            {storeName && <p className="text-h3 font-bold leading-tight">{storeName}</p>}
+            <p className="text-small font-semibold uppercase tracking-wide text-text-muted">প্যাকিং স্লিপ / Packing slip</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="font-mono text-body font-bold">{order.orderNo}</p>
+          <p className="text-small text-text-muted">{formatDate(order.createdAt)}</p>
+        </div>
+      </header>
+
+      <div className="mt-5 leading-relaxed">
+        <p className="text-caption font-semibold uppercase tracking-wide text-text-muted">ডেলিভারি ঠিকানা</p>
+        <p className="mt-1 text-h2 font-bold leading-snug">{order.customerName}</p>
+        <p className="font-mono text-h3 font-semibold">{order.customerPhone}</p>
+        <p className="mt-1 text-body font-medium leading-relaxed">{addressText(order)}</p>
+      </div>
+
+      <table className="mt-5 w-full text-left">
+        <thead>
+          <tr className="border-b border-border text-text-muted">
+            <th scope="col" className="py-2 text-small font-medium">পণ্য</th>
+            <th scope="col" className="py-2 text-right text-small font-medium">পরিমাণ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {order.items.map((item) => (
+            <tr key={item.variantId} className="border-b border-border/60">
+              <td className="py-2.5">
+                <span className="text-body font-semibold">{item.productName}</span>
+                <span className="block text-caption text-text-muted">{item.sku}</span>
+              </td>
+              <td className="py-2.5 text-right text-h3 font-bold tabular-nums">× {item.quantity}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <p className="mt-4 flex items-center gap-2 text-body font-semibold">
+        <Icon name="box" size={18} />
+        মোট আইটেম: {totalQuantity}টি
+      </p>
+      <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-caption text-text-muted print:bg-transparent">
+        এই স্লিপে টাকার হিসাব নেই — টাকার জন্য ইনভয়েসটি দেখুন।
+      </p>
+    </section>
+  );
+}
+
 function PrintCentreInner() {
   const searchParams = useSearchParams();
   const ids = useMemo(() => {
@@ -144,6 +378,8 @@ function PrintCentreInner() {
   const [invoices, setInvoices] = useState<LoadedInvoice[] | null>(null);
   const [failedIds, setFailedIds] = useState<string[]>([]);
   const [storeName, setStoreName] = useState("");
+  const [variant, setVariant] = useState<PrintVariant>("invoice");
+  const [format, setFormat] = useState<PrintFormat>("a4");
   const printedRef = useRef(false);
 
   useEffect(() => {
@@ -199,11 +435,18 @@ function PrintCentreInner() {
     return () => clearTimeout(t);
   }, [invoices]);
 
+  const toggleBtnCls = (active: boolean) =>
+    `rounded-md px-3 py-1.5 text-small font-semibold transition ${
+      active ? "bg-brand-600 text-white" : "bg-white text-text-muted ring-1 ring-border hover:text-text-main"
+    }`;
+
   return (
     <main className="mx-auto max-w-3xl p-6">
       {/* Print isolation, mirroring the labels studio: only the
           invoice root is visible on paper; screen-only controls and
-          notes carry print:hidden so they never reach the sheet. */}
+          notes carry print:hidden so they never reach the sheet. The
+          isolation rules are v1's, unchanged — OD5 only parameterises
+          the @page line by format and adds the thermal sheet width. */}
       <style>{`
         @media print {
           body * { visibility: hidden !important; }
@@ -211,7 +454,8 @@ function PrintCentreInner() {
           #order-invoice-print { position: absolute !important; left: 0; top: 0; width: 100%; }
           .invoice-sheet { break-after: page; }
           .invoice-sheet:last-child { break-after: auto; }
-          @page { margin: 12mm; }
+          .invoice-sheet--thermal { width: 100mm !important; margin-left: auto; margin-right: auto; }
+          @page { ${format === "thermal" ? "size: 4in 6in; margin: 4mm;" : "margin: 12mm;"} }
         }
       `}</style>
 
@@ -225,15 +469,38 @@ function PrintCentreInner() {
                 ? `${ids.length}টি অর্ডারের ইনভয়েস লোড হচ্ছে…`
                 : `${invoices.length}টি ইনভয়েস তৈরি${failedIds.length > 0 ? ` · ${failedIds.length}টি লোড হয়নি` : ""}`}
           </p>
+          {invoices !== null && !storeName && (
+            <p className="mt-1 text-caption text-text-muted">
+              স্টোরের নাম Settings → General (general.store_name) থেকে আসে — এখনো সেট হয়নি, তাই শিরোনামে নাম ছাপা হচ্ছে না।
+            </p>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={() => window.print()}
-          disabled={!invoices || invoices.length === 0}
-          className="ml-auto rounded-md bg-brand-600 px-4 py-2 text-small font-semibold text-white disabled:opacity-50"
-        >
-          আবার প্রিন্ট করুন
-        </button>
+        <div className="ml-auto flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1.5" role="group" aria-label="প্রিন্টের ধরন">
+            <button type="button" aria-pressed={variant === "invoice"} onClick={() => setVariant("invoice")} className={toggleBtnCls(variant === "invoice")}>
+              ইনভয়েস
+            </button>
+            <button type="button" aria-pressed={variant === "slip"} onClick={() => setVariant("slip")} className={toggleBtnCls(variant === "slip")}>
+              প্যাকিং স্লিপ
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5" role="group" aria-label="কাগজের ফরম্যাট">
+            <button type="button" aria-pressed={format === "a4"} onClick={() => setFormat("a4")} className={toggleBtnCls(format === "a4")}>
+              A4
+            </button>
+            <button type="button" aria-pressed={format === "thermal"} onClick={() => setFormat("thermal")} className={toggleBtnCls(format === "thermal")}>
+              থার্মাল 4×6
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            disabled={!invoices || invoices.length === 0}
+            className="rounded-md bg-brand-600 px-4 py-2 text-small font-semibold text-white disabled:opacity-50"
+          >
+            আবার প্রিন্ট করুন
+          </button>
+        </div>
       </div>
 
       {failedIds.length > 0 && (
@@ -247,127 +514,13 @@ function PrintCentreInner() {
       )}
 
       <div id="order-invoice-print">
-        {(invoices ?? []).map(({ order, subtotalPoisha, shippingPoisha, discountPoisha, otherPoisha, netAdjustmentPoisha, paidPoisha, duePoisha }) => (
-          <section
-            key={order.id}
-            className="invoice-sheet mb-8 rounded-lg border border-border bg-white p-6 text-text-main shadow-card print:mb-0 print:rounded-none print:border-0 print:shadow-none"
-          >
-            <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
-              <div>
-                {storeName && <p className="text-h3 font-bold">{storeName}</p>}
-                <p className="text-small text-text-muted">ইনভয়েস / Invoice</p>
-              </div>
-              <div className="text-right">
-                <p className="font-mono text-body font-bold">{order.orderNo}</p>
-                <p className="text-small text-text-muted">{formatDate(order.createdAt)}</p>
-              </div>
-            </header>
-
-            <div className="mt-4 text-small leading-relaxed">
-              <p className="font-semibold">{order.customerName}</p>
-              <p>{order.customerPhone}</p>
-              <p className="text-text-muted">
-                {[
-                  order.address.addressLine,
-                  order.address.union,
-                  order.address.upazila,
-                  order.address.district,
-                  order.address.division,
-                ]
-                  .filter(Boolean)
-                  .join(", ")}
-              </p>
-              <p className="mt-1 text-text-muted">
-                পেমেন্ট: {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
-              </p>
-            </div>
-
-            <table className="mt-5 w-full text-left text-small">
-              <thead>
-                <tr className="border-b border-border text-text-muted">
-                  <th scope="col" className="py-2 font-medium">পণ্য</th>
-                  <th scope="col" className="py-2 text-center font-medium">পরিমাণ</th>
-                  <th scope="col" className="py-2 text-right font-medium">একক দাম</th>
-                  <th scope="col" className="py-2 text-right font-medium">মোট</th>
-                </tr>
-              </thead>
-              <tbody>
-                {order.items.map((item) => (
-                  <tr key={item.variantId} className="border-b border-border/60">
-                    <td className="py-2">
-                      <span className="font-medium">{item.productName}</span>
-                      <span className="block text-caption text-text-muted">{item.sku}</span>
-                    </td>
-                    <td className="py-2 text-center tabular-nums">{item.quantity}</td>
-                    <td className="py-2 text-right tabular-nums">{formatBdt(item.unitPricePoisha)}</td>
-                    <td className="py-2 text-right font-medium tabular-nums">
-                      {formatBdt(item.unitPricePoisha * item.quantity)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <dl className="mt-4 space-y-1.5 text-small">
-              <div className="flex justify-between">
-                <dt className="text-text-muted">সাবটোটাল (পণ্য)</dt>
-                <dd className="tabular-nums">{formatBdt(subtotalPoisha)}</dd>
-              </div>
-              {shippingPoisha !== null && discountPoisha !== null ? (
-                <>
-                  <div className="flex justify-between">
-                    <dt className="text-text-muted">ডেলিভারি চার্জ</dt>
-                    <dd className="tabular-nums">{formatBdt(shippingPoisha)}</dd>
-                  </div>
-                  {discountPoisha > 0 && (
-                    <div className="flex justify-between">
-                      <dt className="text-text-muted">ছাড়</dt>
-                      <dd className="tabular-nums">−{formatBdt(discountPoisha)}</dd>
-                    </div>
-                  )}
-                  {otherPoisha !== 0 && (
-                    <div className="flex justify-between">
-                      <dt className="text-text-muted">সিওডি ফি ও অন্যান্য চার্জ</dt>
-                      <dd className="tabular-nums">{formatBdt(otherPoisha)}</dd>
-                    </div>
-                  )}
-                </>
-              ) : (
-                netAdjustmentPoisha !== 0 && (
-                  <div className="flex justify-between">
-                    <dt className="text-text-muted">ডেলিভারি চার্জ ও সমন্বয় (ছাড় বাদে নিট)</dt>
-                    <dd className="tabular-nums">{formatBdt(netAdjustmentPoisha)}</dd>
-                  </div>
-                )
-              )}
-              <div className="flex justify-between border-t border-border pt-2 text-body font-bold">
-                <dt>সর্বমোট</dt>
-                <dd className="tabular-nums">{formatBdt(order.totalPoisha)}</dd>
-              </div>
-              {paidPoisha > 0 && (
-                <div className="flex justify-between">
-                  <dt className="text-text-muted">পরিশোধিত</dt>
-                  <dd className="tabular-nums">{formatBdt(paidPoisha)}</dd>
-                </div>
-              )}
-            </dl>
-
-            {order.paymentStatus !== "PAID" && duePoisha > 0 ? (
-              <div className="mt-5 rounded-md border-2 border-amber-400 bg-amber-50 px-4 py-3">
-                <p className="text-body font-bold text-amber-900">
-                  সংগ্রহ করুন / Amount due: {formatBdt(duePoisha)}
-                </p>
-                <p className="text-caption text-amber-800">
-                  ডেলিভারির সময় কাস্টমারের কাছ থেকে এই পরিমাণ টাকা সংগ্রহ করতে হবে।
-                </p>
-              </div>
-            ) : (
-              <p className="mt-5 rounded-md bg-emerald-50 px-4 py-3 text-small font-semibold text-emerald-800">
-                সম্পূর্ণ পরিশোধিত / Paid in full
-              </p>
-            )}
-          </section>
-        ))}
+        {(invoices ?? []).map((invoice) =>
+          variant === "invoice" ? (
+            <InvoiceSheet key={invoice.order.id} invoice={invoice} storeName={storeName} format={format} />
+          ) : (
+            <PackingSlipSheet key={invoice.order.id} invoice={invoice} storeName={storeName} format={format} />
+          ),
+        )}
       </div>
     </main>
   );

@@ -19,7 +19,14 @@ import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import { formatPoisha } from "@/components/ui/money";
+import { RefundStatusBadge } from "../../../../src/orders/components/OrderStatusBadge";
+import {
+  REFUND_STATUS_VISUAL,
+  STATUS_TONE_DOT_CLASS,
+} from "../../../../src/orders/components/labels";
+import type { RefundStatus as EngineRefundStatus } from "../../../../src/orders/refunds";
 
 type RefundMethod = "bkash" | "nagad" | "bank" | "cash" | "gateway" | "other";
 type RefundStatus = "PENDING" | "SENT" | "CONFIRMED" | "CANCELLED" | "COMPLETED";
@@ -63,6 +70,52 @@ const STATUS_UI: Record<string, { label: string; tone: "success" | "warning" | "
 
 const inputCls =
   "h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
+
+/* OD4 (doc 19 §3-S4) — the refund lifecycle as a mini-stepper, drawn
+ * from the OD0 status language (REFUND_STATUS_VISUAL tones/icons).
+ * Presentation only: the legal moves stay in moveStatus + the API.
+ * COMPLETED (gateway-final) renders as all steps done; CANCELLED
+ * renders no stepper — its badge carries the state. */
+const REFUND_STEPS: Array<{ status: EngineRefundStatus; labelBn: string }> = [
+  { status: "PENDING", labelBn: "অপেক্ষমাণ" },
+  { status: "SENT", labelBn: "পাঠানো হয়েছে" },
+  { status: "CONFIRMED", labelBn: "নিশ্চিত" },
+];
+
+function RefundStepper({ status }: { status: string }) {
+  const currentIdx =
+    status === "COMPLETED" ? REFUND_STEPS.length - 1 : REFUND_STEPS.findIndex((s) => s.status === status);
+  if (currentIdx < 0) return null;
+  return (
+    <ol className="mt-2.5 flex items-center gap-1.5" aria-label="রিফান্ডের ধাপ">
+      {REFUND_STEPS.map((step, i) => {
+        const visual = REFUND_STATUS_VISUAL[step.status];
+        const reached = i <= currentIdx;
+        const isCurrent = i === currentIdx;
+        return (
+          <li key={step.status} className={`flex items-center gap-1.5 ${i < REFUND_STEPS.length - 1 ? "flex-1" : ""}`}>
+            <span
+              aria-hidden="true"
+              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white ${
+                reached ? STATUS_TONE_DOT_CLASS[visual.tone] : "bg-slate-200 text-slate-400"
+              } ${isCurrent ? "ring-2 ring-offset-1 ring-border" : ""}`}
+            >
+              <Icon name={i < currentIdx ? "check" : visual.icon} size={11} />
+            </span>
+            <span className={`whitespace-nowrap text-caption ${isCurrent ? "font-semibold text-text-main" : reached ? "text-text-muted" : "text-text-subtle"}`}>
+              {step.labelBn}
+            </span>
+            {i < REFUND_STEPS.length - 1 ? (
+              <span aria-hidden="true" className={`h-px flex-1 ${i < currentIdx ? "bg-emerald-400" : "bg-border"}`} />
+            ) : null}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+const CANONICAL_REFUND_STATUSES: ReadonlySet<string> = new Set(["PENDING", "SENT", "CONFIRMED", "CANCELLED"]);
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleString("bn-BD", {
@@ -252,12 +305,17 @@ export function RefundsPanel({ orderId }: { orderId: string }) {
               <div key={r.id} className="rounded-xl border border-border px-3.5 py-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-bold">{formatPoisha(r.amountPoisha)}</span>
-                  <Badge tone={ui.tone}>{ui.label}</Badge>
+                  {CANONICAL_REFUND_STATUSES.has(r.status) ? (
+                    <RefundStatusBadge status={r.status as EngineRefundStatus} />
+                  ) : (
+                    <Badge tone={ui.tone}>{ui.label}</Badge>
+                  )}
                   <span className="text-caption text-text-subtle">
                     {METHOD_LABEL[r.method] ?? r.method}
                     {r.reference ? ` · TrxID: ${r.reference}` : ""}
                   </span>
                 </div>
+                <RefundStepper status={r.status} />
                 <p className="mt-1 text-small leading-relaxed text-text-muted">{r.reason}</p>
                 <p className="mt-0.5 text-caption text-text-subtle">
                   {r.createdByName ? `${r.createdByName} · ` : ""}

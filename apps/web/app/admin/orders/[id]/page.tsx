@@ -1,20 +1,26 @@
 "use client";
 
-// Admin order detail — REAL data from GET /api/v1/admin/orders/[id]
-// (Prisma-backed; phone masked server-side for viewers without
-// customers.view_full_phone). Status changes go through
-// PATCH /api/v1/admin/orders/[id], which runs the state machine
-// server-side and persists: invalid transitions come back 422 and are
-// shown, never applied locally. The allowed-transition buttons are
-// computed from the same state-machine table the server enforces.
-// The order payload carries customerId (from the order's customer
-// relation), so the customer profile aggregates are loaded from
-// GET /api/v1/admin/customers/[customerId] and the summary card gets
-// its full view; if that fetch is not permitted (customers.view) the
-// card falls back to its order-only view.
+// Admin order detail — the ORDER WORKSPACE (doc 19, batch OD2).
+// REAL data from GET /api/v1/admin/orders/[id] (Prisma-backed; phone
+// masked server-side for viewers without customers.view_full_phone).
+// Status changes go through PATCH /api/v1/admin/orders/[id], which
+// runs the state machine server-side and persists: invalid
+// transitions come back 422 and are shown, never applied locally.
+// The allowed-transition buttons are computed from the same
+// state-machine table the server enforces. The order payload carries
+// customerId, so customer aggregates load from
+// GET /api/v1/admin/customers/[customerId]; if that fetch is not
+// permitted the summary card falls back to its order-only view.
 //
-// Presentation (Design Refresh R3): header summary band, card sections
-// for items / customer / timeline / actions / notes. Data flow unchanged.
+// OD2 layout (presentation only — data flow unchanged): a header
+// band (order no, OD0 status/payment badges, age chip, total, the
+// primary next-step button), a sticky left rail (customer summary,
+// contact + phone reveal, money breakdown, advance summary,
+// delivery chips, management summary) and a tabbed main column
+// (কাজ / পেমেন্ট ও রিফান্ড / শিপমেন্ট / রিটার্ন / পরিচালনা / ইতিহাস).
+// Every panel keeps its established mount contract (self-fetching
+// by orderId, serialisable props only). On mobile the rail stacks
+// above the tabs and the tab list scrolls horizontally.
 import { useCallback, useEffect, useState } from "react";
 import type { Customer, Order, OrderStatus } from "../../../../src/orders/types";
 import { nextStepLabel, nextStepTarget, ORDER_TRANSITIONS } from "../../../../src/orders/state-machine";
@@ -32,11 +38,25 @@ import { ReturnsPanel } from "./returns-panel";
 import { AdvancePanel } from "./advance-panel";
 import type { OrderAdvanceView } from "../../../../src/orders/advance";
 import { StatusTimeline } from "../../../../src/orders/components/StatusTimeline";
-import { OrderStatusBadge } from "../../../../src/orders/components/OrderStatusBadge";
+import {
+  OrderPaymentBadge,
+  OrderStatusBadge,
+} from "../../../../src/orders/components/OrderStatusBadge";
+import {
+  ORDER_STATUS_BN,
+  PAYMENT_STATUS_VISUAL,
+} from "../../../../src/orders/components/labels";
+import { MoneyBreakdown } from "../../../../src/orders/components/MoneyBreakdown";
+import { ORDER_DENSITY } from "../../../../src/orders/components/density";
+import { orderAgeLabel, previewMoneyProps } from "../list-helpers";
+import { buildWorkspaceTimelineEntries } from "./workspace-timeline";
+import { RailAdvanceSummary } from "./rail-advance-summary";
+import { RailManagementSummary } from "./rail-management-summary";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { PaymentBadge, type PaymentStatus as UiPaymentStatus } from "@/components/ui/status-badge";
+import { Icon } from "@/components/ui/icon";
+import { Tabs } from "@/components/ui/tabs";
 
 type DetailOrder = Order & { advance?: OrderAdvanceView };
 
@@ -72,22 +92,6 @@ type DetailResponse =
   | { data: DetailOrder; meta?: unknown }
   | { error: { code: string; message: string } };
 
-const STATUS_META: Record<string, { label: string; tone: "brand" | "success" | "warning" | "danger" | "info" | "neutral"; dot: string }> = {
-  PENDING: { label: "অপেক্ষমাণ", tone: "warning", dot: "#F59E0B" },
-  CONFIRMED: { label: "নিশ্চিত", tone: "info", dot: "#0EA5E9" },
-  PROCESSING: { label: "প্রসেসিং", tone: "brand", dot: "#8B5CF6" },
-  PACKED: { label: "প্যাক করা", tone: "brand", dot: "#7C3AED" },
-  SHIPPED: { label: "পাঠানো হয়েছে", tone: "info", dot: "#6366F1" },
-  DELIVERED: { label: "ডেলিভার্ড", tone: "success", dot: "#10B981" },
-  FAILED: { label: "ব্যর্থ", tone: "danger", dot: "#F43F5E" },
-  RETURN_REQUESTED: { label: "রিটার্ন অনুরোধ", tone: "warning", dot: "#F97316" },
-  RETURNING: { label: "রিটার্ন আসছে", tone: "warning", dot: "#F97316" },
-  RETURNED: { label: "রিটার্ন হয়েছে", tone: "neutral", dot: "#94A3B8" },
-  CANCELLED: { label: "বাতিল", tone: "neutral", dot: "#94A3B8" },
-  REFUNDED: { label: "রিফান্ড", tone: "info", dot: "#14B8A6" },
-  EXCHANGED: { label: "এক্সচেঞ্জ", tone: "info", dot: "#14B8A6" },
-};
-
 const PAYMENT_METHOD_LABEL: Record<string, string> = {
   cod: "ক্যাশ অন ডেলিভারি",
   bkash: "বিকাশ",
@@ -96,8 +100,6 @@ const PAYMENT_METHOD_LABEL: Record<string, string> = {
   card: "কার্ড",
   sslcommerz: "SSLCommerz",
 };
-
-const UI_PAYMENT_STATUSES: readonly string[] = ["UNPAID", "PARTIAL", "PAID", "FAILED", "REFUNDED"];
 
 function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: string }) {
   return (
@@ -116,6 +118,11 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
   const [message, setMessage] = useState<string>("");
   const [reason, setReason] = useState<string>("");
   const [busy, setBusy] = useState(false);
+  // Tab navigation seed: ui/tabs owns its active state, so the rail's
+  // "পেমেন্ট ও রিফান্ড ট্যাবে বিস্তারিত" jump re-seeds the Tabs mount
+  // (key change) with the payment tab as the default. Ordinary tab
+  // clicks never touch this state.
+  const [tabSeed, setTabSeed] = useState<{ id: string; n: number }>({ id: "actions", n: 0 });
 
   const load = useCallback(async () => {
     setLoadState("loading");
@@ -240,6 +247,12 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
   const addressLine = [order.address.addressLine, order.address.upazila, order.address.district, order.address.division]
     .filter(Boolean)
     .join(", ");
+  const ageLabel = orderAgeLabel(order.createdAt, Date.now());
+  const paymentKnown = (Object.keys(PAYMENT_STATUS_VISUAL) as string[]).includes(order.paymentStatus);
+  const timelineEntries = buildWorkspaceTimelineEntries(order);
+  const stack = ORDER_DENSITY.comfortable.stack;
+  const hasGift = order.giftMessage !== null && order.giftMessage !== undefined;
+  const showDeliveryCard = Boolean(order.courier || order.trackingId || order.deliverySlot || hasGift);
 
   return (
     <main>
@@ -250,205 +263,313 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
         সব অর্ডার
       </a>
 
-      {/* Header summary band */}
+      {/* Header band — order no, OD0 status language, age, total and
+          the primary next-step affordance (the state machine's legal
+          next transition; the full transition set + reason input live
+          in the কাজ tab). */}
       <Card className="mb-5 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="truncate font-mono text-h2 font-bold">{order.orderNo}</h1>
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
               <OrderStatusBadge status={order.status} />
-              {UI_PAYMENT_STATUSES.includes(order.paymentStatus)
-                ? <PaymentBadge status={order.paymentStatus as UiPaymentStatus} />
-                : <Badge tone="neutral">{order.paymentStatus}</Badge>}
+              {paymentKnown ? (
+                <OrderPaymentBadge status={order.paymentStatus} />
+              ) : (
+                <Badge tone="neutral">{order.paymentStatus}</Badge>
+              )}
               <Badge tone="neutral">{PAYMENT_METHOD_LABEL[order.paymentMethod] ?? order.paymentMethod}</Badge>
               <Badge tone={level === "High" ? "danger" : level === "Medium" ? "warning" : "success"}>
                 ঝুঁকি: {level === "High" ? "বেশি" : level === "Medium" ? "মাঝারি" : "কম"} ({order.riskScore})
               </Badge>
+              {ageLabel ? (
+                <Badge tone="neutral" icon={<Icon name="clock" size={12} />}>
+                  {ageLabel}
+                </Badge>
+              ) : null}
             </div>
             <p className="mt-2.5 text-small leading-relaxed text-text-muted">
-              গ্রাহক: <span className="font-medium text-text-main">{order.customerName}</span> — <PhoneReveal orderId={order.id} maskedPhone={displayPhone(order.customerPhone, false)} />
-              <br />
-              কুরিয়ার: {order.courier ?? "—"} · ট্র্যাকিং: {order.trackingId ? <span className="font-mono">{order.trackingId}</span> : "—"}
-              {addressLine ? <><br />ঠিকানা: {addressLine}</> : null}
-              {order.deliverySlot ? (
-                <>
-                  <br />
-                  ডেলিভারির সময়: <span className="font-medium text-text-main"><SlotLabel slotId={order.deliverySlot} /></span>
-                </>
-              ) : null}
-              {order.giftMessage !== null && order.giftMessage !== undefined ? (
-                <>
-                  <br />
-                  🎁 উপহার{order.giftMessage ? <> — বার্তা: <span className="font-medium text-text-main">“{order.giftMessage}”</span></> : " (বার্তা নেই)"}
-                </>
-              ) : null}
+              গ্রাহক: <span className="font-medium text-text-main">{order.customerName}</span>
             </p>
           </div>
           <div className="shrink-0 text-right">
             <p className="text-caption font-medium text-text-muted">মোট</p>
             <p className="font-mono text-h1 font-bold tabular-nums">{formatBdt(order.totalPoisha)}</p>
-          </div>
-        </div>
-      </Card>
-
-      <div className="grid items-start gap-5 xl:grid-cols-3">
-        <div className="space-y-5 xl:col-span-2">
-          {/* Items */}
-          <Card className="shadow-card">
-            <SectionTitle>আইটেম ({order.items.length})</SectionTitle>
-            <ul className="divide-y divide-border">
-              {order.items.map((i) => (
-                <li key={i.variantId} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                  <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-surface-2 text-brand-500">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-                      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
-                      <path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" />
-                    </svg>
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium leading-snug">{i.productName}</p>
-                    <p className="font-mono text-caption text-text-muted">{i.sku} × {i.quantity}</p>
-                  </div>
-                  <p className="font-mono font-semibold tabular-nums">{formatBdt(i.unitPricePoisha * i.quantity)}</p>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-4 flex items-center justify-between border-t border-border pt-3.5">
-              <span className="font-semibold">মোট</span>
-              <span className="font-mono text-h3 font-bold tabular-nums">{formatBdt(order.totalPoisha)}</span>
-            </div>
-          </Card>
-
-          {/* Customer summary — shared component (full aggregates when
-              the customer fetch succeeded) */}
-          <div className="[&_section]:shadow-card">
-            <CustomerSummaryCard order={order} customer={customer ?? undefined} />
-          </div>
-          {order.customerId && (
-            <p className="-mt-2 px-1 text-caption leading-relaxed text-text-subtle">
-              <a
-                href={`/admin/customers?search=${encodeURIComponent(order.customerName)}`}
-                className="font-medium text-brand-700 hover:underline"
-              >
-                গ্রাহকের প্রোফাইল ও সব অর্ডার দেখুন
-              </a>
-              {customer ? "" : " — এই ভিউতে গ্রাহকের ইতিহাস দেখার অনুমতি না থাকলে কার্ডে শুধু এই অর্ডারের তথ্য দেখায়।"}
-            </p>
-          )}
-
-          {/* Timeline — shared component */}
-          <Card className="shadow-card">
-            <SectionTitle>স্ট্যাটাস টাইমলাইন</SectionTitle>
-            <StatusTimeline history={order.history} />
-          </Card>
-
-          {/* Notes */}
-          <Card className="shadow-card">
-            <SectionTitle>নোট</SectionTitle>
-            {order.notes.length === 0 ? (
-              <p className="text-small text-text-muted">কোনো নোট নেই।</p>
-            ) : (
-              <ul className="space-y-3">
-                {order.notes.map((n) => (
-                  <li key={n.id} className="rounded-md bg-surface-2 px-3.5 py-3">
-                    <p className="leading-relaxed">{n.text}</p>
-                    <p className="mt-1 text-caption text-text-muted">
-                      {n.author} · <span className="font-mono tabular-nums">{n.createdAt}</span>
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        </div>
-
-        <div className="space-y-5">
-          {/* Status actions */}
-          <Card className="shadow-card">
-            <SectionTitle sub="প্রতিটি বদল সার্ভারে স্টেট মেশিন দিয়ে যাচাই হয়ে ডাটাবেসে সেভ হয়; অবৈধ বদল বাতিল হয়ে উপরে দেখানো হয়।">
-              পরবর্তী ধাপ / স্ট্যাটাস বদল
-            </SectionTitle>
             {nextLabel && nextTarget && (
               <Button
                 variant="gradient"
-                className="w-full"
+                className="mt-3"
                 disabled={busy}
                 onClick={() => void applyTransition(nextTarget)}
               >
                 {nextLabel}
               </Button>
             )}
-            <label className="mb-1.5 mt-4 block text-small font-medium" htmlFor="transition-reason">
-              কারণ (বাতিল/রিফান্ডের জন্য আবশ্যক)
-            </label>
-            <input
-              id="transition-reason"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="কারণ লিখুন"
-              className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
-            />
-            <div className="mt-4 flex flex-wrap gap-2">
-              {ORDER_TRANSITIONS[order.status].map((to) => (
-                <Button
-                  key={to}
-                  variant={to === nextTarget ? "primary" : "outline"}
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => void applyTransition(to)}
+          </div>
+        </div>
+      </Card>
+
+      {/* Transition result — shown under the header so it is visible
+          from whichever tab (or the header button) triggered it. */}
+      {message && (
+        <p role="status" className="mb-5 rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed">
+          {message}
+        </p>
+      )}
+
+      <div className="grid items-start gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+        {/* Left rail — sticky on desktop; on mobile it stacks above
+            the tabs as the order's summary. */}
+        <div className={`${stack} lg:sticky lg:top-5 lg:max-h-[calc(100vh-2.5rem)] lg:overflow-y-auto`}>
+          {/* Customer summary — shared component (full aggregates when
+              the customer fetch succeeded) */}
+          <div className="[&_section]:shadow-card">
+            <CustomerSummaryCard order={order} customer={customer ?? undefined} />
+          </div>
+
+          {/* Contact + address — the phone reveal lives with the
+              customer block (audited reveal; the payload's phone
+              stays masked until it is used). */}
+          <Card className="shadow-card">
+            <h2 className="mb-3 text-base font-semibold">যোগাযোগ ও ঠিকানা</h2>
+            <dl className="space-y-2 text-sm">
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-text-muted">ফোন</dt>
+                <dd>
+                  <PhoneReveal orderId={order.id} maskedPhone={displayPhone(order.customerPhone, false)} />
+                </dd>
+              </div>
+              {addressLine ? (
+                <div>
+                  <dt className="text-text-muted">ঠিকানা</dt>
+                  <dd className="mt-0.5 leading-relaxed">{addressLine}</dd>
+                </div>
+              ) : null}
+            </dl>
+            {order.customerId && (
+              <p className="mt-3 text-caption leading-relaxed text-text-subtle">
+                <a
+                  href={`/admin/customers?search=${encodeURIComponent(order.customerName)}`}
+                  className="font-medium text-brand-700 hover:underline"
                 >
-                  {(STATUS_META[to]?.label ?? to)} করুন
-                </Button>
-              ))}
-            </div>
-            {message && (
-              <p role="status" className="mt-4 rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed">
-                {message}
+                  গ্রাহকের প্রোফাইল ও সব অর্ডার দেখুন
+                </a>
+                {customer ? "" : " — এই ভিউতে গ্রাহকের ইতিহাস দেখার অনুমতি না থাকলে কার্ডে শুধু এই অর্ডারের তথ্য দেখায়।"}
               </p>
             )}
           </Card>
 
-          {/* One-click panel — shared component */}
-          <div className="[&_section]:shadow-card">
-            <OneClickPanel order={order} onOrderChange={setOrder} />
-          </div>
+          {/* Money — OD0 MoneyBreakdown fed exactly as the OD1
+              preview feeds it (subtotal from items, doc-18 split
+              passthrough, paid from the advance read model). */}
+          <Card className="shadow-card">
+            <h2 className="mb-3 text-base font-semibold">টাকার হিসাব</h2>
+            <MoneyBreakdown {...previewMoneyProps(order)} />
+          </Card>
 
-          {/* Print panel — shared component */}
-          <div className="[&_section]:shadow-card">
-            <PrintPanel order={order} />
-          </div>
+          {/* Advance state summary — renders nothing for ordinary
+              orders (same condition as AdvancePanel). */}
+          <RailAdvanceSummary
+            advance={order.advance}
+            onShowPayments={() => setTabSeed((s) => ({ id: "payment", n: s.n + 1 }))}
+          />
 
-          {/* Advance payment (doc 17, O3) — required/paid/satisfied +
-              OTP state + active payment link from data.advance on the
-              detail payload; renders nothing for ordinary orders. */}
-          <AdvancePanel advance={order.advance} />
+          {/* Delivery — courier / tracking / slot + gift chips. */}
+          {showDeliveryCard ? (
+            <Card className="shadow-card">
+              <h2 className="mb-3 text-base font-semibold">ডেলিভারি</h2>
+              <dl className="space-y-2 text-sm">
+                {order.courier ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-text-muted">কুরিয়ার</dt>
+                    <dd className="font-medium">{order.courier}</dd>
+                  </div>
+                ) : null}
+                {order.trackingId ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-text-muted">ট্র্যাকিং</dt>
+                    <dd className="font-mono">{order.trackingId}</dd>
+                  </div>
+                ) : null}
+                {order.deliverySlot ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-text-muted">ডেলিভারির সময়</dt>
+                    <dd>
+                      <Badge tone="info" icon={<Icon name="clock" size={12} />}>
+                        <SlotLabel slotId={order.deliverySlot} />
+                      </Badge>
+                    </dd>
+                  </div>
+                ) : null}
+                {hasGift ? (
+                  <div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-text-muted">উপহার</dt>
+                      <dd>
+                        <Badge tone="brand" icon={<Icon name="sparkles" size={12} />}>
+                          উপহার হিসেবে পাঠান
+                        </Badge>
+                      </dd>
+                    </div>
+                    <p className="mt-1.5 leading-relaxed text-text-muted">
+                      {order.giftMessage ? (
+                        <>বার্তা: <span className="font-medium text-text-main">“{order.giftMessage}”</span></>
+                      ) : (
+                        "বার্তা নেই"
+                      )}
+                    </p>
+                  </div>
+                ) : null}
+              </dl>
+            </Card>
+          ) : null}
 
-          {/* Refund workbench (doc 17, O0) — records refunds staff send
-              via bKash/bank themselves; shows the refund-due banner for
-              cancelled/returned orders. Self-fetches by order id. */}
-          <RefundsPanel orderId={order.id} />
+          {/* Management summary — assignee / priority / hold at a
+              glance (read-only; editing lives in the পরিচালনা tab). */}
+          <RailManagementSummary orderId={order.id} />
+        </div>
 
-          {/* Shipments (doc 17, O5) — bookings incl. split parcels,
-              per-line coverage, create-split form and staff-confirmed
-              parcel delivery. Self-fetches by order id. */}
-          <ShipmentsPanel orderId={order.id} />
+        {/* Main column — tabbed work areas. Panels keep their
+            self-fetch-by-orderId mount contract; ui/tabs renders
+            the active tab only. */}
+        <div className="min-w-0">
+          <Tabs
+            key={tabSeed.n}
+            defaultId={tabSeed.id}
+            tabs={[
+              {
+                id: "actions",
+                label: "কাজ",
+                content: (
+                  <div className={stack}>
+                    {/* Items */}
+                    <Card className="shadow-card">
+                      <SectionTitle>আইটেম ({order.items.length})</SectionTitle>
+                      <ul className="divide-y divide-border">
+                        {order.items.map((i) => (
+                          <li key={i.variantId} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                            <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-surface-2 text-brand-500">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                                <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+                                <path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" />
+                              </svg>
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-medium leading-snug">{i.productName}</p>
+                              <p className="font-mono text-caption text-text-muted">{i.sku} × {i.quantity}</p>
+                            </div>
+                            <p className="font-mono font-semibold tabular-nums">{formatBdt(i.unitPricePoisha * i.quantity)}</p>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="mt-4 flex items-center justify-between border-t border-border pt-3.5">
+                        <span className="font-semibold">মোট</span>
+                        <span className="font-mono text-h3 font-bold tabular-nums">{formatBdt(order.totalPoisha)}</span>
+                      </div>
+                    </Card>
 
-          {/* Order management (doc 17, O6) — assignee / priority /
-              tags / operational hold / internal notes. Self-fetches
-              by order id; the hold is a loud UI signal only. */}
-          <ManagementPanel orderId={order.id} />
+                    {/* Status actions — the full legal transition set
+                        with the reason input (the primary next step
+                        also sits in the header). */}
+                    <Card className="shadow-card">
+                      <SectionTitle sub="প্রতিটি বদল সার্ভারে স্টেট মেশিন দিয়ে যাচাই হয়ে ডাটাবেসে সেভ হয়; অবৈধ বদল বাতিল হয়ে উপরে দেখানো হয়।">
+                        স্ট্যাটাস বদল
+                      </SectionTitle>
+                      <label className="mb-1.5 block text-small font-medium" htmlFor="transition-reason">
+                        কারণ (বাতিল/রিফান্ডের জন্য আবশ্যক)
+                      </label>
+                      <input
+                        id="transition-reason"
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        placeholder="কারণ লিখুন"
+                        className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                      />
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {ORDER_TRANSITIONS[order.status].map((to) => (
+                          <Button
+                            key={to}
+                            variant={to === nextTarget ? "primary" : "outline"}
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => void applyTransition(to)}
+                          >
+                            {ORDER_STATUS_BN[to]} করুন
+                          </Button>
+                        ))}
+                      </div>
+                    </Card>
 
-          {/* Returns / RMA (doc 17, O7) — this order's returns + a
-              create form for DELIVERED orders; the lifecycle itself
-              (approve / receive + restock / complete) runs in the
-              returns queue. Self-fetches by order id. */}
-          <ReturnsPanel orderId={order.id} />
+                    {/* One-click panel — shared component */}
+                    <div className="[&_section]:shadow-card">
+                      <OneClickPanel order={order} onOrderChange={setOrder} />
+                    </div>
 
-          {/* Order editing (doc 17, O6) — line qty/remove/add with
-              transactional stock deltas and full money recompute.
-              Self-fetches by order id; renders an explanation instead
-              of the editor once the order leaves editable states. */}
-          <EditPanel orderId={order.id} />
+                    {/* Print panel — shared component */}
+                    <div className="[&_section]:shadow-card">
+                      <PrintPanel order={order} />
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                id: "payment",
+                label: "পেমেন্ট ও রিফান্ড",
+                content: (
+                  <div className={stack}>
+                    {/* Advance payment (doc 17, O3) — required/paid/
+                        satisfied + OTP state + active payment link
+                        from data.advance; renders nothing for
+                        ordinary orders. */}
+                    <AdvancePanel advance={order.advance} />
+                    {/* Refund workbench (doc 17, O0) — self-fetches
+                        by order id. */}
+                    <RefundsPanel orderId={order.id} />
+                  </div>
+                ),
+              },
+              {
+                id: "shipments",
+                label: "শিপমেন্ট",
+                // Shipments (doc 17, O5) — bookings incl. split
+                // parcels; self-fetches by order id.
+                content: <ShipmentsPanel orderId={order.id} />,
+              },
+              {
+                id: "returns",
+                label: "রিটার্ন",
+                // Returns / RMA (doc 17, O7) — self-fetches by
+                // order id.
+                content: <ReturnsPanel orderId={order.id} />,
+              },
+              {
+                id: "management",
+                label: "পরিচালনা",
+                content: (
+                  <div className={stack}>
+                    {/* Order management (doc 17, O6) — assignee /
+                        priority / tags / hold / internal notes;
+                        self-fetches by order id. */}
+                    <ManagementPanel orderId={order.id} />
+                    {/* Order editing (doc 17, O6) — line edits with
+                        transactional stock deltas; self-fetches by
+                        order id. */}
+                    <EditPanel orderId={order.id} />
+                  </div>
+                ),
+              },
+              {
+                id: "history",
+                label: "ইতিহাস",
+                count: timelineEntries.length,
+                // Timeline v2 — typed entries built only from the
+                // payload's history + notes streams (see
+                // workspace-timeline.ts); StatusTimeline renders
+                // its own empty state when there are none.
+                content: <StatusTimeline history={order.history} entries={timelineEntries} />,
+              },
+            ]}
+          />
         </div>
       </div>
 

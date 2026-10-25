@@ -1,15 +1,23 @@
 "use client";
 
 /**
- * Shipments panel — order detail page (doc 17, O5).
+ * Shipments panel — order detail page (doc 17, O5; design OD5, doc 19).
  *
  * Lists the order's bookings (whole-order bookings from the courier
- * flow + split bookings created here) with their line allocations,
- * shows per-line coverage, and creates ONE split booking for the
- * still-unallocated lines (provider + per-line quantities). A split
- * booking can be marked delivered from here (staff-confirmed); the
- * order itself is only delivered once every line is covered — the
- * partial-delivery rule lives server-side.
+ * flow + split bookings created here) as PARCEL CARDS: each card
+ * carries a status stepper over the booking's CURRENT status (the
+ * coverage payload carries status only — no event history — so the
+ * stepper marks the parcel's stage in the standard pipeline, never
+ * fabricated timestamps), provider + tracking + charge line, its line
+ * allocations, and its delivered state. Split shipments additionally
+ * get a coverage bar (allocated / delivered lines vs the order's
+ * total lines) and an explicit partial-delivery banner: one parcel
+ * delivered is NOT the order delivered — the order moves only once
+ * every line is covered, and that rule lives server-side.
+ *
+ * The create-split form below the cards keeps its exact fields and
+ * calls (provider + per-line quantities, real booked weights shown
+ * from the payload).
  *
  * HONEST COPY: these are SANDBOX bookings (SBX tracking ids); no real
  * courier is contacted.
@@ -22,6 +30,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Icon, type IconName } from "@/components/ui/icon";
 import { formatPoisha } from "@/components/ui/money";
 
 interface BookingItem {
@@ -75,6 +84,77 @@ const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "info" | "n
   RETURNED: "neutral",
 };
 
+/* The linear delivery pipeline a parcel moves through. Every status
+ * the coverage payload / courier sync can produce is either one of
+ * these five or one of the off-path terminals below — the smoke
+ * asserts this mapping against the status set in code. */
+const PIPELINE_STEPS = [
+  { status: "CREATED", labelBn: "তৈরি", icon: "package" },
+  { status: "PICKED_UP", labelBn: "পিকআপ", icon: "box" },
+  { status: "IN_TRANSIT", labelBn: "পথে", icon: "truck" },
+  { status: "OUT_FOR_DELIVERY", labelBn: "ডেলিভারিতে", icon: "arrow-right" },
+  { status: "DELIVERED", labelBn: "ডেলিভার্ড", icon: "check" },
+] as const satisfies readonly { status: string; labelBn: string; icon: IconName }[];
+
+const OFF_PATH: Record<string, { labelBn: string; icon: IconName; cls: string }> = {
+  FAILED: { labelBn: "ডেলিভারি ব্যর্থ হয়েছে", icon: "alert", cls: "border-rose-200 bg-rose-50 text-rose-700" },
+  RETURNING: { labelBn: "পার্সেলটি ফেরত আসছে", icon: "rotate-ccw", cls: "border-amber-200 bg-amber-50 text-amber-800" },
+  RETURNED: { labelBn: "পার্সেলটি ফেরত এসেছে", icon: "rotate-ccw", cls: "border-border bg-slate-50 text-slate-600" },
+};
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function ParcelStepper({ status }: { status: string }) {
+  const activeIdx = PIPELINE_STEPS.findIndex((s) => s.status === status);
+  if (activeIdx === -1) {
+    const off = OFF_PATH[status];
+    if (!off) return null;
+    return (
+      <p className={`mt-3 flex items-center gap-2 rounded-md border px-3 py-2 text-small font-medium ${off.cls}`}>
+        <Icon name={off.icon} size={16} />
+        {off.labelBn}
+      </p>
+    );
+  }
+  return (
+    <ol className="mt-3 flex items-start" aria-label={`পার্সেলের অবস্থা: ${PIPELINE_STEPS[activeIdx].labelBn}`}>
+      {PIPELINE_STEPS.map((step, idx) => {
+        const done = idx < activeIdx || status === "DELIVERED";
+        const active = idx === activeIdx && status !== "DELIVERED";
+        return (
+          <li key={step.status} className={`flex items-start ${idx > 0 ? "flex-1" : ""}`}>
+            {idx > 0 && (
+              <span aria-hidden="true" className={`mx-1 mt-[13px] h-0.5 flex-1 rounded ${idx <= activeIdx ? "bg-emerald-400" : "bg-border"}`} />
+            )}
+            <span className="flex w-14 flex-col items-center gap-1 text-center">
+              <span
+                aria-hidden="true"
+                className={`flex h-[27px] w-[27px] items-center justify-center rounded-full ${
+                  done
+                    ? "bg-emerald-500 text-white"
+                    : active
+                      ? "bg-brand-600 text-white ring-4 ring-brand-100"
+                      : "bg-slate-100 text-slate-400"
+                }`}
+              >
+                <Icon name={done ? "check" : step.icon} size={14} />
+              </span>
+              <span className={`text-caption leading-tight ${done || active ? "font-semibold text-text-main" : "text-text-muted"}`}>
+                {step.labelBn}
+              </span>
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export function ShipmentsPanel({ orderId }: { orderId: string }) {
   const [data, setData] = useState<CoverageData | null>(null);
   const [forbidden, setForbidden] = useState(false);
@@ -116,6 +196,12 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
   if (!data) return null;
 
   const openLines = data.lines.filter((l) => l.remainingQuantity > 0);
+  const { totalLines, allocatedLines, deliveredLines } = data.coverage;
+  const isSplit = data.bookings.some((b) => b.items !== null);
+  const allocatedPct = totalLines > 0 ? Math.round((allocatedLines / totalLines) * 100) : 0;
+  const deliveredPct = totalLines > 0 ? Math.round((deliveredLines / totalLines) * 100) : 0;
+  const partialDelivery =
+    isSplit && deliveredLines > 0 && deliveredLines < totalLines;
 
   async function createSplit() {
     const items = openLines
@@ -191,9 +277,40 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
       <div className="mb-4">
         <h2 className="text-h3">শিপমেন্ট (বিভক্ত বুকিংসহ)</h2>
         <p className="mt-0.5 text-small text-text-muted">
-          কভারেজ: মোট {data.coverage.totalLines} লাইন — বরাদ্দ {data.coverage.allocatedLines}, ডেলিভার্ড{" "}
-          {data.coverage.deliveredLines}। এগুলো স্যান্ডবক্স বুকিং (SBX ট্র্যাকিং); আসল কুরিয়ারে কোনো বুকিং যায় না।
+          কভারেজ: মোট {totalLines} লাইন — বরাদ্দ {allocatedLines}, ডেলিভার্ড{" "}
+          {deliveredLines}। এগুলো স্যান্ডবক্স বুকিং (SBX ট্র্যাকিং); আসল কুরিয়ারে কোনো বুকিং যায় না।
         </p>
+        {totalLines > 0 && (
+          <div className="mt-3">
+            <div
+              className="relative h-2.5 overflow-hidden rounded-full bg-slate-100"
+              role="img"
+              aria-label={`লাইন কভারেজ: বরাদ্দ ${allocatedPct}%, ডেলিভার্ড ${deliveredPct}%`}
+            >
+              <span className="absolute inset-y-0 left-0 bg-sky-300" style={{ width: `${allocatedPct}%` }} />
+              <span className="absolute inset-y-0 left-0 bg-emerald-500" style={{ width: `${deliveredPct}%` }} />
+            </div>
+            <p className="mt-1.5 flex flex-wrap gap-x-4 text-caption text-text-muted">
+              <span>
+                <span aria-hidden="true" className="mr-1 inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                ডেলিভার্ড {deliveredLines}/{totalLines} লাইন
+              </span>
+              <span>
+                <span aria-hidden="true" className="mr-1 inline-block h-2 w-2 rounded-full bg-sky-300" />
+                বরাদ্দ {allocatedLines}/{totalLines} লাইন
+              </span>
+            </p>
+          </div>
+        )}
+        {partialDelivery && (
+          <p className="mt-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-small text-amber-800">
+            <Icon name="alert" size={16} className="mt-0.5 shrink-0" />
+            <span>
+              আংশিক ডেলিভারি: {deliveredLines}টি লাইন পৌঁছেছে, বাকিগুলো এখনো পথে/বাকি। সব লাইন ডেলিভার্ড
+              না হলে অর্ডার SHIPPED-ই থাকে — একটি পার্সেল পৌঁছানো মানেই অর্ডার ডেলিভার্ড নয়।
+            </span>
+          </p>
+        )}
       </div>
 
       {data.bookings.length === 0 ? (
@@ -201,22 +318,44 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
       ) : (
         <ul className="space-y-3">
           {data.bookings.map((b) => (
-            <li key={b.id} className="rounded-md border border-border px-3.5 py-3">
+            <li key={b.id} className="rounded-lg border border-border bg-card px-4 py-3.5 shadow-sm">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-small font-semibold">{b.trackingId ?? b.id}</span>
+                <span className="flex items-center gap-1.5 font-mono text-small font-semibold">
+                  <Icon name="truck" size={15} className="text-text-muted" />
+                  {b.trackingId ?? b.id}
+                </span>
                 <Badge tone="neutral">{b.provider}</Badge>
                 <Badge tone={STATUS_TONE[b.status] ?? "neutral"}>{b.status}</Badge>
                 {b.items === null ? <Badge tone="info">পুরো অর্ডার</Badge> : <Badge tone="warning">বিভক্ত</Badge>}
+                {b.status === "DELIVERED" && (
+                  <Badge tone="success">
+                    <span className="inline-flex items-center gap-1">
+                      <Icon name="check" size={12} /> ডেলিভার্ড
+                    </span>
+                  </Badge>
+                )}
                 <span className="ml-auto font-mono text-small tabular-nums">
                   COD {formatPoisha(b.codAmountPoisha)} · চার্জ {formatPoisha(b.chargePoisha)}
                   {b.weightGrams ? ` · ${b.weightGrams}g` : ""}
                 </span>
               </div>
-              {b.items !== null && (
-                <p className="mt-1.5 text-caption text-text-muted">
-                  {b.items.map((i) => `${i.productName ?? i.orderItemId} (${i.sku ?? "—"}) × ${i.quantity}`).join(" · ")}
-                </p>
+              <ParcelStepper status={b.status} />
+              {b.items !== null ? (
+                <ul className="mt-3 space-y-1 border-t border-border/60 pt-2.5 text-small">
+                  {b.items.map((i) => (
+                    <li key={i.orderItemId} className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span>
+                        {i.productName ?? i.orderItemId}{" "}
+                        <span className="text-text-muted">({i.sku ?? "—"})</span>
+                      </span>
+                      <span className="tabular-nums text-text-muted">× {i.quantity}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-caption text-text-muted">এই বুকিংয়ে অর্ডারের সব লাইন আছে।</p>
               )}
+              <p className="mt-2 text-caption text-text-muted">বুকিং: {formatDate(b.createdAt)}</p>
               {b.items !== null && b.status !== "DELIVERED" && (
                 <div className="mt-2">
                   <Button variant="outline" disabled={busy} onClick={() => void markDelivered(b.id)}>

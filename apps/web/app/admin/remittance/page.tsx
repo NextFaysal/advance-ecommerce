@@ -23,6 +23,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import { formatPoisha } from "@/components/ui/money";
 
 interface OutstandingOrder {
@@ -84,6 +85,111 @@ const STATUS_UI: Record<string, { label: string; tone: "success" | "warning" | "
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { timeZone: "Asia/Dhaka" });
+}
+
+/* ------------------------------------------------------------------ */
+/* OD4 (doc 19 §3-S4) — presentation helpers. Every width below is a   */
+/* display ratio of figures the API already returned (expected /     */
+/* received / fee / variance, per-order ageDays); no money figure is  */
+/* computed, rounded or re-derived here.                             */
+/* ------------------------------------------------------------------ */
+
+/** Width % of `part` against `whole`, clamped for rendering only. */
+function pct(part: number, whole: number): number {
+  if (whole <= 0) return 0;
+  return Math.min(100, Math.max(0, (part / whole) * 100));
+}
+
+const AGE_BUCKETS: Array<{ key: string; label: string; maxAgeDays: number; barClass: string }> = [
+  { key: "d0-2", label: "০–২ দিন", maxAgeDays: 2, barClass: "bg-emerald-400" },
+  { key: "d3-6", label: "৩–৬ দিন", maxAgeDays: 6, barClass: "bg-amber-400" },
+  { key: "d7-13", label: "৭–১৩ দিন", maxAgeDays: 13, barClass: "bg-orange-400" },
+  { key: "d14+", label: "১৪+ দিন", maxAgeDays: Number.POSITIVE_INFINITY, barClass: "bg-rose-400" },
+];
+
+/** Aging strip for one provider's outstanding collections — buckets
+ *  are counted/summed from the per-order ageDays the read model
+ *  already returns on this very payload. */
+function AgingStrip({ orders }: { orders: OutstandingOrder[] }) {
+  if (orders.length === 0) return null;
+  const buckets = AGE_BUCKETS.map((b) => ({ ...b, count: 0, totalPoisha: 0 }));
+  for (const o of orders) {
+    const bucket = buckets.find((b) => o.ageDays <= b.maxAgeDays) ?? buckets[buckets.length - 1];
+    bucket.count += 1;
+    bucket.totalPoisha += o.amountPoisha;
+  }
+  const grandTotal = buckets.reduce((s, b) => s + b.totalPoisha, 0);
+  const visible = buckets.filter((b) => b.count > 0);
+  return (
+    <div className="mt-3">
+      <div className="flex h-2 w-full overflow-hidden rounded-full bg-surface-2" role="img" aria-label="সংগ্রহের বয়স অনুযায়ী ভাগ">
+        {visible.map((b) => (
+          <span key={b.key} className={b.barClass} style={{ width: `${pct(b.totalPoisha, grandTotal)}%` }} />
+        ))}
+      </div>
+      <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-caption text-text-muted">
+        {visible.map((b) => (
+          <li key={b.key} className="inline-flex items-center gap-1.5">
+            <span aria-hidden="true" className={`h-2 w-2 rounded-full ${b.barClass}`} />
+            {b.label}: {b.count}টি · {formatPoisha(b.totalPoisha)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Proportion bar for a batch: the full track is the expected amount;
+ *  the received amount fills it (emerald), the courier fee sits on top
+ *  of the received segment (slate), a positive variance leaves a rose
+ *  gap, and a negative variance (courier sent more) is flagged with a
+ *  sky marker + note. An OPEN batch (nothing received yet) shows the
+ *  empty track. Segments are ratios of the stored figures only. */
+function BatchMoneyBar({ batch }: { batch: Batch }) {
+  const expected = batch.expectedPoisha;
+  if (batch.receivedPoisha === null) {
+    return (
+      <div>
+        <div className="h-2.5 w-full rounded-full border border-dashed border-border bg-surface-2" />
+        <p className="mt-1.5 text-caption text-text-muted">প্রাপ্তি এখনো রেকর্ড হয়নি — পুরো {formatPoisha(expected)} পাওনা।</p>
+      </div>
+    );
+  }
+  const received = batch.receivedPoisha;
+  const fee = batch.feePoisha ?? 0;
+  const variance = batch.variancePoisha ?? 0;
+  return (
+    <div>
+      <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-surface-2" role="img" aria-label="প্রত্যাশিত বনাম প্রাপ্ত অনুপাত">
+        <span className="bg-emerald-500" style={{ width: `${pct(received, expected)}%` }} />
+        <span className="bg-slate-400" style={{ width: `${pct(fee, expected)}%` }} />
+        {variance > 0 ? <span className="bg-rose-400" style={{ width: `${pct(variance, expected)}%` }} /> : null}
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-caption text-text-muted">
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden="true" className="h-2 w-2 rounded-full bg-emerald-500" /> এসেছে {formatPoisha(received)}
+        </span>
+        {fee > 0 ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-slate-400" /> ফি {formatPoisha(fee)}
+          </span>
+        ) : null}
+        {variance > 0 ? (
+          <span className="inline-flex items-center gap-1.5 font-medium text-rose-600">
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-rose-400" /> অমিল (কম এসেছে) {formatPoisha(variance)}
+          </span>
+        ) : variance < 0 ? (
+          <span className="inline-flex items-center gap-1.5 font-medium text-sky-600">
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-sky-400" /> বেশি এসেছে {formatPoisha(-variance)}
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600">
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-emerald-500" /> অমিল নেই
+          </span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function RemittancePage() {
@@ -237,18 +343,22 @@ export default function RemittancePage() {
             <p className="text-small text-text-muted">
               {p.count}টি সংগ্রহ এখনো কোনো ব্যাচে যায়নি — কুরিয়ারের কাছে পাওনা।
             </p>
+            <AgingStrip orders={p.orders} />
           </Card>
         ))}
         {outstanding && outstanding.unattributed.count > 0 ? (
-          <Card className="border-warning/50 p-4">
+          <Card className="border-2 border-amber-300 bg-amber-50 p-4 dark:border-amber-400/40 dark:bg-amber-500/10">
             <div className="flex items-center justify-between">
-              <span className="font-medium text-text-main">প্রোভাইডার অজানা</span>
+              <span className="inline-flex items-center gap-2 font-medium text-amber-900 dark:text-amber-200">
+                <Icon name="alert" size={16} />
+                প্রোভাইডার অজানা — মনোযোগ দিন
+              </span>
               <Badge tone="warning">unattributed</Badge>
             </div>
-            <div className="mt-2 text-h3 font-semibold text-text-main">
+            <div className="mt-2 text-h3 font-semibold text-amber-900 dark:text-amber-100">
               {formatPoisha(outstanding.unattributed.totalPoisha)}
             </div>
-            <p className="text-small text-text-muted">
+            <p className="text-small text-amber-800 dark:text-amber-300">
               {outstanding.unattributed.count}টি COD পেমেন্টের প্রোভাইডার সংগ্রহ-মার্কার থেকে প্রমাণ করা যায়নি
               (যেমন হাতে রেকর্ড করা) — এগুলো কোনো ব্যাচে যাবে না।
             </p>
@@ -371,9 +481,46 @@ export default function RemittancePage() {
                       {b.feePoisha !== null && b.feePoisha > 0 ? <> · ফি {formatPoisha(b.feePoisha)}</> : null}
                     </span>
                     {b.variancePoisha !== null && b.variancePoisha !== 0 ? (
-                      <Badge tone="danger">অমিল {formatPoisha(b.variancePoisha)}</Badge>
+                      <Badge tone={b.variancePoisha > 0 ? "danger" : "info"}>অমিল {formatPoisha(b.variancePoisha)}</Badge>
                     ) : null}
                   </button>
+                  <div className="mt-3 border-t border-border pt-3">
+                    <dl className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
+                      <div className="rounded-lg bg-surface-2 px-2 py-2">
+                        <dt className="text-caption text-text-muted">প্রত্যাশিত</dt>
+                        <dd className="mt-0.5 text-small font-semibold text-text-main">{formatPoisha(b.expectedPoisha)}</dd>
+                      </div>
+                      <div className="rounded-lg bg-surface-2 px-2 py-2">
+                        <dt className="text-caption text-text-muted">এসেছে</dt>
+                        <dd className="mt-0.5 text-small font-semibold text-text-main">
+                          {b.receivedPoisha !== null ? formatPoisha(b.receivedPoisha) : "—"}
+                        </dd>
+                      </div>
+                      <div className="rounded-lg bg-surface-2 px-2 py-2">
+                        <dt className="text-caption text-text-muted">কুরিয়ার ফি</dt>
+                        <dd className="mt-0.5 text-small font-semibold text-text-main">
+                          {b.feePoisha !== null ? formatPoisha(b.feePoisha) : "—"}
+                        </dd>
+                      </div>
+                      <div className="rounded-lg bg-surface-2 px-2 py-2">
+                        <dt className="text-caption text-text-muted">অমিল (variance)</dt>
+                        <dd
+                          className={`mt-0.5 text-small font-semibold ${
+                            b.variancePoisha === null || b.variancePoisha === 0
+                              ? "text-text-main"
+                              : b.variancePoisha > 0
+                                ? "text-rose-600"
+                                : "text-sky-600"
+                          }`}
+                        >
+                          {b.variancePoisha !== null ? formatPoisha(b.variancePoisha) : "—"}
+                        </dd>
+                      </div>
+                    </dl>
+                    <div className="mt-3">
+                      <BatchMoneyBar batch={b} />
+                    </div>
+                  </div>
                   {open ? (
                     <div className="mt-3 space-y-3 border-t border-border pt-3">
                       {items.length > 0 ? (

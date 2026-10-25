@@ -66,6 +66,116 @@ function poishaToTaka(poisha: number): string {
 const inputClass =
   "w-full rounded-[10px] border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand-500";
 
+/* ------------------------------------------------------------------ */
+/* OD4 (doc 19 §3-S4) — visual form of the derived drawer breakdown.  */
+/* Widths are display ratios of the SAME figures the list beside     */
+/* them prints (derived.openingCashPoisha, derived.lines amounts,    */
+/* derived.expectedCashPoisha and the counted input); nothing is     */
+/* re-derived or rounded here.                                       */
+/* ------------------------------------------------------------------ */
+
+function pctOf(part: number, whole: number): number {
+  if (whole <= 0) return 0;
+  return Math.min(100, Math.max(0, (part / whole) * 100));
+}
+
+const IN_SEGMENT_CLASSES = ["bg-emerald-500", "bg-teal-400", "bg-emerald-300"];
+
+function DrawerBreakdownVisual({
+  derived,
+  expectedPoisha,
+  countedPoisha,
+  variancePoisha,
+}: {
+  derived: DerivedDrawerCash;
+  expectedPoisha: number;
+  countedPoisha: number | null;
+  variancePoisha: number | null;
+}) {
+  const inLines = derived.lines.filter((l) => l.direction === "in");
+  const outLines = derived.lines.filter((l) => l.direction === "out");
+  const inTotal = inLines.reduce((s, l) => s + l.amountPoisha, 0);
+  const outTotal = outLines.reduce((s, l) => s + l.amountPoisha, 0);
+  const grossIn = derived.openingCashPoisha + inTotal;
+  const scale = Math.max(expectedPoisha, countedPoisha ?? 0, 1);
+  return (
+    <div className="mt-4 space-y-3 border-t border-border pt-3">
+      {grossIn > 0 ? (
+        <div>
+          <p className="mb-1.5 text-xs font-medium text-text-muted">ড্রয়ারের গঠন — যা যা যোগ হয়েছে</p>
+          <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-card" role="img" aria-label="ড্রয়ারে যোগ হওয়া নগদের গঠন">
+            <span className="bg-slate-400" style={{ width: `${pctOf(derived.openingCashPoisha, grossIn)}%` }} />
+            {inLines.map((line, i) => (
+              <span
+                key={line.key}
+                className={IN_SEGMENT_CLASSES[i % IN_SEGMENT_CLASSES.length]}
+                style={{ width: `${pctOf(line.amountPoisha, grossIn)}%` }}
+              />
+            ))}
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-muted">
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden="true" className="h-2 w-2 rounded-full bg-slate-400" /> শুরুর নগদ <Money poisha={derived.openingCashPoisha} />
+            </span>
+            {inLines.map((line, i) => (
+              <span key={line.key} className="inline-flex items-center gap-1.5">
+                <span aria-hidden="true" className={`h-2 w-2 rounded-full ${IN_SEGMENT_CLASSES[i % IN_SEGMENT_CLASSES.length]}`} />
+                {line.labelBn} <Money poisha={line.amountPoisha} />
+              </span>
+            ))}
+          </div>
+          {outTotal > 0 ? (
+            <div className="mt-2.5">
+              <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-card" role="img" aria-label="ড্রয়ার থেকে বেরিয়ে যাওয়া নগদ">
+                <span className="bg-rose-400" style={{ width: `${pctOf(outTotal, grossIn)}%` }} />
+              </div>
+              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-muted">
+                {outLines.map((line) => (
+                  <span key={line.key} className="inline-flex items-center gap-1.5">
+                    <span aria-hidden="true" className="h-2 w-2 rounded-full bg-rose-400" />
+                    {line.labelBn} −<Money poisha={line.amountPoisha} />
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div>
+        <p className="mb-1.5 text-xs font-medium text-text-muted">থাকার কথা বনাম গণনা</p>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className="w-16 shrink-0 text-xs text-text-muted">থাকার কথা</span>
+            <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-card">
+              <div className="h-full bg-brand-500" style={{ width: `${pctOf(expectedPoisha, scale)}%` }} />
+            </div>
+            <span className="shrink-0 text-xs font-medium"><Money poisha={expectedPoisha} /></span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-16 shrink-0 text-xs text-text-muted">গণনা</span>
+            <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-card">
+              <div
+                className={`h-full ${variancePoisha === null || variancePoisha === 0 ? "bg-emerald-500" : variancePoisha < 0 ? "bg-rose-500" : "bg-sky-500"}`}
+                style={{ width: `${pctOf(countedPoisha ?? 0, scale)}%` }}
+              />
+            </div>
+            <span className="shrink-0 text-xs font-medium">
+              {countedPoisha === null ? "—" : <Money poisha={countedPoisha} />}
+            </span>
+          </div>
+        </div>
+        {variancePoisha !== null && variancePoisha !== 0 ? (
+          <p className={`mt-1.5 text-xs font-medium ${variancePoisha < 0 ? "text-rose-600" : "text-sky-600"}`}>
+            {variancePoisha < 0 ? "গণনায় কম আছে " : "গণনায় বেশি আছে "}
+            <Money poisha={Math.abs(variancePoisha)} />
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function TakaField({
   label,
   value,
@@ -287,6 +397,12 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialD
               </div>
             ) : null}
           </dl>
+          <DrawerBreakdownVisual
+            derived={derived}
+            expectedPoisha={previewExpected ?? derived.expectedCashPoisha}
+            countedPoisha={countedPoisha}
+            variancePoisha={previewVariance}
+          />
           <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-text-muted">
             {derived.exclusionsBn.map((line) => (
               <li key={line}>{line}</li>
