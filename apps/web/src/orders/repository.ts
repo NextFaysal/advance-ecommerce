@@ -67,6 +67,7 @@ import { computeBundleAvailability } from "../catalog/types";
 import { getSetting } from "../lib/settings";
 import { riskLevel } from "./customer";
 import { runDeliveredOrderHooks } from "./delivered-hooks";
+import { runReversalHooks } from "./reversal-hooks";
 import { publishPaymentSucceeded } from "./event-bus";
 import { transitionOrder, type TransitionResult } from "./state-machine";
 import type {
@@ -684,6 +685,14 @@ export async function applyOrderTransition(
   if (to === "CANCELLED") {
     await restoreBundleComponentsForOrder(row.id);
   }
+  // Wave 18 (plan 17, O0): reversal engine — cancelling restores the
+  // coupon usage; RETURNED / REFUNDED claw back the delivered-order
+  // credits (loyalty, reseller wallet, vendor commission). The hook
+  // never throws and every reversal is exactly-once (see
+  // src/orders/reversal-hooks.ts).
+  if (to === "CANCELLED" || to === "RETURNED" || to === "REFUNDED") {
+    await runReversalHooks(row.id);
+  }
   return { kind: "ok", order: result.order, from: order.status };
 }
 
@@ -748,6 +757,16 @@ export async function saveOrder(order: Order): Promise<void> {
   if (row.status !== "CANCELLED" && order.status === "CANCELLED") {
     await restoreBundleComponentsForOrder(order.id);
   }
+  // Wave 18 (plan 17, O0): same reversal engine on the bulk-actions
+  // path — only when THIS save moved the stored status INTO a reversal
+  // state (the hook itself is idempotent, the guard keeps unrelated
+  // saves from re-entering it).
+  if (
+    row.status !== order.status &&
+    (order.status === "CANCELLED" || order.status === "RETURNED" || order.status === "REFUNDED")
+  ) {
+    await runReversalHooks(order.id);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -760,7 +779,8 @@ export type OrderPaymentSource =
   | "manual_trx_review"
   | "gateway_verify"
   | "payment_webhook"
-  | "gateway_refund";
+  | "gateway_refund"
+  | "refund_workbench";
 
 export interface MarkOrderPaymentInput {
   /**
@@ -849,7 +869,10 @@ export async function markOrderPayment(
         _sum: { amountPoisha: true },
       }),
       tx.refund.aggregate({
-        where: { orderId: order.id },
+        // Only money-moved refunds count: workbench rows still PENDING (or
+        // CANCELLED) must not read as refunded money. The sandbox gateway's
+        // COMPLETED rows are money-moved. Mirrored in reversal-hooks.ts.
+        where: { orderId: order.id, status: { in: ["SENT", "CONFIRMED", "COMPLETED"] } },
         _sum: { amountPoisha: true },
       }),
     ]);

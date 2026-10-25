@@ -879,14 +879,27 @@ model ManualTrxSubmission {
 
 model Refund {
   id           String   @id @default(cuid())
-  paymentId    String
-  payment      Payment  @relation(fields: [paymentId], references: [id])
+  // Nullable since the refund workbench (doc 17, O0): a refund recorded
+  // against money collected outside a single Payment row (COD cash,
+  // approved manual-TrxID with no linked Payment) anchors to the ORDER;
+  // gateway refunds still always set the Payment they reverse.
+  paymentId    String?
+  payment      Payment? @relation(fields: [paymentId], references: [id])
   orderId      String
   amountPoisha Int
   reason       String
   method       PaymentMethod
+  // Workbench payout channel vocabulary (bkash | nagad | bank | cash |
+  // gateway | other) — how staff actually sent the money back. Null for
+  // gateway-recorded refunds, where `method` already says it.
+  payoutMethod String?
+  // Payout transaction reference (e.g. the bKash TrxID money was sent
+  // with). Required before a workbench refund can be marked SENT.
+  reference    String?
+  createdById  String?
   status       String   @default("PENDING")
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   @@index([paymentId])
   @@index([orderId])
 }

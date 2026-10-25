@@ -23,6 +23,7 @@ import { formatBdt } from "../../../../src/checkout/pricing";
 import { CustomerSummaryCard } from "../../../../src/orders/components/CustomerSummaryCard";
 import { OneClickPanel } from "../../../../src/orders/components/OneClickPanel";
 import { PrintPanel } from "../../../../src/orders/components/PrintPanel";
+import { RefundsPanel } from "./refunds-panel";
 import { StatusTimeline } from "../../../../src/orders/components/StatusTimeline";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -368,6 +369,11 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
           <div className="[&_section]:shadow-card">
             <PrintPanel order={order} />
           </div>
+
+          {/* Refund workbench (doc 17, O0) — records refunds staff send
+              via bKash/bank themselves; shows the refund-due banner for
+              cancelled/returned orders. Self-fetches by order id. */}
+          <RefundsPanel orderId={order.id} />
         </div>
       </div>
 

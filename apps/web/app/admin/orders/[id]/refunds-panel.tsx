@@ -1,0 +1,361 @@
+"use client";
+
+/**
+ * Refund workbench panel — order detail page (doc 17, O0).
+ *
+ * Talks to /api/v1/admin/orders/[id]/refunds (GET list + summary,
+ * POST create) and .../refunds/[refundId] (PATCH status moves).
+ * Lifecycle: PENDING → SENT → CONFIRMED, PENDING → CANCELLED.
+ *
+ * HONEST COPY, by design: the system RECORDS refunds — staff send the
+ * money themselves via bKash/Nagad/bank and log the payout reference
+ * here. Nothing on this panel sends money, and nothing claims it does.
+ *
+ * Props are serializable only (the order id); all data is fetched
+ * client-side, so a 403 (no payments.view) degrades to a quiet note
+ * instead of breaking the order page.
+ */
+import { useCallback, useEffect, useState } from "react";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { formatPoisha } from "@/components/ui/money";
+
+type RefundMethod = "bkash" | "nagad" | "bank" | "cash" | "gateway" | "other";
+type RefundStatus = "PENDING" | "SENT" | "CONFIRMED" | "CANCELLED" | "COMPLETED";
+
+interface RefundView {
+  id: string;
+  amountPoisha: number;
+  method: RefundMethod;
+  reference: string | null;
+  reason: string;
+  status: RefundStatus | string;
+  createdByName: string | null;
+  createdAt: string;
+}
+
+interface RefundSummary {
+  grossPaidPoisha: number;
+  netPaidPoisha: number;
+  refundedPoisha: number;
+  pendingRefundPoisha: number;
+  refundablePoisha: number;
+  refundDuePoisha: number;
+}
+
+const METHOD_LABEL: Record<RefundMethod, string> = {
+  bkash: "বিকাশ",
+  nagad: "নগদ",
+  bank: "ব্যাংক",
+  cash: "ক্যাশ",
+  gateway: "গেটওয়ে",
+  other: "অন্যান্য",
+};
+
+const STATUS_UI: Record<string, { label: string; tone: "success" | "warning" | "danger" | "info" | "neutral" }> = {
+  PENDING: { label: "অপেক্ষমাণ", tone: "warning" },
+  SENT: { label: "পাঠানো হয়েছে", tone: "info" },
+  CONFIRMED: { label: "নিশ্চিত", tone: "success" },
+  COMPLETED: { label: "সম্পন্ন (গেটওয়ে)", tone: "success" },
+  CANCELLED: { label: "বাতিল", tone: "neutral" },
+};
+
+const inputCls =
+  "h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
+
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleString("bn-BD", {
+    timeZone: "Asia/Dhaka",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+export function RefundsPanel({ orderId }: { orderId: string }) {
+  const [refunds, setRefunds] = useState<RefundView[] | null>(null);
+  const [summary, setSummary] = useState<RefundSummary | null>(null);
+  const [forbidden, setForbidden] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Create-form state (amount entered in TAKA, sent as amountTaka).
+  const [amountTaka, setAmountTaka] = useState("");
+  const [method, setMethod] = useState<RefundMethod>("bkash");
+  const [reference, setReference] = useState("");
+  const [reason, setReason] = useState("");
+  // Per-row payout reference input, used when marking SENT.
+  const [sentRefs, setSentRefs] = useState<Record<string, string>>({});
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/v1/admin/orders/${encodeURIComponent(orderId)}/refunds`);
+      if (res.status === 403) {
+        setForbidden(true);
+        return;
+      }
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: { refunds: RefundView[]; summary: RefundSummary };
+      };
+      if (json.data) {
+        setRefunds(json.data.refunds);
+        setSummary(json.data.summary);
+      }
+    } catch {
+      /* panel stays quiet on network failure; the page itself works */
+    }
+  }, [orderId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function createRefund() {
+    const taka = Number(amountTaka);
+    if (!Number.isFinite(taka) || taka <= 0) {
+      setError("সঠিক পরিমাণ (টাকায়) লিখুন।");
+      return;
+    }
+    if (!reason.trim()) {
+      setError("রিফান্ডের কারণ আবশ্যক।");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/v1/admin/orders/${encodeURIComponent(orderId)}/refunds`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amountTaka: taka,
+          method,
+          reference: reference.trim() || null,
+          reason: reason.trim(),
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: { message?: string };
+      };
+      if (!res.ok) {
+        setError(json.error?.message ?? "রিফান্ড তৈরি করা যায়নি।");
+        return;
+      }
+      setAmountTaka("");
+      setReference("");
+      setReason("");
+      setMessage("রিফান্ড রেকর্ড হয়েছে (অবস্থা: অপেক্ষমাণ)। টাকা পাঠিয়ে “পাঠানো হয়েছে” চাপ দিন।");
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function moveStatus(refund: RefundView, to: "SENT" | "CONFIRMED" | "CANCELLED") {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch(
+        `/api/v1/admin/orders/${encodeURIComponent(orderId)}/refunds/${encodeURIComponent(refund.id)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to,
+            reference: to === "SENT" ? (sentRefs[refund.id]?.trim() || refund.reference || undefined) : undefined,
+          }),
+        },
+      );
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: { message?: string };
+      };
+      if (!res.ok) {
+        setError(json.error?.message ?? "অবস্থা বদলানো যায়নি।");
+        return;
+      }
+      setMessage(
+        to === "SENT"
+          ? "রিফান্ড “পাঠানো হয়েছে” হিসেবে চিহ্নিত — অর্ডারের পেমেন্ট অবস্থা আবার হিসাব করা হয়েছে।"
+          : to === "CONFIRMED"
+            ? "রিফান্ড নিশ্চিত হয়েছে।"
+            : "রিফান্ড বাতিল করা হয়েছে।",
+      );
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (forbidden) {
+    return (
+      <Card className="p-5">
+        <h3 className="font-display text-base font-semibold">রিফান্ড</h3>
+        <p className="mt-2 text-small text-text-muted">
+          রিফান্ড দেখতে payments.view অনুমতি প্রয়োজন।
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-5">
+      <h3 className="font-display text-base font-semibold">রিফান্ড ওয়ার্কবেঞ্চ</h3>
+      <p className="mt-1.5 text-small leading-relaxed text-text-muted">
+        টাকা বিকাশ/ব্যাংক দিয়ে <strong>নিজে পাঠিয়ে</strong> এখানে রেকর্ড করুন — সিস্টেম নিজে
+        টাকা পাঠায় না, শুধু হিসাব ও অডিট রাখে।
+      </p>
+
+      {summary && summary.refundDuePoisha > 0 && (
+        <div
+          role="alert"
+          className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-400/30 dark:bg-amber-500/10"
+        >
+          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+            ⚠ এই অর্ডারে ফেরত বাকি: {formatPoisha(summary.refundDuePoisha)}
+          </p>
+          <p className="mt-0.5 text-small text-amber-800 dark:text-amber-300">
+            অর্ডারটি বাতিল/ফেরত অবস্থায় আছে, কিন্তু পরিশোধিত টাকার এই অংশ এখনো কোনো রিফান্ড
+            রেকর্ডে ধরা হয়নি। নিচের ফর্মে রিফান্ড তৈরি করুন।
+          </p>
+        </div>
+      )}
+
+      {summary && (
+        <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-lg bg-surface-2 px-2 py-2.5">
+            <dt className="text-caption text-text-subtle">মোট পরিশোধিত</dt>
+            <dd className="mt-0.5 text-sm font-semibold">{formatPoisha(summary.grossPaidPoisha)}</dd>
+          </div>
+          <div className="rounded-lg bg-surface-2 px-2 py-2.5">
+            <dt className="text-caption text-text-subtle">ফেরত দেওয়া হয়েছে</dt>
+            <dd className="mt-0.5 text-sm font-semibold">{formatPoisha(summary.refundedPoisha)}</dd>
+          </div>
+          <div className="rounded-lg bg-surface-2 px-2 py-2.5">
+            <dt className="text-caption text-text-subtle">ফেরতযোগ্য বাকি</dt>
+            <dd className="mt-0.5 text-sm font-semibold">{formatPoisha(summary.refundablePoisha)}</dd>
+          </div>
+        </dl>
+      )}
+
+      {/* History */}
+      <div className="mt-4 space-y-2.5">
+        {refunds === null ? (
+          <p className="text-small text-text-subtle">লোড হচ্ছে…</p>
+        ) : refunds.length === 0 ? (
+          <p className="text-small text-text-subtle">এই অর্ডারে এখনো কোনো রিফান্ড রেকর্ড হয়নি।</p>
+        ) : (
+          refunds.map((r) => {
+            const ui = STATUS_UI[r.status] ?? { label: r.status, tone: "neutral" as const };
+            return (
+              <div key={r.id} className="rounded-xl border border-border px-3.5 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-bold">{formatPoisha(r.amountPoisha)}</span>
+                  <Badge tone={ui.tone}>{ui.label}</Badge>
+                  <span className="text-caption text-text-subtle">
+                    {METHOD_LABEL[r.method] ?? r.method}
+                    {r.reference ? ` · TrxID: ${r.reference}` : ""}
+                  </span>
+                </div>
+                <p className="mt-1 text-small leading-relaxed text-text-muted">{r.reason}</p>
+                <p className="mt-0.5 text-caption text-text-subtle">
+                  {r.createdByName ? `${r.createdByName} · ` : ""}
+                  {fmtDate(r.createdAt)}
+                </p>
+                {r.status === "PENDING" && (
+                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                    {!r.reference && (
+                      <input
+                        aria-label="পেআউট TrxID"
+                        value={sentRefs[r.id] ?? ""}
+                        onChange={(e) => setSentRefs((s) => ({ ...s, [r.id]: e.target.value }))}
+                        placeholder="পেআউট TrxID (বিকাশ/ব্যাংক)"
+                        className="h-10 min-w-44 flex-1 rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                      />
+                    )}
+                    <Button size="sm" disabled={busy} onClick={() => void moveStatus(r, "SENT")}>
+                      পাঠানো হয়েছে
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => void moveStatus(r, "CANCELLED")}>
+                      বাতিল
+                    </Button>
+                  </div>
+                )}
+                {r.status === "SENT" && (
+                  <div className="mt-2.5">
+                    <Button size="sm" disabled={busy} onClick={() => void moveStatus(r, "CONFIRMED")}>
+                      প্রাপ্তি নিশ্চিত করুন
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Create form */}
+      <div className="mt-5 border-t border-border pt-4">
+        <h4 className="text-sm font-semibold">নতুন রিফান্ড রেকর্ড</h4>
+        <div className="mt-3 grid grid-cols-2 gap-2.5">
+          <label className="block">
+            <span className="mb-1 block text-caption font-medium text-text-muted">পরিমাণ (টাকা)</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={amountTaka}
+              onChange={(e) => setAmountTaka(e.target.value)}
+              placeholder="যেমন: 500"
+              className={inputCls}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-caption font-medium text-text-muted">মাধ্যম</span>
+            <select value={method} onChange={(e) => setMethod(e.target.value as RefundMethod)} className={inputCls}>
+              {(Object.keys(METHOD_LABEL) as RefundMethod[]).map((m) => (
+                <option key={m} value={m}>
+                  {METHOD_LABEL[m]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label className="mt-2.5 block">
+          <span className="mb-1 block text-caption font-medium text-text-muted">
+            পেআউট TrxID / রেফারেন্স (এখন জানা থাকলে)
+          </span>
+          <input
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            placeholder="যেমন: 9HX7K2LM"
+            className={inputCls}
+          />
+        </label>
+        <label className="mt-2.5 block">
+          <span className="mb-1 block text-caption font-medium text-text-muted">কারণ (আবশ্যক)</span>
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="যেমন: অর্ডার বাতিল — ক্রেতাকে ফেরত"
+            className={inputCls}
+          />
+        </label>
+        <Button className="mt-3.5 w-full" disabled={busy} onClick={() => void createRefund()}>
+          রিফান্ড তৈরি করুন
+        </Button>
+        {error && (
+          <p role="alert" className="mt-3 rounded-md bg-rose-50 px-3.5 py-2.5 text-small leading-relaxed text-rose-800 dark:bg-rose-500/10 dark:text-rose-200">
+            {error}
+          </p>
+        )}
+        {message && (
+          <p role="status" className="mt-3 rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed">
+            {message}
+          </p>
+        )}
+      </div>
+    </Card>
+  );
+}
