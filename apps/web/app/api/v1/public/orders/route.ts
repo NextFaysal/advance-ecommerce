@@ -520,6 +520,21 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     }
   }
 
+  // Abandoned-checkout recovery (wave 22, doc 17 batch O4): when this
+  // checkout session had a capture row, the completed order closes it
+  // (OPEN -> RECOVERED with this order's id). Guarded dynamic import +
+  // try/catch, same discipline as the seams around it — a failure here
+  // must never break a create that already committed.
+  if (form.checkoutSessionKey) {
+    try {
+      const abandoned = await import("@/checkout/abandoned");
+      await abandoned.markAbandonedCheckoutRecovered(form.checkoutSessionKey, created.orderId);
+    } catch {
+      // The capture simply stays OPEN and ages off the admin list at
+      // expiry — no customer-facing impact.
+    }
+  }
+
   // Prepaid initiation (O3-2 seam): a non-COD order also attempts the
   // hosted-payment initiation. Dynamic import + try/catch by design —
   // its absence (or failure) degrades to meta, never breaks a create

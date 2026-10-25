@@ -1807,6 +1807,42 @@ model CallLogEntry {
   @@index([taskId, createdAt])
 }
 
+// Abandoned-checkout capture (wave 22, doc 17 batch O4): the storefront
+// posts a snapshot (phone + cart + partial address) when a shopper has
+// entered a valid BD phone and has items in the cart but has not ordered
+// yet — see src/checkout/abandoned.ts. One row per browser checkout
+// session (sessionKey is a client-generated UUID kept in sessionStorage);
+// a later capture from the same session refreshes the row while it is
+// OPEN. RECOVERED is stamped either by the public orders route when the
+// same session completes a real order, or by the admin convert action;
+// DISMISSED is a staff decision. Rows expire 7 days after capture
+// (expiresAt) and drop off the admin list — no sweeper flips the status
+// to EXPIRED in this build, the list filters on expiresAt instead.
+// itemsJson: [{ variantId, quantity, pricePoishaAtCapture }] — prices
+// are CATALOG snapshots taken server-side at capture time (the client's
+// numbers are never trusted); conversion re-prices from the live
+// catalog. addressJson: the partial BdAddress the shopper had typed
+// ({ division?, district?, upazila?, union?, addressLine? }), or null.
+model AbandonedCheckout {
+  id               String    @id @default(cuid())
+  sessionKey       String    @unique
+  customerPhone    String
+  customerName     String?
+  itemsJson        Json
+  addressJson      Json?
+  subtotalPoisha   Int
+  status           String    @default("OPEN")
+  recoveredOrderId String?
+  callTaskId       String?
+  expiresAt        DateTime
+  lastSeenAt       DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([status, expiresAt])
+  @@index([customerPhone])
+}
+
 model InboxConversation {
   id               String   @id @default(cuid())
   channel          String

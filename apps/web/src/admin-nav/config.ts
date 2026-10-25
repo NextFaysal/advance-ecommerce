@@ -96,6 +96,20 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: null,
   },
   {
+    id: "abandoned",
+    path: "/admin/abandoned",
+    labelBn: "পরিত্যক্ত চেকআউট",
+    labelEn: "Abandoned Checkouts",
+    icon: "ShoppingCart",
+    section: "sales",
+    // The abandoned API guards list/call-task on orders.view and
+    // convert on orders.create; nav uses orders.view like the other
+    // sales-section entries.
+    permission: "orders.view",
+    featureFlag: null,
+    badge: null,
+  },
+  {
     id: "payments",
     path: "/admin/payments",
     labelBn: "পেমেন্ট",

@@ -25,6 +25,7 @@ import { displayPhone, riskLevel } from "../../../src/orders/customer";
 import { formatBdt } from "../../../src/checkout/pricing";
 import { BulkActionBar } from "../../../src/orders/components/BulkActionBar";
 import { ManualOrderBuilder } from "./manual-order-builder";
+import { OrderImportCard } from "./order-import-card";
 import { StaleUnpaidPanel } from "./stale-unpaid-panel";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -652,6 +653,10 @@ export default function AdminOrdersPage() {
         </p>
         <ManualOrderBuilder onCreated={load} />
       </Card>
+
+      {/* CSV bulk order import (doc 17 O4) — per-group results render
+       *  inside the card; a successful import reloads the list. */}
+      <OrderImportCard onImported={load} />
     </main>
   );
 }

@@ -73,6 +73,13 @@ export const checkoutFormSchema = z.object({
    * attributes nothing.
    */
   resellerCode: z.string().max(32).optional(),
+  /**
+   * Optional abandoned-checkout session key (wave 22, doc 17 batch
+   * O4): the checkout page's sessionStorage UUID for its capture row.
+   * When present, the orders route stamps that capture RECOVERED
+   * post-commit (guarded — absence simply skips the marking).
+   */
+  checkoutSessionKey: z.string().uuid().optional(),
 });
 
 export type CheckoutForm = z.infer<typeof checkoutFormSchema>;

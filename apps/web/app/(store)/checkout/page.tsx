@@ -22,7 +22,7 @@
 // the built-in default rates. There is no public settings endpoint,
 // so the preview is labelled আনুমানিক; the server's engine result
 // (live Settings rates, real order weight) is authoritative.
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Cart } from "../../../src/cart/types";
 import { cartSubtotalPoisha } from "../../../src/cart/types";
@@ -44,7 +44,7 @@ import {
 } from "../../../src/checkout/geo-tree";
 import { parseAddress } from "../../../src/bd/address-parser";
 import { useDigitText } from "@/components/ui/numerals";
-import { newIdempotencyKey, validateCheckoutForm } from "../../../src/checkout";
+import { newIdempotencyKey, normalizeBdPhone, validateCheckoutForm } from "../../../src/checkout";
 import { BkashMark, CodMark, NagadMark, SslCommerzMark } from "@/components/brand-marks";
 import { Icon } from "@/components/ui/icon";
 
@@ -98,6 +98,89 @@ export default function CheckoutPage() {
   } | null>(null);
   // One key per checkout attempt; reused on retry, never regenerated on retry.
   const [idempotencyKey] = useState<string>(() => newIdempotencyKey());
+
+  // Abandoned-checkout capture (wave 22, doc 17 batch O4): one session
+  // key per browser checkout session, kept in sessionStorage so a
+  // reload continues the SAME capture row server-side. The initial
+  // value is a throwaway UUID; on mount the stored key is adopted (or
+  // the fresh one stored), so the state always holds a valid UUID.
+  const [checkoutSessionKey, setCheckoutSessionKey] = useState<string>(() => newIdempotencyKey());
+  useEffect(() => {
+    const STORAGE_KEY = "advance-ecommerce:checkout-session";
+    try {
+      const stored = window.sessionStorage.getItem(STORAGE_KEY);
+      if (stored && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stored)) {
+        setCheckoutSessionKey(stored);
+      } else {
+        window.sessionStorage.setItem(STORAGE_KEY, checkoutSessionKey);
+      }
+    } catch {
+      // Storage unavailable (private mode): capture just uses the
+      // in-memory key for this page view.
+    }
+    // Mount-only adoption by design.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const captureTimerRef = useRef<number | null>(null);
+
+  // Post a capture snapshot when the shopper has a VALID phone and a
+  // non-empty cart. Fire-and-forget by design: the response is ignored
+  // and a failure (offline, rate limit, closed session) must never
+  // surface in the checkout UX. Prices are NOT sent — the server
+  // snapshots the catalog itself.
+  const fireCapture = useCallback(
+    (keepalive = false) => {
+      const formEl = formRef.current;
+      if (!formEl || !cart || cart.items.length === 0) return;
+      const data = new FormData(formEl);
+      const phone = normalizeBdPhone(String(data.get("phone") ?? ""));
+      if (!phone) return;
+      const name = String(data.get("customerName") ?? "").trim();
+      const union = String(data.get("union") ?? "").trim();
+      const addressLine = String(data.get("addressLine") ?? "").trim();
+      fetch("/api/v1/public/checkout/capture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionKey: checkoutSessionKey,
+          phone,
+          ...(name ? { name } : {}),
+          items: cart.items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
+          address: {
+            ...(division ? { division } : {}),
+            ...(district ? { district } : {}),
+            ...(upazila ? { upazila } : {}),
+            ...(union ? { union } : {}),
+            ...(addressLine ? { addressLine } : {}),
+          },
+        }),
+        keepalive,
+      }).catch(() => {});
+    },
+    [cart, checkoutSessionKey, division, district, upazila],
+  );
+
+  const scheduleCapture = useCallback(() => {
+    if (captureTimerRef.current !== null) window.clearTimeout(captureTimerRef.current);
+    captureTimerRef.current = window.setTimeout(() => fireCapture(false), 1200);
+  }, [fireCapture]);
+
+  // pagehide is the last chance to capture when the shopper leaves
+  // mid-form; keepalive lets the request outlive the page.
+  useEffect(() => {
+    const onPageHide = () => fireCapture(true);
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, [fireCapture]);
+
+  useEffect(
+    () => () => {
+      if (captureTimerRef.current !== null) window.clearTimeout(captureTimerRef.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     setCart(loadGuestCart());
@@ -243,6 +326,9 @@ export default function CheckoutPage() {
       // is NOT cleared after ordering — repeat orders inside the
       // window attribute to the same reseller.
       resellerCode: readStoredResellerRef() ?? undefined,
+      // Abandoned-checkout session key (wave 22): the server stamps
+      // this session's capture RECOVERED when the order commits.
+      checkoutSessionKey,
     });
     if (!result.ok) {
       setErrors(result.errors);
@@ -454,7 +540,7 @@ export default function CheckoutPage() {
         )}
       </section>
 
-      <form onSubmit={onSubmit} className="mt-6 grid gap-4">
+      <form ref={formRef} onSubmit={onSubmit} onChange={scheduleCapture} className="mt-6 grid gap-4">
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-text-main">আপনার নাম *</span>
           <input name="customerName" required autoComplete="name" className={INPUT_CLASS} />

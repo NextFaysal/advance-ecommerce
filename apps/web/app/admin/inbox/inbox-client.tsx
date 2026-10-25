@@ -27,6 +27,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { StatCard } from "@/components/ui/stat-card";
 import { maskPhone } from "@/checkout/validation";
+import { formatBdt } from "@/checkout/pricing";
 import type { DraftResult, OrderDraft } from "@/inbox/conversion";
 import type {
   ConversationStatus,
@@ -148,6 +149,29 @@ export default function InboxClient({
   const [draftQty, setDraftQty] = useState(1);
   const [draftResult, setDraftResult] = useState<DraftResult | null>(null);
   const [draftSubmitting, setDraftSubmitting] = useState(false);
+  /* ---- O4 (wave 22): convert-to-order panel state. Delimited block —
+   * the panel below POSTs to /admin/inbox/conversations/[id]/
+   * convert-to-order, which creates a REAL order server-side through
+   * the shared manual-create service. This client never holds or
+   * sends a full phone number; the server resolves it from the
+   * conversation (D1 privacy rule above still holds). */
+  const [convItems, setConvItems] = useState<
+    { variantId: string; quantity: number; priceTaka: string }[]
+  >([{ variantId: "", quantity: 1, priceTaka: "" }]);
+  const [convDivision, setConvDivision] = useState("");
+  const [convDistrict, setConvDistrict] = useState("");
+  const [convUpazila, setConvUpazila] = useState("");
+  const [convAddressLine, setConvAddressLine] = useState("");
+  const [convPayment, setConvPayment] = useState<"cod" | "bkash" | "nagad">("cod");
+  const [convShipping, setConvShipping] = useState<"inside_dhaka" | "outside_dhaka" | "pickup">(
+    "inside_dhaka",
+  );
+  const [convSubmitting, setConvSubmitting] = useState(false);
+  const [convResult, setConvResult] = useState<
+    | { ok: true; orderId: string; orderNo: string; totalPoisha: number | null }
+    | { ok: false; message: string }
+    | null
+  >(null);
 
   const views = conversations;
   const filteredViews = useMemo(
@@ -173,6 +197,17 @@ export default function InboxClient({
     );
     setDraftAddressText(inboundTexts[inboundTexts.length - 1]?.text ?? "");
     setDraftQty(1);
+    // O4: reset the convert-to-order panel for the newly opened
+    // conversation; the first item row pre-fills from the product the
+    // conversation started from, when it has one.
+    setConvItems([{ variantId: selected.productRefId ?? "", quantity: 1, priceTaka: "" }]);
+    setConvDivision("");
+    setConvDistrict("");
+    setConvUpazila("");
+    setConvAddressLine("");
+    setConvPayment("cod");
+    setConvShipping("inside_dhaka");
+    setConvResult(null);
   }, [selected, threads]);
 
   const queueReply = () => {
@@ -234,6 +269,87 @@ export default function InboxClient({
       });
     } finally {
       setDraftSubmitting(false);
+    }
+  };
+
+  /* ---- O4 (wave 22): convert-to-order actions ---- */
+  const fillConvertFromDraft = () => {
+    if (!draftResult?.ok) return;
+    const d = draftResult.draft;
+    setConvDivision(d.address.division);
+    setConvDistrict(d.address.district);
+    setConvUpazila(d.address.upazila);
+    setConvAddressLine(d.address.addressLine);
+    setConvItems(
+      d.items.map((i) => ({ variantId: i.variantId, quantity: i.quantity, priceTaka: "" })),
+    );
+  };
+
+  // Creates a REAL order (unlike the draft above). The phone is NOT
+  // sent — the server resolves it from the conversation; if none is
+  // usable the server answers 422 and its message is shown as-is.
+  const convertOrder = async () => {
+    if (!selected || convSubmitting) return;
+    const items = convItems
+      .filter((i) => i.variantId.trim() !== "")
+      .map((i) => ({
+        variantId: i.variantId.trim(),
+        quantity: Math.max(1, Math.floor(i.quantity) || 1),
+        ...(i.priceTaka.trim() !== "" && Number.isFinite(Number(i.priceTaka))
+          ? { unitPricePoisha: Math.round(Number(i.priceTaka) * 100) }
+          : {}),
+      }));
+    if (items.length === 0) {
+      setConvResult({ ok: false, message: "অন্তত একটি আইটেমের variant ID দিন।" });
+      return;
+    }
+    setConvSubmitting(true);
+    setConvResult(null);
+    try {
+      const res = await fetch(
+        `/api/v1/admin/inbox/conversations/${selected.id}/convert-to-order`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customerName: draftName,
+            items,
+            address: {
+              division: convDivision,
+              district: convDistrict,
+              upazila: convUpazila,
+              addressLine: convAddressLine,
+            },
+            paymentMethod: convPayment,
+            shippingMethod: convShipping,
+          }),
+        },
+      );
+      const payload: unknown = await res.json().catch(() => null);
+      const body = payload as {
+        data?: { order: { id: string; orderNo: string; totalPoisha: number | null } };
+        error?: { message?: string };
+      } | null;
+      if (res.ok && body?.data?.order) {
+        setConvResult({
+          ok: true,
+          orderId: body.data.order.id,
+          orderNo: body.data.order.orderNo,
+          totalPoisha: body.data.order.totalPoisha,
+        });
+      } else {
+        setConvResult({
+          ok: false,
+          message: body?.error?.message ?? "অর্ডার তৈরি করা যায়নি — আবার চেষ্টা করুন।",
+        });
+      }
+    } catch {
+      setConvResult({
+        ok: false,
+        message: "সার্ভারে পৌঁছানো যায়নি — সংযোগ যাচাই করে আবার চেষ্টা করুন।",
+      });
+    } finally {
+      setConvSubmitting(false);
     }
   };
 
@@ -522,6 +638,193 @@ export default function InboxClient({
                           <li key={i}>{err}</li>
                         ))}
                       </ul>
+                    </div>
+                  )
+                ) : null}
+              </Card>
+
+              {/* ===== O4 (wave 22): convert-to-order panel — creates a
+                  REAL order via POST /admin/inbox/conversations/[id]/
+                  convert-to-order (shared manual-create service,
+                  source "inbox"). Distinct from the draft above: this
+                  persists. The phone is resolved server-side from the
+                  conversation; no full number is held or sent here. */}
+              <Card>
+                <h2 className="mb-1 font-semibold">অর্ডার তৈরি করুন (আসল অর্ডার)</h2>
+                <p className="mb-4 text-sm text-text-muted">
+                  এটি ড্রাফট নয় — জমা দিলে <strong>আসল অর্ডার</strong> তৈরি হবে (সোর্স: ইনবক্স)
+                  এবং অর্ডার নম্বর এখানেই দেখা যাবে। ফোন নম্বর সার্ভারে কথোপকথন থেকে নেওয়া হয় —
+                  চ্যাটে ফোন না থাকলে সার্ভার অর্ডার তৈরি করবে না। দাম খালি রাখলে ক্যাটালগ দাম বসবে;
+                  টাকায় দাম দিলে তা কর্মীর নির্ধারিত দাম হিসেবে অর্ডার নোটে লেখা থাকবে।
+                </p>
+                {draftResult?.ok ? (
+                  <div className="mb-3">
+                    <Button type="button" variant="outline" size="sm" onClick={fillConvertFromDraft}>
+                      উপরের ড্রাফট থেকে ঠিকানা ও আইটেম পূরণ করুন
+                    </Button>
+                  </div>
+                ) : null}
+
+                <div className="space-y-2">
+                  {convItems.map((item, idx) => (
+                    <div key={idx} className="grid gap-2 sm:grid-cols-[1fr_90px_130px_auto]">
+                      <Input
+                        label={idx === 0 ? "Variant ID" : undefined}
+                        name={`conv-variant-${idx}`}
+                        value={item.variantId}
+                        onChange={(e) =>
+                          setConvItems((prev) =>
+                            prev.map((p, j) => (j === idx ? { ...p, variantId: e.target.value } : p)),
+                          )
+                        }
+                        placeholder="variant id"
+                      />
+                      <Input
+                        label={idx === 0 ? "পরিমাণ" : undefined}
+                        name={`conv-qty-${idx}`}
+                        type="number"
+                        min={1}
+                        value={item.quantity}
+                        onChange={(e) =>
+                          setConvItems((prev) =>
+                            prev.map((p, j) =>
+                              j === idx ? { ...p, quantity: Math.max(1, Number(e.target.value) || 1) } : p,
+                            ),
+                          )
+                        }
+                      />
+                      <Input
+                        label={idx === 0 ? "দাম (টাকা, ঐচ্ছিক)" : undefined}
+                        name={`conv-price-${idx}`}
+                        type="number"
+                        min={0}
+                        value={item.priceTaka}
+                        onChange={(e) =>
+                          setConvItems((prev) =>
+                            prev.map((p, j) => (j === idx ? { ...p, priceTaka: e.target.value } : p)),
+                          )
+                        }
+                        placeholder="ক্যাটালগ দাম"
+                      />
+                      <div className={idx === 0 ? "pt-6" : ""}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setConvItems((prev) =>
+                              prev.length > 1 ? prev.filter((_, j) => j !== idx) : prev,
+                            )
+                          }
+                        >
+                          মুছুন
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setConvItems((prev) => [...prev, { variantId: "", quantity: 1, priceTaka: "" }])
+                    }
+                  >
+                    + আরেকটি আইটেম
+                  </Button>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <Input
+                    label="বিভাগ"
+                    name="conv-division"
+                    value={convDivision}
+                    onChange={(e) => setConvDivision(e.target.value)}
+                  />
+                  <Input
+                    label="জেলা"
+                    name="conv-district"
+                    value={convDistrict}
+                    onChange={(e) => setConvDistrict(e.target.value)}
+                  />
+                  <Input
+                    label="উপজেলা"
+                    name="conv-upazila"
+                    value={convUpazila}
+                    onChange={(e) => setConvUpazila(e.target.value)}
+                  />
+                  <Input
+                    label="পূর্ণ ঠিকানা (বাসা/রোড/এলাকা)"
+                    name="conv-address-line"
+                    value={convAddressLine}
+                    onChange={(e) => setConvAddressLine(e.target.value)}
+                  />
+                  <div>
+                    <label htmlFor="conv-payment" className="mb-1 block text-xs font-medium text-text-muted">
+                      পেমেন্ট
+                    </label>
+                    <select
+                      id="conv-payment"
+                      value={convPayment}
+                      onChange={(e) => setConvPayment(e.target.value as "cod" | "bkash" | "nagad")}
+                      className="w-full rounded-[10px] border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand-500"
+                    >
+                      <option value="cod">ক্যাশ অন ডেলিভারি</option>
+                      <option value="bkash">বিকাশ</option>
+                      <option value="nagad">নগদ</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="conv-shipping" className="mb-1 block text-xs font-medium text-text-muted">
+                      ডেলিভারি এলাকা
+                    </label>
+                    <select
+                      id="conv-shipping"
+                      value={convShipping}
+                      onChange={(e) =>
+                        setConvShipping(e.target.value as "inside_dhaka" | "outside_dhaka" | "pickup")
+                      }
+                      className="w-full rounded-[10px] border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand-500"
+                    >
+                      <option value="inside_dhaka">ঢাকার ভিতরে</option>
+                      <option value="outside_dhaka">ঢাকার বাইরে</option>
+                      <option value="pickup">পিকআপ</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <Button
+                    type="button"
+                    variant="gradient"
+                    onClick={convertOrder}
+                    disabled={convSubmitting}
+                  >
+                    {convSubmitting ? "অর্ডার তৈরি হচ্ছে…" : "অর্ডার তৈরি করুন"}
+                  </Button>
+                </div>
+
+                {convResult ? (
+                  convResult.ok ? (
+                    <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                      <p className="font-semibold">✅ অর্ডার তৈরি হয়েছে।</p>
+                      <p className="mt-1">
+                        অর্ডার নম্বর:{" "}
+                        <a
+                          href={`/admin/orders/${convResult.orderId}`}
+                          className="font-mono font-semibold text-brand-700 hover:underline"
+                        >
+                          {convResult.orderNo}
+                        </a>
+                        {convResult.totalPoisha !== null
+                          ? ` · মোট: ${formatBdt(convResult.totalPoisha)}`
+                          : ""}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+                      <p className="font-semibold">⚠ অর্ডার তৈরি হয়নি:</p>
+                      <p className="mt-1">{convResult.message}</p>
                     </div>
                   )
                 ) : null}
