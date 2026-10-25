@@ -1,4 +1,14 @@
-# SCHEMA-ADDITIONS.md — Catalog tables proposed for Step 8 (DO NOT edit schema.prisma yet)
+# SCHEMA-ADDITIONS.md — HISTORICAL proposal (superseded)
+
+> **Status (2026-10-25):** This was the Step 8 proposal. The merge and
+> the mock→Prisma swap HAVE HAPPENED: the live schema is
+> `packages/db/prisma/schema.prisma` and the runtime catalog is
+> Prisma-only (`PrismaCatalogRepository` in `src/catalog/service.ts`;
+> the in-memory repository survives only as a test fixture). The merged
+> schema differs from this sketch — Brand is a relation (no
+> `brandName` column), stock uses the real StockMovement enum, etc.
+> Kept for history only; do NOT treat anything below as the current
+> contract and do not edit schema.prisma based on it.
 
 Owner: Agent 3 (Catalog & Storefront). This is a proposal for the DB owner (Agent 1 / Phase 1 team)
 to merge into `packages/db/prisma/schema.prisma` in Step 8. No schema file was edited by Agent 3.

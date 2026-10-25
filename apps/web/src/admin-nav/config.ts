@@ -212,6 +212,33 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: null,
   },
   {
+    // Wave P2a: categories get their first admin surface (previously
+    // seed-only). API guards on the products permission family — no
+    // separate taxonomy permission exists in the seed.
+    id: "categories",
+    path: "/admin/categories",
+    labelBn: "ক্যাটাগরি",
+    labelEn: "Categories",
+    icon: "Blocks",
+    section: "catalog",
+    permission: "products.view",
+    featureFlag: null,
+    badge: null,
+  },
+  {
+    // Wave P2a: brands admin (previously find-or-create only, inside
+    // product create). Same products permission family as categories.
+    id: "brands",
+    path: "/admin/brands",
+    labelBn: "ব্র্যান্ড",
+    labelEn: "Brands",
+    icon: "Flag",
+    section: "catalog",
+    permission: "products.view",
+    featureFlag: null,
+    badge: null,
+  },
+  {
     id: "inventory",
     path: "/admin/inventory",
     labelBn: "ইনভেন্টরি",

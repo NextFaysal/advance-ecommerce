@@ -12,6 +12,7 @@
 // success it calls router.refresh(), which re-runs the server page
 // and streams fresh rows back into this component.
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -251,8 +252,18 @@ export function ProductsTable({ products, canDelete }: { products: ProductRow[];
                   return (
                     <tr key={p.id} className="border-t border-border transition motion-fast first:border-t-0 hover:bg-surface-2/70">
                       <td className="min-w-0 px-4 py-3">
-                        <span className="block break-words font-medium leading-snug [overflow-wrap:anywhere]">{p.title}</span>
-                        <span className="font-mono text-caption text-text-subtle">/{p.slug}</span>
+                        <Link
+                          href={`/admin/products/${p.id}`}
+                          className="block break-words font-medium leading-snug text-brand-700 underline-offset-2 transition motion-fast [overflow-wrap:anywhere] hover:underline"
+                        >
+                          {p.title}
+                        </Link>
+                        <Link
+                          href={`/admin/products/${p.id}`}
+                          className="font-mono text-caption text-text-subtle underline-offset-2 transition motion-fast hover:text-brand-700 hover:underline"
+                        >
+                          /{p.slug}
+                        </Link>
                       </td>
                       {cols.isVisible("price") ? (
                         <td className="px-4 py-3 font-mono font-semibold tabular-nums">{formatBdt(p.pricePoisha)}</td>
@@ -289,8 +300,18 @@ export function ProductsTable({ products, canDelete }: { products: ProductRow[];
                 <article key={p.id} className="rounded-lg border border-border bg-card p-4 shadow-card">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="break-words font-medium leading-snug [overflow-wrap:anywhere]">{p.title}</p>
-                      <p className="mt-0.5 font-mono text-caption text-text-subtle">/{p.slug}</p>
+                      <Link
+                        href={`/admin/products/${p.id}`}
+                        className="block break-words font-medium leading-snug text-brand-700 underline-offset-2 [overflow-wrap:anywhere] hover:underline"
+                      >
+                        {p.title}
+                      </Link>
+                      <Link
+                        href={`/admin/products/${p.id}`}
+                        className="mt-0.5 block font-mono text-caption text-text-subtle underline-offset-2 hover:text-brand-700 hover:underline"
+                      >
+                        /{p.slug}
+                      </Link>
                     </div>
                     <Badge tone={meta.tone}>{meta.label}</Badge>
                   </div>

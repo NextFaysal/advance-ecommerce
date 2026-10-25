@@ -1,12 +1,16 @@
-// CSV import — Agent 8 (Step 10 contract).
+// CSV import — Agent 8 (Step 10 contract); taka columns added in P4.
 // Rules (no silent drops):
 //  - Every row is classified valid OR invalid. Invalid rows are returned
 //    with row number, field, and message, and are NEVER silently skipped.
 //  - Duplicate SKU inside the file is an error. Duplicate SKU against
 //    existing products is an error (caller passes existing SKUs).
-//  - Money is integer poisha in the file (column price_poisha). A taka
-//    column is NOT accepted here — converting taka->poisha in import
-//    is a classic rounding bug, so the file format is poisha-only.
+//  - Money: integer poisha columns (price_poisha) are the canonical
+//    format. Decimal TAKA columns (price_taka) are ALSO accepted since
+//    P4 — BD merchants keep catalogs in taka. Conversion is exact
+//    decimal-string math (never float multiplication): the taka value
+//    is rounded half-up at the third decimal place into integer poisha.
+//    One row may use ONE unit per money field: a row that sets both
+//    price_poisha and price_taka is an error, never a guess.
 //  - Header row is required. Unknown columns are ignored, missing
 //    required columns fail the whole preview with a clear error.
 
@@ -29,6 +33,22 @@ export const IMPORT_HEADERS = [
   "stock",
   "image_url",
 ] as const;
+
+/** Decimal-taka alternatives to the *_poisha columns (P4). A row uses
+ *  one unit per money field; the parsed output is always poisha. */
+export const IMPORT_TAKA_HEADERS = ["price_taka", "compare_at_taka", "cost_taka"] as const;
+
+export type MoneyUnit = "poisha" | "taka" | "mixed" | "none";
+
+/** Which unit each money column used across the whole file, so the
+ *  preview UI can show the merchant what was detected. "mixed" means
+ *  different rows used different units (legal — the conflict rule is
+ *  per-row, per-field). */
+export interface ImportMoneyUnits {
+  price: MoneyUnit;
+  compareAt: MoneyUnit;
+  cost: MoneyUnit;
+}
 
 const rowSchema = z.object({
   slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Invalid slug"),
@@ -61,6 +81,7 @@ export interface ImportPreview {
   validRows: ImportRow[];
   invalidRows: { row: number; raw: Record<string, string>; errors: ImportRowError[] }[];
   errorReportCsv: string;
+  moneyUnits: ImportMoneyUnits;
 }
 
 /** Minimal CSV parser: quoted fields, escaped quotes, CRLF. No external dep. */
@@ -122,27 +143,60 @@ function toIntOrNull(value: string): number | null | undefined {
   return Number.isInteger(n) ? n : undefined;
 }
 
+/**
+ * Decimal taka string -> integer poisha, exact string math (no floats):
+ * "1250" -> 125000, "1250.5" -> 125050, "1250.505" -> 125051 (half-up
+ * at the third decimal). Returns undefined for anything that is not a
+ * plain non-negative decimal (negatives, thousand separators, text).
+ */
+export function takaStringToPoisha(value: string): number | undefined {
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(value.trim());
+  if (!match) return undefined;
+  const whole = Number(match[1] as string);
+  const frac = match[2] ?? "";
+  let cents = Number((frac + "00").slice(0, 2));
+  if (frac.length > 2 && Number(frac[2] as string) >= 5) cents += 1;
+  return whole * 100 + cents;
+}
+
+function detectMoneyUnits(rows: Record<string, string>[]): ImportMoneyUnits {
+  const detect = (poishaKey: string, takaKey: string): MoneyUnit => {
+    const usesPoisha = rows.some((r) => (r[poishaKey] ?? "").trim() !== "");
+    const usesTaka = rows.some((r) => (r[takaKey] ?? "").trim() !== "");
+    if (usesPoisha && usesTaka) return "mixed";
+    if (usesPoisha) return "poisha";
+    if (usesTaka) return "taka";
+    return "none";
+  };
+  return {
+    price: detect("price_poisha", "price_taka"),
+    compareAt: detect("compare_at_poisha", "compare_at_taka"),
+    cost: detect("cost_poisha", "cost_taka"),
+  };
+}
+
 export function previewImport(csvText: string, existingSkus: Set<string>): ImportPreview {
   const { headers, rows } = parseCsv(csvText);
-  const missing = ["slug", "title_bn", "title_en", "sku", "price_poisha", "stock"].filter(
+  const moneyUnits = detectMoneyUnits(rows);
+  const missing = ["slug", "title_bn", "title_en", "sku", "stock"].filter(
     (h) => !headers.includes(h),
   );
+  // Price is required, but EITHER unit's column satisfies the requirement.
+  if (!headers.includes("price_poisha") && !headers.includes("price_taka")) {
+    missing.push("price_poisha / price_taka");
+  }
   if (missing.length > 0) {
+    const invalidRows = rows.map((raw, idx) => ({
+      row: idx + 2,
+      raw,
+      errors: missing.map((f) => ({ row: idx + 2, field: f, message: `Missing required column: ${f}` })),
+    }));
     return {
       totalRows: rows.length,
       validRows: [],
-      invalidRows: rows.map((raw, idx) => ({
-        row: idx + 2,
-        raw,
-        errors: missing.map((f) => ({ row: idx + 2, field: f, message: `Missing required column: ${f}` })),
-      })),
-      errorReportCsv: buildErrorReportCsv(
-        rows.map((raw, idx) => ({
-          row: idx + 2,
-          raw,
-          errors: missing.map((f) => ({ row: idx + 2, field: f, message: `Missing required column: ${f}` })),
-        })),
-      ),
+      invalidRows,
+      errorReportCsv: buildErrorReportCsv(invalidRows),
+      moneyUnits,
     };
   }
   const validRows: ImportRow[] = [];
@@ -151,15 +205,62 @@ export function previewImport(csvText: string, existingSkus: Set<string>): Impor
   rows.forEach((raw, idx) => {
     const rowNo = idx + 2;
     const errors: ImportRowError[] = [];
-    const price = toIntOrNull(raw.price_poisha ?? "");
+    // Resolve one money field from its poisha OR taka cell. Both cells
+    // set in the same row = a conflict error (never guess a unit);
+    // both empty = null (the caller decides whether that is an error).
+    const resolveMoney = (poishaKey: string, takaKey: string): number | null => {
+      const poishaCell = (raw[poishaKey] ?? "").trim();
+      const takaCell = (raw[takaKey] ?? "").trim();
+      if (poishaCell !== "" && takaCell !== "") {
+        errors.push({
+          row: rowNo,
+          field: poishaKey,
+          message: `Both ${poishaKey} and ${takaKey} are set — use only one money unit per row`,
+        });
+        return null;
+      }
+      if (takaCell !== "") {
+        if (takaCell.startsWith("-")) {
+          errors.push({ row: rowNo, field: takaKey, message: "Must not be negative" });
+          return null;
+        }
+        const converted = takaStringToPoisha(takaCell);
+        if (converted === undefined) {
+          errors.push({ row: rowNo, field: takaKey, message: "Must be a valid taka amount (e.g. 1250 or 1250.50)" });
+          return null;
+        }
+        return converted;
+      }
+      if (poishaCell !== "") {
+        const parsedInt = toIntOrNull(poishaCell);
+        if (parsedInt === undefined || parsedInt === null) {
+          errors.push({ row: rowNo, field: poishaKey, message: "Must be an integer (poisha)" });
+          return null;
+        }
+        if (parsedInt < 0) {
+          errors.push({ row: rowNo, field: poishaKey, message: "Must not be negative" });
+          return null;
+        }
+        return parsedInt;
+      }
+      return null;
+    };
+    const price = resolveMoney("price_poisha", "price_taka");
+    if (price === null && !errors.some((e) => e.field === "price_poisha" || e.field === "price_taka")) {
+      errors.push({ row: rowNo, field: "price_poisha / price_taka", message: "Price is required (price_poisha or price_taka)" });
+    }
+    const compareAt = resolveMoney("compare_at_poisha", "compare_at_taka");
+    const cost = resolveMoney("cost_poisha", "cost_taka");
     const stock = toIntOrNull(raw.stock ?? "");
-    if (price === undefined) errors.push({ row: rowNo, field: "price_poisha", message: "Must be an integer (poisha)" });
     if (stock === undefined) errors.push({ row: rowNo, field: "stock", message: "Must be an integer" });
     const parsed = rowSchema.safeParse({
       ...raw,
-      price_poisha: price ?? -1,
-      compare_at_poisha: toIntOrNull(raw.compare_at_poisha ?? ""),
-      cost_poisha: toIntOrNull(raw.cost_poisha ?? ""),
+      // price === null always comes with an explicit error above
+      // (conflict / invalid / negative / missing), so 0 is a safe
+      // placeholder that avoids a duplicate generic zod complaint.
+      price_poisha: price ?? 0,
+      compare_at_poisha: compareAt,
+      cost_poisha: cost,
       stock: stock ?? -1,
     });
     if (!parsed.success) {
@@ -177,7 +278,7 @@ export function previewImport(csvText: string, existingSkus: Set<string>): Impor
       validRows.push(parsed.data);
     }
   });
-  return { totalRows: rows.length, validRows, invalidRows, errorReportCsv: buildErrorReportCsv(invalidRows) };
+  return { totalRows: rows.length, validRows, invalidRows, errorReportCsv: buildErrorReportCsv(invalidRows), moneyUnits };
 }
 
 export function buildErrorReportCsv(invalidRows: ImportPreview["invalidRows"]): string {

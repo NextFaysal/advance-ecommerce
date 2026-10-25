@@ -93,3 +93,34 @@ export async function listCategories(): Promise<Category[]> {
   if (!repo) return [];
   return repo.getCategories();
 }
+
+/**
+ * ADMIN edit-form read: one product by id in the full admin shape —
+ * variants INCLUDE costPoisha, because the edit form must pre-fill the
+ * cost fields. This is a server-component read for staff-only admin
+ * pages (the product editor); it must never be used on a public
+ * surface. Returns null when the product does not exist (or was
+ * soft-deleted) or the DB is not ready — the page renders an honest
+ * not-found state, never mock data.
+ */
+export async function getProductForAdminEdit(id: string): Promise<Product | null> {
+  const repo = await tryCatalogRepository();
+  if (!repo) return null;
+  return repo.getProductById(id);
+}
+
+/**
+ * Brand names already used by live products, for the editor's brand
+ * datalist. The catalog repository has no brand-list method (brands
+ * are find-or-create by name inside create/update), so the suggestion
+ * set is derived from the products themselves; a merchant can always
+ * type a brand-new name and the server will create it.
+ */
+export async function listBrandNames(): Promise<string[]> {
+  const products = await listAllProducts();
+  const names = new Set<string>();
+  for (const p of products) {
+    if (p.brandName) names.add(p.brandName);
+  }
+  return [...names].sort((a, b) => a.localeCompare(b));
+}

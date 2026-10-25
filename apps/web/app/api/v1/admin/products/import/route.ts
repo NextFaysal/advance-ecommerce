@@ -4,13 +4,14 @@ import { apiError, requireAdminSession } from "@/catalog/api";
 import { hasPermission } from "@/lib/rbac";
 import { previewImport } from "@/catalog/import";
 
-// POST /api/v1/admin/products/import — Step 10 preview only.
+// POST /api/v1/admin/products/import — preview only (Step 10; P4).
 // Body: { csv: string, existingSkus?: string[] }
 // Returns a preview: valid rows, invalid rows (never silently
-// dropped), and an error-report CSV the admin can download and fix.
-// Actual persistence happens only after the admin confirms the
-// preview — that confirm step creates products via the admin
-// products API, one product at a time, with audit + ledger.
+// dropped), an error-report CSV the admin can download and fix, and
+// the detected money unit per money column (poisha / taka / mixed).
+// Nothing is persisted here — persistence happens only when the
+// admin confirms via POST ./import/confirm, which re-parses the CSV
+// server-side and creates the valid rows as DRAFT products.
 const bodySchema = z.object({
   csv: z.string().min(1),
   existingSkus: z.array(z.string()).optional(),
@@ -39,6 +40,7 @@ export async function POST(req: Request) {
       validRows: preview.validRows,
       invalidRows: preview.invalidRows,
       errorReportCsv: preview.errorReportCsv,
+      moneyUnits: preview.moneyUnits,
     },
   });
 }
