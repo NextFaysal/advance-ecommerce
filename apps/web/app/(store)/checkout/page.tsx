@@ -22,6 +22,16 @@
 // the built-in default rates. There is no public settings endpoint,
 // so the preview is labelled আনুমানিক; the server's engine result
 // (live Settings rates, real order weight) is authoritative.
+//
+// OD3 (doc 19): presentation only — the form sections are grouped
+// into numbered visual steps (১ তথ্য → ২ ঠিকানা → ৩ ডেলিভারি →
+// ৪ পেমেন্ট) under a slim progress header, the cart summary becomes
+// a sticky right rail on desktop, delivery slots render as radio
+// cards, and the gift toggle becomes a card. Every field name, the
+// validateCheckoutForm() payload, the abandoned-capture debounce and
+// the checkoutSessionKey flow are exactly as before; the mobile
+// sticky bar's button is a form-associated submit for the SAME form
+// (one submit path — see the bar's comment below).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Cart } from "../../../src/cart/types";
@@ -57,6 +67,10 @@ const INPUT_CLASS =
   "h-12 w-full rounded-xl border border-border bg-card px-4 text-sm text-text-main outline-none transition placeholder:text-text-subtle focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30";
 const PAYMENT_TILE_CLASS =
   "inline-flex h-[52px] cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-3 transition has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50 has-[:checked]:ring-1 has-[:checked]:ring-brand-500/40";
+// Delivery-slot radio cards (OD3): same checked-tile language as the
+// payment tiles, sized for a Bn label + En/time line.
+const SLOT_CARD_CLASS =
+  "flex min-h-[52px] cursor-pointer items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 py-2.5 transition has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50 has-[:checked]:ring-1 has-[:checked]:ring-brand-500/40";
 
 type PlacedOrder = {
   orderNo: string;
@@ -423,15 +437,11 @@ export default function CheckoutPage() {
     }
   }
 
-  // The sticky summary bar never submits anything itself — it scrolls to
-  // (and focuses) the one real submit button, so validation, the
-  // idempotency key, and the stock guard all stay in a single place.
-  function scrollToSubmit() {
-    const el = document.getElementById("checkout-submit");
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-    window.setTimeout(() => el.focus({ preventScroll: true }), 350);
-  }
+  // The sticky summary bar's button is a form-associated submit
+  // (form="checkout-form") for THIS form — the same single submit
+  // path as the in-form button: same onSubmit, same native + custom
+  // validation, same idempotency key, same stock guard. There is no
+  // second submit handler anywhere (OD3).
 
   if (!loaded) {
     return (
@@ -523,13 +533,43 @@ export default function CheckoutPage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-[720px] px-4 pb-32 pt-6 sm:px-6 lg:pb-12">
+    <main className="mx-auto w-full max-w-[720px] px-4 pb-32 pt-6 sm:px-6 lg:max-w-[1080px] lg:pb-12">
       <h1 className="font-display text-h1">চেকআউট — এক পেজেই অর্ডার</h1>
       <p className="mt-2 text-sm leading-6 text-text-muted">
         ফোন নম্বর আবশ্যক, ইমেইল ঐচ্ছিক। ঠিকানা দিন ধাপে ধাপে: বিভাগ › জেলা › উপজেলা › ইউনিয়ন (ঐচ্ছিক)।
       </p>
 
-      <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label="আপনার কার্ট">
+      {/* Progress header (OD3): the four steps of the single-page
+          form below, as a slim visual rhythm — not links or pages. */}
+      <nav aria-label="চেকআউটের ধাপ" className="mt-5">
+        <ol className="flex flex-wrap items-center gap-x-2 gap-y-2">
+          {(
+            [
+              { n: "১", label: "তথ্য", icon: "user" },
+              { n: "২", label: "ঠিকানা", icon: "home" },
+              { n: "৩", label: "ডেলিভারি", icon: "truck" },
+              { n: "৪", label: "পেমেন্ট", icon: "credit-card" },
+            ] as const
+          ).map((s, i) => (
+            <li key={s.n} className="flex items-center gap-2">
+              {i > 0 && <Icon name="chevron-right" size={14} className="text-text-subtle" />}
+              <span className="flex items-center gap-1.5 text-sm font-medium text-text-main">
+                <span aria-hidden="true" className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">
+                  {s.n}
+                </span>
+                <Icon name={s.icon} size={15} className="text-brand-600" />
+                {s.label}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </nav>
+
+      {/* Summary rail (OD3): on mobile the summary keeps its place
+          above the form; on desktop it becomes the sticky right rail.
+          The figures are the page's existing preview computation. */}
+      <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="rounded-2xl border border-border bg-card p-5 shadow-card lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1" aria-label="আপনার কার্ট">
         <h2 className="text-base font-semibold text-text-main">আপনার কার্ট</h2>
         <ul className="mt-3 divide-y divide-border">
           {items.map((item) => (
@@ -569,7 +609,14 @@ export default function CheckoutPage() {
         )}
       </section>
 
-      <form ref={formRef} onSubmit={onSubmit} onChange={scheduleCapture} className="mt-6 grid gap-4">
+      <form ref={formRef} id="checkout-form" onSubmit={onSubmit} onChange={scheduleCapture} className="grid gap-4 lg:col-start-1 lg:row-start-1">
+        {/* Step ১ — তথ্য */}
+        <section aria-label="ধাপ ১: আপনার তথ্য" className="rounded-2xl border border-border bg-card p-5 shadow-card">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-text-main">
+            <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">১</span>
+            আপনার তথ্য
+          </h2>
+          <div className="mt-4 grid gap-4">
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-text-main">আপনার নাম *</span>
           <input name="customerName" required autoComplete="name" className={INPUT_CLASS} />
@@ -590,6 +637,15 @@ export default function CheckoutPage() {
           <span className="mb-1.5 block text-sm font-medium text-text-main">ইমেইল (ঐচ্ছিক)</span>
           <input name="email" type="email" inputMode="email" autoComplete="email" className={INPUT_CLASS} />
         </label>
+          </div>
+        </section>
+        {/* Step ২ — ঠিকানা */}
+        <section aria-label="ধাপ ২: ঠিকানা" className="rounded-2xl border border-border bg-card p-5 shadow-card">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-text-main">
+            <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">২</span>
+            ঠিকানা
+          </h2>
+          <div className="mt-4 grid gap-4">
         {geoTree ? (
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-text-main">
@@ -718,6 +774,15 @@ export default function CheckoutPage() {
           <span className="mb-1.5 block text-sm font-medium text-text-main">নোট (ঐচ্ছিক)</span>
           <input name="note" className={INPUT_CLASS} />
         </label>
+          </div>
+        </section>
+        {/* Step ৩ — ডেলিভারি */}
+        <section aria-label="ধাপ ৩: ডেলিভারি" className="rounded-2xl border border-border bg-card p-5 shadow-card">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-text-main">
+            <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">৩</span>
+            ডেলিভারি
+          </h2>
+          <div className="mt-4 grid gap-4">
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-text-main">ডেলিভারি মাধ্যম</span>
           <select
@@ -739,23 +804,43 @@ export default function CheckoutPage() {
             the shop has slots configured/fetched. Neither choice
             changes the price — there is no slot fee and no gift fee. */}
         {slots.length > 0 && (
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-text-main">ডেলিভারির সময় (ঐচ্ছিক)</span>
-            <select
-              value={deliverySlotId}
-              onChange={(e) => setDeliverySlotId(e.target.value)}
-              className={INPUT_CLASS}
-            >
-              <option value="">যেকোনো সময়</option>
+          <fieldset className="m-0 border-0 p-0">
+            <legend className="mb-2 text-sm font-medium text-text-main">ডেলিভারির সময় (ঐচ্ছিক)</legend>
+            {/* Slot radio cards (OD3): the radios stay UNNAMED and
+                state-bound exactly like the select they replace —
+                deliverySlotId still reaches the payload from state,
+                never from FormData. */}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className={SLOT_CARD_CLASS}>
+                <input
+                  type="radio"
+                  checked={deliverySlotId === ""}
+                  onChange={() => setDeliverySlotId("")}
+                  className="h-4 w-4 shrink-0 accent-brand-600"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-text-main">যেকোনো সময়</span>
+                  <span className="block text-xs text-text-muted">Any time</span>
+                </span>
+              </label>
               {slots.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.labelBn} / {s.labelEn}
-                </option>
+                <label key={s.id} className={SLOT_CARD_CLASS}>
+                  <input
+                    type="radio"
+                    checked={deliverySlotId === s.id}
+                    onChange={() => setDeliverySlotId(s.id)}
+                    className="h-4 w-4 shrink-0 accent-brand-600"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-text-main">{s.labelBn}</span>
+                    <span className="block text-xs text-text-muted">{s.labelEn}</span>
+                  </span>
+                </label>
               ))}
-            </select>
-          </label>
+            </div>
+          </fieldset>
         )}
-        <div className="block">
+        <div className="rounded-xl border border-border bg-surface-2/60 px-4 py-3.5">
           <label className="flex cursor-pointer items-center gap-2.5 text-sm font-medium text-text-main">
             <input
               type="checkbox"
@@ -776,6 +861,15 @@ export default function CheckoutPage() {
             />
           )}
         </div>
+          </div>
+        </section>
+        {/* Step ৪ — পেমেন্ট */}
+        <section aria-label="ধাপ ৪: পেমেন্ট" className="rounded-2xl border border-border bg-card p-5 shadow-card">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-text-main">
+            <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">৪</span>
+            পেমেন্ট
+          </h2>
+          <div className="mt-4 grid gap-4">
         <fieldset className="m-0 border-0 p-0">
           <legend className="mb-2 text-sm font-semibold text-text-main">পেমেন্ট মাধ্যম</legend>
           <div className="flex flex-wrap gap-2">
@@ -820,7 +914,10 @@ export default function CheckoutPage() {
         >
           {submitting ? "অর্ডার করা হচ্ছে…" : "অর্ডার নিশ্চিত করুন"}
         </button>
+          </div>
+        </section>
       </form>
+      </div>
 
       {errors.length > 0 && (
         <ul role="alert" className="mt-4 space-y-1 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
@@ -832,7 +929,10 @@ export default function CheckoutPage() {
 
       {/* Sticky order-summary bar — small screens only, REAL cart totals.
           Sits directly above the shell's mobile bottom nav (bottom-16);
-          the desktop flow keeps the in-page summary + submit, unchanged. */}
+          the desktop flow keeps the in-page summary rail + in-form
+          submit. The bar's button is a form-associated submit for
+          #checkout-form (OD3) — the SAME single submit path as the
+          in-form button, with the same disabled conditions. */}
       <div className="fixed inset-x-0 bottom-16 z-40 border-t border-border bg-card/95 px-4 py-3 shadow-[0_-4px_16px_rgba(49,46,129,0.08)] backdrop-blur lg:hidden">
         <div className="mx-auto flex max-w-[720px] items-center gap-3">
           <div className="min-w-0 flex-1">
@@ -842,12 +942,13 @@ export default function CheckoutPage() {
             </p>
           </div>
           <button
-            type="button"
-            onClick={scrollToSubmit}
-            className="brand-gradient flex h-12 shrink-0 items-center gap-1.5 rounded-xl px-5 text-sm font-semibold text-white shadow-md transition hover:opacity-90"
+            type="submit"
+            form="checkout-form"
+            disabled={stockProblems.length > 0 || submitting}
+            className="brand-gradient flex h-12 shrink-0 items-center gap-1.5 rounded-xl px-5 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            অর্ডার করুন
-            <Icon name="chevron-down" size={16} strokeWidth={2} />
+            {submitting ? "অর্ডার করা হচ্ছে…" : "অর্ডার করুন"}
+            <Icon name="arrow-right" size={16} strokeWidth={2} />
           </button>
         </div>
       </div>

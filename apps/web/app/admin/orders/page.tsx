@@ -35,6 +35,15 @@ import { MANUAL_ORDER_STEPS } from "../../../src/orders/manual-order";
 import { displayPhone, riskLevel } from "../../../src/orders/customer";
 import { formatBdt } from "../../../src/checkout/pricing";
 import { BulkActionBar } from "../../../src/orders/components/BulkActionBar";
+import { OrderStatusBadge } from "../../../src/orders/components/OrderStatusBadge";
+import { ORDER_STATUS_VISUAL } from "../../../src/orders/components/labels";
+import { ORDER_DENSITY } from "../../../src/orders/components/density";
+import { OrderPreviewDrawer } from "./order-preview";
+import {
+  funnelChips,
+  itemsSummaryLabel,
+  orderAgeLabel,
+} from "./list-helpers";
 import { ManualOrderBuilder } from "./manual-order-builder";
 import { OrderImportCard } from "./order-import-card";
 import { StaleUnpaidPanel } from "./stale-unpaid-panel";
@@ -43,6 +52,7 @@ import { KpiPanel } from "./kpi-panel";
 import { PosSalesPanel } from "./pos-sales-panel";
 import { DraftsPanel } from "./drafts-panel";
 import { PageHeader } from "@/components/ui/page-header";
+import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -62,22 +72,10 @@ const STATUSES: ("ALL" | OrderStatus)[] = [
   "CANCELLED", "REFUNDED", "EXCHANGED",
 ];
 
-const STATUS_META: Record<string, { label: string; tone: "brand" | "success" | "warning" | "danger" | "info" | "neutral"; dot: string }> = {
-  ALL: { label: "সব", tone: "brand", dot: "#6366F1" },
-  PENDING: { label: "অপেক্ষমাণ", tone: "warning", dot: "#F59E0B" },
-  CONFIRMED: { label: "নিশ্চিত", tone: "info", dot: "#0EA5E9" },
-  PROCESSING: { label: "প্রসেসিং", tone: "brand", dot: "#8B5CF6" },
-  PACKED: { label: "প্যাক করা", tone: "brand", dot: "#7C3AED" },
-  SHIPPED: { label: "পাঠানো হয়েছে", tone: "info", dot: "#6366F1" },
-  DELIVERED: { label: "ডেলিভার্ড", tone: "success", dot: "#10B981" },
-  FAILED: { label: "ব্যর্থ", tone: "danger", dot: "#F43F5E" },
-  RETURN_REQUESTED: { label: "রিটার্ন অনুরোধ", tone: "warning", dot: "#F97316" },
-  RETURNING: { label: "রিটার্ন আসছে", tone: "warning", dot: "#F97316" },
-  RETURNED: { label: "রিটার্ন হয়েছে", tone: "neutral", dot: "#94A3B8" },
-  CANCELLED: { label: "বাতিল", tone: "neutral", dot: "#94A3B8" },
-  REFUNDED: { label: "রিফান্ড", tone: "info", dot: "#14B8A6" },
-  EXCHANGED: { label: "এক্সচেঞ্জ", tone: "info", dot: "#14B8A6" },
-};
+/* OD1 (doc 19): the page's private STATUS_META map is gone — status
+ *  language now comes from the OD0 design-system contract
+ *  (ORDER_STATUS_VISUAL + OrderStatusBadge in src/orders/components),
+ *  so the list, kanban, preview and detail all render one language. */
 
 const PAYMENT_METHOD_LABEL: Record<string, string> = {
   cod: "ক্যাশ অন ডেলিভারি",
@@ -120,18 +118,21 @@ function SortHeader({
   sortKey,
   sort,
   onSort,
+  cellClassName,
 }: {
   label: string;
   sortKey: "date" | "total" | "status";
   sort: { key: "date" | "total" | "status"; dir: "asc" | "desc" } | null;
   onSort: (key: "date" | "total" | "status") => void;
+  /** OD0 density token (ORDER_DENSITY[density].headerCell). */
+  cellClassName: string;
 }) {
   const active = sort?.key === sortKey;
   return (
     <th
       scope="col"
       aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
-      className="px-4 py-3 text-caption font-semibold text-text-muted"
+      className={`${cellClassName} text-caption font-semibold text-text-muted`}
     >
       <button
         type="button"
@@ -155,6 +156,14 @@ function SortHeader({
       </button>
     </th>
   );
+}
+
+/** OD1 preview guard: a row click opens the slide-over ONLY when it
+ *  did not land on an interactive descendant (the order-no link, the
+ *  selection checkbox, a button) — those keep their own behaviour. */
+function isPlainRowClick(e: { target: EventTarget | null }): boolean {
+  const t = e.target as HTMLElement | null;
+  return !t?.closest("a, input, button, select, textarea, label");
 }
 
 /** Map the table's sort state to the list API's `sort` param
@@ -193,6 +202,9 @@ export default function AdminOrdersPage() {
   /* Bulk selection: ids PERSIST across page changes by design —
    * staff collect orders from several pages, then bulk-act / print. */
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  /* OD1 slide-over preview: the id of the order shown in the drawer,
+   * null = closed. The drawer fetches the detail payload itself. */
+  const [previewId, setPreviewId] = useState<string | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -314,11 +326,8 @@ export default function AdminOrdersPage() {
   /* Chip counts come from meta.counts — SQL aggregates over the set
    * filtered by everything EXCEPT the status param (see the API), so
    * a chip shows what switching to that status would yield under the
-   * current search. Undefined until the first response lands. */
-  const countFor = useCallback(
-    (s: "ALL" | OrderStatus): number | undefined => counts?.[s],
-    [counts],
-  );
+   * current search. funnelChips (list-helpers) only orders/dims them;
+   * undefined until the first response lands. */
 
   const selectedIds = useMemo(() => [...selected], [selected]);
   const allVisibleSelected = orders.length > 0 && orders.every((o) => selected.has(o.id));
@@ -390,21 +399,24 @@ export default function AdminOrdersPage() {
 
       {loadState === "ready" && (
         <>
-          {/* Filter bar */}
+          {/* Filter bar — OD1 (doc 19): search is the HERO control
+           *  (full-width, taller); view/density toggles move to their
+           *  own control row with the page summary; the status chips
+           *  below become the funnel strip. */}
           <Card className="mb-4 shadow-card">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative min-w-[220px] flex-1">
-                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle">
-                  <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
-                </svg>
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="অর্ডার নম্বর, নাম বা জেলা খুঁজুন…"
-                  aria-label="অর্ডার খুঁজুন"
-                  className="h-11 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
-                />
-              </div>
+            <div className="relative">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-text-subtle">
+                <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="অর্ডার নম্বর, নাম, ফোনের শেষাংশ বা জেলা খুঁজুন…"
+                aria-label="অর্ডার খুঁজুন"
+                className="h-12 w-full rounded-md border border-border bg-card pl-11 pr-3 text-base shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+              />
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
               <div className="flex rounded-md bg-surface-2 p-1" role="group" aria-label="ভিউ বেছে নিন">
                 {(["table", "kanban"] as const).map((v) => (
                   <button
@@ -437,30 +449,53 @@ export default function AdminOrdersPage() {
                   ))}
                 </div>
               ) : null}
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-1.5">
-              {STATUSES.map((s) => {
-                const meta = STATUS_META[s] ?? { label: s, tone: "neutral" as const, dot: "#94A3B8" };
-                const active = filter === s;
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => { setFilter(s); setPage(1); }}
-                    aria-pressed={active}
-                    className={`flex min-h-[32px] items-center gap-1.5 rounded-full px-3 text-caption font-semibold transition motion-fast ${
-                      active ? "bg-brand-600 text-white shadow-sm" : "border border-border bg-card text-text-muted hover:border-brand-300 hover:text-brand-700"
-                    }`}
-                  >
-                    <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: active ? "#fff" : meta.dot }} />
-                    {meta.label}
-                    <span className={`font-mono tabular-nums ${active ? "text-white/85" : "text-text-subtle"}`}>{countFor(s) ?? "—"}</span>
-                  </button>
-                );
-              })}
               <span className="ml-auto text-caption text-text-muted">
                 এই পেজে {orders.length}টি · ফিল্টার অনুযায়ী মোট {total}টি · পেজ {page}/{totalPages}
               </span>
+            </div>
+            {/* Funnel strip (OD1): ALL + the 13 statuses in lifecycle
+             *  order. Counts come from meta.counts — the list-v2 SQL
+             *  aggregates over the set filtered by everything EXCEPT
+             *  status — passed through untouched. Explicit zeros are
+             *  dimmed, never hidden. Language/icons: ORDER_STATUS_VISUAL. */}
+            <div className="mt-3 flex flex-wrap items-center gap-1.5" role="group" aria-label="স্ট্যাটাস ফিল্টার">
+              {funnelChips(counts).map((chip) => {
+                const active = filter === chip.status;
+                if (chip.status === "ALL") {
+                  return (
+                    <button
+                      key="ALL"
+                      type="button"
+                      onClick={() => { setFilter("ALL"); setPage(1); }}
+                      aria-pressed={active}
+                      className={`flex min-h-[32px] items-center gap-1.5 rounded-full px-3 text-caption font-semibold transition motion-fast ${
+                        active ? "bg-brand-600 text-white shadow-sm" : "border border-border bg-card text-text-muted hover:border-brand-300 hover:text-brand-700"
+                      }`}
+                    >
+                      সব
+                      <span className={`font-mono tabular-nums ${active ? "text-white/85" : "text-text-subtle"}`}>{chip.count ?? "—"}</span>
+                    </button>
+                  );
+                }
+                const visual = ORDER_STATUS_VISUAL[chip.status];
+                return (
+                  <button
+                    key={chip.status}
+                    type="button"
+                    onClick={() => { setFilter(chip.status); setPage(1); }}
+                    aria-pressed={active}
+                    className={`flex min-h-[32px] items-center gap-1.5 rounded-full px-3 text-caption font-semibold transition motion-fast ${
+                      active
+                        ? "bg-brand-600 text-white shadow-sm"
+                        : `border border-border bg-card text-text-muted hover:border-brand-300 hover:text-brand-700 ${chip.dimmed ? "opacity-55 hover:opacity-100" : ""}`
+                    }`}
+                  >
+                    <Icon name={visual.icon} size={12} className={active ? "text-white" : "text-text-subtle"} />
+                    {visual.labelBn}
+                    <span className={`font-mono tabular-nums ${active ? "text-white/85" : "text-text-subtle"}`}>{chip.count ?? "—"}</span>
+                  </button>
+                );
+              })}
             </div>
             {/* Table v2: saved views + column visibility (table view only
              *  for columns; views also make sense from kanban, so the bar
@@ -526,8 +561,12 @@ export default function AdminOrdersPage() {
             </span>
           </div>
 
-          {/* Bulk bar — renders itself only when orders are selected */}
-          <div className="mb-4 empty:mb-0">
+          {/* Bulk bar — renders itself only when orders are selected.
+           *  OD1: on phones it docks to the bottom of the viewport
+           *  while a selection exists, so bulk actions stay reachable
+           *  mid-scroll; desktop keeps the in-flow position. The bar
+           *  component and its job behaviour are unchanged. */}
+          <div className={selected.size > 0 ? "mb-4 max-md:fixed max-md:inset-x-3 max-md:bottom-3 max-md:z-40" : "mb-4 empty:mb-0"}>
             <BulkActionBar selectedIds={selectedIds} onClear={() => setSelected(new Set())} onDone={() => void load()} />
           </div>
 
@@ -560,10 +599,10 @@ export default function AdminOrdersPage() {
             {/* Desktop table — hidden under md, where the card list below
              *  takes over so a 360px screen never scrolls sideways. */}
             <div className="hidden overflow-auto rounded-lg border border-border bg-card shadow-card md:block" style={{ maxHeight: "72vh" }}>
-              <table className={`w-full min-w-[860px] border-collapse text-sm ${density === "compact" ? "[&_td]:py-1.5 [&_th]:py-2" : ""}`}>
+              <table className="w-full min-w-[860px] border-collapse text-sm">
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-surface-2 text-left [&>th]:border-b [&>th]:border-border">
-                    <th scope="col" className="w-11 px-4 py-3">
+                    <th scope="col" className={`w-11 ${ORDER_DENSITY[density].headerCell}`}>
                       <input
                         type="checkbox"
                         checked={allVisibleSelected}
@@ -572,34 +611,37 @@ export default function AdminOrdersPage() {
                         className="h-4 w-4 rounded accent-[#4F46E5]"
                       />
                     </th>
-                    <SortHeader label="অর্ডার" sortKey="date" sort={sort} onSort={toggleSort} />
+                    <SortHeader label="অর্ডার" sortKey="date" sort={sort} onSort={toggleSort} cellClassName={ORDER_DENSITY[density].headerCell} />
                     {orderCols.isVisible("customer") ? (
-                      <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">গ্রাহক</th>
+                      <th scope="col" className={`${ORDER_DENSITY[density].headerCell} text-caption font-semibold text-text-muted`}>গ্রাহক</th>
                     ) : null}
                     {orderCols.isVisible("total") ? (
-                      <SortHeader label="মোট" sortKey="total" sort={sort} onSort={toggleSort} />
+                      <SortHeader label="মোট" sortKey="total" sort={sort} onSort={toggleSort} cellClassName={ORDER_DENSITY[density].headerCell} />
                     ) : null}
                     {orderCols.isVisible("payment") ? (
-                      <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">পেমেন্ট</th>
+                      <th scope="col" className={`${ORDER_DENSITY[density].headerCell} text-caption font-semibold text-text-muted`}>পেমেন্ট</th>
                     ) : null}
                     {orderCols.isVisible("status") ? (
-                      <SortHeader label="স্ট্যাটাস" sortKey="status" sort={sort} onSort={toggleSort} />
+                      <SortHeader label="স্ট্যাটাস" sortKey="status" sort={sort} onSort={toggleSort} cellClassName={ORDER_DENSITY[density].headerCell} />
                     ) : null}
                     {orderCols.isVisible("risk") ? (
-                      <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">ঝুঁকি</th>
+                      <th scope="col" className={`${ORDER_DENSITY[density].headerCell} text-caption font-semibold text-text-muted`}>ঝুঁকি</th>
                     ) : null}
                     {orderCols.isVisible("courier") ? (
-                      <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">কুরিয়ার</th>
+                      <th scope="col" className={`${ORDER_DENSITY[density].headerCell} text-caption font-semibold text-text-muted`}>কুরিয়ার</th>
                     ) : null}
                   </tr>
                 </thead>
                 <tbody>
                   {orders.map((o) => {
-                    const meta = STATUS_META[o.status] ?? { label: o.status, tone: "neutral" as const, dot: "#94A3B8" };
                     const level = riskLevel(o.riskScore);
                     return (
-                      <tr key={o.id} className={`border-t border-border transition motion-fast hover:bg-surface-2/70 ${selected.has(o.id) ? "bg-brand-50/60" : ""}`}>
-                        <td className="px-4 py-3">
+                      <tr
+                        key={o.id}
+                        onClick={(e) => { if (isPlainRowClick(e)) setPreviewId(o.id); }}
+                        className={`cursor-pointer border-t border-border transition motion-fast hover:bg-surface-2/70 ${selected.has(o.id) ? "bg-brand-50/60" : ""}`}
+                      >
+                        <td className={ORDER_DENSITY[density].cell}>
                           <input
                             type="checkbox"
                             checked={selected.has(o.id)}
@@ -608,23 +650,23 @@ export default function AdminOrdersPage() {
                             className="h-4 w-4 rounded accent-[#4F46E5]"
                           />
                         </td>
-                        <td className="px-4 py-3">
+                        <td className={ORDER_DENSITY[density].cell}>
                           <a href={`/admin/orders/${o.id}`} className="font-mono text-small font-semibold text-brand-700 hover:underline">
                             {o.orderNo}
                           </a>
                           <span className="block text-caption text-text-subtle">{o.address.district}, {o.address.division}</span>
                         </td>
                         {orderCols.isVisible("customer") ? (
-                          <td className="px-4 py-3">
+                          <td className={ORDER_DENSITY[density].cell}>
                             <span className="block font-medium leading-snug">{o.customerName}</span>
                             <span className="block text-caption text-text-muted">{displayPhone(o.customerPhone, false)}</span>
                           </td>
                         ) : null}
                         {orderCols.isVisible("total") ? (
-                          <td className="px-4 py-3 font-mono font-semibold tabular-nums">{formatBdt(o.totalPoisha)}</td>
+                          <td className={`${ORDER_DENSITY[density].cell} font-mono font-semibold tabular-nums`}>{formatBdt(o.totalPoisha)}</td>
                         ) : null}
                         {orderCols.isVisible("payment") ? (
-                          <td className="px-4 py-3">
+                          <td className={ORDER_DENSITY[density].cell}>
                             <span className="flex flex-wrap items-center gap-1.5">
                               <Badge tone="neutral">{PAYMENT_METHOD_LABEL[o.paymentMethod] ?? o.paymentMethod}</Badge>
                               {UI_PAYMENT_STATUSES.includes(o.paymentStatus)
@@ -634,15 +676,12 @@ export default function AdminOrdersPage() {
                           </td>
                         ) : null}
                         {orderCols.isVisible("status") ? (
-                          <td className="px-4 py-3">
-                            <Badge tone={meta.tone}>
-                              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: meta.dot }} />
-                              {meta.label}
-                            </Badge>
+                          <td className={ORDER_DENSITY[density].cell}>
+                            <OrderStatusBadge status={o.status} />
                           </td>
                         ) : null}
                         {orderCols.isVisible("risk") ? (
-                          <td className="px-4 py-3">
+                          <td className={ORDER_DENSITY[density].cell}>
                             <span className="flex items-center gap-1.5">
                               <Badge tone={level === "High" ? "danger" : level === "Medium" ? "warning" : "success"}>
                                 {level === "High" ? "বেশি ঝুঁকি" : level === "Medium" ? "মাঝারি ঝুঁকি" : "কম ঝুঁকি"}
@@ -652,7 +691,7 @@ export default function AdminOrdersPage() {
                           </td>
                         ) : null}
                         {orderCols.isVisible("courier") ? (
-                          <td className="px-4 py-3 text-text-muted">{o.courier ?? "—"}</td>
+                          <td className={`${ORDER_DENSITY[density].cell} text-text-muted`}>{o.courier ?? "—"}</td>
                         ) : null}
                       </tr>
                     );
@@ -665,10 +704,13 @@ export default function AdminOrdersPage() {
              *  no horizontal scrolling on narrow screens. */}
             <div className="space-y-3 md:hidden">
               {orders.map((o) => {
-                const meta = STATUS_META[o.status] ?? { label: o.status, tone: "neutral" as const, dot: "#94A3B8" };
                 const level = riskLevel(o.riskScore);
                 return (
-                  <article key={o.id} className={`rounded-lg border border-border bg-card p-4 shadow-card ${selected.has(o.id) ? "ring-1 ring-brand-300" : ""}`}>
+                  <article
+                    key={o.id}
+                    onClick={(e) => { if (isPlainRowClick(e)) setPreviewId(o.id); }}
+                    className={`cursor-pointer rounded-lg border border-border bg-card p-4 shadow-card ${selected.has(o.id) ? "ring-1 ring-brand-300" : ""}`}
+                  >
                     <div className="flex items-start gap-3">
                       <input
                         type="checkbox"
@@ -682,25 +724,27 @@ export default function AdminOrdersPage() {
                           <a href={`/admin/orders/${o.id}`} className="font-mono text-small font-semibold text-brand-700 hover:underline">
                             {o.orderNo}
                           </a>
-                          <Badge tone={meta.tone}>
-                            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: meta.dot }} />
-                            {meta.label}
-                          </Badge>
+                          <OrderStatusBadge status={o.status} />
                         </div>
                         <p className="mt-1.5 truncate text-small font-medium leading-snug">{o.customerName}</p>
                         <p className="text-caption text-text-muted">
                           {displayPhone(o.customerPhone, false)} · {o.address.district}, {o.address.division}
                         </p>
+                        <p className="mt-1 truncate text-small text-text-muted">{itemsSummaryLabel(o)}</p>
                         <div className="mt-2.5 flex items-center gap-2 border-t border-border pt-2.5">
                           <span className="font-mono text-small font-bold tabular-nums">{formatBdt(o.totalPoisha)}</span>
                           <Badge tone="neutral">{PAYMENT_METHOD_LABEL[o.paymentMethod] ?? o.paymentMethod}</Badge>
                           <Badge tone={level === "High" ? "danger" : level === "Medium" ? "warning" : "success"}>
                             {level === "High" ? "বেশি ঝুঁকি" : level === "Medium" ? "মাঝারি ঝুঁকি" : "কম ঝুঁকি"}
                           </Badge>
+                          <span className="ml-auto flex items-center gap-1 text-caption text-text-subtle">
+                            <Icon name="clock" size={12} />
+                            {orderAgeLabel(o.createdAt, Date.now())}
+                          </span>
                           <a
                             href={`/admin/orders/${o.id}`}
                             aria-label={`${o.orderNo} বিস্তারিত দেখুন`}
-                            className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-surface-2 text-text-muted transition motion-fast hover:bg-brand-50 hover:text-brand-700"
+                            className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-2 text-text-muted transition motion-fast hover:bg-brand-50 hover:text-brand-700"
                           >
                             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
                               <path d="m9 18 6-6-6-6" />
@@ -720,17 +764,15 @@ export default function AdminOrdersPage() {
              *  rows (server-filtered), not the whole dataset — the
              *  column counts are this page's counts. */}
             <p className="mb-3 text-caption leading-relaxed text-text-muted">
-              কানবান বোর্ডটি শুধু এই পেজের {orders.length}টি অর্ডার দেখায় (ফিল্টার অনুযায়ী মোট {total}টি) — কলামের সংখ্যা পুরো ডেটাসেটের হিসাব নয়।
+              কানবান বোর্ডটি <strong className="font-semibold text-text-main">শুধু এই পেজের অর্ডার</strong> দেখায় — {orders.length}টি (ফিল্টার অনুযায়ী মোট {total}টি); কলামের সংখ্যা পুরো ডেটাসেটের হিসাব নয়।
             </p>
             <div className="flex gap-3 overflow-x-auto pb-2">
               {STATUSES.filter((s) => s !== "ALL").map((status) => {
-                const meta = STATUS_META[status] ?? { label: status, tone: "neutral" as const, dot: "#94A3B8" };
                 const column = pageOrders.filter((o) => o.status === status);
                 return (
                   <section key={status} className="flex w-[264px] shrink-0 flex-col rounded-lg border border-border bg-surface-2/60 shadow-card">
                     <header className="flex items-center gap-2 px-3.5 pb-1 pt-3.5">
-                      <span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ background: meta.dot }} />
-                      <h3 className="text-small font-semibold">{meta.label}</h3>
+                      <OrderStatusBadge status={status} />
                       <span className="ml-auto rounded-full bg-card px-2 py-0.5 font-mono text-caption font-semibold tabular-nums text-text-muted">
                         {column.length}
                       </span>
@@ -739,7 +781,11 @@ export default function AdminOrdersPage() {
                       {column.length === 0 ? (
                         <p className="px-1.5 py-2 text-caption text-text-subtle">এখানে কোনো অর্ডার নেই</p>
                       ) : column.map((o) => (
-                        <article key={o.id} className="rounded-md border border-border bg-card p-3 shadow-sm transition motion-fast hover:shadow-md">
+                        <article
+                          key={o.id}
+                          onClick={(e) => { if (isPlainRowClick(e)) setPreviewId(o.id); }}
+                          className="cursor-grab rounded-md border border-border bg-card p-3 shadow-sm transition motion-fast hover:shadow-md active:cursor-grabbing"
+                        >
                           <a href={`/admin/orders/${o.id}`} className="font-mono text-small font-semibold text-brand-700 hover:underline">
                             {o.orderNo}
                           </a>
@@ -815,6 +861,11 @@ export default function AdminOrdersPage() {
       {/* CSV bulk order import (doc 17 O4) — per-group results render
        *  inside the card; a successful import reloads the list. */}
       <OrderImportCard onImported={load} />
+
+      {/* OD1 slide-over preview — row/card clicks set previewId; the
+       *  drawer fetches the detail payload itself and renders nothing
+       *  while closed. */}
+      <OrderPreviewDrawer orderId={previewId} onClose={() => setPreviewId(null)} />
     </main>
   );
 }

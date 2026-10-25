@@ -32,6 +32,7 @@ import { ReturnsPanel } from "./returns-panel";
 import { AdvancePanel } from "./advance-panel";
 import type { OrderAdvanceView } from "../../../../src/orders/advance";
 import { StatusTimeline } from "../../../../src/orders/components/StatusTimeline";
+import { OrderStatusBadge } from "../../../../src/orders/components/OrderStatusBadge";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -235,7 +236,6 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
 
   const nextLabel = nextStepLabel(order.status);
   const nextTarget = nextStepTarget(order.status);
-  const meta = STATUS_META[order.status] ?? { label: order.status, tone: "neutral" as const, dot: "#94A3B8" };
   const level = riskLevel(order.riskScore);
   const addressLine = [order.address.addressLine, order.address.upazila, order.address.district, order.address.division]
     .filter(Boolean)
@@ -256,10 +256,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
           <div className="min-w-0">
             <h1 className="truncate font-mono text-h2 font-bold">{order.orderNo}</h1>
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-              <Badge tone={meta.tone}>
-                <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: meta.dot }} />
-                {meta.label}
-              </Badge>
+              <OrderStatusBadge status={order.status} />
               {UI_PAYMENT_STATUSES.includes(order.paymentStatus)
                 ? <PaymentBadge status={order.paymentStatus as UiPaymentStatus} />
                 : <Badge tone="neutral">{order.paymentStatus}</Badge>}

@@ -23,6 +23,16 @@
 // Money display: formatBdt (poisha -> ৳). Live totals are an ESTIMATE
 // (subtotal + shipping, before any coupon) and are labelled as such —
 // the server total on the success message is the truth.
+//
+// OD3 (doc 19): the totals aside is now a LIVE SUMMARY RAIL — sticky
+// on desktop, a summary card above the submit buttons on mobile —
+// listing each line with its line total and the coupon state. The
+// figures are the SAME client-side estimate as before (subtotal from
+// the line prices as typed + manualShippingPoisha / staff override);
+// the rail invents no new evaluator. A coupon's discount and any
+// rule-based advance are computed only by the server, so the rail
+// labels them as server-determined instead of showing a made-up
+// number. Presentation only: payload builders below are unchanged.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Customer, Order } from "../../../src/orders/types";
 import {
@@ -33,6 +43,7 @@ import {
 import { formatBdt } from "../../../src/checkout/pricing";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 
 const inputCls =
   "h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
@@ -768,6 +779,15 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
 
   return (
     <form id="manual-order-builder-form" onSubmit={onSubmit} className="mt-5 space-y-5">
+      {/* Draft state banner (OD3): a resumed draft is visibly a draft
+          until it converts — the submit/save behaviour is unchanged. */}
+      {draftId && (
+        <p role="status" className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-small font-medium text-amber-800">
+          <Icon name="info" size={16} className="shrink-0" />
+          আপনি একটি সংরক্ষিত ড্রাফট সম্পাদনা করছেন — সাবমিট করলে এই ড্রাফটটিই অর্ডারে রূপান্তরিত হবে।
+        </p>
+      )}
+
       {/* Customer + address */}
       <section aria-label="গ্রাহক ও ঠিকানা" className="rounded-lg border border-border bg-surface-2/50 p-4">
         <h3 className="text-small font-bold">১. গ্রাহক ও ঠিকানা</h3>
@@ -825,8 +845,29 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
         )}
         {lookupState === "found" && customer && (
           <div className="mt-3 rounded-md border border-brand-200 bg-brand-50/70 px-3.5 py-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-small font-bold text-brand-800">আগের গ্রাহক: {customer.name}</span>
+            {/* Customer card (OD3): who was picked, at a glance — the
+                phone shown is the number as provided in the form, the
+                address summary mirrors the current address fields. */}
+            <div className="flex items-start gap-3">
+              <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700">
+                <Icon name="user" size={20} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-small font-bold text-brand-800">আগের গ্রাহক: {customer.name}</p>
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-caption text-text-muted">
+                  <span className="inline-flex items-center gap-1">
+                    <Icon name="phone" size={12} />
+                    <span className="font-mono tabular-nums">{phone}</span>
+                  </span>
+                  {[division, district, upazila, addressLine].filter((v) => v.trim() !== "").length > 0 && (
+                    <span className="truncate">
+                      {[division, district, upazila, addressLine].filter((v) => v.trim() !== "").join(", ")}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
               <Badge tone="info">মোট অর্ডার {customer.totalOrders}টি</Badge>
               <Badge tone="neutral">সর্বমোট কেনাকাটা {formatBdt(customer.lifetimeValuePoisha)}</Badge>
               {customer.blocked && <Badge tone="danger">ব্লক করা</Badge>}
@@ -976,7 +1017,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
       </section>
 
       {/* Delivery + payment + totals */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_340px]">
         <section aria-label="ডেলিভারি ও পেমেন্ট" className="rounded-lg border border-border bg-surface-2/50 p-4">
           <h3 className="text-small font-bold">৩. ডেলিভারি ও পেমেন্ট</h3>
           <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1104,8 +1145,50 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
           </div>
         </section>
 
-        <aside aria-label="মোট হিসাব" className="h-fit rounded-lg border border-border bg-card p-4 shadow-card">
-          <h3 className="text-small font-bold">হিসাব (আনুমানিক)</h3>
+        <aside aria-label="অর্ডার সারাংশ" className="rounded-lg border border-border bg-card p-4 shadow-card lg:sticky lg:top-5 lg:self-start">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-small font-bold">অর্ডার সারাংশ</h3>
+            <Badge tone="warning">আনুমানিক</Badge>
+          </div>
+
+          {/* Live line items — per-line totals from the same typed
+              prices the subtotal below sums (no new evaluator). */}
+          {lines.length === 0 ? (
+            <p className="mt-3 rounded-md border border-dashed border-border px-3 py-2.5 text-caption text-text-muted">
+              এখনো কোনো পণ্য যোগ হয়নি।
+            </p>
+          ) : (
+            <ul className="mt-3 divide-y divide-border">
+              {lines.map((l) => {
+                const unit = takaToPoisha(l.priceTaka);
+                return (
+                  <li key={l.variantId} className="py-2 text-small">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">
+                          {l.productTitleBn}
+                          {l.variantLabel ? ` — ${l.variantLabel}` : ""}
+                        </span>
+                        <span className="text-caption text-text-muted">
+                          {unit === null ? (
+                            <span className="font-medium text-rose-600">একক দাম ঠিক করুন</span>
+                          ) : (
+                            <>
+                              {l.quantity} × {formatBdt(unit)}
+                            </>
+                          )}
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-mono font-semibold tabular-nums">
+                        {unit === null ? "—" : formatBdt(unit * l.quantity)}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
           <dl className="mt-3 space-y-2 text-small">
             <div className="flex items-center justify-between">
               <dt className="text-text-muted">পণ্যের মোট</dt>
@@ -1115,6 +1198,12 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
               <dt className="text-text-muted">ডেলিভারি চার্জ{overrideOn ? " (override)" : ""}</dt>
               <dd className="font-mono font-semibold tabular-nums">{formatBdt(shippingPoisha)}</dd>
             </div>
+            {couponCode.trim() !== "" && (
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-text-muted">কুপন ({couponCode.trim()})</dt>
+                <dd className="text-caption text-text-muted">ছাড় সার্ভারে যাচাই হবে</dd>
+              </div>
+            )}
             <div className="flex items-center justify-between border-t border-border pt-2">
               <dt className="font-semibold">মোট</dt>
               <dd className="font-mono text-base font-bold tabular-nums">{formatBdt(estimatedTotalPoisha)}</dd>
@@ -1122,6 +1211,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
           </dl>
           <p className="mt-2 text-caption leading-relaxed text-text-subtle">
             কুপন ছাড় থাকলে চূড়ান্ত মোট আরও কম হবে — সার্ভারের হিসাবই চূড়ান্ত, তৈরি হওয়ার পর নিচে দেখানো হবে।
+            অগ্রিম প্রযোজ্য হলে তা সার্ভারের নিয়মেই নির্ধারিত হয় — এই ফর্মে আগাম দেখানো যায় না।
           </p>
           <Button type="submit" variant="primary" className="mt-4 w-full" disabled={busy || lines.length === 0}>
             {busy ? "তৈরি হচ্ছে…" : draftId ? "ড্রাফট থেকে অর্ডার তৈরি করুন" : "ম্যানুয়াল অর্ডার তৈরি করুন"}
@@ -1133,7 +1223,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
             disabled={draftBusy || busy}
             onClick={() => void onSaveDraft()}
           >
-            {draftBusy ? "সংরক্ষণ হচ্ছে…" : "ড্রাফট হিসেবে রাখুন"}
+            {draftBusy ? "সংরক্ষণ হচ্ছে…" : draftId ? "ড্রাফট হালনাগাদ রাখুন" : "ড্রাফট হিসেবে রাখুন"}
           </Button>
           <p className="mt-2 text-caption leading-relaxed text-text-subtle">
             ড্রাফটে কোনো অর্ডার নম্বর বা স্টক রিজার্ভ হয় না — অর্ধেক ফর্মও রেখে দেওয়া যায়, পরে ড্রাফট তালিকা থেকে খুলে শেষ করা যায়।
