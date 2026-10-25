@@ -8,12 +8,17 @@ import {
   writeCatalogAudit,
 } from "@/catalog/api";
 import { hasPermission } from "@/lib/rbac";
-import { parseCsv, previewImport, type ImportRow } from "@/catalog/import";
+import { parseCsv, previewImportRows, type ImportRow } from "@/catalog/import";
+import { parseXlsxTable } from "@/catalog/import-xlsx";
 import { productInputSchema, validateCreateInput, type ProductInput } from "@/catalog/service";
 
-// POST /api/v1/admin/products/import/confirm — P4 confirm step.
-// Body: { csv: string, fileName?: string } — the SAME CSV payload the
-// preview endpoint accepted. The CSV is RE-PARSED here server-side:
+// POST /api/v1/admin/products/import/confirm — P4 confirm step; XLSX
+// accepted since wave 16.
+// Body: { csv: string, fileName?: string } or
+//       { xlsxBase64: string, fileName?: string } — the SAME payload
+// the preview endpoint accepted. The file is RE-PARSED here
+// server-side (CSV via parseCsv, .xlsx via the SheetJS reader — both
+// land in the same row table and shared previewImportRows pipeline):
 // client-supplied row data is never trusted, and the existing-SKU set
 // is recomputed from the live catalog (never taken from the client).
 //
@@ -37,10 +42,15 @@ import { productInputSchema, validateCreateInput, type ProductInput } from "@/ca
 //  - Audit: individual creates do NOT write per-product audit rows
 //    from here; ONE summary audit entry (products.import) records the
 //    counts and file name for the whole run.
-const bodySchema = z.object({
-  csv: z.string().min(1),
-  fileName: z.string().max(255).optional(),
-});
+const bodySchema = z
+  .object({
+    csv: z.string().min(1).optional(),
+    xlsxBase64: z.string().min(1).max(20_000_000).optional(),
+    fileName: z.string().max(255).optional(),
+  })
+  .refine((d) => (d.csv !== undefined) !== (d.xlsxBase64 !== undefined), {
+    message: "Send exactly one of { csv } or { xlsxBase64 }.",
+  });
 
 interface RowOutcome {
   row: number; // 1-based file row (header = 1, first data row = 2)
@@ -64,11 +74,17 @@ export async function POST(req: Request) {
   const parsedBody = bodySchema.safeParse(body);
   if (!parsedBody.success) {
     return NextResponse.json(
-      { error: { code: "VALIDATION_ERROR", message: "Send { csv: string, fileName?: string }." } },
+      {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Send { csv: string, fileName?: string } or { xlsxBase64: string, fileName?: string }.",
+        },
+      },
       { status: 400 },
     );
   }
-  const { csv, fileName } = parsedBody.data;
+  const { fileName } = parsedBody.data;
+  const format = parsedBody.data.xlsxBase64 !== undefined ? ("xlsx" as const) : ("csv" as const);
 
   let repo: Awaited<ReturnType<typeof getCatalogRepository>>;
   try {
@@ -77,12 +93,27 @@ export async function POST(req: Request) {
     return handleServiceError(error);
   }
 
+  // Reduce the uploaded file to the shared { headers, rows } table.
+  let table: { headers: string[]; rows: Record<string, string>[] };
+  if (format === "xlsx") {
+    const parsedTable = parseXlsxTable(
+      new Uint8Array(Buffer.from(parsedBody.data.xlsxBase64 as string, "base64")),
+    );
+    if (!parsedTable.ok) {
+      return NextResponse.json(
+        { error: { code: "INVALID_SPREADSHEET", message: parsedTable.message } },
+        { status: 400 },
+      );
+    }
+    table = parsedTable.table;
+  } else {
+    table = parseCsv(parsedBody.data.csv as string);
+  }
+
   // Existing SKUs, computed server-side from the live catalog.
   const fileSkus = [
     ...new Set(
-      parseCsv(csv)
-        .rows.map((row) => (row.sku ?? "").trim())
-        .filter((sku) => sku !== ""),
+      table.rows.map((row) => (row.sku ?? "").trim()).filter((sku) => sku !== ""),
     ),
   ];
   let existingSkus: Set<string>;
@@ -92,9 +123,9 @@ export async function POST(req: Request) {
     return handleServiceError(error);
   }
 
-  const preview = previewImport(csv, existingSkus);
+  const preview = previewImportRows(table.headers, table.rows, existingSkus);
 
-  // previewImport returns valid rows in file order and numbers the
+  // previewImportRows returns valid rows in file order and numbers the
   // invalid ones, so each valid row's file row-number is recoverable:
   // every data row is exactly one of valid / invalid.
   const invalidRowNumbers = new Set(preview.invalidRows.map((r) => r.row));
@@ -221,6 +252,7 @@ export async function POST(req: Request) {
     entityId: null,
     afterJson: {
       fileName: fileName ?? null,
+      format,
       totalRows: preview.totalRows,
       createdProducts: createdProducts.length,
       createdRows: createdRowCount,
@@ -234,6 +266,7 @@ export async function POST(req: Request) {
   return NextResponse.json({
     data: {
       fileName: fileName ?? null,
+      format,
       totalRows: preview.totalRows,
       validCount: preview.validRows.length,
       invalidCount: preview.invalidRows.length,

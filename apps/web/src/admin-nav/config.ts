@@ -574,6 +574,19 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: null,
   },
   {
+    // Wave 16: the VAT-rate card — accounting.vat_rate_bps finally has
+    // a UI (the ERP sales-VAT report has read the key since wave 7).
+    id: "settings-accounting",
+    path: "/admin/settings/accounting",
+    labelBn: "হিসাব / VAT",
+    labelEn: "Accounting / VAT",
+    icon: "Calculator",
+    section: "system",
+    permission: "settings.view",
+    featureFlag: null,
+    badge: null,
+  },
+  {
     id: "staff",
     path: "/admin/staff",
     labelBn: "স্টাফ ও ভূমিকা",

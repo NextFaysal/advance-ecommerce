@@ -64,6 +64,30 @@ export class DbNotReadyError extends Error {
 // Zod input schemas (every API input goes through these)
 // ---------------------------------------------------------------------------
 
+/**
+ * Variant image reference (wave 16): an absolute http(s) URL
+ * (CDN / uploaded media) OR a root-relative path served by this app
+ * ("/uploads/…"). Everything else is rejected — other schemes
+ * (javascript:, data:), protocol-relative "//host/…" (would inherit
+ * the page scheme to a foreign host), bare text, and any value with
+ * whitespace or control characters — because this string lands in
+ * <img src> on the storefront. (Plain z.string().url() rejected the
+ * root-relative form, breaking saves for app-hosted variant images.)
+ */
+const variantImageUrlSchema = z
+  .string()
+  .max(2048)
+  .refine((value) => {
+    if (/[\s\u0000-\u001f\u007f]/.test(value)) return false;
+    if (value.startsWith("/")) return !value.startsWith("//");
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "imageUrl must be an http(s) URL or a root-relative path");
+
 export const variantInputSchema = z.object({
   attributes: z.record(z.string()).default({}),
   sku: z.string().min(1).max(64),
@@ -74,7 +98,7 @@ export const variantInputSchema = z.object({
   // products.edit_cost_price (see rbac.ts). It is never returned publicly.
   costPoisha: z.number().int().min(0).nullable().optional(),
   stock: z.number().int().min(0).default(0),
-  imageUrl: z.string().url().nullable().optional(),
+  imageUrl: variantImageUrlSchema.nullable().optional(),
   isActive: z.boolean().default(true),
 });
 
@@ -868,6 +892,9 @@ export class PrismaCatalogRepository implements CatalogRepository {
       ...where,
       ...(filter.categorySlug ? { category: { slug: filter.categorySlug } } : {}),
       ...(filter.brandName ? { brand: { name: filter.brandName } } : {}),
+      // Wave 16: rating floor in SQL (ratingAverage is maintained by
+      // the reviews module) so filtered totals stay catalogue-exact.
+      ...(filter.ratingMin !== undefined ? { ratingAverage: { gte: filter.ratingMin } } : {}),
       ...(needsVariantFilter ? { variants: { some: variantSome } } : {}),
       ...(andConditions.length > 0 ? { AND: andConditions } : {}),
     };

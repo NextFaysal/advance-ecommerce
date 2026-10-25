@@ -71,6 +71,19 @@ export interface CategoryOption {
   nameEn: string;
 }
 
+/** One attribute-set library entry (Wave 16-1), slimmed by the server
+ *  pages from AdminAttributeSet (src/catalog/attributes-admin). The
+ *  variant editor uses it ONLY as a suggestion source: the key input
+ *  offers these keys and — when the typed key matches a set — the
+ *  value input offers the set's values, both via <datalist>. Typing
+ *  a brand-new key/value stays fully allowed. */
+export interface AttributeSetOption {
+  key: string;
+  labelBn: string;
+  labelEn: string;
+  values: string[];
+}
+
 interface VariantRow {
   key: number;
   /** SKU as loaded from the server (null = row created in this session). */
@@ -186,8 +199,24 @@ function parseNonNegativeInt(value: string, label: string, errors: string[]): nu
   return n;
 }
 
-/** Rebuild "key: v1, v2" lines from loaded variants (edit mode). */
-function attributeLinesFromVariants(variants: { attributes: Record<string, string> }[]): string {
+/** One attribute-generator row (Wave 16-1): a key plus its
+ *  comma-separated values, edited as two text inputs. The key input
+ *  carries a <datalist> of attribute-set library keys and the value
+ *  input a <datalist> of the matched set's values — suggestions only,
+ *  never a constraint. */
+interface AttrLineRow {
+  rowId: number;
+  name: string;
+  valuesText: string;
+}
+
+/** Rebuild attribute rows from loaded variants (edit mode): one row
+ *  per key, values aggregated in first-seen order — the same
+ *  aggregation the old "key: v1, v2" textarea lines used, so loaded
+ *  variants keep their existing pairs untouched. */
+function attrRowsFromVariants(
+  variants: { attributes: Record<string, string> }[],
+): Array<{ name: string; valuesText: string }> {
   const byKey = new Map<string, string[]>();
   for (const v of variants) {
     for (const [k, val] of Object.entries(v.attributes)) {
@@ -196,7 +225,7 @@ function attributeLinesFromVariants(variants: { attributes: Record<string, strin
       byKey.set(k, arr);
     }
   }
-  return [...byKey.entries()].map(([k, vals]) => `${k}: ${vals.join(", ")}`).join("\n");
+  return [...byKey.entries()].map(([k, vals]) => ({ name: k, valuesText: vals.join(", ") }));
 }
 
 const inputCls =
@@ -315,6 +344,7 @@ export function ProductEditor({
   productId,
   categories,
   brandNames,
+  attributeSets = [],
   initial,
   productTypesEnabled = false,
 }: {
@@ -322,6 +352,10 @@ export function ProductEditor({
   productId?: string;
   categories: CategoryOption[];
   brandNames: string[];
+  /** Attribute-set library (Wave 16-1) for the variant generator's
+   *  key/value datalists. Default empty: no suggestions, free text
+   *  behaves exactly as before. */
+  attributeSets?: AttributeSetOption[];
   initial: Product | null;
   /** module.product_types flag, read server-side by the pages.
    *  Default false: every other consumer keeps today's behaviour. */
@@ -373,9 +407,18 @@ export function ProductEditor({
   );
 
   // --- Variants -----------------------------------------------------------
-  const [attrInput, setAttrInput] = useState(
-    initial ? attributeLinesFromVariants(initial.variants) : "",
-  );
+  // Attribute generator rows (Wave 16-1): one row per key. Edit mode
+  // seeds them from the loaded variants' pairs; create mode (and an
+  // attribute-less product) starts with a single blank row.
+  const [attrRows, setAttrRows] = useState<AttrLineRow[]>(() => {
+    const seeded = initial ? attrRowsFromVariants(initial.variants) : [];
+    const base = seeded.length > 0 ? seeded : [{ name: "", valuesText: "" }];
+    return base.map((r) => ({ rowId: keySeq.current++, name: r.name, valuesText: r.valuesText }));
+  });
+
+  function updateAttrRow(rowId: number, patch: Partial<Omit<AttrLineRow, "rowId">>) {
+    setAttrRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...r, ...patch } : r)));
+  }
   const [rows, setRows] = useState<VariantRow[]>(() => {
     if (initial) {
       return initial.variants.map((v) => ({
@@ -560,23 +603,20 @@ export function ProductEditor({
   const [saveErrors, setSaveErrors] = useState<string[]>([]);
 
   const attributes: ProductAttribute[] = useMemo(() => {
-    return attrInput
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [key, rest] = line.split(":");
+    return attrRows
+      .map((row) => {
+        const key = row.name.trim();
         return {
-          key: (key ?? "").trim(),
-          label: { bn: (key ?? "").trim(), en: (key ?? "").trim() },
-          values: (rest ?? "")
+          key,
+          label: { bn: key, en: key },
+          values: row.valuesText
             .split(",")
             .map((v) => v.trim())
             .filter(Boolean),
         };
       })
       .filter((a) => a.key && a.values.length > 0);
-  }, [attrInput]);
+  }, [attrRows]);
 
   const basePricePoisha = takaToPoisha(basePriceTaka) ?? 0;
 
@@ -2214,10 +2254,85 @@ export function ProductEditor({
 
       {tab === "variants" && (
         <div className="mt-4">
-          <label className="block text-sm">
-            অ্যাট্রিবিউট (প্রতি লাইনে key: value, value — যেমন color: লাল, নীল)
-            <textarea value={attrInput} onChange={(e) => setAttrInput(e.target.value)} rows={4} className={`${inputCls} font-mono`} placeholder={"color: লাল, নীল\nsize: M, L"} />
-          </label>
+          <div>
+            <span className="block text-sm">
+              অ্যাট্রিবিউট (প্রতি সারিতে একটি key ও তার মানসমূহ — মান কমা দিয়ে আলাদা করুন, যেমন লাল, নীল)
+            </span>
+            <div className="mt-2 space-y-2">
+              {attrRows.map((row) => {
+                // Library match is by exact key (trimmed): only then
+                // does the value input get the set's value datalist.
+                const matchedSet = attributeSets.find((s) => s.key === row.name.trim());
+                const valuesListId = `pe-attr-values-${row.rowId}`;
+                return (
+                  <div key={row.rowId} className="flex flex-wrap items-center gap-2">
+                    <input
+                      value={row.name}
+                      onChange={(e) => updateAttrRow(row.rowId, { name: e.target.value })}
+                      list={attributeSets.length > 0 ? "pe-attr-keys" : undefined}
+                      placeholder="key (যেমন color)"
+                      aria-label="অ্যাট্রিবিউট key"
+                      className="w-44 rounded-md border border-border bg-card px-3 py-2 font-mono text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                    />
+                    <input
+                      value={row.valuesText}
+                      onChange={(e) => updateAttrRow(row.rowId, { valuesText: e.target.value })}
+                      list={matchedSet ? valuesListId : undefined}
+                      placeholder="মানসমূহ (যেমন লাল, নীল)"
+                      aria-label="অ্যাট্রিবিউটের মানসমূহ"
+                      className="min-w-[220px] flex-1 rounded-md border border-border bg-card px-3 py-2 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                    />
+                    {matchedSet ? (
+                      <datalist id={valuesListId}>
+                        {matchedSet.values.map((v) => (
+                          <option key={v} value={v} />
+                        ))}
+                      </datalist>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setAttrRows((prev) => prev.filter((r) => r.rowId !== row.rowId))}
+                      className="rounded-md border border-border px-2.5 py-2 text-sm text-rose-600"
+                    >
+                      মুছুন
+                    </button>
+                    {matchedSet ? (
+                      <span className="w-full text-[11px] text-text-subtle">
+                        লাইব্রেরি সেট: {matchedSet.labelBn} — এর মানগুলো সাজেশনে আছে; নতুন মান হাতেও লেখা যাবে।
+                      </span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+            {attributeSets.length > 0 ? (
+              <datalist id="pe-attr-keys">
+                {attributeSets.map((s) => (
+                  <option key={s.key} value={s.key}>
+                    {s.labelBn}
+                  </option>
+                ))}
+              </datalist>
+            ) : null}
+            <button
+              type="button"
+              onClick={() =>
+                setAttrRows((prev) => [...prev, { rowId: nextKey(), name: "", valuesText: "" }])
+              }
+              className="mt-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium transition motion-fast hover:border-brand-300"
+            >
+              + আরেকটি অ্যাট্রিবিউট যোগ করুন
+            </button>
+            {attributeSets.length > 0 ? (
+              <p className="mt-1.5 text-xs leading-relaxed text-text-subtle">
+                key লিখতে গেলেই{" "}
+                <Link href="/admin/attributes" className="font-medium text-brand-700 hover:underline">
+                  অ্যাট্রিবিউট লাইব্রেরির
+                </Link>{" "}
+                key সাজেশনে আসবে — লাইব্রেরি শুধু সাহায্যের জন্য, নতুন key বা মান হাতে লিখলেও চলবে।
+              </p>
+            ) : null}
+          </div>
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"

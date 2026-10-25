@@ -21,13 +21,29 @@ import { MobileFilterDrawer } from "./MobileFilterDrawer";
 // - The brand facet comes from GET /api/v1/public/brands' helper
 //   (listPublicBrands) — brands with ≥1 ACTIVE product — NOT from the
 //   current result set, so facets no longer vanish under other filters.
-// - Rating (rating=4 / rating=3) and attribute filters
-//   (attr=<key>:<value>, repeatable) apply HERE on the fetched page:
-//   the repository's ProductFilter has no rating-min or attribute
-//   predicate, and this page reads the repository directly (not the
-//   HTTP API). CAVEAT: the fetch is capped at pageSize 100, so when a
-//   rating/attr filter is active the displayed total is the filtered
-//   count WITHIN that fetched page, not a catalogue-wide count.
+// - Attribute facets are scoped to the PRE-attribute-filter result
+//   set (a second fetch without attributeFilters, below), so
+//   selecting a value never hides its sibling values.
+//
+// Filter exactness (Wave 16-1) — what the displayed total covers:
+// - Category, brand, price, stock, query AND attribute filters are
+//   EXACT: the repository evaluates them in its SQL where + count,
+//   so "মোট Nটি পণ্য" is a catalogue-wide count. Attribute filters
+//   ride ProductFilter.attributeFilters with the repository's
+//   single-variant semantics (ONE active variant must carry every
+//   selected pair — the same rule as the public API), whenever the
+//   selection is expressible in that Record<key, value> contract:
+//   at most one selected value per attribute key.
+// - Rating is EXACT too (wave-16 parent fix): ratingMin rides the
+//   repository filter and lands on the maintained Product.
+//   ratingAverage column as a SQL { gte } clause, so its total is
+//   catalogue-wide like the rest.
+// - One case still filters IN-PAGE over the fetched page (capped at
+//   pageSize 100); with it active, the displayed total is the
+//   filtered count WITHIN that page, not a catalogue-wide count:
+//   attribute selections with MULTIPLE values for one key — the
+//   Record<key, value> contract holds one value per key, so
+//   OR-within-a-key matching stays local, exactly as before.
 export const dynamic = "force-dynamic";
 
 const SHOP_DEFAULT_TITLE = "দোকান — Advance Ecommerce";
@@ -304,12 +320,13 @@ function EmptyState({
   );
 }
 
-/** Rating + attribute predicates, applied to the fetched page (see header caveat). */
-function applyLocalFilters(products: PublicProduct[], ratingMin: number | undefined, attrs: AttrPair[]): PublicProduct[] {
+/** In-page predicates for the one filter case the repository cannot
+ *  take (see the header's exactness note): attribute pairs only when
+ *  the caller passes them — i.e. the multi-value-per-key case.
+ *  Server-expressible attribute filters and the rating floor are NOT
+ *  passed here; the repository already applied them. */
+function applyLocalFilters(products: PublicProduct[], attrs: AttrPair[]): PublicProduct[] {
   let out = products;
-  if (ratingMin !== undefined) {
-    out = out.filter((p) => (p.ratingAverage ?? 0) >= ratingMin);
-  }
   if (attrs.length > 0) {
     const byKey = new Map<string, Set<string>>();
     for (const pair of attrs) {
@@ -357,48 +374,84 @@ export default async function ShopPage({ searchParams }: { searchParams: ShopSea
   const maxPoisha = parsePoisha(searchParams.max);
   const inStockOnly = searchParams.instock === "1";
   const ratingMin = parseRating(searchParams.rating);
-  const hasLocalFilter = ratingMin !== undefined || attrPairs.length > 0;
+
+  // Wave 16-1: attribute filters go to the REPOSITORY (exact totals)
+  // when the selection fits its Record<key, value> contract — at
+  // most one selected value per key. Multiple values for one key
+  // would need OR-within-a-key, which that contract cannot express;
+  // those pairs stay in-page (hasLocalAttrFilter).
+  const attrValuesByKey = new Map<string, string[]>();
+  for (const pair of attrPairs) {
+    const arr = attrValuesByKey.get(pair.key) ?? [];
+    arr.push(pair.value);
+    attrValuesByKey.set(pair.key, arr);
+  }
+  const attrServerExpressible =
+    attrPairs.length > 0 && [...attrValuesByKey.values()].every((vals) => vals.length === 1);
+  const attributeFilters: Record<string, string> | undefined = attrServerExpressible
+    ? Object.fromEntries(attrPairs.map((p) => [p.key, p.value]))
+    : undefined;
+  const hasLocalAttrFilter = attrPairs.length > 0 && !attrServerExpressible;
+  // Anything still filtered in-page (attrs only, in the multi-value
+  // case) makes the displayed total a within-page count instead of
+  // the repository total — see the header note. Rating rides the
+  // repository filter (shopFilter.ratingMin) and stays exact.
+  const hasLocalFilter = hasLocalAttrFilter;
 
   // PUBLIC shape only (listPublicProducts strips costPoisha): the full
   // repository Product must never reach ProductCard's serialized props.
   // Brands + attribute sets degrade to empty (facet hidden) on failure —
   // a facet outage must never take the shop down.
-  const [result, categories, brands, attributeSets] = await Promise.all([
-    listPublicProducts({
-      query: q,
-      categorySlug: category,
-      brandName: brand,
-      sort,
-      minPricePoisha: minPoisha,
-      maxPricePoisha: maxPoisha,
-      inStockOnly,
-      page: 1,
-      pageSize: 100,
-    }),
+  const shopFilter = {
+    query: q,
+    categorySlug: category,
+    brandName: brand,
+    sort,
+    minPricePoisha: minPoisha,
+    maxPricePoisha: maxPoisha,
+    inStockOnly,
+    ratingMin,
+    page: 1,
+    pageSize: 100,
+  };
+  const [result, facetResult, categories, brands, attributeSets] = await Promise.all([
+    listPublicProducts({ ...shopFilter, attributeFilters }),
+    // Facet scope stays PRE-attribute-filter (facets must offer the
+    // sibling values of the current selection), so when the main
+    // fetch carries attributeFilters a second, unfiltered-by-attrs
+    // fetch provides the facet base. Otherwise the main fetch IS
+    // the facet base and no second call happens.
+    attributeFilters ? listPublicProducts(shopFilter) : Promise.resolve(null),
     listCategories(),
     listPublicBrands().catch((): PublicBrand[] => []),
     listAttributeSetsAdmin().catch((): AdminAttributeSet[] => []),
   ]);
   const baseProducts = result.products;
-  const products = applyLocalFilters(baseProducts, ratingMin, attrPairs);
-  // When a local (rating/attr) filter is active the repository total no
-  // longer describes what's shown — the filtered count of the fetched
-  // page does (see the header caveat about the 100-item fetch cap).
+  const products = applyLocalFilters(baseProducts, hasLocalAttrFilter ? attrPairs : []);
+  // With no local filter active the repository total is exact —
+  // attribute filters included. With a local filter active it no
+  // longer describes what's shown: the filtered count of the
+  // fetched page does (see the header note about the 100-item cap).
   const displayTotal = hasLocalFilter ? products.length : result.total;
+  const facetBaseProducts = facetResult ? facetResult.products : baseProducts;
 
   const activeCategory = categories.find((c) => c.slug === category);
   const hasPriceFilter = minPoisha !== undefined || maxPoisha !== undefined;
-  const hasAnyFilter = Boolean(category || brand || hasPriceFilter || inStockOnly || hasLocalFilter);
+  const hasAnyFilter = Boolean(
+    category || brand || hasPriceFilter || inStockOnly || ratingMin !== undefined || attrPairs.length > 0,
+  );
   const priceChipLabel = hasPriceFilter
     ? `${minPoisha !== undefined ? TakaShort(minPoisha) : "৳০"} – ${maxPoisha !== undefined ? TakaShort(maxPoisha) : "সর্বোচ্চ"}`
     : null;
 
   // Attribute facets for the CURRENT result scope: keys come from the
   // managed attribute-set library (labels + canonical values), scoped
-  // to keys/values actually present on the base (pre-attr-filter)
-  // products — so a category only offers filters its products carry.
+  // to keys/values actually present on the facet base (the
+  // pre-attr-filter fetch — facetBaseProducts) — so a category only
+  // offers filters its products carry, and a selected value never
+  // hides its siblings.
   const presentByKey = new Map<string, Set<string>>();
-  for (const p of baseProducts) {
+  for (const p of facetBaseProducts) {
     for (const v of p.variants) {
       if (!v.isActive) continue;
       for (const [key, value] of Object.entries(v.attributes)) {

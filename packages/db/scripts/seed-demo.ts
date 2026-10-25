@@ -407,6 +407,63 @@ function costFor(pricePoisha: number): number {
 async function clean(): Promise<void> {
   console.log(`[demo-seed] cleaning demo data (db host: ${dbHost})`);
 
+  // Preflight (wave 16): several tables hold REQUIRED FKs to demo
+  // variants, and rows owned by other features — a real order's
+  // items, a cart, a purchase order, another sale's items — must
+  // never be cascade-deleted by a demo cleanup. Count those external
+  // references up front and abort BEFORE deleting anything if any
+  // exist: a half-cleaned store (orders gone, products stuck on an
+  // FK) is worse than a loud refusal. Demo-owned references are not
+  // blockers: the demo orders' items die with the orders below, the
+  // demo sale's items with the sale, and StockMovement ledger rows
+  // plus bundle definitions pointing at demo variants are deleted
+  // alongside the variants (meaningless once the variants are gone).
+  const preOrders = await prisma.order.findMany({
+    where: { idempotencyKey: { startsWith: "demo-seed-order-" } },
+    select: { id: true },
+  });
+  const preOrderIds = preOrders.map((o) => o.id);
+  const preVariants = await prisma.productVariant.findMany({
+    where: { sku: { startsWith: "DEMO-" } },
+    select: { id: true },
+  });
+  const preVariantIds = preVariants.map((x) => x.id);
+  // Same story one level up: non-demo products (slug not demo-*)
+  // sitting in demo categories — e.g. soft-deleted test fixtures or
+  // a real product a merchant filed under a demo category — hold a
+  // required FK to the category and must not be stranded by the
+  // category deletion at the end of this clean.
+  const extCategoryProducts = await prisma.product.count({
+    where: {
+      category: { slug: { in: CATEGORIES.map((c) => c.slug) } },
+      NOT: { slug: { startsWith: "demo-" } },
+    },
+  });
+  if (preVariantIds.length > 0 || extCategoryProducts > 0) {
+    const preSale = await prisma.flashSale.findFirst({
+      where: { name: FLASH_SALE_NAME },
+      select: { id: true },
+    });
+    const [extOrderItems, extCartItems, extPurchaseItems, extSaleItems] = await Promise.all([
+      prisma.orderItem.count({
+        where: { variantId: { in: preVariantIds }, orderId: { notIn: preOrderIds } },
+      }),
+      prisma.cartItem.count({ where: { variantId: { in: preVariantIds } } }),
+      prisma.purchaseOrderItem.count({ where: { variantId: { in: preVariantIds } } }),
+      prisma.flashSaleItem.count({
+        where: { variantId: { in: preVariantIds }, flashSaleId: { not: preSale?.id ?? "" } },
+      }),
+    ]);
+    if (extOrderItems + extCartItems + extPurchaseItems + extSaleItems + extCategoryProducts > 0) {
+      throw new Error(
+        "[demo-seed] clean ABORTED — non-demo records still reference demo data " +
+          `(orderItems=${extOrderItems}, cartItems=${extCartItems}, purchaseOrderItems=${extPurchaseItems}, ` +
+          `otherFlashSaleItems=${extSaleItems}, productsInDemoCategories=${extCategoryProducts}). ` +
+          "Nothing was deleted. Remove or retarget those records first, then re-run --clean.",
+      );
+    }
+  }
+
   const sale = await prisma.flashSale.findFirst({ where: { name: FLASH_SALE_NAME } });
   if (sale) {
     await prisma.flashSaleItem.deleteMany({ where: { flashSaleId: sale.id } });
@@ -442,6 +499,11 @@ async function clean(): Promise<void> {
   });
   const variantIds = demoVariants.map((x) => x.id);
   if (variantIds.length > 0) {
+    // The variants' own stock-ledger rows and bundle definitions
+    // that consume them are required-FK referrers (wave-15 tables);
+    // both are demo-era scaffolding and go with the variants.
+    await prisma.stockMovement.deleteMany({ where: { variantId: { in: variantIds } } });
+    await prisma.bundleComponent.deleteMany({ where: { componentVariantId: { in: variantIds } } });
     await prisma.inventoryItem.deleteMany({ where: { variantId: { in: variantIds } } });
     await prisma.productVariant.deleteMany({ where: { id: { in: variantIds } } });
   }
@@ -451,6 +513,8 @@ async function clean(): Promise<void> {
   });
   const productIds = demoProducts.map((p) => p.id);
   if (productIds.length > 0) {
+    // Bundle definitions OF demo products reference the product row.
+    await prisma.bundleComponent.deleteMany({ where: { bundleProductId: { in: productIds } } });
     await prisma.productImage.deleteMany({ where: { productId: { in: productIds } } });
     await prisma.product.deleteMany({ where: { id: { in: productIds } } });
   }

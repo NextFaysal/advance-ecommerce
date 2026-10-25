@@ -122,6 +122,13 @@ export interface ProductFilter {
    * public route fills this from repeated `attr=key:value` params.
    */
   attributeFilters?: Record<string, string>;
+  /**
+   * Minimum average rating (wave 16 parent fix): Product.ratingAverage
+   * is a maintained column (recomputed from APPROVED reviews), so the
+   * Prisma list path filters it in SQL and the total stays exact.
+   * Products with no approved reviews (ratingAverage null) never match.
+   */
+  ratingMin?: number;
   sort?: SortOption;
 }
 
@@ -146,6 +153,9 @@ export function applyProductFilter<T extends {
   }
   if (filter.categorySlug) out = out.filter((p) => p.categorySlug === filter.categorySlug);
   if (filter.brandName) out = out.filter((p) => p.brandName === filter.brandName);
+  if (filter.ratingMin !== undefined) {
+    out = out.filter((p) => (p.ratingAverage ?? 0) >= filter.ratingMin!);
+  }
   if (filter.inStockOnly) {
     out = out.filter((p) => p.variants.some((v) => v.isActive && v.stock > 0));
   }

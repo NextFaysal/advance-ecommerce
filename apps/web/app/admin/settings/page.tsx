@@ -46,6 +46,14 @@ const UNVERIFIABLE: CardStatus = {
   detail: "ডাটাবেস পাওয়া যাচ্ছে না — অবস্থা পড়া যায়নি।",
 };
 
+/** bps -> percent text without trailing zeros: 1500 -> "15", 1550 -> "15.5", 1505 -> "15.05". */
+function formatBpsAsPercent(bps: number): string {
+  const whole = Math.floor(bps / 100);
+  const frac = bps % 100;
+  if (frac === 0) return String(whole);
+  return `${whole}.${String(frac).padStart(2, "0").replace(/0$/, "")}`;
+}
+
 function providerSummary(statuses: IntegrationStatus[], exclude: string[] = []): {
   configured: string[];
   enabled: string[];
@@ -187,6 +195,32 @@ export default async function AdminSettingsPage() {
     } satisfies CardStatus;
   });
 
+  // Accounting / VAT: the effective rate, parsed with the same rule
+  // the order flow uses — blank/invalid means no VAT split is recorded.
+  const accounting = await probe(async () => {
+    const raw = await getSetting("accounting.vat_rate_bps");
+    if (raw === null || raw.trim() === "") {
+      return {
+        tone: "neutral",
+        label: "VAT বন্ধ",
+        detail: "কোনো VAT হার সেট করা নেই — নতুন অর্ডারে VAT বিভাজন সংরক্ষিত হয় না। হার সেট করতে কার্ডটি খুলুন।",
+      } satisfies CardStatus;
+    }
+    const bps = Number.parseInt(raw, 10);
+    if (Number.isInteger(bps) && bps > 0 && bps <= 10000) {
+      return {
+        tone: "success",
+        label: "VAT চালু",
+        detail: `বর্তমান হার ${formatBpsAsPercent(bps)}% (${bps} bps) — প্রতিটি নতুন অর্ডারে VAT বিভাজন সংরক্ষিত হয়; মাসিক রিপোর্ট ERP পেজে।`,
+      } satisfies CardStatus;
+    }
+    return {
+      tone: "warning",
+      label: "হার অবৈধ",
+      detail: "সেভ করা মানটি বৈধ VAT হার নয় — বন্ধ হিসেবে ধরা হচ্ছে। কার্ডটি খুলে সঠিক হার সেভ করুন।",
+    } satisfies CardStatus;
+  });
+
   const cards: SettingsCardInfo[] = [
     {
       href: "/admin/settings/payments",
@@ -227,6 +261,14 @@ export default async function AdminSettingsPage() {
       titleEn: "Tracking",
       description: "Meta Pixel + CAPI, GA4, TikTok — পিক্সেল আইডি ও সার্ভার-সাইড ইভেন্ট সেটিংস।",
       status: tracking,
+    },
+    {
+      href: "/admin/settings/accounting",
+      icon: <Icon name="banknote" size={22} />,
+      titleBn: "হিসাব / VAT",
+      titleEn: "Accounting / VAT",
+      description: "বিক্রয়ের VAT হার (accounting.vat_rate_bps) — সেট থাকলে প্রতিটি অর্ডারে VAT বিভাজন সংরক্ষিত হয়; রিপোর্ট ERP পেজে।",
+      status: accounting,
     },
   ];
 

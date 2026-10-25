@@ -1,14 +1,16 @@
 "use client";
 
-// Admin product IMPORT page — P4 completion of the Step-10 import.
-// Flow: pick a .csv file -> POST /api/v1/admin/products/import
+// Admin product IMPORT page — P4 completion of the Step-10 import;
+// .xlsx support added in wave 16.
+// Flow: pick a .csv or .xlsx file -> POST /api/v1/admin/products/import
 // (preview: per-row validation, NOTHING is saved) -> review counts,
-// detected money units and the per-row error table -> "Confirm"
-// POSTs the same CSV to /import/confirm, which re-parses it
-// server-side and creates every valid row's product as DRAFT.
+// detected format + money units and the per-row error table ->
+// "Confirm" POSTs the same file payload to /import/confirm, which
+// re-parses it server-side and creates every valid row's product as
+// DRAFT. An .xlsx workbook is read server-side from its FIRST sheet
+// only, into the same row table as CSV — validation is identical.
 // Error rows are never silently dropped: they are listed here and
-// downloadable as an error-report CSV. CSV only — .xlsx files are
-// not accepted; save them as CSV first (stated on the page).
+// downloadable as an error-report CSV.
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
@@ -20,7 +22,14 @@ interface InvalidRow {
   errors: { row: number; field: string; message: string }[];
 }
 
+type ImportFormat = "csv" | "xlsx";
+
+/** The file payload kept between preview and confirm — the confirm
+ *  endpoint re-parses the same bytes server-side. */
+type FilePayload = { kind: "csv"; text: string } | { kind: "xlsx"; base64: string };
+
 interface PreviewData {
+  format: ImportFormat;
   totalRows: number;
   validCount: number;
   invalidCount: number;
@@ -41,6 +50,7 @@ interface RowOutcome {
 
 interface ConfirmData {
   fileName: string | null;
+  format: ImportFormat;
   totalRows: number;
   createdProductCount: number;
   createdRowCount: number;
@@ -140,13 +150,29 @@ function formatPoisha(poisha: number): string {
   return `৳${(poisha / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/** ArrayBuffer -> base64 without blowing the call stack on big files. */
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+const FORMAT_LABELS: Record<ImportFormat, string> = {
+  csv: "CSV",
+  xlsx: "Excel (.xlsx) — শুধু প্রথম শিট",
+};
+
 type Phase = "pick" | "previewing" | "preview" | "confirming" | "done";
 
 export default function ProductImportPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>("pick");
   const [fileName, setFileName] = useState<string>("");
-  const [csvText, setCsvText] = useState<string>("");
+  const [payload, setPayload] = useState<FilePayload | null>(null);
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [result, setResult] = useState<ConfirmData | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>("");
@@ -156,19 +182,26 @@ export default function ProductImportPage() {
     setPreview(null);
     setResult(null);
     setFileName(file.name);
-    if (!file.name.toLowerCase().endsWith(".csv")) {
+    const lowerName = file.name.toLowerCase();
+    let filePayload: FilePayload;
+    if (lowerName.endsWith(".csv")) {
+      filePayload = { kind: "csv", text: await file.text() };
+    } else if (lowerName.endsWith(".xlsx")) {
+      filePayload = { kind: "xlsx", base64: arrayBufferToBase64(await file.arrayBuffer()) };
+    } else {
       setPhase("pick");
-      setErrorMessage("শুধু .csv ফাইল চলবে। Excel ফাইল হলে আগে CSV হিসেবে সেভ করে নিন — .xlsx এখন সমর্থিত নয়।");
+      setErrorMessage("শুধু .csv অথবা .xlsx (Excel) ফাইল চলবে।");
       return;
     }
-    const text = await file.text();
-    setCsvText(text);
+    setPayload(filePayload);
     setPhase("previewing");
     try {
       const res = await fetch("/api/v1/admin/products/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csv: text }),
+        body: JSON.stringify(
+          filePayload.kind === "csv" ? { csv: filePayload.text } : { xlsxBase64: filePayload.base64 },
+        ),
       });
       const data = (await res.json().catch(() => ({}))) as {
         data?: PreviewData;
@@ -188,14 +221,17 @@ export default function ProductImportPage() {
   }
 
   async function handleConfirm() {
-    if (!preview || preview.validCount === 0) return;
+    if (!preview || preview.validCount === 0 || !payload) return;
     setPhase("confirming");
     setErrorMessage("");
     try {
       const res = await fetch("/api/v1/admin/products/import/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csv: csvText, fileName }),
+        body: JSON.stringify({
+          ...(payload.kind === "csv" ? { csv: payload.text } : { xlsxBase64: payload.base64 }),
+          fileName,
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         data?: ConfirmData;
@@ -217,7 +253,7 @@ export default function ProductImportPage() {
   function reset() {
     setPhase("pick");
     setFileName("");
-    setCsvText("");
+    setPayload(null);
     setPreview(null);
     setResult(null);
     setErrorMessage("");
@@ -229,8 +265,8 @@ export default function ProductImportPage() {
   return (
     <main className="min-w-0">
       <PageHeader
-        title="পণ্য ইমপোর্ট (CSV)"
-        description="CSV ফাইল থেকে একসঙ্গে অনেক পণ্য যোগ করুন। আগে প্রিভিউ দেখানো হয় — কনফার্ম না করা পর্যন্ত কিছুই সেভ হয় না। তৈরি হওয়া সব পণ্য খসড়া (DRAFT) থাকে; যাচাই করে নিজে প্রকাশ করুন।"
+        title="পণ্য ইমপোর্ট (CSV / Excel)"
+        description="CSV অথবা Excel (.xlsx) ফাইল থেকে একসঙ্গে অনেক পণ্য যোগ করুন। আগে প্রিভিউ দেখানো হয় — কনফার্ম না করা পর্যন্ত কিছুই সেভ হয় না। তৈরি হওয়া সব পণ্য খসড়া (DRAFT) থাকে; যাচাই করে নিজে প্রকাশ করুন।"
         breadcrumb="পণ্য / ইমপোর্ট"
         actions={
           <Link
@@ -253,7 +289,7 @@ export default function ProductImportPage() {
             <span className="font-mono">compare_at</span> ও <span className="font-mono">cost</span>-এর ক্ষেত্রেও একই নিয়ম (<span className="font-mono">*_poisha</span> / <span className="font-mono">*_taka</span>)।
           </li>
           <li><span className="font-mono">tags</span> একাধিক হলে <span className="font-mono">|</span> দিয়ে আলাদা করুন। <span className="font-mono">status</span> যাই লিখুন, ইমপোর্টে সব পণ্য DRAFT হিসেবেই তৈরি হয়।</li>
-          <li>এখন শুধু CSV ফরম্যাট চলে — Excel (.xlsx) ফাইল হলে আগে &ldquo;Save As CSV&rdquo; করে নিন।</li>
+          <li>CSV অথবা Excel (.xlsx) — দুই ফরম্যাটই চলে, নিয়ম একই। .xlsx ফাইলের ক্ষেত্রে শুধু <strong>প্রথম শিটটি</strong> পড়া হয়; দামের ঘরে সংখ্যা (number) হিসেবে মান রাখুন, টেক্সট হিসেবে &ldquo;৳&rdquo; চিহ্ন বা কমা দেবেন না।</li>
         </ul>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
@@ -272,7 +308,7 @@ export default function ProductImportPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             disabled={busy}
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -306,6 +342,9 @@ export default function ProductImportPage() {
             </div>
           </div>
           <p className="mt-3 text-sm text-text-muted">
+            শনাক্ত ফরম্যাট: <strong>{FORMAT_LABELS[preview.format]}</strong>
+          </p>
+          <p className="mt-1 text-sm text-text-muted">
             শনাক্ত হওয়া দামের একক — মূল্য: <strong>{UNIT_LABELS[preview.moneyUnits.price]}</strong> · তুলনামূলক মূল্য:{" "}
             <strong>{UNIT_LABELS[preview.moneyUnits.compareAt]}</strong> · ক্রয়মূল্য: <strong>{UNIT_LABELS[preview.moneyUnits.cost]}</strong>
           </p>

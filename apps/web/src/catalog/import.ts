@@ -177,6 +177,21 @@ function detectMoneyUnits(rows: Record<string, string>[]): ImportMoneyUnits {
 
 export function previewImport(csvText: string, existingSkus: Set<string>): ImportPreview {
   const { headers, rows } = parseCsv(csvText);
+  return previewImportRows(headers, rows, existingSkus);
+}
+
+/**
+ * The shared row pipeline: header/column checks, money-unit resolution
+ * (poisha columns, or *_taka columns converted with exact decimal math)
+ * and per-row validation. CSV text goes through parseCsv first; the
+ * XLSX reader (import-xlsx.ts) produces the same { headers, rows }
+ * string table — so spreadsheet imports obey identical semantics.
+ */
+export function previewImportRows(
+  headers: string[],
+  rows: Record<string, string>[],
+  existingSkus: Set<string>,
+): ImportPreview {
   const moneyUnits = detectMoneyUnits(rows);
   const missing = ["slug", "title_bn", "title_en", "sku", "stock"].filter(
     (h) => !headers.includes(h),
