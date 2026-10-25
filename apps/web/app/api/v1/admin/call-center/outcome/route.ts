@@ -6,6 +6,8 @@ import { agentPerformance, nextTaskForAgent, toQueueItemView } from "@/callcente
 import { loadCallLogs, loadCallTasks, recordOutcomeDb, type DbCallTask } from "@/callcenter/store";
 import { recordOutcomeSchema, type CallTask } from "@/callcenter/types";
 import { dispositionSchema, isFraudSignalDisposition } from "@/callcenter/dispositions";
+import { runOutcomeAutomations, type OutcomeAutomationSummary } from "@/callcenter/automation";
+import { isInRetryBackoff } from "@/callcenter/store";
 import { fraudListStore } from "@/fraud/lists";
 import { z } from "zod";
 
@@ -28,6 +30,12 @@ import { z } from "zod";
 // the phone into the fraud blacklist — only when the full number was
 // resolved from the linked order (a masked number is never blacklisted);
 // the outcome response reports the result as data.fraudSignal.
+// C4: after the outcome persists, the follow-up automation layer
+// (src/callcenter/automation.ts) evaluates its rules — retry backoff,
+// auto SMS scheduling, callback reminders — gated by the
+// module.call_center_automation kill switch (seeded OFF). It is
+// best-effort like the fraud hook: the summary rides the response as
+// data.automation, and an automation failure never fails the outcome.
 function locked() {
   return NextResponse.json(
     { error: { code: "FEATURE_LOCKED", message: "Call center module is locked for this install (module.call_center is OFF)." } },
@@ -135,9 +143,26 @@ export async function POST(req: Request) {
         fraudSignal = { recorded: false, reason: "phone-not-resolved" };
       }
     }
+    // C4 follow-up automation — best-effort (see header). The layer
+    // itself never throws; the extra guard here keeps even a module
+    // load failure from failing the already-persisted outcome.
+    let automation: OutcomeAutomationSummary | undefined;
+    try {
+      automation = await runOutcomeAutomations({
+        task: result.task,
+        outcome: parsed.data.outcome,
+        callbackAt: parsed.data.callbackAt,
+      });
+    } catch {
+      automation = undefined;
+    }
     const canViewFullPhone = guard.permissions.includes("customers.view_full_phone");
     const tasks = await loadCallTasks();
-    const nextPick = nextTaskForAgent(tasks, guard.userId, new Date().toISOString());
+    const nowIso = new Date().toISOString();
+    // C4: never offer a task that is sitting in retry backoff as the
+    // agent's next task (the claim paths refuse it too — store.ts).
+    const offerable = tasks.filter((t) => !isInRetryBackoff(t, nowIso));
+    const nextPick = nextTaskForAgent(offerable, guard.userId, nowIso);
     const next = nextPick ? (tasks.find((t) => t.id === nextPick.id) ?? null) : null;
     const logs = await loadCallLogs(guard.userId);
     return NextResponse.json({
@@ -148,6 +173,7 @@ export async function POST(req: Request) {
         nextTask: next ? view(next, canViewFullPhone) : null,
         performance: agentPerformance(logs, guard.userId),
         ...(fraudSignal ? { fraudSignal } : {}),
+        ...(automation ? { automation } : {}),
       },
       meta: { persistence: "database" },
     });

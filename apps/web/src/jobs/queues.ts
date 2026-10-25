@@ -30,7 +30,29 @@ export interface JobRetryPolicy {
 export const DEFAULT_RETRY: JobRetryPolicy = { attempts: 3, backoffSeconds: 30 };
 export const COURIER_RETRY: JobRetryPolicy = { attempts: 5, backoffSeconds: 60 };
 
-export interface SmsJob { orderId?: string; templateKey: string; recipientRef: string; }
+export interface SmsJob {
+  orderId?: string;
+  templateKey: string;
+  recipientRef: string;
+  /**
+   * C4 call-center automation jobs ride this same queue + payload
+   * (jobKind === "callcenter-automation"); the SMS handler delegates
+   * them to the automation send path (HandlerDeps.callCenterSmsSend).
+   * The payload carries ids only — the recipient phone is resolved
+   * from the DB at send time, never stored on the job.
+   */
+  jobKind?: "callcenter-automation";
+  /** Automation flavour: NO_ANSWER_SMS / CALLBACK_REMINDER_SMS / RESCUE_SMS. */
+  automationKind?: string;
+  /** CallTask id the automation belongs to. */
+  taskId?: string;
+  /** The AUTO_SMS_SCHEDULED CallLogEntry id — the send's idempotency anchor. */
+  decisionLogId?: string;
+  /** ISO time the send was scheduled for. */
+  runAt?: string;
+  /** Stable dedupe key (also used as the BullMQ jobId by the producer). */
+  idempotencyKey?: string;
+}
 export interface EmailJob { orderId?: string; templateKey: string; recipientRef: string; }
 export interface CourierBookingJob { orderId: string; shipmentId: string; provider: string; }
 export interface WebhookJob { event: string; payloadId: string; }

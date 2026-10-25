@@ -4,16 +4,21 @@
  * Cohorts (kept deliberately simple so every number can be hand-checked):
  * - TASKS: CallTask rows whose createdAt falls in the range.
  * - LOGS:  CallLogEntry rows whose createdAt falls in the range. One log
- *   row = one call attempt.
- * A task's FINAL outcome is its latest log outcome over ALL time (not
- * just the range) — a task created on day 29 and confirmed on day 31 is
- * still a confirmed task. Completion = task status DONE.
+ *   row = one call attempt — EXCEPT C4 automation rows (outcome AUTO_*,
+ *   agentId null), which share the table but are not call attempts: they
+ *   are excluded from the attempt/contact aggregates below, and a task's
+ *   final outcome ignores them (an AUTO_SMS_SENT landing after the human
+ *   outcome must not become the task's "final outcome").
+ * A task's FINAL outcome is its latest (non-automation) log outcome over
+ * ALL time (not just the range) — a task created on day 29 and confirmed
+ * on day 31 is still a confirmed task. Completion = task status DONE.
  *
  * Metric definitions (rates are integer basis points, floored, exactly
  * like queue.ts agentPerformance; every division is guarded — an empty
  * denominator yields 0, never NaN):
- * - contact rate:      logs with outcome NOT IN (NO_ANSWER, WRONG_NUMBER)
- *                      over ALL logs in range — "কথা হয়েছে / মোট চেষ্টা".
+ * - contact rate:      call-attempt logs with outcome NOT IN (NO_ANSWER,
+ *                      WRONG_NUMBER) over ALL call-attempt logs in range
+ *                      (AUTO_* rows excluded) — "কথা হয়েছে / মোট চেষ্টা".
  * - confirmation rate: PENDING_ORDER tasks created in range, DONE, final
  *                      outcome CONFIRMED — over PENDING_ORDER tasks
  *                      created in range that are DONE.
@@ -29,8 +34,9 @@
  * Per-agent rows come from the EXISTING pure agentPerformance() helper
  * (queue.ts) over the range logs; this module only ADDS the fields the
  * helper lacks (callbacks kept + the agent's display name) alongside it.
- * Note: CallLogEntry rows persist no durationSeconds, so the helper's
- * totalTalkSeconds reads 0 from stored logs — reported as-is.
+ * Talk time: CallLogEntry.durationSeconds is persisted at outcome time
+ * (C1), selected below and passed through to the helper, so the
+ * per-agent totalTalkSeconds here is real.
  */
 import { prisma } from "@advance-ecommerce/db";
 import { daysAgoInDhaka, dhakaRangeUtc, todayInDhaka } from "../reports/db-rows";
@@ -53,6 +59,14 @@ const SOURCES: readonly CallQueueSource[] = [
 ];
 
 const TERMINAL_FREE_OUTCOMES: ReadonlySet<CallOutcome> = new Set(["NO_ANSWER", "WRONG_NUMBER"]);
+
+/**
+ * C4 automation rows (AUTO_SMS_SCHEDULED / AUTO_SMS_SENT / AUTO_SMS_SKIPPED)
+ * share CallLogEntry but are not human call attempts — excluded wherever
+ * this module counts attempts (headline, by-source, by-hour, final
+ * outcome). Prefix match so future AUTO_* kinds are covered too.
+ */
+const isAutoOutcome = (outcome: string): boolean => outcome.startsWith("AUTO_");
 
 /** Floored basis points, 0 on an empty denominator (never NaN). */
 function bps(numerator: number, denominator: number): number {
@@ -100,7 +114,7 @@ export interface CallCenterReport {
   range: DateRange;
   tasksCreated: number;
   tasksCompleted: number;
-  /** Log rows in the range = call attempts. */
+  /** Call-attempt log rows in the range (AUTO_* automation rows excluded). */
   attempts: number;
   contactedAttempts: number;
   contactRateBps: number;
@@ -156,7 +170,7 @@ export async function getCallCenterReport(range: DateRange): Promise<CallCenterR
     prisma.callLogEntry.findMany({
       where: { createdAt: { gte, lte } },
       orderBy: { createdAt: "asc" },
-      select: { id: true, taskId: true, agentId: true, outcome: true, note: true, createdAt: true },
+      select: { id: true, taskId: true, agentId: true, outcome: true, note: true, durationSeconds: true, createdAt: true },
     }),
   ]);
 
@@ -188,6 +202,7 @@ export async function getCallCenterReport(range: DateRange): Promise<CallCenterR
       select: { taskId: true, outcome: true },
     });
     for (const l of allLogs) {
+      if (isAutoOutcome(l.outcome)) continue; // automation rows are never a task's final outcome
       if (!finalOutcomeByTask.has(l.taskId)) {
         finalOutcomeByTask.set(l.taskId, l.outcome as CallOutcome);
       }
@@ -215,8 +230,11 @@ export async function getCallCenterReport(range: DateRange): Promise<CallCenterR
   const callbacksKept = callbackLogs.filter((l) => isKept(l.taskId, l.createdAt)).length;
 
   // ---- headline metrics -------------------------------------------------
-  const attempts = logRows.length;
-  const contactedAttempts = logRows.filter(
+  // Attempts/contact are counted over call-attempt rows only — C4
+  // automation rows (AUTO_*) are not call attempts.
+  const attemptLogs = logRows.filter((l) => !isAutoOutcome(l.outcome));
+  const attempts = attemptLogs.length;
+  const contactedAttempts = attemptLogs.filter(
     (l) => !TERMINAL_FREE_OUTCOMES.has(l.outcome as CallOutcome),
   ).length;
 
@@ -238,7 +256,7 @@ export async function getCallCenterReport(range: DateRange): Promise<CallCenterR
       created: created.length,
       completed: completed.length,
       confirmedFinal: completed.filter((t) => finalOutcomeByTask.get(t.id) === "CONFIRMED").length,
-      attempts: logRows.filter((l) => {
+      attempts: attemptLogs.filter((l) => {
         const t = taskById.get(l.taskId);
         return t !== undefined && kindOf(t.kind) === source;
       }).length,
@@ -251,7 +269,7 @@ export async function getCallCenterReport(range: DateRange): Promise<CallCenterR
     attempts: 0,
     contacted: 0,
   }));
-  for (const l of logRows) {
+  for (const l of attemptLogs) {
     const bucket = byHour[dhakaHourOf(l.createdAt)] as HourBucket;
     bucket.attempts += 1;
     if (!TERMINAL_FREE_OUTCOMES.has(l.outcome as CallOutcome)) bucket.contacted += 1;
@@ -264,6 +282,7 @@ export async function getCallCenterReport(range: DateRange): Promise<CallCenterR
     agentId: l.agentId ?? "",
     outcome: l.outcome as CallOutcome,
     note: l.note ?? undefined,
+    durationSeconds: l.durationSeconds ?? undefined,
     calledAt: l.createdAt.toISOString(),
   }));
   const agentIds = [...new Set(logsAsEntries.map((l) => l.agentId).filter((a) => a !== ""))];

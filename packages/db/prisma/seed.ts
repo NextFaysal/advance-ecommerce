@@ -129,6 +129,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
 const FEATURE_FLAGS: Array<{ key: string; description: string }> = [
   { key: "module.reseller", description: "Reseller panel (v2 add-on)" },
   { key: "module.call_center", description: "Call center (v2 add-on)" },
+  { key: "module.call_center_automation", description: "Call center follow-up automation — auto SMS + retry backoff (v2 add-on)" },
   { key: "module.pos", description: "POS (v2 add-on)" },
   { key: "module.multi_vendor", description: "Multi-vendor (v2 add-on)" },
   { key: "module.automation", description: "Automation engine (v2 add-on)" },

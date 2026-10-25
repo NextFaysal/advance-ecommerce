@@ -49,6 +49,9 @@
  *        rows through the sms/email resolvers above; a successful
  *        re-drive returns the row to QUEUED (simulated send), never
  *        SENT.
+ *  - callCenterSmsSend — C4: the send path for call-center automation
+ *    SMS jobs, delegated from the SMS handler to
+ *    src/callcenter/automation.ts (lazy import — see the dep below).
  *
  * PRISMA LANDMINE — read before touching the settings import:
  * src/lib/settings.ts imports the Prisma client at module top level,
@@ -234,6 +237,17 @@ export const workerDeps: WorkerRuntimeDeps = {
   logger: consoleJobLogger,
   smsProvider: resolveSmsProvider,
   emailProvider: resolveEmailProvider,
+  // C4: call-center automation SMS jobs (sms queue, jobKind
+  // "callcenter-automation") delegate here. Lazy import for the same
+  // reason as the settings lookups above: the automation module pulls
+  // in Prisma + the settings service at module top level, and a load
+  // failure there must never stop a job from being handled — the
+  // import sits inside the dep, so it resolves per job, in a process
+  // where the DB is expected to be reachable.
+  callCenterSmsSend: async (job) => {
+    const automation = await import("../callcenter/automation");
+    return automation.processCallCenterSmsJob(job, { smsProvider: resolveSmsProvider });
+  },
   courierProvider: resolveCourierProvider,
   bulkActionsRunner: async (job) => {
     const bulkJob = getBulkJob(job.bulkJobId);

@@ -32,7 +32,9 @@
  *   real). disposition / scriptVersion / qaScore / qaComment also have
  *   columns (C3): disposition + scriptVersion are stamped at outcome
  *   time, qaScore / qaComment are written later by a supervisor.
- * - assignedAt has no column and is not persisted.
+ * - assignedAt IS persisted (column added with the R2.2 completion):
+ *   claim writes it, any transition out of IN_CALL clears it, so the
+ *   workbench timer survives reloads on any browser.
  *
  * Linked-order wiring (previously pending DB): a CONFIRMED outcome
  * drives the linked order PENDING -> CONFIRMED and a CANCELLED outcome
@@ -54,6 +56,7 @@ import {
   priorityForSource,
   recordOutcome,
 } from "./queue";
+import { CALL_OUTCOMES } from "./types";
 import type {
   CallLogEntry,
   CallOutcome,
@@ -132,12 +135,25 @@ function rowToTask(
     priority: row.priority,
     status: row.status as CallTaskStatus,
     assignedAgentId: row.assignedToId,
+    assignedAt: row.assignedAt?.toISOString(),
     attempts: row.attempts,
     lastOutcome,
     callbackAt: row.callbackAt?.toISOString(),
+    nextAttemptAt: row.nextAttemptAt?.toISOString(),
     note: row.note ?? undefined,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+/**
+ * C4 claim gate: a task in no-answer retry backoff (nextAttemptAt in
+ * the future, written by src/callcenter/automation.ts) is NOT
+ * claimable — neither from the shared pool nor by specific claim —
+ * until the backoff expires. Expiry is evaluated at read time, never
+ * stored as a status.
+ */
+export function isInRetryBackoff(task: CallTask, nowIso: string): boolean {
+  return task.nextAttemptAt !== undefined && task.nextAttemptAt > nowIso;
 }
 
 /** Load every call task, enriched from linked orders + latest log outcome. */
@@ -158,7 +174,14 @@ export async function loadCallTasks(): Promise<DbCallTask[]> {
   });
   const lastOutcomeByTask = new Map<string, CallOutcome>();
   for (const log of logs) {
-    if (!lastOutcomeByTask.has(log.taskId)) {
+    // Only HUMAN outcomes count as a task's lastOutcome — automation
+    // timeline rows (C4 AUTO_SMS_*) and supervisor actions (C2) share
+    // this log table and are written after the call outcome, so an
+    // unfiltered "latest log" would misreport them as the outcome.
+    if (
+      !lastOutcomeByTask.has(log.taskId) &&
+      (CALL_OUTCOMES as readonly string[]).includes(log.outcome)
+    ) {
       lastOutcomeByTask.set(log.taskId, log.outcome as CallOutcome);
     }
   }
@@ -223,11 +246,17 @@ export async function createManualTask(input: {
 export async function claimNextTaskDb(agentId: string): Promise<DbCallTask | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const tasks = await loadCallTasks();
-    const result = claimNextTask(tasks, agentId, new Date().toISOString());
+    const nowIso = new Date().toISOString();
+    // C4: tasks in retry backoff are not offered from the pool. The
+    // pure pick maps over the list it is given, and this wrapper only
+    // consumes the picked task, so filtering first is safe; the
+    // phoneResolved lookup below uses the UNfiltered list.
+    const claimable = tasks.filter((t) => !isInRetryBackoff(t, nowIso));
+    const result = claimNextTask(claimable, agentId, nowIso);
     if (!result) return null;
     const updated = await prisma.callTask.updateMany({
       where: { id: result.task.id, assignedToId: null, status: "QUEUED" },
-      data: { assignedToId: agentId, status: "IN_CALL" },
+      data: { assignedToId: agentId, status: "IN_CALL", assignedAt: new Date() },
     });
     if (updated.count === 1) {
       return { ...result.task, phoneResolved: tasks.find((t) => t.id === result.task.id)?.phoneResolved ?? false };
@@ -247,12 +276,26 @@ export async function claimTaskDb(
 > {
   const task = await loadCallTask(taskId);
   if (!task) return { ok: false, code: "NOT_FOUND", error: "Call task not found." };
+  // C4: a specific claim is refused while the task is in retry
+  // backoff — the automation layer scheduled the next attempt, and
+  // claiming early would defeat the backoff + calling-hours policy.
+  if (isInRetryBackoff(task, new Date().toISOString())) {
+    return {
+      ok: false,
+      code: "TASK_NOT_CLAIMABLE",
+      error: `Task is in no-answer retry backoff until ${task.nextAttemptAt} — it becomes claimable when the backoff expires.`,
+    };
+  }
   const result = claimAssignedTask(task, agentId, new Date().toISOString());
   if (!result.ok) return result;
   if (result.task.status !== task.status || result.task.assignedAgentId !== task.assignedAgentId) {
     const updated = await prisma.callTask.updateMany({
       where: { id: taskId, status: task.status, assignedToId: task.assignedAgentId },
-      data: { assignedToId: result.task.assignedAgentId, status: result.task.status },
+      data: {
+        assignedToId: result.task.assignedAgentId,
+        status: result.task.status,
+        assignedAt: result.task.status === "IN_CALL" ? new Date() : null,
+      },
     });
     if (updated.count === 0) {
       const fresh = await loadCallTask(taskId);
@@ -327,6 +370,8 @@ export async function recordOutcomeDb(
         attempts: result.task.attempts,
         callbackAt: result.task.callbackAt ? new Date(result.task.callbackAt) : null,
         assignedToId: result.task.assignedAgentId,
+        // Leaving IN_CALL ends the timed call; staying clears nothing.
+        assignedAt: result.task.status === "IN_CALL" ? undefined : null,
       },
     });
     await tx.callLogEntry.create({

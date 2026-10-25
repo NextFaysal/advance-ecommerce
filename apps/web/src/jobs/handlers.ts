@@ -201,6 +201,14 @@ export interface HandlerDeps {
   bulkActionsRunner?: (
     job: BulkActionsJob,
   ) => Promise<{ ref: string; status: string }>;
+  /** C4: send path for call-center automation SMS jobs (payloads with
+   *  jobKind === "callcenter-automation" on the SMS queue), wired by
+   *  the worker deps assembly to src/callcenter/automation.ts. The
+   *  automation send re-checks its kill switch + task state and
+   *  resolves the recipient from the DB — the generic SMS path below
+   *  must never process these payloads (it would send an empty
+   *  message to a ref). */
+  callCenterSmsSend?: (job: SmsJob) => Promise<HandlerResult>;
   logger?: JobLogger;
 }
 
@@ -288,8 +296,25 @@ export function createHandlers(
 ): Record<QueueName, (envelope: JobEnvelope<never>) => Promise<HandlerResult>> {
   const logger = deps.logger ?? consoleJobLogger;
 
-  const sms: (e: JobEnvelope<SmsJob>) => Promise<HandlerResult> = (envelope) =>
-    runIdempotent(store, envelope, envelope.payload.recipientRef, async () => {
+  const sms: (e: JobEnvelope<SmsJob>) => Promise<HandlerResult> = (envelope) => {
+    // C4: call-center automation jobs delegate to their own send path
+    // (kill-switch + task-state re-checks, DB phone resolution,
+    // timeline logging). Without the dep wired they are SKIPPED —
+    // never fall through to the generic send below.
+    if (envelope.payload.jobKind === "callcenter-automation") {
+      if (!deps.callCenterSmsSend) {
+        return Promise.resolve({
+          status: "skipped" as const,
+          ref: envelope.payload.taskId ?? envelope.payload.recipientRef,
+          detail: "call-center automation send not wired in this deployment",
+        });
+      }
+      const send = deps.callCenterSmsSend;
+      return runIdempotent(store, envelope, envelope.payload.taskId ?? envelope.payload.recipientRef, () =>
+        send(envelope.payload),
+      );
+    }
+    return runIdempotent(store, envelope, envelope.payload.recipientRef, async () => {
       const provider = deps.smsProvider
         ? await deps.smsProvider(null)
         : createSandboxSmsProvider();
@@ -309,6 +334,7 @@ export function createHandlers(
       });
       return { status: "succeeded", ref: result.messageId, detail: "sms via adapter" };
     });
+  };
 
   const email: (e: JobEnvelope<EmailJob>) => Promise<HandlerResult> = (envelope) =>
     runIdempotent(store, envelope, envelope.payload.recipientRef, async () => {

@@ -1,13 +1,16 @@
 "use client";
 
 /**
- * Call QA table (client) — C3. Fetches GET /api/v1/admin/call-center/qa
- * (newest completed call logs), filters by agent client-side over the
- * returned page, and scores a call via PATCH qa/[logId]
+ * Call QA table (client) — C3, pagination R2.4. Fetches
+ * GET /api/v1/admin/call-center/qa (newest completed call logs) with
+ * SERVER-side filters (?agentId=, ?minScore=): changing a filter
+ * resets to page 1. "আরও দেখুন (Load more)" follows the response's
+ * `nextCursor` (?before=<logId>) and APPENDS older rows; scoring any
+ * row (loaded or appended) goes through PATCH qa/[logId]
  * { qaScore 0..5, qaComment }. Scores are a supervisor action
  * (staff.manage) — a 403 from the PATCH is shown verbatim.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { dispositionDef, isCallDisposition } from "@/callcenter/dispositions";
 
@@ -28,63 +31,120 @@ interface QaLog {
 }
 
 interface QaResponse {
-  data?: { logs: QaLog[]; returned: number; unscored: number };
+  data?: { logs: QaLog[]; returned: number; unscored: number; nextCursor: string | null };
   error?: { code?: string; message?: string };
+}
+
+type Drafts = Record<string, { score: string; comment: string }>;
+
+function draftsFor(logs: QaLog[]): Drafts {
+  const drafts: Drafts = {};
+  for (const log of logs) {
+    drafts[log.id] = {
+      score: log.qaScore !== null ? String(log.qaScore) : "",
+      comment: log.qaComment ?? "",
+    };
+  }
+  return drafts;
 }
 
 export function QaTable() {
   const [logs, setLogs] = useState<QaLog[] | null>(null);
   const [unscored, setUnscored] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
   const [agentFilter, setAgentFilter] = useState<string>("");
-  const [drafts, setDrafts] = useState<Record<string, { score: string; comment: string }>>({});
+  const [minScoreFilter, setMinScoreFilter] = useState<string>("");
+  // Agents seen in ANY loaded page — the filter dropdown never loses
+  // an option just because that agent's rows are on an older page.
+  const [knownAgents, setKnownAgents] = useState<{ id: string; name: string }[]>([]);
+  const [drafts, setDrafts] = useState<Drafts>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<Record<string, string>>({});
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  function pageUrl(before?: string): string {
+    const qs = new URLSearchParams();
+    if (agentFilter) qs.set("agentId", agentFilter);
+    if (minScoreFilter !== "") qs.set("minScore", minScoreFilter);
+    if (before) qs.set("before", before);
+    const s = qs.toString();
+    return s ? `/api/v1/admin/call-center/qa?${s}` : "/api/v1/admin/call-center/qa";
+  }
+
+  function rememberAgents(incoming: QaLog[]) {
+    setKnownAgents((prev) => {
+      const map = new Map(prev.map((a) => [a.id, a.name]));
+      for (const log of incoming) {
+        if (log.agentId) map.set(log.agentId, log.agentName ?? log.agentId);
+      }
+      return [...map.entries()].map(([id, name]) => ({ id, name }));
+    });
+  }
+
+  // Page 1 — runs on mount and whenever a filter changes (reset).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLogs(null);
+      setNextCursor(null);
+      setMoreError(null);
+      setLoadError(null);
+      setLocked(false);
+      try {
+        const res = await fetch(pageUrl());
+        const json = (await res.json().catch(() => ({}))) as QaResponse;
+        if (cancelled) return;
+        if (!res.ok || !json.data) {
+          if (json.error?.code === "FEATURE_LOCKED") setLocked(true);
+          setLoadError(json.error?.message ?? `লোড ব্যর্থ হয়েছে (${res.status})`);
+          setLogs([]);
+          return;
+        }
+        setLogs(json.data.logs);
+        setUnscored(json.data.unscored);
+        setNextCursor(json.data.nextCursor);
+        setDrafts(draftsFor(json.data.logs));
+        rememberAgents(json.data.logs);
+      } catch {
+        if (cancelled) return;
+        setLoadError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+        setLogs([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // pageUrl is derived from the two filters; they are the real deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentFilter, minScoreFilter]);
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    setMoreError(null);
     try {
-      const res = await fetch("/api/v1/admin/call-center/qa");
+      const res = await fetch(pageUrl(nextCursor));
       const json = (await res.json().catch(() => ({}))) as QaResponse;
       if (!res.ok || !json.data) {
-        if (json.error?.code === "FEATURE_LOCKED") setLocked(true);
-        setLoadError(json.error?.message ?? `লোড ব্যর্থ হয়েছে (${res.status})`);
-        setLogs([]);
+        // Loaded rows stay on screen; only the button area reports.
+        setMoreError(json.error?.message ?? `লোড ব্যর্থ হয়েছে (${res.status})`);
         return;
       }
-      setLogs(json.data.logs);
-      setUnscored(json.data.unscored);
-      setDrafts((prev) => {
-        const next = { ...prev };
-        for (const log of json.data!.logs) {
-          if (!next[log.id]) {
-            next[log.id] = { score: log.qaScore !== null ? String(log.qaScore) : "", comment: log.qaComment ?? "" };
-          }
-        }
-        return next;
-      });
+      const incoming = json.data.logs;
+      setLogs((prev) => [...(prev ?? []), ...incoming]);
+      setUnscored((n) => n + json.data!.unscored);
+      setNextCursor(json.data.nextCursor);
+      setDrafts((prev) => ({ ...draftsFor(incoming), ...prev }));
+      rememberAgents(incoming);
     } catch {
-      setLoadError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
-      setLogs([]);
+      setMoreError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+    } finally {
+      setLoadingMore(false);
     }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const agents = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const log of logs ?? []) {
-      if (log.agentId) map.set(log.agentId, log.agentName ?? log.agentId);
-    }
-    return [...map.entries()].map(([id, name]) => ({ id, name }));
-  }, [logs]);
-
-  const visible = useMemo(
-    () => (logs ?? []).filter((l) => !agentFilter || l.agentId === agentFilter),
-    [logs, agentFilter],
-  );
+  }
 
   async function saveScore(log: QaLog) {
     const draft = drafts[log.id] ?? { score: "", comment: "" };
@@ -143,17 +203,31 @@ export function QaTable() {
             onChange={(e) => setAgentFilter(e.target.value)}
           >
             <option value="">সবাই</option>
-            {agents.map((a) => (
+            {knownAgents.map((a) => (
               <option key={a.id} value={a.id}>{a.name}</option>
             ))}
           </select>
         </label>
+        <label className="text-sm">
+          সর্বনিম্ন স্কোর:{" "}
+          <select
+            className="h-10 rounded-md border border-border px-2"
+            value={minScoreFilter}
+            onChange={(e) => setMinScoreFilter(e.target.value)}
+          >
+            <option value="">সব</option>
+            {[0, 1, 2, 3, 4, 5].map((s) => (
+              <option key={s} value={String(s)}>{s}+</option>
+            ))}
+          </select>
+        </label>
         <span className="text-sm text-text-muted">
-          মোট {logs.length}টি কল · স্কোর বাকি {unscored}টি (সর্বশেষ ১০০টি দেখানো হচ্ছে)
+          মোট {logs.length}টি কল লোড হয়েছে · স্কোর বাকি {unscored}টি
+          {nextCursor ? " · আরও পুরনো কল আছে" : ""}
         </span>
       </div>
 
-      {visible.length === 0 ? (
+      {logs.length === 0 ? (
         <p className="text-sm text-text-muted">কোনো সম্পন্ন কল পাওয়া যায়নি। (No completed calls found.)</p>
       ) : (
         <div className="overflow-x-auto">
@@ -172,7 +246,7 @@ export function QaTable() {
               </tr>
             </thead>
             <tbody>
-              {visible.map((log) => {
+              {logs.map((log) => {
                 const draft = drafts[log.id] ?? { score: "", comment: "" };
                 return (
                   <tr key={log.id} className="border-b border-border align-top">
@@ -237,6 +311,22 @@ export function QaTable() {
           </table>
         </div>
       )}
+
+      {nextCursor ? (
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            className="rounded-md border border-border px-4 py-2 text-sm font-medium disabled:opacity-50"
+            onClick={loadMore}
+            disabled={loadingMore}
+          >
+            {loadingMore ? "লোড হচ্ছে…" : "আরও দেখুন (Load more)"}
+          </button>
+          {moreError ? (
+            <span role="alert" className="text-sm text-rose-700">{moreError}</span>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

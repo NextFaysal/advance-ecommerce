@@ -4,6 +4,7 @@ import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
 import { toQueueItemView } from "@/callcenter/queue";
 import { loadTaskContext, type DbCallTask } from "@/callcenter/store";
 import { maskPhone } from "@/checkout/validation";
+import { writeAudit } from "@/lib/audit";
 
 // Customer 360 for one call task (C1) — GET /api/v1/admin/call-center/tasks/[id]/context
 // RBAC: orders.view, same flag gate as the sibling call-center routes.
@@ -32,6 +33,35 @@ function view(task: DbCallTask, canViewFullPhone: boolean) {
   return toQueueItemView(task, canViewFullPhone && task.phoneResolved === true);
 }
 
+/**
+ * Full-phone access audit (plan doc 15, R6.1 / C7 privacy hardening):
+ * when this response reveals a FULL phone — the task view's phoneFull,
+ * or the linked order's customerPhone going out unmasked — record WHO
+ * saw WHICH task's number WHEN in the real AuditLog (readable on
+ * /admin/audit). The number itself — full or masked — is NEVER written
+ * to the audit row; only the access event (actor, task, source,
+ * channel). Masked-only views write nothing. Best-effort: an audit
+ * failure must never fail the request.
+ */
+async function auditPhoneView(
+  taskView: ReturnType<typeof view>,
+  orderPhoneRevealed: boolean,
+  actorId: string,
+): Promise<void> {
+  if (!taskView.phoneFull && !orderPhoneRevealed) return;
+  try {
+    await writeAudit({
+      actorId,
+      action: "call_center.phone_view",
+      entityType: "CallTask",
+      entityId: taskView.id,
+      afterJson: { taskId: taskView.id, source: taskView.source, via: "context" },
+    });
+  } catch {
+    /* audit is best-effort here */
+  }
+}
+
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const guard = await requireAdmin("orders.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
@@ -45,9 +75,11 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         { status: 404 },
       );
     }
+    const taskView = view(ctx.task, canViewFullPhone);
+    await auditPhoneView(taskView, canViewFullPhone && ctx.order !== null, guard.userId);
     return NextResponse.json({
       data: {
-        task: view(ctx.task, canViewFullPhone),
+        task: taskView,
         order: ctx.order
           ? {
               ...ctx.order,

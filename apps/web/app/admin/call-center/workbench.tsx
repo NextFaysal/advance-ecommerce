@@ -32,14 +32,35 @@
  *        Confirm order / Cancel order (reason required). The API's
  *        own guards decide; its result/error is shown verbatim.
  *   Call timer: elapsed mm:ss while a task is IN_CALL, counted from
- *        when the task card mounted in THIS session; the elapsed
- *        whole seconds are sent as `durationSeconds` with the outcome
- *        POST and persisted on the call log (CallLogEntry column).
+ *        the claim's `assignedAt` (R2.2) so a page reload mid-call
+ *        CONTINUES the clock instead of restarting at 00:00. The
+ *        store does not persist assignedAt yet (documented drift in
+ *        store.ts), so the queue GET's resumed view arrives without
+ *        it — the workbench bridges that with a per-task localStorage
+ *        record of the claim time (see stashClaimTime); a persisted
+ *        assignedAt always wins when one exists. The
+ *        elapsed whole seconds are sent as `durationSeconds` with
+ *        the outcome POST and persisted on the call log
+ *        (CallLogEntry column).
  *   Outcome payloads may carry `disposition` (CANCELLED /
- *        WRONG_NUMBER sub-reason) and always carry
- *        `scriptVersion: "v1"` — "v1" is the version of the built-in
- *        CONFIRMATION_SCRIPT this workbench renders; DB-versioned
- *        scripts (C3) will replace the constant when they land.
+ *        WRONG_NUMBER sub-reason) and always carry `scriptVersion` —
+ *        the version of the EFFECTIVE script the task card rendered
+ *        (R2.1): the claim and queue GET APIs attach the per-source
+ *        script resolved from scripts-store (a saved doc's version,
+ *        e.g. "v2" after an admin edit; the built-in is "v1"). The
+ *        card renders `task.script.steps` when attached and falls
+ *        back to the queue payload's built-in steps otherwise; the
+ *        stamp falls back to "v1" only when nothing was attached.
+ *
+ * C4 additions:
+ *   WhatsApp deep link on the task card (only when a full number is
+ *        visible): wa.me with a prefilled Bangla template — opens the
+ *        agent's own WhatsApp, needs no Meta account or API.
+ *   The outcome response may carry `automation` — what the follow-up
+ *        automation scheduled (retry backoff / SMS / dedupe note),
+ *        rendered under the result notice. The Customer 360 panel
+ *        also renders an automation timeline from the task's own
+ *        AUTO_* call-log rows (scheduled / sent / skipped).
  *
  * Phone rendering: the API view is the ONLY source — `phoneFull` is
  * rendered when the API sent it (caller holds
@@ -80,7 +101,13 @@ interface TaskView {
   attempts: number;
   lastOutcome?: CallOutcome;
   callbackAt?: string;
+  /** C4: no-answer retry backoff horizon, when the automation set one. */
+  nextAttemptAt?: string;
   note?: string;
+  /** R2.1: EFFECTIVE script for this task's source, attached by the
+   *  claim + queue GET routes — steps are the scripts-store doc shape
+   *  (no `outcomes`); `version` is the label stamped on the outcome. */
+  script?: { version: string; steps: Array<{ key: string; promptBn: string; promptEn?: string }> };
 }
 
 interface ScriptStep {
@@ -148,7 +175,9 @@ interface ContextPastCall {
   id: string;
   taskId: string;
   source: CallQueueSource;
-  outcome: CallOutcome;
+  /** Human outcomes are the CallOutcome union; C4 automation rows
+   *  carry AUTO_SMS_* values in the same field (rendered separately). */
+  outcome: CallOutcome | string;
   note?: string;
   disposition?: string;
   agentId: string;
@@ -178,11 +207,24 @@ interface ClaimResponse {
   error?: { code: string; message: string };
 }
 
+/** C4 automation summary as returned by the outcome route. */
+interface AutomationSummary {
+  enabled: boolean;
+  actions: Array<{
+    kind: string;
+    automationKind?: string;
+    runAt?: string;
+    enqueued?: boolean;
+    detail: string;
+  }>;
+}
+
 interface OutcomeResponse {
   data?: {
     task: TaskView;
     orderEffect: OrderEffect;
     nextTask: TaskView | null;
+    automation?: AutomationSummary;
   };
   error?: { code: string; message: string };
 }
@@ -225,6 +267,109 @@ function fmtElapsed(totalSec: number): string {
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+/** R2.2: whole seconds already elapsed on a claimed task, derived
+ *  from the API view's `assignedAt` (the claim time). A fresh claim
+ *  has assignedAt ≈ now, so it starts at ~0 naturally; a task resumed
+ *  after a reload keeps the time already spent. 0 when assignedAt is
+ *  absent/unparseable, and never negative (clock skew guard). */
+function initialElapsedSec(assignedAt: string | undefined, nowMs: number): number {
+  if (!assignedAt) return 0;
+  const claimedMs = Date.parse(assignedAt);
+  if (Number.isNaN(claimedMs)) return 0;
+  return Math.max(0, Math.floor((nowMs - claimedMs) / 1000));
+}
+
+/* R2.2 bridge: the claim RESPONSE carries the true assignedAt, but
+ * the store does not persist it (store.ts documents the drift — no
+ * column), so the queue GET's resumed IN_CALL view arrives without
+ * one. Until the store persists claim time, the workbench remembers
+ * the claim time per task in localStorage on claim and restores it
+ * onto the resumed view — same browser, same agent, which is exactly
+ * the reload scenario. A persisted assignedAt, once the store grows
+ * one, always wins (the stash only fills an absent field). */
+const CLAIM_STASH_KEY = "call-center-claim";
+
+function stashClaimTime(task: TaskView): void {
+  try {
+    localStorage.setItem(
+      CLAIM_STASH_KEY,
+      JSON.stringify({ taskId: task.id, assignedAt: task.assignedAt ?? new Date().toISOString() }),
+    );
+  } catch {
+    /* storage unavailable — the timer simply starts at 0 on reload */
+  }
+}
+
+function stashedClaimTime(taskId: string): string | undefined {
+  try {
+    const raw = localStorage.getItem(CLAIM_STASH_KEY);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as { taskId?: unknown; assignedAt?: unknown };
+    return parsed.taskId === taskId && typeof parsed.assignedAt === "string"
+      ? parsed.assignedAt
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function clearClaimTime(): void {
+  try {
+    localStorage.removeItem(CLAIM_STASH_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** C4: WhatsApp deep link (wa.me) with a prefilled Bangla template.
+ *  Built ONLY from a visible full number — when the API withheld
+ *  phoneFull there is nothing to link to and this returns null. */
+function whatsAppUrl(task: TaskView): string | null {
+  if (!task.phoneFull) return null;
+  const digits = task.phoneFull.replace(/\D/g, "");
+  if (!digits) return null;
+  const text =
+    `আসসালামু আলাইকুম ${task.customerName}, আপনার অর্ডার` +
+    `${task.orderNo ? ` (${task.orderNo})` : ""} সম্পর্কে কথা বলতে চাই।`;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+}
+
+/** C4 automation timeline labels (values are the log contract). */
+const AUTO_OUTCOME_LABEL: Record<string, string> = {
+  AUTO_SMS_SCHEDULED: "🤖 SMS নির্ধারিত হয়েছে",
+  AUTO_SMS_SENT: "🤖 SMS পাঠানো হয়েছে",
+  AUTO_SMS_SKIPPED: "🤖 SMS পাঠানো হয়নি",
+};
+
+const AUTO_KIND_LABEL: Record<string, string> = {
+  NO_ANSWER_SMS: "যোগাযোগ-হয়নি",
+  CALLBACK_REMINDER_SMS: "কলব্যাক রিমাইন্ডার",
+  RESCUE_SMS: "রেসকিউ",
+};
+
+/** Bangla summary lines for the outcome response's automation block. */
+function automationSummaryLines(summary: AutomationSummary | undefined): string[] {
+  if (!summary || !summary.enabled) return [];
+  const lines: string[] = [];
+  for (const a of summary.actions) {
+    if (a.kind === "retry-scheduled" && a.runAt) {
+      lines.push(`🤖 পুনঃচেষ্টা নির্ধারিত হয়েছে: ${bnDateTime(a.runAt)} — এর আগে টাস্কটি কিউতে আসবে না।`);
+    } else if (a.kind === "sms-scheduled") {
+      const label = a.automationKind ? (AUTO_KIND_LABEL[a.automationKind] ?? a.automationKind) : "";
+      if (a.enqueued && a.runAt) {
+        lines.push(`🤖 ${label} SMS নির্ধারিত হয়েছে: ${bnDateTime(a.runAt)}।`);
+      } else {
+        lines.push(`🤖 ${label} SMS নির্ধারণ করা যায়নি (${a.detail}) — টাইমলাইনে রেকর্ড আছে।`);
+      }
+    } else if (a.kind === "note" && a.detail === "covered-by-order-sms") {
+      lines.push(
+        "🤖 কনফার্মেশন SMS অর্ডার সিস্টেম থেকে যাবে — ডুপ্লিকেট এড়াতে কল সেন্টার থেকে আলাদা SMS পাঠানো হয়নি।",
+      );
+    }
+  }
+  return lines;
 }
 
 /** C3 dispositions for CANCELLED / WRONG_NUMBER outcomes (values are
@@ -270,6 +415,8 @@ export function CallCenterWorkbench() {
   const [current, setCurrent] = useState<TaskView | null>(null);
   const [upNext, setUpNext] = useState<TaskView | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // C4: automation summary lines from the last outcome response.
+  const [autoLines, setAutoLines] = useState<string[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
@@ -279,7 +426,7 @@ export function CallCenterWorkbench() {
   // arms the outcome + shows the dropdown, second click submits).
   const [armedOutcome, setArmedOutcome] = useState<CallOutcome | null>(null);
   const [disposition, setDisposition] = useState("");
-  // C1 call timer — display-only (see header note).
+  // Call timer (C1; R2.2 — seeded from assignedAt, see header note).
   const [elapsedSec, setElapsedSec] = useState(0);
   // Manual-task form
   const [mName, setMName] = useState("");
@@ -311,6 +458,12 @@ export function CallCenterWorkbench() {
       setMyCallbacks(body.data.myCallbacks ?? []);
       setUnassignedCount(body.data.unassignedCount);
       const inCall = body.data.queue.find((t) => t.status === "IN_CALL") ?? null;
+      // R2.2 bridge: restore the claim time onto the resumed view
+      // when the API view carries none (see stashClaimTime).
+      if (inCall && !inCall.assignedAt) {
+        const stashed = stashedClaimTime(inCall.id);
+        if (stashed) inCall.assignedAt = stashed;
+      }
       setCurrent(inCall);
       setUpNext(inCall ? null : body.data.nextTask);
       setLoadState("ready");
@@ -340,22 +493,26 @@ export function CallCenterWorkbench() {
     void load();
   }, [load]);
 
-  /* Call timer (C1): counts up from when the current task's card
-   * mounted in this session. The elapsed seconds ride the outcome
-   * POST as durationSeconds and land on the call log. */
+  /* Call timer (C1, R2.2): counts up from the claim's assignedAt —
+   * NOT from card mount — so a reload mid-call resumes the clock
+   * where it left off (the GET queue's resumed IN_CALL view carries
+   * assignedAt). The elapsed seconds ride the outcome POST as
+   * durationSeconds and land on the call log. */
   const currentId = current?.id;
+  const currentAssignedAt = current?.assignedAt;
   useEffect(() => {
     if (!currentId) {
       setElapsedSec(0);
       return;
     }
-    setElapsedSec(0);
-    const startedAt = Date.now();
+    const seed = initialElapsedSec(currentAssignedAt, Date.now());
+    setElapsedSec(seed);
+    const startedAtMs = Date.now() - seed * 1000;
     const iv = setInterval(() => {
-      setElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+      setElapsedSec(Math.floor((Date.now() - startedAtMs) / 1000));
     }, 1000);
     return () => clearInterval(iv);
-  }, [currentId]);
+  }, [currentId, currentAssignedAt]);
 
   const claim = useCallback(
     async (taskId?: string) => {
@@ -379,7 +536,9 @@ export function CallCenterWorkbench() {
           return;
         }
         setCurrent(body.data.task);
+        stashClaimTime(body.data.task);
         setUpNext(null);
+        setAutoLines([]);
         setNote("");
         setCallbackOpen(false);
         setCallbackAt("");
@@ -426,9 +585,11 @@ export function CallCenterWorkbench() {
       } = {
         taskId: current.id,
         outcome,
-        // "v1" = the built-in CONFIRMATION_SCRIPT version this
-        // workbench renders (C3 — see the file header).
-        scriptVersion: "v1",
+        // R2.1: stamp the EFFECTIVE script's version — the one the
+        // card actually rendered (saved doc version, e.g. "v2";
+        // the built-in is "v1"). "v1" remains only as the fallback
+        // when the claim/queue payload attached no script.
+        scriptVersion: current.script?.version ?? "v1",
         // Timer value (whole seconds). The outcome schema caps this
         // at 7200 — clamp so a forgotten tab can never 400 the call.
         durationSeconds: Math.min(elapsedSec, 7200),
@@ -476,6 +637,8 @@ export function CallCenterWorkbench() {
         } else {
           setNotice("ফলাফল রেকর্ড হয়েছে।");
         }
+        setAutoLines(automationSummaryLines(body.data.automation));
+        clearClaimTime();
         setCurrent(null);
         setUpNext(body.data.nextTask);
         setNote("");
@@ -584,6 +747,13 @@ export function CallCenterWorkbench() {
         <p role="status" className="mt-3 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           {notice}
         </p>
+      ) : null}
+      {autoLines.length > 0 ? (
+        <div className="mt-2 rounded-md bg-sky-50 px-3 py-2 text-sm text-sky-900">
+          {autoLines.map((line, i) => (
+            <p key={i}>{line}</p>
+          ))}
+        </div>
       ) : null}
       {actionError ? (
         <p role="alert" className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -720,13 +890,32 @@ export function CallCenterWorkbench() {
                 <dd>{current.note}</dd>
               </div>
             ) : null}
+            {current.nextAttemptAt ? (
+              <div>
+                <dt className="text-slate-500">পরবর্তী চেষ্টা (অটোমেশন)</dt>
+                <dd>{bnDateTime(current.nextAttemptAt)}</dd>
+              </div>
+            ) : null}
           </dl>
 
-          {script.length > 0 ? (
+          {whatsAppUrl(current) ? (
+            <a
+              href={whatsAppUrl(current) as string}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-block rounded-md bg-green-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-green-700"
+            >
+              💬 WhatsApp-এ মেসেজ পাঠান
+            </a>
+          ) : null}
+
+          {(current.script?.steps ?? script).length > 0 ? (
             <details className="mt-3 rounded-md bg-white p-3" open>
-              <summary className="cursor-pointer text-sm font-semibold">কথা বলার স্ক্রিপ্ট</summary>
+              <summary className="cursor-pointer text-sm font-semibold">
+                কথা বলার স্ক্রিপ্ট{current.script ? ` — ${current.script.version}` : ""}
+              </summary>
               <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">
-                {script.map((s) => (
+                {(current.script?.steps ?? script).map((s) => (
                   <li key={s.key}>{fillScript(s.promptBn, current)}</li>
                 ))}
               </ol>
@@ -1210,23 +1399,54 @@ function Customer360Panel({
           ) : null}
 
           <h4 className="mt-4 text-sm font-semibold">আগের কলসমূহ</h4>
-          {ctx.pastCalls.length > 0 ? (
+          {ctx.pastCalls.filter((c) => !String(c.outcome).startsWith("AUTO_")).length > 0 ? (
             <ul className="mt-1 space-y-2 text-sm">
-              {ctx.pastCalls.map((c) => (
-                <li key={c.id} className="rounded-md bg-slate-50 px-3 py-2">
-                  <span className="font-medium">{bnDateTime(c.calledAt)}</span> ·{" "}
-                  {SOURCE_LABEL[c.source]} · ফলাফল: {c.outcome}
-                  {c.disposition ? ` (${c.disposition})` : ""} · এজেন্ট:{" "}
-                  {c.agentName ?? c.agentId}
-                  {c.note ? (
-                    <span className="block text-slate-600">নোট: {c.note}</span>
-                  ) : null}
-                </li>
-              ))}
+              {ctx.pastCalls
+                .filter((c) => !String(c.outcome).startsWith("AUTO_"))
+                .map((c) => (
+                  <li key={c.id} className="rounded-md bg-slate-50 px-3 py-2">
+                    <span className="font-medium">{bnDateTime(c.calledAt)}</span> ·{" "}
+                    {SOURCE_LABEL[c.source]} · ফলাফল: {c.outcome}
+                    {c.disposition ? ` (${c.disposition})` : ""} · এজেন্ট:{" "}
+                    {c.agentName ?? c.agentId}
+                    {c.note ? (
+                      <span className="block text-slate-600">নোট: {c.note}</span>
+                    ) : null}
+                  </li>
+                ))}
             </ul>
           ) : (
             <p className="mt-1 text-sm text-slate-500">এই নম্বরে/অর্ডারে আগের কোনো কল নেই।</p>
           )}
+
+          {/* C4 automation timeline — this task's AUTO_* log rows:
+              what was scheduled, what was sent, what was skipped and
+              why (the log note carries the detail verbatim). */}
+          {ctx.pastCalls.some(
+            (c) => c.taskId === taskId && String(c.outcome).startsWith("AUTO_"),
+          ) ? (
+            <>
+              <h4 className="mt-4 text-sm font-semibold">🤖 অটোমেশন টাইমলাইন</h4>
+              <ul className="mt-1 space-y-2 text-sm">
+                {ctx.pastCalls
+                  .filter((c) => c.taskId === taskId && String(c.outcome).startsWith("AUTO_"))
+                  .map((c) => (
+                    <li key={c.id} className="rounded-md bg-sky-50 px-3 py-2">
+                      <span className="font-medium">{bnDateTime(c.calledAt)}</span> ·{" "}
+                      {AUTO_OUTCOME_LABEL[c.outcome] ?? c.outcome}
+                      {c.note ? (
+                        <span className="block text-slate-600">{c.note}</span>
+                      ) : null}
+                    </li>
+                  ))}
+              </ul>
+              <p className="mt-1 text-xs text-slate-500">
+                অটোমেশন (module.call_center_automation) চালু থাকলে ফলাফলের পর SMS ও পুনঃচেষ্টা
+                নিজে নিজে নির্ধারিত হয় — উপরে তার সম্পূর্ণ রেকর্ড। SMS স্যান্ডবক্স অ্যাডাপ্টার
+                দিয়ে গেলে নোটে তা লেখা থাকে; আসল SMS শুধু লাইভ অ্যাডাপ্টার কনফিগার হলেই যায়।
+              </p>
+            </>
+          ) : null}
         </>
       ) : null}
     </div>

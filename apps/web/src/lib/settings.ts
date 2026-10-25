@@ -80,6 +80,28 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   // prefix, exactly as it does for any unlisted prefix).
   "call_center.sla_confirm_minutes": { category: "general", value: "30", isPublic: false },
   "call_center.sla_rescue_minutes": { category: "general", value: "60", isPublic: false },
+  // Call-center follow-up automation (C4 — src/callcenter/automation.ts).
+  // All four are read at decision/send time so an admin edit takes
+  // effect on the next outcome without a redeploy. The automation
+  // itself is gated by the module.call_center_automation kill-switch
+  // flag (seeded OFF), independent of these values.
+  // Minutes after a NO_ANSWER outcome before the "we tried to reach
+  // you" SMS goes out (0 = immediately).
+  "call_center.auto_sms_no_answer_minutes": { category: "general", value: "15", isPublic: false },
+  // Minutes BEFORE a scheduled callback at which the reminder SMS
+  // goes out (if that moment is already past, it sends immediately).
+  "call_center.callback_reminder_minutes": { category: "general", value: "10", isPublic: false },
+  // Legal calling window (Asia/Dhaka) for no-answer retries: a retry
+  // time landing outside [start, end) is clamped to the next window
+  // opening. Whole hours, 0-23.
+  "call_center.calling_start_hour": { category: "general", value: "9", isPublic: false },
+  "call_center.calling_end_hour": { category: "general", value: "21", isPublic: false },
+  // Call-center data retention (C7 / doc 15 R6.2 —
+  // src/callcenter/retention.ts). Call-log free text (note/qaComment)
+  // and terminal-task PII (full phone, name, note) older than this
+  // many calendar months are anonymized by the retention job; outcomes,
+  // dispositions, scores and timestamps are kept so reporting survives.
+  "call_center.log_retention_months": { category: "general", value: "12", isPublic: false },
 };
 
 /** Env fallback map: setting key -> env var name. No secret value lives here. */

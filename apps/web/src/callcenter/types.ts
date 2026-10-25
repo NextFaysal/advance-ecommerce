@@ -58,6 +58,13 @@ export interface CallTask {
   /** ISO time the callback is due; set only while a CALLBACK is pending. */
   callbackAt?: string;
   /**
+   * C4: ISO time before which the task must NOT be offered again —
+   * the no-answer retry backoff written by the automation layer
+   * (src/callcenter/automation.ts). Claim paths skip the task while
+   * this is in the future; absent on tasks never backed off.
+   */
+  nextAttemptAt?: string;
+  /**
    * Staff note captured at task creation. Persisted ONLY for MANUAL
    * tasks (CallTask.note, C1); order-linked tasks have no note column
    * usage — their context lives on the order.
@@ -92,6 +99,8 @@ export interface CallTaskView {
   attempts: number;
   lastOutcome?: CallOutcome;
   callbackAt?: string;
+  /** C4: retry-backoff horizon (see CallTask.nextAttemptAt). */
+  nextAttemptAt?: string;
   /** Creation-time staff note (MANUAL tasks only — see CallTask.note). */
   note?: string;
 }

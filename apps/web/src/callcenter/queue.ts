@@ -16,6 +16,7 @@
  * own the permission checks and HTTP status mapping.
  */
 import { maskPhone } from "../checkout/validation";
+import { CALL_OUTCOMES } from "./types";
 import type {
   AgentPerformance,
   CallLogEntry,
@@ -48,9 +49,22 @@ export function isCallbackDue(task: CallTask, nowIso: string): boolean {
 }
 
 /**
+ * C4 retry backoff: a task whose nextAttemptAt is still in the future is
+ * NOT offerable, however high its priority. Mirrors isCallbackDue's edge
+ * semantics — at exactly nextAttemptAt the backoff has expired and the
+ * task is offerable again. Idempotent: safe on lists a caller already
+ * filtered, since it only ever removes tasks.
+ */
+export function isRetryBackoffActive(task: CallTask, nowIso: string): boolean {
+  if (!task.nextAttemptAt) return false; // never backed off — always offerable
+  return task.nextAttemptAt > nowIso;
+}
+
+/**
  * Pick the next task for an agent: QUEUED, assigned to them or unassigned,
- * callback due, highest priority first, then oldest first. Returns null when
- * the queue has nothing offerable right now.
+ * callback due, retry backoff (C4 nextAttemptAt) expired, highest priority
+ * first, then oldest first. Returns null when the queue has nothing
+ * offerable right now.
  */
 export function nextTaskForAgent(
   tasks: readonly CallTask[],
@@ -62,7 +76,8 @@ export function nextTaskForAgent(
       (t) =>
         t.status === "QUEUED" &&
         (t.assignedAgentId === null || t.assignedAgentId === agentId) &&
-        isCallbackDue(t, nowIso),
+        isCallbackDue(t, nowIso) &&
+        !isRetryBackoffActive(t, nowIso),
     )
     .sort((a, b) => b.priority - a.priority || a.createdAt.localeCompare(b.createdAt));
   return offerable[0] ?? null;
@@ -247,26 +262,46 @@ export function recordOutcome(
 /** Callbacks that are due (or overdue) right now, earliest first — the callback list view. */
 export function dueCallbacks(tasks: readonly CallTask[], nowIso: string): CallTask[] {
   return tasks
-    .filter((t) => t.status === "QUEUED" && t.callbackAt !== undefined && t.callbackAt <= nowIso)
+    .filter(
+      (t) =>
+        t.status === "QUEUED" &&
+        t.callbackAt !== undefined &&
+        t.callbackAt <= nowIso &&
+        // Consistent with the claim paths: a task in no-answer retry
+        // backoff is not offered yet, even if an older callback time
+        // also makes it look due.
+        !isRetryBackoffActive(t, nowIso),
+    )
     .sort((a, b) => (a.callbackAt as string).localeCompare(b.callbackAt as string));
 }
 
-/** Roll up one agent's performance from the call log. Pure, integer bps rates. */
+/**
+ * Roll up one agent's performance from the call log. Pure, integer bps
+ * rates. ONLY genuine call attempts count: the persisted log also carries
+ * rows that are not calls at all — supervisor actions from the C2 console
+ * (REASSIGNED / RELEASED / FORCE_CLOSED, stamped with the SUPERVISOR's
+ * agentId) and C4 automation rows (AUTO_SMS_*). Those rows reach this
+ * function cast to CallLogEntry (outcome is a plain column in the DB), so
+ * the rollup filters on the five human CallOutcome values: totalCalls,
+ * the confirm-rate denominator and talk time are computed over call rows
+ * only, and a supervisor's actions never move any agent's stats.
+ */
 export function agentPerformance(logs: readonly CallLogEntry[], agentId: string): AgentPerformance {
   const mine = logs.filter((l) => l.agentId === agentId);
+  const calls = mine.filter((l) => (CALL_OUTCOMES as readonly string[]).includes(l.outcome));
   const count = (outcome: CallLogEntry["outcome"]): number =>
-    mine.filter((l) => l.outcome === outcome).length;
+    calls.filter((l) => l.outcome === outcome).length;
   const confirmed = count("CONFIRMED");
   return {
     agentId,
-    totalCalls: mine.length,
+    totalCalls: calls.length,
     confirmed,
     callbacks: count("CALLBACK"),
     cancelled: count("CANCELLED"),
     noAnswer: count("NO_ANSWER"),
     wrongNumber: count("WRONG_NUMBER"),
-    confirmRateBps: mine.length === 0 ? 0 : Math.floor((confirmed * 10_000) / mine.length),
-    totalTalkSeconds: mine.reduce((sum, l) => sum + (l.durationSeconds ?? 0), 0),
+    confirmRateBps: calls.length === 0 ? 0 : Math.floor((confirmed * 10_000) / calls.length),
+    totalTalkSeconds: calls.reduce((sum, l) => sum + (l.durationSeconds ?? 0), 0),
   };
 }
 
@@ -292,6 +327,7 @@ export function toQueueItemView(task: CallTask, canViewFullPhone: boolean): Call
     attempts: task.attempts,
     lastOutcome: task.lastOutcome,
     callbackAt: task.callbackAt,
+    nextAttemptAt: task.nextAttemptAt,
     note: task.note,
   };
 }

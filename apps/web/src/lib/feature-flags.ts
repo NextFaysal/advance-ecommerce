@@ -16,10 +16,10 @@
  * `installFeatureFlagSource(...)`. No consumer changes: every consumer
  * calls the reader functions, never a source directly. Enabled state
  * persists in the FeatureFlag table; the seed is the catalogue truth
- * (19 keys, all OFF by default).
+ * (20 keys, all OFF by default).
  *
  * CATALOGUE: FEATURE_FLAG_DEFINITIONS mirrors FEATURE_FLAGS in
- * packages/db/prisma/seed.ts EXACTLY (19 keys, descriptions verbatim) —
+ * packages/db/prisma/seed.ts EXACTLY (20 keys, descriptions verbatim) —
  * the seed is the source of truth. A smoke test (Agent 60) parses the
  * seed file text and asserts the key sets match. If a flag is added to
  * the seed, add it here too (and re-run that check); flags default OFF
@@ -52,6 +52,7 @@ export interface FeatureFlagRecord extends FeatureFlagDefinition {
 export const FEATURE_FLAG_DEFINITIONS = [
   { key: "module.reseller", description: "Reseller panel (v2 add-on)" },
   { key: "module.call_center", description: "Call center (v2 add-on)" },
+  { key: "module.call_center_automation", description: "Call center follow-up automation — auto SMS + retry backoff (v2 add-on)" },
   { key: "module.pos", description: "POS (v2 add-on)" },
   { key: "module.multi_vendor", description: "Multi-vendor (v2 add-on)" },
   { key: "module.automation", description: "Automation engine (v2 add-on)" },

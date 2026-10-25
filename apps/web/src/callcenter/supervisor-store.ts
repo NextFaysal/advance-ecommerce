@@ -389,7 +389,8 @@ export async function reassignTask(
   const applied = await prisma.$transaction(async (tx) => {
     const updated = await tx.callTask.updateMany({
       where: { id: taskId, status: row.status, assignedToId: row.assignedToId },
-      data: { assignedToId: toAgentId },
+      // A reassigned IN_CALL task restarts its call timer for the new agent.
+      data: { assignedToId: toAgentId, assignedAt: row.status === "IN_CALL" ? new Date() : null },
     });
     if (updated.count !== 1) return false;
     await tx.callLogEntry.create({
@@ -416,7 +417,7 @@ export async function releaseTask(taskId: string, actorId: string): Promise<Supe
   const applied = await prisma.$transaction(async (tx) => {
     const updated = await tx.callTask.updateMany({
       where: { id: taskId, status: row.status, assignedToId: row.assignedToId },
-      data: { assignedToId: null, status: "QUEUED" },
+      data: { assignedToId: null, status: "QUEUED", assignedAt: null },
     });
     if (updated.count !== 1) return false;
     await tx.callLogEntry.create({
@@ -446,7 +447,7 @@ export async function forceCloseTask(
   const applied = await prisma.$transaction(async (tx) => {
     const updated = await tx.callTask.updateMany({
       where: { id: taskId, status: row.status, assignedToId: row.assignedToId },
-      data: { status: "SKIPPED" },
+      data: { status: "SKIPPED", assignedAt: null },
     });
     if (updated.count !== 1) return false;
     await tx.callLogEntry.create({

@@ -19,7 +19,7 @@
  */
 import { featureFlags } from "../lib/feature-flags";
 
-export type CallCenterFlagKey = "module.call_center";
+export type CallCenterFlagKey = "module.call_center" | "module.call_center_automation";
 
 export interface CallCenterFlagStore {
   isEnabled(key: CallCenterFlagKey): boolean;
@@ -38,7 +38,10 @@ export class InMemoryCallCenterFlagStore implements CallCenterFlagStore {
   }
 
   list(): Record<CallCenterFlagKey, boolean> {
-    return { "module.call_center": featureFlags.isFeatureEnabled("module.call_center") };
+    return {
+      "module.call_center": featureFlags.isFeatureEnabled("module.call_center"),
+      "module.call_center_automation": featureFlags.isFeatureEnabled("module.call_center_automation"),
+    };
   }
 }
 
@@ -46,4 +49,16 @@ export const demoCallCenterFlags: CallCenterFlagStore = new InMemoryCallCenterFl
 
 export function isCallCenterEnabled(store: CallCenterFlagStore = demoCallCenterFlags): boolean {
   return store.isEnabled("module.call_center");
+}
+
+/**
+ * C4 kill switch: follow-up automation (auto SMS + retry backoff).
+ * Seeded OFF, independent of the module flag — flipping it OFF stops
+ * every automation decision AND every queued send (the send path
+ * re-checks it at fire time) without touching the module itself.
+ */
+export function isCallCenterAutomationEnabled(
+  store: CallCenterFlagStore = demoCallCenterFlags,
+): boolean {
+  return store.isEnabled("module.call_center_automation");
 }

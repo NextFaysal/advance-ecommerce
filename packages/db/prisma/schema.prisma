@@ -1614,7 +1614,14 @@ model CallTask {
   note          String?
   orderId    String?
   assignedToId String?
+  // When the current IN_CALL claim began (set at claim, cleared when
+  // the task leaves IN_CALL) — persists the workbench call timer.
+  assignedAt DateTime?
   callbackAt DateTime?
+  // C4: no-answer retry backoff — written by the call-center
+  // automation layer after a NO_ANSWER outcome; the claim paths skip
+  // the task while this is in the future (see src/callcenter/store.ts).
+  nextAttemptAt DateTime?
   attempts   Int      @default(0)
   createdAt  DateTime @default(now())
   logs       CallLogEntry[]

@@ -197,7 +197,7 @@ export default async function AdminCallCenterReportsPage({
 
           <h2 className="mb-3 mt-8 text-lg font-semibold">এজেন্ট অনুযায়ী</h2>
           <DataTable
-            caption="এজেন্টের কার্যকারিতা — agentPerformance() হেল্পার থেকে; কলব্যাক-রক্ষা এই রিপোর্টে যোগ করা। দ্রষ্টব্য: সংরক্ষিত কল লগে কথার সময় (duration) থাকে না, তাই মোট সময় বর্তমানে ০ দেখায়।"
+            caption="এজেন্টের কার্যকারিতা — agentPerformance() হেল্পার থেকে; কলব্যাক-রক্ষা এই রিপোর্টে যোগ করা। মোট সময় = প্রতিটি কলের আসল duration (outcome-এর সময় সেভ হয়)।"
             columns={[
               { key: "agent", header: "এজেন্ট" },
               { key: "totalCalls", header: "মোট কল" },
