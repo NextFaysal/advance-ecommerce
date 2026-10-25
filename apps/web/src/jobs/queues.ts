@@ -40,8 +40,26 @@ export interface SmsJob {
    * them to the automation send path (HandlerDeps.callCenterSmsSend).
    * The payload carries ids only — the recipient phone is resolved
    * from the DB at send time, never stored on the job.
+   *
+   * O3 order-OTP jobs (jobKind === "order-otp") delegate the same way
+   * to HandlerDeps.orderOtpSmsSend (src/orders/otp.ts). Their payload
+   * is ids-only EXCEPT otpCode below — see its comment.
    */
-  jobKind?: "callcenter-automation";
+  jobKind?: "callcenter-automation" | "order-otp";
+  /** Order-OTP flavour marker (jobKind === "order-otp"). */
+  purpose?: "order_otp";
+  /**
+   * The 6-digit code for an order-OTP job. This is the ONE payload
+   * field that carries a secret-shaped value, by necessity: the DB
+   * stores only the code's SHA-256 hash, so the job is the only
+   * channel that can deliver the plaintext to the worker's send path.
+   * It is single-use and dies 10 minutes after issue. It must NEVER
+   * be logged — handlers log templateKey / recipientRef / messageId
+   * only, and the OTP send path re-validates the code against the
+   * stored hash at send time (a re-issue supersedes older jobs,
+   * which then skip instead of sending a dead code).
+   */
+  otpCode?: string;
   /** Automation flavour: NO_ANSWER_SMS / CALLBACK_REMINDER_SMS / RESCUE_SMS. */
   automationKind?: string;
   /** CallTask id the automation belongs to. */

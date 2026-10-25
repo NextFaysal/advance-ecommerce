@@ -25,6 +25,7 @@ import { displayPhone, riskLevel } from "../../../src/orders/customer";
 import { formatBdt } from "../../../src/checkout/pricing";
 import { BulkActionBar } from "../../../src/orders/components/BulkActionBar";
 import { ManualOrderBuilder } from "./manual-order-builder";
+import { StaleUnpaidPanel } from "./stale-unpaid-panel";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -278,6 +279,8 @@ export default function AdminOrdersPage() {
           </Button>
         }
       />
+
+      <StaleUnpaidPanel />
 
       {loadState === "loading" && (
         <div role="status" aria-label="অর্ডার লোড হচ্ছে" className="overflow-hidden rounded-lg border border-border bg-card shadow-card">

@@ -48,6 +48,14 @@ import {
 } from "@/catalog/product-types";
 import { enqueueBulkJob, processBulkJob } from "@/jobs/bulk-actions";
 import { manualOrderSchema } from "@/orders/manual-order";
+import {
+  ADVANCE_REASON_LABELS,
+  issueAdvancePaymentLink,
+  percentAdvancePoisha,
+  pickAdvanceRequirement,
+  type AdvanceCandidate,
+} from "@/orders/advance";
+import { loadOrderRules } from "@/checkout/order-rules";
 import { calculateShipping, loadShippingRates } from "@/checkout/shipping";
 import { normalizeBdPhone } from "@/checkout/validation";
 import { computePricing } from "@/checkout/pricing";
@@ -244,6 +252,12 @@ async function handleBulkAction(req: Request, session: AdminSession, body: unkno
 const manualCreateSchema = manualOrderSchema.extend({
   idempotencyKey: z.string().uuid().optional(),
   resellerCode: z.string().max(32).optional(),
+  // Wave 21 (doc 17 batch O3): a staff-set advance requirement for
+  // this order (poisha). Validated against the computed grand total
+  // in the handler (0..total); the persisted requirement is the MAX
+  // of this, the fraud band, and a prepaid method's full total —
+  // same engine as public checkout (src/orders/advance).
+  advanceRequiredPoisha: z.number().int().min(0).optional(),
 });
 
 /**
@@ -405,6 +419,45 @@ async function handleManualCreate(req: Request, session: AdminSession, body: unk
     );
   }
 
+  // Advance requirement (wave 21, doc 17 batch O3): the staff-set
+  // amount is validated against the computed grand total, then the
+  // PERSISTED requirement is the MAX of staff-set / prepaid full
+  // total / the fraud band (priced with the configured percent) —
+  // the same engine public checkout runs. The rules-threshold
+  // candidate is checkout-only policy and is not applied here.
+  if (
+    input.advanceRequiredPoisha !== undefined &&
+    input.advanceRequiredPoisha > pricing.grandTotalPoisha
+  ) {
+    return err(
+      "VALIDATION_ERROR",
+      `অগ্রিমের পরিমাণ অর্ডারের মোট মূল্যের (${pricing.grandTotalPoisha} পয়সা) বেশি হতে পারবে না। / The advance amount cannot exceed the order total (${pricing.grandTotalPoisha} poisha).`,
+      400,
+      ["advanceRequiredPoisha: exceeds the order total"],
+    );
+  }
+  const advanceCandidates: AdvanceCandidate[] = [];
+  if (input.advanceRequiredPoisha !== undefined && input.advanceRequiredPoisha > 0) {
+    advanceCandidates.push({
+      amountPoisha: input.advanceRequiredPoisha,
+      reason: ADVANCE_REASON_LABELS.staff,
+    });
+  }
+  if (input.paymentMethod !== "cod") {
+    advanceCandidates.push({
+      amountPoisha: pricing.grandTotalPoisha,
+      reason: ADVANCE_REASON_LABELS.prepaid,
+    });
+  }
+  if (enforcement.advanceRequired) {
+    const rules = await loadOrderRules();
+    advanceCandidates.push({
+      amountPoisha: percentAdvancePoisha(pricing.grandTotalPoisha, rules.advancePercent),
+      reason: ADVANCE_REASON_LABELS.fraud_review,
+    });
+  }
+  const advanceRequirement = pickAdvanceRequirement(advanceCandidates);
+
   // Reseller attribution (wave 6): the optional code staff entered
   // resolves exactly like public checkout — ACTIVE resellers only,
   // never failing the create (see resolveResellerAttribution).
@@ -444,6 +497,11 @@ async function handleManualCreate(req: Request, session: AdminSession, body: unk
       },
       paymentMethod: input.paymentMethod,
       riskScore: assessment.score,
+      // Wave 21: persisted advance requirement + OTP flag, same
+      // contract as public checkout.
+      advanceRequiredPoisha: advanceRequirement.advanceRequiredPoisha,
+      advanceReason: advanceRequirement.advanceReason ?? undefined,
+      requiresOtp: enforcement.requiresOtp,
       appliedCoupon:
         coupon.status === "applied" && coupon.code
           ? { code: coupon.code, discountPoisha: coupon.discountPoisha }
@@ -482,6 +540,13 @@ async function handleManualCreate(req: Request, session: AdminSession, body: unk
   const storedRow = await findOrderByIdempotencyKey(idempotencyKey);
   const stored = storedRow ? orderRowToEnriched(storedRow) : null;
   if (stored) publishOrderCreated(stored);
+  // Advance collection (wave 21): issue the payment link for exactly
+  // the persisted requirement (fresh creates only — replays returned
+  // above). A failure leaves the meta with amount + reason only.
+  const advanceLink =
+    advanceRequirement.advanceRequiredPoisha > 0
+      ? await issueAdvancePaymentLink(created.orderId, advanceRequirement.advanceRequiredPoisha)
+      : null;
   // Coupon usage bookkeeping — only now that the order exists, never
   // on a fraud block (returned above) or a replay (returned earlier);
   // the durable CouponUsage row was written in the create transaction.
@@ -507,6 +572,9 @@ async function handleManualCreate(req: Request, session: AdminSession, body: unk
       couponCode: coupon.code,
       couponStatus: coupon.status,
       customerId: input.customerId ?? null,
+      advanceRequiredPoisha: advanceRequirement.advanceRequiredPoisha,
+      advanceReason: advanceRequirement.advanceReason,
+      advanceLinkIssued: advanceLink !== null,
     },
     ip: req.headers.get("x-forwarded-for") ?? undefined,
     userAgent: req.headers.get("user-agent") ?? undefined,
@@ -520,7 +588,18 @@ async function handleManualCreate(req: Request, session: AdminSession, body: unk
         createdVia: "admin-manual",
         fraudScored: true,
         resellerAttributed: attribution !== null,
-        advanceRequired: enforcement.advanceRequired,
+        advanceRequired: advanceRequirement.advanceRequiredPoisha > 0,
+        // Wave 21: the persisted advance block (same shape as public
+        // checkout): amount, winning-rule label, one-time link.
+        ...(advanceRequirement.advanceRequiredPoisha > 0
+          ? {
+              advance: {
+                requiredPoisha: advanceRequirement.advanceRequiredPoisha,
+                reason: advanceRequirement.advanceReason,
+                ...(advanceLink ? { linkUrl: advanceLink.url, linkToken: advanceLink.plainToken } : {}),
+              },
+            }
+          : {}),
         pricing: {
           subtotalPoisha: pricing.subtotalPoisha,
           discountPoisha: pricing.couponDiscountPoisha,

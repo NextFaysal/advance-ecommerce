@@ -24,14 +24,18 @@ import { CustomerSummaryCard } from "../../../../src/orders/components/CustomerS
 import { OneClickPanel } from "../../../../src/orders/components/OneClickPanel";
 import { PrintPanel } from "../../../../src/orders/components/PrintPanel";
 import { RefundsPanel } from "./refunds-panel";
+import { AdvancePanel } from "./advance-panel";
+import type { OrderAdvanceView } from "../../../../src/orders/advance";
 import { StatusTimeline } from "../../../../src/orders/components/StatusTimeline";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PaymentBadge, type PaymentStatus as UiPaymentStatus } from "@/components/ui/status-badge";
 
+type DetailOrder = Order & { advance?: OrderAdvanceView };
+
 type DetailResponse =
-  | { data: Order; meta?: unknown }
+  | { data: DetailOrder; meta?: unknown }
   | { error: { code: string; message: string } };
 
 const STATUS_META: Record<string, { label: string; tone: "brand" | "success" | "warning" | "danger" | "info" | "neutral"; dot: string }> = {
@@ -71,7 +75,7 @@ function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: stri
 }
 
 export default function AdminOrderDetailPage({ params }: { params: { id: string } }) {
-  const [order, setOrder] = useState<Order | null>(null);
+  const [order, setOrder] = useState<DetailOrder | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "error" | "notfound" | "ready">("loading");
   const [loadError, setLoadError] = useState("");
@@ -129,7 +133,9 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
       });
       const body = (await res.json().catch(() => null)) as DetailResponse | null;
       if (res.ok && body && "data" in body) {
-        setOrder(body.data);
+        // The PATCH payload is the plain order (no advance read
+        // model) — keep the loaded advance block across the change.
+        setOrder({ ...body.data, advance: order.advance });
         setMessage(`স্ট্যাটাস বদল হয়েছে (ডাটাবেসে সেভ হয়েছে): ${order.status} → ${to}`);
       } else if (body && "error" in body) {
         setMessage(`বাতিল হয়েছে (${res.status}): ${body.error.code}: ${body.error.message} — কিছু সেভ হয়নি।`);
@@ -369,6 +375,11 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
           <div className="[&_section]:shadow-card">
             <PrintPanel order={order} />
           </div>
+
+          {/* Advance payment (doc 17, O3) — required/paid/satisfied +
+              OTP state + active payment link from data.advance on the
+              detail payload; renders nothing for ordinary orders. */}
+          <AdvancePanel advance={order.advance} />
 
           {/* Refund workbench (doc 17, O0) — records refunds staff send
               via bKash/bank themselves; shows the refund-due banner for

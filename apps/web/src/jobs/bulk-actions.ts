@@ -18,6 +18,12 @@
  *  - confirm / update_status go through the order state machine. Invalid
  *    transitions are per-order failures carrying the state machine's own
  *    reason — never forced, never coerced.
+ *  - confirm into CONFIRMED also honours the advance/OTP gate
+ *    (wave 21, doc 17 O3, src/orders/advance.advanceConfirmBlock): a
+ *    PENDING order whose advance is unpaid (or OTP unverified) fails
+ *    per-order with ADVANCE_NOT_PAID / OTP_NOT_VERIFIED. The bulk
+ *    pipeline has NO override channel (no per-order reason/permissions
+ *    in the job model) — overrides happen on the single-order PATCH.
  *  - print_label builds the print PAYLOAD only (orders/print.ts). Nothing
  *    is sent to a printer; the result carries a payload ref saying so.
  *  - book_courier books through the SANDBOX courier adapter only. The
@@ -37,6 +43,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { DEFAULT_RETRY, type JobRetryPolicy } from "./queues";
 import { findMockOrder, MOCK_ORDERS } from "../orders/mock";
 import { getOrderByIdOrNo, saveOrder } from "../orders/repository";
+import { advanceConfirmBlock } from "../orders/advance";
 import { buildPrintData } from "../orders/print";
 import { transitionOrder } from "../orders/state-machine";
 import type { Order, OrderStatus } from "../orders/types";
@@ -266,6 +273,19 @@ async function runForOrder(
       const to: OrderStatus = job.action === "confirm" ? "CONFIRMED" : (job.toStatus as OrderStatus);
       if (job.action === "update_status" && !job.toStatus) {
         return fail(orderId, "TARGET_STATUS_REQUIRED", "update_status needs a target status (toStatus).");
+      }
+      // Advance/OTP confirm gate (wave 21, doc 17 O3): the bulk path
+      // decides transitions itself (transitionOrder + saveOrder), so
+      // it enforces the same gate applyOrderTransition enforces on
+      // the single-order path. No override exists here by design.
+      if (to === "CONFIRMED" && order.status === "PENDING") {
+        const block = advanceConfirmBlock({
+          advanceRequiredPoisha: order.advanceRequiredPoisha ?? 0,
+          advanceSatisfiedAt: order.advanceSatisfiedAt ?? null,
+          requiresOtp: order.requiresOtp ?? false,
+          otpVerifiedAt: order.otpVerifiedAt ?? null,
+        });
+        if (block) return fail(orderId, block.code, block.message);
       }
       const result = transitionOrder(order, to, job.requestedBy, job.reason);
       if (!result.ok) return fail(orderId, "INVALID_TRANSITION", result.error);

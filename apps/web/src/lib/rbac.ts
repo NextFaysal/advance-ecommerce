@@ -20,6 +20,9 @@ export const PERMISSIONS = [
   "orders.delete",
   "orders.export",
   "orders.print",
+  // Advance override (wave 21, doc 17 O3): confirm an order whose
+  // required advance is unpaid (or OTP pending) with a recorded reason.
+  "orders.override_advance",
   // Products / catalog
   "products.view",
   "products.create",
@@ -100,7 +103,7 @@ export function isPermissionKey(value: string): value is PermissionKey {
 /** Default role -> permissions. Owner is handled as "all" (see below). */
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, readonly PermissionKey[]> = {
   Manager: [
-    "orders.view", "orders.create", "orders.update_status", "orders.edit", "orders.export", "orders.print",
+    "orders.view", "orders.create", "orders.update_status", "orders.edit", "orders.export", "orders.print", "orders.override_advance",
     "products.view", "products.create", "products.edit", "products.import", "products.export",
     "customers.view", "customers.edit", "customers.view_full_phone",
     "inventory.view", "inventory.adjust", "inventory.purchase_order",

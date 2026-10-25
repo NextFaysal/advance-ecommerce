@@ -8,6 +8,12 @@
  * - invalid transitions are REJECTED (422), never coerced, and write
  *   nothing to the DB
  * - reason is REQUIRED for CANCELLED and REFUNDED (state-machine check)
+ * - PENDING -> CONFIRMED is additionally gated (wave 21, doc 17 O3):
+ *   an unsatisfied persisted advance returns 409 ADVANCE_NOT_PAID and
+ *   an unverified OTP returns 409 OTP_NOT_VERIFIED; the advance block
+ *   (never the OTP block) can be overridden with
+ *   advanceOverride { reason } by a holder of orders.override_advance
+ * - GET carries the advance read model as data.advance
  * - the transition is audited (writeAudit, best-effort)
  *
  * DB-BACKED: the order is loaded from and persisted to Prisma via
@@ -22,6 +28,7 @@ import { validateSessionToken } from "@/lib/auth";
 import { phoneForViewer, requirePermission, RbacError, type PermissionKey } from "@/lib/rbac";
 import { writeAudit } from "@/lib/audit";
 import { applyOrderTransition, getOrderByIdOrNo } from "@/orders/repository";
+import { getOrderAdvanceView } from "@/orders/advance";
 import type { OrderStatus } from "@/orders/types";
 
 function err(code: string, message: string, status: number, details?: unknown) {
@@ -48,7 +55,14 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const order = await getOrderByIdOrNo(params.id);
   if (!order) return err("NOT_FOUND", "Order not found.", 404);
   const view = { ...order, customerPhone: phoneForViewer(order.customerPhone, auth.session.user.permissions) ?? "" };
-  return NextResponse.json({ data: view, meta: { db: "PRISMA", source: "DATABASE" } });
+  // Wave 21 (doc 17, O3): the advance read model (required / paid /
+  // remaining / satisfied / OTP state / active link) rides on the
+  // detail payload as `advance` — the detail page's panel renders it.
+  const advance = await getOrderAdvanceView(params.id);
+  return NextResponse.json({
+    data: { ...view, ...(advance ? { advance } : {}) },
+    meta: { db: "PRISMA", source: "DATABASE" },
+  });
 }
 
 const patchSchema = z.object({
@@ -57,6 +71,12 @@ const patchSchema = z.object({
     "FAILED", "RETURN_REQUESTED", "RETURNING", "RETURNED", "CANCELLED", "REFUNDED", "EXCHANGED",
   ]),
   reason: z.string().min(1).optional(),
+  // Wave 21 (doc 17, O3): advance-gate override for a CONFIRMED move
+  // whose advance is unpaid. Honoured only with the
+  // orders.override_advance permission (checked in the repository
+  // funnel against the session permissions passed below); the reason
+  // is recorded on the order timeline + this route's audit entry.
+  advanceOverride: z.object({ reason: z.string().min(1).max(500) }).optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -72,8 +92,18 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     parsed.data.to as OrderStatus,
     auth.session.user.id,
     parsed.data.reason,
+    {
+      advanceOverride: parsed.data.advanceOverride,
+      actorPermissions: auth.session.user.permissions,
+    },
   );
   if (result.kind === "not_found") return err("NOT_FOUND", "Order not found.", 404);
+  if (result.kind === "blocked") {
+    // Wave 21: the advance/OTP confirm gate — a 409 whose code names
+    // the block (ADVANCE_NOT_PAID / OTP_NOT_VERIFIED), bilingual
+    // message from the gate itself.
+    return err(result.code, result.error, 409);
+  }
   if (result.kind === "invalid") {
     return err("INVALID_TRANSITION", result.error, 422);
   }
@@ -83,7 +113,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     entityType: "Order",
     entityId: result.order.id,
     beforeJson: { status: result.from },
-    afterJson: { status: parsed.data.to },
+    afterJson: {
+      status: parsed.data.to,
+      // The override (when one was supplied + honoured) is part of
+      // the audit record alongside the timeline note the funnel wrote.
+      ...(parsed.data.advanceOverride
+        ? { advanceOverride: { reason: parsed.data.advanceOverride.reason } }
+        : {}),
+    },
     reason: parsed.data.reason,
     ip: req.headers.get("x-forwarded-for") ?? undefined,
     userAgent: req.headers.get("user-agent") ?? undefined,

@@ -86,6 +86,18 @@ export type Order = {
   courier?: string;
   trackingId?: string;
   riskScore: number; // 0-100
+  /** Advance payment engine (wave 21, doc 17 O3) — persisted Order
+   *  columns, populated by the repository mapper. advanceRequiredPoisha
+   *  is the amount that must be paid before PENDING -> CONFIRMED;
+   *  advanceSatisfiedAt is stamped by markOrderPayment. requiresOtp /
+   *  otpVerifiedAt are the OTP gate columns (the OTP service itself is
+   *  O3-2; this batch persists the create-time flag and reads them in
+   *  the confirm gate). Optional because client fixtures predate them. */
+  advanceRequiredPoisha?: number;
+  advanceReason?: string | null;
+  advanceSatisfiedAt?: string | null;
+  requiresOtp?: boolean;
+  otpVerifiedAt?: string | null;
   tags: string[];
   assignee?: string;
   history: OrderStatusHistoryEntry[];

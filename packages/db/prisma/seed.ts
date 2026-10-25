@@ -40,6 +40,7 @@ const PERMISSIONS: Array<{ key: string; module: string; action: string }> = [
   { key: "orders.delete", module: "orders", action: "delete" },
   { key: "orders.export", module: "orders", action: "export" },
   { key: "orders.print", module: "orders", action: "print" },
+  { key: "orders.override_advance", module: "orders", action: "override_advance" },
   { key: "products.view", module: "products", action: "view" },
   { key: "products.create", module: "products", action: "create" },
   { key: "products.edit", module: "products", action: "edit" },
@@ -98,7 +99,7 @@ const PERMISSIONS: Array<{ key: string; module: string; action: string }> = [
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   Manager: [
-    "orders.view", "orders.create", "orders.update_status", "orders.edit", "orders.export", "orders.print",
+    "orders.view", "orders.create", "orders.update_status", "orders.edit", "orders.export", "orders.print", "orders.override_advance",
     "products.view", "products.create", "products.edit", "products.import", "products.export",
     "customers.view", "customers.edit", "customers.view_full_phone",
     "inventory.view", "inventory.adjust", "inventory.purchase_order",

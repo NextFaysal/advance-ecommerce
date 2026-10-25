@@ -66,9 +66,19 @@
  * - Shop rules (wave 20, src/checkout/order-rules): Settings-driven
  *   orders.rules.* — minimum merchandise subtotal, COD disabled by
  *   district / category (422 bilingual, names the rule), and a
- *   mandatory-advance flag for large COD orders surfaced in the
- *   response meta (advanceRequired + advancePoisha; collection and
- *   confirmation gating are plan 17 batch O3). All default OFF.
+ *   mandatory-advance flag for large COD orders. All default OFF.
+ * - Advance engine (wave 21, plan 17 batch O3): the requirement is
+ *   now COMPUTED here as the MAX of the rules threshold percent, the
+ *   fraud band's require_advance (same configured percent of the
+ *   total), a prepaid method's FULL total, and preorder-line
+ *   deposits (Product.preorderDepositPercent) — then PERSISTED on
+ *   the Order row by createOrderRecord (advanceRequiredPoisha /
+ *   advanceReason / requiresOtp), collected via an auto-issued
+ *   payment link (meta.advance), satisfied inside markOrderPayment,
+ *   and enforced by the CONFIRMED gate in applyOrderTransition.
+ *   Prepaid methods additionally attempt hosted initiation through
+ *   src/payments/initiate (O3-2) — the outcome rides in
+ *   meta.paymentInitiation and never fails the create.
  * - Order numbers (wave 20): ORD-YYYYMMDD-NNNN per Asia/Dhaka day,
  *   minted inside the create transaction (src/orders/repository).
  *
@@ -100,6 +110,13 @@ import {
   type EnrichedOrder,
 } from "@/checkout/order-enrichment";
 import { scoreFraud } from "@/fraud/scoring";
+import {
+  ADVANCE_REASON_LABELS,
+  issueAdvancePaymentLink,
+  percentAdvancePoisha,
+  pickAdvanceRequirement,
+  type AdvanceCandidate,
+} from "@/orders/advance";
 import { publishOrderCreated } from "@/orders/event-bus";
 import { resolveResellerAttribution } from "@/reseller/store";
 import {
@@ -313,14 +330,58 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
   }
 
   // Mandatory-advance rule (wave 20): a COD order above the configured
-  // threshold is flagged advance-required in the response — plumbing
-  // only: nothing is persisted and nothing collects the advance yet
-  // (plan 17 batch O3). Combined with the fraud band's flag below —
-  // either source can require the advance.
+  // threshold asks for the configured percent of the grand total.
   const ruleAdvance = evaluateAdvanceRule(rules, {
     paymentMethod: form.paymentMethod,
     grandTotalPoisha: pricing.grandTotalPoisha,
   });
+
+  // Advance engine (wave 21, doc 17 batch O3): the PERSISTED
+  // requirement is the MAX of every rule that fires — the winner's
+  // bilingual label is stored as advanceReason. Candidates, in
+  // tie-break precedence order:
+  //   prepaid  — a non-COD gateway method collects the FULL total up
+  //              front (nothing is "on delivery" to collect later);
+  //   rules    — the wave-20 threshold percent (COD, Settings-driven);
+  //   fraud    — the fraud band's require_advance, priced with the
+  //              same configured percent of the total;
+  //   preorder — deposit percent of each PREORDER line's line total
+  //              (Product.preorderDepositPercent, wave-15 terms).
+  const advanceCandidates: AdvanceCandidate[] = [];
+  if (form.paymentMethod !== "cod") {
+    advanceCandidates.push({
+      amountPoisha: pricing.grandTotalPoisha,
+      reason: ADVANCE_REASON_LABELS.prepaid,
+    });
+  }
+  if (ruleAdvance.advanceRequired) {
+    advanceCandidates.push({
+      amountPoisha: ruleAdvance.advancePoisha,
+      reason: ADVANCE_REASON_LABELS.rules,
+    });
+  }
+  if (enforcement.advanceRequired) {
+    advanceCandidates.push({
+      amountPoisha: percentAdvancePoisha(pricing.grandTotalPoisha, rules.advancePercent),
+      reason: ADVANCE_REASON_LABELS.fraud_review,
+    });
+  }
+  let preorderDepositPoisha = 0;
+  for (const item of form.items) {
+    const server = serverPrices.get(item.variantId);
+    if (server && server.productType === "PREORDER" && server.preorderDepositPercent) {
+      preorderDepositPoisha += Math.round(
+        (server.unitPricePoisha * item.quantity * server.preorderDepositPercent) / 100,
+      );
+    }
+  }
+  if (preorderDepositPoisha > 0) {
+    advanceCandidates.push({
+      amountPoisha: preorderDepositPoisha,
+      reason: ADVANCE_REASON_LABELS.preorder_deposit,
+    });
+  }
+  const advanceRequirement = pickAdvanceRequirement(advanceCandidates);
 
   // Reseller attribution (wave 6): the optional ?ref= code captured
   // client-side resolves to an ACTIVE reseller or to nothing — an
@@ -353,6 +414,11 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     },
     paymentMethod: form.paymentMethod,
     riskScore: assessment.score, // real scoreFraud() score, 0-100
+    // Wave 21: the persisted advance requirement + OTP flag — the
+    // CONFIRMED gate and markOrderPayment read these columns.
+    advanceRequiredPoisha: advanceRequirement.advanceRequiredPoisha,
+    advanceReason: advanceRequirement.advanceReason ?? undefined,
+    requiresOtp: enforcement.requiresOtp,
     resellerId: attribution?.id,
     appliedCoupon:
       coupon.status === "applied" && coupon.code
@@ -393,7 +459,9 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     riskScore: assessment.score,
     riskBand: assessment.level,
     fraudAction: assessment.suggestedAction,
-    advanceRequired: enforcement.advanceRequired || ruleAdvance.advanceRequired,
+    // Wave 21: the persisted engine truth (any source rule, incl.
+    // prepaid full-total and preorder deposits), not just fraud/rules.
+    advanceRequired: advanceRequirement.advanceRequiredPoisha > 0,
     requiresOtp: enforcement.requiresOtp,
     couponCode: coupon.code,
     couponStatus: coupon.status,
@@ -422,6 +490,67 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     recordCouponUse(coupon.record, form.phone);
   }
 
+  // Advance collection (wave 21, doc 17 batch O3): a fresh order with
+  // a persisted requirement and nothing paid yet gets a payment link
+  // for exactly the advance amount, via the EXISTING link module
+  // (src/bd/payment-link — only the token hash is stored; the plain
+  // token + URL ride in meta.advance exactly once). A failure returns
+  // null and the meta carries the amount + reason only — no fake link.
+  const advanceLink =
+    advanceRequirement.advanceRequiredPoisha > 0
+      ? await issueAdvancePaymentLink(created.orderId, advanceRequirement.advanceRequiredPoisha)
+      : null;
+
+  // OTP first issue (wave 21, O3-2 seam): an order the enforcement
+  // flagged requiresOtp gets its first code issued + queued for SMS
+  // right away — without this the confirm gate would block forever
+  // with no code ever sent. Same degrade-to-meta discipline as the
+  // initiation below: a failure never breaks the committed create,
+  // and meta.otp is honest — "queued" is NOT "delivered" (delivery
+  // needs the VPS worker + a live SMS provider).
+  let otpMeta: { required: true; sms: string } | undefined;
+  if (enforcement.requiresOtp) {
+    try {
+      const otp = await import("@/orders/otp");
+      const issued = await otp.issueOrderOtp(created.orderId);
+      const sent = await otp.sendOrderOtpSms(created.orderId, issued.code);
+      otpMeta = { required: true, sms: sent.enqueued ? "queued" : (sent.reason ?? "queue-unavailable") };
+    } catch {
+      otpMeta = { required: true, sms: "issue_failed" };
+    }
+  }
+
+  // Prepaid initiation (O3-2 seam): a non-COD order also attempts the
+  // hosted-payment initiation. Dynamic import + try/catch by design —
+  // its absence (or failure) degrades to meta, never breaks a create
+  // that already committed. The function itself never throws either.
+  let paymentInitiation: { status: string; url?: string; provider?: string; message?: string } | undefined;
+  if (form.paymentMethod !== "cod") {
+    try {
+      const mod = (await import("@/payments/initiate")) as {
+        initiatePrepaidPayment?: (order: {
+          id: string;
+          orderNo: string;
+          totalPoisha: number;
+          paymentMethod: string;
+          customerPhone: string;
+        }) => Promise<{ status: string; url?: string; provider?: string; message?: string }>;
+      };
+      paymentInitiation =
+        typeof mod.initiatePrepaidPayment === "function"
+          ? await mod.initiatePrepaidPayment({
+              id: created.orderId,
+              orderNo: created.orderNo,
+              totalPoisha: pricing.grandTotalPoisha,
+              paymentMethod: form.paymentMethod,
+              customerPhone: form.phone,
+            })
+          : { status: "not_wired" };
+    } catch {
+      paymentInitiation = { status: "not_wired" };
+    }
+  }
+
   return NextResponse.json(
     {
       data: { order, pricing },
@@ -433,16 +562,29 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
         resellerAttributed: attribution !== null,
         fraudScored: true,
         advanceRequired: order.advanceRequired,
-        // Wave 20: the rules-based advance (amount + source rule) and
-        // the engine's derived shipping outcome. advancePoisha is
-        // present only when the rules threshold fired — the fraud
-        // band's flag carries no amount until batch O3.
-        ...(ruleAdvance.advanceRequired
+        // Wave 20 compat: advancePoisha now reports the PERSISTED
+        // requirement (any source rule); advanceRule is present when
+        // the rules threshold was the winning source.
+        ...(advanceRequirement.advanceRequiredPoisha > 0
+          ? { advancePoisha: advanceRequirement.advanceRequiredPoisha }
+          : {}),
+        ...(advanceRequirement.advanceReason === ADVANCE_REASON_LABELS.rules
+          ? { advanceRule: "orders.rules.advance_required_above_poisha" }
+          : {}),
+        // Wave 21: the full advance block — required amount, the
+        // winning rule's label, and the one-time payment link when
+        // issuing succeeded (linkUrl/linkToken absent when it didn't).
+        ...(advanceRequirement.advanceRequiredPoisha > 0
           ? {
-              advancePoisha: ruleAdvance.advancePoisha,
-              advanceRule: "orders.rules.advance_required_above_poisha",
+              advance: {
+                requiredPoisha: advanceRequirement.advanceRequiredPoisha,
+                reason: advanceRequirement.advanceReason,
+                ...(advanceLink ? { linkUrl: advanceLink.url, linkToken: advanceLink.plainToken } : {}),
+              },
             }
           : {}),
+        ...(paymentInitiation ? { paymentInitiation } : {}),
+        ...(otpMeta ? { otp: otpMeta } : {}),
         shippingZone: shipping.zone,
         freeShippingApplied: shipping.freeShippingApplied,
         note: "Order persisted to the database (Prisma). Coupon records + fraud lists are DB-backed (marketing/fraud modules); checkout assembles fraud input from DB lists and the coupon lookup from a DB snapshot.",

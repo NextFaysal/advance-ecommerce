@@ -715,6 +715,27 @@ model Order {
   // both are set, and never reconstructs a split after the fact.
   vatPoisha        Int?
   vatRateBps       Int?
+  // Advance payment engine (wave 21, doc 17 batch O3): the advance a
+  // customer must pay BEFORE the order may be CONFIRMED, computed at
+  // create time as the MAX of the shop rules threshold percent, the
+  // fraud band's require_advance percent, a prepaid method's full
+  // total, preorder-line deposits, or a staff-set amount (manual
+  // orders) — persisted here (advanceReason is the bilingual winning-
+  // rule label) instead of living only in the create response meta as
+  // it did in wave 20. advanceSatisfiedAt is stamped by
+  // markOrderPayment (the single money funnel) the first time
+  // cumulative paid money reaches the requirement. The OTP columns are
+  // written by the O3-2 OTP service (this batch only persists the
+  // create-time requiresOtp flag and reads the columns in the
+  // CONFIRMED gate); otpCodeHash stores a SHA-256 hash, never a code.
+  advanceRequiredPoisha Int      @default(0)
+  advanceReason         String?
+  advanceSatisfiedAt    DateTime?
+  requiresOtp           Boolean  @default(false)
+  otpCodeHash           String?
+  otpExpiresAt          DateTime?
+  otpAttempts           Int      @default(0)
+  otpVerifiedAt         DateTime?
   totalPoisha      Int
   courier          String?
   trackingId       String?

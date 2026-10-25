@@ -248,6 +248,14 @@ export const workerDeps: WorkerRuntimeDeps = {
     const automation = await import("../callcenter/automation");
     return automation.processCallCenterSmsJob(job, { smsProvider: resolveSmsProvider });
   },
+  // O3: order-OTP SMS jobs (sms queue, jobKind "order-otp") delegate
+  // here. Lazy import for the same reason as callCenterSmsSend above:
+  // the OTP module pulls in Prisma at module top level, and a load
+  // failure there must never stop a job from being handled.
+  orderOtpSmsSend: async (job) => {
+    const otp = await import("../orders/otp");
+    return otp.processOrderOtpSmsJob(job, { smsProvider: resolveSmsProvider });
+  },
   courierProvider: resolveCourierProvider,
   bulkActionsRunner: async (job) => {
     const bulkJob = getBulkJob(job.bulkJobId);

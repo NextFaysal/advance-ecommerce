@@ -20,20 +20,25 @@
  *
  * SCHEMA DRIFT (reported, worked around — schema.prisma NOT changed):
  * - EnrichedOrder's fraud/coupon outcome fields (fraudAction,
- *   advanceRequired, requiresOtp, couponStatus, rejected-coupon reason)
- *   have NO columns on Order. At create time the route builds the exact
- *   EnrichedOrder from the live assessment and returns it; this module
- *   persists what the schema supports (riskScore, discountPoisha, a
- *   CouponUsage row when the coupon exists in the DB) and can
- *   RECONSTRUCT the enrichment for a stored order: riskBand from
- *   riskLevel(riskScore), fraudAction from the scorer's documented
- *   bands (>=70 require_advance, 40-69 manual_review, <40 auto_confirm
- *   — "block" never reaches storage, it is a 422), requiresOtp =
- *   score >= 70, coupon outcome from the CouponUsage row. A coupon that
- *   was REJECTED at create leaves no DB trace, so a reconstructed
- *   replay reports couponStatus "none" — the create route keeps an
- *   in-process enrichment cache so same-process replays return the
- *   exact original outcome.
+ *   couponStatus, rejected-coupon reason) have NO columns on Order.
+ *   At create time the route builds the exact EnrichedOrder from the
+ *   live assessment and returns it; this module persists what the
+ *   schema supports (riskScore, discountPoisha, a CouponUsage row
+ *   when the coupon exists in the DB) and can RECONSTRUCT the
+ *   enrichment for a stored order: riskBand from riskLevel(riskScore),
+ *   fraudAction from the scorer's documented bands (>=70
+ *   require_advance, 40-69 manual_review, <40 auto_confirm — "block"
+ *   never reaches storage, it is a 422), coupon outcome from the
+ *   CouponUsage row. A coupon that was REJECTED at create leaves no
+ *   DB trace, so a reconstructed replay reports couponStatus "none"
+ *   — the create route keeps an in-process enrichment cache so
+ *   same-process replays return the exact original outcome.
+ * - WAVE 21 (doc 17 batch O3) closed the advance/OTP part of this
+ *   drift: advanceRequired / requiresOtp are now REAL columns
+ *   (migration 20261025190000_order_advance_otp) written at create
+ *   from the caller's computed requirement, and orderRowToEnriched
+ *   reads them back from the row — no more band reconstruction for
+ *   those two fields.
  * - OrderStatusHistory.changedBy / OrderNote.author are free-text
  *   strings in the TS types but FK columns (changedById / authorId) in
  *   the schema. A changedBy that is a real User id persists exactly;
@@ -67,6 +72,7 @@ import {
 } from "../catalog/product-types";
 import { computeBundleAvailability } from "../catalog/types";
 import { getSetting } from "../lib/settings";
+import { advanceConfirmBlock, type AdvanceBlockCode } from "./advance";
 import { riskLevel } from "./customer";
 import { runDeliveredOrderHooks } from "./delivered-hooks";
 import { runReversalHooks } from "./reversal-hooks";
@@ -173,6 +179,11 @@ function orderRowToOrder(row: OrderRow): Order {
     ...(row.courier ? { courier: row.courier } : {}),
     ...(row.trackingId ? { trackingId: row.trackingId } : {}),
     riskScore: row.riskScore,
+    advanceRequiredPoisha: row.advanceRequiredPoisha,
+    advanceReason: row.advanceReason,
+    advanceSatisfiedAt: row.advanceSatisfiedAt ? row.advanceSatisfiedAt.toISOString() : null,
+    requiresOtp: row.requiresOtp,
+    otpVerifiedAt: row.otpVerifiedAt ? row.otpVerifiedAt.toISOString() : null,
     tags: row.tags.map((t) => t.tag),
     ...(row.assigneeId ? { assignee: row.assigneeId } : {}),
     history: row.history.map((h) => ({
@@ -206,8 +217,11 @@ export function orderRowToEnriched(row: OrderRow): EnrichedOrder {
     ...base,
     riskBand: riskLevel(score),
     fraudAction,
-    advanceRequired: fraudAction === "require_advance",
-    requiresOtp: score >= 70,
+    // Wave 21: persisted truth (migration order_advance_otp) — an order
+    // requires an advance iff a positive requirement was recorded at
+    // create, whatever its source rule was.
+    advanceRequired: row.advanceRequiredPoisha > 0,
+    requiresOtp: row.requiresOtp,
     couponCode: usage ? usage.coupon.code : null,
     couponStatus: usage ? "applied" : "none",
     couponDiscountPoisha: usage ? row.discountPoisha : 0,
@@ -320,6 +334,12 @@ export interface ServerVariantSnapshot {
   /** Wave 20: the owning product's category slug — the create route's
    *  COD rules (orders.rules.cod_disabled_categories) match on it. */
   categorySlug: string;
+  /** Wave 21: the owning product's preorder deposit percent
+   *  (Product.preorderDepositPercent, wave-15 terms of record), or
+   *  null when the product carries no preorder deposit term. The
+   *  create routes price the preorder-deposit advance candidate from
+   *  it for PREORDER lines. */
+  preorderDepositPercent: number | null;
 }
 
 /**
@@ -341,6 +361,7 @@ export async function getVariantSnapshots(
           titleEn: true,
           type: true,
           weightGrams: true,
+          preorderDepositPercent: true,
           category: { select: { slug: true } },
           bundleComponents: {
             select: { quantity: true, componentVariant: { select: { stock: true } } },
@@ -361,6 +382,7 @@ export async function getVariantSnapshots(
       productType: v.product.type,
       weightGrams: v.product.weightGrams ?? 0,
       categorySlug: v.product.category.slug,
+      preorderDepositPercent: v.product.preorderDepositPercent ?? null,
       bundleAvailability:
         v.product.type === "BUNDLE" && components.length > 0
           ? computeBundleAvailability(
@@ -648,6 +670,20 @@ export interface CreateOrderRecordInput {
    *  resellers only) and pass the id here, so attribution is recorded
    *  at create instead of patched later. */
   resellerId?: string;
+  /** Advance requirement (wave 21, doc 17 batch O3): the winning
+   *  amount from the caller's MAX computation over the rules
+   *  threshold, the fraud band, prepaid-full-total, preorder deposits
+   *  and staff-set amounts (src/orders/advance.pickAdvanceRequirement).
+   *  Persisted on the Order row; a positive value also writes an order
+   *  note in the create transaction so the requirement is visible on
+   *  the order timeline from birth. 0/omitted = no advance. */
+  advanceRequiredPoisha?: number;
+  /** Bilingual winning-rule label (src/orders/advance
+   *  ADVANCE_REASON_LABELS); stored verbatim on Order.advanceReason. */
+  advanceReason?: string;
+  /** Persisted on Order.requiresOtp (the fraud band's OTP flag). The
+   *  OTP challenge itself is issued/verified by the O3-2 service. */
+  requiresOtp?: boolean;
 }
 
 export type CreateOrderRecordResult =
@@ -855,6 +891,11 @@ export async function createOrderRecord(
           vatRateBps: vatSplit ? vatRateBps : null,
           totalPoisha: input.pricing.totalPoisha,
           riskScore: input.riskScore,
+          advanceRequiredPoisha: input.advanceRequiredPoisha ?? 0,
+          advanceReason: input.advanceRequiredPoisha
+            ? (input.advanceReason ?? null)
+            : null,
+          requiresOtp: input.requiresOtp ?? false,
           source: input.source ?? "website",
           resellerId: input.resellerId ?? null,
           idempotencyKey: input.idempotencyKey,
@@ -885,6 +926,19 @@ export async function createOrderRecord(
           data: { orderId: order.id, authorId: null, text: input.note },
         });
         noteId = note.id;
+      }
+      // Wave 21 (doc 17, O3): the advance requirement is part of the
+      // order's timeline from birth — a note in the same transaction,
+      // so staff opening the order see exactly what is due and why,
+      // and the CONFIRMED gate's refusal never comes as a surprise.
+      if (input.advanceRequiredPoisha && input.advanceRequiredPoisha > 0) {
+        await tx.orderNote.create({
+          data: {
+            orderId: order.id,
+            authorId: null,
+            text: `অগ্রিম পেমেন্ট প্রয়োজন: ${input.advanceRequiredPoisha} পয়সা (${input.advanceReason ?? "advance"}) — অগ্রিম পরিশোধ না হলে এই অর্ডার নিশ্চিত করা যাবে না। / Advance payment required: ${input.advanceRequiredPoisha} poisha (${input.advanceReason ?? "advance"}) — this order cannot be confirmed until the advance is paid.`,
+          },
+        });
       }
       await tx.payment.create({
         data: {
@@ -938,23 +992,66 @@ async function resolveUserId(label: string): Promise<string | null> {
 export type ApplyTransitionResult =
   | { kind: "ok"; order: Order; from: OrderStatus }
   | { kind: "not_found" }
-  | { kind: "invalid"; error: string };
+  | { kind: "invalid"; error: string }
+  | { kind: "blocked"; code: AdvanceBlockCode; error: string };
+
+export interface ApplyTransitionOptions {
+  /**
+   * Advance-gate override (wave 21, doc 17 batch O3): honoured ONLY
+   * for an ADVANCE_NOT_PAID block and ONLY when actorPermissions
+   * includes `orders.override_advance`. The override is recorded on
+   * the order timeline (note with actor + reason) and the API route
+   * mirrors it into the audit log. An OTP block is NEVER overridable
+   * through this channel.
+   */
+  advanceOverride?: { reason: string };
+  /** The acting user's permission keys (session), for the override. */
+  actorPermissions?: readonly string[];
+}
 
 /**
  * Loads the order, decides the transition with the state machine (the
  * single authority — it also publishes order.status_changed on its
  * success branch), then persists status + the appended history row in
  * one transaction. An invalid transition writes NOTHING.
+ *
+ * CONFIRM GATE (wave 21, doc 17 batch O3): PENDING -> CONFIRMED is
+ * additionally refused ({ kind: "blocked" }, nothing written) while
+ * the order's persisted advance is unsatisfied or its OTP is
+ * unverified — src/orders/advance.advanceConfirmBlock decides, this
+ * funnel enforces it for every caller (admin PATCH, call-center
+ * outcomes, ...). Cancellation is never gated.
  */
 export async function applyOrderTransition(
   idOrNo: string,
   to: OrderStatus,
   changedBy: string,
   reason?: string,
+  opts?: ApplyTransitionOptions,
 ): Promise<ApplyTransitionResult> {
   const row = await findOrderRowByIdOrNo(idOrNo);
   if (!row) return { kind: "not_found" };
   const order = orderRowToOrder(row);
+  // The gate runs before the state machine so a blocked confirm emits
+  // no status_changed event and writes nothing.
+  let advanceOverridden = false;
+  if (to === "CONFIRMED" && row.status === "PENDING") {
+    const block = advanceConfirmBlock({
+      advanceRequiredPoisha: row.advanceRequiredPoisha,
+      advanceSatisfiedAt: row.advanceSatisfiedAt,
+      requiresOtp: row.requiresOtp,
+      otpVerifiedAt: row.otpVerifiedAt,
+    });
+    if (block) {
+      const override = opts?.advanceOverride;
+      const permitted =
+        block.code === "ADVANCE_NOT_PAID" &&
+        !!override?.reason?.trim() &&
+        (opts?.actorPermissions ?? []).includes("orders.override_advance");
+      if (!permitted) return { kind: "blocked", code: block.code, error: block.message };
+      advanceOverridden = true;
+    }
+  }
   const result: TransitionResult = transitionOrder(order, to, changedBy, reason);
   if (!result.ok) return { kind: "invalid", error: result.error };
   const changedById = await resolveUserId(changedBy);
@@ -970,6 +1067,19 @@ export async function applyOrderTransition(
       },
     });
   });
+  // Advance override (wave 21): the override is part of the order's
+  // permanent timeline — actor + reason on a note, written only after
+  // the confirm committed (a failed transition records no override).
+  // The API route additionally mirrors it into the audit log.
+  if (advanceOverridden && opts?.advanceOverride) {
+    await prisma.orderNote.create({
+      data: {
+        orderId: row.id,
+        authorId: changedById,
+        text: `অগ্রিম পেমেন্ট ছাড়াই অর্ডার নিশ্চিত করা হয়েছে (override) — কারণ: ${opts.advanceOverride.reason} / Order confirmed without the advance payment (override) — reason: ${opts.advanceOverride.reason}`,
+      },
+    });
+  }
   // Delivered-order fan-out (loyalty EARN + referral reward, reseller
   // wallet credit, vendor commission lines) — only on the transition
   // INTO DELIVERED, after the status commit. The hook never throws, so
@@ -1115,6 +1225,10 @@ export interface MarkOrderPaymentResult {
   /** True only when THIS call moved the order into PAID (and the
    *  payment.succeeded event was published). */
   transitionedToPaid: boolean;
+  /** Advance state after this call (wave 21): true when the order's
+   *  advance requirement is satisfied (stamped earlier or by this
+   *  call); false when no requirement exists or it is still short. */
+  advanceSatisfied: boolean;
 }
 
 /**
@@ -1148,6 +1262,13 @@ export interface MarkOrderPaymentResult {
  * owns it. payment.succeeded is published AFTER the transaction
  * commits, only on the transition into PAID.
  *
+ * ADVANCE (wave 21, doc 17 batch O3): this funnel is also where the
+ * persisted advance requirement is satisfied — the first call whose
+ * recomputed grossPaid reaches Order.advanceRequiredPoisha stamps
+ * Order.advanceSatisfiedAt (+ timeline note) in the same transaction,
+ * guarded so it happens exactly once. That stamp is what unlocks the
+ * CONFIRMED gate in applyOrderTransition.
+ *
  * Returns null when the order does not exist (callers have already
  * resolved the order through the payments layer, so this is a
  * defensive path, not an expected one).
@@ -1159,7 +1280,14 @@ export async function markOrderPayment(
   void input; // claim/source/reference are tracing context, never inputs to the math
   const order = await prisma.order.findFirst({
     where: { deletedAt: null, OR: [{ id: orderId }, { orderNo: orderId }] },
-    select: { id: true, orderNo: true, paymentStatus: true, totalPoisha: true },
+    select: {
+      id: true,
+      orderNo: true,
+      paymentStatus: true,
+      totalPoisha: true,
+      advanceRequiredPoisha: true,
+      advanceSatisfiedAt: true,
+    },
   });
   if (!order) return null;
   const previous = order.paymentStatus as PaymentStatus;
@@ -1206,7 +1334,35 @@ export async function markOrderPayment(
       });
       wrote = res.count === 1;
     }
-    return { derived, grossPaid, refunded, netPaid, wrote };
+    // Advance satisfaction (wave 21, doc 17 batch O3): the first time
+    // cumulative paid money (grossPaid — the same Σ Payment.paidPoisha
+    // + Σ APPROVED manual-Trx definition the refund workbench uses)
+    // reaches the persisted requirement, stamp advanceSatisfiedAt and
+    // leave a timeline note, in this same transaction. The update is
+    // guarded on advanceSatisfiedAt still being null, so replays and
+    // later payments never re-stamp or duplicate the note.
+    let advanceSatisfiedNow = false;
+    if (
+      order.advanceRequiredPoisha > 0 &&
+      !order.advanceSatisfiedAt &&
+      grossPaid >= order.advanceRequiredPoisha
+    ) {
+      const res = await tx.order.updateMany({
+        where: { id: order.id, advanceSatisfiedAt: null },
+        data: { advanceSatisfiedAt: new Date() },
+      });
+      advanceSatisfiedNow = res.count === 1;
+      if (advanceSatisfiedNow) {
+        await tx.orderNote.create({
+          data: {
+            orderId: order.id,
+            authorId: null,
+            text: `অগ্রিম পেমেন্ট সম্পূর্ণ হয়েছে: প্রয়োজনীয় ${order.advanceRequiredPoisha} পয়সার বিপরীতে মোট ${grossPaid} পয়সা পরিশোধিত — অর্ডার এখন নিশ্চিত করা যাবে। / Advance payment satisfied: ${grossPaid} poisha paid against the required ${order.advanceRequiredPoisha} poisha — the order can now be confirmed.`,
+          },
+        });
+      }
+    }
+    return { derived, grossPaid, refunded, netPaid, wrote, advanceSatisfiedNow };
   });
 
   const transitionedToPaid = outcome.wrote && previous !== "PAID" && outcome.derived === "PAID";
@@ -1234,6 +1390,9 @@ export async function markOrderPayment(
     totalPoisha: order.totalPoisha,
     alreadyApplied: !outcome.wrote,
     transitionedToPaid,
+    advanceSatisfied:
+      order.advanceRequiredPoisha > 0 &&
+      (order.advanceSatisfiedAt !== null || outcome.advanceSatisfiedNow),
   };
 }
 

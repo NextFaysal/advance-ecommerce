@@ -209,6 +209,14 @@ export interface HandlerDeps {
    *  must never process these payloads (it would send an empty
    *  message to a ref). */
   callCenterSmsSend?: (job: SmsJob) => Promise<HandlerResult>;
+  /** O3: send path for order-OTP SMS jobs (payloads with
+   *  jobKind === "order-otp" on the SMS queue), wired by the worker
+   *  deps assembly to src/orders/otp.ts. The send re-validates the
+   *  code against the Order row and resolves the recipient from the
+   *  DB — the generic SMS path below must never process these
+   *  payloads (it would send an empty message to a ref and report a
+   *  phantom success for a code nobody received). */
+  orderOtpSmsSend?: (job: SmsJob) => Promise<HandlerResult>;
   logger?: JobLogger;
 }
 
@@ -312,6 +320,23 @@ export function createHandlers(
       const send = deps.callCenterSmsSend;
       return runIdempotent(store, envelope, envelope.payload.taskId ?? envelope.payload.recipientRef, () =>
         send(envelope.payload),
+      );
+    }
+    // O3: order-OTP jobs delegate to their own send path (code
+    // re-validation against the Order row, DB phone resolution).
+    // Without the dep wired they are SKIPPED — never fall through to
+    // the generic send below.
+    if (envelope.payload.jobKind === "order-otp") {
+      if (!deps.orderOtpSmsSend) {
+        return Promise.resolve({
+          status: "skipped" as const,
+          ref: envelope.payload.orderId ?? envelope.payload.recipientRef,
+          detail: "order OTP send not wired in this deployment",
+        });
+      }
+      const sendOtp = deps.orderOtpSmsSend;
+      return runIdempotent(store, envelope, envelope.payload.orderId ?? envelope.payload.recipientRef, () =>
+        sendOtp(envelope.payload),
       );
     }
     return runIdempotent(store, envelope, envelope.payload.recipientRef, async () => {
