@@ -4,13 +4,18 @@
 // first (unverified => logged, 401, never applied), idempotency key makes
 // replays return duplicate:true without applying twice, and every attempt
 // is logged with a reason only.
-// Body: { trackingId, rawStatus, idempotencyKey? }
+// Body: { trackingId, rawStatus, idempotencyKey?, codCollectedPoisha? }
 // rawStatus is mapped per provider (sandbox/status-mapping.ts), the
 // shipment status only moves forward (or to FAILED/RETURNING/RETURNED),
-// and the linked order status is only ever READ here (for the transition
-// check in status-mapping.ts) — applying an order transition stays with
-// the orders module, which owns the order state machine; nothing in this
-// route writes Order rows.
+// and — since wave 23 (doc 17 batch O5) — the linked ORDER is moved
+// too, through src/courier/order-sync (the courier -> order seam that
+// walks the order state machine via applyOrderTransition; this route
+// itself still writes no Order rows directly). Mapping: DELIVERED ->
+// order DELIVERED (+ COD collection when the payload carries
+// codCollectedPoisha / codAmountPoisha), PICKED_UP / OUT_FOR_DELIVERY
+// -> order SHIPPED, RETURNED -> order RETURNED; CREATED / IN_TRANSIT /
+// FAILED / RETURNING are timeline notes only (conservative: a transit
+// scan never ships an order, a failure never fails one).
 // Secret: Admin Settings (encrypted) if configured, otherwise the local
 // env SANDBOX_WEBHOOK_TEST_SECRET (sandbox only). No hardcoded secret.
 // Persistence: DB-backed (2026-10-24) — the mapped status updates the
@@ -21,10 +26,14 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { processWebhook, WEBHOOK_HEADERS } from "@/integrations/sandbox/webhook";
 import {
-  applyShipmentToOrderStatus,
   canApplyShipmentStatus,
   mapCourierRawStatus,
 } from "@/integrations/sandbox/status-mapping";
+import {
+  recordCourierEventNote,
+  transitionOrderForCourierEvent,
+  type CourierOrderTarget,
+} from "@/courier/order-sync";
 import {
   applyShipmentStatus,
   findShipmentByTracking,
@@ -37,6 +46,10 @@ const bodySchema = z.object({
   trackingId: z.string().min(1),
   rawStatus: z.string().min(1),
   idempotencyKey: z.string().min(1).optional(),
+  // COD cash the courier reports collecting on a delivered event
+  // (integer poisha). codAmountPoisha is accepted as an alias.
+  codCollectedPoisha: z.number().int().nonnegative().optional(),
+  codAmountPoisha: z.number().int().nonnegative().optional(),
 });
 
 async function webhookSecret(provider: string): Promise<string | null> {
@@ -114,12 +127,36 @@ export async function POST(req: Request) {
         }
         throw err;
       }
-      // The order-side move is evaluated against the linked order's real
-      // current status and reported in the reason, exactly as before —
-      // but the transition itself is applied by the orders module, not
-      // here (this route never writes Order rows).
-      const orderMove = applyShipmentToOrderStatus(shipment.orderStatus, mapped);
-      return { applied: true, reason: orderMove.applied ? null : orderMove.reason };
+      // Order-side sync (wave 23, doc 17 batch O5): the mapped shipment
+      // status now actually moves the linked order, via the courier ->
+      // order seam (which walks applyOrderTransition hop by hop and is
+      // idempotent against the order's real current status). The sync
+      // outcome is reported in the reason only — the response shape is
+      // unchanged. Replays never reach this point: processWebhook and
+      // the ShipmentEvent idempotency key above dedupe first.
+      const orderTarget: CourierOrderTarget | null =
+        mapped === "DELIVERED"
+          ? "DELIVERED"
+          : mapped === "PICKED_UP" || mapped === "OUT_FOR_DELIVERY"
+            ? "SHIPPED"
+            : mapped === "RETURNED"
+              ? "RETURNED"
+              : null;
+      if (orderTarget === null) {
+        await recordCourierEventNote(
+          shipment.orderId,
+          { provider, eventId: idempotencyKey },
+          `কুরিয়ার আপডেট (${provider} event ${idempotencyKey}): শিপমেন্ট অবস্থা "${mapped}" (raw: ${parsed.data.rawStatus}) — অর্ডারের অবস্থা বদলানো হয়নি / Courier update (${provider} event ${idempotencyKey}): shipment status "${mapped}" (raw: ${parsed.data.rawStatus}) — no order status change.`,
+        );
+        return { applied: true, reason: "order_sync:noted" };
+      }
+      const sync = await transitionOrderForCourierEvent(shipment.orderId, orderTarget, {
+        provider,
+        eventId: idempotencyKey,
+        codCollectedPoisha: parsed.data.codCollectedPoisha ?? parsed.data.codAmountPoisha,
+        note: `Shipment ${mapped} (raw: ${parsed.data.rawStatus})`,
+      });
+      return { applied: true, reason: sync.applied ? null : `order_sync:${sync.reason ?? "not_applied"}` };
     },
   });
   return NextResponse.json(

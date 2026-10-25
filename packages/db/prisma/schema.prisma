@@ -947,6 +947,10 @@ model Shipment {
   status           ShipmentStatus @default(CREATED)
   codAmountPoisha  Int            @default(0)
   chargePoisha     Int            @default(0)
+  // Split shipments (doc 17, O5): the order lines this booking carries,
+  // as [{ orderItemId, quantity }]. NULL = whole order (every booking
+  // created before split shipments, and any unsplit booking since).
+  lineItemsJson    Json?
   weightGrams      Int?
   labelUrl         String?
   deletedAt        DateTime?

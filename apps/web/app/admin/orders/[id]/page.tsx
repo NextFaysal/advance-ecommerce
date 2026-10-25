@@ -24,6 +24,7 @@ import { CustomerSummaryCard } from "../../../../src/orders/components/CustomerS
 import { OneClickPanel } from "../../../../src/orders/components/OneClickPanel";
 import { PrintPanel } from "../../../../src/orders/components/PrintPanel";
 import { RefundsPanel } from "./refunds-panel";
+import { ShipmentsPanel } from "./shipments-panel";
 import { AdvancePanel } from "./advance-panel";
 import type { OrderAdvanceView } from "../../../../src/orders/advance";
 import { StatusTimeline } from "../../../../src/orders/components/StatusTimeline";
@@ -385,6 +386,11 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
               via bKash/bank themselves; shows the refund-due banner for
               cancelled/returned orders. Self-fetches by order id. */}
           <RefundsPanel orderId={order.id} />
+
+          {/* Shipments (doc 17, O5) — bookings incl. split parcels,
+              per-line coverage, create-split form and staff-confirmed
+              parcel delivery. Self-fetches by order id. */}
+          <ShipmentsPanel orderId={order.id} />
         </div>
       </div>
 

@@ -43,6 +43,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { DEFAULT_RETRY, type JobRetryPolicy } from "./queues";
 import { findMockOrder, MOCK_ORDERS } from "../orders/mock";
 import { getOrderByIdOrNo, saveOrder } from "../orders/repository";
+import { computeOrderParcelWeightGrams } from "../courier/order-sync";
 import { advanceConfirmBlock } from "../orders/advance";
 import { buildPrintData } from "../orders/print";
 import { transitionOrder } from "../orders/state-machine";
@@ -352,8 +353,15 @@ async function runForOrder(
           },
           codAmountPoisha: order.paymentMethod === "cod" ? order.totalPoisha : 0,
           note: null,
-          // Same conventions as the One-Click Flow panel (Agent 30).
-          weightGrams: Math.max(100, totalQuantity * 500),
+          // Real parcel weight (wave 23, doc 17 batch O5): Σ Product
+          // .weightGrams × quantity over the order's lines, resolved
+          // live via src/courier/order-sync — a line whose product
+          // carries no weight contributes that module's documented
+          // 500 g-per-line default. (This replaces the invented
+          // quantity × 500 g estimate this call used before.) The
+          // persisted Shipment row carries the same grams
+          // (Shipment.weightGrams via createShipmentRow).
+          weightGrams: Math.max(100, await computeOrderParcelWeightGrams(order.items)),
           itemCount: Math.max(1, totalQuantity),
           // Deterministic per job+order: reprocessing this job can never
           // double-book at the adapter (the sandbox store dedupes on it).

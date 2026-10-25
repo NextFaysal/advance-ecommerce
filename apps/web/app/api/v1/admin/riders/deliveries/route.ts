@@ -5,6 +5,7 @@ import { applyDeliveryTransition } from "@/riders/assignment";
 import { hashDeliveryOtp } from "@/riders/proof";
 import { codHandoverLine, recordCodHandover } from "@/riders/service";
 import { riderStore } from "@/riders/db-store";
+import { syncRiderDeliveryToOrder } from "@/riders/order-sync";
 import { deliveryTransitionSchema, type DeliveryProof } from "@/riders/types";
 
 // Rider deliveries — Agent 18 (E3).
@@ -96,6 +97,15 @@ export async function PATCH(req: Request) {
       collectedPoisha: parsed.data.collectedPoisha,
     });
     await riderStore.replaceDelivery(updated);
+    // Order sync (doc 17, O5): a terminal rider outcome now reaches the
+    // linked order — DELIVERED moves it through the courier seam (with
+    // the recorded COD collection), FAILED lands as a timeline note
+    // only. DELIVERED/FAILED are terminal in the state machine, so this
+    // fires exactly once per delivery. A sync failure never changes
+    // this route's response shape; the seam records its own notes.
+    if (updated.status === "DELIVERED" || updated.status === "FAILED") {
+      await syncRiderDeliveryToOrder(updated).catch(() => undefined);
+    }
     // If the rider has no more in-flight parcels, they are simply ACTIVE again.
     const rider = await riderStore.getRider(updated.riderId);
     if (rider && rider.status === "ON_DELIVERY") {
