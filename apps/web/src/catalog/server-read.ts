@@ -38,10 +38,15 @@ export async function listActiveProducts(pageSize = 100): Promise<Product[]> {
  * product is shaped by toPublicProduct, so costPoisha never exists in
  * the returned graph (privacy fix, 2026-10-24: cost was riding the RSC
  * payload of home/shop/search/cart through ProductCard props).
+ * Wave 14: this fetches with liveOnly directly (NOT via the admin
+ * listActiveProducts) so scheduled (future publishAt) products stay
+ * hidden here while admin surfaces keep seeing them.
  */
 export async function listActivePublicProducts(pageSize = 100): Promise<PublicProduct[]> {
-  const products = await listActiveProducts(pageSize);
-  return products.map(toPublicProduct);
+  const repo = await tryCatalogRepository();
+  if (!repo) return [];
+  const result = await repo.listProducts({ status: "ACTIVE", page: 1, pageSize, liveOnly: true });
+  return result.products.map(toPublicProduct);
 }
 
 /** PUBLIC filtered list (shop/search filters) with cost stripped. */
@@ -50,7 +55,7 @@ export async function listPublicProducts(
 ): Promise<{ products: PublicProduct[]; total: number; page: number; pageSize: number }> {
   const repo = await tryCatalogRepository();
   if (!repo) return { products: [], total: 0, page: 1, pageSize: filter.pageSize ?? 100 };
-  const result = await repo.listProducts({ ...filter, status: "ACTIVE" });
+  const result = await repo.listProducts({ ...filter, status: "ACTIVE", liveOnly: true });
   return { ...result, products: result.products.map(toPublicProduct) };
 }
 

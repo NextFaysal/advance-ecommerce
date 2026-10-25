@@ -45,15 +45,28 @@ export async function searchPublicProducts(
   const pageSize = Math.min(100, Math.max(1, filter.pageSize ?? 20));
   const query = filter.query?.trim() ?? "";
 
-  if (query) {
+  // Attribute filters (wave 14) live only in Postgres (the Meilisearch
+  // document carries no variant attributes), so an attr-filtered
+  // request goes straight to the Postgres path below.
+  const hasAttributeFilters =
+    filter.attributeFilters !== undefined && Object.keys(filter.attributeFilters).length > 0;
+
+  if (query && !hasAttributeFilters) {
     const outcome = await searchMeilisearchProducts({ ...filter, query, page, pageSize });
     if (outcome.ok) {
       // Hydrate in Meilisearch ranking order; drop anything Postgres
-      // says is missing or not ACTIVE (the stale-document gate).
+      // says is missing or not ACTIVE (the stale-document gate). The
+      // wave-14 publishAt gate rides the same check: a scheduled
+      // product must not surface through a stale index document.
+      const now = Date.now();
       const hydrated: PublicProduct[] = [];
       for (const id of outcome.ids) {
         const product = await repo.getProductById(id);
-        if (product && product.status === "ACTIVE") {
+        if (
+          product &&
+          product.status === "ACTIVE" &&
+          (product.publishAt === null || new Date(product.publishAt).getTime() <= now)
+        ) {
           hydrated.push(toPublicProduct(product));
         }
       }

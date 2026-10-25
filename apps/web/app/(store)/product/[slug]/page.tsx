@@ -8,14 +8,19 @@ import { RecordRecentlyViewed } from "@/storefront-ux/components/RecordRecentlyV
 import { RecentlyViewedRail } from "@/storefront-ux/components/RecentlyViewedRail";
 import { StickyBuyBar } from "@/storefront-ux/components/StickyBuyBar";
 import { CompareToggleButton, CompareTray } from "@/storefront-ux/components/CompareTray";
-import { SizeGuideButton } from "@/storefront-ux/components/SizeGuideModal";
 import { BackInStockForm } from "@/storefront-ux/components/BackInStockForm";
 import { BuyBoxActions } from "@/cart/components/BuyBoxActions";
 import { WishlistToggleButton } from "@/catalog/WishlistToggleButton";
+import { ProductCard } from "@/catalog/ProductCard";
+import { renderDescriptionHtml } from "@/catalog/description";
+import { getRelatedProducts } from "@/catalog/related";
 import { BdtAmount, DigitText } from "@/components/ui/numerals";
 import { ReviewSection } from "@/reviews/components/ReviewSection";
 import type { RecentlyViewedEntry } from "@/storefront-ux/types";
 import { Gallery } from "./Gallery";
+import { DescriptionSection } from "./DescriptionSection";
+import { ProductVideo } from "./ProductVideo";
+import { SizeChartButton, SizeChartSection } from "./SizeChart";
 
 // Data: real catalog DB via the repository PUBLIC read path
 // (ACTIVE-only) — a DRAFT/ARCHIVED slug 404s exactly like a missing one.
@@ -148,7 +153,36 @@ export default async function ProductPage({ params }: { params: { slug: string }
     ? Math.round(((bestDiscount.compare - bestDiscount.price) / bestDiscount.compare) * 100)
     : 0;
   const inStock = product.variants.some((v) => v.isActive && v.stock > 0);
-  const hasSizeGuide = product.categorySlug === "fashion";
+  // Sale window (Wave 14-2): when the product carries a sale window
+  // (saleStartsAt/saleEndsAt) that is NOT currently active, the
+  // compare-at strike + discount badge are hidden — the price itself
+  // never changes. No window (or an active one) keeps today's
+  // behaviour; `saleActive` arrives derived on the public shape.
+  const hasSaleWindow = Boolean(product.saleStartsAt || product.saleEndsAt);
+  const showDiscount = bestDiscount !== null && (!hasSaleWindow || product.saleActive);
+  // Per-product size chart replaces the old categorySlug === "fashion"
+  // hardcode: the button/section exist only when THIS product has one.
+  const sizeChart =
+    product.sizeChart && product.sizeChart.headers.length > 0 && product.sizeChart.rows.length > 0
+      ? product.sizeChart
+      : null;
+  const faqItems = (product.faqItems ?? []).filter((f) => f.q.trim() !== "" && f.a.trim() !== "");
+  // Specification table: union of variant attributes, key → distinct
+  // values in first-seen order (active variants preferred).
+  const specRows: Array<{ key: string; values: string[] }> = [];
+  {
+    const byKey = new Map<string, string[]>();
+    const specVariants = product.variants.filter((v) => v.isActive);
+    for (const v of specVariants.length > 0 ? specVariants : product.variants) {
+      for (const [key, value] of Object.entries(v.attributes)) {
+        const list = byKey.get(key) ?? [];
+        if (!list.includes(value)) list.push(value);
+        byKey.set(key, list);
+      }
+    }
+    for (const [key, values] of byKey) specRows.push({ key, values });
+  }
+  const related = await getRelatedProducts(product);
   const outOfStockVariants = product.variants
     .filter((v) => v.isActive && v.stock === 0)
     .map((v) => ({
@@ -215,11 +249,14 @@ export default async function ProductPage({ params }: { params: { slug: string }
       </nav>
 
       <div className="mt-5 grid items-start gap-8 lg:grid-cols-2">
-        {/* Gallery */}
-        <Gallery
-          images={product.images.map((img) => ({ url: img.url, altBn: img.altBn }))}
-          titleBn={product.title.bn}
-        />
+        {/* Gallery + product video (gallery-adjacent, same column) */}
+        <div className="min-w-0 space-y-4">
+          <Gallery
+            images={product.images.map((img) => ({ url: img.url, altBn: img.altBn }))}
+            titleBn={product.title.bn}
+          />
+          {product.videoUrl ? <ProductVideo videoUrl={product.videoUrl} titleBn={product.title.bn} /> : null}
+        </div>
 
         {/* Buy box — sticky on desktop (offset clears the taller
             v3 header: main row + mega-menu row) */}
@@ -262,7 +299,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
                   </span>
                 ) : null}
               </span>
-              {bestDiscount ? (
+              {showDiscount && bestDiscount ? (
                 <>
                   <BdtAmount
                     poisha={bestDiscount.compare}
@@ -311,7 +348,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <WishlistToggleButton productId={product.id} />
               <CompareToggleButton productId={product.id} />
-              {hasSizeGuide ? <SizeGuideButton /> : null}
+              {sizeChart ? <SizeChartButton chart={sizeChart} /> : null}
             </div>
 
             <BackInStockForm productId={product.id} variants={outOfStockVariants} />
@@ -331,19 +368,66 @@ export default async function ProductPage({ params }: { params: { slug: string }
         </div>
       </div>
 
-      {/* Description */}
+      {/* Description — markdown rendered via the shared renderer
+          (src/catalog/description.ts); English toggle when present. */}
       {product.description.bn ? (
+        <DescriptionSection
+          bnHtml={renderDescriptionHtml(product.description.bn)}
+          enHtml={product.description.en ? renderDescriptionHtml(product.description.en) : null}
+        />
+      ) : null}
+
+      {/* Specification — union of variant attributes */}
+      {specRows.length > 0 ? (
         <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8">
-          <h2 className="text-lg font-extrabold text-text-main">পণ্যের বিবরণ</h2>
-          <p className="mt-3 max-w-3xl break-words text-[15px] leading-8 text-text-muted [overflow-wrap:anywhere]">
-            {product.description.bn}
-          </p>
+          <h2 className="text-lg font-extrabold text-text-main">স্পেসিফিকেশন</h2>
+          <dl className="mt-3 max-w-3xl divide-y divide-border">
+            {specRows.map((row) => (
+              <div key={row.key} className="grid grid-cols-[140px_1fr] gap-3 py-2.5 text-[15px]">
+                <dt className="font-semibold capitalize text-text-main">{row.key}</dt>
+                <dd className="break-words text-text-muted">{row.values.join(", ")}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ) : null}
+
+      {/* Size chart — this product's own chart, when it has one */}
+      {sizeChart ? <SizeChartSection chart={sizeChart} /> : null}
+
+      {/* FAQ — the product's own questions, as an accordion */}
+      {faqItems.length > 0 ? (
+        <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8">
+          <h2 className="text-lg font-extrabold text-text-main">সাধারণ জিজ্ঞাসা</h2>
+          <div className="mt-3 max-w-3xl">
+            {faqItems.map((item, i) => (
+              <details key={i} className="group border-b border-border py-3.5 last:border-b-0">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[15px] font-semibold text-text-main [&::-webkit-details-marker]:hidden">
+                  {item.q}
+                  <span aria-hidden="true" className="text-text-subtle transition group-open:rotate-180">⌄</span>
+                </summary>
+                <p className="mt-2 break-words leading-7 text-text-muted [overflow-wrap:anywhere]">{item.a}</p>
+              </details>
+            ))}
+          </div>
         </section>
       ) : null}
 
       {/* Customer reviews — real APPROVED rows from the Review table
           + the moderated submission form (src/reviews). */}
       <ReviewSection productId={product.id} productSlug={product.slug} />
+
+      {/* Related products — manual picks first, same-category fill */}
+      {related.length > 0 ? (
+        <section className="mt-12">
+          <h2 className="text-xl font-extrabold text-text-main">সম্পর্কিত পণ্য</h2>
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+            {related.map((p) => (
+              <ProductCard key={p.id} product={p} />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <RecentlyViewedRail excludeProductId={product.id} />
       <StickyBuyBar titleBn={product.title.bn} pricePoisha={minPrice} inStock={inStock} buyBoxId="buy-box" />

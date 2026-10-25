@@ -386,6 +386,28 @@ model Product {
   seoDescriptionBn String?
   seoDescriptionEn String?
   ogImage          String?
+  // Wave 14 (doc 16 P5/P6): rich content + scheduling + merchandising.
+  videoUrl         String?
+  // { headers: string[], rows: string[][] } — validated in the catalog service.
+  sizeChart        Json?
+  // [{ q: string, a: string }] — validated in the catalog service.
+  faqItems         Json?
+  // Read-time scheduling gates (no worker): a future publishAt hides the
+  // product from PUBLIC reads only; sale windows drive the public
+  // `saleActive` derivation, never a price change by themselves.
+  publishAt        DateTime?
+  saleStartsAt     DateTime?
+  saleEndsAt       DateTime?
+  // Merchant-picked related product ids (max 20, service-validated).
+  relatedIds       String[]         @default([])
+  // Physicals for courier weight-based pricing (wave 14; the shipment
+  // payload wiring is a later orders-side pass).
+  weightGrams      Int?
+  lengthMm         Int?
+  widthMm          Int?
+  heightMm         Int?
+  // Per-product low-stock threshold override (null = global default).
+  lowStockThreshold Int?
   deletedAt        DateTime?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt

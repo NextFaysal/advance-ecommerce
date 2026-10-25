@@ -42,6 +42,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { generateVariantDrafts, validateVariantDrafts } from "@/catalog/variants";
+import { renderDescriptionHtml } from "@/catalog/description";
 import type { Product, ProductAttribute, ProductStatus } from "@/catalog/types";
 
 export interface CategoryOption {
@@ -74,7 +75,7 @@ interface ImageRow {
   altEn: string;
 }
 
-type Tab = "basic" | "media" | "variants" | "seo";
+type Tab = "basic" | "media" | "variants" | "content" | "seo";
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -109,6 +110,36 @@ function emptyToNull(value: string): string | null {
   return t === "" ? null : t;
 }
 
+/** ISO instant -> <input type="datetime-local"> value (browser-local
+ *  wall time). "" when unset/unparseable. */
+function isoToLocalInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** datetime-local value -> ISO instant for the API; null when empty. */
+function localInputToIso(value: string): string | null {
+  const t = value.trim();
+  if (t === "") return null;
+  const d = new Date(t);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/** Optional non-negative-integer field: "" -> null; junk -> error. */
+function parseNonNegativeInt(value: string, label: string, errors: string[]): number | null {
+  const t = value.trim();
+  if (t === "") return null;
+  const n = Number(t);
+  if (!Number.isInteger(n) || n < 0) {
+    errors.push(`${label}: শূন্য বা তার বেশি পূর্ণ সংখ্যা হতে হবে।`);
+    return null;
+  }
+  return n;
+}
+
 /** Rebuild "key: v1, v2" lines from loaded variants (edit mode). */
 function attributeLinesFromVariants(variants: { attributes: Record<string, string> }[]): string {
   const byKey = new Map<string, string[]>();
@@ -126,6 +157,112 @@ const inputCls =
   "mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
 const cellInputCls =
   "w-full min-w-[84px] rounded-md border border-border bg-card px-2 py-1.5 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
+const toolbarBtnCls =
+  "rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold transition motion-fast hover:border-brand-300";
+
+/**
+ * Description textarea with a markdown-subset toolbar + live preview
+ * (wave 14). The syntax inserted here is exactly what
+ * src/catalog/description.ts renders — the PDP uses the same
+ * renderDescriptionHtml, so the preview is faithful, never a mock.
+ */
+function DescriptionField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  placeholder?: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+
+  /** Replace the current selection with fn(selection) and reselect it. */
+  function applyToSelection(fn: (selected: string) => string) {
+    const el = ref.current;
+    if (!el) return;
+    const start = el.selectionStart ?? value.length;
+    const end = el.selectionEnd ?? value.length;
+    const replacement = fn(value.slice(start, end));
+    onChange(value.slice(0, start) + replacement + value.slice(end));
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(start, start + replacement.length);
+    });
+  }
+
+  /** Prefix the line the cursor sits on (headings, bullets). */
+  function prefixCurrentLine(prefix: string) {
+    const el = ref.current;
+    if (!el) return;
+    const pos = el.selectionStart ?? 0;
+    const lineStart = pos === 0 ? 0 : value.lastIndexOf("\n", pos - 1) + 1;
+    onChange(value.slice(0, lineStart) + prefix + value.slice(lineStart));
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(pos + prefix.length, pos + prefix.length);
+    });
+  }
+
+  function addLink() {
+    const url = window.prompt("লিংকের URL লিখুন (https:// দিয়ে শুরু হতে হবে)");
+    if (!url || url.trim() === "") return;
+    applyToSelection((s) => `[${s || "লিংক"}](${url.trim()})`);
+  }
+
+  return (
+    <div className="block text-sm">
+      <span>{label}</span>
+      <span className="mt-1 flex flex-wrap items-center gap-1.5">
+        <button type="button" className={toolbarBtnCls} onClick={() => applyToSelection((s) => `**${s || "গুরুত্বপূর্ণ"}**`)} aria-label="Bold">
+          B
+        </button>
+        <button type="button" className={`${toolbarBtnCls} italic`} onClick={() => applyToSelection((s) => `*${s || "লেখা"}*`)} aria-label="Italic">
+          I
+        </button>
+        <button type="button" className={toolbarBtnCls} onClick={() => prefixCurrentLine("## ")} aria-label="Heading">
+          H
+        </button>
+        <button type="button" className={toolbarBtnCls} onClick={() => prefixCurrentLine("- ")} aria-label="Bullet list">
+          • তালিকা
+        </button>
+        <button type="button" className={toolbarBtnCls} onClick={addLink} aria-label="Link">
+          🔗 লিংক
+        </button>
+        <button
+          type="button"
+          className={`${toolbarBtnCls} ml-auto font-medium`}
+          onClick={() => setShowPreview((v) => !v)}
+          aria-expanded={showPreview}
+        >
+          {showPreview ? "প্রিভিউ লুকান" : "প্রিভিউ দেখুন"}
+        </button>
+      </span>
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={6}
+        className={inputCls}
+        placeholder={placeholder}
+      />
+      <span className="mt-1 block text-xs text-text-subtle">
+        Markdown চলবে: **গাঢ়**, *তির্যক*, ## শিরোনাম, - তালিকা, [লেখা](https://…) লিংক। স্টোরে ঠিক এভাবেই দেখাবে।
+      </span>
+      {showPreview && (
+        <div
+          className="mt-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm leading-relaxed [&_a]:font-medium [&_a]:text-brand-700 [&_a]:underline [&_h2]:mb-1 [&_h2]:mt-2 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:font-semibold [&_h4]:mb-1 [&_h4]:mt-2 [&_h4]:font-semibold [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5"
+          // The renderer escapes ALL raw HTML first — this is the
+          // same sanitized string the PDP renders.
+          dangerouslySetInnerHTML={{ __html: renderDescriptionHtml(value) }}
+        />
+      )}
+    </div>
+  );
+}
 
 export function ProductEditor({
   mode,
@@ -241,6 +378,35 @@ export function ProductEditor({
   const [seoDescriptionBn, setSeoDescriptionBn] = useState(initial?.seoDescription?.bn ?? "");
   const [seoDescriptionEn, setSeoDescriptionEn] = useState(initial?.seoDescription?.en ?? "");
   const [ogImage, setOgImage] = useState(initial?.ogImage ?? "");
+
+  // --- Wave 14: physicals, low-stock, scheduling, content -------------------
+  const [weightGrams, setWeightGrams] = useState(
+    initial?.weightGrams != null ? String(initial.weightGrams) : "",
+  );
+  const [lengthMm, setLengthMm] = useState(initial?.lengthMm != null ? String(initial.lengthMm) : "");
+  const [widthMm, setWidthMm] = useState(initial?.widthMm != null ? String(initial.widthMm) : "");
+  const [heightMm, setHeightMm] = useState(initial?.heightMm != null ? String(initial.heightMm) : "");
+  const [lowStockThreshold, setLowStockThreshold] = useState(
+    initial?.lowStockThreshold != null ? String(initial.lowStockThreshold) : "",
+  );
+  // Scheduling — datetime-local strings in state, ISO on the wire.
+  const [publishAt, setPublishAt] = useState(isoToLocalInput(initial?.publishAt ?? null));
+  const [saleStartsAt, setSaleStartsAt] = useState(isoToLocalInput(initial?.saleStartsAt ?? null));
+  const [saleEndsAt, setSaleEndsAt] = useState(isoToLocalInput(initial?.saleEndsAt ?? null));
+  // Content tab.
+  const [videoUrl, setVideoUrl] = useState(initial?.videoUrl ?? "");
+  const [sizeChart, setSizeChart] = useState<{ headers: string[]; rows: string[][] }>(() =>
+    initial?.sizeChart
+      ? { headers: [...initial.sizeChart.headers], rows: initial.sizeChart.rows.map((r) => [...r]) }
+      : { headers: [], rows: [] },
+  );
+  const [faqRows, setFaqRows] = useState<{ q: string; a: string }[]>(() =>
+    initial?.faqItems ? initial.faqItems.map((f) => ({ ...f })) : [],
+  );
+  // Related product ids (wave 14): the picker UI lives on the edit
+  // page (parallel section) — the editor's duty here is only to
+  // ROUND-TRIP the loaded ids unchanged so a save never wipes them.
+  const [relatedIds] = useState<string[]>(initial?.relatedIds ?? []);
 
   // --- Image upload (P1: presigned direct-to-storage) ------------------------
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -487,6 +653,60 @@ export function ProductEditor({
       .map((i, idx) => ({ url: i.url.trim(), altBn: i.altBn, altEn: i.altEn, sortOrder: idx }));
     if (images.length > 20) errors.push("সর্বোচ্চ 20টি ছবি দেওয়া যাবে।");
 
+    // --- Wave 14 fields -------------------------------------------------
+    const weightGramsValue = parseNonNegativeInt(weightGrams, "ওজন (গ্রাম)", errors);
+    const lengthMmValue = parseNonNegativeInt(lengthMm, "দৈর্ঘ্য (মিমি)", errors);
+    const widthMmValue = parseNonNegativeInt(widthMm, "প্রস্থ (মিমি)", errors);
+    const heightMmValue = parseNonNegativeInt(heightMm, "উচ্চতা (মিমি)", errors);
+    const lowStockThresholdValue = parseNonNegativeInt(lowStockThreshold, "লো-স্টক সীমা", errors);
+
+    const videoUrlValue = emptyToNull(videoUrl);
+    if (videoUrlValue !== null) {
+      try {
+        new URL(videoUrlValue);
+      } catch {
+        errors.push("ভিডিও URL ঠিকমতো লিখুন (https:// দিয়ে শুরু হতে হবে)।");
+      }
+    }
+
+    if (publishAt.trim() !== "" && localInputToIso(publishAt) === null) {
+      errors.push("প্রকাশের সময় ঠিকমতো বেছে নিন।");
+    }
+    if (saleStartsAt.trim() !== "" && localInputToIso(saleStartsAt) === null) {
+      errors.push("সেল শুরুর সময় ঠিকমতো বেছে নিন।");
+    }
+    if (saleEndsAt.trim() !== "" && localInputToIso(saleEndsAt) === null) {
+      errors.push("সেল শেষের সময় ঠিকমতো বেছে নিন।");
+    }
+
+    // Size chart: completely empty -> null; otherwise normalize every
+    // row to the header width so the stored shape always matches.
+    const sizeChartValue =
+      sizeChart.headers.length === 0 ||
+      (sizeChart.headers.every((h) => h.trim() === "") &&
+        sizeChart.rows.every((r) => r.every((c) => c.trim() === "")))
+        ? null
+        : {
+            headers: sizeChart.headers,
+            rows: sizeChart.rows.map((r) => sizeChart.headers.map((_, ci) => r[ci] ?? "")),
+          };
+    if (sizeChartValue !== null && sizeChartValue.headers.some((h) => h.trim() === "")) {
+      errors.push("সাইজ চার্টের সব কলামের শিরোনাম লিখুন।");
+    }
+
+    // FAQ: fully-blank rows drop out; a half-filled row is an error.
+    const faqItemsValue: { q: string; a: string }[] = [];
+    for (const row of faqRows) {
+      const q = row.q.trim();
+      const a = row.a.trim();
+      if (q === "" && a === "") continue;
+      if (q === "" || a === "") {
+        errors.push("প্রতিটি প্রশ্নের জোড়ায় প্রশ্ন ও উত্তর দুটোই লিখতে হবে।");
+        break;
+      }
+      faqItemsValue.push({ q: row.q, a: row.a });
+    }
+
     if (errors.length > 0) return { errors };
 
     const payload: Record<string, unknown> = {
@@ -504,6 +724,18 @@ export function ProductEditor({
       seoDescriptionBn: emptyToNull(seoDescriptionBn),
       seoDescriptionEn: emptyToNull(seoDescriptionEn),
       ogImage: emptyToNull(ogImage),
+      videoUrl: videoUrlValue,
+      sizeChart: sizeChartValue,
+      faqItems: faqItemsValue.length > 0 ? faqItemsValue : null,
+      publishAt: localInputToIso(publishAt),
+      saleStartsAt: localInputToIso(saleStartsAt),
+      saleEndsAt: localInputToIso(saleEndsAt),
+      relatedIds,
+      weightGrams: weightGramsValue,
+      lengthMm: lengthMmValue,
+      widthMm: widthMmValue,
+      heightMm: heightMmValue,
+      lowStockThreshold: lowStockThresholdValue,
       images,
       variants,
     };
@@ -698,10 +930,40 @@ export function ProductEditor({
     { key: "seo", label: "SEO: slug + meta" },
   ] as const;
 
+  // Live schedule status (wave 14) — derived from the CURRENT form
+  // state, so the merchant sees the effect before saving. Mirrors the
+  // server rules: publishAt gates public visibility (read-time), the
+  // sale window only drives the public saleActive flag.
+  const fmtWhen = (d: Date) => d.toLocaleString("bn-BD", { dateStyle: "medium", timeStyle: "short" });
+  const publishDate = publishAt.trim() !== "" ? new Date(publishAt) : null;
+  const publishLine =
+    status !== "ACTIVE"
+      ? `স্ট্যাটাস ${status} — ACTIVE না করলে স্টোরে দেখা যাবে না।`
+      : publishDate !== null && !Number.isNaN(publishDate.getTime()) && publishDate.getTime() > Date.now()
+        ? `🕒 শিডিউল করা: ${fmtWhen(publishDate)} থেকে লাইভ হবে।`
+        : "✅ এখন লাইভ (বা সেভ করলেই লাইভ হবে)।";
+  const saleStartDate = saleStartsAt.trim() !== "" ? new Date(saleStartsAt) : null;
+  const saleEndDate = saleEndsAt.trim() !== "" ? new Date(saleEndsAt) : null;
+  const saleLine =
+    saleStartDate === null && saleEndDate === null
+      ? "কোনো সেলের সময়সীমা সেট করা নেই।"
+      : (() => {
+          const now = Date.now();
+          if (saleStartDate !== null && !Number.isNaN(saleStartDate.getTime()) && now < saleStartDate.getTime()) {
+            return `🏷️ সেল ${fmtWhen(saleStartDate)} থেকে শুরু হবে।`;
+          }
+          if (saleEndDate !== null && !Number.isNaN(saleEndDate.getTime()) && now > saleEndDate.getTime()) {
+            return `🏷️ সেলের সময়সীমা শেষ (${fmtWhen(saleEndDate)})।`;
+          }
+          return saleEndDate !== null && !Number.isNaN(saleEndDate.getTime())
+            ? `🏷️ সেল চলছে — ${fmtWhen(saleEndDate)} পর্যন্ত।`
+            : "🏷️ সেল চলছে।";
+        })();
+
   return (
     <div>
       <div className="flex flex-wrap gap-2" role="tablist">
-        {(["basic", "media", "variants", "seo"] as Tab[]).map((t) => (
+        {(["basic", "media", "variants", "content", "seo"] as Tab[]).map((t) => (
           <button
             key={t}
             type="button"
@@ -712,7 +974,15 @@ export function ProductEditor({
               tab === t ? "bg-brand-600 text-white shadow-sm" : "border border-border bg-card hover:border-brand-300"
             }`}
           >
-            {t === "basic" ? "বেসিক" : t === "media" ? "মিডিয়া" : t === "variants" ? `ভেরিয়েন্ট (${rows.length})` : "SEO"}
+            {t === "basic"
+              ? "বেসিক"
+              : t === "media"
+                ? "মিডিয়া"
+                : t === "variants"
+                  ? `ভেরিয়েন্ট (${rows.length})`
+                  : t === "content"
+                    ? "কনটেন্ট"
+                    : "SEO"}
           </button>
         ))}
         {mode === "edit" && status === "ACTIVE" && (
@@ -820,14 +1090,54 @@ export function ProductEditor({
             ডিফল্ট Cost price (৳) — শুধু স্টাফদের জন্য
             <input value={baseCostTaka} onChange={(e) => setBaseCostTaka(e.target.value)} inputMode="decimal" className={inputCls} placeholder="3000" />
           </label>
-          <label className="block text-sm md:col-span-2">
-            বিবরণ (বাংলা) *
-            <textarea value={descriptionBn} onChange={(e) => setDescriptionBn(e.target.value)} rows={4} className={inputCls} placeholder="পণ্যের বাংলা বিবরণ" />
+          <label className="block text-sm">
+            ওজন (গ্রাম) — কুরিয়ারের ওজন-ভিত্তিক চার্জে লাগে
+            <input value={weightGrams} onChange={(e) => setWeightGrams(e.target.value)} inputMode="numeric" className={inputCls} placeholder="যেমন: 500" />
           </label>
-          <label className="block text-sm md:col-span-2">
-            Description (English) *
-            <textarea value={descriptionEn} onChange={(e) => setDescriptionEn(e.target.value)} rows={4} className={inputCls} placeholder="Product description in English" />
+          <label className="block text-sm">
+            লো-স্টক সতর্কতার সীমা (খালি = গ্লোবাল ডিফল্ট)
+            <input value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)} inputMode="numeric" className={inputCls} placeholder="যেমন: 5" />
           </label>
+          <div className="md:col-span-2">
+            <span className="text-sm">প্যাকেজের মাপ (মিলিমিটার)</span>
+            <div className="mt-1 grid gap-3 sm:grid-cols-3">
+              <label className="block text-xs">
+                দৈর্ঘ্য (mm)
+                <input value={lengthMm} onChange={(e) => setLengthMm(e.target.value)} inputMode="numeric" className={cellInputCls} placeholder="300" />
+              </label>
+              <label className="block text-xs">
+                প্রস্থ (mm)
+                <input value={widthMm} onChange={(e) => setWidthMm(e.target.value)} inputMode="numeric" className={cellInputCls} placeholder="200" />
+              </label>
+              <label className="block text-xs">
+                উচ্চতা (mm)
+                <input value={heightMm} onChange={(e) => setHeightMm(e.target.value)} inputMode="numeric" className={cellInputCls} placeholder="50" />
+              </label>
+            </div>
+          </div>
+          <div className="rounded-lg border border-border bg-surface-2 p-3 md:col-span-2">
+            <h3 className="text-sm font-semibold">শিডিউল — প্রকাশ ও সেলের সময়</h3>
+            <div className="mt-2 grid gap-3 sm:grid-cols-3">
+              <label className="block text-xs">
+                প্রকাশের সময় (খালি = সঙ্গে সঙ্গে লাইভ)
+                <input type="datetime-local" value={publishAt} onChange={(e) => setPublishAt(e.target.value)} className={cellInputCls} />
+              </label>
+              <label className="block text-xs">
+                সেল শুরু
+                <input type="datetime-local" value={saleStartsAt} onChange={(e) => setSaleStartsAt(e.target.value)} className={cellInputCls} />
+              </label>
+              <label className="block text-xs">
+                সেল শেষ
+                <input type="datetime-local" value={saleEndsAt} onChange={(e) => setSaleEndsAt(e.target.value)} className={cellInputCls} />
+              </label>
+            </div>
+            <p role="status" className="mt-2 text-xs leading-relaxed text-text-muted">
+              {publishLine} {saleLine}
+              <span className="block text-text-subtle">
+                সেলের সময়সীমা শুধু স্টোরে "সেল চলছে" অবস্থা ঠিক করে — দাম বদলাতে চাইলে ভেরিয়েন্টের Compare-at দাম ব্যবহার করুন। বিবরণ (বাংলা + English) এখন "কনটেন্ট" ট্যাবে।
+              </span>
+            </p>
+          </div>
         </div>
       )}
 
@@ -1096,6 +1406,203 @@ export function ProductEditor({
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {tab === "content" && (
+        <div className="mt-4 grid gap-4">
+          <label className="block text-sm">
+            প্রোডাক্ট ভিডিওর URL (YouTube বা সরাসরি ভিডিও ফাইল — না থাকলে খালি রাখুন)
+            <input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} className={inputCls} placeholder="https://…" />
+          </label>
+
+          <DescriptionField
+            label="বিবরণ (বাংলা) *"
+            value={descriptionBn}
+            onChange={setDescriptionBn}
+            placeholder="পণ্যের বাংলা বিবরণ"
+          />
+          <DescriptionField
+            label="Description (English) *"
+            value={descriptionEn}
+            onChange={setDescriptionEn}
+            placeholder="Product description in English"
+          />
+
+          <div className="rounded-lg border border-border bg-card p-3 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">সাইজ চার্ট</h3>
+              {sizeChart.headers.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setSizeChart({ headers: ["সাইজ", "মাপ"], rows: [["", ""]] })}
+                  className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium transition motion-fast hover:border-brand-300"
+                >
+                  + সাইজ চার্ট যোগ করুন
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setSizeChart({ headers: [], rows: [] })}
+                  className="rounded-md border border-border px-3 py-1.5 text-sm text-rose-600"
+                >
+                  সাইজ চার্ট সরিয়ে ফেলুন
+                </button>
+              )}
+            </div>
+            {sizeChart.headers.length > 0 && (
+              <div className="mt-3">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[480px] text-left text-sm">
+                    <thead>
+                      <tr>
+                        {sizeChart.headers.map((h, ci) => (
+                          <th key={ci} className="px-1 py-1">
+                            <span className="flex items-center gap-1">
+                              <input
+                                value={h}
+                                onChange={(e) =>
+                                  setSizeChart((prev) => ({
+                                    ...prev,
+                                    headers: prev.headers.map((x, i) => (i === ci ? e.target.value : x)),
+                                  }))
+                                }
+                                className={cellInputCls}
+                                placeholder={`কলাম ${ci + 1}`}
+                                aria-label={`সাইজ চার্টের কলাম ${ci + 1}-এর শিরোনাম`}
+                              />
+                              <button
+                                type="button"
+                                disabled={sizeChart.headers.length <= 1}
+                                onClick={() =>
+                                  setSizeChart((prev) => ({
+                                    headers: prev.headers.filter((_, i) => i !== ci),
+                                    rows: prev.rows.map((r) => r.filter((_, j) => j !== ci)),
+                                  }))
+                                }
+                                className="shrink-0 rounded-md border border-border px-2 py-1.5 text-xs text-rose-600 disabled:opacity-40"
+                                aria-label={`কলাম ${ci + 1} মুছুন`}
+                              >
+                                ✕
+                              </button>
+                            </span>
+                          </th>
+                        ))}
+                        <th className="px-1 py-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSizeChart((prev) => ({
+                                headers: [...prev.headers, ""],
+                                rows: prev.rows.map((r) => [...r, ""]),
+                              }))
+                            }
+                            className="whitespace-nowrap rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium"
+                          >
+                            + কলাম
+                          </button>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sizeChart.rows.map((row, ri) => (
+                        <tr key={ri}>
+                          {sizeChart.headers.map((_, ci) => (
+                            <td key={ci} className="px-1 py-1">
+                              <input
+                                value={row[ci] ?? ""}
+                                onChange={(e) =>
+                                  setSizeChart((prev) => ({
+                                    ...prev,
+                                    rows: prev.rows.map((r, i) =>
+                                      i === ri ? r.map((c, j) => (j === ci ? e.target.value : c)) : r,
+                                    ),
+                                  }))
+                                }
+                                className={cellInputCls}
+                                aria-label={`সাইজ চার্টের সারি ${ri + 1}, কলাম ${ci + 1}`}
+                              />
+                            </td>
+                          ))}
+                          <td className="px-1 py-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSizeChart((prev) => ({ ...prev, rows: prev.rows.filter((_, i) => i !== ri) }))
+                              }
+                              className="whitespace-nowrap rounded-md border border-border px-2.5 py-1.5 text-xs text-rose-600"
+                            >
+                              সারি মুছুন
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSizeChart((prev) => ({ ...prev, rows: [...prev.rows, prev.headers.map(() => "")] }))
+                  }
+                  className="mt-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium transition motion-fast hover:border-brand-300"
+                >
+                  + সারি যোগ করুন
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-border bg-card p-3 shadow-sm">
+            <h3 className="text-sm font-semibold">সাধারণ প্রশ্নোত্তর (FAQ)</h3>
+            <div className="mt-3 space-y-3">
+              {faqRows.length === 0 && (
+                <p className="text-sm text-text-subtle">এখনো কোনো প্রশ্নোত্তর যোগ হয়নি।</p>
+              )}
+              {faqRows.map((row, ri) => (
+                <div key={ri} className="grid gap-2 rounded-md border border-border p-2.5 md:grid-cols-[1fr_1fr_auto]">
+                  <label className="block text-xs">
+                    প্রশ্ন
+                    <input
+                      value={row.q}
+                      onChange={(e) =>
+                        setFaqRows((prev) => prev.map((r, i) => (i === ri ? { ...r, q: e.target.value } : r)))
+                      }
+                      className={cellInputCls}
+                      placeholder="যেমন: ডেলিভারি পেতে কত দিন লাগবে?"
+                    />
+                  </label>
+                  <label className="block text-xs">
+                    উত্তর
+                    <input
+                      value={row.a}
+                      onChange={(e) =>
+                        setFaqRows((prev) => prev.map((r, i) => (i === ri ? { ...r, a: e.target.value } : r)))
+                      }
+                      className={cellInputCls}
+                      placeholder="উত্তর লিখুন"
+                    />
+                  </label>
+                  <span className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => setFaqRows((prev) => prev.filter((_, i) => i !== ri))}
+                      className="rounded-md border border-border px-2.5 py-1.5 text-xs text-rose-600"
+                    >
+                      মুছুন
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setFaqRows((prev) => [...prev, { q: "", a: "" }])}
+              className="mt-3 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium transition motion-fast hover:border-brand-300"
+            >
+              + প্রশ্নোত্তর যোগ করুন
+            </button>
           </div>
         </div>
       )}

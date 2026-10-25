@@ -11,6 +11,7 @@ import Link from "next/link";
 import { getProductForAdminEdit, listBrandNames, listCategories } from "@/catalog/server-read";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProductEditor, type CategoryOption } from "../product-editor";
+import { RelatedPicker, type RelatedPick } from "./related-picker";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,18 @@ export default async function EditProductPage({
     nameBn: c.name.bn,
     nameEn: c.name.en,
   }));
+  // Related picks (Wave 14-2): resolve the stored relatedIds to
+  // summaries for the picker below the editor. A pick whose product
+  // was deleted stays visible (missing) so staff can remove it.
+  const relatedPicks: RelatedPick[] = [];
+  for (const rid of product.relatedIds ?? []) {
+    const rel = await getProductForAdminEdit(rid);
+    relatedPicks.push(
+      rel
+        ? { id: rel.id, titleBn: rel.title.bn, titleEn: rel.title.en, slug: rel.slug, status: rel.status }
+        : { id: rid, titleBn: "", titleEn: "", slug: rid, status: "", missing: true },
+    );
+  }
   const justCreated = searchParams?.created === "1";
   const ledgerPending = searchParams?.ledger === "pending";
 
@@ -69,6 +82,7 @@ export default async function EditProductPage({
         brandNames={brandNames}
         initial={product}
       />
+      <RelatedPicker productId={product.id} initialPicks={relatedPicks} />
     </main>
   );
 }

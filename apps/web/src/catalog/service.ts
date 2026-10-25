@@ -22,7 +22,7 @@
 //    `ledgerPending: true` instead of silently dropping it.
 
 import { z } from "zod";
-import type { Category, Product, ProductImage, ProductVariant, PublicProduct } from "./types";
+import type { Category, FaqItem, Product, ProductImage, ProductVariant, PublicProduct, SizeChart } from "./types";
 import { toPublicProduct } from "./types";
 import type { ProductFilter } from "./search";
 import { applyProductFilter, expandQueryTokens } from "./search";
@@ -73,6 +73,26 @@ export const imageInputSchema = z.object({
   sortOrder: z.number().int().min(0).default(0),
 });
 
+/** Size-chart Json shape (wave 14) — caps keep one product's chart a
+ *  sane table: ≤12 columns, ≤50 rows, short cells. */
+export const sizeChartSchema = z.object({
+  headers: z.array(z.string().max(100)).min(1).max(12),
+  rows: z.array(z.array(z.string().max(200)).max(12)).max(50),
+});
+
+/** FAQ Json shape (wave 14) — ≤30 Q/A pairs per product. */
+export const faqItemsSchema = z
+  .array(
+    z.object({
+      q: z.string().min(1).max(300),
+      a: z.string().min(1).max(2000),
+    }),
+  )
+  .max(30);
+
+/** Non-negative integer or null — physicals + thresholds (wave 14). */
+const nonNegativeIntOrNull = z.number().int().min(0).nullable().optional();
+
 export const productInputSchema = z.object({
   slug: z.string().regex(SLUG_REGEX, "Slug must be lowercase letters, digits and hyphens only"),
   titleBn: z.string().min(1).max(255),
@@ -88,6 +108,20 @@ export const productInputSchema = z.object({
   seoDescriptionBn: z.string().max(500).nullable().optional(),
   seoDescriptionEn: z.string().max(500).nullable().optional(),
   ogImage: z.string().url().max(2048).nullable().optional(),
+  // --- Wave 14 (doc 16 P5/P6): content, scheduling, merchandising ---
+  videoUrl: z.string().url().max(2048).nullable().optional(),
+  sizeChart: sizeChartSchema.nullable().optional(),
+  faqItems: faqItemsSchema.nullable().optional(),
+  // ISO datetime strings on the wire; the adapter stores Dates.
+  publishAt: z.string().datetime().nullable().optional(),
+  saleStartsAt: z.string().datetime().nullable().optional(),
+  saleEndsAt: z.string().datetime().nullable().optional(),
+  relatedIds: z.array(z.string().min(1).max(64)).max(20).default([]),
+  weightGrams: nonNegativeIntOrNull,
+  lengthMm: nonNegativeIntOrNull,
+  widthMm: nonNegativeIntOrNull,
+  heightMm: nonNegativeIntOrNull,
+  lowStockThreshold: nonNegativeIntOrNull,
   images: z.array(imageInputSchema).max(20).default([]),
   variants: z.array(variantInputSchema).min(1).max(200),
 });
@@ -128,6 +162,18 @@ export interface ProductRow {
   seoDescriptionBn: string | null;
   seoDescriptionEn: string | null;
   ogImage: string | null;
+  videoUrl: string | null;
+  sizeChart: SizeChart | null;
+  faqItems: FaqItem[] | null;
+  publishAt: Date | null;
+  saleStartsAt: Date | null;
+  saleEndsAt: Date | null;
+  relatedIds: string[];
+  weightGrams: number | null;
+  lengthMm: number | null;
+  widthMm: number | null;
+  heightMm: number | null;
+  lowStockThreshold: number | null;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -196,6 +242,18 @@ export function mapRowToProduct(row: ProductRow): Product {
         ? { bn: row.seoDescriptionBn ?? "", en: row.seoDescriptionEn ?? "" }
         : null,
     ogImage: row.ogImage,
+    videoUrl: row.videoUrl,
+    sizeChart: row.sizeChart,
+    faqItems: row.faqItems,
+    publishAt: row.publishAt ? row.publishAt.toISOString() : null,
+    saleStartsAt: row.saleStartsAt ? row.saleStartsAt.toISOString() : null,
+    saleEndsAt: row.saleEndsAt ? row.saleEndsAt.toISOString() : null,
+    relatedIds: row.relatedIds,
+    weightGrams: row.weightGrams,
+    lengthMm: row.lengthMm,
+    widthMm: row.widthMm,
+    heightMm: row.heightMm,
+    lowStockThreshold: row.lowStockThreshold,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -244,8 +302,14 @@ export interface CatalogRepository {
    * (ACTIVE/DRAFT/ARCHIVED) filters; "ALL" returns every status (admin
    * surfaces only — public callers must keep the ACTIVE rule below);
    * omitted status defaults to ACTIVE.
+   *
+   * `liveOnly` (wave 14 scheduling gate): set ONLY by public callers.
+   * When true AND the resolved status is ACTIVE, products whose
+   * publishAt is still in the future are excluded — a read-time gate,
+   * no worker flips anything. Admin callers never set it, so drafts,
+   * scheduled products and every other status read exactly as before.
    */
-  listProducts(filter: ProductFilter & { status?: string; page?: number; pageSize?: number }): Promise<{
+  listProducts(filter: ProductFilter & { status?: string; page?: number; pageSize?: number; liveOnly?: boolean }): Promise<{
     products: Product[];
     total: number;
     page: number;
@@ -289,7 +353,7 @@ export interface CatalogRepository {
  * results, never this mock data.
  */
 export class MockCatalogRepository implements CatalogRepository {
-  async listProducts(filter: ProductFilter & { status?: string; page?: number; pageSize?: number }) {
+  async listProducts(filter: ProductFilter & { status?: string; page?: number; pageSize?: number; liveOnly?: boolean }) {
     const page = Math.max(1, filter.page ?? 1);
     const pageSize = Math.min(100, Math.max(1, filter.pageSize ?? 20));
     // Parity with the Prisma adapter: "ALL" = every status, a specific
@@ -298,6 +362,12 @@ export class MockCatalogRepository implements CatalogRepository {
       filter.status === "ALL"
         ? [...MOCK_PRODUCTS]
         : MOCK_PRODUCTS.filter((p) => p.status === (filter.status ?? "ACTIVE"));
+    // Fixture parity for the wave-14 gate: liveOnly + ACTIVE hides
+    // future-publishAt products, exactly like the Prisma adapter.
+    if (filter.liveOnly === true && (filter.status ?? "ACTIVE") === "ACTIVE") {
+      const now = Date.now();
+      products = products.filter((p) => p.publishAt === null || new Date(p.publishAt).getTime() <= now);
+    }
     products = applyProductFilter(products, filter);
     const total = products.length;
     return { products: products.slice((page - 1) * pageSize, page * pageSize), total, page, pageSize };
@@ -306,8 +376,17 @@ export class MockCatalogRepository implements CatalogRepository {
     return MOCK_PRODUCTS.find((p) => p.slug === slug && p.status === "ACTIVE") ?? null;
   }
   async getPublicProductBySlug(slug: string) {
-    // Fixture parity with the Prisma adapter: public reads are ACTIVE-only.
-    return MOCK_PRODUCTS.find((p) => p.slug === slug && p.status === "ACTIVE") ?? null;
+    // Fixture parity with the Prisma adapter: public reads are
+    // ACTIVE-only AND publishAt-gated (a future publishAt is a 404).
+    const now = Date.now();
+    return (
+      MOCK_PRODUCTS.find(
+        (p) =>
+          p.slug === slug &&
+          p.status === "ACTIVE" &&
+          (p.publishAt === null || new Date(p.publishAt).getTime() <= now),
+      ) ?? null
+    );
   }
   async getProductById(id: string) {
     return MOCK_PRODUCTS.find((p) => p.id === id) ?? null;
@@ -373,6 +452,19 @@ export interface PrismaProductRow {
   seoDescriptionBn: string | null;
   seoDescriptionEn: string | null;
   ogImage: string | null;
+  videoUrl: string | null;
+  // Prisma Json columns arrive untyped; normalized in the mapper below.
+  sizeChart: unknown;
+  faqItems: unknown;
+  publishAt: Date | null;
+  saleStartsAt: Date | null;
+  saleEndsAt: Date | null;
+  relatedIds: string[];
+  weightGrams: number | null;
+  lengthMm: number | null;
+  widthMm: number | null;
+  heightMm: number | null;
+  lowStockThreshold: number | null;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -411,6 +503,35 @@ function normalizeAttributes(value: unknown): Record<string, string> {
   return out;
 }
 
+/** Defensive read of the sizeChart Json column: anything that does not
+ *  match the contract shape reads as null (writes are zod-validated,
+ *  so this only guards hand-edited/legacy rows). */
+function normalizeSizeChart(value: unknown): SizeChart | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const v = value as { headers?: unknown; rows?: unknown };
+  if (!Array.isArray(v.headers) || !v.headers.every((h) => typeof h === "string")) return null;
+  if (
+    !Array.isArray(v.rows) ||
+    !v.rows.every((r) => Array.isArray(r) && r.every((c) => typeof c === "string"))
+  ) {
+    return null;
+  }
+  return { headers: v.headers as string[], rows: v.rows as string[][] };
+}
+
+/** Defensive read of the faqItems Json column (same rule as sizeChart). */
+function normalizeFaqItems(value: unknown): FaqItem[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: FaqItem[] = [];
+  for (const item of value) {
+    if (typeof item !== "object" || item === null) return null;
+    const it = item as { q?: unknown; a?: unknown };
+    if (typeof it.q !== "string" || typeof it.a !== "string") return null;
+    out.push({ q: it.q, a: it.a });
+  }
+  return out;
+}
+
 /** Flatten a real Prisma product row into the service-internal ProductRow. */
 export function mapPrismaRowToProductRow(row: PrismaProductRow): ProductRow {
   return {
@@ -434,6 +555,18 @@ export function mapPrismaRowToProductRow(row: PrismaProductRow): ProductRow {
     seoDescriptionBn: row.seoDescriptionBn,
     seoDescriptionEn: row.seoDescriptionEn,
     ogImage: row.ogImage,
+    videoUrl: row.videoUrl,
+    sizeChart: normalizeSizeChart(row.sizeChart),
+    faqItems: normalizeFaqItems(row.faqItems),
+    publishAt: row.publishAt,
+    saleStartsAt: row.saleStartsAt,
+    saleEndsAt: row.saleEndsAt,
+    relatedIds: row.relatedIds ?? [],
+    weightGrams: row.weightGrams,
+    lengthMm: row.lengthMm,
+    widthMm: row.widthMm,
+    heightMm: row.heightMm,
+    lowStockThreshold: row.lowStockThreshold,
     deletedAt: row.deletedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -533,16 +666,17 @@ export function hasPrismaCatalog(client: unknown): client is PrismaLikeClient {
 export class PrismaCatalogRepository implements CatalogRepository {
   constructor(private readonly client: PrismaLikeClient) {}
 
-  async listProducts(filter: ProductFilter & { status?: string; page?: number; pageSize?: number }) {
+  async listProducts(filter: ProductFilter & { status?: string; page?: number; pageSize?: number; liveOnly?: boolean }) {
     const page = Math.max(1, filter.page ?? 1);
     const pageSize = Math.min(100, Math.max(1, filter.pageSize ?? 20));
     // Status semantics: a specific status filters; "ALL" means every
     // status (the admin list); no status keeps the storefront-safe
     // ACTIVE default so a caller that forgets the filter can never
     // leak DRAFT/ARCHIVED products.
+    const resolvedStatus = filter.status ?? "ACTIVE";
     const where = {
       deletedAt: null,
-      ...(filter.status === "ALL" ? {} : { status: filter.status ?? "ACTIVE" }),
+      ...(filter.status === "ALL" ? {} : { status: resolvedStatus }),
     };
     // Filters live in the SQL where (wave-13 parent fix, doc 16 #17):
     // previously q/category/brand/price/stock were applied in memory
@@ -556,23 +690,47 @@ export class PrismaCatalogRepository implements CatalogRepository {
         ...(filter.maxPricePoisha !== undefined ? { lte: filter.maxPricePoisha } : {}),
       };
     }
+    // Attribute filters (wave 14): each key:value becomes a JSON-path
+    // equality on the variant attributes column, ANDed INSIDE the same
+    // `some` — so one single variant must carry every pair (plus the
+    // stock/price conditions above), exactly like applyProductFilter.
+    const attributeEntries = filter.attributeFilters ? Object.entries(filter.attributeFilters) : [];
+    if (attributeEntries.length > 0) {
+      variantSome.AND = attributeEntries.map(([key, value]) => ({
+        attributes: { path: [key], equals: value },
+      }));
+    }
     const needsVariantFilter =
-      filter.inStockOnly || filter.minPricePoisha !== undefined || filter.maxPricePoisha !== undefined;
+      filter.inStockOnly ||
+      filter.minPricePoisha !== undefined ||
+      filter.maxPricePoisha !== undefined ||
+      attributeEntries.length > 0;
     const queryTerms = filter.query ? expandQueryTokens(filter.query) : [];
+    // OR-groups (search terms, the publishAt gate) are collected into
+    // one AND array so they can never overwrite each other as keys.
+    const andConditions: Record<string, unknown>[] = [];
+    if (queryTerms.length > 0) {
+      andConditions.push({
+        OR: queryTerms.flatMap((t) => [
+          { titleBn: { contains: t, mode: "insensitive" } },
+          { titleEn: { contains: t, mode: "insensitive" } },
+          { slug: { contains: t, mode: "insensitive" } },
+        ]),
+      });
+    }
+    // Wave-14 scheduling gate — the ONLY place the list path gates:
+    // the caller must explicitly opt in with liveOnly (public callers
+    // do; admin/POS/landing/jobs never set it) AND the resolved status
+    // must be ACTIVE. A future publishAt then reads as "not listed".
+    if (filter.liveOnly === true && resolvedStatus === "ACTIVE") {
+      andConditions.push({ OR: [{ publishAt: null }, { publishAt: { lte: new Date() } }] });
+    }
     const fullWhere: Record<string, unknown> = {
       ...where,
       ...(filter.categorySlug ? { category: { slug: filter.categorySlug } } : {}),
       ...(filter.brandName ? { brand: { name: filter.brandName } } : {}),
       ...(needsVariantFilter ? { variants: { some: variantSome } } : {}),
-      ...(queryTerms.length
-        ? {
-            OR: queryTerms.flatMap((t) => [
-              { titleBn: { contains: t, mode: "insensitive" } },
-              { titleEn: { contains: t, mode: "insensitive" } },
-              { slug: { contains: t, mode: "insensitive" } },
-            ]),
-          }
-        : {}),
+      ...(andConditions.length > 0 ? { AND: andConditions } : {}),
     };
     const orderBy =
       filter.sort === "rating"
@@ -606,8 +764,17 @@ export class PrismaCatalogRepository implements CatalogRepository {
   async getPublicProductBySlug(slug: string) {
     // Status filter is part of the QUERY (not a post-check): a DRAFT or
     // ARCHIVED product is indistinguishable from a missing one here.
+    // The wave-14 publishAt gate rides the same where: an ACTIVE
+    // product scheduled for the future is equally invisible (publishAt
+    // null = always live). This repository method is public-only —
+    // admin reads use getProductBySlug/getProductById, which never
+    // carry this gate.
     const rows = await this.client.product.findMany({
-      where: { slug, status: "ACTIVE" },
+      where: {
+        slug,
+        status: "ACTIVE",
+        OR: [{ publishAt: null }, { publishAt: { lte: new Date() } }],
+      },
       include: PRODUCT_INCLUDE,
       take: 1,
     });
@@ -763,6 +930,18 @@ export class PrismaCatalogRepository implements CatalogRepository {
           seoDescriptionBn: input.seoDescriptionBn ?? null,
           seoDescriptionEn: input.seoDescriptionEn ?? null,
           ogImage: input.ogImage ?? null,
+          videoUrl: input.videoUrl ?? null,
+          sizeChart: input.sizeChart ?? null,
+          faqItems: input.faqItems ?? null,
+          publishAt: input.publishAt ? new Date(input.publishAt) : null,
+          saleStartsAt: input.saleStartsAt ? new Date(input.saleStartsAt) : null,
+          saleEndsAt: input.saleEndsAt ? new Date(input.saleEndsAt) : null,
+          relatedIds: input.relatedIds,
+          weightGrams: input.weightGrams ?? null,
+          lengthMm: input.lengthMm ?? null,
+          widthMm: input.widthMm ?? null,
+          heightMm: input.heightMm ?? null,
+          lowStockThreshold: input.lowStockThreshold ?? null,
           images: {
             create: input.images.map((i) => ({
               url: i.url,
@@ -952,6 +1131,24 @@ export class PrismaCatalogRepository implements CatalogRepository {
       if (input.seoDescriptionBn !== undefined) data.seoDescriptionBn = input.seoDescriptionBn;
       if (input.seoDescriptionEn !== undefined) data.seoDescriptionEn = input.seoDescriptionEn;
       if (input.ogImage !== undefined) data.ogImage = input.ogImage;
+      if (input.videoUrl !== undefined) data.videoUrl = input.videoUrl;
+      if (input.sizeChart !== undefined) data.sizeChart = input.sizeChart;
+      if (input.faqItems !== undefined) data.faqItems = input.faqItems;
+      if (input.publishAt !== undefined) {
+        data.publishAt = input.publishAt ? new Date(input.publishAt) : null;
+      }
+      if (input.saleStartsAt !== undefined) {
+        data.saleStartsAt = input.saleStartsAt ? new Date(input.saleStartsAt) : null;
+      }
+      if (input.saleEndsAt !== undefined) {
+        data.saleEndsAt = input.saleEndsAt ? new Date(input.saleEndsAt) : null;
+      }
+      if (input.relatedIds !== undefined) data.relatedIds = input.relatedIds;
+      if (input.weightGrams !== undefined) data.weightGrams = input.weightGrams;
+      if (input.lengthMm !== undefined) data.lengthMm = input.lengthMm;
+      if (input.widthMm !== undefined) data.widthMm = input.widthMm;
+      if (input.heightMm !== undefined) data.heightMm = input.heightMm;
+      if (input.lowStockThreshold !== undefined) data.lowStockThreshold = input.lowStockThreshold;
       if (input.categorySlug !== undefined) {
         data.categoryId = await this.resolveCategoryId(tx, input.categorySlug);
       }
@@ -1027,7 +1224,9 @@ export function getPublicProducts(
   repo: CatalogRepository,
   filter: ProductFilter & { page?: number; pageSize?: number },
 ): Promise<{ products: PublicProduct[]; total: number; page: number; pageSize: number }> {
-  return repo.listProducts({ ...filter, status: "ACTIVE" }).then((r) => ({
+  // liveOnly: this is THE public list entry — the publishAt gate is on
+  // here and only here (plus getPublicProductBySlug's own where).
+  return repo.listProducts({ ...filter, status: "ACTIVE", liveOnly: true }).then((r) => ({
     products: r.products.map(toPublicProduct),
     total: r.total,
     page: r.page,

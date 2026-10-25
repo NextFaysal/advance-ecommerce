@@ -91,6 +91,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
     const input: ProductInput = {
       slug,
+      relatedIds: [],
       titleBn: copyTitle(source.title.bn),
       titleEn: copyTitle(source.title.en),
       descriptionBn: source.description.bn,

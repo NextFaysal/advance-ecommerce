@@ -47,6 +47,20 @@ export interface ProductImage {
   sortOrder: number;
 }
 
+/** Size-chart table (wave 14, doc 16 P5): header labels + one string
+ *  row per size. Stored as Product.sizeChart Json; the catalog service
+ *  validates this exact shape on every write. */
+export interface SizeChart {
+  headers: string[];
+  rows: string[][];
+}
+
+/** One product FAQ entry (wave 14, doc 16 P5) — Product.faqItems Json. */
+export interface FaqItem {
+  q: string;
+  a: string;
+}
+
 export interface Product {
   id: string;
   slug: string;
@@ -66,6 +80,25 @@ export interface Product {
   seoDescription: LocalizedText | null;
   /** Social-share (OG/Twitter) image URL; null = PDP falls back to the first gallery image. */
   ogImage: string | null;
+  /** Product video URL (wave 14); null = no video block on the PDP. */
+  videoUrl: string | null;
+  sizeChart: SizeChart | null;
+  faqItems: FaqItem[] | null;
+  /** Scheduling (wave 14): ISO instants, null = unset. A future
+   *  publishAt hides the product from PUBLIC reads (read-time gate in
+   *  the catalog service); admin reads always see it. */
+  publishAt: string | null;
+  saleStartsAt: string | null;
+  saleEndsAt: string | null;
+  /** Merchant-picked related product ids (wave 14, max 20). */
+  relatedIds: string[];
+  /** Physicals for courier weight-based pricing (wave 14). */
+  weightGrams: number | null;
+  lengthMm: number | null;
+  widthMm: number | null;
+  heightMm: number | null;
+  /** Per-product low-stock threshold override; null = global default. */
+  lowStockThreshold: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -79,12 +112,34 @@ export interface Category {
 
 /** Public product view: costPoisha stripped. Admin view uses Product directly. */
 export type PublicVariant = Omit<ProductVariant, "costPoisha">;
-export type PublicProduct = Omit<Product, "variants"> & { variants: PublicVariant[] };
+export type PublicProduct = Omit<Product, "variants"> & {
+  variants: PublicVariant[];
+  /**
+   * Derived sale-window state (wave 14): true when `now` falls inside
+   * [saleStartsAt, saleEndsAt] — a null bound is open (no start = the
+   * sale is already on, no end = it runs until cleared). This flag
+   * NEVER changes prices by itself; PDP/PLP use it to decide whether
+   * the compare-at "sale" presentation applies.
+   */
+  saleActive: boolean;
+};
+
+/** Pure sale-window derivation shared by toPublicProduct and tests. */
+export function isSaleActive(
+  product: { saleStartsAt: string | null; saleEndsAt: string | null },
+  now: Date = new Date(),
+): boolean {
+  const t = now.getTime();
+  if (product.saleStartsAt !== null && t < new Date(product.saleStartsAt).getTime()) return false;
+  if (product.saleEndsAt !== null && t > new Date(product.saleEndsAt).getTime()) return false;
+  return true;
+}
 
 export function toPublicProduct(product: Product): PublicProduct {
   return {
     ...product,
     variants: product.variants.map(({ costPoisha: _cost, ...rest }) => rest),
+    saleActive: isSaleActive(product),
   };
 }
 

@@ -5,15 +5,29 @@ import { ProductCard } from "@/catalog/ProductCard";
 import type { SortOption } from "@/catalog/search";
 import { findPublicCategoryBySlug } from "@/catalog/category-tree";
 import { listCategories, listPublicProducts } from "@/catalog/server-read";
+import { listPublicBrands, type PublicBrand } from "@/catalog/public-brands";
+import { listAttributeSetsAdmin, type AdminAttributeSet } from "@/catalog/attributes-admin";
+import type { PublicProduct } from "@/catalog/types";
 import { MobileFilterDrawer } from "./MobileFilterDrawer";
 
 // Data: real catalog DB (ACTIVE products only) via the Prisma
 // repository — the same filter contract as GET /api/v1/public/products.
 // An empty DB renders the honest empty state below, never mock data.
 // Design refresh (Direction A): filter sidebar + toolbar + designed
-// empty states. All filtering stays server-driven via the SAME query
-// params as before (category, brand, sort, min, max, instock, q), so
-// links remain shareable/SEO-friendly and no behaviour changed.
+// empty states. Filtering stays server-driven via shareable GET params
+// (category, brand, sort, min, max, instock, q, rating, attr).
+//
+// Wave 14-2 additions:
+// - The brand facet comes from GET /api/v1/public/brands' helper
+//   (listPublicBrands) — brands with ≥1 ACTIVE product — NOT from the
+//   current result set, so facets no longer vanish under other filters.
+// - Rating (rating=4 / rating=3) and attribute filters
+//   (attr=<key>:<value>, repeatable) apply HERE on the fetched page:
+//   the repository's ProductFilter has no rating-min or attribute
+//   predicate, and this page reads the repository directly (not the
+//   HTTP API). CAVEAT: the fetch is capped at pageSize 100, so when a
+//   rating/attr filter is active the displayed total is the filtered
+//   count WITHIN that fetched page, not a catalogue-wide count.
 export const dynamic = "force-dynamic";
 
 const SHOP_DEFAULT_TITLE = "দোকান — Advance Ecommerce";
@@ -62,7 +76,43 @@ function first(value: string | string[] | undefined): string | undefined {
   return v ? v : undefined;
 }
 
-interface ShopParams {
+/** Rating filter: only the two offered thresholds are honoured. */
+function parseRating(value: string | string[] | undefined): number | undefined {
+  const v = first(value);
+  if (v === "4") return 4;
+  if (v === "3") return 3;
+  return undefined;
+}
+
+interface AttrPair {
+  key: string;
+  value: string;
+}
+
+function pairToParam(pair: AttrPair): string {
+  return `${pair.key}:${pair.value}`;
+}
+
+/** attr params arrive as repeated `attr=key:value` strings. */
+function parseAttrs(value: string | string[] | undefined): AttrPair[] {
+  const raw = value === undefined ? [] : Array.isArray(value) ? value : [value];
+  const seen = new Set<string>();
+  const pairs: AttrPair[] = [];
+  for (const entry of raw) {
+    const idx = entry.indexOf(":");
+    if (idx <= 0) continue;
+    const key = entry.slice(0, idx).trim();
+    const val = entry.slice(idx + 1).trim();
+    if (!key || !val) continue;
+    const id = pairToParam({ key, value: val });
+    if (seen.has(id)) continue;
+    seen.add(id);
+    pairs.push({ key, value: val });
+  }
+  return pairs;
+}
+
+interface ShopState {
   category?: string;
   brand?: string;
   sort?: string;
@@ -70,18 +120,29 @@ interface ShopParams {
   max?: string;
   instock?: string;
   q?: string;
+  rating?: string;
+  /** Raw "key:value" entries, one per selected attribute value. */
+  attr: string[];
 }
 
-/** Merge current params with overrides (undefined clears a key). */
-function buildHref(current: ShopParams, overrides: Partial<ShopParams>): string {
-  const merged: ShopParams = { ...current, ...overrides };
+/** Merge current state with overrides (undefined clears a single key). */
+function buildHref(current: ShopState, overrides: Partial<ShopState>): string {
+  const merged: ShopState = { ...current, ...overrides };
   const qs = new URLSearchParams();
-  (Object.keys(merged) as Array<keyof ShopParams>).forEach((key) => {
+  (Object.keys(merged) as Array<keyof ShopState>).forEach((key) => {
+    if (key === "attr") return;
     const value = merged[key];
-    if (value !== undefined && value !== "") qs.set(key, value);
+    if (typeof value === "string" && value !== "") qs.set(key, value);
   });
+  for (const entry of merged.attr) qs.append("attr", entry);
   const query = qs.toString();
   return query ? `/shop?${query}` : "/shop";
+}
+
+function toggleAttr(state: ShopState, pair: AttrPair): string {
+  const id = pairToParam(pair);
+  const attr = state.attr.includes(id) ? state.attr.filter((a) => a !== id) : [...state.attr, id];
+  return buildHref(state, { attr });
 }
 
 const PRICE_RANGES: ReadonlyArray<{ label: string; min?: number; max?: number }> = [
@@ -97,6 +158,12 @@ const SORT_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "price-asc", label: "দাম: কম থেকে বেশি" },
   { value: "price-desc", label: "দাম: বেশি থেকে কম" },
   { value: "rating", label: "রেটিং" },
+];
+
+const RATING_OPTIONS: ReadonlyArray<{ value?: number; label: string }> = [
+  { value: undefined, label: "সব রেটিং" },
+  { value: 4, label: "৪★ ও উপরে" },
+  { value: 3, label: "৩★ ও উপরে" },
 ];
 
 function TakaShort(poisha: number): string {
@@ -162,6 +229,37 @@ function SidebarLink({
   );
 }
 
+/** Multi-select attribute row: a toggle link with a checkbox glyph. */
+function AttrToggleLink({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-pressed={active}
+      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${
+        active ? "font-semibold text-brand-700" : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border text-[11px] leading-none ${
+          active ? "border-brand-600 bg-brand-600 text-white" : "border-border bg-card"
+        }`}
+      >
+        {active ? "✓" : ""}
+      </span>
+      <span className="min-w-0 truncate">{children}</span>
+    </Link>
+  );
+}
+
 function EmptyState({
   title,
   description,
@@ -206,12 +304,43 @@ function EmptyState({
   );
 }
 
-export default async function ShopPage({
-  searchParams,
-}: {
-  searchParams: { category?: string | string[]; brand?: string | string[]; sort?: string | string[]; min?: string | string[]; max?: string | string[]; instock?: string | string[]; q?: string | string[] };
-}) {
-  const current: ShopParams = {
+/** Rating + attribute predicates, applied to the fetched page (see header caveat). */
+function applyLocalFilters(products: PublicProduct[], ratingMin: number | undefined, attrs: AttrPair[]): PublicProduct[] {
+  let out = products;
+  if (ratingMin !== undefined) {
+    out = out.filter((p) => (p.ratingAverage ?? 0) >= ratingMin);
+  }
+  if (attrs.length > 0) {
+    const byKey = new Map<string, Set<string>>();
+    for (const pair of attrs) {
+      const set = byKey.get(pair.key) ?? new Set<string>();
+      set.add(pair.value);
+      byKey.set(pair.key, set);
+    }
+    out = out.filter((p) =>
+      [...byKey.entries()].every(([key, values]) =>
+        p.variants.some((v) => v.isActive && values.has(v.attributes[key] ?? "")),
+      ),
+    );
+  }
+  return out;
+}
+
+interface ShopSearchParams {
+  category?: string | string[];
+  brand?: string | string[];
+  sort?: string | string[];
+  min?: string | string[];
+  max?: string | string[];
+  instock?: string | string[];
+  q?: string | string[];
+  rating?: string | string[];
+  attr?: string | string[];
+}
+
+export default async function ShopPage({ searchParams }: { searchParams: ShopSearchParams }) {
+  const attrPairs = parseAttrs(searchParams.attr);
+  const current: ShopState = {
     category: first(searchParams.category),
     brand: first(searchParams.brand),
     sort: first(searchParams.sort),
@@ -219,16 +348,22 @@ export default async function ShopPage({
     max: first(searchParams.max),
     instock: first(searchParams.instock),
     q: first(searchParams.q),
+    rating: first(searchParams.rating),
+    attr: attrPairs.map(pairToParam),
   };
   const { category, brand, q } = current;
   const sort = parseSort(searchParams.sort);
   const minPoisha = parsePoisha(searchParams.min);
   const maxPoisha = parsePoisha(searchParams.max);
   const inStockOnly = searchParams.instock === "1";
+  const ratingMin = parseRating(searchParams.rating);
+  const hasLocalFilter = ratingMin !== undefined || attrPairs.length > 0;
 
   // PUBLIC shape only (listPublicProducts strips costPoisha): the full
   // repository Product must never reach ProductCard's serialized props.
-  const [result, categories] = await Promise.all([
+  // Brands + attribute sets degrade to empty (facet hidden) on failure —
+  // a facet outage must never take the shop down.
+  const [result, categories, brands, attributeSets] = await Promise.all([
     listPublicProducts({
       query: q,
       categorySlug: category,
@@ -241,24 +376,57 @@ export default async function ShopPage({
       pageSize: 100,
     }),
     listCategories(),
+    listPublicBrands().catch((): PublicBrand[] => []),
+    listAttributeSetsAdmin().catch((): AdminAttributeSet[] => []),
   ]);
-  const products = result.products;
+  const baseProducts = result.products;
+  const products = applyLocalFilters(baseProducts, ratingMin, attrPairs);
+  // When a local (rating/attr) filter is active the repository total no
+  // longer describes what's shown — the filtered count of the fetched
+  // page does (see the header caveat about the 100-item fetch cap).
+  const displayTotal = hasLocalFilter ? products.length : result.total;
 
   const activeCategory = categories.find((c) => c.slug === category);
-  // Brand facets: derived from the current result set (no separate
-  // brand-list endpoint exists); hidden entirely when no brand data.
-  const brands = Array.from(new Set(products.map((p) => p.brandName).filter((b): b is string => Boolean(b)))).sort();
   const hasPriceFilter = minPoisha !== undefined || maxPoisha !== undefined;
-  const hasAnyFilter = Boolean(category || brand || hasPriceFilter || inStockOnly);
+  const hasAnyFilter = Boolean(category || brand || hasPriceFilter || inStockOnly || hasLocalFilter);
   const priceChipLabel = hasPriceFilter
     ? `${minPoisha !== undefined ? TakaShort(minPoisha) : "৳০"} – ${maxPoisha !== undefined ? TakaShort(maxPoisha) : "সর্বোচ্চ"}`
     : null;
+
+  // Attribute facets for the CURRENT result scope: keys come from the
+  // managed attribute-set library (labels + canonical values), scoped
+  // to keys/values actually present on the base (pre-attr-filter)
+  // products — so a category only offers filters its products carry.
+  const presentByKey = new Map<string, Set<string>>();
+  for (const p of baseProducts) {
+    for (const v of p.variants) {
+      if (!v.isActive) continue;
+      for (const [key, value] of Object.entries(v.attributes)) {
+        const set = presentByKey.get(key) ?? new Set<string>();
+        set.add(value);
+        presentByKey.set(key, set);
+      }
+    }
+  }
+  const attrFacets = attributeSets
+    .filter((set) => presentByKey.has(set.key))
+    .map((set) => ({
+      key: set.key,
+      labelBn: set.labelBn,
+      values: set.values.filter((value) => presentByKey.get(set.key)?.has(value)),
+    }))
+    .filter((facet) => facet.values.length > 0);
 
   const heading = q
     ? `“${q}” — অনুসন্ধানের ফলাফল`
     : activeCategory
       ? activeCategory.name.bn
       : "সব পণ্য";
+
+  const attrLabel = (pair: AttrPair): string => {
+    const set = attributeSets.find((s) => s.key === pair.key);
+    return `${set?.labelBn ?? pair.key}: ${pair.value}`;
+  };
 
   const activeChips: Array<{ key: string; label: string; href: string }> = [];
   if (q) activeChips.push({ key: "q", label: `খোঁজ: ${q}`, href: buildHref(current, { q: undefined }) });
@@ -269,6 +437,15 @@ export default async function ShopPage({
     activeChips.push({ key: "price", label: priceChipLabel, href: buildHref(current, { min: undefined, max: undefined }) });
   if (inStockOnly)
     activeChips.push({ key: "instock", label: "শুধু স্টকে আছে", href: buildHref(current, { instock: undefined }) });
+  if (ratingMin !== undefined)
+    activeChips.push({ key: "rating", label: `${ratingMin}★ ও উপরে`, href: buildHref(current, { rating: undefined }) });
+  for (const pair of attrPairs) {
+    activeChips.push({
+      key: `attr-${pairToParam(pair)}`,
+      label: attrLabel(pair),
+      href: toggleAttr(current, pair),
+    });
+  }
 
   // Filter panel content — rendered ONCE as a node, then placed in the
   // desktop sidebar card and (Design v3) inside the mobile filter
@@ -318,12 +495,38 @@ export default async function ShopPage({
             সব ব্র্যান্ড
           </SidebarLink>
           {brands.map((b) => (
-            <SidebarLink key={b} href={buildHref(current, { brand: b })} active={brand === b}>
-              {b}
+            <SidebarLink key={b.slug} href={buildHref(current, { brand: b.name })} active={brand === b.name} count={b.productCount}>
+              {b.name}
             </SidebarLink>
           ))}
         </FilterSection>
       ) : null}
+
+      <FilterSection title="রেটিং">
+        {RATING_OPTIONS.map((option) => (
+          <SidebarLink
+            key={option.label}
+            href={buildHref(current, { rating: option.value !== undefined ? String(option.value) : undefined })}
+            active={ratingMin === option.value}
+          >
+            {option.label}
+          </SidebarLink>
+        ))}
+      </FilterSection>
+
+      {attrFacets.map((facet) => (
+        <FilterSection key={facet.key} title={facet.labelBn}>
+          {facet.values.map((value) => {
+            const pair = { key: facet.key, value };
+            const active = current.attr.includes(pairToParam(pair));
+            return (
+              <AttrToggleLink key={value} href={toggleAttr(current, pair)} active={active}>
+                {value}
+              </AttrToggleLink>
+            );
+          })}
+        </FilterSection>
+      ))}
 
       <FilterSection title="প্রাপ্যতা">
         <SidebarLink href={buildHref(current, { instock: undefined })} active={!inStockOnly}>
@@ -355,7 +558,7 @@ export default async function ShopPage({
           the sort form stays visible in the results header below. */}
       <div className="mt-4 flex items-center justify-between gap-3 lg:hidden">
         <MobileFilterDrawer
-          resultCount={result.total}
+          resultCount={displayTotal}
           clearHref={hasAnyFilter || q ? "/shop" : undefined}
         >
           {filterPanel}
@@ -379,12 +582,13 @@ export default async function ShopPage({
             <div className="min-w-0">
               <h1 className="break-words text-2xl font-extrabold text-text-main [overflow-wrap:anywhere]">{heading}</h1>
               <p className="mt-1 text-sm text-text-muted">
-                মোট {result.total}টি পণ্য
+                মোট {displayTotal}টি পণ্য
                 {hasAnyFilter || q ? " — ফিল্টার প্রয়োগ করা হয়েছে" : ""}
               </p>
             </div>
 
-            {/* Sort — plain GET form, same `sort` param as before */}
+            {/* Sort — plain GET form, same `sort` param as before;
+                every other active filter rides along as hidden inputs */}
             <form method="get" action="/shop" className="flex items-center gap-2">
               {current.category ? <input type="hidden" name="category" value={current.category} /> : null}
               {current.brand ? <input type="hidden" name="brand" value={current.brand} /> : null}
@@ -392,6 +596,10 @@ export default async function ShopPage({
               {current.max ? <input type="hidden" name="max" value={current.max} /> : null}
               {current.instock ? <input type="hidden" name="instock" value={current.instock} /> : null}
               {current.q ? <input type="hidden" name="q" value={current.q} /> : null}
+              {current.rating ? <input type="hidden" name="rating" value={current.rating} /> : null}
+              {current.attr.map((entry) => (
+                <input key={entry} type="hidden" name="attr" value={entry} />
+              ))}
               <label htmlFor="shop-sort" className="text-sm text-text-muted">
                 সাজান:
               </label>

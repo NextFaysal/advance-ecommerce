@@ -114,6 +114,14 @@ export interface ProductFilter {
   minPricePoisha?: number;
   maxPricePoisha?: number;
   inStockOnly?: boolean;
+  /**
+   * Variant-attribute equality filters (wave 14, doc 16 P6), e.g.
+   * { size: "L", color: "লাল" }. A product matches when ONE active
+   * variant carries ALL of the pairs in its attributes JSON — the same
+   * single-`some` semantics the Prisma list path builds in SQL. The
+   * public route fills this from repeated `attr=key:value` params.
+   */
+  attributeFilters?: Record<string, string>;
   sort?: SortOption;
 }
 
@@ -123,7 +131,7 @@ export function applyProductFilter<T extends {
   slug: string;
   categorySlug: string;
   brandName: string | null;
-  variants: { pricePoisha: number; stock: number; isActive: boolean }[];
+  variants: { pricePoisha: number; stock: number; isActive: boolean; attributes?: Record<string, string> }[];
   ratingAverage: number | null;
   createdAt: string;
   title: { bn: string; en: string };
@@ -149,6 +157,16 @@ export function applyProductFilter<T extends {
   if (filter.maxPricePoisha !== undefined) {
     out = out.filter((p) =>
       p.variants.some((v) => v.isActive && v.pricePoisha <= (filter.maxPricePoisha ?? 0)),
+    );
+  }
+  const attributeEntries = filter.attributeFilters ? Object.entries(filter.attributeFilters) : [];
+  if (attributeEntries.length > 0) {
+    // Single-variant semantics (parity with the Prisma JSON-path
+    // `some`): ONE active variant must carry every key:value pair.
+    out = out.filter((p) =>
+      p.variants.some(
+        (v) => v.isActive && attributeEntries.every(([k, val]) => v.attributes?.[k] === val),
+      ),
     );
   }
   const minPrice = (p: T): number => {

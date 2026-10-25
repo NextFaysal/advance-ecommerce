@@ -146,6 +146,7 @@ export async function POST(req: Request) {
 
     const candidate: ProductInput = {
       slug: first.slug,
+      relatedIds: [],
       titleBn: first.title_bn,
       titleEn: first.title_en,
       descriptionBn: first.description_bn,

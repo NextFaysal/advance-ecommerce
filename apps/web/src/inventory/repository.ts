@@ -158,6 +158,45 @@ export async function listWarehousesDb(): Promise<{ id: string; name: string; is
   });
 }
 
+export interface VariantProductMeta {
+  variantId: string;
+  sku: string;
+  productId: string;
+  productTitleBn: string;
+  productSlug: string;
+  /** Per-product low-stock threshold override (Wave 14); null = fall
+   *  back to the Settings default, then LOW_STOCK_THRESHOLD. */
+  lowStockThreshold: number | null;
+}
+
+/** variantId -> owning product (+ the variant SKU and the product's
+ *  low-stock threshold override). The inventory page uses this to list
+ *  low stock BY PRODUCT NAME instead of bare variant ids (Wave 14-2);
+ *  InventoryItem rows themselves carry no product link. */
+export async function getVariantProductMetaDb(variantIds: string[]): Promise<Map<string, VariantProductMeta>> {
+  const map = new Map<string, VariantProductMeta>();
+  if (variantIds.length === 0) return map;
+  const rows = await prisma.productVariant.findMany({
+    where: { id: { in: variantIds } },
+    select: {
+      id: true,
+      sku: true,
+      product: { select: { id: true, titleBn: true, slug: true, lowStockThreshold: true } },
+    },
+  });
+  for (const r of rows) {
+    map.set(r.id, {
+      variantId: r.id,
+      sku: r.sku,
+      productId: r.product.id,
+      productTitleBn: r.product.titleBn,
+      productSlug: r.product.slug,
+      lowStockThreshold: r.product.lowStockThreshold,
+    });
+  }
+  return map;
+}
+
 /** variantId -> costPoisha for variants that carry a cost (nullable in
  *  the schema; variants without a cost are reported by the caller, the
  *  valuation never invents one). */

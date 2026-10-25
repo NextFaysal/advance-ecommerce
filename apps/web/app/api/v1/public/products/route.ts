@@ -15,11 +15,21 @@ export async function GET(req: Request) {
     const min = url.searchParams.get("minPricePoisha");
     const max = url.searchParams.get("maxPricePoisha");
     const sortParam = url.searchParams.get("sort");
+    // Wave 14: repeated `attr=key:value` params (split on the FIRST
+    // colon — values may themselves contain colons). Malformed pairs
+    // (no colon, empty key or value) are ignored, never fatal.
+    const attributeFilters: Record<string, string> = {};
+    for (const raw of url.searchParams.getAll("attr")) {
+      const sep = raw.indexOf(":");
+      if (sep <= 0 || sep === raw.length - 1) continue;
+      attributeFilters[raw.slice(0, sep)] = raw.slice(sep + 1);
+    }
     const repo = await getCatalogRepository();
     const result = await searchPublicProducts(repo, {
       query: url.searchParams.get("q") ?? undefined,
       categorySlug: url.searchParams.get("category") ?? undefined,
       brandName: url.searchParams.get("brand") ?? undefined,
+      attributeFilters: Object.keys(attributeFilters).length > 0 ? attributeFilters : undefined,
       minPricePoisha: min !== null ? Number(min) : undefined,
       maxPricePoisha: max !== null ? Number(max) : undefined,
       inStockOnly: url.searchParams.get("inStock") === "true",
