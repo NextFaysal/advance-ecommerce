@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
+import { Icon } from "@/components/ui/icon";
 import { Tabs } from "@/components/ui/tabs";
 import { featureFlags } from "@/lib/feature-flags";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
@@ -34,14 +35,20 @@ export default async function AdminSourcingPage() {
         breadcrumb="Admin / Sourcing"
       />
       {!enabled ? (
-        <Card className="p-6">
-          <p role="status" className="text-sm leading-relaxed">
-            🔒 সোর্সিং মডিউল বন্ধ আছে (<code>module.sourcing</code> OFF) — এটি একটি পেইড অ্যাড-অন।
-            খুলতে Admin &gt; Settings &gt; Feature Flags থেকে <code>module.sourcing</code> চালু করুন।
-            <span className="mt-1 block text-text-subtle">
-              (This module is locked — enable the <code>module.sourcing</code> feature flag to unlock it.)
+        <Card className="overflow-hidden">
+          <div className="brand-gradient -mx-5 -mt-5 mb-5 h-1.5" aria-hidden="true" />
+          <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+            <span aria-hidden="true" className="brand-gradient flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-white shadow-md">
+              <Icon name="shield" size={26} />
             </span>
-          </p>
+            <p role="status" className="text-sm leading-relaxed">
+              সোর্সিং মডিউল বন্ধ আছে (<code>module.sourcing</code> OFF) — এটি একটি পেইড অ্যাড-অন।
+              খুলতে Admin &gt; Settings &gt; Feature Flags থেকে <code>module.sourcing</code> চালু করুন।
+              <span className="mt-1 block text-text-subtle">
+                (This module is locked — enable the <code>module.sourcing</code> feature flag to unlock it.)
+              </span>
+            </p>
+          </div>
         </Card>
       ) : (
         <Tabs

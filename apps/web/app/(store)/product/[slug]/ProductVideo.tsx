@@ -51,7 +51,7 @@ export function ProductVideo({ videoUrl, titleBn }: { videoUrl: string; titleBn:
   const embed = embedUrl(videoUrl);
   if (embed) {
     return (
-      <div className="aspect-video w-full overflow-hidden rounded-3xl border border-border bg-black shadow-sm">
+      <div className="aspect-video w-full overflow-hidden rounded-3xl border border-border bg-black shadow-card ring-1 ring-black/10">
         <iframe
           src={embed}
           title={`${titleBn} — ভিডিও`}
@@ -66,15 +66,15 @@ export function ProductVideo({ videoUrl, titleBn }: { videoUrl: string; titleBn:
   }
   if (isDirectFile(videoUrl)) {
     return (
-      <div className="aspect-video w-full overflow-hidden rounded-3xl border border-border bg-black shadow-sm">
+      <div className="aspect-video w-full overflow-hidden rounded-3xl border border-border bg-black shadow-card ring-1 ring-black/10">
         <video src={videoUrl} controls preload="metadata" className="h-full w-full" aria-label={`${titleBn} — ভিডিও`} />
       </div>
     );
   }
   if (/^https:\/\//i.test(videoUrl)) {
     return (
-      <p className="rounded-3xl border border-border bg-card p-5 text-sm shadow-sm">
-        <a href={videoUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-brand-700 underline-offset-2 hover:underline">
+      <p className="rounded-3xl border border-border bg-card p-5 text-sm shadow-card">
+        <a href={videoUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-brand-700 underline-offset-2 transition hover:text-brand-600 hover:underline dark:text-brand-300">
           🎬 পণ্যের ভিডিও দেখুন
         </a>
       </p>

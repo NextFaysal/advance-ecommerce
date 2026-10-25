@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Drawer } from "@/components/ui/drawer";
+import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
@@ -221,154 +223,185 @@ export function CategoriesManager({ initial }: { initial: AdminCategory[] }) {
         </div>
       ) : null}
 
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <p className="text-sm text-text-muted">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="flex items-center gap-2.5 text-sm text-text-muted">
+          <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
+            <Icon name="grid" size={17} />
+          </span>
           মোট {categories.length}টি ক্যাটাগরি — গাছের মতো সাজানো (সাব-ক্যাটাগরি ভেতরে ঢোকানো)।
         </p>
-        <Button onClick={openCreate}>+ নতুন ক্যাটাগরি</Button>
+        <Button variant="gradient" onClick={openCreate} className="max-sm:w-full">
+          <Icon name="plus" size={16} /> নতুন ক্যাটাগরি
+        </Button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-surface-2 text-left text-xs uppercase tracking-wide text-text-muted">
-              <th className="px-4 py-3 font-medium">ক্যাটাগরি</th>
-              <th className="px-4 py-3 font-medium">স্লাগ</th>
-              <th className="px-4 py-3 font-medium">পণ্য</th>
-              <th className="px-4 py-3 font-medium">ক্রম</th>
-              <th className="px-4 py-3 font-medium">অবস্থা</th>
-              <th className="px-4 py-3 text-right font-medium">কাজ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-text-muted">
-                  এখনো কোনো ক্যাটাগরি নেই — প্রথমটি তৈরি করুন।
-                </td>
-              </tr>
-            ) : (
-              rows.map(({ cat, depth }) => (
-                <tr key={cat.id} className="border-b border-border/60 last:border-0 hover:bg-surface-2/60">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3" style={{ paddingLeft: depth * 22 }}>
-                      {depth > 0 ? <span aria-hidden="true" className="text-text-muted">↳</span> : null}
-                      {cat.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={cat.imageUrl} alt="" className="h-9 w-9 rounded-md object-cover ring-1 ring-border" />
-                      ) : (
-                        <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-md bg-surface-2 text-base ring-1 ring-border">🗂️</span>
-                      )}
-                      <span>
-                        <span className="block font-medium text-text-main">{cat.nameBn}</span>
-                        <span className="block text-xs text-text-muted">{cat.nameEn}</span>
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-text-muted">{cat.slug}</td>
-                  <td className="px-4 py-3">{cat.productCount}টি</td>
-                  <td className="px-4 py-3">{cat.sortOrder}</td>
-                  <td className="px-4 py-3">
-                    {cat.isActive ? (
-                      <Badge tone="success" dot>সক্রিয়</Badge>
-                    ) : (
-                      <Badge tone="neutral" dot>বন্ধ</Badge>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-1.5">
-                      <Button size="sm" variant="secondary" loading={busyId === cat.id} onClick={() => toggleActive(cat)}>
-                        {cat.isActive ? "বন্ধ করুন" : "চালু করুন"}
-                      </Button>
-                      <Button size="sm" variant="secondary" onClick={() => openEdit(cat)}>
-                        এডিট
-                      </Button>
-                      <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(cat)}>
-                        মুছুন
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      {rows.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-card px-6 py-14 text-center shadow-card">
+          <span aria-hidden="true" className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 text-brand-500">
+            <Icon name="grid" size={28} />
+          </span>
+          <p className="mt-4 text-sm leading-relaxed text-text-muted">
+            এখনো কোনো ক্যাটাগরি নেই — প্রথমটি তৈরি করুন।
+          </p>
+        </div>
+      ) : (
+        <ul className="space-y-2.5">
+          {rows.map(({ cat, depth }) => (
+            <li
+              key={cat.id}
+              className="relative"
+              style={{ marginLeft: Math.min(depth * 26, 52) }}
+            >
+              {depth > 0 ? (
+                <>
+                  {/* Indent guides: vertical rail in the gutter + a
+                      horizontal tick into the card, so the tree reads
+                      at a glance even on a narrow phone screen. */}
+                  <span aria-hidden="true" className="absolute -left-3.5 top-0 h-full w-px bg-brand-200/80" />
+                  <span aria-hidden="true" className="absolute -left-3.5 top-1/2 h-px w-3.5 bg-brand-200/80" />
+                </>
+              ) : null}
+              <div
+                className={`flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-border/70 bg-card px-4 py-3 shadow-card transition motion-fast hover:shadow-lift ${
+                  cat.isActive ? "" : "bg-surface-2/50"
+                }`}
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  {cat.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={cat.imageUrl} alt="" className="h-11 w-11 shrink-0 rounded-xl object-cover ring-1 ring-border" />
+                  ) : (
+                    <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-500 ring-1 ring-brand-100">
+                      <Icon name="grid" size={19} />
+                    </span>
+                  )}
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-text-main">{cat.nameBn}</span>
+                    <span className="block truncate text-xs text-text-muted">{cat.nameEn}</span>
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs text-text-muted ring-1 ring-inset ring-black/5">
+                    {cat.slug}
+                  </span>
+                  <span className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 text-xs text-text-muted ring-1 ring-inset ring-black/5">
+                    {cat.productCount}টি পণ্য
+                  </span>
+                  <span className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 text-xs text-text-muted ring-1 ring-inset ring-black/5">
+                    ক্রম {cat.sortOrder}
+                  </span>
+                  {cat.isActive ? (
+                    <Badge tone="success" dot>সক্রিয়</Badge>
+                  ) : (
+                    <Badge tone="neutral" dot>বন্ধ</Badge>
+                  )}
+                </div>
+                <div className="flex gap-1.5 max-sm:w-full max-sm:[&>*]:flex-1">
+                  <Button size="sm" variant="secondary" loading={busyId === cat.id} onClick={() => toggleActive(cat)}>
+                    {cat.isActive ? "বন্ধ করুন" : "চালু করুন"}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => openEdit(cat)}>
+                    এডিট
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(cat)}>
+                    মুছুন
+                  </Button>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
 
-      <Modal
+      <Drawer
         open={formOpen}
         onClose={() => setFormOpen(false)}
         title={editing ? "ক্যাটাগরি এডিট" : "নতুন ক্যাটাগরি"}
-        onConfirm={submitForm}
-      >
-        <div className="grid gap-3">
-          <Input
-            label="নাম (বাংলা)"
-            name="nameBn"
-            required
-            value={form.nameBn}
-            onChange={(e) => setForm({ ...form, nameBn: e.target.value })}
-            placeholder="যেমন: পোশাক"
-          />
-          <Input
-            label="নাম (English)"
-            name="nameEn"
-            required
-            value={form.nameEn}
-            onChange={(e) => setForm({ ...form, nameEn: e.target.value })}
-            placeholder="e.g. Fashion"
-          />
-          <Input
-            label="স্লাগ (খালি রাখলে English নাম থেকে তৈরি হবে)"
-            name="slug"
-            value={form.slug}
-            onChange={(e) => setForm({ ...form, slug: e.target.value })}
-            placeholder="fashion"
-          />
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-text-main">মূল ক্যাটাগরি (প্যারেন্ট)</span>
-            <select
-              value={form.parentId}
-              onChange={(e) => setForm({ ...form, parentId: e.target.value })}
-              className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm text-text-main focus:border-brand-500 focus:outline-none"
-            >
-              <option value="">— মূল ক্যাটাগরি (কোনো প্যারেন্ট নেই) —</option>
-              {parentOptions.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nameBn} ({c.nameEn})
-                </option>
-              ))}
-            </select>
-          </label>
-          <Input
-            label="ছবির URL"
-            name="imageUrl"
-            value={form.imageUrl}
-            onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-            placeholder="https://…"
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="ক্রম (sort order)"
-              name="sortOrder"
-              type="number"
-              value={form.sortOrder}
-              onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
-            />
-            <label className="flex items-end gap-2 pb-2">
-              <input
-                type="checkbox"
-                checked={form.isActive}
-                onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-                className="h-4 w-4 accent-brand-600"
-              />
-              <span className="text-sm text-text-main">স্টোরে সক্রিয়</span>
-            </label>
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setFormOpen(false)}>বাতিল</Button>
+            <Button variant="gradient" onClick={submitForm}>নিশ্চিত করুন</Button>
           </div>
+        }
+      >
+        <div className="grid gap-5">
+          <section>
+            <p className="section-eyebrow mb-3">মূল তথ্য</p>
+            <div className="grid gap-3">
+              <Input
+                label="নাম (বাংলা)"
+                name="nameBn"
+                required
+                value={form.nameBn}
+                onChange={(e) => setForm({ ...form, nameBn: e.target.value })}
+                placeholder="যেমন: পোশাক"
+              />
+              <Input
+                label="নাম (English)"
+                name="nameEn"
+                required
+                value={form.nameEn}
+                onChange={(e) => setForm({ ...form, nameEn: e.target.value })}
+                placeholder="e.g. Fashion"
+              />
+              <Input
+                label="স্লাগ (খালি রাখলে English নাম থেকে তৈরি হবে)"
+                name="slug"
+                value={form.slug}
+                onChange={(e) => setForm({ ...form, slug: e.target.value })}
+                placeholder="fashion"
+              />
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-text-main">মূল ক্যাটাগরি (প্যারেন্ট)</span>
+                <select
+                  value={form.parentId}
+                  onChange={(e) => setForm({ ...form, parentId: e.target.value })}
+                  className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm text-text-main transition motion-fast focus:border-brand-500 focus:outline-none focus:ring-[3px] focus:ring-brand-100"
+                >
+                  <option value="">— মূল ক্যাটাগরি (কোনো প্যারেন্ট নেই) —</option>
+                  {parentOptions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nameBn} ({c.nameEn})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Input
+                label="ছবির URL"
+                name="imageUrl"
+                value={form.imageUrl}
+                onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
+                placeholder="https://…"
+              />
+              <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
+                <Input
+                  label="ক্রম (sort order)"
+                  name="sortOrder"
+                  type="number"
+                  value={form.sortOrder}
+                  onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
+                />
+                <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5 self-end rounded-md border border-border bg-card px-3 transition motion-fast hover:bg-surface-2">
+                  <input
+                    type="checkbox"
+                    checked={form.isActive}
+                    onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                    className="h-5 w-5 shrink-0 accent-brand-600"
+                  />
+                  <span className="text-sm text-text-main">স্টোরে সক্রিয়</span>
+                </label>
+              </div>
+            </div>
+          </section>
 
-          <div className="border-t border-border pt-4">
-            <p className="text-sm font-semibold text-text-main">SEO — সার্চ ইঞ্জিনের জন্য</p>
-            <p className="mb-3 mt-0.5 text-xs leading-relaxed text-text-muted">
+          <section className="rounded-lg border border-brand-100 bg-brand-50/40 p-4">
+            <p className="flex items-center gap-2 text-sm font-semibold text-text-main">
+              <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-brand-700">
+                <Icon name="search" size={14} />
+              </span>
+              SEO — সার্চ ইঞ্জিনের জন্য
+            </p>
+            <p className="mb-3 mt-2 text-xs leading-relaxed text-text-muted">
               এই ক্যাটাগরির পেজ (/shop?category=…) গুগলে যেভাবে দেখাবে। খালি রাখলে
               ক্যাটাগরির নাম থেকেই টাইটেল তৈরি হবে।
             </p>
@@ -408,9 +441,9 @@ export function CategoriesManager({ initial }: { initial: AdminCategory[] }) {
                 placeholder="One or two lines shown under the title in search results"
               />
             </div>
-          </div>
+          </section>
         </div>
-      </Modal>
+      </Drawer>
 
       <Modal
         open={deleteTarget !== null}
@@ -418,11 +451,16 @@ export function CategoriesManager({ initial }: { initial: AdminCategory[] }) {
         title="ক্যাটাগরি মুছে ফেলবেন?"
         onConfirm={confirmDelete}
       >
-        <p className="text-sm leading-relaxed text-text-muted">
-          “{deleteTarget?.nameBn}” মুছে ফেলা হবে। এতে পণ্য থাকলে বা সাব-ক্যাটাগরি থাকলে
-          মুছতে দেওয়া হবে না — সেক্ষেত্রে আগে পণ্য সরান, অথবা ক্যাটাগরিটি শুধু বন্ধ
-          (inactive) করে রাখুন।
-        </p>
+        <div className="flex gap-3">
+          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-600 ring-1 ring-inset ring-rose-100">
+            <Icon name="alert" size={20} />
+          </span>
+          <p className="text-sm leading-relaxed text-text-muted">
+            “{deleteTarget?.nameBn}” মুছে ফেলা হবে। এতে পণ্য থাকলে বা সাব-ক্যাটাগরি থাকলে
+            মুছতে দেওয়া হবে না — সেক্ষেত্রে আগে পণ্য সরান, অথবা ক্যাটাগরিটি শুধু বন্ধ
+            (inactive) করে রাখুন।
+          </p>
+        </div>
       </Modal>
     </div>
   );

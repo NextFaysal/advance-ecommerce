@@ -18,12 +18,12 @@ export interface SizeChartData {
 
 function SizeChartTable({ chart }: { chart: SizeChartData }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto rounded-2xl border border-border">
       <table className="w-full min-w-[320px] border-collapse text-left text-sm">
         <thead>
-          <tr className="border-b border-border">
+          <tr className="bg-surface-2/80">
             {chart.headers.map((h, i) => (
-              <th key={i} className="px-3 py-2.5 font-semibold text-text-main">
+              <th key={i} className="px-3.5 py-3 font-semibold text-text-main">
                 {h}
               </th>
             ))}
@@ -31,9 +31,9 @@ function SizeChartTable({ chart }: { chart: SizeChartData }) {
         </thead>
         <tbody>
           {chart.rows.map((row, r) => (
-            <tr key={r} className="border-b border-border last:border-0">
+            <tr key={r} className="border-t border-border transition-colors odd:bg-surface-2/40 hover:bg-surface-2/70">
               {row.map((cell, c) => (
-                <td key={c} className={`px-3 py-2.5 tabular-nums ${c === 0 ? "font-medium text-text-main" : "text-text-muted"}`}>
+                <td key={c} className={`px-3.5 py-2.5 tabular-nums ${c === 0 ? "font-medium text-text-main" : "text-text-muted"}`}>
                   {cell}
                 </td>
               ))}
@@ -52,7 +52,7 @@ export function SizeChartButton({ chart }: { chart: SizeChartData }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="min-h-[44px] rounded-lg border border-border px-4 py-3 text-sm font-medium text-text-main transition hover:bg-surface-2"
+        className="min-h-[44px] rounded-xl border border-border px-4 py-3 text-sm font-medium text-text-main shadow-sm transition duration-200 hover:border-brand-300 hover:bg-surface-2 hover:shadow-card active:scale-[0.99]"
       >
         📏 সাইজ গাইড
       </button>
@@ -65,9 +65,9 @@ export function SizeChartButton({ chart }: { chart: SizeChartData }) {
 
 export function SizeChartSection({ chart }: { chart: SizeChartData }) {
   return (
-    <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8">
-      <h2 className="text-lg font-extrabold text-text-main">সাইজ চার্ট</h2>
-      <div className="mt-3">
+    <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-card sm:p-8">
+      <h2 className="font-display text-xl font-extrabold text-text-main">সাইজ চার্ট</h2>
+      <div className="mt-4">
         <SizeChartTable chart={chart} />
       </div>
     </section>

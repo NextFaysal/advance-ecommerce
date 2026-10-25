@@ -196,24 +196,25 @@ function FilterSection({
   defaultOpen?: boolean;
 }) {
   return (
-    <details open={defaultOpen} className="group border-b border-border py-4 last:border-b-0">
-      <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-text-main [&::-webkit-details-marker]:hidden">
+    <details open={defaultOpen} className="group border-b border-border py-3 last:border-b-0">
+      <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between rounded-lg px-1 text-sm font-bold text-text-main transition duration-200 hover:text-brand-700 dark:hover:text-brand-300 [&::-webkit-details-marker]:hidden">
         {title}
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          className="text-text-subtle transition group-open:rotate-180"
-          aria-hidden="true"
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-2 text-text-subtle transition duration-300 group-open:rotate-180">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </span>
       </summary>
-      <div className="mt-3 space-y-1">{children}</div>
+      <div className="mb-2 mt-1 space-y-1">{children}</div>
     </details>
   );
 }
@@ -233,14 +234,22 @@ function SidebarLink({
     <Link
       href={href}
       aria-current={active ? "true" : undefined}
-      className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm transition ${
+      className={`flex min-h-[40px] items-center justify-between rounded-xl px-3 py-2 text-sm transition duration-200 ${
         active
-          ? "bg-brand-50 font-semibold text-brand-700"
+          ? "bg-brand-500/10 font-semibold text-brand-700 dark:text-brand-200"
           : "text-text-muted hover:bg-surface-2 hover:text-text-main"
       }`}
     >
       <span className="min-w-0 truncate">{children}</span>
-      {count !== undefined ? <span className="ml-2 shrink-0 text-xs text-text-subtle">{count}</span> : null}
+      {count !== undefined ? (
+        <span
+          className={`ml-2 shrink-0 rounded-full px-2 py-0.5 text-[11px] tabular-nums ${
+            active ? "bg-brand-600/10 text-brand-700 dark:text-brand-200" : "bg-surface-2 text-text-subtle"
+          }`}
+        >
+          {count}
+        </span>
+      ) : null}
     </Link>
   );
 }
@@ -259,14 +268,16 @@ function AttrToggleLink({
     <Link
       href={href}
       aria-pressed={active}
-      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${
-        active ? "font-semibold text-brand-700" : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+      className={`flex min-h-[40px] items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition duration-200 ${
+        active
+          ? "bg-brand-500/5 font-semibold text-brand-700 dark:text-brand-200"
+          : "text-text-muted hover:bg-surface-2 hover:text-text-main"
       }`}
     >
       <span
         aria-hidden="true"
-        className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border text-[11px] leading-none ${
-          active ? "border-brand-600 bg-brand-600 text-white" : "border-border bg-card"
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] leading-none transition duration-200 ${
+          active ? "border-brand-600 bg-brand-600 text-white shadow-sm" : "border-border bg-card"
         }`}
       >
         {active ? "✓" : ""}
@@ -288,11 +299,11 @@ function EmptyState({
   ctaLabel: string;
 }) {
   return (
-    <div className="flex flex-col items-center rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center">
-      <span className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 text-brand-500">
+    <div className="anim-rise flex flex-col items-center rounded-3xl border border-dashed border-border bg-card px-6 py-16 text-center shadow-card">
+      <span className="brand-gradient flex h-[72px] w-[72px] items-center justify-center rounded-full text-white shadow-lift ring-8 ring-brand-500/10">
         <svg
-          width="30"
-          height="30"
+          width="32"
+          height="32"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -306,13 +317,13 @@ function EmptyState({
           <path d="M8.5 11h5" />
         </svg>
       </span>
-      <h2 className="mt-4 text-lg font-bold text-text-main">{title}</h2>
-      <p className="mt-1.5 max-w-md break-words text-sm leading-6 text-text-muted [overflow-wrap:anywhere]">
+      <h2 className="mt-5 font-display text-xl font-bold text-text-main">{title}</h2>
+      <p className="mt-2 max-w-md break-words text-sm leading-6 text-text-muted [overflow-wrap:anywhere]">
         {description}
       </p>
       <Link
         href={ctaHref}
-        className="brand-gradient mt-5 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
+        className="brand-gradient mt-6 inline-flex min-h-[44px] items-center rounded-xl px-6 py-2.5 text-sm font-semibold text-white shadow-md transition duration-200 hover:opacity-90 hover:shadow-lift active:scale-[0.98]"
       >
         {ctaLabel}
       </Link>
@@ -607,74 +618,84 @@ export default async function ShopPage({ searchParams }: { searchParams: ShopSea
         ) : null}
       </nav>
 
-      {/* Mobile filter row (Design v3) — drawer on small screens;
-          the sort form stays visible in the results header below. */}
-      <div className="mt-4 flex items-center justify-between gap-3 lg:hidden">
-        <MobileFilterDrawer
-          resultCount={displayTotal}
-          clearHref={hasAnyFilter || q ? "/shop" : undefined}
-        >
-          {filterPanel}
-        </MobileFilterDrawer>
-        {activeChips.length > 0 ? (
-          <span className="text-[13px] font-medium text-brand-700">{activeChips.length}টি ফিল্টার সক্রিয়</span>
-        ) : null}
-      </div>
-
-      <div className="mt-4 grid gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
+      <div className="mt-4 grid gap-6 lg:grid-cols-[270px_minmax(0,1fr)] lg:gap-8">
         {/* ---------- Filter sidebar (desktop) ---------- */}
         <aside className="hidden min-w-0 lg:block">
-          <div className="rounded-2xl border border-border bg-card px-4 py-1 shadow-sm lg:sticky lg:top-[8.5rem]">
+          <div className="rounded-3xl border border-border bg-card px-5 py-2 shadow-card lg:sticky lg:top-[8.5rem]">
             {filterPanel}
           </div>
         </aside>
 
         {/* ---------- Results ---------- */}
         <section className="min-w-0">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="break-words text-2xl font-extrabold text-text-main [overflow-wrap:anywhere]">{heading}</h1>
-              <p className="mt-1 text-sm text-text-muted">
-                মোট {displayTotal}টি পণ্য
-                {hasAnyFilter || q ? " — ফিল্টার প্রয়োগ করা হয়েছে" : ""}
-              </p>
-            </div>
+          {/* Toolbar — Wave 17: on mobile this is a sticky glass bar
+              pinned under the h-16 site header (top-16) carrying the
+              heading, result count, filter drawer trigger and sort;
+              on lg it relaxes back into a plain static header row. */}
+          <div className="sticky top-16 z-30 -mx-4 border-b border-border/60 bg-bg-app/85 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:border-b-0 lg:bg-transparent lg:px-0 lg:py-0 lg:backdrop-blur-none">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5">
+              <div className="min-w-0">
+                <h1 className="break-words font-display text-h1 text-text-main [overflow-wrap:anywhere]">{heading}</h1>
+                <p className="mt-0.5 text-sm text-text-muted">
+                  মোট {displayTotal}টি পণ্য
+                  {hasAnyFilter || q ? " — ফিল্টার প্রয়োগ করা হয়েছে" : ""}
+                </p>
+              </div>
 
-            {/* Sort — plain GET form, same `sort` param as before;
-                every other active filter rides along as hidden inputs */}
-            <form method="get" action="/shop" className="flex items-center gap-2">
-              {current.category ? <input type="hidden" name="category" value={current.category} /> : null}
-              {current.brand ? <input type="hidden" name="brand" value={current.brand} /> : null}
-              {current.min ? <input type="hidden" name="min" value={current.min} /> : null}
-              {current.max ? <input type="hidden" name="max" value={current.max} /> : null}
-              {current.instock ? <input type="hidden" name="instock" value={current.instock} /> : null}
-              {current.q ? <input type="hidden" name="q" value={current.q} /> : null}
-              {current.rating ? <input type="hidden" name="rating" value={current.rating} /> : null}
-              {current.attr.map((entry) => (
-                <input key={entry} type="hidden" name="attr" value={entry} />
-              ))}
-              <label htmlFor="shop-sort" className="text-sm text-text-muted">
-                সাজান:
-              </label>
-              <select
-                id="shop-sort"
-                name="sort"
-                defaultValue={sort}
-                className="h-10 rounded-[10px] border border-border bg-card px-2.5 text-sm text-text-main outline-none focus:border-brand-500"
-              >
-                {SORT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="submit"
-                className="h-10 rounded-[10px] bg-brand-600 px-3.5 text-sm font-semibold text-white transition hover:bg-brand-700"
-              >
-                প্রয়োগ
-              </button>
-            </form>
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Mobile filter trigger (Design v3) — the drawer lives
+                    here now so it stays reachable inside the sticky bar. */}
+                <div className="flex flex-wrap items-center gap-2.5 lg:hidden">
+                  <MobileFilterDrawer
+                    resultCount={displayTotal}
+                    clearHref={hasAnyFilter || q ? "/shop" : undefined}
+                  >
+                    {filterPanel}
+                  </MobileFilterDrawer>
+                  {activeChips.length > 0 ? (
+                    <span className="rounded-full bg-brand-500/10 px-2.5 py-1 text-[13px] font-semibold text-brand-700 dark:text-brand-200">
+                      {activeChips.length}টি ফিল্টার সক্রিয়
+                    </span>
+                  ) : null}
+                </div>
+
+                {/* Sort — plain GET form, same `sort` param as before;
+                    every other active filter rides along as hidden inputs */}
+                <form method="get" action="/shop" className="flex flex-wrap items-center gap-2">
+                  {current.category ? <input type="hidden" name="category" value={current.category} /> : null}
+                  {current.brand ? <input type="hidden" name="brand" value={current.brand} /> : null}
+                  {current.min ? <input type="hidden" name="min" value={current.min} /> : null}
+                  {current.max ? <input type="hidden" name="max" value={current.max} /> : null}
+                  {current.instock ? <input type="hidden" name="instock" value={current.instock} /> : null}
+                  {current.q ? <input type="hidden" name="q" value={current.q} /> : null}
+                  {current.rating ? <input type="hidden" name="rating" value={current.rating} /> : null}
+                  {current.attr.map((entry) => (
+                    <input key={entry} type="hidden" name="attr" value={entry} />
+                  ))}
+                  <label htmlFor="shop-sort" className="hidden text-sm text-text-muted min-[420px]:block">
+                    সাজান:
+                  </label>
+                  <select
+                    id="shop-sort"
+                    name="sort"
+                    defaultValue={sort}
+                    className="h-11 rounded-xl border border-border bg-card px-2.5 text-sm text-text-main shadow-sm outline-none transition focus:border-brand-500"
+                  >
+                    {SORT_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="submit"
+                    className="h-11 rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition duration-200 hover:bg-brand-700 active:scale-[0.98]"
+                  >
+                    প্রয়োগ
+                  </button>
+                </form>
+              </div>
+            </div>
           </div>
 
           {/* Active filter chips */}
@@ -685,13 +706,18 @@ export default async function ShopPage({ searchParams }: { searchParams: ShopSea
                   key={chip.key}
                   href={chip.href}
                   aria-label={`${chip.label} ফিল্টার সরান`}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 py-1.5 pl-3.5 pr-2.5 text-[13px] font-medium text-brand-700 transition hover:bg-brand-100"
+                  className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-brand-600/15 bg-brand-500/10 py-1.5 pl-3.5 pr-2 text-[13px] font-medium text-brand-700 transition duration-200 hover:bg-brand-500/20 active:scale-[0.97] dark:text-brand-200"
                 >
                   {chip.label}
-                  <span aria-hidden="true" className="text-base leading-none">×</span>
+                  <span
+                    aria-hidden="true"
+                    className="flex h-5 w-5 items-center justify-center rounded-full bg-brand-600/15 text-sm leading-none"
+                  >
+                    ×
+                  </span>
                 </Link>
               ))}
-              <Link href="/shop" className="text-[13px] font-semibold text-text-muted underline-offset-2 hover:text-brand-700 hover:underline">
+              <Link href="/shop" className="inline-flex min-h-[36px] items-center px-1 text-[13px] font-semibold text-text-muted underline-offset-2 transition hover:text-brand-700 hover:underline dark:hover:text-brand-300">
                 সব ফিল্টার মুছুন
               </Link>
             </div>
@@ -724,7 +750,7 @@ export default async function ShopPage({ searchParams }: { searchParams: ShopSea
               )}
             </div>
           ) : (
-            <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+            <div className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4 xl:gap-5">
               {products.map((p) => (
                 <ProductCard key={p.id} product={p} />
               ))}

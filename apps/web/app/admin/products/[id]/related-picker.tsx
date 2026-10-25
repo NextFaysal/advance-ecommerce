@@ -137,31 +137,50 @@ export function RelatedPicker({
   const pickedIds = new Set(picks.map((p) => p.id));
 
   return (
-    <section className="mt-6 rounded-lg border border-border bg-card p-5 shadow-card">
-      <h2 className="text-h3">সম্পর্কিত পণ্য</h2>
-      <p className="mt-1 text-small leading-relaxed text-text-muted">
-        পণ্যের পেজে "সম্পর্কিত পণ্য" অংশে এগুলো আগে দেখাবে (শুধু প্রকাশিত ও সময় হলে লাইভগুলো)। বাকি জায়গা
-        একই ক্যাটাগরির সেরা রেটিংয়ের পণ্য দিয়ে নিজে নিজে পূরণ হবে। সর্বোচ্চ {MAX_PICKS}টি।
-      </p>
+    <section className="mt-6 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+      <div className="flex items-start gap-3">
+        <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-brand-50 text-brand-600 shadow-sm ring-1 ring-inset ring-black/5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+          </svg>
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="font-display text-h3">সম্পর্কিত পণ্য</h2>
+          <p className="mt-1 text-small leading-relaxed text-text-muted">
+            পণ্যের পেজে "সম্পর্কিত পণ্য" অংশে এগুলো আগে দেখাবে (শুধু প্রকাশিত ও সময় হলে লাইভগুলো)। বাকি জায়গা
+            একই ক্যাটাগরির সেরা রেটিংয়ের পণ্য দিয়ে নিজে নিজে পূরণ হবে। সর্বোচ্চ {MAX_PICKS}টি।
+          </p>
+        </div>
+        <span className="brand-gradient shrink-0 rounded-full px-3 py-1.5 text-xs font-bold tabular-nums text-white shadow-md">
+          {picks.length}/{MAX_PICKS}
+        </span>
+      </div>
 
       {/* Search */}
-      <div className="mt-4">
+      <div className="mt-5">
         <label htmlFor="related-search" className="text-small font-semibold text-text-main">
           পণ্য খুঁজে যোগ করুন
         </label>
-        <input
-          id="related-search"
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="নাম বা slug লিখুন (কমপক্ষে ২ অক্ষর)"
-          className="mt-1.5 h-11 w-full rounded-[10px] border border-border bg-card px-3 text-sm text-text-main outline-none focus:border-brand-500"
-        />
+        <div className="relative mt-1.5">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-text-subtle">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m21 21-4.3-4.3" />
+          </svg>
+          <input
+            id="related-search"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="নাম বা slug লিখুন (কমপক্ষে ২ অক্ষর)"
+            className="h-12 w-full rounded-md border border-border bg-card pl-10 pr-3 text-sm text-text-main shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-200"
+          />
+        </div>
         {searching ? <p className="mt-2 text-small text-text-muted">খোঁজা হচ্ছে…</p> : null}
         {hits.length > 0 ? (
-          <ul className="mt-2 divide-y divide-border rounded-lg border border-border">
+          <ul className="anim-fade-in mt-2.5 divide-y divide-border/70 rounded-lg border border-border/70 bg-card px-3 shadow-sm">
             {hits.map((hit) => (
-              <li key={hit.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <li key={hit.id} className="flex items-center justify-between gap-3 py-2.5">
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium text-text-main">{hit.titleBn}</span>
                   <span className="block truncate text-caption text-text-subtle">
@@ -172,7 +191,7 @@ export function RelatedPicker({
                   type="button"
                   disabled={pickedIds.has(hit.id) || picks.length >= MAX_PICKS}
                   onClick={() => add(hit)}
-                  className="min-h-[36px] shrink-0 rounded-lg bg-brand-600 px-3 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="inline-flex min-h-[44px] shrink-0 items-center rounded-md bg-brand-600 px-3.5 text-sm font-semibold text-white shadow-sm transition motion-fast hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {pickedIds.has(hit.id) ? "যোগ হয়েছে" : "যোগ করুন"}
                 </button>
@@ -183,67 +202,89 @@ export function RelatedPicker({
       </div>
 
       {/* Current picks */}
-      <h3 className="mt-5 text-small font-semibold text-text-main">নির্বাচিত ({picks.length})</h3>
+      <h3 className="mt-6 text-small font-semibold text-text-main">নির্বাচিত ({picks.length})</h3>
       {picks.length === 0 ? (
-        <p className="mt-2 text-small text-text-muted">
+        <p className="mt-2 rounded-lg border border-dashed border-border px-4 py-5 text-center text-small text-text-muted">
           এখনো কিছু বাছাই করেননি — পণ্যের পেজে তখন একই ক্যাটাগরির সেরা পণ্যগুলো নিজে নিজে দেখাবে।
         </p>
       ) : (
-        <ol className="mt-2 divide-y divide-border rounded-lg border border-border">
-          {picks.map((pick, i) => (
-            <li key={pick.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-medium text-text-main">
-                  {pick.missing ? "(মুছে ফেলা পণ্য)" : pick.titleBn}
+        <ol className="mt-2.5 space-y-2">
+          {picks.map((pick, i) => {
+            const chipCls = pick.missing
+              ? "bg-rose-50 text-rose-700 ring-rose-100"
+              : pick.status === "ACTIVE"
+                ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+                : pick.status === "DRAFT"
+                  ? "bg-amber-50 text-amber-700 ring-amber-100"
+                  : "bg-surface-2 text-text-muted ring-black/5";
+            return (
+              <li key={pick.id} className="flex items-center gap-3 rounded-lg border border-border/70 bg-surface-2/40 px-3 py-2.5">
+                <span aria-hidden="true" className="brand-gradient flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold tabular-nums text-white shadow-sm">
+                  {i + 1}
                 </span>
-                <span className="block truncate text-caption text-text-subtle">
-                  {pick.slug} · {pick.missing ? "পাওয়া যাচ্ছে না" : STATUS_LABEL[pick.status] ?? pick.status}
-                  {pick.status !== "ACTIVE" && !pick.missing ? " — প্রকাশিত হলেই পেজে দেখাবে" : ""}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-text-main">
+                    {pick.missing ? "(মুছে ফেলা পণ্য)" : pick.titleBn}
+                  </span>
+                  <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-text-subtle">
+                    <span className="truncate font-mono">{pick.slug}</span>
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${chipCls}`}>
+                      {pick.missing ? "পাওয়া যাচ্ছে না" : STATUS_LABEL[pick.status] ?? pick.status}
+                    </span>
+                    {pick.status !== "ACTIVE" && !pick.missing ? <span>প্রকাশিত হলেই পেজে দেখাবে</span> : null}
+                  </span>
                 </span>
-              </span>
-              <span className="flex shrink-0 items-center gap-1">
-                <button
-                  type="button"
-                  aria-label="উপরে নিন"
-                  disabled={i === 0}
-                  onClick={() => move(i, -1)}
-                  className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-border text-text-muted transition hover:bg-surface-2 disabled:opacity-40"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  aria-label="নিচে নিন"
-                  disabled={i === picks.length - 1}
-                  onClick={() => move(i, 1)}
-                  className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-border text-text-muted transition hover:bg-surface-2 disabled:opacity-40"
-                >
-                  ↓
-                </button>
-                <button
-                  type="button"
-                  onClick={() => remove(pick.id)}
-                  className="min-h-[36px] rounded-lg border border-border px-3 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
-                >
-                  সরান
-                </button>
-              </span>
-            </li>
-          ))}
+                <span className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    aria-label="উপরে নিন"
+                    disabled={i === 0}
+                    onClick={() => move(i, -1)}
+                    className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-border bg-card text-text-muted shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="নিচে নিন"
+                    disabled={i === picks.length - 1}
+                    onClick={() => move(i, 1)}
+                    className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-border bg-card text-text-muted shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => remove(pick.id)}
+                    className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-semibold text-rose-600 shadow-sm transition motion-fast hover:border-rose-200 hover:bg-rose-50"
+                  >
+                    সরান
+                  </button>
+                </span>
+              </li>
+            );
+          })}
         </ol>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-3">
+      <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-border/60 pt-4">
         <button
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="min-h-[44px] rounded-[10px] bg-brand-600 px-5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+          className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
         >
           {saving ? "সেভ হচ্ছে…" : "সম্পর্কিত পণ্য সেভ করুন"}
         </button>
         {notice ? (
-          <p role="status" className={`text-small ${notice.tone === "ok" ? "text-emerald-700" : "text-rose-600"}`}>
+          <p
+            role="status"
+            className={`anim-fade-in rounded-full px-3.5 py-2 text-small font-semibold ring-1 ring-inset ${
+              notice.tone === "ok"
+                ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                : "bg-rose-50 text-rose-700 ring-rose-200"
+            }`}
+          >
             {notice.text}
           </p>
         ) : null}

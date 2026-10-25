@@ -33,12 +33,21 @@ export default async function EditProductPage({
           description="এই আইডির কোনো পণ্য ক্যাটালগে নেই — হয়তো মুছে ফেলা হয়েছে, অথবা লিংকটি ভুল।"
           breadcrumb="পণ্য / এডিট"
         />
-        <Link
-          href="/admin/products"
-          className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-semibold shadow-sm transition motion-fast hover:border-brand-300"
-        >
-          ← পণ্যের তালিকায় ফিরুন
-        </Link>
+        <div className="anim-rise flex flex-col items-center rounded-lg border border-dashed border-border bg-card px-6 py-10 text-center shadow-card">
+          <span aria-hidden="true" className="brand-soft-gradient flex h-[72px] w-[72px] items-center justify-center rounded-full text-brand-600 shadow-sm">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-9 w-9">
+              <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+              <path d="m3.3 7 8.7 5 8.7-5" />
+              <path d="M12 22V12" />
+            </svg>
+          </span>
+          <Link
+            href="/admin/products"
+            className="brand-gradient mt-5 inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105"
+          >
+            ← পণ্যের তালিকায় ফিরুন
+          </Link>
+        </div>
       </main>
     );
   }
@@ -84,7 +93,7 @@ export default async function EditProductPage({
         breadcrumb={`পণ্য / ${product.title.bn}`}
       />
       {justCreated && (
-        <p role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <p role="status" className="anim-fade-in mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-card">
           ✅ পণ্য তৈরি হয়েছে — এখন এখান থেকে ছবি, ভেরিয়েন্টের দাম/স্টক ঠিক করে প্রকাশ করতে পারবেন।
           {ledgerPending && " তবে প্রাথমিক স্টকের ledger এন্ট্রি এখনো pending আছে (ডিফল্ট গুদাম পাওয়া যায়নি)।"}
         </p>

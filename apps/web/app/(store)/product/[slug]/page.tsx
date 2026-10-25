@@ -21,6 +21,7 @@ import {
   type PublicProductWithTypeFields,
 } from "@/catalog/product-type-contract";
 import { BdtAmount, DigitText } from "@/components/ui/numerals";
+import { Reveal } from "@/components/ui/reveal";
 import { ReviewSection } from "@/reviews/components/ReviewSection";
 import type { RecentlyViewedEntry } from "@/storefront-ux/types";
 import { Gallery } from "./Gallery";
@@ -288,15 +289,15 @@ export default async function ProductPage({ params }: { params: { slug: string }
 
       {/* Breadcrumb */}
       <nav aria-label="ব্রেডক্রাম্ব" className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm text-text-subtle">
-        <Link href="/" className="hover:text-brand-700">হোম</Link>
-        <span aria-hidden="true">/</span>
-        <Link href="/shop" className="hover:text-brand-700">দোকান</Link>
-        <span aria-hidden="true">/</span>
-        <Link href={`/shop?category=${product.categorySlug}`} className="hover:text-brand-700">
+        <Link href="/" className="py-1 transition hover:text-brand-700 dark:hover:text-brand-300">হোম</Link>
+        <span aria-hidden="true" className="text-border">/</span>
+        <Link href="/shop" className="py-1 transition hover:text-brand-700 dark:hover:text-brand-300">দোকান</Link>
+        <span aria-hidden="true" className="text-border">/</span>
+        <Link href={`/shop?category=${product.categorySlug}`} className="py-1 transition hover:text-brand-700 dark:hover:text-brand-300">
           {product.categoryName.bn}
         </Link>
-        <span aria-hidden="true">/</span>
-        <span className="max-w-[45vw] truncate font-medium text-text-main">{product.title.bn}</span>
+        <span aria-hidden="true" className="text-border">/</span>
+        <span className="max-w-[45vw] truncate py-1 font-medium text-text-main">{product.title.bn}</span>
       </nav>
 
       <div className="mt-5 grid items-start gap-8 lg:grid-cols-2">
@@ -316,18 +317,18 @@ export default async function ProductPage({ params }: { params: { slug: string }
             v3 header: main row + mega-menu row) */}
         <div className="min-w-0 lg:sticky lg:top-[8.5rem]">
           {productType === "PREORDER" ? (
-            <span className="mb-2 inline-flex rounded-full bg-sky-600 px-3 py-1 text-xs font-bold text-white">
+            <span className="mb-3 inline-flex rounded-full bg-sky-600 px-3 py-1 text-xs font-bold text-white shadow-md">
               প্রি-অর্ডার
             </span>
           ) : null}
-          <h1 className="break-words text-[28px] font-extrabold leading-snug text-text-main [overflow-wrap:anywhere]">
+          <h1 className="break-words font-display text-[clamp(1.625rem,3.5vw,2.125rem)] font-extrabold leading-[1.25] text-text-main [overflow-wrap:anywhere]">
             {product.title.bn}
           </h1>
           {product.title.en ? (
-            <p className="mt-1 break-words text-sm text-text-subtle [overflow-wrap:anywhere]">{product.title.en}</p>
+            <p className="mt-1.5 break-words text-sm text-text-subtle [overflow-wrap:anywhere]">{product.title.en}</p>
           ) : null}
 
-          <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-text-muted">
+          <p className="mt-4 inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1.5 rounded-2xl bg-surface-2/70 px-3.5 py-2 text-sm text-text-muted">
             <StarRow rating={product.ratingAverage ?? 0} />
             <span aria-label={`রেটিং ${product.ratingAverage ?? "—"} / ৫`}>
               {product.ratingAverage ?? "—"} ({product.reviewCount}টি রিভিউ)
@@ -341,18 +342,20 @@ export default async function ProductPage({ params }: { params: { slug: string }
               </>
             ) : null}
             <span aria-hidden="true" className="text-border">•</span>
-            <span className={`font-semibold ${displayInStock ? "text-emerald-600" : "text-rose-600"}`}>
+            <span className={`font-semibold ${displayInStock ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
               {displayInStock ? "স্টকে আছে" : "স্টক শেষ"}
             </span>
           </p>
 
-          <div className="mt-5 rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6">
+          <div className="relative mt-5 overflow-hidden rounded-3xl border border-border bg-card p-5 shadow-card sm:p-6">
+            {/* Aurora accent hairline — decorative top edge of the buy card */}
+            <div aria-hidden="true" className="brand-gradient absolute inset-x-0 top-0 h-1" />
             {/* Price */}
-            <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <span className="text-3xl font-extrabold tabular-nums text-brand-700">
+            <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5 pt-1">
+              <span className="font-display text-4xl font-extrabold tabular-nums text-brand-700 dark:text-brand-300">
                 <BdtAmount poisha={minPrice} />
                 {hasPriceRange ? (
-                  <span className="text-xl">
+                  <span className="text-[1.35rem]">
                     {" "}
                     – <BdtAmount poisha={maxPrice} />
                   </span>
@@ -362,9 +365,9 @@ export default async function ProductPage({ params }: { params: { slug: string }
                 <>
                   <BdtAmount
                     poisha={bestDiscount.compare}
-                    className="text-base tabular-nums text-text-subtle line-through"
+                    className="text-lg tabular-nums text-text-subtle line-through"
                   />
-                  <span className="rounded-full bg-rose-600 px-2.5 py-1 text-xs font-bold text-white">
+                  <span className="rounded-full bg-rose-600 px-3 py-1 text-[13px] font-bold text-white shadow-sm">
                     <DigitText text={`${discountPct}%`} /> ছাড়
                   </span>
                 </>
@@ -379,10 +382,10 @@ export default async function ProductPage({ params }: { params: { slug: string }
                 return (
                   <span
                     key={v.id}
-                    className={`rounded-xl border px-3 py-1.5 text-[13px] ${
+                    className={`rounded-full border px-3.5 py-2 text-[13px] transition duration-200 ${
                       soldOut
                         ? "border-border bg-surface-2 text-text-subtle"
-                        : "border-border bg-surface text-text-main"
+                        : "border-border bg-surface text-text-main hover:border-brand-300"
                     }`}
                   >
                     {Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড"} —{" "}
@@ -396,20 +399,20 @@ export default async function ProductPage({ params }: { params: { slug: string }
             {/* Product-type notices (wave 15) — inside the buy card,
                 right where the buying decision happens. */}
             {productType === "DIGITAL" ? (
-              <div className="mt-6 rounded-2xl border border-violet-200 bg-violet-50 p-4">
-                <p className="text-sm font-bold text-violet-900">
+              <div className="mt-6 rounded-2xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-400/25 dark:bg-violet-500/10">
+                <p className="text-sm font-bold text-violet-900 dark:text-violet-100">
                   📥 ডিজিটাল পণ্য — পেমেন্টের পরেই ডাউনলোড লিংক
                 </p>
-                <p className="mt-1 text-sm leading-relaxed text-violet-800">
+                <p className="mt-1 text-sm leading-relaxed text-violet-800 dark:text-violet-200">
                   এটি কোনো ফিজিক্যাল পণ্য নয়, কুরিয়ারে কিছু আসবে না — পেমেন্ট সম্পূর্ণ হলেই
                   ডাউনলোড লিংক (আর লাইসেন্স কী থাকলে সেটিও) পৌঁছে যাবে।
                 </p>
                 {digitalFiles.length > 0 ? (
-                  <ul className="mt-3 space-y-1.5 border-t border-violet-200 pt-3 text-sm text-violet-900">
+                  <ul className="mt-3 space-y-1.5 border-t border-violet-200 pt-3 text-sm text-violet-900 dark:border-violet-400/20 dark:text-violet-100">
                     {digitalFiles.map((f, i) => (
                       <li key={`${f.fileName}-${i}`} className="flex flex-wrap items-baseline justify-between gap-2">
                         <span className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">{f.fileName}</span>
-                        <span className="shrink-0 text-xs text-violet-700">
+                        <span className="shrink-0 text-xs text-violet-700 dark:text-violet-300">
                           <DigitText text={formatFileSize(f.sizeBytes)} />
                         </span>
                       </li>
@@ -420,7 +423,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
             ) : null}
 
             {productType === "PREORDER" ? (
-              <div className="mt-6 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+              <div className="mt-6 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900 dark:border-sky-400/25 dark:bg-sky-500/10 dark:text-sky-100">
                 <p className="font-bold">🗓️ এটি একটি প্রি-অর্ডার পণ্য — এখন বুকিং চলছে</p>
                 {preorderExpectedLabel ? (
                   <p className="mt-1">
@@ -446,12 +449,12 @@ export default async function ProductPage({ params }: { params: { slug: string }
             ) : null}
 
             {productType === "BUNDLE" && bundleUnavailable ? (
-              <p className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">
+              <p className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700 dark:border-rose-400/25 dark:bg-rose-500/10 dark:text-rose-200">
                 এই বান্ডলের অন্তত একটি কম্পোনেন্ট আপাতত স্টকে নেই — তাই বান্ডলটি এখন কেনা যাচ্ছে না।
               </p>
             ) : null}
 
-            <div id="buy-box" className="mt-6">
+            <div id="buy-box" className="mt-6 scroll-mt-32">
               {/* Add-to-cart + buy-now (Agent 35): client variant picker +
                   quantity + guest-cart write via src/cart contracts. */}
               <BuyBoxActions
@@ -480,11 +483,11 @@ export default async function ProductPage({ params }: { params: { slug: string }
 
             <BackInStockForm productId={product.id} variants={outOfStockVariants} />
 
-            {/* Trust rows */}
-            <ul className="mt-6 space-y-2.5 border-t border-border pt-5">
+            {/* Trust rows — 2-col tile grid on sm+, stacked on phones */}
+            <ul className="mt-6 grid gap-2.5 border-t border-border pt-5 sm:grid-cols-2">
               {TRUST_ROWS.map((row) => (
-                <li key={row.text} className="flex items-center gap-2.5 text-sm text-text-muted">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+                <li key={row.text} className="flex items-center gap-3 rounded-2xl bg-surface-2/60 p-3 text-sm leading-snug text-text-muted">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-300">
                     {row.icon}
                   </span>
                   {row.text}
@@ -498,55 +501,77 @@ export default async function ProductPage({ params }: { params: { slug: string }
       {/* Description — markdown rendered via the shared renderer
           (src/catalog/description.ts); English toggle when present. */}
       {product.description.bn ? (
-        <DescriptionSection
-          bnHtml={renderDescriptionHtml(product.description.bn)}
-          enHtml={product.description.en ? renderDescriptionHtml(product.description.en) : null}
-        />
+        <Reveal>
+          <DescriptionSection
+            bnHtml={renderDescriptionHtml(product.description.bn)}
+            enHtml={product.description.en ? renderDescriptionHtml(product.description.en) : null}
+          />
+        </Reveal>
       ) : null}
 
       {/* Specification — union of variant attributes */}
       {specRows.length > 0 ? (
-        <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8">
-          <h2 className="text-lg font-extrabold text-text-main">স্পেসিফিকেশন</h2>
-          <dl className="mt-3 max-w-3xl divide-y divide-border">
-            {specRows.map((row) => (
-              <div key={row.key} className="grid grid-cols-[140px_1fr] gap-3 py-2.5 text-[15px]">
-                <dt className="font-semibold capitalize text-text-main">{row.key}</dt>
-                <dd className="break-words text-text-muted">{row.values.join(", ")}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
+        <Reveal>
+          <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-card sm:p-8">
+            <h2 className="font-display text-xl font-extrabold text-text-main">স্পেসিফিকেশন</h2>
+            <dl className="mt-4 max-w-3xl">
+              {specRows.map((row) => (
+                <div
+                  key={row.key}
+                  className="grid grid-cols-[110px_1fr] gap-3 rounded-xl px-3 py-2.5 text-[15px] odd:bg-surface-2/50 sm:grid-cols-[180px_1fr]"
+                >
+                  <dt className="font-semibold capitalize text-text-main">{row.key}</dt>
+                  <dd className="break-words text-text-muted">{row.values.join(", ")}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        </Reveal>
       ) : null}
 
       {/* Size chart — this product's own chart, when it has one */}
-      {sizeChart ? <SizeChartSection chart={sizeChart} /> : null}
+      {sizeChart ? (
+        <Reveal>
+          <SizeChartSection chart={sizeChart} />
+        </Reveal>
+      ) : null}
 
       {/* FAQ — the product's own questions, as an accordion */}
       {faqItems.length > 0 ? (
-        <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8">
-          <h2 className="text-lg font-extrabold text-text-main">সাধারণ জিজ্ঞাসা</h2>
-          <div className="mt-3 max-w-3xl">
-            {faqItems.map((item, i) => (
-              <details key={i} className="group border-b border-border py-3.5 last:border-b-0">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[15px] font-semibold text-text-main [&::-webkit-details-marker]:hidden">
-                  {item.q}
-                  <span aria-hidden="true" className="text-text-subtle transition group-open:rotate-180">⌄</span>
-                </summary>
-                <p className="mt-2 break-words leading-7 text-text-muted [overflow-wrap:anywhere]">{item.a}</p>
-              </details>
-            ))}
-          </div>
-        </section>
+        <Reveal>
+          <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-card sm:p-8">
+            <h2 className="font-display text-xl font-extrabold text-text-main">সাধারণ জিজ্ঞাসা</h2>
+            <div className="mt-4 max-w-3xl space-y-2.5">
+              {faqItems.map((item, i) => (
+                <details
+                  key={i}
+                  className="group rounded-2xl border border-border px-4 transition duration-200 open:bg-surface-2/40 hover:border-brand-300"
+                >
+                  <summary className="flex min-h-[52px] cursor-pointer list-none items-center justify-between gap-3 py-2 text-[15px] font-semibold text-text-main [&::-webkit-details-marker]:hidden">
+                    {item.q}
+                    <span
+                      aria-hidden="true"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-2 text-text-subtle transition duration-300 group-open:rotate-180"
+                    >
+                      ⌄
+                    </span>
+                  </summary>
+                  <p className="break-words pb-4 leading-7 text-text-muted [overflow-wrap:anywhere]">{item.a}</p>
+                </details>
+              ))}
+            </div>
+          </section>
+        </Reveal>
       ) : null}
 
       {/* Bundle contents (wave 15) — exactly what ships together.
           Component titles link to their own PDPs when the public
           shape carries the component slug. */}
       {productType === "BUNDLE" && bundleComponents.length > 0 ? (
-        <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8">
-          <h2 className="text-lg font-extrabold text-text-main">এই বান্ডলে যা যা আছে</h2>
-          <ul className="mt-3 max-w-3xl divide-y divide-border">
+        <Reveal>
+        <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-card sm:p-8">
+          <h2 className="font-display text-xl font-extrabold text-text-main">এই বান্ডলে যা যা আছে</h2>
+          <ul className="mt-4 max-w-3xl divide-y divide-border">
             {bundleComponents.map((c, i) => {
               const title = c.productTitle?.bn ?? c.productTitle?.en ?? "";
               const linePrice =
@@ -554,11 +579,11 @@ export default async function ProductPage({ params }: { params: { slug: string }
               return (
                 <li
                   key={`${c.variantId}-${i}`}
-                  className="flex flex-wrap items-baseline justify-between gap-2 py-2.5 text-[15px]"
+                  className="-mx-2 flex flex-wrap items-baseline justify-between gap-2 rounded-xl px-2 py-3 text-[15px] transition duration-200 first:pt-1 hover:bg-surface-2/60"
                 >
                   <span className="min-w-0">
                     {c.productSlug && title ? (
-                      <Link href={`/product/${c.productSlug}`} className="font-semibold text-brand-700 hover:underline">
+                      <Link href={`/product/${c.productSlug}`} className="font-semibold text-brand-700 hover:underline dark:text-brand-300">
                         {title}
                       </Link>
                     ) : (
@@ -585,18 +610,18 @@ export default async function ProductPage({ params }: { params: { slug: string }
             })}
           </ul>
           {bundleComponentsTotal !== null ? (
-            <p className="mt-3 max-w-3xl text-sm leading-relaxed text-text-muted">
+            <p className="mt-4 max-w-3xl rounded-2xl bg-surface-2/60 px-4 py-3 text-sm leading-relaxed text-text-muted">
               আলাদা করে কিনলে মোট:{" "}
               <BdtAmount poisha={bundleComponentsTotal} className="font-semibold tabular-nums" /> — বান্ডল
               দাম:{" "}
-              <BdtAmount poisha={minPrice} className="font-semibold tabular-nums text-brand-700" />
+              <BdtAmount poisha={minPrice} className="font-semibold tabular-nums text-brand-700 dark:text-brand-300" />
               {bundleComponentsTotal > minPrice ? (
                 <>
                   {" "}
                   (সাশ্রয়{" "}
                   <BdtAmount
                     poisha={bundleComponentsTotal - minPrice}
-                    className="font-semibold tabular-nums text-emerald-700"
+                    className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400"
                   />
                   )
                 </>
@@ -604,27 +629,40 @@ export default async function ProductPage({ params }: { params: { slug: string }
             </p>
           ) : null}
           {bundleUnavailable ? (
-            <p className="mt-2 max-w-3xl text-sm font-medium text-rose-600">
+            <p className="mt-3 max-w-3xl text-sm font-medium text-rose-600 dark:text-rose-400">
               আপাতত বান্ডলটি স্টকে নেই — কম্পোনেন্টগুলো আলাদাভাবে কিনতে উপরের লিংকগুলো দেখুন।
             </p>
           ) : null}
         </section>
+        </Reveal>
       ) : null}
 
       {/* Customer reviews — real APPROVED rows from the Review table
           + the moderated submission form (src/reviews). */}
       <ReviewSection productId={product.id} productSlug={product.slug} />
 
-      {/* Related products — manual picks first, same-category fill */}
+      {/* Related products — manual picks first, same-category fill.
+          Wave 17: on phones the rail is a snap-scroll carousel that
+          bleeds to the screen edge; from sm up it is the usual grid. */}
       {related.length > 0 ? (
-        <section className="mt-12">
-          <h2 className="text-xl font-extrabold text-text-main">সম্পর্কিত পণ্য</h2>
-          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-            {related.map((p) => (
-              <ProductCard key={p.id} product={p} />
-            ))}
-          </div>
-        </section>
+        <Reveal>
+          <section className="mt-12">
+            <div className="flex items-center gap-4">
+              <h2 className="shrink-0 font-display text-xl font-extrabold text-text-main sm:text-2xl">সম্পর্কিত পণ্য</h2>
+              <span aria-hidden="true" className="brand-gradient h-px flex-1 rounded-full opacity-40" />
+            </div>
+            <div className="-mx-4 mt-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:snap-none sm:grid-cols-3 sm:overflow-visible sm:px-0 sm:pb-0 xl:grid-cols-4 xl:gap-4">
+              {related.map((p) => (
+                <div
+                  key={p.id}
+                  className="w-[62vw] max-w-[230px] shrink-0 snap-start sm:w-auto sm:max-w-none"
+                >
+                  <ProductCard product={p} />
+                </div>
+              ))}
+            </div>
+          </section>
+        </Reveal>
       ) : null}
 
       <RecentlyViewedRail excludeProductId={product.id} />

@@ -37,7 +37,7 @@ export function SpinViewer({ images, title }: SpinViewerProps) {
 
   if (count === 1) {
     return (
-      <div className="overflow-hidden rounded-3xl shadow-sm">
+      <div className="overflow-hidden rounded-3xl border border-border shadow-card">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={current} alt={title} className="aspect-[4/5] w-full object-cover" />
       </div>
@@ -79,7 +79,7 @@ export function SpinViewer({ images, title }: SpinViewerProps) {
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
       onKeyDown={onKeyDown}
-      className="relative cursor-grab select-none overflow-hidden rounded-3xl shadow-sm outline-none focus:ring-2 focus:ring-brand-300 active:cursor-grabbing"
+      className="relative cursor-grab select-none overflow-hidden rounded-3xl border border-border shadow-card outline-none focus:ring-2 focus:ring-brand-300 active:cursor-grabbing"
       style={{ touchAction: "pan-y" }}
     >
       {/* Preload every frame so dragging never flashes a blank stage. */}
@@ -96,25 +96,25 @@ export function SpinViewer({ images, title }: SpinViewerProps) {
         draggable={false}
         className="pointer-events-none aspect-[4/5] w-full object-cover"
       />
-      <span className="absolute left-3 top-3 rounded-full bg-black/55 px-2.5 py-1 text-xs font-medium text-white">
+      <span className="brand-gradient absolute left-3 top-3 rounded-full px-2.5 py-1 text-xs font-bold text-white shadow-md">
         360°
       </span>
-      <span className="absolute right-3 top-3 rounded-full bg-black/55 px-2.5 py-1 font-mono text-xs text-white">
+      <span className="absolute right-3 top-3 rounded-full bg-black/55 px-2.5 py-1 font-mono text-xs text-white backdrop-blur-sm">
         {wrap(index) + 1} / {count}
       </span>
       {!interacted ? (
         <span className="absolute inset-x-0 bottom-3 flex justify-center">
-          <span className="animate-pulse rounded-full bg-black/60 px-3 py-1.5 text-xs font-medium text-white">
+          <span className="animate-pulse rounded-full bg-black/60 px-3.5 py-2 text-xs font-medium text-white backdrop-blur-sm">
             ↔ টেনে ঘোরান
           </span>
         </span>
       ) : (
-        <span className="absolute bottom-3 left-3 flex gap-1.5">
+        <span className="absolute bottom-3 left-3 flex gap-2">
           <button
             type="button"
             aria-label="আগের ফ্রেম"
             onClick={() => setIndex((i) => wrap(i - 1))}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white transition hover:bg-black/75"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-lg text-white backdrop-blur-sm transition duration-200 hover:bg-black/75 active:scale-95"
           >
             ‹
           </button>
@@ -122,7 +122,7 @@ export function SpinViewer({ images, title }: SpinViewerProps) {
             type="button"
             aria-label="পরের ফ্রেম"
             onClick={() => setIndex((i) => wrap(i + 1))}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white transition hover:bg-black/75"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-lg text-white backdrop-blur-sm transition duration-200 hover:bg-black/75 active:scale-95"
           >
             ›
           </button>

@@ -62,14 +62,14 @@ export function StickyBuyBar({
   if (!state.visible) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-white px-4 py-3 shadow-[0_-2px_10px_rgba(0,0,0,0.08)] md:hidden">
+    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-2px_10px_rgba(0,0,0,0.08)] backdrop-blur md:hidden">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{titleBn}</p>
-          <p className="text-base font-bold text-[#4F46E5]">{digits(formatBdt(pricePoisha))} থেকে</p>
+          <p className="truncate text-sm font-medium text-text-main">{titleBn}</p>
+          <p className="text-base font-bold text-brand-700 dark:text-brand-300">{digits(formatBdt(pricePoisha))} থেকে</p>
         </div>
         {/* Checkout (Step 12) wires this to cart/order creation, same as the buy box. */}
-        <button type="button" className="shrink-0 rounded-lg bg-[#4F46E5] px-5 py-3 text-sm font-bold text-white">
+        <button type="button" className="min-h-11 shrink-0 rounded-lg bg-brand-600 px-5 py-3 text-sm font-bold text-white shadow-card transition hover:bg-brand-700 active:scale-[0.98]">
           অর্ডার করুন
         </button>
       </div>

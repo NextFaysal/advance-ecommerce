@@ -38,6 +38,7 @@ export default async function AdminProductsPage() {
   return (
     <main className="min-w-0">
       <PageHeader
+        eyebrow="ক্যাটালগ"
         title="পণ্য"
         description="আসল ক্যাটালগ ডাটাবেস থেকে — সব স্ট্যাটাস (খসড়া ও আর্কাইভসহ) এখানে দেখা যায়, পৃষ্ঠা অনুযায়ী লোড হয়।"
         actions={
@@ -45,8 +46,13 @@ export default async function AdminProductsPage() {
             {canExport ? <ProductsExportButton status="ALL" /> : null}
             <Link
               href="/admin/products/import"
-              className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-md border border-border bg-card px-4 text-sm font-semibold shadow-sm transition motion-fast hover:bg-brand-50"
+              className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-md border border-border bg-card px-4 text-sm font-semibold shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
             >
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                <path d="M12 3v11" />
+                <path d="m8 10 4 4 4-4" />
+                <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+              </svg>
               ইমপোর্ট
             </Link>
             <Link
@@ -63,7 +69,7 @@ export default async function AdminProductsPage() {
       />
 
       <ProductsTable canDelete={canDelete} canEdit={canEdit} canCreate={canCreate} />
-      <p className="mt-4 text-caption leading-relaxed text-text-subtle">
+      <p className="mt-4 rounded-lg border border-border/70 bg-surface-2/60 px-4 py-3 text-caption leading-relaxed text-text-subtle">
         ডেটা আসল ক্যাটালগ ডাটাবেস থেকে সার্ভার-পেজিনেশনে আসে (প্রতি পৃষ্ঠায় ২৫টি)। তালিকা থেকে পণ্য
         এডিট, কপি ও মুছে ফেলা যায়; দাম/স্টক/স্ট্যাটাস দ্রুত বদলানো যায়; একাধিক পণ্য বেছে বাল্ক
         স্ট্যাটাস, দাম সমন্বয় (কারণসহ) ও মুছে ফেলার কাজ করা যায় — প্রতিটি কাজ অডিট লগে নথিভুক্ত হয়।

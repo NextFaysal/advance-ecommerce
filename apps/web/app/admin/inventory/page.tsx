@@ -11,6 +11,7 @@ import { getSetting } from "@/lib/settings";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Icon } from "@/components/ui/icon";
 
 // Admin inventory — reads the stock_movements ledger state from the DB
 // (InventoryItem rows, src/inventory/repository.ts). Direct quantity
@@ -155,35 +156,64 @@ export default async function AdminInventoryPage() {
         </div>
       )}
 
-      <Card className="mt-5 shadow-card">
-        <h2 className="text-h3">কম স্টক সতর্কতা ({low.length})</h2>
+      <Card className="mt-5 overflow-hidden shadow-card">
+        <div className="flex flex-wrap items-center gap-3">
+          <span
+            aria-hidden="true"
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1 ${
+              low.length > 0
+                ? "bg-amber-50 text-amber-600 ring-amber-100"
+                : "bg-emerald-50 text-emerald-600 ring-emerald-100"
+            }`}
+          >
+            <Icon name={low.length > 0 ? "alert" : "check"} size={20} />
+          </span>
+          <h2 className="text-h3">কম স্টক সতর্কতা</h2>
+          <Badge tone={low.length > 0 ? "warning" : "success"} dot>
+            {low.length}টি পণ্য
+          </Badge>
+        </div>
         {low.length === 0 ? (
-          <p className="mt-2 text-small text-text-muted">কম স্টকের কোনো পণ্য নেই — সব ভ্যারিয়েন্টের মোট উপলব্ধ স্টক নিজ নিজ থ্রেশহোল্ডের উপরে।</p>
+          <p className="mt-3 text-small leading-relaxed text-text-muted">কম স্টকের কোনো পণ্য নেই — সব ভ্যারিয়েন্টের মোট উপলব্ধ স্টক নিজ নিজ থ্রেশহোল্ডের উপরে।</p>
         ) : (
-          <ul className="mt-2 divide-y divide-border">
-            {low.map((r) => (
-              <li key={r.variantId} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
-                <span className="min-w-0">
-                  {r.productId ? (
-                    <Link
-                      href={`/admin/products/${r.productId}`}
-                      className="block truncate text-small font-semibold text-text-main underline-offset-2 hover:text-brand-700 hover:underline"
-                    >
-                      {r.productTitleBn ?? r.variantId}
-                    </Link>
-                  ) : (
-                    <span className="block truncate font-mono text-small">{r.variantId}</span>
-                  )}
-                  <span className="block text-caption text-text-subtle">
-                    {r.sku ? `SKU: ${r.sku} · ` : ""}থ্রেশহোল্ড: {r.threshold}
-                    {r.thresholdSource === "product" ? " (পণ্যের নিজস্ব)" : r.thresholdSource === "settings" ? " (সেটিংস)" : " (ডিফল্ট)"}
+          <ul className="mt-4 space-y-2">
+            {low.map((r) => {
+              const out = r.quantityAvailable <= 0;
+              return (
+                <li
+                  key={r.variantId}
+                  className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-lg border-l-4 px-3.5 py-3 transition motion-fast ${
+                    out
+                      ? "border-rose-400 bg-rose-50/60 hover:bg-rose-50"
+                      : "border-amber-400 bg-amber-50/50 hover:bg-amber-50/80"
+                  }`}
+                >
+                  <span className="min-w-0">
+                    {r.productId ? (
+                      <Link
+                        href={`/admin/products/${r.productId}`}
+                        className="block truncate text-small font-semibold text-text-main underline-offset-2 hover:text-brand-700 hover:underline"
+                      >
+                        {r.productTitleBn ?? r.variantId}
+                      </Link>
+                    ) : (
+                      <span className="block truncate font-mono text-small">{r.variantId}</span>
+                    )}
+                    <span className="mt-1 flex flex-wrap items-center gap-1.5 text-caption text-text-subtle">
+                      <span>
+                        {r.sku ? `SKU: ${r.sku} · ` : ""}থ্রেশহোল্ড: {r.threshold}
+                      </span>
+                      <Badge tone={r.thresholdSource === "product" ? "brand" : r.thresholdSource === "settings" ? "info" : "neutral"}>
+                        {r.thresholdSource === "product" ? "পণ্যের নিজস্ব" : r.thresholdSource === "settings" ? "সেটিংস" : "ডিফল্ট"}
+                      </Badge>
+                    </span>
                   </span>
-                </span>
-                <Badge tone={r.quantityAvailable <= 0 ? "danger" : "warning"}>
-                  {r.quantityAvailable <= 0 ? "স্টক শেষ" : `উপলব্ধ ${r.quantityAvailable}`}
-                </Badge>
-              </li>
-            ))}
+                  <Badge tone={out ? "danger" : "warning"} dot>
+                    {out ? "স্টক শেষ" : `উপলব্ধ ${r.quantityAvailable}`}
+                  </Badge>
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>

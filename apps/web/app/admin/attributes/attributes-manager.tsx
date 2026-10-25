@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Drawer } from "@/components/ui/drawer";
+import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
@@ -130,72 +132,131 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
         </div>
       ) : null}
 
-      <p className="mb-4 rounded-md bg-surface-2 px-3.5 py-2.5 text-sm leading-relaxed text-text-muted">
-        এই পেজে শুধু অ্যাট্রিবিউট সেটের লাইব্রেরি পরিচালনা হয় — পণ্য এডিটরে এই সেট
-        ব্যবহারের সংযোগ পরের ধাপে আসছে; এখন পণ্যে অ্যাট্রিবিউট আগের মতোই লিখে দিতে হয়।
-      </p>
-
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <p className="text-sm text-text-muted">মোট {sets.length}টি অ্যাট্রিবিউট সেট।</p>
-        <Button onClick={openCreate}>+ নতুন সেট</Button>
+      <div className="mb-4 flex gap-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3.5 shadow-card">
+        <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700">
+          <Icon name="info" size={17} />
+        </span>
+        <p className="text-sm leading-relaxed text-sky-900">
+          এই পেজে শুধু অ্যাট্রিবিউট সেটের লাইব্রেরি পরিচালনা হয় — পণ্য এডিটরে এই সেট
+          ব্যবহারের সংযোগ পরের ধাপে আসছে; এখন পণ্যে অ্যাট্রিবিউট আগের মতোই লিখে দিতে হয়।
+        </p>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-surface-2 text-left text-xs uppercase tracking-wide text-text-muted">
-              <th className="px-4 py-3 font-medium">অ্যাট্রিবিউট</th>
-              <th className="px-4 py-3 font-medium">কী (key)</th>
-              <th className="px-4 py-3 font-medium">মানসমূহ</th>
-              <th className="px-4 py-3 text-right font-medium">কাজ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sets.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-text-muted">
-                  এখনো কোনো অ্যাট্রিবিউট সেট নেই — যেমন Size (S/M/L) বা Color দিয়ে প্রথমটি তৈরি করুন।
-                </td>
-              </tr>
-            ) : (
-              sets.map((set) => (
-                <tr key={set.id} className="border-b border-border/60 last:border-0 hover:bg-surface-2/60">
-                  <td className="px-4 py-3">
-                    <span className="block font-medium text-text-main">{set.labelBn}</span>
-                    <span className="block text-xs text-text-muted">{set.labelEn}</span>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-text-muted">{set.key}</td>
-                  <td className="px-4 py-3">
-                    <span className="flex max-w-md flex-wrap gap-1">
-                      {set.values.map((v) => (
-                        <span key={v} className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-text-main ring-1 ring-border">
-                          {v}
-                        </span>
-                      ))}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-1.5">
-                      <Button size="sm" variant="secondary" onClick={() => openEdit(set)}>
-                        এডিট
-                      </Button>
-                      <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(set)}>
-                        মুছুন
-                      </Button>
-                    </div>
-                  </td>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="flex items-center gap-2.5 text-sm text-text-muted">
+          <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
+            <Icon name="package" size={17} />
+          </span>
+          মোট {sets.length}টি অ্যাট্রিবিউট সেট।
+        </p>
+        <Button variant="gradient" onClick={openCreate} className="max-sm:w-full">
+          <Icon name="plus" size={16} /> নতুন সেট
+        </Button>
+      </div>
+
+      {sets.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-card px-6 py-14 text-center shadow-card">
+          <span aria-hidden="true" className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 text-brand-500">
+            <Icon name="package" size={28} />
+          </span>
+          <p className="mt-4 text-sm leading-relaxed text-text-muted">
+            এখনো কোনো অ্যাট্রিবিউট সেট নেই — যেমন Size (S/M/L) বা Color দিয়ে প্রথমটি তৈরি করুন।
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Desktop / tablet: v2 table */}
+          <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-card max-md:hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-surface-2/80 text-left">
+                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">অ্যাট্রিবিউট</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">কী (key)</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">মানসমূহ</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-text-muted">কাজ</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {sets.map((set) => (
+                  <tr key={set.id} className="border-t border-border/60 transition motion-fast first:border-t-0 hover:bg-brand-50/50">
+                    <td className="px-4 py-3">
+                      <span className="block font-medium text-text-main">{set.labelBn}</span>
+                      <span className="block text-xs text-text-muted">{set.labelEn}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs text-text-muted ring-1 ring-inset ring-black/5">
+                        {set.key}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="flex max-w-md flex-wrap gap-1.5">
+                        {set.values.map((v) => (
+                          <span key={v} className="inline-flex h-6 items-center rounded-full bg-brand-50 px-2.5 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-100">
+                            {v}
+                          </span>
+                        ))}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-1.5">
+                        <Button size="sm" variant="secondary" onClick={() => openEdit(set)}>
+                          এডিট
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(set)}>
+                          মুছুন
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-      <Modal
+          {/* Mobile: card list */}
+          <ul className="space-y-2.5 md:hidden">
+            {sets.map((set) => (
+              <li key={set.id} className="rounded-lg border border-border/70 bg-card p-4 shadow-card">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-text-main">{set.labelBn}</span>
+                    <span className="block truncate text-xs text-text-muted">{set.labelEn}</span>
+                  </span>
+                  <span className="ml-auto inline-flex h-6 shrink-0 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs text-text-muted ring-1 ring-inset ring-black/5">
+                    {set.key}
+                  </span>
+                </div>
+                <span className="mt-2.5 flex flex-wrap gap-1.5">
+                  {set.values.map((v) => (
+                    <span key={v} className="inline-flex h-6 items-center rounded-full bg-brand-50 px-2.5 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-100">
+                      {v}
+                    </span>
+                  ))}
+                </span>
+                <div className="mt-3 flex gap-1.5 [&>*]:flex-1">
+                  <Button size="sm" variant="secondary" onClick={() => openEdit(set)}>
+                    এডিট
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(set)}>
+                    মুছুন
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      <Drawer
         open={formOpen}
         onClose={() => setFormOpen(false)}
         title={editing ? "অ্যাট্রিবিউট সেট এডিট" : "নতুন অ্যাট্রিবিউট সেট"}
-        onConfirm={submitForm}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setFormOpen(false)}>বাতিল</Button>
+            <Button variant="gradient" onClick={submitForm}>নিশ্চিত করুন</Button>
+          </div>
+        }
       >
         <div className="grid gap-3">
           <Input
@@ -207,7 +268,7 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
             placeholder="size"
             helper="ছোট হাতের ইংরেজি অক্ষর, সংখ্যা, হাইফেন — যেমন: size, color, shoe-size। প্রতিটি সেটের কী আলাদা হতে হবে।"
           />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
             <Input
               label="লেবেল (বাংলা)"
               name="labelBn"
@@ -236,7 +297,7 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
             helper="কমপক্ষে একটি মান দরকার। একই মান দুবার লিখলে একবারই থাকবে।"
           />
         </div>
-      </Modal>
+      </Drawer>
 
       <Modal
         open={deleteTarget !== null}
@@ -244,11 +305,16 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
         title="অ্যাট্রিবিউট সেট মুছে ফেলবেন?"
         onConfirm={confirmDelete}
       >
-        <p className="text-sm leading-relaxed text-text-muted">
-          “{deleteTarget?.labelBn}” সেটটি লাইব্রেরি থেকে পুরোপুরি মুছে যাবে। ইতিমধ্যে
-          তৈরি পণ্যের অ্যাট্রিবিউটে কোনো প্রভাব পড়বে না — পণ্যের মান পণ্যের ভেতরেই
-          সংরক্ষিত থাকে।
-        </p>
+        <div className="flex gap-3">
+          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-600 ring-1 ring-inset ring-rose-100">
+            <Icon name="alert" size={20} />
+          </span>
+          <p className="text-sm leading-relaxed text-text-muted">
+            “{deleteTarget?.labelBn}” সেটটি লাইব্রেরি থেকে পুরোপুরি মুছে যাবে। ইতিমধ্যে
+            তৈরি পণ্যের অ্যাট্রিবিউটে কোনো প্রভাব পড়বে না — পণ্যের মান পণ্যের ভেতরেই
+            সংরক্ষিত থাকে।
+          </p>
+        </div>
       </Modal>
     </div>
   );

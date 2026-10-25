@@ -66,7 +66,7 @@ export function DeleteProductButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex min-h-[36px] items-center rounded-md px-2.5 text-small font-semibold text-rose-600 transition motion-fast hover:bg-rose-50"
+        className="inline-flex min-h-[44px] items-center rounded-md px-3 text-small font-semibold text-rose-600 transition motion-fast hover:bg-rose-50"
       >
         মুছুন
       </button>

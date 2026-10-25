@@ -6,6 +6,9 @@
 // keeps its hover zoom. Presentation only: images come from the
 // product's public shape. With no catalog imagery it renders a
 // designed tinted placeholder (never a broken image or a dev-note box).
+// Wave 17 (A+ Aurora polish): framed stage (border + token shadow),
+// glass counter chip, desktop zoom affordance chip, gradient active
+// dot, thumbnail ring/hover polish. Behaviour is unchanged.
 import { useRef, useState } from "react";
 
 export interface GalleryImage {
@@ -39,7 +42,7 @@ export function Gallery({ images, titleBn }: { images: GalleryImage[]; titleBn: 
 
   if (!current) {
     return (
-      <div className="flex aspect-[4/5] items-center justify-center rounded-3xl bg-gradient-to-br from-brand-50 via-surface-2 to-violet-500/10 text-brand-300 shadow-sm">
+      <div className="flex aspect-[4/5] items-center justify-center rounded-3xl border border-border bg-gradient-to-br from-brand-50 via-surface-2 to-violet-500/10 text-brand-300 shadow-card">
         <BagIcon />
       </div>
     );
@@ -59,26 +62,61 @@ export function Gallery({ images, titleBn }: { images: GalleryImage[]; titleBn: 
   };
 
   return (
-    <div>
+    <div className="group/gallery">
       {/* Swipeable stage — scroll-snap carousel (dots on mobile,
-          thumbnails on sm+); hover zoom preserved on large screens. */}
-      <div
-        ref={trackRef}
-        onScroll={onScroll}
-        className="flex snap-x snap-mandatory overflow-x-auto rounded-3xl bg-surface-2 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        aria-label="পণ্যের ছবি"
-      >
-        {images.map((img, i) => (
-          <div key={`${img.url}-${i}`} className="group aspect-[4/5] w-full shrink-0 snap-center overflow-hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={img.url}
-              alt={img.altBn || titleBn}
-              loading={i === 0 ? undefined : "lazy"}
-              className="h-full w-full object-cover transition duration-300 lg:group-hover:scale-110"
-            />
-          </div>
-        ))}
+          thumbnails on sm+); hover zoom preserved on large screens.
+          Wave 17: the stage sits in a framed, token-shadowed shell with
+          a glass counter chip and a desktop-only zoom affordance. */}
+      <div className="relative">
+        <div
+          ref={trackRef}
+          onScroll={onScroll}
+          className="flex snap-x snap-mandatory overflow-x-auto rounded-3xl border border-border bg-surface-2 shadow-card [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          aria-label="পণ্যের ছবি"
+        >
+          {images.map((img, i) => (
+            <div key={`${img.url}-${i}`} className="group aspect-[4/5] w-full shrink-0 snap-center overflow-hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={img.url}
+                alt={img.altBn || titleBn}
+                loading={i === 0 ? undefined : "lazy"}
+                className="h-full w-full object-cover transition duration-500 ease-out lg:group-hover:scale-110"
+              />
+            </div>
+          ))}
+        </div>
+
+        {images.length > 1 ? (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute bottom-3 right-3 rounded-full bg-black/50 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-white backdrop-blur-sm"
+          >
+            {selected + 1} / {images.length}
+          </span>
+        ) : null}
+
+        {/* Zoom affordance — decorative, desktop hover only (the zoom
+            itself is the CSS scale above; no copy, no behaviour). */}
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute right-3 top-3 hidden h-10 w-10 items-center justify-center rounded-full bg-black/45 text-white opacity-0 backdrop-blur-sm transition duration-300 group-hover/gallery:opacity-100 lg:flex"
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-3.8-3.8" />
+            <path d="M11 8.5v5M8.5 11h5" />
+          </svg>
+        </span>
       </div>
 
       {images.length > 1 ? (
@@ -97,8 +135,8 @@ export function Gallery({ images, titleBn }: { images: GalleryImage[]; titleBn: 
               >
                 <span
                   aria-hidden="true"
-                  className={`h-2 rounded-full transition-all duration-200 ${
-                    i === selected ? "w-6 bg-brand-600" : "w-2 bg-border"
+                  className={`h-2 rounded-full transition-all duration-300 ${
+                    i === selected ? "brand-gradient w-6" : "w-2 bg-border"
                   }`}
                 />
               </button>
@@ -106,7 +144,7 @@ export function Gallery({ images, titleBn }: { images: GalleryImage[]; titleBn: 
           </div>
 
           {/* Thumbnails — sm and up */}
-          <div className="mt-3 hidden flex-wrap gap-2.5 sm:flex">
+          <div className="mt-3.5 hidden flex-wrap gap-2.5 sm:flex">
             {images.map((img, i) => (
               <button
                 key={`${img.url}-${i}`}
@@ -114,8 +152,10 @@ export function Gallery({ images, titleBn }: { images: GalleryImage[]; titleBn: 
                 onClick={() => goTo(i)}
                 aria-label={`ছবি ${i + 1} দেখুন`}
                 aria-pressed={i === selected}
-                className={`h-20 w-16 overflow-hidden rounded-xl border-2 transition ${
-                  i === selected ? "border-brand-600 shadow-sm" : "border-transparent opacity-70 hover:opacity-100"
+                className={`h-20 w-16 overflow-hidden rounded-xl transition duration-200 ${
+                  i === selected
+                    ? "shadow-card ring-2 ring-brand-600 ring-offset-2 ring-offset-card"
+                    : "opacity-70 ring-1 ring-border hover:opacity-100 hover:ring-brand-300"
                 }`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}

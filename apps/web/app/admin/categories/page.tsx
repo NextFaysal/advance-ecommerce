@@ -25,10 +25,15 @@ export default async function AdminCategoriesPage() {
         breadcrumb="Admin / Catalog"
       />
       {categories === null ? (
-        <p role="alert" className="rounded-md bg-rose-50 px-3.5 py-2.5 text-small leading-relaxed text-rose-700">
-          ডাটাবেস থেকে ক্যাটাগরি পড়া যায়নি — কোনো তালিকা দেখানো হচ্ছে না। (Could not
-          read categories from the database.)
-        </p>
+        <div role="alert" className="flex gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3.5 shadow-card">
+          <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
+          </span>
+          <p className="text-small leading-relaxed text-rose-700">
+            ডাটাবেস থেকে ক্যাটাগরি পড়া যায়নি — কোনো তালিকা দেখানো হচ্ছে না। (Could not
+            read categories from the database.)
+          </p>
+        </div>
       ) : (
         <CategoriesManager initial={categories} />
       )}

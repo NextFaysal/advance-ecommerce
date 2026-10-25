@@ -185,7 +185,7 @@ function SortTh({
 }
 
 const cellInputCls =
-  "h-9 w-28 rounded-md border border-brand-300 bg-card px-2 font-mono text-sm tabular-nums shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
+  "h-10 w-28 rounded-md border border-brand-300 bg-card px-2 font-mono text-sm tabular-nums shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
 
 export function ProductsTable({
   canDelete,
@@ -800,7 +800,7 @@ export function ProductsTable({
         disabled={statusBusyId === row.id}
         onChange={(e) => void quickStatus(row, e.target.value)}
         aria-label={`${row.title} — স্ট্যাটাস`}
-        className="h-9 rounded-md border border-border bg-card px-2 text-small font-semibold shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:opacity-50"
+        className="h-10 rounded-md border border-border bg-card px-2 text-small font-semibold shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:opacity-50"
       >
         {PRODUCT_STATUSES.map((s) => (
           <option key={s} value={s}>
@@ -837,7 +837,7 @@ export function ProductsTable({
             type="button"
             onClick={() => void savePrice(row)}
             disabled={editBusy || editLoading}
-            className="inline-flex min-h-[36px] items-center rounded-md bg-brand-600 px-4 text-small font-semibold text-white shadow-sm transition motion-fast hover:brightness-105 disabled:opacity-50"
+            className="inline-flex min-h-[44px] items-center rounded-md bg-brand-600 px-4 text-small font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
           >
             {editBusy ? "সেভ হচ্ছে…" : "দাম সেভ করুন"}
           </button>
@@ -845,7 +845,7 @@ export function ProductsTable({
             type="button"
             onClick={cancelEdit}
             disabled={editBusy}
-            className="inline-flex min-h-[36px] items-center rounded-md border border-border bg-card px-4 text-small font-semibold transition motion-fast hover:border-brand-300 disabled:opacity-50"
+            className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 disabled:opacity-50"
           >
             বাতিল
           </button>
@@ -878,7 +878,7 @@ export function ProductsTable({
       <Card className="mb-4 shadow-card">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative min-w-[220px] flex-1">
-            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-text-subtle">
               <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
             </svg>
             <input
@@ -886,14 +886,14 @@ export function ProductsTable({
               onChange={(e) => setSearch(e.target.value)}
               placeholder="পণ্যের নাম বা স্লাগ খুঁজুন…"
               aria-label="পণ্য খুঁজুন"
-              className="h-11 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+              className="h-12 w-full rounded-md border border-border bg-card pl-10 pr-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-200"
             />
           </div>
           <select
             value={category}
             onChange={(e) => changeCategory(e.target.value)}
             aria-label="ক্যাটাগরি দিয়ে ছাঁকুন"
-            className="h-11 max-w-[220px] rounded-md border border-border bg-card px-2.5 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+            className="h-12 max-w-[220px] rounded-md border border-border bg-card px-2.5 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-200"
           >
             <option value="">সব ক্যাটাগরি</option>
             {categories.map((c) => (
@@ -915,16 +915,27 @@ export function ProductsTable({
           {STATUS_FILTERS.map((s) => {
             const label = s === "ALL" ? "সব" : (STATUS_META[s]?.label ?? s);
             const active = status === s;
+            const dotCls =
+              s === "ACTIVE"
+                ? "bg-emerald-500"
+                : s === "DRAFT"
+                  ? "bg-amber-500"
+                  : s === "ARCHIVED"
+                    ? "bg-slate-400"
+                    : "";
             return (
               <button
                 key={s}
                 type="button"
                 onClick={() => changeStatus(s)}
                 aria-pressed={active}
-                className={`flex min-h-[32px] items-center gap-1.5 rounded-full px-3 text-caption font-semibold transition motion-fast ${
-                  active ? "bg-brand-600 text-white shadow-sm" : "border border-border bg-card text-text-muted hover:border-brand-300 hover:text-brand-700"
+                className={`flex min-h-[36px] items-center gap-1.5 rounded-full px-3.5 text-caption font-semibold transition motion-fast ${
+                  active ? "bg-brand-600 text-white shadow-md" : "border border-border bg-card text-text-muted hover:border-brand-300 hover:text-brand-700"
                 }`}
               >
+                {dotCls ? (
+                  <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${active ? "bg-white/80" : dotCls}`} />
+                ) : null}
                 {label}
                 <span className={`font-mono tabular-nums ${active ? "text-white/85" : "text-text-subtle"}`}>
                   {counts[s] ?? "…"}
@@ -932,7 +943,7 @@ export function ProductsTable({
               </button>
             );
           })}
-          <span className="ml-auto text-caption text-text-muted">
+          <span className="ml-auto rounded-full bg-brand-50 px-3 py-1.5 text-caption font-semibold text-brand-700">
             {loading ? "লোড হচ্ছে…" : `মোট ${total}টি পণ্য — পৃষ্ঠা ${page}/${totalPages}`}
           </span>
         </div>
@@ -950,15 +961,17 @@ export function ProductsTable({
       </Card>
 
       {selected.size > 0 ? (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-brand-200 bg-brand-50/70 px-4 py-3 shadow-card">
-          <span className="text-small font-semibold">{selected.size}টি পণ্য নির্বাচিত</span>
+        <div className="anim-fade-in sticky top-2 z-20 mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-brand-200 bg-brand-50/90 px-4 py-3 shadow-lift backdrop-blur">
+          <span className="brand-gradient inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-small font-semibold text-white shadow-md">
+            {selected.size}টি পণ্য নির্বাচিত
+          </span>
           {canEdit ? (
             <>
               <button
                 type="button"
                 disabled={bulkBusy}
                 onClick={() => void callBulk({ ids: [...selected], action: "status", status: "ACTIVE" })}
-                className="inline-flex min-h-[36px] items-center rounded-md bg-emerald-600 px-3 text-small font-semibold text-white shadow-sm transition motion-fast hover:brightness-105 disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center rounded-md bg-emerald-600 px-3.5 text-small font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
               >
                 সক্রিয় করুন
               </button>
@@ -966,7 +979,7 @@ export function ProductsTable({
                 type="button"
                 disabled={bulkBusy}
                 onClick={() => void callBulk({ ids: [...selected], action: "status", status: "DRAFT" })}
-                className="inline-flex min-h-[36px] items-center rounded-md border border-border bg-card px-3 text-small font-semibold transition motion-fast hover:border-brand-300 disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 disabled:opacity-50"
               >
                 খসড়া করুন
               </button>
@@ -974,7 +987,7 @@ export function ProductsTable({
                 type="button"
                 disabled={bulkBusy}
                 onClick={() => void callBulk({ ids: [...selected], action: "status", status: "ARCHIVED" })}
-                className="inline-flex min-h-[36px] items-center rounded-md border border-border bg-card px-3 text-small font-semibold transition motion-fast hover:border-brand-300 disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 disabled:opacity-50"
               >
                 আর্কাইভ
               </button>
@@ -985,7 +998,7 @@ export function ProductsTable({
                   setBulkModalError("");
                   setPriceModal(true);
                 }}
-                className="inline-flex min-h-[36px] items-center rounded-md border border-border bg-card px-3 text-small font-semibold transition motion-fast hover:border-brand-300 disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 disabled:opacity-50"
               >
                 দাম সমন্বয়…
               </button>
@@ -999,7 +1012,7 @@ export function ProductsTable({
                 setBulkDeleteError("");
                 setDeleteModal(true);
               }}
-              className="inline-flex min-h-[36px] items-center rounded-md px-3 text-small font-semibold text-rose-600 transition motion-fast hover:bg-rose-50 disabled:opacity-50"
+              className="inline-flex min-h-[44px] items-center rounded-md px-3.5 text-small font-semibold text-rose-600 transition motion-fast hover:bg-rose-50 disabled:opacity-50"
             >
               মুছুন…
             </button>
@@ -1008,7 +1021,7 @@ export function ProductsTable({
             type="button"
             disabled={bulkBusy}
             onClick={() => setSelected(new Set())}
-            className="ml-auto inline-flex min-h-[36px] items-center rounded-md px-3 text-small font-semibold text-text-muted transition motion-fast hover:text-text-main disabled:opacity-50"
+            className="ml-auto inline-flex min-h-[44px] items-center rounded-md px-3.5 text-small font-semibold text-text-muted transition motion-fast hover:text-text-main disabled:opacity-50"
           >
             নির্বাচন বাতিল
           </button>
@@ -1051,31 +1064,41 @@ export function ProductsTable({
       {notice ? (
         <p
           role="alert"
-          className={`mb-4 rounded-md px-3 py-2 text-small ${
-            notice.tone === "error" ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"
+          className={`anim-fade-in mb-4 flex items-start gap-2 rounded-md border px-3.5 py-2.5 text-small font-medium shadow-sm ${
+            notice.tone === "error"
+              ? "border-rose-200 bg-rose-50 text-rose-700"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700"
           }`}
         >
+          <span aria-hidden="true" className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${notice.tone === "error" ? "bg-rose-500" : "bg-emerald-500"}`} />
           {notice.text}
         </p>
       ) : null}
 
       {loadError ? (
-        <div className="rounded-lg border border-border bg-card px-6 py-14 text-center shadow-card">
-          <h2 className="text-h3">তালিকা লোড করা যায়নি</h2>
+        <div className="anim-rise rounded-lg border border-border/70 bg-card px-6 py-14 text-center shadow-card">
+          <span aria-hidden="true" className="mx-auto flex h-[72px] w-[72px] items-center justify-center rounded-full bg-rose-50 text-rose-500 shadow-sm">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-8 w-8">
+              <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+              <path d="M12 9v4" />
+              <path d="M12 17h.01" />
+            </svg>
+          </span>
+          <h2 className="mt-4 font-display text-h3">তালিকা লোড করা যায়নি</h2>
           <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-rose-600">{loadError}</p>
           <Button variant="outline" className="mt-5" onClick={() => void load()}>
             আবার চেষ্টা করুন
           </Button>
         </div>
       ) : catalogEmpty ? (
-        <div className="rounded-lg border border-border bg-card px-6 py-14 text-center shadow-card">
-          <span aria-hidden="true" className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 text-brand-500">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7">
+        <div className="anim-rise rounded-lg border border-dashed border-border bg-card px-6 py-14 text-center shadow-card">
+          <span aria-hidden="true" className="brand-soft-gradient mx-auto flex h-[72px] w-[72px] items-center justify-center rounded-full text-brand-600 shadow-sm">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-8 w-8">
               <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
               <path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" />
             </svg>
           </span>
-          <h2 className="mt-4 text-h3">কোনো পণ্য নেই</h2>
+          <h2 className="mt-4 font-display text-h3">কোনো পণ্য নেই</h2>
           <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
             ক্যাটালগে এখনো কোনো পণ্য যোগ হয়নি — নতুন পণ্য যোগ করলেই এখানে দেখা যাবে।
           </p>
@@ -1087,8 +1110,14 @@ export function ProductsTable({
           </Link>
         </div>
       ) : !loading && rows.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card px-6 py-14 text-center shadow-card">
-          <h2 className="text-h3">কোনো পণ্য পাওয়া যায়নি</h2>
+        <div className="anim-rise rounded-lg border border-dashed border-border bg-card px-6 py-14 text-center shadow-card">
+          <span aria-hidden="true" className="brand-soft-gradient mx-auto flex h-[72px] w-[72px] items-center justify-center rounded-full text-brand-600 shadow-sm">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" className="h-8 w-8">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+          </span>
+          <h2 className="mt-4 font-display text-h3">কোনো পণ্য পাওয়া যায়নি</h2>
           <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
             এই ফিল্টার/খোঁজে ক্যাটালগে কোনো পণ্য নেই। ফিল্টার বদলে আবার দেখুন।
           </p>
@@ -1107,7 +1136,7 @@ export function ProductsTable({
       ) : (
         <>
           {/* Desktop table — hidden under md (card list below takes over). */}
-          <div className="hidden overflow-x-auto rounded-lg border border-border bg-card shadow-card md:block">
+          <div className="hidden overflow-x-auto rounded-lg border border-border/70 bg-card shadow-card md:block">
             <table className="w-full min-w-[640px] border-collapse text-left text-sm">
               <thead>
                 <tr className="bg-surface-2 text-left [&>th]:border-b [&>th]:border-border">
@@ -1118,7 +1147,7 @@ export function ProductsTable({
                       checked={allPageSelected}
                       onChange={(e) => togglePage(e.target.checked)}
                       aria-label="এই পৃষ্ঠার সব পণ্য নির্বাচন করুন"
-                      className="h-4 w-4 rounded accent-[#4F46E5]"
+                      className="h-5 w-5 rounded accent-[#4F46E5]"
                     />
                   </th>
                   <SortTh label="পণ্য" sortKey="title" sort={sort} onSort={toggleSort} />
@@ -1140,8 +1169,8 @@ export function ProductsTable({
                 {displayRows.map((p) => (
                   <Fragment key={p.id}>
                     <tr
-                      className={`border-t border-border transition motion-fast first:border-t-0 hover:bg-surface-2/70 ${
-                        selected.has(p.id) ? "bg-brand-50/50" : ""
+                      className={`border-t border-border transition motion-fast first:border-t-0 hover:bg-brand-50/40 ${
+                        selected.has(p.id) ? "bg-brand-50" : ""
                       }`}
                     >
                       <td className="px-3 py-3 align-top">
@@ -1150,7 +1179,7 @@ export function ProductsTable({
                           checked={selected.has(p.id)}
                           onChange={(e) => toggleRow(p.id, e.target.checked)}
                           aria-label={`${p.title} নির্বাচন করুন`}
-                          className="h-4 w-4 rounded accent-[#4F46E5]"
+                          className="h-5 w-5 rounded accent-[#4F46E5]"
                         />
                       </td>
                       <td className="min-w-0 px-4 py-3 align-top">
@@ -1206,7 +1235,12 @@ export function ProductsTable({
            *  column choices above apply to the desktop table only. */}
           <div className="space-y-3 md:hidden">
             {displayRows.map((p) => (
-              <article key={p.id} className="rounded-lg border border-border bg-card p-4 shadow-card">
+              <article
+                key={p.id}
+                className={`rounded-lg border bg-card p-4 shadow-card ${
+                  selected.has(p.id) ? "border-brand-300 ring-1 ring-brand-300" : "border-border"
+                }`}
+              >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex min-w-0 items-start gap-2.5">
                     <input
@@ -1214,7 +1248,7 @@ export function ProductsTable({
                       checked={selected.has(p.id)}
                       onChange={(e) => toggleRow(p.id, e.target.checked)}
                       aria-label={`${p.title} নির্বাচন করুন`}
-                      className="mt-1 h-4 w-4 shrink-0 rounded accent-[#4F46E5]"
+                      className="mt-0.5 h-5 w-5 shrink-0 rounded accent-[#4F46E5]"
                     />
                     <div className="min-w-0">
                       <Link
@@ -1233,17 +1267,21 @@ export function ProductsTable({
                   </div>
                   {renderStatusCell(p)}
                 </div>
-                <div className="mt-3 flex items-start gap-4 border-t border-border pt-3 text-small">
-                  <span>
-                    <span className="block text-caption text-text-subtle">দাম (থেকে)</span>
+                <div className="mt-3 grid grid-cols-2 gap-2.5 text-small">
+                  <span className="rounded-md bg-surface-2 px-3 py-2.5">
+                    <span className="mb-0.5 block text-caption font-medium text-text-subtle">দাম (থেকে)</span>
                     {renderPriceCell(p)}
                   </span>
-                  <span>
-                    <span className="block text-caption text-text-subtle">স্টক</span>
+                  <span className="rounded-md bg-surface-2 px-3 py-2.5">
+                    <span className="mb-0.5 block text-caption font-medium text-text-subtle">স্টক</span>
                     {renderStockCell(p)}
                   </span>
-                  {showActions ? <span className="ml-auto">{renderRowActions(p)}</span> : null}
                 </div>
+                {showActions ? (
+                  <div className="mt-3 flex items-center justify-end gap-1 border-t border-border/70 pt-2">
+                    {renderRowActions(p)}
+                  </div>
+                ) : null}
                 {editing?.id === p.id && editing.field === "price" ? (
                   <div className="mt-3">{renderReasonRow(p)}</div>
                 ) : null}
@@ -1266,7 +1304,7 @@ export function ProductsTable({
                 type="button"
                 disabled={page <= 1 || loading}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="inline-flex min-h-[36px] items-center rounded-md border border-border bg-card px-3 text-small font-semibold transition motion-fast hover:border-brand-300 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 ← আগের
               </button>
@@ -1282,10 +1320,10 @@ export function ProductsTable({
                     disabled={loading}
                     onClick={() => setPage(n)}
                     aria-current={n === page ? "page" : undefined}
-                    className={`inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-md px-2 text-small font-semibold tabular-nums transition motion-fast disabled:opacity-50 ${
+                    className={`inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md px-2 text-small font-semibold tabular-nums transition motion-fast disabled:opacity-50 ${
                       n === page
-                        ? "bg-brand-600 text-white shadow-sm"
-                        : "border border-border bg-card hover:border-brand-300 hover:text-brand-700"
+                        ? "bg-brand-600 text-white shadow-md"
+                        : "border border-border bg-card shadow-sm hover:border-brand-300 hover:text-brand-700"
                     }`}
                   >
                     {n}
@@ -1296,7 +1334,7 @@ export function ProductsTable({
                 type="button"
                 disabled={page >= totalPages || loading}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="inline-flex min-h-[36px] items-center rounded-md border border-border bg-card px-3 text-small font-semibold transition motion-fast hover:border-brand-300 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 পরের →
               </button>

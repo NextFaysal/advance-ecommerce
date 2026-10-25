@@ -10,6 +10,7 @@
 // state: readConfiguredVatRateBps treats unset/blank/0 as "no VAT
 // split recorded on orders". This card changes no VAT math anywhere.
 import { useState } from "react";
+import { Icon } from "@/components/ui/icon";
 
 const VAT_SETTING_KEY = "accounting.vat_rate_bps";
 
@@ -112,23 +113,40 @@ export function VatRateCard({ initialBps, initialRaw, dbReady }: VatRateCardProp
   }
 
   return (
-    <section className="rounded-lg border border-border bg-card p-4 shadow-card">
-      <h2 className="font-semibold">VAT হার (বিক্রয়)</h2>
+    <section className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-card">
+      <div className="brand-gradient h-1.5 w-full" aria-hidden="true" />
+      <div className="p-5">
+      <div className="flex items-center gap-3">
+        <span aria-hidden="true" className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
+          <Icon name="banknote" size={20} />
+        </span>
+        <h2 className="font-display text-base font-semibold text-text-main">VAT হার (বিক্রয়)</h2>
+      </div>
 
-      <div className="mt-3 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm">
-        বর্তমানে কার্যকর:{" "}
-        {currentBps !== null ? (
-          <strong className="text-emerald-600">{formatBpsAsPercent(currentBps)}% ({currentBps} bps)</strong>
-        ) : (
-          <strong>বন্ধ — কোনো হার সেট করা নেই</strong>
-        )}
+      <div
+        className={`mt-4 rounded-xl border px-4 py-3.5 text-sm ${
+          currentBps !== null ? "border-emerald-200 bg-emerald-50/70" : "border-border bg-surface-2"
+        }`}
+      >
+        <p className="flex flex-wrap items-center gap-2">
+          <span
+            aria-hidden="true"
+            className={`h-2.5 w-2.5 shrink-0 rounded-full ${currentBps !== null ? "bg-emerald-500" : "bg-slate-400"}`}
+          />
+          বর্তমানে কার্যকর:{" "}
+          {currentBps !== null ? (
+            <strong className="font-mono text-base text-emerald-700">{formatBpsAsPercent(currentBps)}% ({currentBps} bps)</strong>
+          ) : (
+            <strong>বন্ধ — কোনো হার সেট করা নেই</strong>
+          )}
+        </p>
         {!dbReady && (
-          <span className="mt-1 block text-rose-600">
+          <span className="mt-1.5 block leading-relaxed text-rose-600">
             সতর্কতা: ডাটাবেস থেকে বর্তমান মান পড়া যায়নি — উপরের অবস্থা নির্ভরযোগ্য নয়। সেভ করলে সার্ভার ত্রুটি দেখালে কিছুই বদলাবে না।
           </span>
         )}
         {dbReady && currentBps === null && storedRaw.trim() !== "" && (
-          <span className="mt-1 block text-text-muted">
+          <span className="mt-1.5 block leading-relaxed text-text-muted">
             (সেভ করা মান <code className="font-mono text-xs">{storedRaw}</code> বৈধ হার নয় — তাই এখন বন্ধ হিসেবেই ধরা হচ্ছে। নিচে সঠিক হার সেভ করলেই ঠিক হয়ে যাবে।)
           </span>
         )}
@@ -137,7 +155,7 @@ export function VatRateCard({ initialBps, initialRaw, dbReady }: VatRateCardProp
       <div className="mt-4 flex flex-wrap items-end gap-3">
         <label className="block">
           <span className="text-sm font-medium">VAT হার (%)</span>
-          <span className="mt-1 flex items-center gap-1">
+          <span className="mt-1 flex items-center gap-1.5">
             <input
               type="text"
               inputMode="decimal"
@@ -145,12 +163,12 @@ export function VatRateCard({ initialBps, initialRaw, dbReady }: VatRateCardProp
               value={percent}
               onChange={(e) => setPercent(e.target.value)}
               disabled={saving}
-              className="min-h-[44px] w-36 rounded-md border border-border bg-card px-3 text-sm"
+              className="min-h-[44px] w-36 rounded-lg border border-border bg-card px-3 text-sm shadow-sm outline-none transition motion-fast focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100"
             />
             <span className="text-sm text-text-muted">%</span>
           </span>
         </label>
-        <label className="block grow">
+        <label className="block grow basis-56">
           <span className="text-sm font-medium">পরিবর্তনের কারণ (অডিটের জন্য আবশ্যিক)</span>
           <input
             type="text"
@@ -158,7 +176,7 @@ export function VatRateCard({ initialBps, initialRaw, dbReady }: VatRateCardProp
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             disabled={saving}
-            className="mt-1 block min-h-[44px] w-full max-w-md rounded-md border border-border bg-card px-3 text-sm"
+            className="mt-1 block min-h-[44px] w-full max-w-md rounded-lg border border-border bg-card px-3 text-sm shadow-sm outline-none transition motion-fast focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100"
           />
         </label>
         <button
@@ -182,14 +200,24 @@ export function VatRateCard({ initialBps, initialRaw, dbReady }: VatRateCardProp
       </p>
 
       {status && (
-        <p
-          className={`mt-3 rounded-md border px-3 py-2 text-sm ${
-            statusOk ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"
+        <div
+          role="status"
+          className={`anim-pop-in mt-4 flex items-start gap-3 rounded-lg border px-4 py-3.5 text-sm ${
+            statusOk ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-rose-200 bg-rose-50 text-rose-800"
           }`}
         >
-          {status}
-        </p>
+          <span
+            aria-hidden="true"
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+              statusOk ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+            }`}
+          >
+            <Icon name={statusOk ? "check" : "alert"} size={16} />
+          </span>
+          <p className="leading-relaxed">{status}</p>
+        </div>
       )}
+      </div>
     </section>
   );
 }

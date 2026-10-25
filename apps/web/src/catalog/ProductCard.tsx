@@ -3,6 +3,9 @@
 // Design refresh (Direction A — Premium): 4:5 imagery, discount badge,
 // wishlist heart overlay, star rating, strike-through compare price,
 // soft elevation with hover lift.
+// Wave 17 (A+ Aurora polish): token elevation (shadow-card → lift),
+// stacked badge column (no offset hacks), glass wishlist chip at a full
+// 44px touch target, slower image zoom, equal-height cards (h-full).
 "use client";
 
 import Link from "next/link";
@@ -109,7 +112,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
     cardType === "DIGITAL" ? "bg-violet-600" : cardType === "BUNDLE" ? "bg-amber-600" : "bg-sky-600";
 
   return (
-    <article className="group relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+    <article className="group relative flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-card transition duration-300 hover:-translate-y-1 hover:shadow-lift">
       {/* Wishlist — overlay, outside the product link so it stays clickable */}
       <button
         type="button"
@@ -119,7 +122,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
           toggleWishlistId(product.id);
           setWishlisted((w) => !w);
         }}
-        className="absolute right-2.5 top-2.5 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-text-muted shadow-sm transition hover:text-rose-600"
+        className="absolute right-2 top-2 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-surface/90 text-text-muted shadow-card backdrop-blur transition duration-200 hover:scale-105 hover:text-rose-600 active:scale-95"
       >
         <HeartIcon filled={wishlisted} />
       </button>
@@ -134,7 +137,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
               src={imageUrl}
               alt={product.images[0]?.altBn ?? product.title.bn}
               loading="lazy"
-              className={`h-full w-full object-cover transition duration-300 group-hover:scale-105 ${inStock ? "" : "opacity-60 grayscale"}`}
+              className={`h-full w-full object-cover transition duration-500 ease-out group-hover:scale-[1.06] ${inStock ? "" : "opacity-60 grayscale"}`}
             />
           ) : (
             <div
@@ -143,28 +146,32 @@ export function ProductCard({ product }: { product: PublicProduct }) {
               <BagIcon />
             </div>
           )}
-          {typeBadgeLabel ? (
-            <span
-              className={`absolute left-2.5 top-2.5 z-[5] rounded-full px-2 py-0.5 text-[11px] font-bold text-white shadow-sm ${typeBadgeCls}`}
-            >
-              {typeBadgeLabel}
-            </span>
-          ) : null}
-          {discountPct > 0 ? (
-            <span
-              className={`absolute left-2.5 ${typeBadgeLabel ? "top-9" : "top-2.5"} rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm`}
-            >
-              {digits(`-${discountPct}%`)}
-            </span>
+          {/* Badge stack — type + discount in one column so they can
+              never overlap, however many badges a product carries. */}
+          {typeBadgeLabel || discountPct > 0 ? (
+            <div className="absolute left-2.5 top-2.5 z-[5] flex flex-col items-start gap-1.5">
+              {typeBadgeLabel ? (
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-bold text-white shadow-sm ${typeBadgeCls}`}
+                >
+                  {typeBadgeLabel}
+                </span>
+              ) : null}
+              {discountPct > 0 ? (
+                <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
+                  {digits(`-${discountPct}%`)}
+                </span>
+              ) : null}
+            </div>
           ) : null}
           {!inStock ? (
-            <span className="absolute bottom-2.5 left-2.5 rounded-full bg-text-main/85 px-2.5 py-1 text-[11px] font-semibold text-white">
+            <span className="absolute bottom-2.5 left-2.5 rounded-full bg-text-main/85 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-sm">
               স্টক শেষ
             </span>
           ) : null}
         </div>
 
-        <div className="px-3.5 pt-3">
+        <div className="px-4 pt-3.5">
           {product.brandName ? (
             <p className="truncate text-[11px] font-semibold tracking-wide text-text-subtle">
               {product.brandName}
@@ -177,23 +184,23 @@ export function ProductCard({ product }: { product: PublicProduct }) {
             {[1, 2, 3, 4, 5].map((i) => (
               <StarIcon key={i} filled={i <= fullStars} />
             ))}
-            <span className="ml-1 text-xs text-text-subtle">
+            <span className="ml-1 text-xs tabular-nums text-text-subtle">
               {product.ratingAverage ?? "—"} ({product.reviewCount})
             </span>
           </p>
-          <p className="mt-1.5 flex flex-wrap items-baseline gap-x-2">
-            <span className="text-[15px] font-bold tabular-nums text-brand-700">{digits(formatBdt(price))}</span>
+          <p className="mt-2 flex flex-wrap items-baseline gap-x-2">
+            <span className="text-base font-extrabold tabular-nums text-brand-700 dark:text-brand-300">{digits(formatBdt(price))}</span>
             {compareAt !== null && compareAt > price ? (
-              <span className="text-xs tabular-nums text-text-subtle line-through">{digits(formatBdt(compareAt))}</span>
+              <span className="text-[13px] tabular-nums text-text-subtle line-through">{digits(formatBdt(compareAt))}</span>
             ) : null}
           </p>
-          <p className={`mt-1 text-xs font-medium ${inStock ? "text-emerald-600" : "text-rose-600"}`}>
+          <p className={`mt-1 text-xs font-medium ${inStock ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
             {inStock ? "স্টকে আছে" : "স্টক শেষ"}
           </p>
         </div>
       </Link>
 
-      <div className="mt-auto flex gap-2 px-3.5 pb-3.5 pt-3">
+      <div className="mt-auto flex gap-2 px-4 pb-4 pt-3">
         {defaultVariant ? (
           <AddToCartButton
             className="flex-1"
@@ -213,7 +220,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
           type="button"
           onClick={() => setShowQuickView(true)}
           aria-haspopup="dialog"
-          className="min-h-[44px] rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-muted transition hover:bg-surface-2 hover:text-text-main"
+          className="min-h-[44px] rounded-xl border border-border px-3 py-2 text-sm font-medium text-text-muted transition duration-200 hover:border-brand-300 hover:bg-surface-2 hover:text-text-main active:scale-[0.98]"
         >
           ঝটপট দেখুন
         </button>

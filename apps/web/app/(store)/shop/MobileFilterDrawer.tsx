@@ -48,9 +48,11 @@ export function MobileFilterDrawer({
         type="button"
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
-        className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-border bg-card px-4 text-sm font-semibold text-text-main shadow-sm transition hover:bg-surface-2"
+        className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-border bg-card px-4 text-sm font-semibold text-text-main shadow-card transition duration-200 hover:border-brand-300 hover:bg-surface-2 active:scale-[0.98]"
       >
-        <FilterIcon />
+        <span className="text-brand-600 dark:text-brand-300">
+          <FilterIcon />
+        </span>
         ফিল্টার
       </button>
       <Drawer
@@ -63,7 +65,7 @@ export function MobileFilterDrawer({
               <Link
                 href={clearHref}
                 onClick={() => setOpen(false)}
-                className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-semibold text-text-main transition hover:bg-surface-2"
+                className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-semibold text-text-main transition duration-200 hover:bg-surface-2 active:scale-[0.98]"
               >
                 সব মুছুন
               </Link>
@@ -71,7 +73,7 @@ export function MobileFilterDrawer({
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="brand-gradient inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl px-4 text-sm font-bold text-white shadow-md transition hover:opacity-90"
+              className="brand-gradient inline-flex min-h-[48px] flex-1 items-center justify-center rounded-xl px-4 text-sm font-bold text-white shadow-md transition duration-200 hover:opacity-90 hover:shadow-lift active:scale-[0.99]"
             >
               ফলাফল দেখুন ({resultCount}টি পণ্য)
             </button>

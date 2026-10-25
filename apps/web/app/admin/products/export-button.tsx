@@ -65,21 +65,21 @@ export function ProductsExportButton({ status = "ALL" }: { status?: string }) {
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="এক্সপোর্টের কারণ (বাধ্যতামূলক)"
-            className="h-10 w-64 rounded-md border border-border bg-surface px-3 text-sm"
+            className="h-11 w-64 max-w-[70vw] rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
             aria-label="Export reason"
           />
           <button
             type="button"
             onClick={run}
             disabled={busy}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-white disabled:opacity-50"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-brand-600 px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
           >
             {busy ? "হচ্ছে…" : "ডাউনলোড"}
           </button>
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-border px-3 text-sm"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-border bg-card px-3 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
           >
             বাতিল
           </button>

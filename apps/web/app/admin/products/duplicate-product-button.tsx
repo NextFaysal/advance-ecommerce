@@ -57,7 +57,7 @@ export function DuplicateProductButton({
     return (
       <Link
         href={`/admin/products/${copy.id}`}
-        className="inline-flex min-h-[36px] items-center rounded-md px-2.5 text-small font-semibold text-emerald-700 transition motion-fast hover:bg-emerald-50"
+        className="inline-flex min-h-[44px] items-center rounded-md px-3 text-small font-semibold text-emerald-700 transition motion-fast hover:bg-emerald-50"
         title={`কপি তৈরি হয়েছে: ${copy.title}`}
       >
         কপি এডিট করুন →
@@ -70,7 +70,7 @@ export function DuplicateProductButton({
         type="button"
         onClick={() => void duplicate()}
         disabled={busy}
-        className="inline-flex min-h-[36px] items-center rounded-md px-2.5 text-small font-semibold text-brand-700 transition motion-fast hover:bg-brand-50 disabled:opacity-50"
+        className="inline-flex min-h-[44px] items-center rounded-md px-3 text-small font-semibold text-brand-700 transition motion-fast hover:bg-brand-50 disabled:opacity-50"
       >
         {busy ? "কপি হচ্ছে…" : "কপি"}
       </button>

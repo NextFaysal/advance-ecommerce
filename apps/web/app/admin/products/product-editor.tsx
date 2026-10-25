@@ -56,7 +56,7 @@
 // /api/v1/admin/products/[id]/license-keys (edit mode only — a
 // product must exist before keys can belong to it).
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatBdt } from "@advance-ecommerce/validators";
@@ -229,11 +229,120 @@ function attrRowsFromVariants(
 }
 
 const inputCls =
-  "mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
+  "mt-1.5 min-h-[44px] w-full rounded-md border border-border bg-card px-3.5 py-2.5 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-200";
 const cellInputCls =
-  "w-full min-w-[84px] rounded-md border border-border bg-card px-2 py-1.5 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
+  "min-h-[40px] w-full min-w-[84px] rounded-md border border-border bg-card px-2.5 py-2 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-200";
 const toolbarBtnCls =
-  "rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold transition motion-fast hover:border-brand-300";
+  "inline-flex min-h-[36px] items-center rounded-full border border-border bg-card px-3 text-xs font-semibold transition motion-fast hover:border-brand-300 hover:bg-brand-50";
+const labelCls = "block text-sm font-medium text-text-main";
+const hintCls = "mt-1.5 block text-xs leading-relaxed text-text-subtle";
+
+/** Wave 17-2 design refresh — section heading for editor cards: an
+ *  accent icon chip (StatCard language) + display title + optional
+ *  hint. Purely presentational; glyphs are stroke SVGs in the house
+ *  icon style (no icon dependency). */
+const GLYPHS: Record<string, ReactNode> = {
+  tag: (
+    <>
+      <path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8 8a2 2 0 0 0 2.828 0l7.172-7.172a2 2 0 0 0 0-2.828z" />
+      <circle cx="7.5" cy="7.5" r="1" fill="currentColor" />
+    </>
+  ),
+  banknote: (
+    <>
+      <rect width="20" height="12" x="2" y="6" rx="2" />
+      <circle cx="12" cy="12" r="2" />
+      <path d="M6 12h.01M18 12h.01" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </>
+  ),
+  download: (
+    <>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M12 15V3" />
+    </>
+  ),
+  key: (
+    <>
+      <circle cx="7.5" cy="15.5" r="4.5" />
+      <path d="m11 12 9.5-9.5" />
+      <path d="M15.5 7.5 19 11" />
+    </>
+  ),
+  package: (
+    <>
+      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+      <path d="m3.3 7 8.7 5 8.7-5" />
+      <path d="M12 22V12" />
+    </>
+  ),
+  image: (
+    <>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <circle cx="9" cy="9" r="2" />
+      <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+    </>
+  ),
+  layers: (
+    <>
+      <path d="m12 2 9 4.9-9 4.9-9-4.9z" />
+      <path d="m3 11.9 9 4.9 9-4.9" />
+      <path d="m3 16.9 9 4.9 9-4.9" />
+    </>
+  ),
+  file: (
+    <>
+      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z" />
+      <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+      <path d="M9 13h6M9 17h6" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m21 21-4.3-4.3" />
+    </>
+  ),
+  check: <path d="M20 6 9 17l-5-5" />,
+};
+
+function SectionHeading({
+  glyph,
+  title,
+  hint,
+  chipCls = "bg-brand-50 text-brand-600",
+  action,
+}: {
+  glyph: string;
+  title: string;
+  hint?: string;
+  chipCls?: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="mb-4 flex items-start gap-3">
+      <span
+        aria-hidden="true"
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] shadow-sm ring-1 ring-inset ring-black/5 ${chipCls}`}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+          {GLYPHS[glyph]}
+        </svg>
+      </span>
+      <div className="min-w-0 flex-1">
+        <h3 className="font-display text-base font-semibold leading-snug text-text-main">{title}</h3>
+        {hint ? <p className="mt-0.5 text-xs leading-relaxed text-text-subtle">{hint}</p> : null}
+      </div>
+      {action ?? null}
+    </div>
+  );
+}
 
 /**
  * Description textarea with a markdown-subset toolbar + live preview
@@ -290,8 +399,8 @@ function DescriptionField({
 
   return (
     <div className="block text-sm">
-      <span>{label}</span>
-      <span className="mt-1 flex flex-wrap items-center gap-1.5">
+      <span className="font-medium text-text-main">{label}</span>
+      <span className="mt-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-border/70 bg-surface-2/70 p-1.5">
         <button type="button" className={toolbarBtnCls} onClick={() => applyToSelection((s) => `**${s || "গুরুত্বপূর্ণ"}**`)} aria-label="Bold">
           B
         </button>
@@ -324,12 +433,12 @@ function DescriptionField({
         className={inputCls}
         placeholder={placeholder}
       />
-      <span className="mt-1 block text-xs text-text-subtle">
+      <span className="mt-1.5 block text-xs leading-relaxed text-text-subtle">
         Markdown চলবে: **গাঢ়**, *তির্যক*, ## শিরোনাম, - তালিকা, [লেখা](https://…) লিংক। স্টোরে ঠিক এভাবেই দেখাবে।
       </span>
       {showPreview && (
         <div
-          className="mt-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm leading-relaxed [&_a]:font-medium [&_a]:text-brand-700 [&_a]:underline [&_h2]:mb-1 [&_h2]:mt-2 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:font-semibold [&_h4]:mb-1 [&_h4]:mt-2 [&_h4]:font-semibold [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5"
+          className="anim-fade-in mt-2 rounded-lg border border-border/70 bg-surface-2 px-4 py-3 text-sm leading-relaxed shadow-sm [&_a]:font-medium [&_a]:text-brand-700 [&_a]:underline [&_h2]:mb-1 [&_h2]:mt-2 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:font-semibold [&_h4]:mb-1 [&_h4]:mt-2 [&_h4]:font-semibold [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5"
           // The renderer escapes ALL raw HTML first — this is the
           // same sanitized string the PDP renders.
           dangerouslySetInnerHTML={{ __html: renderDescriptionHtml(value) }}
@@ -1563,35 +1672,54 @@ export function ProductEditor({
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2" role="tablist">
-        {(["basic", "media", "variants", "content", "seo"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => setTab(t)}
-            className={`rounded-full px-4 py-2 text-sm transition motion-fast ${
-              tab === t ? "bg-brand-600 text-white shadow-sm" : "border border-border bg-card hover:border-brand-300"
-            }`}
-          >
-            {t === "basic"
-              ? "বেসিক"
-              : t === "media"
-                ? "মিডিয়া"
-                : t === "variants"
-                  ? `ভেরিয়েন্ট (${rows.length})`
-                  : t === "content"
-                    ? "কনটেন্ট"
-                    : "SEO"}
-          </button>
-        ))}
+      {/* Tab rail (v3 pattern): scrollable on mobile, gradient
+       *  underline marks the active tab, counts ride as chips. */}
+      <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto border-b border-border" role="tablist">
+          {(["basic", "media", "variants", "content", "seo"] as Tab[]).map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="tab"
+              aria-selected={tab === t}
+              onClick={() => setTab(t)}
+              className={`relative flex min-h-[44px] shrink-0 items-center gap-2 px-3.5 text-sm font-medium transition motion-fast sm:px-4 ${
+                tab === t ? "text-brand-700" : "text-text-muted hover:text-text-main"
+              }`}
+            >
+              {t === "basic"
+                ? "বেসিক"
+                : t === "media"
+                  ? "মিডিয়া"
+                  : t === "variants"
+                    ? "ভেরিয়েন্ট"
+                    : t === "content"
+                      ? "কনটেন্ট"
+                      : "SEO"}
+              {t === "variants" ? (
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums ${
+                    tab === t ? "bg-brand-100 text-brand-700" : "bg-surface-2 text-text-muted"
+                  }`}
+                >
+                  {rows.length}
+                </span>
+              ) : null}
+              <span
+                aria-hidden="true"
+                className={`brand-gradient absolute inset-x-3 -bottom-px h-[2.5px] rounded-full transition motion-base ${
+                  tab === t ? "opacity-100" : "opacity-0"
+                }`}
+              />
+            </button>
+          ))}
+        </div>
         {mode === "edit" && status === "ACTIVE" && (
           <Link
             href={`/product/${slug}`}
             target="_blank"
             rel="noreferrer"
-            className="ml-auto inline-flex items-center rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-brand-700 transition motion-fast hover:border-brand-300"
+            className="inline-flex min-h-[44px] shrink-0 items-center rounded-full border border-border bg-card px-4 text-sm font-medium text-brand-700 shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
           >
             স্টোরফ্রন্টে দেখুন ↗
           </Link>
@@ -1599,40 +1727,43 @@ export function ProductEditor({
       </div>
 
       {tab === "basic" && (
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <label className="block text-sm">
+        <div className="mt-5 space-y-4">
+          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+            <SectionHeading glyph="tag" title="মূল তথ্য" />
+            <div className="grid gap-4 md:grid-cols-2">
+          <label className={labelCls}>
             টাইটেল (বাংলা) *
             <input value={titleBn} onChange={(e) => handleTitleBnChange(e.target.value)} className={inputCls} placeholder="যেমন: জামদানি শাড়ি" />
           </label>
-          <label className="block text-sm">
+          <label className={labelCls}>
             Title (English) *
             <input value={titleEn} onChange={(e) => handleTitleEnChange(e.target.value)} className={inputCls} placeholder="e.g. Jamdani Sharee" />
           </label>
-          <label className="block text-sm">
+          <label className={labelCls}>
             Slug *
-            <span className="mt-1 flex gap-2">
+            <span className="mt-1.5 flex gap-2">
               <input
                 value={slug}
                 onChange={(e) => {
                   setSlug(e.target.value);
                   setSlugTouched(true);
                 }}
-                className="w-full rounded-md border border-border bg-card px-3 py-2 font-mono text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                className="min-h-[44px] w-full rounded-md border border-border bg-card px-3.5 py-2.5 font-mono text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-200"
                 placeholder="jamdani-sharee"
               />
               <button
                 type="button"
                 onClick={regenerateSlug}
-                className="shrink-0 rounded-md border border-border bg-card px-3 py-2 text-sm transition motion-fast hover:border-brand-300"
+                className="inline-flex min-h-[44px] shrink-0 items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
               >
                 টাইটেল থেকে তৈরি করুন
               </button>
             </span>
-            <span className="mt-1 block text-xs text-text-subtle">
+            <span className={hintCls}>
               English টাইটেল থেকে অটো তৈরি হয়; হাতে বদলালে অটো বন্ধ হয়ে যাবে। স্টোরের ঠিকানা: /product/{slug || "…"}
             </span>
           </label>
-          <label className="block text-sm">
+          <label className={labelCls}>
             স্ট্যাটাস
             <select value={status} onChange={(e) => setStatus(e.target.value as ProductStatus)} className={inputCls}>
               <option value="DRAFT">খসড়া (DRAFT) — স্টোরে দেখা যাবে না</option>
@@ -1641,7 +1772,7 @@ export function ProductEditor({
             </select>
           </label>
           {showTypeUi && (
-            <label className="block text-sm">
+            <label className={labelCls}>
               ধরন
               <select
                 value={productType}
@@ -1653,12 +1784,12 @@ export function ProductEditor({
                 <option value="BUNDLE">বান্ডল (BUNDLE) — একসাথে কয়েকটি পণ্য</option>
                 <option value="PREORDER">প্রি-অর্ডার (PREORDER)</option>
               </select>
-              <span className="mt-1 block text-xs text-text-subtle">
+              <span className={hintCls}>
                 ধরন বদলালে আগের ধরনের তথ্য হারায় না — সেভের সময় শুধু সক্রিয় ধরনের ব্লকটাই যাবে। ধরন অনুযায়ী সেটিংস নিচে আসবে।
               </span>
             </label>
           )}
-          <label className="block text-sm">
+          <label className={labelCls}>
             ক্যাটাগরি *
             <select value={categorySlug} onChange={(e) => setCategorySlug(e.target.value)} className={inputCls}>
               {categoryOptions.length === 0 && <option value="">— কোনো ক্যাটাগরি পাওয়া যায়নি —</option>}
@@ -1674,7 +1805,7 @@ export function ProductEditor({
               </span>
             )}
           </label>
-          <label className="block text-sm">
+          <label className={labelCls}>
             ব্র্যান্ড (না থাকলে খালি রাখুন)
             <input
               value={brandName}
@@ -1688,90 +1819,99 @@ export function ProductEditor({
                 <option key={b} value={b} />
               ))}
             </datalist>
-            <span className="mt-1 block text-xs text-text-subtle">নতুন নাম লিখলে ব্র্যান্ডটি সার্ভারে অটো তৈরি হয়ে যাবে।</span>
+            <span className={hintCls}>নতুন নাম লিখলে ব্র্যান্ডটি সার্ভারে অটো তৈরি হয়ে যাবে।</span>
           </label>
-          <label className="block text-sm md:col-span-2">
+          <label className={`${labelCls} md:col-span-2`}>
             ট্যাগ (কমা দিয়ে আলাদা করুন)
             <input value={tagsText} onChange={(e) => setTagsText(e.target.value)} className={inputCls} placeholder="যেমন: ঈদ, নতুন, বেস্ট সেলার" />
           </label>
-          <label className="block text-sm">
+            </div>
+          </section>
+          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+            <SectionHeading glyph="banknote" title="দাম, ওজন ও প্যাকেজ" />
+            <div className="grid gap-4 md:grid-cols-2">
+          <label className={labelCls}>
             ডিফল্ট দাম (৳) — নতুন ভেরিয়েন্টে বসবে
             <input value={basePriceTaka} onChange={(e) => setBasePriceTaka(e.target.value)} inputMode="decimal" className={inputCls} placeholder="4500" />
-            <span className="mt-1 block text-xs text-text-subtle">
+            <span className={hintCls}>
               Poisha: {basePricePoisha} • দেখাবে: {formatBdt(basePricePoisha)} — প্রতিটি ভেরিয়েন্টের দাম Variants ট্যাবে আলাদা করে বদলানো যায়।
             </span>
           </label>
-          <label className="block text-sm">
+          <label className={labelCls}>
             ডিফল্ট Compare-at দাম (৳) — ছাড় দেখাতে
             <input value={baseCompareAtTaka} onChange={(e) => setBaseCompareAtTaka(e.target.value)} inputMode="decimal" className={inputCls} placeholder="5200" />
           </label>
-          <label className="block text-sm">
+          <label className={labelCls}>
             ডিফল্ট Cost price (৳) — শুধু স্টাফদের জন্য
             <input value={baseCostTaka} onChange={(e) => setBaseCostTaka(e.target.value)} inputMode="decimal" className={inputCls} placeholder="3000" />
           </label>
-          <label className="block text-sm">
+          <label className={labelCls}>
             ওজন (গ্রাম) — কুরিয়ারের ওজন-ভিত্তিক চার্জে লাগে
             <input value={weightGrams} onChange={(e) => setWeightGrams(e.target.value)} inputMode="numeric" className={inputCls} placeholder="যেমন: 500" />
           </label>
-          <label className="block text-sm">
+          <label className={labelCls}>
             লো-স্টক সতর্কতার সীমা (খালি = গ্লোবাল ডিফল্ট)
             <input value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)} inputMode="numeric" className={inputCls} placeholder="যেমন: 5" />
           </label>
-          <div className="md:col-span-2">
-            <span className="text-sm">প্যাকেজের মাপ (মিলিমিটার)</span>
-            <div className="mt-1 grid gap-3 sm:grid-cols-3">
-              <label className="block text-xs">
-                দৈর্ঘ্য (mm)
-                <input value={lengthMm} onChange={(e) => setLengthMm(e.target.value)} inputMode="numeric" className={cellInputCls} placeholder="300" />
-              </label>
-              <label className="block text-xs">
-                প্রস্থ (mm)
-                <input value={widthMm} onChange={(e) => setWidthMm(e.target.value)} inputMode="numeric" className={cellInputCls} placeholder="200" />
-              </label>
-              <label className="block text-xs">
-                উচ্চতা (mm)
-                <input value={heightMm} onChange={(e) => setHeightMm(e.target.value)} inputMode="numeric" className={cellInputCls} placeholder="50" />
-              </label>
-            </div>
-          </div>
-          <div className="rounded-lg border border-border bg-surface-2 p-3 md:col-span-2">
-            <h3 className="text-sm font-semibold">শিডিউল — প্রকাশ ও সেলের সময়</h3>
+          <div className="rounded-lg border border-border/70 bg-surface-2/60 p-3.5 md:col-span-2">
+            <span className="text-sm font-medium text-text-main">প্যাকেজের মাপ (মিলিমিটার)</span>
             <div className="mt-2 grid gap-3 sm:grid-cols-3">
-              <label className="block text-xs">
-                প্রকাশের সময় (খালি = সঙ্গে সঙ্গে লাইভ)
-                <input type="datetime-local" value={publishAt} onChange={(e) => setPublishAt(e.target.value)} className={cellInputCls} />
+              <label className="block text-xs font-medium text-text-muted">
+                দৈর্ঘ্য (mm)
+                <input value={lengthMm} onChange={(e) => setLengthMm(e.target.value)} inputMode="numeric" className={`${cellInputCls} mt-1.5`} placeholder="300" />
               </label>
-              <label className="block text-xs">
-                সেল শুরু
-                <input type="datetime-local" value={saleStartsAt} onChange={(e) => setSaleStartsAt(e.target.value)} className={cellInputCls} />
+              <label className="block text-xs font-medium text-text-muted">
+                প্রস্থ (mm)
+                <input value={widthMm} onChange={(e) => setWidthMm(e.target.value)} inputMode="numeric" className={`${cellInputCls} mt-1.5`} placeholder="200" />
               </label>
-              <label className="block text-xs">
-                সেল শেষ
-                <input type="datetime-local" value={saleEndsAt} onChange={(e) => setSaleEndsAt(e.target.value)} className={cellInputCls} />
+              <label className="block text-xs font-medium text-text-muted">
+                উচ্চতা (mm)
+                <input value={heightMm} onChange={(e) => setHeightMm(e.target.value)} inputMode="numeric" className={`${cellInputCls} mt-1.5`} placeholder="50" />
               </label>
             </div>
-            <p role="status" className="mt-2 text-xs leading-relaxed text-text-muted">
-              {publishLine} {saleLine}
-              <span className="block text-text-subtle">
-                সেলের সময়সীমা শুধু স্টোরে "সেল চলছে" অবস্থা ঠিক করে — দাম বদলাতে চাইলে ভেরিয়েন্টের Compare-at দাম ব্যবহার করুন। বিবরণ (বাংলা + English) এখন "কনটেন্ট" ট্যাবে।
-              </span>
-            </p>
           </div>
+            </div>
+          </section>
+          <section className="brand-soft-gradient rounded-lg border border-brand-100 p-4 shadow-card sm:p-5">
+            <SectionHeading glyph="clock" title="শিডিউল — প্রকাশ ও সেলের সময়" chipCls="bg-card text-brand-600" />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="block text-xs font-medium text-text-muted">
+                প্রকাশের সময় (খালি = সঙ্গে সঙ্গে লাইভ)
+                <input type="datetime-local" value={publishAt} onChange={(e) => setPublishAt(e.target.value)} className={`${cellInputCls} mt-1.5 bg-card`} />
+              </label>
+              <label className="block text-xs font-medium text-text-muted">
+                সেল শুরু
+                <input type="datetime-local" value={saleStartsAt} onChange={(e) => setSaleStartsAt(e.target.value)} className={`${cellInputCls} mt-1.5 bg-card`} />
+              </label>
+              <label className="block text-xs font-medium text-text-muted">
+                সেল শেষ
+                <input type="datetime-local" value={saleEndsAt} onChange={(e) => setSaleEndsAt(e.target.value)} className={`${cellInputCls} mt-1.5 bg-card`} />
+              </label>
+            </div>
+            <div role="status" className="mt-3.5 rounded-md border border-brand-200/70 bg-card/80 px-3.5 py-2.5 text-small font-medium leading-relaxed text-text-main shadow-sm">
+              {publishLine} {saleLine}
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-text-subtle">
+              সেলের সময়সীমা শুধু স্টোরে "সেল চলছে" অবস্থা ঠিক করে — দাম বদলাতে চাইলে ভেরিয়েন্টের Compare-at দাম ব্যবহার করুন। বিবরণ (বাংলা + English) এখন "কনটেন্ট" ট্যাবে।
+            </p>
+          </section>
         </div>
       )}
 
       {tab === "basic" && showTypeUi && productType === "DIGITAL" && (
-        <section className="mt-4 rounded-lg border border-border bg-card p-4 shadow-sm">
-          <h3 className="text-sm font-semibold">ডিজিটাল ফাইল — ক্রেতা পেমেন্টের পর যা ডাউনলোড করবে</h3>
-          <p className="mt-1 text-xs leading-relaxed text-text-subtle">
-            ফাইল আপলোড করুন (সরাসরি স্টোরেজে যাবে), অথবা স্টোরেজে আগে থেকে থাকা ফাইলের key হাতে বসান। প্রকাশ (ACTIVE) করতে অন্তত ১টি ফাইল লাগবে।
-          </p>
-          <div className="mt-3 rounded-lg border border-border bg-surface-2 p-3">
+        <section className="mt-4 rounded-lg border border-violet-200 bg-card p-4 shadow-card sm:p-5">
+          <SectionHeading
+            glyph="download"
+            chipCls="bg-violet-100 text-violet-600"
+            title="ডিজিটাল ফাইল — ক্রেতা পেমেন্টের পর যা ডাউনলোড করবে"
+            hint="ফাইল আপলোড করুন (সরাসরি স্টোরেজে যাবে), অথবা স্টোরেজে আগে থেকে থাকা ফাইলের key হাতে বসান। প্রকাশ (ACTIVE) করতে অন্তত ১টি ফাইল লাগবে।"
+          />
+          <div className="rounded-lg border border-dashed border-violet-300 bg-violet-50/60 p-4">
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={() => digitalFileInputRef.current?.click()}
-                className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition motion-fast hover:brightness-105"
+                className="inline-flex min-h-[44px] items-center rounded-md bg-violet-600 px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105"
               >
                 ফাইল আপলোড করুন
               </button>
@@ -1812,7 +1952,7 @@ export function ProductEditor({
                     </div>
                     {it.status === "uploading" && (
                       <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-card" role="progressbar" aria-valuenow={it.progress} aria-valuemin={0} aria-valuemax={100}>
-                        <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${it.progress}%` }} />
+                        <div className="h-full rounded-full bg-violet-500 transition-all" style={{ width: `${it.progress}%` }} />
                       </div>
                     )}
                     {it.status === "error" && it.error && <p className="mt-1 text-xs text-rose-600">{it.error}</p>}
@@ -1824,12 +1964,12 @@ export function ProductEditor({
 
           <div className="mt-3 space-y-2.5">
             {digitalRows.length === 0 && (
-              <p className="rounded-lg border border-dashed border-border px-4 py-5 text-center text-sm text-text-subtle">
+              <p className="rounded-lg border border-dashed border-violet-200 bg-violet-50/40 px-4 py-6 text-center text-sm text-text-subtle">
                 এখনো কোনো ফাইল যোগ হয়নি।
               </p>
             )}
             {digitalRows.map((row) => (
-              <div key={row.key} className="grid items-end gap-2 rounded-md border border-border p-2.5 md:grid-cols-[1.3fr_1fr_0.55fr_auto]">
+              <div key={row.key} className="grid items-end gap-2.5 rounded-lg border border-border/70 bg-surface-2/50 p-3 md:grid-cols-[1.3fr_1fr_0.55fr_auto]">
                 <label className="block text-xs">
                   Storage key *
                   <input
@@ -1837,7 +1977,7 @@ export function ProductEditor({
                     onChange={(e) =>
                       setDigitalRows((prev) => prev.map((p) => (p.key === row.key ? { ...p, storageKey: e.target.value } : p)))
                     }
-                    className={`${cellInputCls} font-mono text-xs`}
+                    className={`${cellInputCls} mt-1 font-mono text-xs`}
                     placeholder="products/slug/files/guide.pdf"
                   />
                 </label>
@@ -1848,7 +1988,7 @@ export function ProductEditor({
                     onChange={(e) =>
                       setDigitalRows((prev) => prev.map((p) => (p.key === row.key ? { ...p, fileName: e.target.value } : p)))
                     }
-                    className={cellInputCls}
+                    className={`${cellInputCls} mt-1`}
                     placeholder="guide.pdf"
                   />
                 </label>
@@ -1860,7 +2000,7 @@ export function ProductEditor({
                       setDigitalRows((prev) => prev.map((p) => (p.key === row.key ? { ...p, sizeBytes: e.target.value } : p)))
                     }
                     inputMode="numeric"
-                    className={cellInputCls}
+                    className={`${cellInputCls} mt-1`}
                   />
                   <span className="mt-0.5 block text-[11px] text-text-subtle">
                     {formatFileSize(Number(row.sizeBytes) || 0)}
@@ -1869,7 +2009,7 @@ export function ProductEditor({
                 <button
                   type="button"
                   onClick={() => setDigitalRows((prev) => prev.filter((p) => p.key !== row.key))}
-                  className="rounded-md border border-border px-2.5 py-1.5 text-xs text-rose-600"
+                  className="inline-flex min-h-[40px] items-center justify-center rounded-md border border-border bg-card px-3 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                 >
                   মুছুন
                 </button>
@@ -1881,32 +2021,53 @@ export function ProductEditor({
             onClick={() =>
               setDigitalRows((prev) => [...prev, { key: nextKey(), storageKey: "", fileName: "", sizeBytes: "" }])
             }
-            className="mt-3 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium transition motion-fast hover:border-brand-300"
+            className="mt-3 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-violet-300 hover:bg-violet-50"
           >
             + ফাইল হাতে যোগ করুন
           </button>
 
-          <div className="mt-5 border-t border-border pt-4">
-            <h4 className="text-sm font-semibold">লাইসেন্স কী পুল</h4>
+          <div className="mt-6 rounded-lg border border-violet-100 bg-violet-50/40 p-4">
+            <div className="flex items-center gap-2.5">
+              <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-violet-100 text-violet-600 shadow-sm ring-1 ring-inset ring-black/5">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                  {GLYPHS.key}
+                </svg>
+              </span>
+              <h4 className="font-display text-sm font-semibold text-text-main">লাইসেন্স কী পুল</h4>
+            </div>
             {mode !== "edit" ? (
-              <p className="mt-1 text-sm text-text-muted">
+              <p className="mt-2 text-sm leading-relaxed text-text-muted">
                 লাইসেন্স কী যোগ করা যায় পণ্যটি তৈরি হওয়ার পর — এডিট পেজে এসে এই অংশেই কী পুল পাবেন।
               </p>
             ) : (
               <>
                 {licenseCounts && (
-                  <p className="mt-1 text-xs text-text-muted">
-                    মোট {licenseCounts.total}টি কী — ফাঁকা আছে {licenseCounts.available}টি, বরাদ্দ হয়ে গেছে {licenseCounts.assigned}টি।
-                    {licenseCounts.available === 0 && " পুল খালি হলে নতুন অর্ডারে কী দেওয়া যাবে না — আরও কী যোগ করুন।"}
-                  </p>
+                  <>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-card px-3 py-1.5 text-xs font-semibold text-text-main shadow-sm ring-1 ring-inset ring-violet-100">
+                        মোট <span className="font-mono tabular-nums">{licenseCounts.total}</span>টি কী
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-100">
+                        ফাঁকা <span className="font-mono tabular-nums">{licenseCounts.available}</span>টি
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-xs font-semibold text-text-muted ring-1 ring-inset ring-black/5">
+                        বরাদ্দ হয়ে গেছে <span className="font-mono tabular-nums">{licenseCounts.assigned}</span>টি
+                      </span>
+                    </div>
+                    {licenseCounts.available === 0 && (
+                      <p className="mt-2 text-xs leading-relaxed text-amber-700">
+                        পুল খালি হলে নতুন অর্ডারে কী দেওয়া যাবে না — আরও কী যোগ করুন।
+                      </p>
+                    )}
+                  </>
                 )}
-                <label className="mt-2 block text-xs">
+                <label className="mt-3 block text-xs font-medium text-text-muted">
                   নতুন কী পেস্ট করুন (প্রতি লাইনে একটি)
                   <textarea
                     value={licensePaste}
                     onChange={(e) => setLicensePaste(e.target.value)}
                     rows={4}
-                    className={`${cellInputCls} font-mono text-xs`}
+                    className={`${cellInputCls} mt-1.5 bg-card font-mono text-xs`}
                     placeholder={"XXXX-XXXX-XXXX-XXXX\nYYYY-YYYY-YYYY-YYYY"}
                   />
                 </label>
@@ -1914,7 +2075,7 @@ export function ProductEditor({
                   type="button"
                   onClick={() => void handleAddLicenseKeys()}
                   disabled={licenseBusy}
-                  className="mt-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition motion-fast hover:brightness-105 disabled:opacity-50"
+                  className="mt-2.5 inline-flex min-h-[44px] items-center rounded-md bg-violet-600 px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
                 >
                   {licenseBusy ? "যোগ হচ্ছে…" : "কী যোগ করুন"}
                 </button>
@@ -1928,11 +2089,16 @@ export function ProductEditor({
                 ) : licenseKeys.length === 0 ? (
                   <p className="mt-3 text-sm text-text-subtle">এখনো কোনো লাইসেন্স কী যোগ হয়নি।</p>
                 ) : (
-                  <ul className="mt-3 max-h-56 space-y-1 overflow-y-auto rounded-md border border-border p-2.5">
+                  <ul className="mt-3 max-h-56 divide-y divide-border/70 overflow-y-auto rounded-lg border border-border/70 bg-card px-3 shadow-sm">
                     {licenseKeys.map((k) => (
-                      <li key={k.id} className="flex items-center justify-between gap-3 text-xs">
+                      <li key={k.id} className="flex items-center justify-between gap-3 py-2 text-xs">
                         <span className="min-w-0 truncate font-mono">{k.masked}</span>
-                        <span className={`shrink-0 font-medium ${k.assigned ? "text-text-subtle" : "text-emerald-700"}`}>
+                        <span
+                          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 font-semibold ring-1 ring-inset ring-black/5 ${
+                            k.assigned ? "bg-surface-2 text-text-subtle" : "bg-emerald-50 text-emerald-700"
+                          }`}
+                        >
+                          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${k.assigned ? "bg-slate-400" : "bg-emerald-500"}`} />
                           {k.assigned ? "বরাদ্দ হয়ে গেছে" : "ফাঁকা"}
                         </span>
                       </li>
@@ -1949,12 +2115,14 @@ export function ProductEditor({
       )}
 
       {tab === "basic" && showTypeUi && productType === "BUNDLE" && (
-        <section className="mt-4 rounded-lg border border-border bg-card p-4 shadow-sm">
-          <h3 className="text-sm font-semibold">বান্ডল কম্পোনেন্ট — এই পণ্যটি কিনলে যা যা একসাথে মিলবে</h3>
-          <p className="mt-1 text-xs leading-relaxed text-text-subtle">
-            অন্য পণ্যের ভেরিয়েন্ট খুঁজে যোগ করুন ও পরিমাণ ঠিক করুন। প্রকাশ (ACTIVE) করতে অন্তত ১টি কম্পোনেন্ট লাগবে। এই পণ্যের নিজের ভেরিয়েন্ট কম্পোনেন্ট হিসেবে যোগ করা যায় না।
-          </p>
-          <label className="mt-3 block text-sm">
+        <section className="mt-4 rounded-lg border border-amber-200 bg-card p-4 shadow-card sm:p-5">
+          <SectionHeading
+            glyph="layers"
+            chipCls="bg-amber-100 text-amber-700"
+            title="বান্ডল কম্পোনেন্ট — এই পণ্যটি কিনলে যা যা একসাথে মিলবে"
+            hint="অন্য পণ্যের ভেরিয়েন্ট খুঁজে যোগ করুন ও পরিমাণ ঠিক করুন। প্রকাশ (ACTIVE) করতে অন্তত ১টি কম্পোনেন্ট লাগবে। এই পণ্যের নিজের ভেরিয়েন্ট কম্পোনেন্ট হিসেবে যোগ করা যায় না।"
+          />
+          <label className={labelCls}>
             কম্পোনেন্ট খুঁজুন (পণ্যের নাম বা SKU)
             <input
               value={bundleQuery}
@@ -1965,11 +2133,11 @@ export function ProductEditor({
           </label>
           {bundleSearching && <p className="mt-2 text-xs text-text-subtle">খোঁজা হচ্ছে…</p>}
           {bundleHits.length > 0 && (
-            <ul className="mt-2 max-h-64 space-y-1.5 overflow-y-auto rounded-md border border-border p-2">
+            <ul className="anim-fade-in mt-2 max-h-64 space-y-1.5 overflow-y-auto rounded-lg border border-border/70 bg-surface-2/50 p-2">
               {bundleHits.map((hit) => {
                 const added = bundleRows.some((r) => r.variantId === hit.variantId);
                 return (
-                  <li key={hit.variantId} className="flex flex-wrap items-center gap-2 rounded-md bg-surface-2 px-2.5 py-2 text-sm">
+                  <li key={hit.variantId} className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-card px-3 py-2.5 text-sm shadow-sm">
                     <span className="min-w-0 flex-1">
                       <span className="font-medium">{hit.productTitle}</span>
                       <span className="block text-xs text-text-subtle">
@@ -1980,7 +2148,7 @@ export function ProductEditor({
                       type="button"
                       disabled={added}
                       onClick={() => addBundleComponent(hit)}
-                      className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold transition motion-fast hover:border-brand-300 disabled:opacity-50"
+                      className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold transition motion-fast hover:border-amber-300 hover:bg-amber-50 disabled:opacity-50"
                     >
                       {added ? "যোগ হয়েছে ✓" : "যোগ করুন"}
                     </button>
@@ -1989,14 +2157,14 @@ export function ProductEditor({
               })}
             </ul>
           )}
-          <div className="mt-3 space-y-2">
+          <div className="mt-3 space-y-2.5">
             {bundleRows.length === 0 && (
-              <p className="rounded-lg border border-dashed border-border px-4 py-5 text-center text-sm text-text-subtle">
+              <p className="rounded-lg border border-dashed border-amber-200 bg-amber-50/40 px-4 py-6 text-center text-sm text-text-subtle">
                 এখনো কোনো কম্পোনেন্ট যোগ হয়নি — উপরে খুঁজে যোগ করুন।
               </p>
             )}
             {bundleRows.map((r) => (
-              <div key={r.key} className="flex flex-wrap items-center gap-2.5 rounded-md border border-border p-2.5 text-sm">
+              <div key={r.key} className="flex flex-wrap items-center gap-2.5 rounded-lg border border-border/70 bg-surface-2/50 p-3 text-sm">
                 <span className="min-w-0 flex-1">
                   <span className="font-medium">{r.productTitle || "অজানা পণ্য"}</span>
                   <span className="block text-xs text-text-subtle">
@@ -2005,7 +2173,7 @@ export function ProductEditor({
                     {r.unitPricePoisha !== null ? ` • একক দাম ${formatBdt(r.unitPricePoisha)}` : ""}
                   </span>
                 </span>
-                <label className="flex items-center gap-1.5 text-xs">
+                <label className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
                   পরিমাণ
                   <input
                     value={r.quantity}
@@ -2013,7 +2181,7 @@ export function ProductEditor({
                       setBundleRows((prev) => prev.map((p) => (p.key === r.key ? { ...p, quantity: e.target.value } : p)))
                     }
                     inputMode="numeric"
-                    className="w-20 rounded-md border border-border bg-card px-2 py-1.5 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                    className="min-h-[40px] w-20 rounded-md border border-border bg-card px-2.5 py-2 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                   />
                 </label>
                 {r.unitPricePoisha !== null && (
@@ -2024,14 +2192,14 @@ export function ProductEditor({
                 <button
                   type="button"
                   onClick={() => setBundleRows((prev) => prev.filter((p) => p.key !== r.key))}
-                  className="rounded-md border border-border px-2.5 py-1.5 text-xs text-rose-600"
+                  className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                 >
                   মুছুন
                 </button>
               </div>
             ))}
           </div>
-          <p className="mt-3 rounded-md bg-surface-2 px-3 py-2 text-sm text-text-muted">
+          <p className="brand-soft-gradient mt-4 rounded-lg border border-brand-100 px-4 py-3 text-small text-text-muted shadow-sm">
             কম্পোনেন্টগুলোর মোট দাম: <strong className="text-text-main">{formatBdt(bundleKnownTotal)}</strong>
             {"  "}— এই পণ্যের ডিফল্ট দাম: <strong className="text-text-main">{formatBdt(basePricePoisha)}</strong>
             {bundleKnownTotal > 0 && basePricePoisha > 0 && (
@@ -2053,13 +2221,15 @@ export function ProductEditor({
       )}
 
       {tab === "basic" && showTypeUi && productType === "PREORDER" && (
-        <section className="mt-4 rounded-lg border border-border bg-card p-4 shadow-sm">
-          <h3 className="text-sm font-semibold">প্রি-অর্ডার সেটিংস</h3>
-          <p className="mt-1 text-xs leading-relaxed text-text-subtle">
-            সব ঘরই ঐচ্ছিক — যা বসাবেন, স্টোরে প্রি-অর্ডার ব্যাজের পাশাপাশি ঠিক সেটাই দেখাবে (অগ্রিমের নোট ও সম্ভাব্য তারিখ)।
-          </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <label className="block text-sm">
+        <section className="mt-4 rounded-lg border border-sky-200 bg-card p-4 shadow-card sm:p-5">
+          <SectionHeading
+            glyph="clock"
+            chipCls="bg-sky-100 text-sky-600"
+            title="প্রি-অর্ডার সেটিংস"
+            hint="সব ঘরই ঐচ্ছিক — যা বসাবেন, স্টোরে প্রি-অর্ডার ব্যাজের পাশাপাশি ঠিক সেটাই দেখাবে (অগ্রিমের নোট ও সম্ভাব্য তারিখ)।"
+          />
+          <div className="grid gap-4 sm:grid-cols-3">
+            <label className={labelCls}>
               অগ্রিম (%) — বুকিংয়ের সময় যা নেওয়া হবে
               <input
                 value={preorderDeposit}
@@ -2069,7 +2239,7 @@ export function ProductEditor({
                 placeholder="যেমন: 30"
               />
             </label>
-            <label className="block text-sm">
+            <label className={labelCls}>
               সম্ভাব্য ডেলিভারির তারিখ
               <input
                 type="date"
@@ -2078,7 +2248,7 @@ export function ProductEditor({
                 className={inputCls}
               />
             </label>
-            <label className="block text-sm">
+            <label className={labelCls}>
               সর্বোচ্চ প্রি-অর্ডার সংখ্যা (খালি = সীমা নেই)
               <input
                 value={preorderMaxUnits}
@@ -2093,20 +2263,22 @@ export function ProductEditor({
       )}
 
       {tab === "media" && (
-        <div className="mt-4">
-          <p className="text-sm text-text-muted">
-            নিজের ডিভাইস থেকে ছবি আপলোড করুন, অথবা হোস্ট করা ছবির URL বসান — ক্রম অনুযায়ী প্রথম ছবিটাই প্রধান ছবি হিসেবে স্টোরে দেখাবে।
-          </p>
-          <div className="mt-3 rounded-lg border border-border bg-card p-3 shadow-sm">
+        <section className="mt-5 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+          <SectionHeading
+            glyph="image"
+            title="মিডিয়া"
+            hint="নিজের ডিভাইস থেকে ছবি আপলোড করুন, অথবা হোস্ট করা ছবির URL বসান — ক্রম অনুযায়ী প্রথম ছবিটাই প্রধান ছবি হিসেবে স্টোরে দেখাবে।"
+          />
+          <div className="rounded-lg border-2 border-dashed border-brand-200 bg-brand-50/40 p-4 sm:p-5">
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition motion-fast hover:brightness-105"
+                className="inline-flex min-h-[44px] items-center rounded-md bg-brand-600 px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105"
               >
                 ছবি আপলোড করুন
               </button>
-              <span className="text-xs text-text-subtle">
+              <span className="max-w-xl text-xs leading-relaxed text-text-subtle">
                 JPEG, PNG, WebP বা AVIF — প্রতিটি ছবি সর্বোচ্চ 5 MB, একবারে সর্বোচ্চ 10টি। আপলোড শেষ হলে ছবিটি নিচের তালিকায় যোগ হয়ে যাবে; সেভ না করা পর্যন্ত পণ্যে যুক্ত হবে না।
               </span>
               <input
@@ -2153,53 +2325,70 @@ export function ProductEditor({
               </ul>
             )}
           </div>
-          <div className="mt-3 space-y-3">
+          <div className="mt-4 grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
             {imageRows.length === 0 && (
-              <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-text-subtle">
+              <p className="rounded-lg border border-dashed border-brand-200 bg-brand-50/40 px-4 py-8 text-center text-sm text-text-subtle sm:col-span-2 xl:col-span-3">
                 এখনো কোনো ছবি যোগ হয়নি।
               </p>
             )}
             {imageRows.map((img, idx) => (
-              <div key={img.key} className="flex flex-wrap items-start gap-3 rounded-lg border border-border bg-card p-3 shadow-sm">
-                {img.url.trim() !== "" ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={img.url} alt={img.altEn || img.altBn} className="h-16 w-16 shrink-0 rounded-md border border-border object-cover" />
-                ) : (
-                  <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md border border-dashed border-border text-xs text-text-subtle">ছবি নেই</span>
-                )}
-                <div className="grid min-w-[260px] flex-1 gap-2 md:grid-cols-3">
-                  <label className="block text-xs md:col-span-3">
+              <div key={img.key} className="flex flex-col overflow-hidden rounded-lg border border-border/70 bg-card shadow-card">
+                <div className="relative">
+                  {img.url.trim() !== "" ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={img.url} alt={img.altEn || img.altBn} className="aspect-[4/3] w-full object-cover" />
+                  ) : (
+                    <span className="flex aspect-[4/3] w-full items-center justify-center border-b border-dashed border-border bg-surface-2/60 text-xs text-text-subtle">ছবি নেই</span>
+                  )}
+                  {idx === 0 && (
+                    <span className="brand-gradient absolute left-2.5 top-2.5 rounded-full px-2.5 py-1 text-[11px] font-semibold leading-none text-white shadow-md">
+                      প্রধান ছবি
+                    </span>
+                  )}
+                  <span aria-hidden="true" title="ক্রম বদলাতে ↑ ↓ বোতাম ব্যবহার করুন" className="absolute right-2.5 top-2.5 flex h-7 w-7 cursor-grab items-center justify-center rounded-md bg-card/85 text-text-muted shadow-sm backdrop-blur">
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+                      <circle cx="9" cy="5" r="1.6" />
+                      <circle cx="15" cy="5" r="1.6" />
+                      <circle cx="9" cy="12" r="1.6" />
+                      <circle cx="15" cy="12" r="1.6" />
+                      <circle cx="9" cy="19" r="1.6" />
+                      <circle cx="15" cy="19" r="1.6" />
+                    </svg>
+                  </span>
+                </div>
+                <div className="grid flex-1 gap-2.5 p-3">
+                  <label className="block text-xs font-medium text-text-muted">
                     ছবির URL *
                     <input
                       value={img.url}
                       onChange={(e) =>
                         setImageRows((prev) => prev.map((p) => (p.key === img.key ? { ...p, url: e.target.value } : p)))
                       }
-                      className={cellInputCls}
+                      className={`${cellInputCls} mt-1`}
                       placeholder="https://…"
                     />
                   </label>
-                  <label className="block text-xs">
+                  <label className="block text-xs font-medium text-text-muted">
                     Alt text (বাংলা)
                     <input
                       value={img.altBn}
                       onChange={(e) =>
                         setImageRows((prev) => prev.map((p) => (p.key === img.key ? { ...p, altBn: e.target.value } : p)))
                       }
-                      className={cellInputCls}
+                      className={`${cellInputCls} mt-1`}
                     />
                   </label>
-                  <label className="block text-xs">
+                  <label className="block text-xs font-medium text-text-muted">
                     Alt text (English)
                     <input
                       value={img.altEn}
                       onChange={(e) =>
                         setImageRows((prev) => prev.map((p) => (p.key === img.key ? { ...p, altEn: e.target.value } : p)))
                       }
-                      className={cellInputCls}
+                      className={`${cellInputCls} mt-1`}
                     />
                   </label>
-                  <span className="flex items-end gap-1.5 pb-0.5">
+                  <span className="mt-auto flex items-center gap-1.5 border-t border-border/60 pt-2.5">
                     <button
                       type="button"
                       aria-label="ছবি উপরে নিন"
@@ -2211,7 +2400,7 @@ export function ProductEditor({
                           return copy;
                         })
                       }
-                      className="rounded-md border border-border px-2.5 py-1.5 text-sm disabled:opacity-40"
+                      className="inline-flex min-h-[40px] min-w-[44px] items-center justify-center rounded-md border border-border bg-card text-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
                     >
                       ↑
                     </button>
@@ -2226,14 +2415,14 @@ export function ProductEditor({
                           return copy;
                         })
                       }
-                      className="rounded-md border border-border px-2.5 py-1.5 text-sm disabled:opacity-40"
+                      className="inline-flex min-h-[40px] min-w-[44px] items-center justify-center rounded-md border border-border bg-card text-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
                     >
                       ↓
                     </button>
                     <button
                       type="button"
                       onClick={() => setImageRows((prev) => prev.filter((p) => p.key !== img.key))}
-                      className="rounded-md border border-border px-2.5 py-1.5 text-sm text-rose-600"
+                      className="ml-auto inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                     >
                       মুছুন
                     </button>
@@ -2245,34 +2434,36 @@ export function ProductEditor({
           <button
             type="button"
             onClick={() => setImageRows((prev) => [...prev, { key: nextKey(), url: "", altBn: "", altEn: "" }])}
-            className="mt-3 rounded-md border border-border bg-card px-4 py-2 text-sm font-medium transition motion-fast hover:border-brand-300"
+            className="mt-4 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
           >
             + আরেকটি ছবি যোগ করুন
           </button>
-        </div>
+        </section>
       )}
 
       {tab === "variants" && (
-        <div className="mt-4">
-          <div>
-            <span className="block text-sm">
-              অ্যাট্রিবিউট (প্রতি সারিতে একটি key ও তার মানসমূহ — মান কমা দিয়ে আলাদা করুন, যেমন লাল, নীল)
-            </span>
-            <div className="mt-2 space-y-2">
+        <div className="mt-5 space-y-4">
+          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+            <SectionHeading
+              glyph="layers"
+              title="অ্যাট্রিবিউট"
+              hint="প্রতি সারিতে একটি key ও তার মানসমূহ — মান কমা দিয়ে আলাদা করুন, যেমন লাল, নীল।"
+            />
+            <div className="space-y-2.5">
               {attrRows.map((row) => {
                 // Library match is by exact key (trimmed): only then
                 // does the value input get the set's value datalist.
                 const matchedSet = attributeSets.find((s) => s.key === row.name.trim());
                 const valuesListId = `pe-attr-values-${row.rowId}`;
                 return (
-                  <div key={row.rowId} className="flex flex-wrap items-center gap-2">
+                  <div key={row.rowId} className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-surface-2/50 p-2.5">
                     <input
                       value={row.name}
                       onChange={(e) => updateAttrRow(row.rowId, { name: e.target.value })}
                       list={attributeSets.length > 0 ? "pe-attr-keys" : undefined}
                       placeholder="key (যেমন color)"
                       aria-label="অ্যাট্রিবিউট key"
-                      className="w-44 rounded-md border border-border bg-card px-3 py-2 font-mono text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                      className="min-h-[44px] w-44 rounded-md border border-border bg-card px-3 py-2 font-mono text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                     />
                     <input
                       value={row.valuesText}
@@ -2280,7 +2471,7 @@ export function ProductEditor({
                       list={matchedSet ? valuesListId : undefined}
                       placeholder="মানসমূহ (যেমন লাল, নীল)"
                       aria-label="অ্যাট্রিবিউটের মানসমূহ"
-                      className="min-w-[220px] flex-1 rounded-md border border-border bg-card px-3 py-2 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                      className="min-h-[44px] min-w-[220px] flex-1 rounded-md border border-border bg-card px-3 py-2 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                     />
                     {matchedSet ? (
                       <datalist id={valuesListId}>
@@ -2292,12 +2483,12 @@ export function ProductEditor({
                     <button
                       type="button"
                       onClick={() => setAttrRows((prev) => prev.filter((r) => r.rowId !== row.rowId))}
-                      className="rounded-md border border-border px-2.5 py-2 text-sm text-rose-600"
+                      className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3 text-sm font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                     >
                       মুছুন
                     </button>
                     {matchedSet ? (
-                      <span className="w-full text-[11px] text-text-subtle">
+                      <span className="w-full text-[11px] leading-relaxed text-text-subtle">
                         লাইব্রেরি সেট: {matchedSet.labelBn} — এর মানগুলো সাজেশনে আছে; নতুন মান হাতেও লেখা যাবে।
                       </span>
                     ) : null}
@@ -2319,12 +2510,12 @@ export function ProductEditor({
               onClick={() =>
                 setAttrRows((prev) => [...prev, { rowId: nextKey(), name: "", valuesText: "" }])
               }
-              className="mt-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium transition motion-fast hover:border-brand-300"
+              className="mt-3 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
             >
               + আরেকটি অ্যাট্রিবিউট যোগ করুন
             </button>
             {attributeSets.length > 0 ? (
-              <p className="mt-1.5 text-xs leading-relaxed text-text-subtle">
+              <p className="mt-2 text-xs leading-relaxed text-text-subtle">
                 key লিখতে গেলেই{" "}
                 <Link href="/admin/attributes" className="font-medium text-brand-700 hover:underline">
                   অ্যাট্রিবিউট লাইব্রেরির
@@ -2332,28 +2523,28 @@ export function ProductEditor({
                 key সাজেশনে আসবে — লাইব্রেরি শুধু সাহায্যের জন্য, নতুন key বা মান হাতে লিখলেও চলবে।
               </p>
             ) : null}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleGenerate}
-              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition motion-fast hover:brightness-105"
-            >
-              ভেরিয়েন্ট তৈরি / আপডেট করুন
-            </button>
-            <button
-              type="button"
-              onClick={handleAddManualRow}
-              className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium transition motion-fast hover:border-brand-300"
-            >
-              + একটি ভেরিয়েন্ট হাতে যোগ করুন
-            </button>
-          </div>
-          <p className="mt-2 text-xs leading-relaxed text-text-subtle">
-            জেনারেট করলে সব কম্বিনেশনের সারি তৈরি হবে; আগে থেকে থাকা SKU-র সারির দাম/স্টক আগেরটাই থাকবে। নিচের প্রতিটি সারির দাম, compare-at, cost, স্টক, barcode, ছবি আর সক্রিয় অবস্থা আলাদা করে বদলানো যায়।
-            {mode === "edit" && " এডিট মোডে কোনো সারি মুছে সেভ করলে সেই ভেরিয়েন্টটি সফট-ডিলিট হবে (অর্ডার ইতিহাসে রেফারেন্স থাকবে)। স্টক বদলালে পার্থক্যটা stock ledger-এ এন্ট্রি হবে।"}
-          </p>
-          <div className="mt-3 overflow-x-auto rounded-lg border border-border bg-card shadow-card">
+            <div className="mt-4 flex flex-wrap gap-2 border-t border-border/60 pt-4">
+              <button
+                type="button"
+                onClick={handleGenerate}
+                className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105"
+              >
+                ভেরিয়েন্ট তৈরি / আপডেট করুন
+              </button>
+              <button
+                type="button"
+                onClick={handleAddManualRow}
+                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
+              >
+                + একটি ভেরিয়েন্ট হাতে যোগ করুন
+              </button>
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-text-subtle">
+              জেনারেট করলে সব কম্বিনেশনের সারি তৈরি হবে; আগে থেকে থাকা SKU-র সারির দাম/স্টক আগেরটাই থাকবে। নিচের প্রতিটি সারির দাম, compare-at, cost, স্টক, barcode, ছবি আর সক্রিয় অবস্থা আলাদা করে বদলানো যায়।
+              {mode === "edit" && " এডিট মোডে কোনো সারি মুছে সেভ করলে সেই ভেরিয়েন্টটি সফট-ডিলিট হবে (অর্ডার ইতিহাসে রেফারেন্স থাকবে)। স্টক বদলালে পার্থক্যটা stock ledger-এ এন্ট্রি হবে।"}
+            </p>
+          </section>
+          <div className="hidden overflow-x-auto rounded-lg border border-border/70 bg-card shadow-card md:block">
             <table className="w-full min-w-[980px] text-left text-sm">
               <thead>
                 <tr className="bg-surface-2 [&>th]:border-b [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:text-caption [&>th]:font-semibold [&>th]:text-text-muted">
@@ -2371,7 +2562,7 @@ export function ProductEditor({
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.key} className="border-t border-border align-top">
+                  <tr key={r.key} className="border-t border-border align-top transition motion-fast hover:bg-brand-50/40">
                     <td className="px-3 py-2">
                       <input value={r.sku} onChange={(e) => updateRow(r.key, { sku: e.target.value })} className={`${cellInputCls} font-mono text-xs`} />
                       {r.originalSku !== null && r.sku.trim() !== r.originalSku && (
@@ -2416,7 +2607,7 @@ export function ProductEditor({
                       <button
                         type="button"
                         onClick={() => setRows((prev) => prev.filter((p) => p.key !== r.key))}
-                        className="rounded-md border border-border px-2.5 py-1.5 text-xs text-rose-600"
+                        className="inline-flex min-h-[36px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                       >
                         মুছুন
                       </button>
@@ -2425,7 +2616,7 @@ export function ProductEditor({
                 ))}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="px-3 py-6 text-center text-sm text-text-subtle">
+                    <td colSpan={10} className="px-3 py-8 text-center text-sm text-text-subtle">
                       কোনো ভেরিয়েন্ট নেই — উপরের বোতামে জেনারেট করুন বা হাতে যোগ করুন।
                     </td>
                   </tr>
@@ -2433,50 +2624,135 @@ export function ProductEditor({
               </tbody>
             </table>
           </div>
+
+          {/* Mobile: the same variant rows as stacked cards (the wide
+           *  table above is desktop-only) — identical fields/handlers. */}
+          <div className="space-y-3 md:hidden">
+            {rows.length === 0 && (
+              <p className="rounded-lg border border-dashed border-border bg-card px-4 py-8 text-center text-sm text-text-subtle shadow-card">
+                কোনো ভেরিয়েন্ট নেই — উপরের বোতামে জেনারেট করুন বা হাতে যোগ করুন।
+              </p>
+            )}
+            {rows.map((r) => (
+              <article key={r.key} className="rounded-lg border border-border/70 bg-card p-3.5 shadow-card">
+                <div className="flex items-start gap-3">
+                  <label className="block min-w-0 flex-1 text-xs font-medium text-text-muted">
+                    SKU *
+                    <input value={r.sku} onChange={(e) => updateRow(r.key, { sku: e.target.value })} className={`${cellInputCls} mt-1 font-mono text-xs`} />
+                  </label>
+                  <label className="flex shrink-0 cursor-pointer items-center gap-2 pt-5 text-xs font-medium text-text-muted">
+                    <input
+                      type="checkbox"
+                      checked={r.isActive}
+                      onChange={(e) => updateRow(r.key, { isActive: e.target.checked })}
+                      aria-label={`SKU ${r.sku || "নতুন"} সক্রিয়`}
+                      className="h-5 w-5 accent-brand-600"
+                    />
+                    সক্রিয়
+                  </label>
+                </div>
+                {r.originalSku !== null && r.sku.trim() !== r.originalSku && (
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-amber-600">SKU বদলালে এটি নতুন ভেরিয়েন্ট হিসেবে তৈরি হবে, পুরনোটি সফট-ডিলিট হবে।</p>
+                )}
+                <p className="mt-2 rounded-md bg-surface-2 px-2.5 py-1.5 text-xs leading-relaxed text-text-muted">
+                  <span className="font-semibold text-text-main">অ্যাট্রিবিউট:</span>{" "}
+                  {Object.entries(r.attributes).map(([k, v]) => `${k}: ${v}`).join(", ") || "—"}
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2.5">
+                  <label className="block text-xs font-medium text-text-muted">
+                    দাম (৳) *
+                    <input value={r.priceTaka} onChange={(e) => updateRow(r.key, { priceTaka: e.target.value })} inputMode="decimal" className={`${cellInputCls} mt-1`} />
+                    <span className="mt-1 block text-[11px] text-text-subtle">{formatBdt(takaToPoisha(r.priceTaka) ?? 0)}</span>
+                  </label>
+                  <label className="block text-xs font-medium text-text-muted">
+                    Compare-at (৳)
+                    <input value={r.compareAtTaka} onChange={(e) => updateRow(r.key, { compareAtTaka: e.target.value })} inputMode="decimal" className={`${cellInputCls} mt-1`} />
+                  </label>
+                  <label className="block text-xs font-medium text-text-muted">
+                    Cost (৳)
+                    <input value={r.costTaka} onChange={(e) => updateRow(r.key, { costTaka: e.target.value })} inputMode="decimal" className={`${cellInputCls} mt-1`} />
+                  </label>
+                  <label className="block text-xs font-medium text-text-muted">
+                    স্টক
+                    <input value={r.stock} onChange={(e) => updateRow(r.key, { stock: e.target.value })} inputMode="numeric" className={`${cellInputCls} mt-1`} />
+                    {r.originalStock !== null && Number(r.stock) !== r.originalStock && (
+                      <span className="mt-1 block text-[11px] text-text-subtle">আগের স্টক: {r.originalStock}</span>
+                    )}
+                  </label>
+                  <label className="block text-xs font-medium text-text-muted">
+                    Barcode
+                    <input value={r.barcode} onChange={(e) => updateRow(r.key, { barcode: e.target.value })} className={`${cellInputCls} mt-1 font-mono text-xs`} />
+                  </label>
+                  <label className="block text-xs font-medium text-text-muted">
+                    ছবির URL
+                    <input value={r.imageUrl} onChange={(e) => updateRow(r.key, { imageUrl: e.target.value })} className={`${cellInputCls} mt-1`} placeholder="https://…" />
+                  </label>
+                </div>
+                <div className="mt-3 flex justify-end border-t border-border/60 pt-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setRows((prev) => prev.filter((p) => p.key !== r.key))}
+                    className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
+                  >
+                    মুছুন
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
         </div>
       )}
 
       {tab === "content" && (
-        <div className="mt-4 grid gap-4">
-          <label className="block text-sm">
-            প্রোডাক্ট ভিডিওর URL (YouTube বা সরাসরি ভিডিও ফাইল — না থাকলে খালি রাখুন)
-            <input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} className={inputCls} placeholder="https://…" />
-          </label>
+        <div className="mt-5 grid gap-4">
+          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+            <label className={labelCls}>
+              প্রোডাক্ট ভিডিওর URL (YouTube বা সরাসরি ভিডিও ফাইল — না থাকলে খালি রাখুন)
+              <input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} className={inputCls} placeholder="https://…" />
+            </label>
+          </section>
 
-          <DescriptionField
-            label="বিবরণ (বাংলা) *"
-            value={descriptionBn}
-            onChange={setDescriptionBn}
-            placeholder="পণ্যের বাংলা বিবরণ"
-          />
-          <DescriptionField
-            label="Description (English) *"
-            value={descriptionEn}
-            onChange={setDescriptionEn}
-            placeholder="Product description in English"
-          />
+          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+            <DescriptionField
+              label="বিবরণ (বাংলা) *"
+              value={descriptionBn}
+              onChange={setDescriptionBn}
+              placeholder="পণ্যের বাংলা বিবরণ"
+            />
+          </section>
+          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+            <DescriptionField
+              label="Description (English) *"
+              value={descriptionEn}
+              onChange={setDescriptionEn}
+              placeholder="Product description in English"
+            />
+          </section>
 
-          <div className="rounded-lg border border-border bg-card p-3 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold">সাইজ চার্ট</h3>
-              {sizeChart.headers.length === 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setSizeChart({ headers: ["সাইজ", "মাপ"], rows: [["", ""]] })}
-                  className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium transition motion-fast hover:border-brand-300"
-                >
-                  + সাইজ চার্ট যোগ করুন
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setSizeChart({ headers: [], rows: [] })}
-                  className="rounded-md border border-border px-3 py-1.5 text-sm text-rose-600"
-                >
-                  সাইজ চার্ট সরিয়ে ফেলুন
-                </button>
-              )}
-            </div>
+          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+            <SectionHeading
+              glyph="file"
+              title="সাইজ চার্ট"
+              action={
+                sizeChart.headers.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setSizeChart({ headers: ["সাইজ", "মাপ"], rows: [["", ""]] })}
+                    className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
+                  >
+                    + সাইজ চার্ট যোগ করুন
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setSizeChart({ headers: [], rows: [] })}
+                    className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
+                  >
+                    সাইজ চার্ট সরিয়ে ফেলুন
+                  </button>
+                )
+              }
+            />
             {sizeChart.headers.length > 0 && (
               <div className="mt-3">
                 <div className="overflow-x-auto">
@@ -2507,7 +2783,7 @@ export function ProductEditor({
                                     rows: prev.rows.map((r) => r.filter((_, j) => j !== ci)),
                                   }))
                                 }
-                                className="shrink-0 rounded-md border border-border px-2 py-1.5 text-xs text-rose-600 disabled:opacity-40"
+                                className="inline-flex min-h-[40px] min-w-[40px] shrink-0 items-center justify-center rounded-md border border-border bg-card text-xs text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50 disabled:opacity-40"
                                 aria-label={`কলাম ${ci + 1} মুছুন`}
                               >
                                 ✕
@@ -2524,7 +2800,7 @@ export function ProductEditor({
                                 rows: prev.rows.map((r) => [...r, ""]),
                               }))
                             }
-                            className="whitespace-nowrap rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium"
+                            className="inline-flex min-h-[40px] items-center whitespace-nowrap rounded-md border border-border bg-card px-3 text-xs font-semibold shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
                           >
                             + কলাম
                           </button>
@@ -2557,7 +2833,7 @@ export function ProductEditor({
                               onClick={() =>
                                 setSizeChart((prev) => ({ ...prev, rows: prev.rows.filter((_, i) => i !== ri) }))
                               }
-                              className="whitespace-nowrap rounded-md border border-border px-2.5 py-1.5 text-xs text-rose-600"
+                              className="inline-flex min-h-[40px] items-center whitespace-nowrap rounded-md border border-border bg-card px-3 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                             >
                               সারি মুছুন
                             </button>
@@ -2572,41 +2848,41 @@ export function ProductEditor({
                   onClick={() =>
                     setSizeChart((prev) => ({ ...prev, rows: [...prev.rows, prev.headers.map(() => "")] }))
                   }
-                  className="mt-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium transition motion-fast hover:border-brand-300"
+                  className="mt-3 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
                 >
                   + সারি যোগ করুন
                 </button>
               </div>
             )}
-          </div>
+          </section>
 
-          <div className="rounded-lg border border-border bg-card p-3 shadow-sm">
-            <h3 className="text-sm font-semibold">সাধারণ প্রশ্নোত্তর (FAQ)</h3>
-            <div className="mt-3 space-y-3">
+          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+            <SectionHeading glyph="check" title="সাধারণ প্রশ্নোত্তর (FAQ)" />
+            <div className="space-y-3">
               {faqRows.length === 0 && (
-                <p className="text-sm text-text-subtle">এখনো কোনো প্রশ্নোত্তর যোগ হয়নি।</p>
+                <p className="rounded-lg border border-dashed border-border px-4 py-5 text-center text-sm text-text-subtle">এখনো কোনো প্রশ্নোত্তর যোগ হয়নি।</p>
               )}
               {faqRows.map((row, ri) => (
-                <div key={ri} className="grid gap-2 rounded-md border border-border p-2.5 md:grid-cols-[1fr_1fr_auto]">
-                  <label className="block text-xs">
+                <div key={ri} className="grid gap-2.5 rounded-lg border border-border/60 bg-surface-2/50 p-3 md:grid-cols-[1fr_1fr_auto]">
+                  <label className="block text-xs font-medium text-text-muted">
                     প্রশ্ন
                     <input
                       value={row.q}
                       onChange={(e) =>
                         setFaqRows((prev) => prev.map((r, i) => (i === ri ? { ...r, q: e.target.value } : r)))
                       }
-                      className={cellInputCls}
+                      className={`${cellInputCls} mt-1 bg-card`}
                       placeholder="যেমন: ডেলিভারি পেতে কত দিন লাগবে?"
                     />
                   </label>
-                  <label className="block text-xs">
+                  <label className="block text-xs font-medium text-text-muted">
                     উত্তর
                     <input
                       value={row.a}
                       onChange={(e) =>
                         setFaqRows((prev) => prev.map((r, i) => (i === ri ? { ...r, a: e.target.value } : r)))
                       }
-                      className={cellInputCls}
+                      className={`${cellInputCls} mt-1 bg-card`}
                       placeholder="উত্তর লিখুন"
                     />
                   </label>
@@ -2614,7 +2890,7 @@ export function ProductEditor({
                     <button
                       type="button"
                       onClick={() => setFaqRows((prev) => prev.filter((_, i) => i !== ri))}
-                      className="rounded-md border border-border px-2.5 py-1.5 text-xs text-rose-600"
+                      className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                     >
                       মুছুন
                     </button>
@@ -2625,41 +2901,43 @@ export function ProductEditor({
             <button
               type="button"
               onClick={() => setFaqRows((prev) => [...prev, { q: "", a: "" }])}
-              className="mt-3 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium transition motion-fast hover:border-brand-300"
+              className="mt-3.5 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
             >
               + প্রশ্নোত্তর যোগ করুন
             </button>
-          </div>
+          </section>
         </div>
       )}
 
       {tab === "seo" && (
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <label className="block text-sm">
+        <section className="mt-5 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+          <SectionHeading glyph="search" title="SEO" />
+          <div className="grid gap-4 md:grid-cols-2">
+          <label className={labelCls}>
             SEO টাইটেল (বাংলা)
             <input value={seoTitleBn} onChange={(e) => setSeoTitleBn(e.target.value)} className={inputCls} placeholder="খালি রাখলে পণ্যের টাইটেলই যাবে" />
           </label>
-          <label className="block text-sm">
+          <label className={labelCls}>
             SEO Title (English)
             <input value={seoTitleEn} onChange={(e) => setSeoTitleEn(e.target.value)} className={inputCls} placeholder="Empty = product title is used" />
           </label>
-          <label className="block text-sm">
+          <label className={labelCls}>
             SEO বিবরণ (বাংলা)
             <textarea value={seoDescriptionBn} onChange={(e) => setSeoDescriptionBn(e.target.value)} rows={3} className={inputCls} />
           </label>
-          <label className="block text-sm">
+          <label className={labelCls}>
             SEO Description (English)
             <textarea value={seoDescriptionEn} onChange={(e) => setSeoDescriptionEn(e.target.value)} rows={3} className={inputCls} />
           </label>
           <div className="md:col-span-2">
-            <label className="block text-sm">
+            <label className={labelCls}>
               OG ছবি (সোশ্যাল মিডিয়ায় শেয়ার করলে যে ছবি দেখাবে)
               <input value={ogImage} onChange={(e) => setOgImage(e.target.value)} className={inputCls} placeholder="https://…" />
             </label>
-            <div className="mt-2 flex flex-wrap items-center gap-3">
+            <div className="mt-2.5 flex flex-wrap items-center gap-3 rounded-lg border border-border/60 bg-surface-2/50 p-3">
               {ogImage.trim() !== "" && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={ogImage} alt="" className="h-16 w-28 shrink-0 rounded-md border border-border object-cover" />
+                <img src={ogImage} alt="" className="aspect-[1.91/1] w-32 shrink-0 rounded-md border border-border object-cover shadow-sm" />
               )}
               <button
                 type="button"
@@ -2668,20 +2946,36 @@ export function ProductEditor({
                   const first = imageRows.find((i) => i.url.trim() !== "");
                   if (first) setOgImage(first.url.trim());
                 }}
-                className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium transition motion-fast hover:border-brand-300 disabled:opacity-40"
+                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
               >
                 প্রথম গ্যালারি ছবি ব্যবহার করুন
               </button>
-              <span className="text-xs text-text-subtle">খালি রাখলে শেয়ারিংয়ে প্রথম গ্যালারি ছবিটাই যাবে। মিডিয়া ট্যাব থেকে আপলোড করা ছবির URL-ও এখানে বসানো যাবে।</span>
+              <span className="max-w-md text-xs leading-relaxed text-text-subtle">খালি রাখলে শেয়ারিংয়ে প্রথম গ্যালারি ছবিটাই যাবে। মিডিয়া ট্যাব থেকে আপলোড করা ছবির URL-ও এখানে বসানো যাবে।</span>
             </div>
           </div>
           <p className="text-sm text-text-muted md:col-span-2">
-            স্টোরের ঠিকানা: <span className="font-mono">/product/{slug || "…"}</span> — এই slug দিয়েই সার্চ ইঞ্জিনে পণ্যটি আসবে।
+            স্টোরের ঠিকানা: <span className="rounded-md bg-surface-2 px-2 py-0.5 font-mono text-[13px] text-brand-700">/product/{slug || "…"}</span> — এই slug দিয়েই সার্চ ইঞ্জিনে পণ্যটি আসবে।
           </p>
-        </div>
+          </div>
+
+          {/* Presentational search-result preview — reads the same
+           *  state the fields above edit, nothing new is stored. */}
+          <div className="mt-5 rounded-lg border border-border/70 bg-surface-2/50 p-4">
+            <p className="text-caption font-semibold uppercase tracking-wide text-text-subtle">সার্চ প্রিভিউ</p>
+            <div className="mt-2.5 max-w-xl rounded-lg border border-border/60 bg-card px-4 py-3 shadow-sm">
+              <p className="truncate font-mono text-xs text-text-muted">/product/{slug || "…"}</p>
+              <p className="mt-1 truncate text-base font-medium text-brand-700">{seoTitleBn || titleBn || "পণ্যের টাইটেল"}</p>
+              <p className="mt-0.5 line-clamp-2 text-small leading-relaxed text-text-muted">
+                {seoDescriptionBn || descriptionBn || "বিবরণ এখানে দেখাবে…"}
+              </p>
+            </div>
+          </div>
+        </section>
       )}
 
-      <div className="mt-6 rounded-lg border border-border bg-card p-4 shadow-card">
+      {/* Sticky action bar — save/publish stay reachable however far
+       *  the form is scrolled, on phone and desktop alike. */}
+      <div className="sticky bottom-3 z-20 mt-6 rounded-lg border border-border/70 bg-card/95 p-4 shadow-lift backdrop-blur">
         {priceChanged && (
           <label className="mb-3 block text-sm">
             দাম বদলের কারণ * <span className="text-text-subtle">(এক বা একাধিক পুরনো ভেরিয়েন্টের দাম বদলেছে — কারণটি অডিট লগে থাকবে)</span>
@@ -2694,33 +2988,51 @@ export function ProductEditor({
             />
           </label>
         )}
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={saveStatus === "saving"}
-            className="rounded-md bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition motion-fast hover:brightness-105 disabled:opacity-50"
-          >
-            {saveStatus === "saving" ? "সেভ হচ্ছে…" : mode === "create" ? "পণ্য তৈরি করুন" : "পরিবর্তন সেভ করুন"}
-          </button>
-          {status === "DRAFT" && (
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-xs font-semibold text-text-muted ring-1 ring-inset ring-black/5">
+            স্ট্যাটাস: <span className="font-mono">{status}</span>
+            {showTypeUi && (
+              <>
+                <span aria-hidden="true" className="text-text-subtle">•</span>
+                <span className="font-mono">{productType}</span>
+              </>
+            )}
+          </span>
+          <span className="flex flex-wrap gap-2 sm:ml-auto">
             <button
               type="button"
-              onClick={() => void handleSave("ACTIVE")}
+              onClick={() => void handleSave()}
               disabled={saveStatus === "saving"}
-              className="rounded-md bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition motion-fast hover:brightness-105 disabled:opacity-50"
+              className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
             >
-              প্রকাশ করুন (সেভ করে Active)
+              {saveStatus === "saving" ? "সেভ হচ্ছে…" : mode === "create" ? "পণ্য তৈরি করুন" : "পরিবর্তন সেভ করুন"}
             </button>
-          )}
+            {status === "DRAFT" && (
+              <button
+                type="button"
+                onClick={() => void handleSave("ACTIVE")}
+                disabled={saveStatus === "saving"}
+                className="inline-flex min-h-[44px] items-center rounded-md bg-emerald-600 px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
+              >
+                প্রকাশ করুন (সেভ করে Active)
+              </button>
+            )}
+          </span>
         </div>
         {saveMessage && (
-          <p role="status" className={`mt-3 text-sm ${saveStatus === "error" ? "text-rose-600" : "text-emerald-700"}`}>
+          <p
+            role="status"
+            className={`anim-fade-in mt-3 rounded-md border px-3.5 py-2.5 text-sm font-medium ${
+              saveStatus === "error"
+                ? "border-rose-200 bg-rose-50 text-rose-700"
+                : "border-emerald-200 bg-emerald-50 text-emerald-800"
+            }`}
+          >
             {saveMessage}
           </p>
         )}
         {saveErrors.length > 0 && (
-          <ul className="mt-2 list-inside list-disc text-sm text-rose-600">
+          <ul className="mt-2.5 list-inside list-disc rounded-md border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-700">
             {saveErrors.map((e, i) => (
               <li key={`${e}-${i}`}>{e}</li>
             ))}
@@ -2728,14 +3040,41 @@ export function ProductEditor({
         )}
       </div>
 
-      <div className="mt-6 rounded-lg border border-border bg-card p-4 shadow-card">
-        <h2 className="font-semibold">Product quality checklist</h2>
-        <ul className="mt-2 space-y-1 text-sm">
-          {QUALITY_CHECKLIST.map((item) => (
-            <li key={item.key}>
-              {qualityDone[item.key] ? "✅" : "⬜"} {item.label}
-            </li>
-          ))}
+      <div className="mt-4 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-display text-base font-semibold text-text-main">Product quality checklist</h2>
+          <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold tabular-nums text-brand-700">
+            {QUALITY_CHECKLIST.filter((item) => qualityDone[item.key]).length}/{QUALITY_CHECKLIST.length}
+          </span>
+        </div>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuemin={0} aria-valuemax={QUALITY_CHECKLIST.length} aria-valuenow={QUALITY_CHECKLIST.filter((item) => qualityDone[item.key]).length}>
+          <div
+            className="brand-gradient h-full rounded-full transition-all motion-base"
+            style={{ width: `${(QUALITY_CHECKLIST.filter((item) => qualityDone[item.key]).length / QUALITY_CHECKLIST.length) * 100}%` }}
+          />
+        </div>
+        <ul className="mt-3.5 grid gap-2 sm:grid-cols-2">
+          {QUALITY_CHECKLIST.map((item) => {
+            const done = qualityDone[item.key];
+            return (
+              <li
+                key={item.key}
+                className={`flex items-center gap-2.5 rounded-md border px-3 py-2.5 text-sm ${
+                  done ? "border-emerald-100 bg-emerald-50/60 text-text-main" : "border-border/60 bg-surface-2/40 text-text-muted"
+                }`}
+              >
+                {done ? (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-5 w-5 shrink-0 text-emerald-600">
+                    <circle cx="12" cy="12" r="9" fill="currentColor" stroke="none" opacity="0.15" />
+                    {GLYPHS.check}
+                  </svg>
+                ) : (
+                  <span aria-hidden="true" className="h-5 w-5 shrink-0 rounded-full border-2 border-border bg-card" />
+                )}
+                {item.label}
+              </li>
+            );
+          })}
         </ul>
       </div>
     </div>

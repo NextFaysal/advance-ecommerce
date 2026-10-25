@@ -13,11 +13,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import { Icon } from "@/components/ui/icon";
 import { takaStringToPoisha } from "@/catalog/import";
 
 const inputCls =
-  "w-full rounded-md border border-border bg-card px-3 py-2 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
-const labelCls = "mb-1 block text-xs font-medium text-text-muted";
+  "min-h-[44px] w-full rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-sm outline-none transition motion-fast focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100";
+const labelCls = "mb-1.5 block text-xs font-semibold text-text-muted";
 
 interface PreviewData {
   sourceUrl: string;
@@ -179,58 +180,93 @@ export function SourcingPanel() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-4">
-        <label className={labelCls} htmlFor="src-url">
+      <Card className="overflow-hidden">
+        <div className="brand-gradient -mx-5 -mt-5 mb-5 h-1.5" aria-hidden="true" />
+        <div className="flex items-center gap-3">
+          <span aria-hidden="true" className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
+            <Icon name="store" size={20} />
+          </span>
+          <div className="min-w-0">
+            <h2 className="font-display text-base font-semibold text-text-main">লিংক থেকে পণ্য আনুন</h2>
+            <p className="text-xs text-text-subtle">AliExpress / 1688 / Alibaba বা যেকোনো শপের পণ্যের লিংক দিন</p>
+          </div>
+        </div>
+        <label className={`${labelCls} mt-4`} htmlFor="src-url">
           পণ্যের লিংক (AliExpress / 1688 / Alibaba বা যেকোনো শপ)
         </label>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-2 min-[560px]:flex-row">
           <input
             id="src-url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://www.aliexpress.com/item/…"
-            className={`${inputCls} min-w-64 flex-1 font-mono`}
+            className={`${inputCls} flex-1 font-mono`}
             inputMode="url"
           />
           <button
             type="button"
             onClick={runPreview}
             disabled={loading}
-            className="min-h-[44px] rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-50"
+            className="brand-gradient inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105 disabled:opacity-50"
           >
+            <Icon name="search" size={16} />
             {loading ? "আনা হচ্ছে…" : "প্রিভিউ আনুন"}
           </button>
         </div>
-        <p className="mt-2 text-xs leading-relaxed text-text-subtle">
-          সার্ভার পেজটি পড়ে নাম, ছবি ও দাম খুঁজে বের করে। অনেক মার্কেটপ্লেস স্বয়ংক্রিয় অ্যাক্সেস আটকায় —
-          সেক্ষেত্রে কারণসহ বার্তা দেখাবে, ভুয়া তথ্য বসানো হবে না।
+        <p className="mt-3 flex gap-2 text-xs leading-relaxed text-text-subtle">
+          <Icon name="info" size={14} className="mt-0.5 shrink-0" />
+          <span>
+            সার্ভার পেজটি পড়ে নাম, ছবি ও দাম খুঁজে বের করে। অনেক মার্কেটপ্লেস স্বয়ংক্রিয় অ্যাক্সেস আটকায় —
+            সেক্ষেত্রে কারণসহ বার্তা দেখাবে, ভুয়া তথ্য বসানো হবে না।
+          </span>
         </p>
       </Card>
 
       {error ? (
-        <p role="alert" className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
-          {error}
-        </p>
+        <div role="alert" className="anim-pop-in flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3.5 text-sm text-rose-800 shadow-card">
+          <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
+            <Icon name="alert" size={16} />
+          </span>
+          <p className="leading-relaxed">{error}</p>
+        </div>
       ) : null}
 
       {created ? (
-        <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          ✅ ড্রাফট পণ্য তৈরি হয়েছে: <span className="font-mono">{created.slug}</span> —{" "}
-          <Link href={`/admin/products/${created.id}`} className="font-medium underline">
-            এডিটরে খুলে যাচাই করে পাবলিশ করুন
-          </Link>
-        </p>
+        <div role="status" className="anim-pop-in flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-sm text-emerald-900 shadow-card">
+          <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+            <Icon name="check" size={16} />
+          </span>
+          <p className="leading-relaxed">
+            ড্রাফট পণ্য তৈরি হয়েছে: <span className="font-mono">{created.slug}</span> —{" "}
+            <Link href={`/admin/products/${created.id}`} className="font-medium underline">
+              এডিটরে খুলে যাচাই করে পাবলিশ করুন
+            </Link>
+          </p>
+        </div>
       ) : null}
 
       {preview ? (
-        <Card className="space-y-4 p-4">
-          <div>
-            <h2 className="font-display text-base font-semibold">প্রিভিউ — যাচাই করে ঠিক করুন</h2>
-            <p className="mt-0.5 break-all text-xs text-text-subtle">
-              উৎস: <span className="font-mono">{preview.finalUrl}</span> · যেভাবে পাওয়া গেছে:{" "}
-              {preview.strategies.join(", ") || "—"}
+        <Card className="overflow-hidden">
+          <div className="-mx-5 -mt-5 mb-5 border-b border-border bg-surface-2/70 px-5 py-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-display text-base font-semibold text-text-main">প্রিভিউ — যাচাই করে ঠিক করুন</h2>
+              <span className="inline-flex h-6 items-center rounded-full bg-amber-50 px-2.5 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-200">
+                DRAFT হিসেবে তৈরি হবে
+              </span>
+            </div>
+            <p className="mt-1.5 break-all text-xs leading-relaxed text-text-subtle">
+              উৎস: <span className="font-mono">{preview.finalUrl}</span>
             </p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-text-subtle">যেভাবে পাওয়া গেছে:</span>
+              {(preview.strategies.length > 0 ? preview.strategies : ["—"]).map((s) => (
+                <span key={s} className="inline-flex h-6 items-center rounded-full bg-brand-50 px-2.5 font-mono text-xs text-brand-700 ring-1 ring-inset ring-brand-100">
+                  {s}
+                </span>
+              ))}
+            </div>
           </div>
+          <div className="space-y-5">
 
           <div className="grid gap-3 md:grid-cols-2">
             <div>
@@ -265,7 +301,7 @@ export function SourcingPanel() {
             {preview.images.length === 0 ? (
               <p className="text-sm text-text-subtle">এই পেজে কোনো ছবি পাওয়া যায়নি — পণ্য ছবি ছাড়াই তৈরি হবে, পরে এডিটরে যোগ করতে পারবেন।</p>
             ) : (
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
                 {preview.images.map((img) => {
                   const picked = pickedImages.has(img);
                   return (
@@ -274,12 +310,23 @@ export function SourcingPanel() {
                       type="button"
                       onClick={() => toggleImage(img)}
                       aria-pressed={picked}
-                      className={`relative overflow-hidden rounded-lg border-2 ${picked ? "border-brand-500" : "border-border opacity-50"}`}
+                      className={`relative min-h-[44px] overflow-hidden rounded-xl border-2 transition motion-fast ${
+                        picked
+                          ? "border-brand-500 opacity-100 ring-2 ring-brand-200"
+                          : "border-border opacity-55 hover:opacity-90"
+                      }`}
                     >
                       {/* Remote marketplace thumbnails — plain img is intentional (unknown hosts, no next/image config). */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={img} alt="" className="aspect-square w-full object-cover" loading="lazy" />
-                      <span className="absolute right-1 top-1 rounded bg-black/60 px-1 text-xs text-white">{picked ? "✓" : "—"}</span>
+                      <span
+                        aria-hidden="true"
+                        className={`absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full text-white shadow ${
+                          picked ? "brand-gradient" : "bg-black/50"
+                        }`}
+                      >
+                        <Icon name={picked ? "check" : "minus"} size={13} />
+                      </span>
                     </button>
                   );
                 })}
@@ -290,7 +337,7 @@ export function SourcingPanel() {
           <div className="grid gap-3 md:grid-cols-3">
             <div>
               <span className={labelCls}>পেজে শনাক্ত দাম</span>
-              <p className="rounded-md border border-dashed border-border bg-surface-2 px-3 py-2 text-sm">
+              <p className="flex min-h-[44px] items-center rounded-lg border border-brand-100 bg-brand-50/60 px-3 py-2 font-mono text-base font-semibold text-brand-800">
                 {preview.priceAmount
                   ? `${preview.priceAmount} ${preview.priceCurrency ?? ""}`.trim()
                   : "দাম পাওয়া যায়নি — নিজে লিখুন"}
@@ -360,15 +407,19 @@ export function SourcingPanel() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={runCreate}
-            disabled={creating || titleBn.trim() === ""}
-            className="min-h-[44px] rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
-          >
-            {creating ? "তৈরি হচ্ছে…" : "ড্রাফট পণ্য তৈরি করুন"}
-          </button>
-          <p className="text-xs text-text-subtle">পণ্যটি DRAFT হিসেবে তৈরি হবে — এডিটরে যাচাই না করে কখনো সরাসরি পাবলিশ হয় না।</p>
+          <div className="sticky bottom-3 z-10 flex flex-col gap-2 rounded-xl border border-border bg-card/95 p-3 shadow-lift backdrop-blur sm:flex-row sm:items-center">
+            <button
+              type="button"
+              onClick={runCreate}
+              disabled={creating || titleBn.trim() === ""}
+              className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2 text-sm font-semibold text-white shadow-md transition motion-fast hover:bg-emerald-700 hover:shadow-lift disabled:opacity-50"
+            >
+              <Icon name="plus" size={16} />
+              {creating ? "তৈরি হচ্ছে…" : "ড্রাফট পণ্য তৈরি করুন"}
+            </button>
+            <p className="text-xs leading-relaxed text-text-subtle">পণ্যটি DRAFT হিসেবে তৈরি হবে — এডিটরে যাচাই না করে কখনো সরাসরি পাবলিশ হয় না।</p>
+          </div>
+          </div>
         </Card>
       ) : null}
     </div>
