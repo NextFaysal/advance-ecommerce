@@ -7,9 +7,13 @@
  *
  * HONESTY RULE: status "received" means the message was stored in the
  * support inbox — NO email or SMS is sent by this endpoint, and the
- * response never claims one was. Persistence is the in-memory demo
- * store in src/contact/store.ts (labelled in meta); the DB swap keeps
- * this contract.
+ * response never claims one was. Persistence is the ContactMessage
+ * table via src/contact/store-db.ts (meta persistence: "database");
+ * the stored record's lifecycle status starts at "NEW" — "received"
+ * is the public acknowledgement of storage, not the stored value.
+ * While the ContactMessage delegate is unavailable (model landing),
+ * the endpoint answers an honest 503 and stores NOTHING — it never
+ * falls back to an in-memory store.
  *
  * HONEYPOT: if the hidden field arrives filled, the endpoint returns
  * the same 201 shape with an unstored reference id, stores nothing,
@@ -19,7 +23,12 @@
 import { NextResponse } from "next/server";
 import { contactSubmissionSchema } from "@/contact/schema";
 import { contactRateLimiter, contactRateLimitKey, isHoneypotTripped } from "@/contact/policy";
-import { noteHoneypotDrop, recordContactSubmission, unstoredReferenceId } from "@/contact/store";
+import { noteHoneypotDrop, unstoredReferenceId } from "@/contact/store";
+import {
+  ContactStoreUnavailableError,
+  createContactMessage,
+  type ContactMessageRecord,
+} from "@/contact/store-db";
 
 export async function POST(req: Request) {
   const rawBody: unknown = await req.json().catch(() => null);
@@ -63,23 +72,40 @@ export async function POST(req: Request) {
     );
   }
 
-  const record = recordContactSubmission(
-    {
+  let record: ContactMessageRecord;
+  try {
+    record = await createContactMessage({
       name: body.name,
       phone: body.phone,
       email: body.email,
       subject: body.subject,
       message: body.message,
-    },
-    ip,
-  );
+    });
+  } catch (e) {
+    if (e instanceof ContactStoreUnavailableError) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "CONTACT_NOT_READY",
+            message: "দুঃখিত — এই মুহূর্তে বার্তা পাঠানো যাচ্ছে না, পরে আবার চেষ্টা করুন।",
+          },
+          meta: { persistence: "unavailable", reason: "model-pending" },
+        },
+        { status: 503 },
+      );
+    }
+    return NextResponse.json(
+      { error: { code: "DB_NOT_READY", message: "সার্ভারে সমস্যা হয়েছে — আবার চেষ্টা করুন।" } },
+      { status: 503 },
+    );
+  }
 
   return NextResponse.json(
     {
-      data: { id: record.id, status: record.status },
+      data: { id: record.id, status: "received" },
       meta: {
-        source: "in-memory-demo",
-        note: "Stored in the demo support inbox. No email or SMS is sent by this endpoint.",
+        persistence: "database",
+        note: "Stored in the support inbox database. No email or SMS is sent by this endpoint.",
       },
     },
     { status: 201 },

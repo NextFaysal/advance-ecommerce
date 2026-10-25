@@ -21,10 +21,10 @@ import type { VendorPayoutSummary } from "@/vendors/types";
 // with the real summarizePayout() — commission in basis points,
 // floored to whole poisha; refunds reduce the payout and it never
 // goes below zero. Phones masked via <Phone>.
-// Known data limit (stated on the page too): the Vendor table stores
-// one `name` (the shop name) — ownerName is accepted by the create
-// API but is NOT persisted separately, so it reads back empty and the
-// table shows "—" instead of inventing a name.
+// ownerName persists on Vendor.ownerName (reviews_and_small_fixes
+// migration, 2026-10-25) and reads back through the store; vendors
+// created before that column existed still show "—" (no name was
+// ever stored for them — the page never invents one).
 export const dynamic = "force-dynamic";
 
 const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "neutral"> = {
@@ -162,7 +162,7 @@ export default async function AdminVendorsPage() {
         </div>
       ) : (
         <DataTable
-          caption="ভেন্ডর — শুধু ACTIVE ভেন্ডরের APPROVED পণ্যই স্টোরফ্রন্টে বিক্রি হয় (isSellable নিয়ম)। মালিকের নাম DB-তে আলাদা করে সংরক্ষিত হয় না, তাই না থাকলে '—' দেখানো হয়।"
+          caption="ভেন্ডর — শুধু ACTIVE ভেন্ডরের APPROVED পণ্যই স্টোরফ্রন্টে বিক্রি হয় (isSellable নিয়ম)। মালিকের নাম এখন DB-তে সংরক্ষিত হয়; পুরনো ভেন্ডরদের ক্ষেত্রে নাম কখনো সংরক্ষিত হয়নি, তাই '—' দেখানো হয়।"
           columns={[
             { key: "shop", header: "দোকান" },
             { key: "owner", header: "মালিক" },

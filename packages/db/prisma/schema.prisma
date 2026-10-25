@@ -387,6 +387,7 @@ model Product {
   variants         ProductVariant[]
   flashSaleItems   FlashSaleItem[]
   vendorProducts   VendorProduct[]
+  reviews          Review[]
   @@index([categoryId])
   @@index([status])
 }
@@ -440,6 +441,51 @@ model ProductAttribute {
   updatedAt DateTime @updatedAt
 }
 
+// ------------------------------------------------------------- Reviews
+// Customer product reviews. A review is born PENDING and only becomes
+// public on admin APPROVAL (see /admin/reviews). `phone` is stored in
+// normalized +8801XXXXXXXXX form for verification (matching the
+// reviewer to a Customer / delivered Order) and is NEVER exposed on
+// public reads — public views carry the author's name only.
+// Product.ratingAverage / reviewCount are the denormalized aggregate
+// over APPROVED, non-deleted reviews, maintained by the reviews store.
+model Review {
+  id         String    @id @default(cuid())
+  productId  String
+  product    Product   @relation(fields: [productId], references: [id])
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  orderId    String?
+  authorName String
+  phone      String
+  rating     Int
+  title      String?
+  body       String
+  status     String    @default("PENDING")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+  @@index([productId, status])
+  @@index([status, createdAt])
+}
+
+// ------------------------------------------------------- Contact inbox
+// Storefront "contact us" form submissions (public /contact). Written
+// via POST /api/v1/public/contact; read/triaged in the admin inbox.
+// status: NEW | READ | RESOLVED (free String, set by the API layer).
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  subject   String?
+  message   String
+  status    String   @default("NEW")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([status, createdAt])
+}
+
 // ---------------------------------------------------------------- Customer / Cart
 model Customer {
   id                  String    @id @default(cuid())
@@ -463,6 +509,7 @@ model Customer {
   orders              Order[]
   couponUsages        CouponUsage[]
   sessions            CustomerSession[]
+  reviews             Review[]
   @@index([phone])
   @@index([deletedAt])
 }
@@ -1169,6 +1216,7 @@ model StockTransfer {
 model Vendor {
   id               String    @id @default(cuid())
   name             String
+  ownerName        String?
   phone            String
   email            String?
   commissionBps    Int       @default(1000)

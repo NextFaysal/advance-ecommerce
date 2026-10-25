@@ -1,29 +1,36 @@
 "use client";
 
 /**
- * BD Tools — অটো কুরিয়ার বাছাই panel (Agent 51).
+ * BD Tools — অটো কুরিয়ার বাছাই panel (Agent 51; real history wired 2026-10-25).
  *
  * Runs the REAL pure assignment engine from src/bd/courier-assignment.ts
  * in the browser (same pattern as the address-parser panel): hard
  * filters -> weighted scoring -> deterministic tie-break, with the
  * full ranked list, exclusion reasons and the per-rule trace rendered.
- * Stats are the module's labelled TEMPORARY DEMO sample table — when
- * DB shipment history exists, the API route
- * (POST /api/v1/admin/bd/courier-assignment) accepts a stats override
- * built from that history; this panel's numbers stay demo until then.
- *
- * Mounting (bd-tools page.tsx, one import + one Tabs item) is done by
- * the main agent — this file only exports the panel.
+ * The stats arrive as props from the server page, which builds them in
+ * ./courier-stats.ts: delivered/failed/returned counts, per-district
+ * rates and average delivery days are aggregated from the real
+ * Shipment tables; provider capabilities (zones, max weight, COD,
+ * ETA) come from the provider catalogue — the only capability source
+ * in the system. History and capabilities are labelled separately on
+ * the panel so the two are never confused.
  */
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Money } from "@/components/ui/money";
 import {
   assignCourier,
-  SAMPLE_COURIER_STATS,
   zoneForDistrict,
   type CourierAssignmentOrderFacts,
+  type CourierAssignmentStats,
 } from "@/bd/courier-assignment";
+
+export interface CourierAssignmentPanelProps {
+  stats: CourierAssignmentStats[];
+  /** Shipments the history part of `stats` was aggregated from. */
+  shipmentCount: number;
+  providersWithHistory: number;
+}
 
 const DISTRICTS = [
   "Dhaka",
@@ -49,7 +56,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 const inputClass =
   "w-full rounded-[10px] border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100";
 
-export function CourierAssignmentPanel() {
+export function CourierAssignmentPanel({ stats, shipmentCount, providersWithHistory }: CourierAssignmentPanelProps) {
   const [district, setDistrict] = useState<string>("Dhaka");
   const [weight, setWeight] = useState("800");
   const [codTaka, setCodTaka] = useState("1500");
@@ -68,8 +75,8 @@ export function CourierAssignmentPanel() {
       fragile,
       highValue,
     };
-    return assignCourier(order, SAMPLE_COURIER_STATS);
-  }, [district, weight, codTaka, fragile, highValue]);
+    return assignCourier(order, stats);
+  }, [district, weight, codTaka, fragile, highValue, stats]);
 
   return (
     <div className="space-y-4">
@@ -79,7 +86,9 @@ export function CourierAssignmentPanel() {
         জেলার আগের রেকর্ড দিয়ে স্কোর। কোনো আসল কুরিয়ার API কল হয় না।
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <Badge tone="neutral">TEMPORARY DEMO — নমুনা পরিসংখ্যান</Badge>
+        <Badge tone="brand">
+          ইতিহাস: ডাটাবেসের {shipmentCount}টি শিপমেন্ট ({providersWithHistory}টি প্রোভাইডার) · সক্ষমতা: প্রোভাইডার ক্যাটালগ
+        </Badge>
         {result.chosen ? (
           <Badge tone="success">✓ সুপারিশ: {PROVIDER_LABELS[result.chosen.provider] ?? result.chosen.provider} · স্কোর {result.chosen.score}/১০০</Badge>
         ) : (
@@ -176,9 +185,14 @@ export function CourierAssignmentPanel() {
       </details>
 
       <p className="text-xs text-text-muted">
-        দ্রষ্টব্য: পরিসংখ্যান নমুনা (SAMPLE_COURIER_STATS) — আসল শিপমেন্ট ইতিহাস DB-তে এলে API-তে stats
-        পাঠিয়ে একই ইঞ্জিনে সেটাই ব্যবহৃত হবে। স্টাফ অন্য কুরিয়ার বেছে নিলে সেটা manual override —
-        ইঞ্জিনের সুপারিশ সিদ্ধান্তে পাশাপাশি রেকর্ড থাকে, মুছে যায় না।
+        দ্রষ্টব্য: ডেলিভারি/ফেল/রিটার্ন সংখ্যা, জেলা-ভিত্তিক হার ও গড় ডেলিভারি সময় ডাটাবেসের আসল
+        শিপমেন্ট ইতিহাস থেকে হিসাব করা; জোন/সর্বোচ্চ ওজন/COD/ETA প্রোভাইডার ক্যাটালগ থেকে আসে
+        (সিস্টেমে সক্ষমতার অন্য কোনো উৎস নেই)।
+        {shipmentCount === 0
+          ? " এখনো কোনো শিপমেন্ট ইতিহাস নেই — তাই স্কোর শুধু চার্জ/ETA/ক্যাটালগের ওপর দাঁড়িয়ে; প্রথম শিপমেন্টগুলো ডেলিভারি হলেই ইতিহাস-ভিত্তিক স্কোর চালু হবে।"
+          : ""}
+        {" "}স্টাফ অন্য কুরিয়ার বেছে নিলে সেটা manual override — ইঞ্জিনের সুপারিশ সিদ্ধান্তে পাশাপাশি
+        রেকর্ড থাকে, মুছে যায় না।
       </p>
     </div>
   );

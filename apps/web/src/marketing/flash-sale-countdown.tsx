@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatPoisha } from "@/components/ui/money";
+import { useDigitText } from "@/components/ui/numerals";
 
 export interface FlashSaleCountdownItem {
   variantId: string;
@@ -49,6 +50,10 @@ function TimeBox({ value, label }: { value: string; label: string }) {
 }
 
 export function FlashSaleCountdown({ title, endsAt, items }: FlashSaleCountdownProps) {
+  // Prices honour the visitor's numerals preference like every other
+  // storefront money surface (the timer/stock counts use bn() below
+  // and are always Bengali by this banner's design).
+  const digits = useDigitText();
   // null until mounted: the server render cannot know the client's
   // clock, so boxes show a placeholder first and tick after mount —
   // this also keeps hydration output identical.
@@ -121,11 +126,11 @@ export function FlashSaleCountdown({ title, endsAt, items }: FlashSaleCountdownP
                 </p>
                 <p className="mt-1 flex flex-wrap items-baseline gap-x-2">
                   <span className="font-mono text-[15px] font-bold text-brand-700">
-                    {formatPoisha(item.salePricePoisha)}
+                    {digits(formatPoisha(item.salePricePoisha))}
                   </span>
                   {item.regularPricePoisha > item.salePricePoisha ? (
                     <span className="font-mono text-xs text-text-subtle line-through">
-                      {formatPoisha(item.regularPricePoisha)}
+                      {digits(formatPoisha(item.regularPricePoisha))}
                     </span>
                   ) : null}
                 </p>

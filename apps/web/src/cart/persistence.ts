@@ -1,7 +1,7 @@
-// Cart persistence — guest cart in localStorage, user cart on the server (to be wired).
+// Cart persistence — guest cart in localStorage (the only storefront cart).
 // This module is browser-guarded: it returns null / no-ops during SSR.
-// Real server persistence (carts + cart_items tables, see orders/SCHEMA-ADDITIONS.md)
-// is a follow-up for the API/DB owner; this file must not invent an API endpoint.
+// The old /api/v1/public/carts stub route was removed (wave 5); accounts do
+// not have a server cart — orders attach to the customer by phone on checkout.
 import type { Cart } from "./types";
 
 export const GUEST_CART_KEY = "advance-ecommerce-guest-cart";
@@ -34,9 +34,9 @@ export function clearGuestCart(): void {
 }
 
 /**
- * On login: merge the guest cart into the user's server cart, then clear the
- * guest cart. `fetchUserCart` / `saveUserCart` are injected so this module
- * stays endpoint-agnostic until the API owner wires /api/v1/public/carts.
+ * Merge helper kept for a future server cart: merges the guest cart into a
+ * user cart supplied by the caller, then clears the guest cart.
+ * `fetchUserCart` / `saveUserCart` are injected; no endpoint exists today.
  */
 export async function mergeGuestCartOnLogin(
   guest: Cart,

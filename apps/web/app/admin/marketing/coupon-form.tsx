@@ -1,19 +1,20 @@
 "use client";
 
-// Coupon create form — Agent 25 (marketing page).
-// Posts to the EXISTING coupons API (Agent 10): POST /api/v1/admin/coupons,
-// which validates with the marketing coupon schema and stores in the
-// in-memory demo store. The result message is whatever the API returns —
-// this form never claims success on its own (the API currently answers
-// 503 DB_NOT_READY for admin routes until Prisma generate succeeds, and
-// that error is shown as-is).
+// Coupon create form — marketing page.
+// Posts to the coupons API: POST /api/v1/admin/coupons, which validates
+// with the marketing coupon schema and persists to the Coupon table
+// (src/marketing/repository). The result message is whatever the API
+// returns — this form never claims success on its own; on success it
+// refreshes the server page so the coupon list above re-reads the DB.
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
 type CouponTypeChoice = "percent" | "fixed" | "free_shipping" | "first_order";
 
 export default function CouponForm() {
+  const router = useRouter();
   const [code, setCode] = useState("");
   const [type, setType] = useState<CouponTypeChoice>("percent");
   const [value, setValue] = useState("10");
@@ -50,11 +51,13 @@ export default function CouponForm() {
         data?: { coupon?: { code?: string } };
         error?: { message?: string };
       };
-      setStatus(
-        res.ok
-          ? `তৈরি হয়েছে: ${data.data?.coupon?.code ?? body.code} (ডেমো স্টোরে সংরক্ষিত)`
-          : (data.error?.message ?? `ব্যর্থ হয়েছে (${res.status}) — কিছুই সংরক্ষিত হয়নি।`),
-      );
+      if (res.ok) {
+        setStatus(`তৈরি হয়েছে: ${data.data?.coupon?.code ?? body.code} — ডাটাবেসে সংরক্ষিত, তালিকা হালনাগাদ হচ্ছে।`);
+        setCode("");
+        router.refresh();
+      } else {
+        setStatus(data.error?.message ?? `ব্যর্থ হয়েছে (${res.status}) — কিছুই সংরক্ষিত হয়নি।`);
+      }
     } catch {
       setStatus("নেটওয়ার্ক ত্রুটি — কিছুই সংরক্ষিত হয়নি।");
     } finally {
@@ -64,9 +67,10 @@ export default function CouponForm() {
 
   return (
     <Card>
-      <h3 className="mb-1 font-semibold">নতুন কুপন তৈরি (রূপরেখা)</h3>
+      <h3 className="mb-1 font-semibold">নতুন কুপন তৈরি</h3>
       <p className="mb-4 text-xs text-text-muted">
-        ফর্মটি বিদ্যমান Coupons API-তে পাঠায়; API-র উত্তরই এখানে দেখানো হয় — নিজে থেকে সফল বলা হয় না।
+        ফর্মটি Coupons API-তে পাঠায় — কুপনটি ডাটাবেসে (Coupon টেবিল) সংরক্ষিত হয় এবং
+        চেকআউটে সঙ্গে সঙ্গে ব্যবহারযোগ্য। API-র উত্তরই এখানে দেখানো হয় — নিজে থেকে সফল বলা হয় না।
       </p>
       <form onSubmit={handleSubmit} className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">

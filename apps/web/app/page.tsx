@@ -9,6 +9,8 @@ import { NewsletterForm } from "@/newsletter/components/NewsletterForm";
 import { FlashSaleCountdownSection } from "@/marketing/flash-sale-section";
 import { HeroSlides } from "@/cms/HeroSlides";
 import { getActiveHeroSlides } from "@/cms/site-content";
+import { listHomepageReviews } from "@/reviews/store";
+import { Stars } from "@/reviews/components/Stars";
 
 // NOTE on route groups: Next.js forbids both app/page.tsx and app/(store)/page.tsx
 // (both map to "/"). So the storefront home lives HERE, and only shop/product/search
@@ -195,26 +197,6 @@ const TRUST_ITEMS = [
   },
 ] as const;
 
-// Placeholder testimonials — shop owner replaces these with real
-// customer quotes from the CMS/admin once reviews come in.
-const TESTIMONIALS = [
-  {
-    quote: "অর্ডারের পরদিনই পণ্য পেয়ে গেছি। প্যাকেজিং আর পণ্যের মান দুটোই চমৎকার।",
-    name: "রুমা আক্তার",
-    place: "ঢাকা",
-  },
-  {
-    quote: "ক্যাশ অন ডেলিভারি থাকায় নিশ্চিন্তে অর্ডার করেছি। কাস্টমার সার্ভিসের আচরণও খুব ভালো।",
-    name: "তানভীর হোসেন",
-    place: "চট্টগ্রাম",
-  },
-  {
-    quote: "দাম অনুযায়ী মান সত্যিই ভালো। অর্ডার ট্র্যাকিং থাকায় সবসময় আপডেট জানতে পেরেছি।",
-    name: "শারমিন সুলতানা",
-    place: "খুলনা",
-  },
-] as const;
-
 /* Hero right-column visual — layered brand cards over the aurora
    background (Design v3, A+); no fake products. Shared by the static
    hero and the CMS campaign slider (as its no-image fallback). */
@@ -248,13 +230,17 @@ function HeroVisual() {
 }
 
 export default async function Home() {
-  const [products, categories, heroSlides] = await Promise.all([
+  const [products, categories, heroSlides, customerReviews] = await Promise.all([
     listActivePublicProducts(8),
     listCategories(),
     // CMS hero campaign slides (Admin → Content). Fail-safe: the
     // store degrades to [] on any DB problem, and [] renders the
     // static hero below — byte-identical to the pre-CMS homepage.
     getActiveHeroSlides(),
+    // "Customer words" = REAL approved product reviews (rating >= 4),
+    // never written-in quotes. Fail-safe to [] — and [] renders no
+    // section at all, exactly like the other data-driven sections.
+    listHomepageReviews(6).catch(() => []),
   ]);
   // Real catalogue totals for the hero stat row (Design v3) — summed
   // from the same category fetch; the row hides when the store is empty.
@@ -442,30 +428,36 @@ export default async function Home() {
       </section>
       </Reveal>
 
-      {/* ---------- Testimonials ---------- */}
-      <Reveal delay={120}>
-      <section className="mt-14">
-        <SectionHeading eyebrow="কাস্টমারদের কথা" title="যারা কিনেছেন, তারা বলছেন" />
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
-          {TESTIMONIALS.map((t) => (
-            <figure key={t.name} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-              <div className="flex gap-0.5 text-amber-500" aria-hidden="true">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <svg key={i} width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    <path d="M12 3.6l2.5 5.2 5.7.7-4.2 3.9 1.1 5.6L12 16.3l-5.1 2.7 1.1-5.6-4.2-3.9 5.7-.7L12 3.6z" />
-                  </svg>
-                ))}
-              </div>
-              <blockquote className="mt-3 break-words text-sm leading-7 text-text-main">“{t.quote}”</blockquote>
-              <figcaption className="mt-4 text-sm">
-                <span className="font-bold text-text-main">{t.name}</span>
-                <span className="text-text-subtle"> — {t.place}</span>
-              </figcaption>
-            </figure>
-          ))}
-        </div>
-      </section>
-      </Reveal>
+      {/* ---------- Customer words: REAL approved reviews ----------
+          Sourced from the Review table (latest APPROVED, rating >= 4,
+          across products). With zero approved reviews the section
+          renders NOTHING — no placeholder quotes, ever. */}
+      {customerReviews.length > 0 ? (
+        <Reveal delay={120}>
+        <section className="mt-14">
+          <SectionHeading eyebrow="কাস্টমারদের কথা" title="যারা কিনেছেন, তারা বলছেন" />
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            {customerReviews.map((r) => (
+              <figure key={r.id} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+                <Stars rating={r.rating} />
+                <blockquote className="mt-3 break-words text-sm leading-7 text-text-main">
+                  “{r.body}”
+                </blockquote>
+                <figcaption className="mt-4 text-sm">
+                  <span className="font-bold text-text-main">{r.authorName}</span>
+                  <span className="text-text-subtle">
+                    {" "}— পণ্য:{" "}
+                    <Link href={`/product/${r.productSlug}`} className="font-medium text-brand-700 hover:underline">
+                      {r.productTitleBn}
+                    </Link>
+                  </span>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </section>
+        </Reveal>
+      ) : null}
 
       {/* ---------- Newsletter ---------- */}
       <Reveal delay={60}>

@@ -24,7 +24,7 @@ import AuthForms from "@/customer-auth/components/AuthForms";
 import AddressManager from "@/customer-auth/components/AddressManager";
 import LogoutButton from "@/customer-auth/components/LogoutButton";
 import PushSubscribeToggle from "@/pwa/push-subscribe";
-import { formatPoisha } from "@/components/ui/money";
+import { BdtAmount } from "@/components/ui/numerals";
 
 export const dynamic = "force-dynamic";
 
@@ -68,7 +68,9 @@ function OrderRow({ order }: { order: AccountOrderSummary }) {
           {order.firstItemName ? ` · ${order.firstItemName}` : ""}
         </p>
       </div>
-      <p className="shrink-0 text-sm font-bold text-text-main">{formatPoisha(order.totalPoisha)}</p>
+      <p className="shrink-0 text-sm font-bold text-text-main">
+        <BdtAmount poisha={order.totalPoisha} />
+      </p>
     </li>
   );
 }

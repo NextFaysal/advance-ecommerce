@@ -9,14 +9,21 @@ import { ALL_PACKS } from "@/business-modules/packs";
 import { demoPackFlags } from "@/business-modules/types";
 import { DOMAIN_EVENTS } from "@/extensibility/types";
 import { demoAdapterRegistry } from "@/extensibility/registry";
+import { Icon } from "@/components/ui/icon";
+import { featureFlags } from "@/lib/feature-flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 
-// Admin > Modules — Agent 20, Step 49 (Part C / A13–A16) UI.
-// Catalogue view: packs are LISTED with their lock state, never hidden and
-// never runnable while locked — same contract as GET /api/v1/admin/modules.
-// Enabled state comes from the demo flag store (all OFF by default, paid
-// add-ons); the DB flag reader replaces it without a page change. No API
-// keys, hashes, or webhook secrets are ever shown on this page — the
-// extensibility section describes capabilities only. TEMPORARY DEMO data.
+// Admin > Modules — catalogue view (flags wired to the DB, 2026-10-25).
+// Packs are LISTED with their lock state, never hidden and never runnable
+// while locked — same contract as GET /api/v1/admin/modules. Enabled
+// state is the REAL feature_flags table state: demoPackFlags is an
+// adapter over the unified flag reader, hydrated here from the DB via
+// ensureDbFeatureFlags(). This page is READ-ONLY for flags — toggling
+// happens in Admin > Settings > Feature Flags. No API keys, hashes, or
+// webhook secrets are ever shown on this page — the extensibility
+// section describes capabilities only.
+
+export const dynamic = "force-dynamic";
 
 const ADAPTER_KIND_TEXT: Record<string, string> = {
   payment: "পেমেন্ট",
@@ -26,10 +33,12 @@ const ADAPTER_KIND_TEXT: Record<string, string> = {
   storage: "স্টোরেজ",
 };
 
-export default function AdminModulesPage() {
+export default async function AdminModulesPage() {
+  await ensureDbFeatureFlags();
   const flags = demoPackFlags.list();
   const packs = ALL_PACKS;
   const enabledCount = packs.filter((p) => flags[p.flagKey]).length;
+  const erpEnabled = featureFlags.isFeatureEnabled("module.erp_lite");
   const adapters = demoAdapterRegistry.list();
 
   const packRows = packs.map((pack) => ({
@@ -43,7 +52,7 @@ export default function AdminModulesPage() {
     status: flags[pack.flagKey] ? (
       <Badge tone="success">✓ সক্রিয়</Badge>
     ) : (
-      <Badge tone="neutral">🔒 লক করা</Badge>
+      <Badge tone="neutral">লক করা</Badge>
     ),
   }));
 
@@ -59,15 +68,15 @@ export default function AdminModulesPage() {
     <main>
       <PageHeader
         title="মডিউলসমূহ (Modules)"
-        description="TEMPORARY DEMO — ব্যবসার ধরন অনুযায়ী প্যাক ও এক্সটেনসিবিলিটি ক্যাটালগ। লক করা প্যাক চালানো যায় না; সক্রিয় করা হয় Feature Flags থেকে।"
+        description="ব্যবসার ধরন অনুযায়ী প্যাক ও এক্সটেনসিবিলিটি ক্যাটালগ। প্যাকের অবস্থা আসল feature_flags টেবিল থেকে পড়া হয় — লক করা প্যাক চালানো যায় না; চালু/বন্ধ করা হয় Feature Flags পেজ থেকে (এই পেজ শুধু দেখায়)।"
         breadcrumb="Admin / Modules"
       />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="ব্যবসায়িক প্যাক" value={String(packs.length)} delta="Part C" icon="🧩" />
-        <StatCard label="সক্রিয় প্যাক" value={String(enabledCount)} delta="ডেমো flag store" icon="✓" />
-        <StatCard label="ডোমেইন ইভেন্ট" value={String(DOMAIN_EVENTS.length)} delta="হুক সাবস্ক্রিপশন" icon="↯" />
-        <StatCard label="রেজিস্টার্ড অ্যাডাপ্টার" value={String(adapters.length)} delta="ডেমো registry" icon="🔌" />
+        <StatCard label="ব্যবসায়িক প্যাক" value={String(packs.length)} delta="Part C" icon={<Icon name="grid" size={22} />} />
+        <StatCard label="সক্রিয় প্যাক" value={String(enabledCount)} delta="feature_flags টেবিল অনুযায়ী" icon={<Icon name="check" size={22} />} />
+        <StatCard label="ডোমেইন ইভেন্ট" value={String(DOMAIN_EVENTS.length)} delta="হুক সাবস্ক্রিপশন" icon={<Icon name="sparkles" size={22} />} />
+        <StatCard label="রেজিস্টার্ড অ্যাডাপ্টার" value={String(adapters.length)} delta="এই বিল্ডে রেজিস্ট্রি খালি" icon={<Icon name="settings" size={22} />} />
       </div>
 
       <h2 className="mb-3 text-lg font-semibold">ব্যবসায়িক প্যাক</h2>
@@ -92,7 +101,11 @@ export default function AdminModulesPage() {
               ফ্ল্যাগ: <code className="font-mono text-xs">module.erp_lite</code> (seed-এ OFF — পেইড অ্যাড-অন)।
             </p>
           </div>
-          <Badge tone="neutral">🔒 লক করা (ডেমো)</Badge>
+          {erpEnabled ? (
+            <Badge tone="success">✓ সক্রিয় (feature_flags অনুযায়ী)</Badge>
+          ) : (
+            <Badge tone="neutral">লক করা (feature_flags অনুযায়ী)</Badge>
+          )}
         </div>
         <div className="mt-4">
           <Link href="/admin/erp" className="text-sm font-medium text-brand-700 hover:underline">
@@ -104,28 +117,28 @@ export default function AdminModulesPage() {
       <h2 className="mb-3 mt-8 text-lg font-semibold">এক্সটেনসিবিলিটি</h2>
       <div className="grid gap-4 sm:grid-cols-2">
         <Card>
-          <h3 className="text-base font-semibold">↯ প্লাগইন ও হুক</h3>
+          <h3 className="text-base font-semibold">প্লাগইন ও হুক</h3>
           <p className="mt-1 text-sm text-text-muted">
             প্লাগইনরা ডোমেইন ইভেন্টে সাবস্ক্রাইব করে। একটি হুক ব্যর্থ হলেও মূল কাজ বা অন্য হুক আটকায় না।
             প্লাগইন কোড এই প্রসেসে চালানো হয় না — runtime sandboxing আলাদা ধাপ (docs/MODULES.md)।
           </p>
         </Card>
         <Card>
-          <h3 className="text-base font-semibold">🔗 ওয়েবহুক</h3>
+          <h3 className="text-base font-semibold">ওয়েবহুক</h3>
           <p className="mt-1 text-sm text-text-muted">
             আউটবাউন্ড ওয়েবহুক ডেলিভারি যায় <code className="font-mono text-xs">webhook-delivery</code> কিউ দিয়ে,
             HMAC স্বাক্ষরসহ। সাইনিং সিক্রেট শুধু Admin Settings-এ encrypted থাকে — এই পেজে কখনো দেখানো হয় না।
           </p>
         </Card>
         <Card>
-          <h3 className="text-base font-semibold">🔑 API কী</h3>
+          <h3 className="text-base font-semibold">API কী</h3>
           <p className="mt-1 text-sm text-text-muted">
             API কী শুধু হ্যাশ আকারে সংরক্ষিত হয়; পূর্ণ কী তৈরির সময় একবারই দেখা যায় এবং পরে কখনো
             পুনরুদ্ধার করা যায় না। নিরাপত্তার কারণে এই ক্যাটালগ পেজে কোনো কী বা হ্যাশ দেখানো হয় না।
           </p>
         </Card>
         <Card>
-          <h3 className="text-base font-semibold">🧾 কাস্টম ফিল্ড</h3>
+          <h3 className="text-base font-semibold">কাস্টম ফিল্ড</h3>
           <p className="mt-1 text-sm text-text-muted">
             পণ্য, অর্ডার, গ্রাহক ও ভ্যারিয়েন্টে মার্চেন্ট-সংজ্ঞায়িত অতিরিক্ত ফিল্ড। টাকার ফিল্ড সবসময়
             পূর্ণসংখ্যা পয়সা — float মান গ্রহণ করা হয় না।
@@ -146,7 +159,7 @@ export default function AdminModulesPage() {
       {adapters.length === 0 ? (
         <EmptyState
           title="কোনো অ্যাডাপ্টার রেজিস্টার হয়নি"
-          description="ডেমো registry খালি আছে। আসল boot ধাপে কোর পেমেন্ট, কুরিয়ার, SMS, ইমেইল ও স্টোরেজ অ্যাডাপ্টার এখানে রেজিস্টার হয়।"
+          description="এই বিল্ডে অ্যাডাপ্টার রেজিস্ট্রি খালি: boot ধাপে কোনো অ্যাডাপ্টার রেজিস্ট্রেশন wired নেই — পেমেন্ট/কুরিয়ার/SMS অ্যাডাপ্টারগুলো integrations লেয়ারে আলাদাভাবে চলে, এই রেজিস্ট্রিতে আসে না। রেজিস্ট্রি API প্রস্তুত; boot registration যুক্ত হলে এখানে তালিকা দেখা যাবে।"
         />
       ) : (
         <DataTable

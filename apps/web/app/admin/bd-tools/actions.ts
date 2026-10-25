@@ -72,7 +72,13 @@ export async function createBdPaymentLinkAction(input: {
   if (!parsed.success) {
     return { ok: false, error: "তথ্য সঠিক নয় — অর্ডার আইডি, পরিমাণ (পয়সায় ধনাত্মক পূর্ণসংখ্যা) ও মেয়াদ যাচাই করুন।" };
   }
-  const created = createPaymentLink(parsed.data);
+  // The displayed full URL uses the configured app URL when one is set;
+  // without it createPaymentLink falls back to its placeholder base
+  // (the /pay/<token> path itself is what actually opens the link).
+  const appBaseUrl = process.env["NEXT_PUBLIC_APP_URL"];
+  const created = createPaymentLink(
+    appBaseUrl ? { ...parsed.data, baseUrl: appBaseUrl } : parsed.data,
+  );
   try {
     await paymentLinkStore.add(created.record);
   } catch (err) {

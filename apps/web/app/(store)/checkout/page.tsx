@@ -4,8 +4,8 @@
 // Cart source of truth: the guest cart in localStorage via
 // src/cart/persistence (loadGuestCart / clearGuestCart) — the exact
 // same store the cart page reads and AddToCartButton writes. There is
-// no second cart: the in-memory /api/v1/public/carts Map is not used by
-// any storefront page and is deliberately not used here either.
+// no second cart: the old in-memory /api/v1/public/carts stub route was
+// removed (wave 5) — the guest cart is the only storefront cart.
 // Submit: POST /api/v1/public/orders with the validateCheckoutForm()
 // output (the route parses the same checkoutFormSchema). The client
 // sends NO prices — the server re-reads variant prices/stock from the

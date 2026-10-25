@@ -234,6 +234,19 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     featureFlag: null,
     badge: null,
   },
+  {
+    // Review moderation queue (Review table). The admin reviews API
+    // guards on content.page — the same convention as the CMS APIs.
+    id: "reviews",
+    path: "/admin/reviews",
+    labelBn: "রিভিউ",
+    labelEn: "Reviews",
+    icon: "Star",
+    section: "catalog",
+    permission: "content.page",
+    featureFlag: null,
+    badge: null,
+  },
 
   // ---- Customers ----------------------------------------------------------
   {

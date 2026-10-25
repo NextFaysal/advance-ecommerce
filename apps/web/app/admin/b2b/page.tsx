@@ -4,101 +4,38 @@ import { DataTable } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Money, formatPoisha } from "@/components/ui/money";
 import { Phone } from "@/components/ui/phone";
+import { Icon } from "@/components/ui/icon";
 import { demoB2bFlags, isB2bEnabled } from "@/b2b/flags";
-import { demoB2bStore } from "@/b2b/store";
-import { checkCredit, effectiveQuotationStatus, quotationTotalPoisha } from "@/b2b/service";
-import type { B2bCustomer, Quotation } from "@/b2b/types";
+import { b2bStore } from "@/b2b/db-store";
+import { checkCredit, effectiveQuotationStatus } from "@/b2b/service";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 
-// B2B / Wholesale admin — Agent 25, Step 48 (A12).
-// Locked state: while module.b2b is OFF (seeded default, paid add-on),
-// the page renders the lock panel, matching the API's 403 FEATURE_LOCKED —
-// the same pattern as riders / resellers. When unlocked, customers come
-// from the Agent 16 demo store plus page-local SAMPLE rows (labelled);
-// credit state is computed with the real checkCredit() and quotation
+// B2B / Wholesale admin — Agent 25, Step 48 (A12); real data wired 2026-10-25.
+// Locked state: while module.b2b is OFF in the feature_flags TABLE
+// (seeded default, paid add-on), the page renders the lock panel,
+// matching the API's 403 FEATURE_LOCKED — the same pattern as riders /
+// resellers. demoB2bFlags delegates to the unified flag reader,
+// hydrated from the DB below. Customers and quotations come from the
+// Prisma b2bStore (B2bCustomer / B2bQuotation tables — the same store
+// the B2B API serves); the page-local SAMPLE rows are gone.
+// Credit state is computed with the real checkCredit() and quotation
 // status with effectiveQuotationStatus(). Phones are masked via <Phone>.
+// KNOWN SCHEMA GAP (labelled on the page, not hidden): the B2bCustomer
+// table has no oldestDueDate column, so persisted customers never carry
+// a due date and checkCredit's overdue-by-date rule cannot fire — the
+// overdue count therefore reflects limit/status rules only until the
+// column lands (needs a migration; reported, not faked).
 
-const SAMPLE_CUSTOMERS: B2bCustomer[] = [
-  {
-    id: "b2b_sample_overdue",
-    businessName: "SAMPLE Dhaka Distributors",
-    contactName: "Demo Manager",
-    phone: "+8801700000011",
-    approvalStatus: "APPROVED",
-    creditLimitPoisha: 100000000,
-    outstandingPoisha: 25000000,
-    oldestDueDate: "2026-10-01",
-    createdAt: "2026-09-15T00:00:00.000Z",
-  },
-  {
-    id: "b2b_sample_clear",
-    businessName: "SAMPLE Chattogram Traders",
-    contactName: "Demo Owner",
-    phone: "+8801700000012",
-    approvalStatus: "APPROVED",
-    creditLimitPoisha: 50000000,
-    outstandingPoisha: 0,
-    createdAt: "2026-09-20T00:00:00.000Z",
-  },
-  {
-    id: "b2b_sample_suspended",
-    businessName: "SAMPLE Khulna Supply Co",
-    contactName: "Demo Contact",
-    phone: "+8801700000013",
-    approvalStatus: "SUSPENDED",
-    creditLimitPoisha: 20000000,
-    outstandingPoisha: 5000000,
-    oldestDueDate: "2026-11-01",
-    createdAt: "2026-08-30T00:00:00.000Z",
-  },
-];
+export const dynamic = "force-dynamic";
 
-const SAMPLE_QUOTATIONS: Quotation[] = [
-  {
-    id: "quo_sample_sent",
-    b2bCustomerId: "b2b_sample_clear",
-    lines: [
-      { variantId: "var_sample_1", sku: "SAMPLE-SKU-1", productName: "SAMPLE Product A", quantity: 50, unitPricePoisha: 45000 },
-      { variantId: "var_sample_2", sku: "SAMPLE-SKU-2", productName: "SAMPLE Product B", quantity: 20, unitPricePoisha: 120000 },
-    ],
-    totalPoisha: 0, // computed below with quotationTotalPoisha
-    status: "SENT",
-    validUntil: "2027-01-31",
-    createdAt: "2026-10-20T00:00:00.000Z",
-    updatedAt: "2026-10-20T00:00:00.000Z",
-  },
-  {
-    id: "quo_sample_accepted",
-    b2bCustomerId: "b2b_sample_overdue",
-    lines: [
-      { variantId: "var_sample_3", sku: "SAMPLE-SKU-3", productName: "SAMPLE Product C", quantity: 100, unitPricePoisha: 30000 },
-    ],
-    totalPoisha: 0,
-    status: "ACCEPTED",
-    validUntil: "2027-02-28",
-    createdAt: "2026-10-10T00:00:00.000Z",
-    updatedAt: "2026-10-18T00:00:00.000Z",
-  },
-  {
-    id: "quo_sample_stale",
-    b2bCustomerId: "b2b_sample_clear",
-    lines: [
-      { variantId: "var_sample_1", sku: "SAMPLE-SKU-1", productName: "SAMPLE Product A", quantity: 10, unitPricePoisha: 47000 },
-    ],
-    totalPoisha: 0,
-    status: "DRAFT",
-    validUntil: "2026-01-31", // past → effectiveQuotationStatus reads EXPIRED
-    createdAt: "2026-01-10T00:00:00.000Z",
-    updatedAt: "2026-01-10T00:00:00.000Z",
-  },
-];
-
-export default function AdminB2bPage() {
+export default async function AdminB2bPage() {
+  await ensureDbFeatureFlags();
   if (!isB2bEnabled(demoB2bFlags)) {
     return (
       <main>
         <PageHeader title="B2B / পাইকারি" description="Wholesale, quotations and credit (A12)" />
         <p role="status">
-          🔒 এই মডিউলটি এই ইনস্টলে লক করা আছে। B2B / পাইকারি একটি পেইড অ্যাড-অন —
+          এই মডিউলটি এই ইনস্টলে লক করা আছে। B2B / পাইকারি একটি পেইড অ্যাড-অন —
           খুলতে Admin &gt; Settings থেকে <code>module.b2b</code> ফিচার ফ্ল্যাগ চালু করুন।
           (This module is locked — enable the <code>module.b2b</code> feature flag to unlock it.)
         </p>
@@ -107,11 +44,10 @@ export default function AdminB2bPage() {
   }
 
   const todayIso = new Date().toISOString().slice(0, 10);
-  const customers: B2bCustomer[] = [...demoB2bStore.listCustomers(), ...SAMPLE_CUSTOMERS];
-  const quotations: Quotation[] = [
-    ...demoB2bStore.listQuotations(),
-    ...SAMPLE_QUOTATIONS.map((q) => ({ ...q, totalPoisha: quotationTotalPoisha(q.lines) })),
-  ];
+  const [customers, quotations] = await Promise.all([
+    b2bStore.listCustomers(),
+    b2bStore.listQuotations(),
+  ]);
   const approvalQueue = customers.filter((c) => c.approvalStatus === "PENDING");
   const totalOutstanding = customers.reduce((s, c) => s + c.outstandingPoisha, 0);
   const overdueCount = customers.filter(
@@ -190,15 +126,28 @@ export default function AdminB2bPage() {
     <main>
       <PageHeader
         title="B2B / পাইকারি"
-        description="TEMPORARY DEMO — ডেমো স্টোর + নমুনা (SAMPLE) সারি। ক্রেডিট অবস্থা আসল checkCredit() দিয়ে হিসাব করা; ফোন মুখোশ করা। (B2B / Wholesale)"
+        description="আসল ডেটা — B2B গ্রাহক ও কোটেশন ডাটাবেস থেকে (B2B API-র একই স্টোর)। ক্রেডিট অবস্থা আসল checkCredit() দিয়ে হিসাব করা; ফোন মাস্ক করা। (B2B / Wholesale)"
         breadcrumb="Admin / Add-on Modules"
       />
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="B2B গ্রাহক (ডেমো)" value={String(customers.length)} delta={`${approvalQueue.length} অনুমোদনের অপেক্ষায়`} icon="🏢" />
-        <StatCard label="মোট বকেয়া" value={formatPoisha(totalOutstanding)} delta="ডেমো" icon="৳" />
-        <StatCard label="ওভারডিউ গ্রাহক" value={String(overdueCount)} delta={overdueCount > 0 ? "ক্রেডিট বন্ধ আছে" : "কেউ নেই"} deltaTone={overdueCount > 0 ? "down" : "up"} icon="⏰" />
-        <StatCard label="কোটেশন (ডেমো)" value={String(quotations.length)} delta="সক্রিয় তালিকা নিচে" icon="📄" />
+        <StatCard label="B2B গ্রাহক" value={String(customers.length)} delta={`${approvalQueue.length} অনুমোদনের অপেক্ষায়`} icon={<Icon name="users" size={22} />} />
+        <StatCard label="মোট বকেয়া" value={formatPoisha(totalOutstanding)} delta="সব গ্রাহক মিলিয়ে" icon={<Icon name="banknote" size={22} />} />
+        <StatCard label="ওভারডিউ গ্রাহক" value={String(overdueCount)} delta={overdueCount > 0 ? "ক্রেডিট বন্ধ আছে" : "সীমা/অবস্থা অনুযায়ী কেউ নেই"} deltaTone={overdueCount > 0 ? "down" : "up"} icon={<Icon name="clock" size={22} />} />
+        <StatCard label="কোটেশন" value={String(quotations.length)} delta="সক্রিয় তালিকা নিচে" icon={<Icon name="tag" size={22} />} />
       </div>
+
+      <p className="mb-6 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        সীমাবদ্ধতা (লুকানো নয়): B2bCustomer টেবিলে বকেয়ার মেয়াদ-তারিখ (oldestDueDate) কলাম নেই — তাই
+        সংরক্ষিত গ্রাহকদের ক্ষেত্রে মেয়াদ-ভিত্তিক ওভারডিউ শনাক্তকরণ কাজ করে না; ওপরের ওভারডিউ সংখ্যা শুধু
+        ক্রেডিট-সীমা ও অনুমোদন-অবস্থার নিয়মে হিসাব করা। কলামটি যোগ হলে (মাইগ্রেশন প্রয়োজন) মেয়াদ-ভিত্তিক
+        নিয়মও সক্রিয় হবে।
+      </p>
+
+      {customers.length === 0 ? (
+        <p className="mb-6 text-sm text-text-muted">
+          এখনো কোনো B2B গ্রাহক নিবন্ধিত হয়নি — B2B API দিয়ে গ্রাহক যোগ হলে এখানে দেখা যাবে।
+        </p>
+      ) : null}
 
       <h2 className="mb-3 text-lg font-semibold">গ্রাহক ও ক্রেডিট অবস্থা</h2>
       <DataTable

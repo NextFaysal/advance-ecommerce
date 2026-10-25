@@ -12,7 +12,7 @@ export interface ContactFormLabels {
   emailOptionalNote: string;
   subjectLabel: string;
   formNote: string;
-  demoNote: string;
+  storageNote: string;
   submittingLabel: string;
   successTitle: string;
   /** {id} is replaced with the reference id returned by the API. */
@@ -28,7 +28,7 @@ export const CONTACT_FORM_LABELS: Record<LegalLocale, ContactFormLabels> = {
     subjectLabel: "বিষয়",
     formNote:
       "বার্তাটি আমাদের সাপোর্ট টিমের ইনবক্সে জমা হবে। জরুরি প্রয়োজনে উপরের নম্বরে ফোন করুন।",
-    demoNote: "ডেমো সংস্করণ: বার্তা বর্তমানে একটি ইন-মেমোরি সাপোর্ট ইনবক্সে জমা হয় (in-memory-demo)।",
+    storageNote: "বার্তাটি সাপোর্ট ইনবক্সে সংরক্ষিত হয় — জমা হলেই কোনো ইমেইল বা SMS স্বয়ংক্রিয়ভাবে পাঠানো হয় না।",
     submittingLabel: "পাঠানো হচ্ছে…",
     successTitle: "আপনার বার্তা পৌঁছেছে",
     successBody: "ধন্যবাদ! আপনার বার্তাটি আমাদের সাপোর্ট ইনবক্সে জমা হয়েছে। রেফারেন্স নম্বর: {id} — প্রয়োজনে এই নম্বরটি জানালে আমরা বার্তাটি খুঁজে পাব।",
@@ -42,7 +42,7 @@ export const CONTACT_FORM_LABELS: Record<LegalLocale, ContactFormLabels> = {
     subjectLabel: "Subject",
     formNote:
       "Your message will be stored in our support team's inbox. For urgent needs, please call the number above.",
-    demoNote: "Demo build: messages currently land in an in-memory support inbox (in-memory-demo).",
+    storageNote: "Your message is saved in the support inbox — no email or SMS is sent automatically on submission.",
     submittingLabel: "Sending…",
     successTitle: "Message received",
     successBody: "Thank you! Your message has been stored in our support inbox. Reference number: {id} — quote it if you contact us about this message.",

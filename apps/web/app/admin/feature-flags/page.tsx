@@ -1,22 +1,26 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card } from "@/components/ui/card";
+import { Icon } from "@/components/ui/icon";
 import { FlagList, type FlagListItem } from "./flag-list";
+import { featureFlags } from "@/lib/feature-flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 
-// Feature Flags admin — Agent 27.
-// Permission behind managing flags: feature_flags.manage (src/lib/rbac.ts).
-// The flag list below is EXACTLY the FEATURE_FLAGS catalogue in
+export const dynamic = "force-dynamic";
+
+// Feature Flags admin.
+// The catalogue below mirrors the FEATURE_FLAGS catalogue in
 // packages/db/prisma/seed.ts (19 module.* keys, all seeded OFF) — the
-// English descriptions are copied verbatim from the seed; Bangla text and
-// module-page links are presentation only. Synced by Agent 46
-// (module.loyalty + module.advanced_orders were missing here; verified
-// programmatically against the seed, digit-aware, 19/19.)
-// STATE ON THIS PAGE IS PAGE-LOCAL DEMO STATE: toggling a switch here
-// does NOT enable anything. Real flags live in the DB `feature_flags`
-// table, are changed with an audit reason, and gate paid add-on modules
-// per client install.
+// English descriptions are copied verbatim from the seed; Bangla text
+// and module-page links are presentation only.
+// REAL STATE (rewired 2026-10-25): each flag's ON/OFF state is read
+// from the DB feature_flags table on every load (the same unified
+// reader the modules use), and the toggles write through
+// PATCH /api/v1/admin/feature-flags — persisted, reason-required and
+// audit-logged. The API enforces settings.view (read) / settings.edit
+// (change); the audit action recorded is feature_flags.manage.
 
-const FLAGS: FlagListItem[] = [
+const FLAG_CATALOGUE: Omit<FlagListItem, "enabled">[] = [
   {
     key: "module.reseller",
     descriptionEn: "Reseller panel (v2 add-on)",
@@ -152,40 +156,59 @@ const FLAGS: FlagListItem[] = [
   },
 ];
 
-export default function AdminFeatureFlagsPage() {
-  const withPage = FLAGS.filter((f) => f.linkPath !== null).length;
+export default async function AdminFeatureFlagsPage() {
+  let states: Map<string, boolean> | null = null;
+  try {
+    await ensureDbFeatureFlags();
+    states = new Map(featureFlags.listFeatureFlags().map((f) => [f.key, f.enabled]));
+  } catch {
+    states = null;
+  }
+
+  const items: FlagListItem[] = FLAG_CATALOGUE.map((f) => ({
+    ...f,
+    enabled: states?.get(f.key) ?? false,
+  }));
+  const withPage = FLAG_CATALOGUE.filter((f) => f.linkPath !== null).length;
+  const onCount = items.filter((f) => f.enabled).length;
 
   return (
     <main>
       <PageHeader
         title="ফিচার ফ্ল্যাগ"
-        description="TEMPORARY DEMO — এই পেজের টগল শুধু পেজ-লোকাল ডেমো স্টেট: এখানে বদলালে কিছুই চালু হয় না। আসল ফ্ল্যাগ DB-র feature_flags টেবিলে থাকে, সব seed অবস্থায় OFF। (Feature Flags — feature_flags.manage)"
+        description="আসল ফ্ল্যাগ অবস্থা — DB-র feature_flags টেবিল থেকে পড়া। টগল বদলালে তা সংরক্ষিত হয় এবং অডিট লগে কারণসহ থাকে। (Feature Flags — feature_flags.manage)"
         breadcrumb="Admin / System"
       />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="মোট ফ্ল্যাগ (seed ক্যাটালগ)" value={String(FLAGS.length)} delta="seed.ts FEATURE_FLAGS" icon="🚩" />
-        <StatCard label="seed অবস্থা" value="সব OFF" delta="ডিফল্ট লক" icon="🔒" />
-        <StatCard label="মডিউল পেজ আছে" value={String(withPage)} delta="বাকিগুলো API দিয়ে" icon="🧩" />
-        <StatCard label="বদলের অনুমতি" value="Owner" delta="feature_flags.manage + কারণ" icon="🗝️" />
+        <StatCard label="মোট ফ্ল্যাগ (seed ক্যাটালগ)" value={String(FLAG_CATALOGUE.length)} delta="seed.ts FEATURE_FLAGS" icon={<Icon name="grid" size={22} />} />
+        <StatCard label="এখন চালু আছে" value={states === null ? "—" : String(onCount)} delta="আসল DB অবস্থা" icon={<Icon name="check" size={22} />} />
+        <StatCard label="মডিউল পেজ আছে" value={String(withPage)} delta="বাকিগুলো API দিয়ে" icon={<Icon name="package" size={22} />} />
+        <StatCard label="বদলের অনুমতি" value="settings.edit" delta="কারণ + অডিট লগ আবশ্যক" icon={<Icon name="shield" size={22} />} />
       </div>
 
-      <Card className="mb-6 border-amber-200 bg-amber-50">
-        <p className="text-sm font-medium text-amber-900">⚠️ এই টগলগুলো কিছুই চালু করে না</p>
-        <p className="mt-1 text-sm text-amber-800">
-          নিচের সুইচগুলো শুধু এই পেজের ডেমো অবস্থা বদলায় — কোনো কিছু সংরক্ষণ হয় না, পেজ
-          রিলোড হলেই আবার OFF হয়ে যায়। কোনো মডিউল সত্যি চালু করতে হলে DB-র{" "}
-          <code className="font-mono text-xs">feature_flags</code> টেবিলে{" "}
-          <code className="font-mono text-xs">feature_flags.manage</code> অনুমতিসহ, অডিটে
-          কারণ লিখে বদলাতে হবে। প্রতিটি অ্যাড-অন পেইড মডিউল — ক্লায়েন্ট অনুযায়ী আলাদা করে
-          খোলা হয়, একবারে সব নয়।
+      <Card className="mb-6 border-sky-200 bg-sky-50">
+        <p className="text-sm font-medium text-sky-900">এই টগলগুলো আসল — বদল সংরক্ষিত হয়</p>
+        <p className="mt-1 text-sm text-sky-800">
+          সুইচ বদলালে কারণ চাওয়া হবে, তারপর বদলটি DB-র{" "}
+          <code className="font-mono text-xs">feature_flags</code> টেবিলে সংরক্ষিত হয় এবং
+          সংশ্লিষ্ট মডিউল সঙ্গে সঙ্গে নতুন অবস্থা দেখে। প্রতিটি বদল অডিট লগে{" "}
+          <code className="font-mono text-xs">feature_flags.manage</code> নামে কারণসহ থাকে।
+          প্রতিটি অ্যাড-অন পেইড মডিউল — ক্লায়েন্ট অনুযায়ী আলাদা করে খোলা হয়, একবারে সব নয়।
         </p>
       </Card>
 
-      <h2 className="mb-3 text-lg font-semibold">সব ফ্ল্যাগ — seed ক্যাটালগ (সব OFF)</h2>
-      <Card>
-        <FlagList items={FLAGS} />
-      </Card>
+      <h2 className="mb-3 text-lg font-semibold">সব ফ্ল্যাগ — seed ক্যাটালগ (অবস্থা DB থেকে)</h2>
+      {states === null ? (
+        <Card className="border-rose-300 bg-rose-50 text-sm text-rose-900">
+          ডাটাবেস থেকে ফ্ল্যাগের অবস্থা পড়া যায়নি — তাই টগল দেখানো হচ্ছে না (ভুয়া অবস্থা
+          দেখানোর চেয়ে এটাই সৎ)। ডাটাবেস সংযোগ ঠিক করে পেজটি আবার লোড করুন।
+        </Card>
+      ) : (
+        <Card>
+          <FlagList items={items} />
+        </Card>
+      )}
     </main>
   );
 }

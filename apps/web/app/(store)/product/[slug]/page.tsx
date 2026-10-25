@@ -13,6 +13,7 @@ import { BackInStockForm } from "@/storefront-ux/components/BackInStockForm";
 import { BuyBoxActions } from "@/cart/components/BuyBoxActions";
 import { WishlistToggleButton } from "@/catalog/WishlistToggleButton";
 import { BdtAmount, DigitText } from "@/components/ui/numerals";
+import { ReviewSection } from "@/reviews/components/ReviewSection";
 import type { RecentlyViewedEntry } from "@/storefront-ux/types";
 import { Gallery } from "./Gallery";
 
@@ -314,6 +315,10 @@ export default async function ProductPage({ params }: { params: { slug: string }
           </p>
         </section>
       ) : null}
+
+      {/* Customer reviews — real APPROVED rows from the Review table
+          + the moderated submission form (src/reviews). */}
+      <ReviewSection productId={product.id} productSlug={product.slug} />
 
       <RecentlyViewedRail excludeProductId={product.id} />
       <StickyBuyBar titleBn={product.title.bn} pricePoisha={minPrice} inStock={inStock} buyBoxId="buy-box" />

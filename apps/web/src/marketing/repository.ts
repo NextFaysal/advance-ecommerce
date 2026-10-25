@@ -185,6 +185,20 @@ export async function createCouponDb(input: CouponInput): Promise<CouponRecord> 
   return record;
 }
 
+/** Toggles a coupon's isActive flag. Returns null when the coupon
+ *  does not exist (or is soft-deleted). The checkout snapshot is kept
+ *  in sync so the change is evaluable at checkout immediately, exactly
+ *  like createCouponDb. */
+export async function setCouponActiveDb(id: string, isActive: boolean): Promise<CouponRecord | null> {
+  const existing = await prisma.coupon.findFirst({ where: { id, deletedAt: null } });
+  if (!existing) return null;
+  const row = await prisma.coupon.update({ where: { id }, data: { isActive } });
+  const aggregates = await loadUsageAggregates([id]);
+  const record = couponRowToRecord(row, aggregates.get(id));
+  upsertCouponInSnapshot(record);
+  return record;
+}
+
 /**
  * Writes one CouponUsage row for (couponId, orderId). The schema's
  * @@unique([couponId, orderId]) makes a second write for the same

@@ -54,7 +54,7 @@ function statusBadge(link: PaymentLinkListItemView) {
 
 export function PaymentLinksPanel({ initialLinks }: { initialLinks: PaymentLinkListItemView[] }) {
   const [links, setLinks] = useState<PaymentLinkListItemView[]>(initialLinks);
-  const [orderId, setOrderId] = useState("ORD-100244");
+  const [orderId, setOrderId] = useState("");
   const [amountTaka, setAmountTaka] = useState("500");
   const [purpose, setPurpose] = useState<string>("cod_advance");
   const [expiryHours, setExpiryHours] = useState("48");
@@ -126,7 +126,7 @@ export function PaymentLinksPanel({ initialLinks }: { initialLinks: PaymentLinkL
       <p className="text-sm text-text-muted">
         গ্রাহককে পাঠানোর জন্য একবার ব্যবহারযোগ্য পেমেন্ট লিংক তৈরি করুন (COD অগ্রিম, আংশিক বা বকেয়া)।
         সিস্টেমে শুধু টোকেনের <strong>হ্যাশ</strong> থাকে — আসল টোকেন তৈরি হওয়ার সময় <strong>মাত্র একবার</strong> দেখা যায়।
-        স্টোরটি ইন-মেমরি ডেমো; এখানে তৈরি লিংক স্থানীয়ভাবে <span className="font-mono text-xs">/pay/&lt;token&gt;</span> পেজে সত্যিই খুলবে।
+        স্টোরটি ডাটাবেস-ভিত্তিক (payment_links টেবিল) — এখানে তৈরি লিংক <span className="font-mono text-xs">/pay/&lt;token&gt;</span> পেজে সত্যিই খুলবে; অর্ডার আইডি আসল অর্ডারের হতে হবে।
       </p>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -159,14 +159,14 @@ export function PaymentLinksPanel({ initialLinks }: { initialLinks: PaymentLinkL
             </Button>
           </div>
           <p className="mt-2 text-xs">
-            ডেমো বেস URL দিয়ে পূর্ণ লিংক: <span className="break-all font-mono">{once.url}</span> — আসল ডোমেইন সেট হলে পাথ একই থাকবে।
+            পূর্ণ লিংক: <span className="break-all font-mono">{once.url}</span> — অ্যাপ URL সেট না থাকলে বেস অংশটি প্লেসহোল্ডার; পাথটাই আসল লিংক।
           </p>
         </div>
       ) : null}
 
       <div>
         <h3 className="mb-2 text-sm font-semibold">
-          লিংকের তালিকা <span className="font-normal text-text-muted">(TEMPORARY DEMO — ইন-মেমরি স্টোর, হ্যাশের প্রথম অংশ শুধু)</span>
+          সাম্প্রতিক লিংক <span className="font-normal text-text-muted">(ডাটাবেস থেকে — সব অর্ডারের সর্বশেষ লিংক, হ্যাশের প্রথম অংশ শুধু)</span>
         </h3>
         {rows.length > 0 ? (
           <DataTable
@@ -182,7 +182,7 @@ export function PaymentLinksPanel({ initialLinks }: { initialLinks: PaymentLinkL
             rows={rows}
           />
         ) : (
-          <p className="text-sm text-text-muted">এখনো কোনো লিংক নেই।</p>
+          <p className="text-sm text-text-muted">এখনো কোনো লিংক তৈরি হয়নি।</p>
         )}
       </div>
     </div>

@@ -10,6 +10,7 @@ import { useState } from "react";
 import { formatBdt } from "@advance-ecommerce/validators";
 import type { TrackingView } from "@/storefront-ux/order-tracking";
 import { Icon } from "@/components/ui/icon";
+import { useDigitText } from "@/components/ui/numerals";
 
 // Mobile polish (Design v3 §3): 48px fields and submit, token colours,
 // and a connected result timeline. Presentation only — the lookup call
@@ -27,6 +28,9 @@ export default function TrackForm() {
   const [orderNo, setOrderNo] = useState("");
   const [phone, setPhone] = useState("");
   const [state, setState] = useState<State>({ phase: "idle" });
+  // Money honours the visitor's numerals preference (order numbers
+  // and quantities are never passed through this — display only).
+  const digits = useDigitText();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -161,13 +165,13 @@ export default function TrackForm() {
                 <span className="min-w-0">
                   {item.productName} × {item.quantity}
                 </span>
-                <span className="shrink-0 tabular-nums">{formatBdt(item.unitPricePoisha * item.quantity)}</span>
+                <span className="shrink-0 tabular-nums">{digits(formatBdt(item.unitPricePoisha * item.quantity))}</span>
               </li>
             ))}
           </ul>
           <p className="mt-3 flex justify-between border-t border-border pt-3 font-semibold text-text-main">
             <span>মোট</span>
-            <span className="tabular-nums">{formatBdt(state.view.totalPoisha)}</span>
+            <span className="tabular-nums">{digits(formatBdt(state.view.totalPoisha))}</span>
           </p>
           <p className="mt-1.5 text-sm text-text-muted">
             পেমেন্ট: {state.view.paymentMethod} / {state.view.paymentStatus}

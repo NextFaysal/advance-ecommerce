@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Money } from "@/components/ui/money";
@@ -11,17 +12,18 @@ import {
   dhakaTime,
   findDuplicateTrxCollisions,
   paymentMethodLabelBn,
-} from "./demo-data";
+} from "./lib";
 
-// Manual TrxID review queue — PAGE-STATE DEMO ONLY.
-// Approve/reject here changes nothing outside this page: no API call is
-// made and nothing is persisted. The real decision goes through
-// POST /api/v1/admin/payments/manual-trx (permission payments.verify_manual,
-// reason required, audited) once the DB wiring lands. The page mirrors the
-// sandbox rules from src/integrations/sandbox/manual-trx.ts:
+// Manual TrxID review queue — REAL decisions (wired 2026-10-25).
+// Approve/reject POSTs to /api/v1/admin/payments/manual-trx
+// (permission payments.verify_manual, reason required, audited); the
+// server enforces the sandbox rules from src/integrations/sandbox/manual-trx.ts:
 //  1. the same (method, normalised TrxID) can never be approved twice;
 //  2. a submission is reviewed once only — the action is one-way;
 //  3. every review needs a reason of at least 3 characters.
+// The duplicate warnings below are computed from the same list the
+// server loaded — they are guidance; the server's verdict is final and
+// its error message is shown verbatim when a decision is refused.
 
 type ReviewStatus = ManualTrxSubmission["status"];
 
@@ -32,15 +34,18 @@ const STATUS_META: Record<ReviewStatus, { label: string; icon: string; tone: "wa
 };
 
 export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSubmission[] }) {
-  const [statuses, setStatuses] = useState<Record<string, ReviewStatus>>(() =>
-    Object.fromEntries(submissions.map((s) => [s.id, s.status])),
-  );
+  const router = useRouter();
+  const [localStatus, setLocalStatus] = useState<Record<string, ReviewStatus>>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [decidedNote, setDecidedNote] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
 
   const collisions = useMemo(() => findDuplicateTrxCollisions(submissions), [submissions]);
 
-  /** Ids (other than this one) whose TrxID is already approved — locally or in the demo data. */
+  const statusOf = (s: ManualTrxSubmission): ReviewStatus => localStatus[s.id] ?? s.status;
+
+  /** Ids (other than this one) whose TrxID is already approved. */
   function approvedTwins(s: ManualTrxSubmission): string[] {
     return submissions
       .filter(
@@ -48,39 +53,71 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
           o.id !== s.id &&
           o.method === s.method &&
           normalizeTrxId(o.trxId) === normalizeTrxId(s.trxId) &&
-          statuses[o.id] === "approved",
+          statusOf(o) === "approved",
       )
       .map((o) => o.id);
   }
 
-  function decide(s: ManualTrxSubmission, action: "approve" | "reject") {
+  async function decide(s: ManualTrxSubmission, action: "approve" | "reject") {
     const reason = (reasons[s.id] ?? "").trim();
-    if (reason.length < 3) return;
-    if (action === "approve" && approvedTwins(s).length > 0) return; // sandbox rule 1
-    setStatuses((prev) => ({ ...prev, [s.id]: action === "approve" ? "approved" : "rejected" }));
-    setDecidedNote((prev) => ({
-      ...prev,
-      [s.id]:
-        action === "approve"
-          ? `ডেমো সিদ্ধান্ত: অনুমোদিত — আসল ফ্লোতে অর্ডারের পেমেন্ট PAID হতো। কারণ: ${reason}`
-          : `ডেমো সিদ্ধান্ত: বাতিল — আসল ফ্লোতে অর্ডারের পেমেন্ট FAILED হতো। কারণ: ${reason}`,
-    }));
+    if (reason.length < 3 || busy[s.id]) return;
+    if (action === "approve" && approvedTwins(s).length > 0) return; // rule 1 — server enforces too
+    setBusy((prev) => ({ ...prev, [s.id]: true }));
+    setErrors((prev) => ({ ...prev, [s.id]: "" }));
+    try {
+      const res = await fetch("/api/v1/admin/payments/manual-trx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ submissionId: s.id, action, reason }),
+      });
+      const payload = (await res.json().catch(() => null)) as
+        | { data?: { paymentStatus?: string }; error?: { message?: string } }
+        | null;
+      if (!res.ok) {
+        setErrors((prev) => ({
+          ...prev,
+          [s.id]: payload?.error?.message ?? `সার্ভার সিদ্ধান্ত নেয়নি (HTTP ${res.status})।`,
+        }));
+        return;
+      }
+      setLocalStatus((prev) => ({ ...prev, [s.id]: action === "approve" ? "approved" : "rejected" }));
+      setDecidedNote((prev) => ({
+        ...prev,
+        [s.id]:
+          action === "approve"
+            ? `অনুমোদিত ও সংরক্ষিত হয়েছে — অর্ডারের পেমেন্ট অবস্থা: ${payload?.data?.paymentStatus ?? "PAID"}। কারণ: ${reason}`
+            : `বাতিল ও সংরক্ষিত হয়েছে — অর্ডারের পেমেন্ট অবস্থা: ${payload?.data?.paymentStatus ?? "FAILED"}। কারণ: ${reason}`,
+      }));
+      router.refresh();
+    } catch {
+      setErrors((prev) => ({ ...prev, [s.id]: "নেটওয়ার্ক সমস্যা — সিদ্ধান্ত পাঠানো যায়নি, আবার চেষ্টা করুন।" }));
+    } finally {
+      setBusy((prev) => ({ ...prev, [s.id]: false }));
+    }
+  }
+
+  if (submissions.length === 0) {
+    return (
+      <p className="rounded-md bg-surface-2 px-3 py-2 text-xs text-text-muted">
+        কোনো ম্যানুয়াল TrxID জমা নেই — গ্রাহক TrxID জমা দিলেই এখানে আসবে।
+      </p>
+    );
   }
 
   return (
     <div className="space-y-3">
-      <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-        ⚠️ এই কিউয়ের সিদ্ধান্তগুলো <strong>শুধু এই পেজের state</strong> — কোনো API কল হয় না, কিছুই সংরক্ষিত হয় না।
-        আসল সিদ্ধান্ত DB wiring-এর পর manual-trx API দিয়ে যাবে (কারণ বাধ্যতামূলক, অডিটসহ)।
+      <p className="rounded-md bg-surface-2 px-3 py-2 text-xs text-text-muted">
+        সিদ্ধান্ত এখান থেকে নিলে তা ডাটাবেসে সংরক্ষিত হয় এবং অডিট লগে থাকে (কারণ বাধ্যতামূলক)।
+        অনুমোদনে অর্ডারের পেমেন্ট PAID হয়, বাতিলে FAILED হয়।
       </p>
       {submissions.map((s) => {
-        const status = statuses[s.id] ?? s.status;
+        const status = statusOf(s);
         const meta = STATUS_META[status];
         const twins = collisions.get(s.id) ?? [];
         const blockedBy = approvedTwins(s);
         const isDuplicate = twins.length > 0;
         const reason = reasons[s.id] ?? "";
-        const canDecide = status === "pending" && reason.trim().length >= 3;
+        const canDecide = status === "pending" && reason.trim().length >= 3 && !busy[s.id];
         return (
           <div key={s.id} className="rounded-lg border border-border bg-card p-4">
             <div className="flex flex-wrap items-center gap-2">
@@ -120,8 +157,8 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
 
             {isDuplicate ? (
               <p className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                ⚠️ সতর্কতা (sandbox নিয়ম): একই পদ্ধতিতে এই TrxID ({normalizeTrxId(s.trxId)}) আরও{" "}
-                {twins.length}টি জমায় আছে ({twins.join(", ")})। একই (পদ্ধতি, TrxID) কখনো দুইবার অনুমোদন করা যায় না —
+                ⚠️ সতর্কতা: একই পদ্ধতিতে এই TrxID ({normalizeTrxId(s.trxId)}) আরও{" "}
+                {twins.length}টি জমায় আছে। একই (পদ্ধতি, TrxID) কখনো দুইবার অনুমোদন করা যায় না —
                 অনুমোদনের আগে কোনটি আসল যাচাই করুন।
               </p>
             ) : null}
@@ -130,7 +167,7 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
               <div className="mt-3 space-y-2">
                 {blockedBy.length > 0 ? (
                   <p className="rounded-md bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
-                    🚫 এই TrxID ইতিমধ্যে অনুমোদিত ({blockedBy.join(", ")}) — sandbox নিয়ম ১ অনুযায়ী আবার অনুমোদন
+                    🚫 এই TrxID ইতিমধ্যে অনুমোদিত — নিয়ম ১ অনুযায়ী আবার অনুমোদন
                     সম্ভব নয়। এটি বাতিল করুন।
                   </p>
                 ) : null}
@@ -146,24 +183,27 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
                     size="sm"
                     variant="primary"
                     disabled={!canDecide || blockedBy.length > 0}
-                    onClick={() => decide(s, "approve")}
+                    onClick={() => void decide(s, "approve")}
                   >
-                    ✓ অনুমোদন (ডেমো)
+                    ✓ অনুমোদন
                   </Button>
                   <Button
                     size="sm"
                     variant="destructive"
                     disabled={!canDecide}
-                    onClick={() => decide(s, "reject")}
+                    onClick={() => void decide(s, "reject")}
                   >
-                    ✕ বাতিল (ডেমো)
+                    ✕ বাতিল
                   </Button>
                 </div>
+                {errors[s.id] ? (
+                  <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">{errors[s.id]}</p>
+                ) : null}
               </div>
             ) : (
               <p className="mt-3 text-xs text-text-muted">
                 {decidedNote[s.id] ??
-                  (s.reviewNote ? `আগের সিদ্ধান্তের নোট: ${s.reviewNote} — একবার সিদ্ধান্ত হলে আবার রিভিউ করা যায় না (sandbox নিয়ম ২)।` : "একবার সিদ্ধান্ত হলে আবার রিভিউ করা যায় না (sandbox নিয়ম ২)।")}
+                  (s.reviewNote ? `আগের সিদ্ধান্তের নোট: ${s.reviewNote} — একবার সিদ্ধান্ত হলে আবার রিভিউ করা যায় না (নিয়ম ২)।` : "একবার সিদ্ধান্ত হলে আবার রিভিউ করা যায় না (নিয়ম ২)।")}
               </p>
             )}
           </div>

@@ -1,18 +1,92 @@
 import type { ReactNode } from "react";
+import { prisma } from "@advance-ecommerce/db";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
+import {
+  COURIER_PROVIDERS,
+  EMAIL_PROVIDERS,
+  PAYMENT_PROVIDERS,
+  SETTING_DEFAULTS,
+  SMS_PROVIDERS,
+  STORAGE_PROVIDERS,
+  getIntegrationStatus,
+  getPublicSettings,
+  getSetting,
+  type IntegrationStatus,
+} from "@/lib/settings";
+import { TRACKING_SETTING_KEYS } from "@/tracking/settings";
 
-// Settings index — Agent 25.
-// Landing page for Admin > Settings: a general summary (the built-in
-// defaults from src/lib/settings SETTING_DEFAULTS — bn / BDT /
-// Asia/Dhaka) plus cards into each subpage. Status on the cards is a
-// DEMO boolean set, labelled as such: the real per-provider status
-// comes from GET /api/v1/admin/settings, which returns only
-// { enabled, configured } booleans — credential values are NEVER shown
-// on any settings page (they live encrypted in the DB, server-side).
+// Settings index — landing page for Admin > Settings.
+// The card statuses are REAL (2026-10-25; previously labelled demo
+// booleans): each card probes the same sources the Settings API uses —
+// getIntegrationStatus() over the encrypted Settings store (a provider
+// counts as "configured" when a credential row exists; the value is
+// NEVER read onto this page), Settings values for tracking IDs, and
+// mere env PRESENCE for infra keys (REDIS_URL, MEILISEARCH_HOST,
+// WEB_PUSH_VAPID_*) — presence only, values never exposed. A probe
+// that cannot run (e.g. DB unreachable) renders "যাচাই করা যায়নি"
+// instead of a fake tick.
+
+export const dynamic = "force-dynamic";
+
+type StatusTone = "success" | "warning" | "neutral";
+
+interface CardStatus {
+  tone: StatusTone;
+  label: string;
+  detail: string;
+}
+
+const UNVERIFIABLE: CardStatus = {
+  tone: "neutral",
+  label: "যাচাই করা যায়নি",
+  detail: "ডাটাবেস পাওয়া যাচ্ছে না — অবস্থা পড়া যায়নি।",
+};
+
+function providerSummary(statuses: IntegrationStatus[], exclude: string[] = []): {
+  configured: string[];
+  enabled: string[];
+  total: number;
+} {
+  const relevant = statuses.filter((s) => !exclude.includes(s.provider));
+  return {
+    configured: relevant.filter((s) => s.configured).map((s) => s.provider),
+    enabled: relevant.filter((s) => s.enabled).map((s) => s.provider),
+    total: relevant.length,
+  };
+}
+
+function providerStatus(statuses: IntegrationStatus[], exclude: string[] = []): CardStatus {
+  const { configured, enabled, total } = providerSummary(statuses, exclude);
+  if (configured.length === 0) {
+    return {
+      tone: "warning",
+      label: "কনফিগার হয়নি",
+      detail: `কোনো প্রোভাইডারের ক্রেডেনশিয়াল সংরক্ষিত নেই (মোট ${total}টি প্রোভাইডার)।`,
+    };
+  }
+  return {
+    tone: "success",
+    label: "কনফিগার হয়েছে",
+    detail: `ক্রেডেনশিয়াল আছে: ${configured.join(", ")} · চালু: ${enabled.length > 0 ? enabled.join(", ") : "কোনোটিই নয়"} (${total}টির মধ্যে ${configured.length}টি কনফিগার)।`,
+  };
+}
+
+async function probe(fn: () => Promise<CardStatus>): Promise<CardStatus> {
+  try {
+    return await fn();
+  } catch {
+    return UNVERIFIABLE;
+  }
+}
+
+function envPresent(name: string): boolean {
+  const v = process.env[name];
+  return v !== undefined && v !== "";
+}
 
 interface SettingsCardInfo {
   href: string;
@@ -20,54 +94,142 @@ interface SettingsCardInfo {
   titleBn: string;
   titleEn: string;
   description: string;
-  /** TEMPORARY DEMO boolean — replaced by the Settings API status. */
-  demoConfigured: boolean;
+  status: CardStatus;
 }
 
-const CARDS: SettingsCardInfo[] = [
-  {
-    href: "/admin/settings/payments",
-    icon: <Icon name="credit-card" size={22} />,
-    titleBn: "পেমেন্ট",
-    titleEn: "Payments",
-    description: "COD, bKash, Nagad, Rocket, Upay, SSLCommerz, AamarPay, ShurjoPay — পদ্ধতি চালু/বন্ধ, sandbox/live মোড।",
-    demoConfigured: false,
-  },
-  {
-    href: "/admin/settings/shipping",
-    icon: <Icon name="truck" size={22} />,
-    titleBn: "কুরিয়ার / শিপিং",
-    titleEn: "Courier / Shipping",
-    description: "Steadfast, Pathao, RedX, Paperfly, eCourier — জোন ও চার্জ, কুরিয়ার অ্যাকাউন্ট সংযোগ।",
-    demoConfigured: false,
-  },
-  {
-    href: "/admin/settings/notifications",
-    icon: <Icon name="bell" size={22} />,
-    titleBn: "নোটিফিকেশন",
-    titleEn: "Notifications",
-    description: "SMS (BulkSMSBD, SSL Wireless, Greenweb) ও ইমেইল (Resend + SMTP) প্রোভাইডার এবং টেমপ্লেট।",
-    demoConfigured: false,
-  },
-  {
-    href: "/admin/settings/integrations",
-    icon: <Icon name="settings" size={22} />,
-    titleBn: "ইন্টিগ্রেশন",
-    titleEn: "Integrations",
-    description: "স্টোরেজ (Cloudflare R2), সার্চ (Meilisearch) ও অন্যান্য বাইরের সেবার সংযোগ অবস্থা।",
-    demoConfigured: false,
-  },
-  {
-    href: "/admin/settings/tracking",
-    icon: <Icon name="chart" size={22} />,
-    titleBn: "ট্র্যাকিং",
-    titleEn: "Tracking",
-    description: "Meta Pixel + CAPI, GA4, TikTok — পিক্সেল আইডি ও সার্ভার-সাইড ইভেন্ট সেটিংস।",
-    demoConfigured: false,
-  },
-];
+export default async function AdminSettingsPage() {
+  // General summary: real public settings (DB values over defaults),
+  // with the same fallback the Settings API GET uses when the DB is
+  // unreachable — defaults are then labelled as defaults, not DB data.
+  let publicSettings: Record<string, string> = {};
+  let dbReady = true;
+  try {
+    publicSettings = await getPublicSettings();
+  } catch {
+    dbReady = false;
+    for (const [key, def] of Object.entries(SETTING_DEFAULTS)) {
+      if (def.isPublic) publicSettings[key] = def.value;
+    }
+  }
+  const locale = publicSettings["general.locale"] ?? SETTING_DEFAULTS["general.locale"]!.value;
+  const currency = publicSettings["general.currency"] ?? SETTING_DEFAULTS["general.currency"]!.value;
+  const timezone = publicSettings["general.timezone"] ?? SETTING_DEFAULTS["general.timezone"]!.value;
 
-export default function AdminSettingsPage() {
+  const payments = await probe(async () => {
+    const statuses = await getIntegrationStatus("payment", PAYMENT_PROVIDERS);
+    // COD needs no credential, so it is excluded from the credential
+    // count and noted in the detail instead of skewing the verdict.
+    const base = providerStatus(statuses, ["cod"]);
+    return { ...base, detail: `${base.detail} COD-তে ক্রেডেনশিয়াল লাগে না।` };
+  });
+
+  const courier = await probe(async () =>
+    providerStatus(await getIntegrationStatus("courier", COURIER_PROVIDERS)),
+  );
+
+  const notifications = await probe(async () => {
+    const sms = providerSummary(await getIntegrationStatus("sms", SMS_PROVIDERS));
+    const email = providerSummary(await getIntegrationStatus("email", EMAIL_PROVIDERS));
+    const anyConfigured = sms.configured.length + email.configured.length > 0;
+    const fmt = (label: string, s: typeof sms) =>
+      `${label}: ক্রেডেনশিয়াল ${s.configured.length > 0 ? s.configured.join(", ") : "নেই"} · চালু ${s.enabled.length > 0 ? s.enabled.join(", ") : "নেই"}`;
+    return {
+      tone: anyConfigured ? "success" : "warning",
+      label: anyConfigured ? "কনফিগার হয়েছে" : "কনফিগার হয়নি",
+      detail: `${fmt("SMS", sms)}। ${fmt("ইমেইল", email)}।`,
+    } satisfies CardStatus;
+  });
+
+  const integrations = await probe(async () => {
+    const storage = providerSummary(await getIntegrationStatus("storage", STORAGE_PROVIDERS));
+    const redis = envPresent("REDIS_URL");
+    const meili = envPresent("MEILISEARCH_HOST");
+    const push =
+      envPresent("WEB_PUSH_VAPID_PUBLIC_KEY") && envPresent("WEB_PUSH_VAPID_PRIVATE_KEY");
+    const storageConfigured = storage.configured.length > 0;
+    return {
+      tone: storageConfigured ? "success" : "warning",
+      label: storageConfigured ? "স্টোরেজ কনফিগার হয়েছে" : "স্টোরেজ কনফিগার হয়নি",
+      detail:
+        `স্টোরেজ (R2/S3) ক্রেডেনশিয়াল: ${storage.configured.length > 0 ? storage.configured.join(", ") : "নেই"} · ` +
+        `Redis (env REDIS_URL): ${redis ? "সেট আছে" : "সেট নেই"} · ` +
+        `Meilisearch (env MEILISEARCH_HOST): ${meili ? "সেট আছে" : "সেট নেই"} · ` +
+        `Web Push (env VAPID key): ${push ? "সেট আছে" : "সেট নেই"}। env মান কখনো দেখানো হয় না — শুধু আছে/নেই।`,
+    } satisfies CardStatus;
+  });
+
+  const tracking = await probe(async () => {
+    const ids: { name: string; value: string | null }[] = [
+      { name: "Meta Pixel", value: await getSetting(TRACKING_SETTING_KEYS.metaPixelId) },
+      { name: "GA4", value: await getSetting(TRACKING_SETTING_KEYS.ga4MeasurementId) },
+      { name: "TikTok Pixel", value: await getSetting(TRACKING_SETTING_KEYS.tiktokPixelId) },
+      { name: "GTM", value: await getSetting(TRACKING_SETTING_KEYS.gtmContainerId) },
+    ];
+    const setIds = ids.filter((i) => i.value !== null && i.value !== "").map((i) => i.name);
+    // Secret tokens: presence of the encrypted row only — the value is
+    // never decrypted or read onto this page.
+    let capiToken = false;
+    const tokenRow = await prisma.setting.findUnique({
+      where: { key: TRACKING_SETTING_KEYS.metaAccessToken },
+    });
+    capiToken = tokenRow !== null && tokenRow.value !== "";
+    if (setIds.length === 0 && !capiToken) {
+      return {
+        tone: "warning",
+        label: "কনফিগার হয়নি",
+        detail: "কোনো পিক্সেল আইডি (Meta/GA4/TikTok/GTM) বা CAPI টোকেন সংরক্ষিত নেই।",
+      } satisfies CardStatus;
+    }
+    return {
+      tone: "success",
+      label: "কনফিগার হয়েছে",
+      detail: `আইডি আছে: ${setIds.length > 0 ? setIds.join(", ") : "নেই"} · Meta CAPI টোকেন: ${capiToken ? "আছে (এনক্রিপ্ট করা)" : "নেই"}।`,
+    } satisfies CardStatus;
+  });
+
+  const cards: SettingsCardInfo[] = [
+    {
+      href: "/admin/settings/payments",
+      icon: <Icon name="credit-card" size={22} />,
+      titleBn: "পেমেন্ট",
+      titleEn: "Payments",
+      description: "COD, bKash, Nagad, Rocket, Upay, SSLCommerz, AamarPay, ShurjoPay — পদ্ধতি চালু/বন্ধ, sandbox/live মোড।",
+      status: payments,
+    },
+    {
+      href: "/admin/settings/shipping",
+      icon: <Icon name="truck" size={22} />,
+      titleBn: "কুরিয়ার / শিপিং",
+      titleEn: "Courier / Shipping",
+      description: "Steadfast, Pathao, RedX, Paperfly, eCourier — জোন ও চার্জ, কুরিয়ার অ্যাকাউন্ট সংযোগ।",
+      status: courier,
+    },
+    {
+      href: "/admin/settings/notifications",
+      icon: <Icon name="bell" size={22} />,
+      titleBn: "নোটিফিকেশন",
+      titleEn: "Notifications",
+      description: "SMS (BulkSMSBD, SSL Wireless, Greenweb) ও ইমেইল (Resend + SMTP) প্রোভাইডার এবং টেমপ্লেট।",
+      status: notifications,
+    },
+    {
+      href: "/admin/settings/integrations",
+      icon: <Icon name="settings" size={22} />,
+      titleBn: "ইন্টিগ্রেশন",
+      titleEn: "Integrations",
+      description: "স্টোরেজ (Cloudflare R2), সার্চ (Meilisearch), Redis ও Web Push — সংযোগ অবস্থা (env আছে/নেই)।",
+      status: integrations,
+    },
+    {
+      href: "/admin/settings/tracking",
+      icon: <Icon name="chart" size={22} />,
+      titleBn: "ট্র্যাকিং",
+      titleEn: "Tracking",
+      description: "Meta Pixel + CAPI, GA4, TikTok — পিক্সেল আইডি ও সার্ভার-সাইড ইভেন্ট সেটিংস।",
+      status: tracking,
+    },
+  ];
+
   return (
     <main>
       <PageHeader
@@ -77,10 +239,10 @@ export default function AdminSettingsPage() {
       />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="ভাষা (ডিফল্ট)" value="বাংলা (bn)" delta="fallback: English" icon={<span className="text-base font-bold">বাং</span>} />
-        <StatCard label="মুদ্রা" value="BDT (৳)" delta="পয়সা (integer) হিসাব" icon={<Icon name="banknote" size={22} />} />
-        <StatCard label="সময় অঞ্চল" value="Asia/Dhaka" delta="সব তারিখ/সময়" icon={<Icon name="clock" size={22} />} />
-        <StatCard label="সাব-পেজ" value={String(CARDS.length)} delta="নিচে কার্ড আকারে" icon={<Icon name="grid" size={22} />} />
+        <StatCard label="ভাষা (ডিফল্ট)" value={locale === "bn" ? "বাংলা (bn)" : locale} delta="fallback: English" icon={<span className="text-base font-bold">বাং</span>} />
+        <StatCard label="মুদ্রা" value={`${currency} (৳)`} delta="পয়সা (integer) হিসাব" icon={<Icon name="banknote" size={22} />} />
+        <StatCard label="সময় অঞ্চল" value={timezone} delta="সব তারিখ/সময়" icon={<Icon name="clock" size={22} />} />
+        <StatCard label="সাব-পেজ" value={String(cards.length)} delta="নিচে কার্ড আকারে" icon={<Icon name="grid" size={22} />} />
       </div>
 
       <Card className="mb-6">
@@ -88,38 +250,40 @@ export default function AdminSettingsPage() {
         <dl className="grid gap-2 text-sm sm:grid-cols-3">
           <div>
             <dt className="text-text-muted">ডিফল্ট ভাষা — <code>general.locale</code></dt>
-            <dd className="font-semibold">bn (বাংলা), fallback en</dd>
+            <dd className="font-semibold">{locale === "bn" ? "bn (বাংলা), fallback en" : locale}</dd>
           </div>
           <div>
             <dt className="text-text-muted">মুদ্রা — <code>general.currency</code></dt>
-            <dd className="font-semibold">BDT — সব টাকা integer পয়সায় সংরক্ষিত</dd>
+            <dd className="font-semibold">{currency} — সব টাকা integer পয়সায় সংরক্ষিত</dd>
           </div>
           <div>
             <dt className="text-text-muted">সময় অঞ্চল — <code>general.timezone</code></dt>
-            <dd className="font-semibold">Asia/Dhaka</dd>
+            <dd className="font-semibold">{timezone}</dd>
           </div>
         </dl>
         <p className="mt-3 text-sm text-text-muted">
+          {dbReady
+            ? "উপরের মানগুলো আসল Settings স্টোর থেকে পড়া (DB মান না থাকলে বিল্ট-ইন ডিফল্ট)। "
+            : "ডাটাবেস পাওয়া যাচ্ছে না — উপরে বিল্ট-ইন ডিফল্ট দেখানো হচ্ছে, DB-র মান নয়। "}
           গোপন মান (API key, পাসওয়ার্ড) কখনো এই পেজে দেখানো হয় না — কার্ডগুলোতে শুধু
           কনফিগার হয়েছে/হয়নি (boolean) অবস্থা থাকে।
         </p>
       </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {CARDS.map((card) => (
+        {cards.map((card) => (
           <Card key={card.href}>
             <div className="flex items-start justify-between">
               <span aria-hidden="true" className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-brand-50 text-brand-600 shadow-sm">
                 {card.icon}
               </span>
-              <Badge tone={card.demoConfigured ? "success" : "warning"}>
-                {card.demoConfigured ? "কনফিগার হয়েছে" : "কনফিগার হয়নি (ডেমো)"}
-              </Badge>
+              <Badge tone={card.status.tone}>{card.status.label}</Badge>
             </div>
             <h3 className="mt-3 font-semibold">
               {card.titleBn} <span className="text-sm font-normal text-text-muted">· {card.titleEn}</span>
             </h3>
             <p className="mt-1 text-sm text-text-muted">{card.description}</p>
+            <p className="mt-2 text-sm text-text-muted">{card.status.detail}</p>
             <a href={card.href} className="mt-3 inline-block text-sm font-medium text-brand-700">
               খুলুন →
             </a>
@@ -128,8 +292,9 @@ export default function AdminSettingsPage() {
       </div>
 
       <p className="mt-6 text-sm text-text-muted">
-        নোট: কার্ডের অবস্থা এখন TEMPORARY DEMO boolean — আসল অবস্থা Settings API থেকে আসবে
-        (শুধু enabled/configured boolean, কোনো credential মান নয়)।
+        নোট: কার্ডের অবস্থা এখন আসল — Settings স্টোরে ক্রেডেনশিয়াল সারি আছে কিনা এবং
+        সার্ভার env-তে চাবি আছে কিনা দেখে নির্ধারিত (শুধু boolean; কোনো credential মান
+        কখনো এই পেজে আসে না)। "চালু" মানে সংশ্লিষ্ট <code>enabled</code> সেটিং true।
       </p>
     </main>
   );

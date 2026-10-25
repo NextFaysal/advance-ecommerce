@@ -7,31 +7,33 @@ import { StatCard } from "@/components/ui/stat-card";
 import { DataTable } from "@/components/ui/table";
 import { Icon } from "@/components/ui/icon";
 import type { PaymentStatus } from "@/integrations/payment";
+import { listAttempts } from "@/integrations/sandbox/db-store";
+import { listManualTrx } from "@/integrations/sandbox/manual-trx";
+import { buildCodSettlementReport } from "@/integrations/sandbox/cod-settlement";
 import {
   COURIER_LABELS_BN,
-  DEMO_TODAY_YMD,
-  demoCodSettlementRows,
-  demoManualSubmissions,
-  demoTransactions,
   dhakaTime,
+  dhakaYmd,
   paymentMethodLabelBn,
   summarizeCodByProvider,
   summarizeTransactions,
   totalCodOutstandingPoisha,
-} from "./demo-data";
+} from "./lib";
 import { ManualTrxReviewQueue } from "./review-queue";
 
-// Admin > Payments — Agent 42 (gap found by Agent 34's audit: payment
-// APIs existed but there was no /admin/payments page).
-// TEMPORARY DEMO: every figure below is computed from SAMPLE records in
-// ./demo-data.ts, shaped exactly like the real API contracts —
-//   transactions  <- GET /api/v1/admin/payments/sandbox   (SandboxPaymentAttempt)
-//   manual queue  <- GET /api/v1/admin/payments/manual-trx (ManualTrxSubmission)
-//   COD panel     <- GET /api/v1/admin/payments/cod-settlement (CodSettlementRow)
-// No gateway is called and nothing is persisted. After the DB wiring the
-// page reads those endpoints; review decisions then go through
-// POST /api/v1/admin/payments/manual-trx, not page state.
+// Admin > Payments — real data (wired 2026-10-25).
+// Every figure below is computed from persisted DB records via the same
+// service functions the admin APIs serve:
+//   transactions  <- listAttempts()            (payment_attempts + payments + refunds)
+//   manual queue  <- listManualTrx()           (manual_trx_submissions)
+//   COD panel     <- buildCodSettlementReport  (persisted Shipment rows, DELIVERED)
+// The gateways behind these records run in sandbox mode (that is the
+// integrations layer's mode until live provider accounts are connected),
+// but the records themselves are real rows — nothing here is sample data.
+// Review decisions go through POST /api/v1/admin/payments/manual-trx.
 // Payment links + daily cash closing live in BD Tools — linked, not rebuilt.
+
+export const dynamic = "force-dynamic";
 
 const PAYMENT_STATUS_META: Record<
   PaymentStatus,
@@ -54,14 +56,21 @@ function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
   );
 }
 
-export default function PaymentsPage() {
-  const txSummary = summarizeTransactions(demoTransactions, DEMO_TODAY_YMD);
-  const pendingManualCount = demoManualSubmissions.filter((s) => s.status === "pending").length;
-  const codOutstanding = totalCodOutstandingPoisha(demoCodSettlementRows);
-  const codSummaries = summarizeCodByProvider(demoCodSettlementRows);
-  const disputedRows = demoCodSettlementRows.filter((r) => r.status === "disputed");
+export default async function PaymentsPage() {
+  const [attempts, manualSubmissions, codReport] = await Promise.all([
+    listAttempts(),
+    listManualTrx(),
+    buildCodSettlementReport("all"),
+  ]);
+  const todayYmd = dhakaYmd(new Date().toISOString());
+  const txSummary = summarizeTransactions(attempts, todayYmd);
+  const pendingManualCount = manualSubmissions.filter((s) => s.status === "pending").length;
+  const codRows = codReport.rows;
+  const codOutstanding = totalCodOutstandingPoisha(codRows);
+  const codSummaries = summarizeCodByProvider(codRows);
+  const disputedRows = codRows.filter((r) => r.status === "disputed");
 
-  const transactionRows = demoTransactions.map((t) => ({
+  const transactionRows = attempts.map((t) => ({
     order: <span className="font-mono tabular-nums">#{t.orderId}</span>,
     method: paymentMethodLabelBn(t.method),
     amount: <Money poisha={t.amountPoisha} />,
@@ -75,7 +84,7 @@ export default function PaymentsPage() {
     time: <span className="font-mono tabular-nums">{dhakaTime(t.createdAt)}</span>,
   }));
 
-  const codRows = codSummaries.map((s) => ({
+  const codTableRows = codSummaries.map((s) => ({
     courier: COURIER_LABELS_BN[s.provider],
     shipments: String(s.shipmentCount),
     collected: <Money poisha={s.collectedPoisha} />,
@@ -96,12 +105,12 @@ export default function PaymentsPage() {
     <div className="space-y-6">
       <PageHeader
         title="পেমেন্ট"
-        description="TEMPORARY DEMO — নমুনা ডেটা, আসল API contract-এর আকারে। কোনো গেটওয়ে কল হয় না, কিছুই সংরক্ষিত হয় না।"
+        description="আসল ডেটা — পেমেন্ট প্রচেষ্টা, ম্যানুয়াল TrxID জমা ও ডেলিভারি হওয়া শিপমেন্টের COD হিসাব ডাটাবেস থেকে। গেটওয়ে বর্তমানে স্যান্ডবক্স মোডে চলে (লাইভ প্রোভাইডার অ্যাকাউন্ট যুক্ত হলে একই রেকর্ডে লাইভ লেনদেন আসবে)।"
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
-          label="আজ সংগৃহীত (ডেমো)"
+          label="আজ সংগৃহীত"
           value={formatPoisha(txSummary.collectedTodayPoisha)}
           delta="আজ, Asia/Dhaka"
           icon={<Icon name="banknote" size={22} />}
@@ -120,7 +129,7 @@ export default function PaymentsPage() {
           icon={<Icon name="truck" size={22} />}
         />
         <StatCard
-          label="আজ ফেরত (ডেমো)"
+          label="আজ ফেরত"
           value={formatPoisha(txSummary.refundedTodayPoisha)}
           delta="আজ, Asia/Dhaka"
           deltaTone="down"
@@ -128,29 +137,37 @@ export default function PaymentsPage() {
         />
       </div>
 
-      <DataTable
-        caption="লেনদেন — নমুনা (TEMPORARY DEMO)"
-        columns={[
-          { key: "order", header: "অর্ডার" },
-          { key: "method", header: "পদ্ধতি" },
-          { key: "amount", header: "পরিমাণ" },
-          { key: "paid", header: "গৃহীত" },
-          { key: "status", header: "অবস্থা" },
-          { key: "trx", header: "গেটওয়ে TrxID" },
-          { key: "time", header: "সময় (Asia/Dhaka)" },
-        ]}
-        rows={transactionRows}
-      />
+      {attempts.length > 0 ? (
+        <DataTable
+          caption="লেনদেন — payment_attempts টেবিল থেকে (নতুন থেকে পুরনো নয়, রেকর্ডের ক্রমে)"
+          columns={[
+            { key: "order", header: "অর্ডার" },
+            { key: "method", header: "পদ্ধতি" },
+            { key: "amount", header: "পরিমাণ" },
+            { key: "paid", header: "গৃহীত" },
+            { key: "status", header: "অবস্থা" },
+            { key: "trx", header: "গেটওয়ে TrxID" },
+            { key: "time", header: "সময় (Asia/Dhaka)" },
+          ]}
+          rows={transactionRows}
+        />
+      ) : (
+        <Card className="shadow-card">
+          <p className="text-sm text-text-muted">
+            এখনো কোনো পেমেন্ট প্রচেষ্টা রেকর্ড হয়নি — প্রথম অর্ডারের পেমেন্ট এলেই এখানে দেখা যাবে।
+          </p>
+        </Card>
+      )}
 
       <section className="space-y-3">
         <h2 className="text-h3">ম্যানুয়াল TrxID যাচাই কিউ</h2>
-        <ManualTrxReviewQueue submissions={demoManualSubmissions} />
+        <ManualTrxReviewQueue submissions={manualSubmissions} />
       </section>
 
       <section className="space-y-3">
         <h2 className="text-h3">COD সেটেলমেন্ট — কুরিয়ার অনুযায়ী</h2>
         <DataTable
-          caption="নমুনা (TEMPORARY DEMO) — বিতর্কিত পরিমাণ আলাদা দেখানো হয়, বকেয়া/পরিশোধিত মোটে কখনো মেশানো হয় না"
+          caption="ডেলিভারি হওয়া শিপমেন্ট থেকে হিসাব করা — বিতর্কিত পরিমাণ আলাদা দেখানো হয়, বকেয়া/পরিশোধিত মোটে কখনো মেশানো হয় না। সেটেলমেন্ট অবস্থা শিপমেন্ট রেকর্ডে সংরক্ষিত হয়; ইনভয়েস অমিলের সারি BD Tools-এর রিকনসিলিয়েশনে বিবাদযুক্ত হয়।"
           columns={[
             { key: "courier", header: "কুরিয়ার" },
             { key: "shipments", header: "শিপমেন্ট" },
@@ -160,7 +177,7 @@ export default function PaymentsPage() {
             { key: "settled", header: "পরিশোধিত" },
             { key: "disputed", header: "বিতর্কিত" },
           ]}
-          rows={codRows}
+          rows={codTableRows}
         />
         {disputedRows.map((r) => (
           <p key={r.shipmentId} className="flex items-start gap-1.5 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
@@ -181,7 +198,7 @@ export default function PaymentsPage() {
         </p>
         <Link
           href="/admin/bd-tools"
-          className="mt-3 inline-flex min-h-[44px] items-center rounded-md bg-brand-600 px-4 text-sm font-medium text-white shadow-sm hover:bg-brand-700"
+          className="mt-3 inline-flex min-h-[44px] items-center rounded-md bg-brand-600 px-4 text-sm font-medium text-white shadow-md transition hover:opacity-90"
         >
           BD Tools খুলুন →
         </Link>

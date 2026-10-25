@@ -231,7 +231,7 @@ export default function ContactForm({
         {submitting ? labels.submittingLabel : content.submitLabel}
       </button>
       <p className="text-xs text-slate-400">{labels.formNote}</p>
-      <p className="text-xs text-slate-400">{labels.demoNote}</p>
+      <p className="text-xs text-slate-400">{labels.storageNote}</p>
     </form>
   );
 }

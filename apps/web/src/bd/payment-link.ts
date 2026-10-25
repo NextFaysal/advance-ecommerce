@@ -237,6 +237,19 @@ export class PrismaPaymentLinkStore {
     });
     return rows.map(linkRowToRecord);
   }
+
+  /** Newest links across ALL orders — the admin BD Tools list (added
+   *  2026-10-25 so the page shows real recent links instead of seeding
+   *  a demo link for one hard-coded order). Same read shape as
+   *  listByOrder: the record carries the token HASH only, never a token. */
+  async listRecent(limit = 20): Promise<PaymentLinkRecord[]> {
+    const rows = await prisma.paymentLink.findMany({
+      include: { order: { select: { orderNo: true } } },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
+    return rows.map(linkRowToRecord);
+  }
 }
 
 /** Shared DB-backed store for the admin BD routes + public /pay pages. */

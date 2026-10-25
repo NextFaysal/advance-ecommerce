@@ -8,9 +8,10 @@
  * directly; src/vendors/store.ts stays Prisma-free for client safety.
  *
  * SCHEMA NOTES:
- *  - The DB Vendor row has a single `name` column where the TS
- *    contract has shopName + ownerName: name <- shopName on write;
- *    ownerName echoes on the create return and reads back "".
+ *  - The DB Vendor row's `name` column is the TS contract's shopName;
+ *    ownerName persists on its own `ownerName` column (added by the
+ *    reviews_and_small_fixes migration, 2026-10-25). Rows created
+ *    before that migration read back ownerName "" (null in the DB).
  *  - status / approval are free String columns: TS values are stored
  *    verbatim (PENDING / ACTIVE / ... and PENDING_REVIEW / APPROVED /
  *    REJECTED / CHANGES_REQUESTED).
@@ -34,7 +35,7 @@ function rowToVendor(row: VendorRow): Vendor {
   return {
     id: row.id,
     shopName: row.name,
-    ownerName: "",
+    ownerName: row.ownerName ?? "",
     phone: row.phone,
     status: VENDOR_STATUSES.includes(row.status as VendorStatus)
       ? (row.status as VendorStatus)
@@ -63,13 +64,13 @@ export class PrismaVendorStore implements VendorStore {
       data: {
         ...(v.id ? { id: v.id } : {}),
         name: v.shopName,
+        ownerName: v.ownerName ? v.ownerName : null,
         phone: v.phone,
         commissionBps: v.commissionBps,
         status: v.status,
       },
     });
-    // Write echo: ownerName is not persisted (see header).
-    return { ...rowToVendor(row), ownerName: v.ownerName };
+    return rowToVendor(row);
   }
 
   async setVendorStatus(id: string, status: Vendor["status"]): Promise<void> {
@@ -80,7 +81,13 @@ export class PrismaVendorStore implements VendorStore {
   async replaceVendor(v: Vendor): Promise<void> {
     await prisma.vendor.update({
       where: { id: v.id },
-      data: { name: v.shopName, phone: v.phone, commissionBps: v.commissionBps, status: v.status },
+      data: {
+        name: v.shopName,
+        ownerName: v.ownerName ? v.ownerName : null,
+        phone: v.phone,
+        commissionBps: v.commissionBps,
+        status: v.status,
+      },
     });
   }
 

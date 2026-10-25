@@ -4,15 +4,20 @@ import { demoAdapterRegistry } from "@/extensibility/registry";
 import { ALL_PACKS, validatePackConfig } from "@/business-modules/packs";
 import { demoPackFlags } from "@/business-modules/types";
 import { DEFAULT_CHART_OF_ACCOUNTS } from "@/erp/accounts";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { z } from "zod";
 
 // Business modules + extensibility catalog — Agent 17, Step 49 (Part C / A13-A16).
-// RBAC: settings.integrations. Flags are the in-memory demo store (OFF by
-// default) until the DB flag reader is wired; a disabled pack is listed as
-// locked, never hidden and never runnable.
+// RBAC: settings.integrations. Pack flags: demoPackFlags is an adapter
+// over the unified flag reader; hydrated from the feature_flags table
+// via ensureDbFeatureFlags() below, so `enabled` is the real DB state
+// (wired 2026-10-25 — previously the reader was never hydrated on this
+// route and only the in-memory seed defaults showed). A disabled pack
+// is listed as locked, never hidden and never runnable.
 export async function GET() {
   const guard = await requireAdmin("settings.integrations");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
+  await ensureDbFeatureFlags();
   const flags = demoPackFlags.list();
   return NextResponse.json({
     data: {
@@ -28,7 +33,11 @@ export async function GET() {
       adapters: demoAdapterRegistry.list(),
       chartOfAccounts: DEFAULT_CHART_OF_ACCOUNTS,
     },
-    meta: { persistence: "in-memory-demo", flagsSource: "demo-store-db-pending" },
+    meta: {
+      persistence: "database",
+      flagsSource: "feature_flags table (src/lib/feature-flags-db.ts)",
+      adaptersSource: "empty — no boot adapter registration is wired in this build",
+    },
   });
 }
 
