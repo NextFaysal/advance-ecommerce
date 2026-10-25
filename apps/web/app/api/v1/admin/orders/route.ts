@@ -18,6 +18,17 @@
  *
  * DB-BACKED: list reads real Order rows via src/orders/repository
  * (filters + pagination in SQL). The bulk POST below is unchanged.
+ *
+ * LIST V2 (doc 17 O6-2): the GET is true server pagination — `page`
+ * (1-based), `pageSize` (default 25, max 100), `status`, `q` (alias
+ * of `search`: orderNo / name / district / phone incl. suffix), and
+ * `sort` (createdAt_desc default | createdAt_asc | totalPoisha_* |
+ * status_*). meta carries `total` (FULL count with every filter,
+ * status included) and `counts` (per-status totals over the set
+ * filtered by everything EXCEPT status, so the filter chips stay
+ * meaningful while one status is selected). Rows keep the exact
+ * pre-v2 item shape; pre-v2 consumers (command palette etc.) that
+ * pass ?search=&pageSize= and read data[] are unaffected.
  * Bulk POST registers a real job in src/jobs/bulk-actions.ts and triggers
  * its in-process processor (BullMQ is not installed yet — processBulkJob is
  * the exact function the future worker will run). It returns 202 with the
@@ -32,6 +43,7 @@ import { validateSessionToken, type SessionUser } from "@/lib/auth";
 import { phoneForViewer, requirePermission, RbacError, type PermissionKey } from "@/lib/rbac";
 import { writeAudit } from "@/lib/audit";
 import { listOrders } from "@/orders/repository";
+import { countOrdersByStatus } from "@/orders/list-v2";
 import type { Order } from "@/orders/types";
 import { enqueueBulkJob, processBulkJob } from "@/jobs/bulk-actions";
 import { manualOrderSchema } from "@/orders/manual-order";
@@ -79,8 +91,14 @@ const listQuerySchema = z.object({
   paymentMethod: z.string().optional(),
   courier: z.string().optional(),
   search: z.string().optional(),
+  // List v2 (doc 17 O6-2): `q` is the v2 name for the same search;
+  // when both are sent, q wins.
+  q: z.string().optional(),
+  sort: z
+    .enum(["createdAt_desc", "createdAt_asc", "totalPoisha_desc", "totalPoisha_asc", "status_asc", "status_desc"])
+    .optional(),
   page: z.coerce.number().int().positive().default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
 
 function publicOrder(order: Order, permissions: readonly string[]): Order {
@@ -96,19 +114,33 @@ export async function GET(req: Request) {
     return err("VALIDATION_ERROR", "List query invalid.", 400, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`));
   }
   const q = parsed.data;
-  const { rows, total } = await listOrders({
-    status: q.status,
-    paymentStatus: q.paymentStatus,
-    paymentMethod: q.paymentMethod,
-    courier: q.courier,
-    search: q.search,
-    page: q.page,
-    pageSize: q.pageSize,
-  });
+  const search = q.q ?? q.search;
+  const [{ rows, total }, counts] = await Promise.all([
+    listOrders({
+      status: q.status,
+      paymentStatus: q.paymentStatus,
+      paymentMethod: q.paymentMethod,
+      courier: q.courier,
+      search,
+      sort: q.sort,
+      page: q.page,
+      pageSize: q.pageSize,
+    }),
+    // List v2: full-set status counts (SQL groupBy). They ignore the
+    // status param on purpose — the chips must show what switching
+    // status would yield under the CURRENT search/other filters.
+    // meta.total above is the pager's number: status filter applied.
+    countOrdersByStatus({
+      paymentStatus: q.paymentStatus,
+      paymentMethod: q.paymentMethod,
+      courier: q.courier,
+      search,
+    }),
+  ]);
   const pageRows = rows.map((o) => publicOrder(o, auth.session.user.permissions));
   return NextResponse.json({
     data: pageRows,
-    meta: { total, page: q.page, pageSize: q.pageSize, db: "PRISMA", source: "DATABASE" },
+    meta: { total, page: q.page, pageSize: q.pageSize, counts, db: "PRISMA", source: "DATABASE" },
   });
 }
 

@@ -2,10 +2,21 @@
 
 // Admin order list + kanban — REAL data from GET /api/v1/admin/orders
 // (Prisma-backed; phone masked server-side for viewers without
-// customers.view_full_phone). The list loads the first 100 orders and
-// filters/searches them on this page; status counts and the kanban are
-// computed from those real rows — an empty DB shows an honest empty
-// state, never sample rows. Bulk actions go through the BulkActionBar
+// customers.view_full_phone).
+//
+// LIST V2 (doc 17, batch O6-2): TRUE server pagination. The old page
+// loaded the first 100 orders and filtered / searched / counted them
+// in the browser, so every count was wrong beyond 100 rows. Now the
+// page sends page / pageSize (default 25) / status / q / sort to the
+// API; the chips read meta.counts (SQL aggregates over the set
+// filtered by everything EXCEPT status, so they stay meaningful
+// while a status is selected) and the pager reads meta.total (the
+// full filtered count). Nothing is filtered client-side any more.
+// The kanban shows the CURRENT PAGE's rows only and says so. Bulk
+// selection (a Set of ids) PERSISTS across page changes on purpose —
+// staff collect orders page by page, then bulk-act or print them
+// together. An empty result shows an honest empty state, never
+// sample rows. Bulk actions go through the BulkActionBar
 // (real job pipeline, per-order results from the Jobs API). The manual
 // order builder below (ManualOrderBuilder, doc 17 batch O2) validates
 // with manualOrderSchema v2 and POSTs to the admin create endpoint
@@ -18,7 +29,7 @@
 // Presentation (Design Refresh R3): Tailwind table system — sticky
 // header, status pills, payment/risk badges, filter chips with real
 // counts, designed empty/loading states. Data flow unchanged.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Order, OrderStatus } from "../../../src/orders/types";
 import { MANUAL_ORDER_STEPS } from "../../../src/orders/manual-order";
 import { displayPhone, riskLevel } from "../../../src/orders/customer";
@@ -27,6 +38,7 @@ import { BulkActionBar } from "../../../src/orders/components/BulkActionBar";
 import { ManualOrderBuilder } from "./manual-order-builder";
 import { OrderImportCard } from "./order-import-card";
 import { StaleUnpaidPanel } from "./stale-unpaid-panel";
+import { AgingPanel } from "./aging-panel";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -142,51 +154,123 @@ function SortHeader({
   );
 }
 
+/** Map the table's sort state to the list API's `sort` param
+ *  (src/orders/list-v2 ORDER_LIST_SORTS). null = the API default,
+ *  newest first. */
+function apiSortParam(sort: OrderSort | null): string {
+  if (!sort) return "createdAt_desc";
+  if (sort.key === "date") return sort.dir === "asc" ? "createdAt_asc" : "createdAt_desc";
+  if (sort.key === "total") return sort.dir === "asc" ? "totalPoisha_asc" : "totalPoisha_desc";
+  return sort.dir === "asc" ? "status_asc" : "status_desc";
+}
+
 export default function AdminOrdersPage() {
-  const [allOrders, setAllOrders] = useState<Order[]>([]);
+  /* List v2: pageOrders is ONLY the current page's rows — the server
+   * owns filtering, searching, counting and sorting now. */
+  const [pageOrders, setPageOrders] = useState<Order[]>([]);
   const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState<Record<string, number> | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [loadError, setLoadError] = useState("");
+  const [fetching, setFetching] = useState(false);
   const [filter, setFilter] = useState<"ALL" | OrderStatus>("ALL");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [view, setView] = useState<"table" | "kanban">("table");
-  /* Table v2 (Design v3): client-side sort over the loaded rows
-   * (date / total / status) + a density toggle. null sort = API order. */
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  /* Sort state (date / total / status) is kept in the table's own
+   * shape for the saved views, and mapped to the API sort param by
+   * apiSortParam — sorting happens on the server. null = API default
+   * (newest first). Density stays a pure display toggle. */
   const [sort, setSort] = useState<{ key: "date" | "total" | "status"; dir: "asc" | "desc" } | null>(null);
   const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
   const orderViews = useSavedViews<OrderViewState>("orders");
   const orderCols = useHiddenColumns("orders", ORDER_HIDEABLE_KEYS);
+  /* Bulk selection: ids PERSIST across page changes by design —
+   * staff collect orders from several pages, then bulk-act / print. */
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  /* The server query, mirrored into a ref so `load` stays a stable
+   * () => Promise<void> for the refresh button / bulk bar / builders
+   * while the effect below refetches whenever any part changes. */
+  const queryRef = useRef({ filter, search: "", sort, page: 1, pageSize: 25 });
+  queryRef.current = { filter, search: debouncedSearch, sort, page, pageSize };
+  const requestSeq = useRef(0);
+  const readyRef = useRef(false);
+
   const load = useCallback(async () => {
-    setLoadState("loading");
+    const q = queryRef.current;
+    const seq = ++requestSeq.current;
+    // First load (or retry after an error) takes the full loading /
+    // error states; a refetch while ready keeps the rows on screen
+    // and only flags `fetching` (the pager shows a hint).
+    if (readyRef.current) setFetching(true);
+    else setLoadState("loading");
     try {
-      const res = await fetch("/api/v1/admin/orders?pageSize=100");
+      const params = new URLSearchParams({
+        page: String(q.page),
+        pageSize: String(q.pageSize),
+        sort: apiSortParam(q.sort),
+      });
+      if (q.filter !== "ALL") params.set("status", q.filter);
+      if (q.search.trim()) params.set("q", q.search.trim());
+      const res = await fetch(`/api/v1/admin/orders?${params.toString()}`);
       const body = (await res.json().catch(() => null)) as
-        | { data?: Order[]; meta?: { total?: number }; error?: { code: string; message: string } }
+        | { data?: Order[]; meta?: { total?: number; counts?: Record<string, number> }; error?: { code: string; message: string } }
         | null;
+      if (seq !== requestSeq.current) return; // a newer fetch owns the screen
       if (res.ok && body && "data" in body && body.data) {
-        setAllOrders(body.data);
+        setPageOrders(body.data);
         setTotal(body.meta?.total ?? body.data.length);
+        if (body.meta?.counts) setCounts(body.meta.counts);
+        readyRef.current = true;
         setLoadState("ready");
+        setLoadError("");
       } else {
-        setLoadError(
+        const message =
           body && "error" in body && body.error
             ? `${body.error.code}: ${body.error.message}`
-            : `HTTP ${res.status}`,
-        );
-        setLoadState("error");
+            : `HTTP ${res.status}`;
+        setLoadError(message);
+        if (!readyRef.current) setLoadState("error");
       }
     } catch {
+      if (seq !== requestSeq.current) return;
       setLoadError("নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি।");
-      setLoadState("error");
+      if (!readyRef.current) setLoadState("error");
+    } finally {
+      if (seq === requestSeq.current) setFetching(false);
     }
   }, []);
 
+  /* Debounce the search box into the value the server sees. */
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  /* Refetch whenever the server query changes. */
+  useEffect(() => {
+    void load();
+  }, [load, filter, debouncedSearch, sort, page, pageSize]);
+
+  /* If the result set shrank under the current page (e.g. after bulk
+   * actions), step back to the last page that exists. */
+  useEffect(() => {
+    if (loadState === "ready" && page > totalPages) setPage(totalPages);
+  }, [loadState, page, totalPages]);
+
   useEffect(() => {
     // Initial filter from the URL (command-palette natural-language links
-    // land here with ?status= / ?q= / ?district=; district/date are not
-    // API filters, the text search covers the order number case).
+    // land here with ?status= / ?q= / ?district=). Setting state is all
+    // it takes — the query effect above refetches; the server search
+    // covers order number / name / district / phone.
     const params = new URLSearchParams(window.location.search);
     const statusParam = params.get("status");
     if (statusParam && (STATUSES as string[]).includes(statusParam)) {
@@ -194,39 +278,19 @@ export default function AdminOrdersPage() {
     }
     const q = params.get("q") ?? params.get("search");
     if (q) setSearch(q);
-    void load();
-  }, [load]);
+  }, []);
 
-  const orders = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    const filtered = allOrders.filter((o) => {
-      if (filter !== "ALL" && o.status !== filter) return false;
-      if (!needle) return true;
-      return (
-        o.orderNo.toLowerCase().includes(needle) ||
-        o.customerName.toLowerCase().includes(needle) ||
-        o.address.district.toLowerCase().includes(needle) ||
-        o.address.division.toLowerCase().includes(needle)
-      );
-    });
-    if (!sort) return filtered;
-    const mul = sort.dir === "asc" ? 1 : -1;
-    const statusRank = (s: OrderStatus) => {
-      const idx = (STATUSES as string[]).indexOf(s);
-      return idx === -1 ? STATUSES.length : idx;
-    };
-    return [...filtered].sort((a, b) => {
-      if (sort.key === "date") return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * mul;
-      if (sort.key === "total") return (a.totalPoisha - b.totalPoisha) * mul;
-      return (statusRank(a.status) - statusRank(b.status)) * mul;
-    });
-  }, [allOrders, filter, search, sort]);
+  /* List v2: `orders` IS the current page. Filtering, searching,
+   * counting and sorting all happened on the server — no client-side
+   * filtering remains to drift out of sync with the chips/pager. */
+  const orders = pageOrders;
 
   function toggleSort(key: "date" | "total" | "status") {
     setSort((prev) => {
       if (prev?.key !== key) return { key, dir: key === "status" ? "asc" : "desc" };
       return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
     });
+    setPage(1);
   }
 
   function applyOrderView(view: SavedView<OrderViewState>) {
@@ -241,11 +305,16 @@ export default function AdminOrdersPage() {
         ? { key: savedSort.key, dir: savedSort.dir === "asc" ? "asc" : "desc" }
         : null,
     );
+    setPage(1);
   }
 
+  /* Chip counts come from meta.counts — SQL aggregates over the set
+   * filtered by everything EXCEPT the status param (see the API), so
+   * a chip shows what switching to that status would yield under the
+   * current search. Undefined until the first response lands. */
   const countFor = useCallback(
-    (s: "ALL" | OrderStatus) => (s === "ALL" ? allOrders.length : allOrders.filter((o) => o.status === s).length),
-    [allOrders],
+    (s: "ALL" | OrderStatus): number | undefined => counts?.[s],
+    [counts],
   );
 
   const selectedIds = useMemo(() => [...selected], [selected]);
@@ -282,6 +351,7 @@ export default function AdminOrdersPage() {
       />
 
       <StaleUnpaidPanel />
+      <AgingPanel />
 
       {loadState === "loading" && (
         <div role="status" aria-label="অর্ডার লোড হচ্ছে" className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
@@ -368,7 +438,7 @@ export default function AdminOrdersPage() {
                   <button
                     key={s}
                     type="button"
-                    onClick={() => setFilter(s)}
+                    onClick={() => { setFilter(s); setPage(1); }}
                     aria-pressed={active}
                     className={`flex min-h-[32px] items-center gap-1.5 rounded-full px-3 text-caption font-semibold transition motion-fast ${
                       active ? "bg-brand-600 text-white shadow-sm" : "border border-border bg-card text-text-muted hover:border-brand-300 hover:text-brand-700"
@@ -376,12 +446,12 @@ export default function AdminOrdersPage() {
                   >
                     <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: active ? "#fff" : meta.dot }} />
                     {meta.label}
-                    <span className={`font-mono tabular-nums ${active ? "text-white/85" : "text-text-subtle"}`}>{countFor(s)}</span>
+                    <span className={`font-mono tabular-nums ${active ? "text-white/85" : "text-text-subtle"}`}>{countFor(s) ?? "—"}</span>
                   </button>
                 );
               })}
               <span className="ml-auto text-caption text-text-muted">
-                {orders.length}টি অর্ডার দেখানো হচ্ছে (মোট {total}টি; প্রথম ১০০টি লোড হয়)
+                এই পেজে {orders.length}টি · ফিল্টার অনুযায়ী মোট {total}টি · পেজ {page}/{totalPages}
               </span>
             </div>
             {/* Table v2: saved views + column visibility (table view only
@@ -410,6 +480,44 @@ export default function AdminOrdersPage() {
             <p className="mt-2 text-caption leading-relaxed text-text-subtle">{TABLE_PREFS_NOTE}</p>
           </Card>
 
+          {/* A failed REFETCH (rows already on screen) surfaces here
+           *  instead of replacing the list with the error state. */}
+          {loadError ? (
+            <div role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-small text-rose-700">
+              তালিকা রিফ্রেশ হয়নি: {loadError}
+              <button type="button" onClick={() => void load()} className="ml-3 font-semibold underline">
+                আবার চেষ্টা করুন
+              </button>
+            </div>
+          ) : null}
+
+          {/* Print centre entry (doc 17 O6-2): the selected orders as
+           *  printable invoices in a new tab. Selection persists
+           *  across pages, so the ids may span several pages. */}
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <a
+              href={selected.size > 0 ? `/admin/orders/print?ids=${selectedIds.join(",")}` : undefined}
+              target="_blank"
+              rel="noreferrer"
+              aria-disabled={selected.size === 0}
+              onClick={(e) => {
+                if (selected.size === 0) e.preventDefault();
+              }}
+              className={`rounded-md px-3.5 py-2 text-small font-semibold transition motion-fast ${
+                selected.size > 0
+                  ? "bg-brand-600 text-white shadow-sm hover:bg-brand-700"
+                  : "cursor-not-allowed border border-border bg-card text-text-subtle"
+              }`}
+            >
+              ইনভয়েস প্রিন্ট / Print invoices
+            </a>
+            <span className="text-caption text-text-muted">
+              {selected.size > 0
+                ? `${selected.size}টি সিলেক্ট করা অর্ডারের ইনভয়েস নতুন ট্যাবে খুলবে`
+                : "ইনভয়েস ছাপতে আগে তালিকা থেকে অর্ডার সিলেক্ট করুন"}
+            </span>
+          </div>
+
           {/* Bulk bar — renders itself only when orders are selected */}
           <div className="mb-4 empty:mb-0">
             <BulkActionBar selectedIds={selectedIds} onClear={() => setSelected(new Set())} onDone={() => void load()} />
@@ -433,7 +541,7 @@ export default function AdminOrdersPage() {
                 <Button
                   variant="outline"
                   className="mt-5"
-                  onClick={() => { setFilter("ALL"); setSearch(""); }}
+                  onClick={() => { setFilter("ALL"); setSearch(""); setPage(1); }}
                 >
                   ফিল্টার মুছে ফেলুন
                 </Button>
@@ -599,10 +707,17 @@ export default function AdminOrdersPage() {
             </div>
             </>
           ) : (
+            <>
+            {/* List v2 honesty: the board renders the CURRENT PAGE's
+             *  rows (server-filtered), not the whole dataset — the
+             *  column counts are this page's counts. */}
+            <p className="mb-3 text-caption leading-relaxed text-text-muted">
+              কানবান বোর্ডটি শুধু এই পেজের {orders.length}টি অর্ডার দেখায় (ফিল্টার অনুযায়ী মোট {total}টি) — কলামের সংখ্যা পুরো ডেটাসেটের হিসাব নয়।
+            </p>
             <div className="flex gap-3 overflow-x-auto pb-2">
               {STATUSES.filter((s) => s !== "ALL").map((status) => {
                 const meta = STATUS_META[status] ?? { label: status, tone: "neutral" as const, dot: "#94A3B8" };
-                const column = allOrders.filter((o) => o.status === status);
+                const column = pageOrders.filter((o) => o.status === status);
                 return (
                   <section key={status} className="flex w-[264px] shrink-0 flex-col rounded-lg border border-border bg-surface-2/60 shadow-card">
                     <header className="flex items-center gap-2 px-3.5 pb-1 pt-3.5">
@@ -633,7 +748,37 @@ export default function AdminOrdersPage() {
                 );
               })}
             </div>
+            </>
           )}
+
+          {/* Pager (list v2) — meta.total is the FULL filtered count,
+           *  so page N of M is true at any dataset size. */}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <p className="text-small text-text-muted">
+              মোট <span className="font-semibold text-text-main">{total}</span>টি অর্ডার · পেজ {page} / {totalPages}
+              {fetching ? <span className="ml-2 text-text-subtle">লোড হচ্ছে…</span> : null}
+            </p>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <label className="text-caption text-text-muted" htmlFor="orders-page-size">প্রতি পেজে</label>
+              <select
+                id="orders-page-size"
+                value={pageSize}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+                className="rounded-md border border-border bg-card px-2 py-1.5 text-small outline-none focus:border-brand-500"
+              >
+                {[25, 50, 100].map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+              <Button variant="outline" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || fetching}>
+                ← আগের পেজ
+              </Button>
+              <Button variant="outline" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages || fetching}>
+                পরের পেজ →
+              </Button>
+            </div>
+          </div>
+
           <p className="mt-3 text-caption leading-relaxed text-text-subtle">
             বাল্ক কাজ: টেবিল ভিউতে অর্ডার সিলেক্ট করে উপরের বাল্ক বার থেকে কনফার্ম / লেবেল প্রিন্ট / কুরিয়ার বুকিং পাঠানো যায় — আসল জব তৈরি হয়, প্রতি-অর্ডারের ফলাফল Jobs API থেকে দেখানো হয়। কানবান ভিউতে বাল্ক সিলেকশন নেই।
           </p>

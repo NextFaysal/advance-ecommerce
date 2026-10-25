@@ -33,6 +33,15 @@ enum OrderStatus {
   EXCHANGED
 }
 
+// Staff-set handling priority (wave 24, doc 17 batch O6). Written by
+// the order management service; NORMAL is the untouched default.
+enum OrderPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
 enum PaymentStatus {
   UNPAID
   PARTIAL
@@ -742,6 +751,14 @@ model Order {
   riskScore        Int          @default(0)
   assigneeId       String?
   assignee         User?        @relation("OrderAssignee", fields: [assigneeId], references: [id])
+  // Management fields (wave 24, doc 17 batch O6): priority + a
+  // staff-set operational HOLD. The hold is UI-level only — the
+  // status funnel never consults it (deliberate non-goal, see the
+  // management route header); heldAt stamps when the hold was set
+  // and heldReason carries the mandatory reason.
+  priority         OrderPriority @default(NORMAL)
+  heldAt           DateTime?
+  heldReason       String?
   // Reseller attribution (nullable: set only when the order is recorded
   // as a reseller sale; the delivered-order hook credits this reseller).
   resellerId       String?

@@ -73,6 +73,7 @@ import {
 import { computeBundleAvailability } from "../catalog/types";
 import { getSetting } from "../lib/settings";
 import { advanceConfirmBlock, type AdvanceBlockCode } from "./advance";
+import { orderSearchOr, type OrderListSort } from "./list-v2";
 import { riskLevel } from "./customer";
 import { runDeliveredOrderHooks } from "./delivered-hooks";
 import { runReversalHooks } from "./reversal-hooks";
@@ -272,9 +273,23 @@ export interface OrderListFilters {
   paymentMethod?: string;
   courier?: string;
   search?: string;
+  /** List v2 (doc 17 O6-2): sort key from src/orders/list-v2. Absent =
+   *  the historical createdAt-desc order every existing consumer sees. */
+  sort?: OrderListSort;
   page: number;
   pageSize: number;
 }
+
+const ORDER_LIST_ORDER_BY: Record<OrderListSort, Record<string, string>[]> = {
+  createdAt_desc: [{ createdAt: "desc" }],
+  createdAt_asc: [{ createdAt: "asc" }],
+  totalPoisha_desc: [{ totalPoisha: "desc" }, { createdAt: "desc" }],
+  totalPoisha_asc: [{ totalPoisha: "asc" }, { createdAt: "desc" }],
+  // Enum order in the schema follows the fulfilment lifecycle, so a
+  // status sort groups orders the way the kanban reads.
+  status_asc: [{ status: "asc" }, { createdAt: "desc" }],
+  status_desc: [{ status: "desc" }, { createdAt: "desc" }],
+};
 
 export async function listOrders(
   filters: OrderListFilters,
@@ -289,19 +304,16 @@ export async function listOrders(
   }
   if (filters.courier) where.courier = filters.courier;
   if (filters.search) {
-    const needle = filters.search;
-    where.OR = [
-      { orderNo: { contains: needle, mode: "insensitive" } },
-      { customerName: { contains: needle, mode: "insensitive" } },
-      { customerPhone: { contains: needle } },
-      { trackingId: { contains: needle, mode: "insensitive" } },
-    ];
+    // List v2 (O6-2): the shared search OR (adds district +
+    // phone-suffix matching) lives in src/orders/list-v2 so the rows
+    // and the status counts can never disagree about a search.
+    where.OR = orderSearchOr(filters.search);
   }
   const [total, rows] = await Promise.all([
     prisma.order.count({ where: where as never }),
     prisma.order.findMany({
       where: where as never,
-      orderBy: { createdAt: "desc" },
+      orderBy: (filters.sort ? ORDER_LIST_ORDER_BY[filters.sort] : [{ createdAt: "desc" }]) as never,
       skip: (filters.page - 1) * filters.pageSize,
       take: filters.pageSize,
       include: ORDER_INCLUDE,

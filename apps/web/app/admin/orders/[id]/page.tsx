@@ -25,6 +25,9 @@ import { OneClickPanel } from "../../../../src/orders/components/OneClickPanel";
 import { PrintPanel } from "../../../../src/orders/components/PrintPanel";
 import { RefundsPanel } from "./refunds-panel";
 import { ShipmentsPanel } from "./shipments-panel";
+import { PhoneReveal } from "./phone-reveal";
+import { EditPanel } from "./edit-panel";
+import { ManagementPanel } from "./management-panel";
 import { AdvancePanel } from "./advance-panel";
 import type { OrderAdvanceView } from "../../../../src/orders/advance";
 import { StatusTimeline } from "../../../../src/orders/components/StatusTimeline";
@@ -237,7 +240,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
               </Badge>
             </div>
             <p className="mt-2.5 text-small leading-relaxed text-text-muted">
-              গ্রাহক: <span className="font-medium text-text-main">{order.customerName}</span> — {displayPhone(order.customerPhone, false)} (ডিফল্টভাবে মাস্ক করা)
+              গ্রাহক: <span className="font-medium text-text-main">{order.customerName}</span> — <PhoneReveal orderId={order.id} maskedPhone={displayPhone(order.customerPhone, false)} />
               <br />
               কুরিয়ার: {order.courier ?? "—"} · ট্র্যাকিং: {order.trackingId ? <span className="font-mono">{order.trackingId}</span> : "—"}
               {addressLine ? <><br />ঠিকানা: {addressLine}</> : null}
@@ -391,6 +394,17 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
               per-line coverage, create-split form and staff-confirmed
               parcel delivery. Self-fetches by order id. */}
           <ShipmentsPanel orderId={order.id} />
+
+          {/* Order management (doc 17, O6) — assignee / priority /
+              tags / operational hold / internal notes. Self-fetches
+              by order id; the hold is a loud UI signal only. */}
+          <ManagementPanel orderId={order.id} />
+
+          {/* Order editing (doc 17, O6) — line qty/remove/add with
+              transactional stock deltas and full money recompute.
+              Self-fetches by order id; renders an explanation instead
+              of the editor once the order leaves editable states. */}
+          <EditPanel orderId={order.id} />
         </div>
       </div>
 
