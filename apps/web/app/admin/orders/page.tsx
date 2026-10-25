@@ -40,6 +40,8 @@ import { OrderImportCard } from "./order-import-card";
 import { StaleUnpaidPanel } from "./stale-unpaid-panel";
 import { AgingPanel } from "./aging-panel";
 import { KpiPanel } from "./kpi-panel";
+import { PosSalesPanel } from "./pos-sales-panel";
+import { DraftsPanel } from "./drafts-panel";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -354,6 +356,10 @@ export default function AdminOrdersPage() {
       <StaleUnpaidPanel />
       <AgingPanel />
       <KpiPanel />
+      {/* POS counter sales, read-only (doc 17 O9-2): reported here for
+       *  the orders team; never converted into orders — POS stock
+       *  already moved in the POS flow. */}
+      <PosSalesPanel />
 
       {loadState === "loading" && (
         <div role="status" aria-label="অর্ডার লোড হচ্ছে" className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
@@ -786,6 +792,11 @@ export default function AdminOrdersPage() {
           </p>
         </>
       )}
+
+      {/* Parked manual-order drafts (doc 17 O9-2): Resume loads one
+       *  into the builder below; Convert re-validates its payload
+       *  through the manual create. Renders nothing when empty. */}
+      <DraftsPanel onConverted={load} />
 
       {/* Manual order — posts to the admin create endpoint */}
       <Card className="mt-8 shadow-card">

@@ -140,6 +140,18 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   // Percent of the grand total asked as advance when the rule above
   // fires (integer 1-100; invalid stored values fall back to 20).
   "orders.rules.advance_percent": { category: "general", value: "20", isPublic: false },
+  // Delivery slots offered at checkout (doc 17 batch O9-2 —
+  // src/checkout/delivery-slots.ts): a JSON array of
+  // { id, labelBn, labelEn }. The value below MUST stay in sync with
+  // DEFAULT_DELIVERY_SLOTS in that module (it cannot import from
+  // there without a cycle). Writable through the generic settings
+  // POST like every orders.* key; no dedicated editor UI yet.
+  "orders.delivery_slots": {
+    category: "general",
+    value:
+      '[{"id":"morning","labelBn":"সকাল (৯টা – দুপুর ১টা)","labelEn":"Morning (9am – 1pm)"},{"id":"afternoon","labelBn":"দুপুর–বিকেল (১টা – ৬টা)","labelEn":"Afternoon (1pm – 6pm)"},{"id":"evening","labelBn":"সন্ধ্যা (৬টা – রাত ১০টা)","labelEn":"Evening (6pm – 10pm)"}]',
+    isPublic: false,
+  },
 };
 
 /** Env fallback map: setting key -> env var name. No secret value lives here. */

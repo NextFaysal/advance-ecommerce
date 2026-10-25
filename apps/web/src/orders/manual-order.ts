@@ -92,6 +92,18 @@ export const manualOrderSchema = z.object({
    */
   couponCode: z.string().max(64).optional(),
   note: z.string().max(500).optional(),
+  /**
+   * Delivery slot id (doc 17 batch O9-2): one of the ids in Settings
+   * orders.delivery_slots. Permissive here — manual-create resolves
+   * it against the configured set and persists only a match, exactly
+   * like public checkout (a stale id from a saved draft drops
+   * silently at conversion instead of failing the order).
+   */
+  deliverySlotId: z.string().max(64).optional(),
+  /** Gift message (doc 17 batch O9-2): present (possibly "") only
+   *  when the caller asked for a gift; persisted verbatim on
+   *  Order.giftMessage. No gift-wrap fee exists. */
+  giftMessage: z.string().max(500).optional(),
 });
 
 export type ManualOrderInput = z.infer<typeof manualOrderSchema>;

@@ -81,6 +81,12 @@
  *   meta.paymentInitiation and never fails the create.
  * - Order numbers (wave 20): ORD-YYYYMMDD-NNNN per Asia/Dhaka day,
  *   minted inside the create transaction (src/orders/repository).
+ * - Delivery slot + gift (wave 27, doc 17 batch O9-2): an optional
+ *   deliverySlotId is resolved against Settings orders.delivery_slots
+ *   (src/checkout/delivery-slots) and the canonical id persisted on
+ *   Order.deliverySlot; the gift message persists verbatim on
+ *   Order.giftMessage. Neither affects pricing — no slot fee and no
+ *   gift-wrap fee exist.
  *
  * STILL DEMO / NOT THIS SLICE:
  * - The coupon RECORDS evaluated by evaluateOrderCoupon still come from
@@ -126,6 +132,7 @@ import {
   listOrdersByPhone,
   orderRowToEnriched,
 } from "@/orders/repository";
+import { findDeliverySlot, loadDeliverySlots } from "@/checkout/delivery-slots";
 import { BundleStockError, PreorderCapError, productTypesEnabledInDb } from "@/catalog/product-types";
 import type { Order } from "@/orders/types";
 
@@ -390,6 +397,17 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
   // is persisted on the Order row in the same transaction.
   const attribution = await resolveResellerAttribution(form.resellerCode);
 
+  // Delivery slot + gift (wave 27, doc 17 batch O9-2): the submitted
+  // slot id is resolved against the configured set (Settings
+  // orders.delivery_slots) — only a match is persisted, as the slot
+  // id on Order.deliverySlot; an unknown id (stale page, renamed
+  // slots) is dropped and reported via meta.deliverySlotAccepted so
+  // the create never fails over a display preference. The gift
+  // message persists verbatim ("" = gift requested, no message);
+  // there is NO gift-wrap fee.
+  const deliverySlot = findDeliverySlot(await loadDeliverySlots(), form.deliverySlotId);
+  const giftMessage = form.giftMessage !== undefined ? form.giftMessage.trim() : undefined;
+
   // Persist in ONE transaction (see repository.createOrderRecord). A
   // concurrent create with the same key loses the UNIQUE race and comes
   // back as a replay of the winning row. Wave 15 product-type failures
@@ -419,6 +437,9 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     advanceRequiredPoisha: advanceRequirement.advanceRequiredPoisha,
     advanceReason: advanceRequirement.advanceReason ?? undefined,
     requiresOtp: enforcement.requiresOtp,
+    // Wave 27: persisted slot id + gift message (see above).
+    deliverySlot: deliverySlot?.id,
+    giftMessage,
     resellerId: attribution?.id,
     appliedCoupon:
       coupon.status === "applied" && coupon.code
@@ -456,6 +477,10 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     paymentStatus: "UNPAID", // non-COD stays UNPAID until the gateway verifies payment
     status: "PENDING",
     ...(attribution ? { resellerId: attribution.id } : {}),
+    // Wave 27: the persisted slot + gift, mirrored on the response
+    // order so the confirmation screen agrees with the stored row.
+    ...(deliverySlot ? { deliverySlot: deliverySlot.id } : {}),
+    ...(giftMessage !== undefined ? { giftMessage } : {}),
     riskScore: assessment.score,
     riskBand: assessment.level,
     fraudAction: assessment.suggestedAction,
@@ -600,6 +625,12 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
           : {}),
         ...(paymentInitiation ? { paymentInitiation } : {}),
         ...(otpMeta ? { otp: otpMeta } : {}),
+        // Wave 27: deliverySlotAccepted is present only when the
+        // customer submitted a slot id — false means the id was not
+        // in the configured set and was dropped (order unaffected).
+        ...(form.deliverySlotId !== undefined
+          ? { deliverySlotAccepted: deliverySlot !== null }
+          : {}),
         shippingZone: shipping.zone,
         freeShippingApplied: shipping.freeShippingApplied,
         note: "Order persisted to the database (Prisma). Coupon records + fraud lists are DB-backed (marketing/fraud modules); checkout assembles fraud input from DB lists and the coupon lookup from a DB snapshot.",

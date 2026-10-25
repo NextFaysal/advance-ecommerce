@@ -80,6 +80,20 @@ export const checkoutFormSchema = z.object({
    * post-commit (guarded — absence simply skips the marking).
    */
   checkoutSessionKey: z.string().uuid().optional(),
+  /**
+   * Optional delivery slot id (doc 17 batch O9-2): one of the ids in
+   * Settings orders.delivery_slots. Deliberately permissive here —
+   * the orders route resolves it against the configured set and
+   * persists only a match (an unknown/stale id is dropped, reported
+   * in the response meta, and never fails the order).
+   */
+  deliverySlotId: z.string().max(64).optional(),
+  /**
+   * Optional gift message (doc 17 batch O9-2): present (possibly an
+   * empty string) only when the customer ticked the gift option.
+   * Persisted verbatim on Order.giftMessage. No gift-wrap fee exists.
+   */
+  giftMessage: z.string().max(500).optional(),
 });
 
 export type CheckoutForm = z.infer<typeof checkoutFormSchema>;

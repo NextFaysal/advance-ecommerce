@@ -6,6 +6,7 @@ import { Money, formatPoisha } from "@/components/ui/money";
 import { Phone } from "@/components/ui/phone";
 import { Icon } from "@/components/ui/icon";
 import { demoB2bFlags, isB2bEnabled } from "@/b2b/flags";
+import { ConvertQuotationButton } from "./convert-button";
 import { b2bStore } from "@/b2b/db-store";
 import { checkCredit, effectiveQuotationStatus } from "@/b2b/service";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
@@ -118,6 +119,16 @@ export default async function AdminB2bPage() {
           {status}
         </Badge>
       ),
+      action:
+        status === "ACCEPTED" ? (
+          <ConvertQuotationButton quotationId={q.id} />
+        ) : status === "CONVERTED" ? (
+          <span className="text-xs text-text-muted">
+            অর্ডার: <span className="font-mono">{q.convertedOrderId ?? "—"}</span>
+          </span>
+        ) : (
+          <span className="text-text-muted">—</span>
+        ),
     };
   });
 
@@ -200,6 +211,7 @@ export default async function AdminB2bPage() {
           { key: "total", header: "মোট" },
           { key: "validUntil", header: "মেয়াদ" },
           { key: "status", header: "অবস্থা" },
+          { key: "action", header: "অ্যাকশন" },
         ]}
         rows={quotationRows}
       />

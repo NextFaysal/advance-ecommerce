@@ -330,12 +330,65 @@ function PreOrderPanel({ initialPreOrders }: { initialPreOrders: PreOrder[] }) {
     }
   };
 
+  // Real fulfilment — doc 17 O9-1: POSTs to /api/v1/admin/preorders/[id]/fulfil,
+  // which creates the actual Order (deposit credited) server-side and
+  // marks this row FULFILLED. ADDRESS_REQUIRED (no address on file for
+  // the customer) prompts staff for one and retries — never invented.
+  const [fulfillingId, setFulfillingId] = useState<string | null>(null);
+  const fulfilToOrder = async (pre: PreOrder) => {
+    setFulfillingId(pre.id);
+    setMessage(null);
+    try {
+      const post = async (body: Record<string, unknown>) => {
+        const res = await fetch(`/api/v1/admin/preorders/${pre.id}/fulfil`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        return (await res.json().catch(() => ({}))) as {
+          data?: { orderNo?: string; payablePoisha?: number };
+          meta?: { alreadyConverted?: boolean };
+          error?: { code?: string; message?: string };
+        };
+      };
+      let result = await post({});
+      if (result.error?.code === "ADDRESS_REQUIRED") {
+        const division = window.prompt("বিভাগ / Division", "Dhaka");
+        const district = window.prompt("জেলা / District", "Dhaka");
+        const upazila = window.prompt("উপজেলা / Upazila", "");
+        const addressLine = window.prompt("বিস্তারিত ঠিকানা / Address line", "");
+        if (!division || !district || !upazila || !addressLine) {
+          setMessage({ ok: false, text: `${pre.sku}: ঠিকানা ছাড়া অর্ডার তৈরি বাতিল হয়েছে।` });
+          return;
+        }
+        result = await post({ address: { division, district, upazila, addressLine } });
+      }
+      if (result.error) {
+        setMessage({ ok: false, text: `${pre.sku}: ${result.error.message ?? result.error.code ?? "Fulfilment failed."}` });
+        return;
+      }
+      setPreOrders((prev) =>
+        prev.map((p) => (p.id === pre.id ? { ...p, status: "FULFILLED", fulfilledQty: p.quantity } : p)),
+      );
+      setMessage({
+        ok: true,
+        text: `${pre.sku}: আসল অর্ডার তৈরি হয়েছে — ${result.data?.orderNo ?? ""}${result.meta?.alreadyConverted ? " (আগেই তৈরি ছিল)" : ""}; বাকি পরিশোধ্য ${formatPoisha(result.data?.payablePoisha ?? 0)}।`,
+      });
+    } catch {
+      setMessage({ ok: false, text: `${pre.sku}: নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।` });
+    } finally {
+      setFulfillingId(null);
+    }
+  };
+
   return (
     <Card className="p-5">
       <h2 className="text-lg font-semibold">প্রি-অর্ডার তালিকা</h2>
       <p className="mt-1 text-sm text-text-muted">
-        জমা ও বাকির হিসাব আসল <code>preOrderDuePoisha()</code> দিয়ে; সরবরাহ বোতাম
+        জমা ও বাকির হিসাব আসল <code>preOrderDuePoisha()</code> দিয়ে; "১টি সরবরাহ" বোতাম
         <code> applyPreOrderFulfilment()</code> চালায় — শুধু এই পেজের state বদলায়, কিছুই সংরক্ষণ হয় না।
+        "আসল অর্ডার তৈরি" বোতাম (doc 17 O9-1) সার্ভারে সত্যিকারের অর্ডার তৈরি করে — জমা ক্রেডিটসহ —
+        এবং প্রি-অর্ডারটি FULFILLED চিহ্নিত করে; জমা দেওয়া প্রি-অর্ডারেই শুধু দেখা যায়।
       </p>
       <div className="mt-4 overflow-x-auto">
         <table className="w-full text-left text-sm">
@@ -369,13 +422,26 @@ function PreOrderPanel({ initialPreOrders }: { initialPreOrders: PreOrder[] }) {
                   <td className="py-2 pr-3">{pre.expectedDate}</td>
                   <td className="py-2 pr-3"><Badge tone={statusMeta.tone}>{statusMeta.label}</Badge></td>
                   <td className="py-2">
-                    {pre.status === "OPEN" || pre.status === "PARTIALLY_FULFILLED" ? (
-                      <Button type="button" size="sm" variant="secondary" onClick={() => fulfilOne(pre)}>
-                        ১টি সরবরাহ
-                      </Button>
-                    ) : (
-                      <span className="text-text-muted">—</span>
-                    )}
+                    <span className="inline-flex flex-wrap gap-1">
+                      {pre.status === "OPEN" || pre.status === "PARTIALLY_FULFILLED" ? (
+                        <Button type="button" size="sm" variant="secondary" onClick={() => fulfilOne(pre)}>
+                          ১টি সরবরাহ
+                        </Button>
+                      ) : null}
+                      {pre.status !== "FULFILLED" && pre.status !== "CANCELLED" && pre.depositPoisha > 0 ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={fulfillingId === pre.id}
+                          onClick={() => fulfilToOrder(pre)}
+                        >
+                          {fulfillingId === pre.id ? "তৈরি হচ্ছে…" : "আসল অর্ডার তৈরি"}
+                        </Button>
+                      ) : null}
+                      {pre.status !== "OPEN" && pre.status !== "PARTIALLY_FULFILLED" && pre.depositPoisha <= 0 ? (
+                        <span className="text-text-muted">—</span>
+                      ) : null}
+                    </span>
                   </td>
                 </tr>
               );

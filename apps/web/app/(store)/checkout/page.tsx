@@ -87,6 +87,30 @@ export default function CheckoutPage() {
   // Delivery vs pickup is the only shipping choice left to the
   // customer; the zone itself is derived from the district.
   const [deliveryType, setDeliveryType] = useState<"delivery" | "pickup">("delivery");
+  // Delivery slot + gift (doc 17 batch O9-2): slots come from
+  // GET /api/v1/public/delivery-slots (Settings orders.delivery_slots,
+  // BD defaults when unconfigured). A failed fetch simply hides the
+  // slot picker — checkout never blocks on a display preference. The
+  // server re-resolves the submitted id against the configured set.
+  const [slots, setSlots] = useState<{ id: string; labelBn: string; labelEn: string }[]>([]);
+  const [deliverySlotId, setDeliverySlotId] = useState("");
+  const [gift, setGift] = useState(false);
+  const [giftMessage, setGiftMessage] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/public/delivery-slots")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("slots fetch failed"))))
+      .then((json: { data?: { slots?: { id: string; labelBn: string; labelEn: string }[] } }) => {
+        if (cancelled) return;
+        if (Array.isArray(json.data?.slots)) setSlots(json.data.slots);
+      })
+      .catch(() => {
+        // No slot picker; the order is unaffected.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Paste-a-full-address helper: the parser's reading is offered as
   // a suggestion chip and applied ONLY on the customer's tap — the
   // form is never silently rewritten.
@@ -329,6 +353,11 @@ export default function CheckoutPage() {
       // Abandoned-checkout session key (wave 22): the server stamps
       // this session's capture RECOVERED when the order commits.
       checkoutSessionKey,
+      // Delivery slot + gift (wave 27): the slot id is re-resolved
+      // server-side against the configured set; the gift message is
+      // sent only when the gift box is ticked ("" = gift, no message).
+      deliverySlotId: deliverySlotId || undefined,
+      giftMessage: gift ? giftMessage : undefined,
     });
     if (!result.ok) {
       setErrors(result.errors);
@@ -706,6 +735,47 @@ export default function CheckoutPage() {
             <option value="pickup">পিকআপ (নিজে এসে নেবেন)</option>
           </select>
         </label>
+        {/* Delivery slot + gift (doc 17 batch O9-2): shown only when
+            the shop has slots configured/fetched. Neither choice
+            changes the price — there is no slot fee and no gift fee. */}
+        {slots.length > 0 && (
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-text-main">ডেলিভারির সময় (ঐচ্ছিক)</span>
+            <select
+              value={deliverySlotId}
+              onChange={(e) => setDeliverySlotId(e.target.value)}
+              className={INPUT_CLASS}
+            >
+              <option value="">যেকোনো সময়</option>
+              {slots.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.labelBn} / {s.labelEn}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <div className="block">
+          <label className="flex cursor-pointer items-center gap-2.5 text-sm font-medium text-text-main">
+            <input
+              type="checkbox"
+              checked={gift}
+              onChange={(e) => setGift(e.target.checked)}
+              className="h-4 w-4 shrink-0 accent-brand-600"
+            />
+            এটি একটি উপহার 🎁
+          </label>
+          {gift && (
+            <input
+              value={giftMessage}
+              onChange={(e) => setGiftMessage(e.target.value)}
+              maxLength={500}
+              placeholder="উপহারের বার্তা (ঐচ্ছিক) — যেমন: শুভ জন্মদিন!"
+              aria-label="উপহারের বার্তা"
+              className={`${INPUT_CLASS} mt-2`}
+            />
+          )}
+        </div>
         <fieldset className="m-0 border-0 p-0">
           <legend className="mb-2 text-sm font-semibold text-text-main">পেমেন্ট মাধ্যম</legend>
           <div className="flex flex-wrap gap-2">

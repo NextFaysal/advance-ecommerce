@@ -22,6 +22,15 @@
  *       source?: string       — Order.source label; default "manual".
  *       internalNote?: string — extra line prepended to the order
  *                               note (e.g. the inbox conversation id).
+ *       deliverySlotId?/giftMessage? (wave 27, O9-2, ADDITIVE) —
+ *                               declared on manualOrderSchema itself;
+ *                               the slot id is re-resolved against
+ *                               Settings orders.delivery_slots here
+ *                               and both persist on the Order columns
+ *                               public checkout writes. Draft-order
+ *                               conversion enters through this same
+ *                               contract, so a stored draft payload is
+ *                               re-validated here, never trusted.
  *   - actor is the authenticated staff member on whose behalf the
  *     order is created: { id, permissions, ip?, userAgent? }. The id
  *     lands on the audit row; ip/userAgent are audit context only.
@@ -77,6 +86,7 @@ import {
   type AdvanceCandidate,
 } from "@/orders/advance";
 import { loadOrderRules } from "@/checkout/order-rules";
+import { findDeliverySlot, loadDeliverySlots } from "@/checkout/delivery-slots";
 import { calculateShipping, loadShippingRates } from "@/checkout/shipping";
 import { normalizeBdPhone } from "@/checkout/validation";
 import { computePricing } from "@/checkout/pricing";
@@ -373,6 +383,13 @@ export async function createManualOrder(
   // never failing the create (see resolveResellerAttribution).
   const attribution = await resolveResellerAttribution(data.resellerCode);
 
+  // Delivery slot (wave 27, doc 17 batch O9-2, ADDITIVE): resolved
+  // against the configured set exactly like public checkout — only a
+  // match persists. This is also what makes draft conversion safe: a
+  // slot id stored in a draft payload is re-validated here at
+  // conversion time, never trusted from storage.
+  const deliverySlot = findDeliverySlot(await loadDeliverySlots(), data.deliverySlotId);
+
   // Staff note + price-override record share the order's note row, so
   // the negotiated pricing is visible in the order history. The
   // channel internalNote (e.g. inbox conversation id) goes first.
@@ -421,6 +438,13 @@ export async function createManualOrder(
       note: noteParts.length > 0 ? noteParts.join("\n") : undefined,
       source,
       resellerId: attribution?.id,
+      // Wave 27 (doc 17 O9-2, ADDITIVE): slot + gift pass through to
+      // the same Order columns public checkout writes. The slot id
+      // was resolved against the configured set above (deliverySlot);
+      // an unmatched id arrives here as undefined and persists
+      // nothing.
+      deliverySlot: deliverySlot?.id,
+      giftMessage: data.giftMessage !== undefined ? data.giftMessage.trim() : undefined,
     });
   } catch (e) {
     // Wave 15 product-type failures roll the create back — map them

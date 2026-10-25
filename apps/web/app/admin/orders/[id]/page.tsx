@@ -39,6 +39,34 @@ import { PaymentBadge, type PaymentStatus as UiPaymentStatus } from "@/component
 
 type DetailOrder = Order & { advance?: OrderAdvanceView };
 
+/**
+ * Delivery-slot label (doc 17 batch O9-2): Order.deliverySlot stores
+ * the slot ID from Settings orders.delivery_slots; the bilingual
+ * label is display-time, resolved from the public slots endpoint.
+ * Falls back to the raw id (a slot renamed/removed after the order
+ * was placed still shows SOMETHING truthful, never a wrong label).
+ */
+function SlotLabel({ slotId }: { slotId: string }) {
+  const [label, setLabel] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/public/delivery-slots")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("slots"))))
+      .then((json: { data?: { slots?: { id: string; labelBn: string; labelEn: string }[] } }) => {
+        if (cancelled) return;
+        const match = json.data?.slots?.find((s) => s.id === slotId);
+        if (match) setLabel(`${match.labelBn} / ${match.labelEn}`);
+      })
+      .catch(() => {
+        // Raw id fallback below.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slotId]);
+  return <>{label ?? slotId}</>;
+}
+
 type DetailResponse =
   | { data: DetailOrder; meta?: unknown }
   | { error: { code: string; message: string } };
@@ -245,6 +273,18 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
               <br />
               কুরিয়ার: {order.courier ?? "—"} · ট্র্যাকিং: {order.trackingId ? <span className="font-mono">{order.trackingId}</span> : "—"}
               {addressLine ? <><br />ঠিকানা: {addressLine}</> : null}
+              {order.deliverySlot ? (
+                <>
+                  <br />
+                  ডেলিভারির সময়: <span className="font-medium text-text-main"><SlotLabel slotId={order.deliverySlot} /></span>
+                </>
+              ) : null}
+              {order.giftMessage !== null && order.giftMessage !== undefined ? (
+                <>
+                  <br />
+                  🎁 উপহার{order.giftMessage ? <> — বার্তা: <span className="font-medium text-text-main">“{order.giftMessage}”</span></> : " (বার্তা নেই)"}
+                </>
+              ) : null}
             </p>
           </div>
           <div className="shrink-0 text-right">

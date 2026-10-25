@@ -13,6 +13,13 @@
 // coupon is evaluated server-side by the same evaluator as public
 // checkout and its outcome is shown from the response meta.
 //
+// Wave 27 (doc 17 batch O9-2): the builder also carries the checkout
+// delivery-slot + gift fields, and a half-built form can be parked
+// with "ড্রাফট হিসেবে রাখুন" (POST /api/v1/admin/orders/drafts) and
+// resumed later from the drafts strip (?draft=<id>). Submitting a
+// resumed draft converts THAT draft (payload refreshed from the form
+// first) instead of creating an unrelated order.
+//
 // Money display: formatBdt (poisha -> ৳). Live totals are an ESTIMATE
 // (subtotal + shipping, before any coupon) and are labelled as such —
 // the server total on the success message is the truth.
@@ -146,6 +153,34 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
   const [couponCode, setCouponCode] = useState("");
   const [note, setNote] = useState("");
   const [resellerCode, setResellerCode] = useState("");
+  // Delivery slot + gift (doc 17 batch O9-2): same options as the
+  // storefront checkout, from GET /api/v1/public/delivery-slots.
+  const [slots, setSlots] = useState<{ id: string; labelBn: string; labelEn: string }[]>([]);
+  const [deliverySlotId, setDeliverySlotId] = useState("");
+  const [giftOn, setGiftOn] = useState(false);
+  const [giftMessage, setGiftMessage] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/public/delivery-slots")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("slots"))))
+      .then((json: { data?: { slots?: { id: string; labelBn: string; labelEn: string }[] } }) => {
+        if (!cancelled && Array.isArray(json.data?.slots)) setSlots(json.data.slots);
+      })
+      .catch(() => {
+        // No slot picker for staff either; orders are unaffected.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // Draft orders (doc 17 batch O9-2): when this form was resumed from
+  // a saved draft (?draft=<id>), draftId holds that draft — saving
+  // updates it in place and submitting CONVERTS it (the stored
+  // payload is first refreshed from the form, then converted, so the
+  // conversion re-validates the CURRENT form, never a stale copy).
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draftMsg, setDraftMsg] = useState<string | null>(null);
   // Submit
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
@@ -343,11 +378,287 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
     : manualShippingPoisha(shippingMethod);
   const estimatedTotalPoisha = subtotalPoisha + shippingPoisha;
 
+  /* ---------------- Drafts (doc 17 batch O9-2) ---------------- */
+
+  // Resume: /admin/orders?draft=<id> (the drafts strip links here)
+  // loads the stored payload back into the form. The payload carries
+  // ids + quantities + prices only, so a resumed line shows fallback
+  // display data (stock -1 renders as "—") until it is re-picked —
+  // the server re-validates everything at submit/convert anyway.
+  useEffect(() => {
+    const draftParam = new URLSearchParams(window.location.search).get("draft");
+    if (!draftParam) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/v1/admin/orders/drafts/${draftParam}`);
+        const body = (await res.json().catch(() => null)) as {
+          data?: {
+            id: string;
+            status: string;
+            updatedAt: string;
+            payload: Record<string, unknown>;
+          };
+        } | null;
+        if (cancelled) return;
+        const draft = body?.data;
+        if (!res.ok || !draft) {
+          setDraftMsg("ড্রাফটটি লোড করা যায়নি — তালিকা থেকে আবার চেষ্টা করুন।");
+          return;
+        }
+        if (draft.status !== "OPEN") {
+          setDraftMsg("এই ড্রাফটটি আর খোলা নেই (রূপান্তরিত বা বাতিল) — নতুন করে শুরু করুন।");
+          return;
+        }
+        const p = draft.payload as {
+          phone?: string;
+          customerName?: string;
+          address?: { division?: string; district?: string; upazila?: string; addressLine?: string };
+          items?: { variantId: string; quantity: number; unitPricePoisha?: number }[];
+          paymentMethod?: string;
+          shippingMethod?: string;
+          shippingOverridePoisha?: number;
+          couponCode?: string;
+          note?: string;
+          resellerCode?: string;
+          deliverySlotId?: string;
+          giftMessage?: string;
+        };
+        if (typeof p.phone === "string") setPhone(p.phone);
+        if (typeof p.customerName === "string") setCustomerName(p.customerName);
+        if (p.address) {
+          setDivision(p.address.division ?? "");
+          setDistrict(p.address.district ?? "");
+          setUpazila(p.address.upazila ?? "");
+          setAddressLine(p.address.addressLine ?? "");
+        }
+        if (Array.isArray(p.items)) {
+          setLines(
+            p.items
+              .filter((i) => i && typeof i.variantId === "string")
+              .map((i) => {
+                const price = typeof i.unitPricePoisha === "number" ? i.unitPricePoisha : 0;
+                return {
+                  variantId: i.variantId,
+                  productTitleBn: "ড্রাফট থেকে নেওয়া পণ্য",
+                  variantLabel: "",
+                  sku: i.variantId,
+                  catalogPricePoisha: price,
+                  stock: -1,
+                  quantity: typeof i.quantity === "number" && i.quantity > 0 ? Math.floor(i.quantity) : 1,
+                  priceTaka: poishaToTakaInput(price),
+                };
+              }),
+          );
+        }
+        if (p.paymentMethod === "cod" || p.paymentMethod === "bkash" || p.paymentMethod === "nagad") {
+          setPaymentMethod(p.paymentMethod);
+        }
+        if (
+          p.shippingMethod === "inside_dhaka" ||
+          p.shippingMethod === "outside_dhaka" ||
+          p.shippingMethod === "pickup"
+        ) {
+          setShippingMethod(p.shippingMethod);
+        }
+        if (typeof p.shippingOverridePoisha === "number") {
+          setOverrideOn(true);
+          setOverrideTaka(poishaToTakaInput(p.shippingOverridePoisha));
+        }
+        if (typeof p.couponCode === "string") setCouponCode(p.couponCode);
+        if (typeof p.note === "string") setNote(p.note);
+        if (typeof p.resellerCode === "string") setResellerCode(p.resellerCode);
+        if (typeof p.deliverySlotId === "string") setDeliverySlotId(p.deliverySlotId);
+        if (typeof p.giftMessage === "string") {
+          setGiftOn(true);
+          setGiftMessage(p.giftMessage);
+        }
+        setDraftId(draft.id);
+        setDraftMsg(
+          `ড্রাফট লোড হয়েছে — সাবমিট করলে এই ড্রাফটটি অর্ডারে রূপান্তরিত হবে; "ড্রাফট হিসেবে রাখুন" চাপলে সম্পাদিত অবস্থায় আবার সংরক্ষিত হবে।`,
+        );
+        document
+          .getElementById("manual-order-builder-form")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch {
+        if (!cancelled) setDraftMsg("ড্রাফট লোড করা যায়নি — নেটওয়ার্ক সমস্যা হতে পারে।");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /**
+   * The form as a ManualCreateInput-shaped payload. Strict mode is
+   * the submit path (a bad price aborts with null, exactly as before);
+   * lenient mode is the draft-save path — a half-built form must save
+   * as-is, so an unparseable price is stored as "no price yet" and an
+   * empty cart is fine. Conversion re-validates strictly server-side.
+   */
+  function buildPayload(lenient: boolean): Record<string, unknown> | null {
+    const items: { variantId: string; quantity: number; unitPricePoisha?: number }[] = [];
+    for (const l of lines) {
+      const unit = takaToPoisha(l.priceTaka);
+      if (unit === null) {
+        if (!lenient) return null;
+        items.push({ variantId: l.variantId, quantity: l.quantity });
+      } else {
+        items.push({ variantId: l.variantId, quantity: l.quantity, unitPricePoisha: unit });
+      }
+    }
+    const overridePoisha = overrideOn ? takaToPoisha(overrideTaka) : undefined;
+    if (overrideOn && overridePoisha === null && !lenient) return null;
+    return {
+      phone,
+      customerName,
+      ...(customer?.id ? { customerId: customer.id } : {}),
+      address: { division, district, upazila, addressLine },
+      items,
+      paymentMethod,
+      shippingMethod,
+      ...(overridePoisha !== undefined && overridePoisha !== null
+        ? { shippingOverridePoisha: overridePoisha }
+        : {}),
+      ...(couponCode.trim() ? { couponCode: couponCode.trim() } : {}),
+      ...(note.trim() ? { note: note.trim() } : {}),
+      ...(resellerCode.trim() ? { resellerCode: resellerCode.trim() } : {}),
+      ...(deliverySlotId ? { deliverySlotId } : {}),
+      ...(giftOn ? { giftMessage } : {}),
+    };
+  }
+
+  async function onSaveDraft() {
+    setDraftMsg(null);
+    const payload = buildPayload(true);
+    if (!payload) return;
+    setDraftBusy(true);
+    try {
+      const res = await fetch("/api/v1/admin/orders/drafts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...(draftId ? { id: draftId } : {}), payload }),
+      });
+      const body = (await res.json().catch(() => null)) as {
+        data?: { id: string; totalPreviewPoisha: number | null };
+        error?: { code: string; message: string };
+      } | null;
+      if (res.ok && body?.data) {
+        setDraftId(body.data.id);
+        setDraftMsg(
+          `ড্রাফট সংরক্ষিত হয়েছে${body.data.totalPreviewPoisha !== null ? ` — আনুমানিক মোট ${formatBdt(body.data.totalPreviewPoisha)}` : ""}। উপরের ড্রাফট তালিকা থেকে পরে আবার খুলতে পারবেন।`,
+        );
+      } else {
+        setDraftMsg(body?.error ? `${body.error.code}: ${body.error.message}` : `HTTP ${res.status} — ড্রাফট সংরক্ষণ হয়নি।`);
+      }
+    } catch {
+      setDraftMsg("নেটওয়ার্ক সমস্যা — ড্রাফট সংরক্ষণ করা যায়নি।");
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
   /* ---------------- Submit ---------------- */
+
+  /**
+   * Submit for a RESUMED draft: refresh the stored payload from the
+   * current form first (strict — a bad price aborts here with the
+   * same message as the direct path), then convert. The conversion
+   * re-validates everything server-side, so what converts is exactly
+   * what is on screen, never the stale stored copy.
+   */
+  async function submitViaDraftConvert(activeDraftId: string) {
+    for (const l of lines) {
+      if (takaToPoisha(l.priceTaka) === null) {
+        setResult({ ok: false, text: `"${l.productTitleBn}" — একক দাম সঠিক টাকায় লিখুন।` });
+        return;
+      }
+    }
+    if (overrideOn && takaToPoisha(overrideTaka) === null) {
+      setResult({ ok: false, text: "ডেলিভারি চার্জের override সঠিক টাকায় লিখুন, অথবা override বন্ধ করুন।" });
+      return;
+    }
+    const payload = buildPayload(false);
+    if (!payload) return;
+    setBusy(true);
+    try {
+      const saveRes = await fetch("/api/v1/admin/orders/drafts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: activeDraftId, payload }),
+      });
+      if (!saveRes.ok) {
+        const saveBody = (await saveRes.json().catch(() => null)) as {
+          error?: { code: string; message: string };
+        } | null;
+        setResult({
+          ok: false,
+          text: saveBody?.error
+            ? `${saveBody.error.code}: ${saveBody.error.message}`
+            : `HTTP ${saveRes.status} — ড্রাফট হালনাগাদ হয়নি, অর্ডার তৈরি হয়নি।`,
+        });
+        return;
+      }
+      const res = await fetch(`/api/v1/admin/orders/drafts/${activeDraftId}/convert`, {
+        method: "POST",
+      });
+      const body = (await res.json().catch(() => null)) as {
+        data?: {
+          order?: Order | null;
+          pricing?: { discountPoisha: number; shippingPoisha: number; totalPoisha: number } | null;
+        };
+        meta?: { convertedReplay?: boolean };
+        error?: { code: string; message: string };
+      } | null;
+      if (res.ok && body?.data?.order) {
+        const order = body.data.order;
+        const parts = [
+          body.meta?.convertedReplay
+            ? `এই ড্রাফটটি আগেই অর্ডারে রূপান্তরিত হয়েছে: ${order.orderNo} — মোট ${formatBdt(order.totalPoisha)}।`
+            : `ড্রাফট থেকে অর্ডার তৈরি হয়েছে: ${order.orderNo} — মোট ${formatBdt(order.totalPoisha)}।`,
+        ];
+        if (body.data.pricing) {
+          parts.push(
+            `ডেলিভারি চার্জ ${formatBdt(body.data.pricing.shippingPoisha)}` +
+              (body.data.pricing.discountPoisha > 0
+                ? `, কুপন ছাড় ${formatBdt(body.data.pricing.discountPoisha)}`
+                : ""),
+          );
+        }
+        parts.push("নিচের তালিকায় দেখুন।");
+        setResult({ ok: true, text: parts.join(" ") });
+        setDraftId(null);
+        setDraftMsg(null);
+        setLines([]);
+        setCouponCode("");
+        setNote("");
+        await onCreated();
+      } else {
+        setResult({
+          ok: false,
+          text: body?.error
+            ? `${body.error.code}: ${body.error.message}`
+            : `HTTP ${res.status} — ড্রাফট থেকে অর্ডার তৈরি হয়নি।`,
+        });
+      }
+    } catch {
+      setResult({
+        ok: false,
+        text: "নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি। আবার চেষ্টা করুন; রূপান্তর idempotent, ডুপ্লিকেট অর্ডার হবে না।",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setResult(null);
+    // A resumed draft submits THROUGH its conversion (see above).
+    if (draftId) {
+      await submitViaDraftConvert(draftId);
+      return;
+    }
     // Convert every line's taka price first so a bad price names its row.
     const items: { variantId: string; quantity: number; unitPricePoisha: number }[] = [];
     for (const l of lines) {
@@ -374,6 +685,8 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
       shippingOverridePoisha: overridePoisha ?? undefined,
       couponCode: couponCode.trim() === "" ? undefined : couponCode.trim(),
       note: note.trim() === "" ? undefined : note.trim(),
+      deliverySlotId: deliverySlotId === "" ? undefined : deliverySlotId,
+      giftMessage: giftOn ? giftMessage : undefined,
     });
     if (!parsed.success) {
       setResult({
@@ -454,7 +767,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
   /* ---------------- Render ---------------- */
 
   return (
-    <form onSubmit={onSubmit} className="mt-5 space-y-5">
+    <form id="manual-order-builder-form" onSubmit={onSubmit} className="mt-5 space-y-5">
       {/* Customer + address */}
       <section aria-label="গ্রাহক ও ঠিকানা" className="rounded-lg border border-border bg-surface-2/50 p-4">
         <h3 className="text-small font-bold">১. গ্রাহক ও ঠিকানা</h3>
@@ -613,9 +926,9 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                 <li key={l.variantId} className="rounded-md border border-border bg-card px-3.5 py-3">
                   <div className="flex flex-wrap items-start gap-2">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-small font-semibold">{l.productTitleBn} — {l.variantLabel}</p>
+                      <p className="truncate text-small font-semibold">{l.productTitleBn}{l.variantLabel ? ` — ${l.variantLabel}` : ""}</p>
                       <p className="text-caption text-text-muted">
-                        <span className="font-mono">{l.sku}</span> · ক্যাটালগ দাম {formatBdt(l.catalogPricePoisha)} · স্টক {l.stock}
+                        <span className="font-mono">{l.sku}</span> · ক্যাটালগ দাম {formatBdt(l.catalogPricePoisha)} · {l.stock >= 0 ? `স্টক ${l.stock}` : "স্টক — (ড্রাফট থেকে; সাবমিটে যাচাই হবে)"}
                         {overridden && <span className="ml-1 font-semibold text-amber-600">কর্মীর দাম — নোটে লেখা থাকবে</span>}
                       </p>
                     </div>
@@ -739,6 +1052,45 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                 className={inputCls}
               />
             </div>
+            {slots.length > 0 && (
+              <div>
+                <label className={labelCls} htmlFor="mob-slot">ডেলিভারির সময় (ঐচ্ছিক)</label>
+                <select
+                  id="mob-slot"
+                  value={deliverySlotId}
+                  onChange={(e) => setDeliverySlotId(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">যেকোনো সময়</option>
+                  {slots.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.labelBn} / {s.labelEn}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5 text-small font-medium">
+                <input
+                  type="checkbox"
+                  checked={giftOn}
+                  onChange={(e) => setGiftOn(e.target.checked)}
+                  className="h-4 w-4 rounded accent-[#4F46E5]"
+                />
+                উপহার হিসেবে পাঠানো হবে 🎁
+              </label>
+              {giftOn && (
+                <input
+                  value={giftMessage}
+                  onChange={(e) => setGiftMessage(e.target.value)}
+                  maxLength={500}
+                  placeholder="উপহারের বার্তা (ঐচ্ছিক)"
+                  aria-label="উপহারের বার্তা"
+                  className={inputCls}
+                />
+              )}
+            </div>
             <div className="sm:col-span-2">
               <label className={labelCls} htmlFor="mob-note">নোট (ঐচ্ছিক)</label>
               <input
@@ -772,8 +1124,25 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
             কুপন ছাড় থাকলে চূড়ান্ত মোট আরও কম হবে — সার্ভারের হিসাবই চূড়ান্ত, তৈরি হওয়ার পর নিচে দেখানো হবে।
           </p>
           <Button type="submit" variant="primary" className="mt-4 w-full" disabled={busy || lines.length === 0}>
-            {busy ? "তৈরি হচ্ছে…" : "ম্যানুয়াল অর্ডার তৈরি করুন"}
+            {busy ? "তৈরি হচ্ছে…" : draftId ? "ড্রাফট থেকে অর্ডার তৈরি করুন" : "ম্যানুয়াল অর্ডার তৈরি করুন"}
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-2 w-full"
+            disabled={draftBusy || busy}
+            onClick={() => void onSaveDraft()}
+          >
+            {draftBusy ? "সংরক্ষণ হচ্ছে…" : "ড্রাফট হিসেবে রাখুন"}
+          </Button>
+          <p className="mt-2 text-caption leading-relaxed text-text-subtle">
+            ড্রাফটে কোনো অর্ডার নম্বর বা স্টক রিজার্ভ হয় না — অর্ধেক ফর্মও রেখে দেওয়া যায়, পরে ড্রাফট তালিকা থেকে খুলে শেষ করা যায়।
+          </p>
+          {draftMsg && (
+            <p role="status" className="mt-2 rounded-md bg-brand-50 px-3 py-2 text-caption leading-relaxed text-brand-800">
+              {draftMsg}
+            </p>
+          )}
         </aside>
       </div>
 

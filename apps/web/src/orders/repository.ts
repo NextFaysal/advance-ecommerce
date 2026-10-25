@@ -183,6 +183,13 @@ function orderRowToOrder(row: OrderRow): Order {
     advanceRequiredPoisha: row.advanceRequiredPoisha,
     advanceReason: row.advanceReason,
     advanceSatisfiedAt: row.advanceSatisfiedAt ? row.advanceSatisfiedAt.toISOString() : null,
+    // Wave 27 (doc 17 O9-2): persisted slot id + gift message. The
+    // gift key is present whenever the column is non-NULL so "" (gift
+    // requested, no message) stays distinguishable from no-gift.
+    ...(row.deliverySlot ? { deliverySlot: row.deliverySlot } : {}),
+    ...(row.giftMessage !== null && row.giftMessage !== undefined
+      ? { giftMessage: row.giftMessage }
+      : {}),
     requiresOtp: row.requiresOtp,
     otpVerifiedAt: row.otpVerifiedAt ? row.otpVerifiedAt.toISOString() : null,
     tags: row.tags.map((t) => t.tag),
@@ -696,6 +703,14 @@ export interface CreateOrderRecordInput {
   /** Persisted on Order.requiresOtp (the fraud band's OTP flag). The
    *  OTP challenge itself is issued/verified by the O3-2 service. */
   requiresOtp?: boolean;
+  /** Delivery slot ID (wave 27, doc 17 batch O9-2): callers resolve
+   *  the customer's/staff's submitted id against the configured set
+   *  (src/checkout/delivery-slots) and pass the canonical id here;
+   *  persisted verbatim on Order.deliverySlot. */
+  deliverySlot?: string;
+  /** Gift message (wave 27): persisted verbatim on Order.giftMessage
+   *  ("" = gift requested with no message); omit for no gift. */
+  giftMessage?: string;
 }
 
 export type CreateOrderRecordResult =
@@ -908,6 +923,8 @@ export async function createOrderRecord(
             ? (input.advanceReason ?? null)
             : null,
           requiresOtp: input.requiresOtp ?? false,
+          deliverySlot: input.deliverySlot ?? null,
+          giftMessage: input.giftMessage ?? null,
           source: input.source ?? "website",
           resellerId: input.resellerId ?? null,
           idempotencyKey: input.idempotencyKey,
@@ -1211,7 +1228,10 @@ export type OrderPaymentSource =
   | "refund_workbench"
   // Doc 17 O7-2: the returned-goods credit recorded as a Payment on
   // an exchange replacement order (src/orders/exchange.ts).
-  | "exchange_credit";
+  | "exchange_credit"
+  // Doc 17 O9-1: the already-paid preorder deposit recorded as a
+  // credit Payment on the fulfilment order (src/orders/convert.ts).
+  | "preorder_deposit";
 
 export interface MarkOrderPaymentInput {
   /**

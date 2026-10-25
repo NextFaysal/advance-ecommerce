@@ -201,6 +201,7 @@ model User {
   assignedOrders      Order[]   @relation("OrderAssignee")
   approvedPayments    Payment[] @relation("PaymentApprover")
   remittanceBatches   RemittanceBatch[] @relation("RemittanceCreator")
+  draftOrders         DraftOrder[] @relation("DraftOrderCreator")
   reviewedTrx         ManualTrxSubmission[] @relation("TrxReviewer")
   statusChanges       OrderStatusHistory[] @relation("StatusChanger")
   orderNotes          OrderNote[] @relation("NoteAuthor")
@@ -785,6 +786,16 @@ model Order {
   priority         OrderPriority @default(NORMAL)
   heldAt           DateTime?
   heldReason       String?
+  // Delivery slot + gift options (wave 27, doc 17 batch O9-2): the
+  // Order model has no JSON meta column (API "meta" blocks are
+  // composed at read time), so these checkout choices are real
+  // columns. deliverySlot stores the slot ID from Settings
+  // orders.delivery_slots (labels resolve from the setting at display
+  // time); giftMessage stores the gift message verbatim — NULL = no
+  // gift, "" = gift requested with no message. No gift-wrap fee
+  // exists: there is no charge seam for one and none is implied.
+  deliverySlot     String?
+  giftMessage      String?
   // Reseller attribution (nullable: set only when the order is recorded
   // as a reseller sale; the delivered-order hook credits this reseller).
   resellerId       String?
@@ -826,6 +837,36 @@ model Order {
 model OrderSequence {
   day     String @id // Asia/Dhaka day, YYYYMMDD
   lastSeq Int    @default(0)
+}
+
+enum DraftOrderStatus {
+  OPEN
+  CONVERTED
+  DISCARDED
+}
+
+// Draft orders (wave 27, doc 17 batch O9-2): a parked, half-built
+// manual order. NOT an order — no order number, no stock reservation,
+// no report presence. payloadJson is a ManualCreateInput-shaped
+// document (it may be PARTIAL — a draft exists precisely because the
+// form was not finished); conversion re-runs it through
+// createManualOrder, which re-validates variants + prices at
+// conversion time exactly like a fresh manual create.
+// totalPreviewPoisha is a save-time estimate from catalog/staff
+// prices, refreshed on every save — never a priced commitment.
+model DraftOrder {
+  id                 String           @id @default(cuid())
+  payloadJson        Json
+  customerName       String?
+  customerPhone      String?
+  totalPreviewPoisha Int?
+  createdById        String
+  createdBy          User             @relation("DraftOrderCreator", fields: [createdById], references: [id])
+  status             DraftOrderStatus @default(OPEN)
+  convertedOrderId   String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  @@index([status, createdAt])
 }
 
 model OrderItem {
@@ -1502,6 +1543,9 @@ model PreOrder {
   totalPoisha   Int
   expectedDate  DateTime?
   status        PreOrderStatus @default(OPEN)
+  // Doc 17 O9-1: the real Order this pre-order became on fulfilment
+  // (migration 20261025211500). NULL until fulfilled.
+  convertedOrderId String?
   deletedAt     DateTime?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt

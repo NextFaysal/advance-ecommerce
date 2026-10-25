@@ -98,6 +98,14 @@ export type Order = {
   advanceSatisfiedAt?: string | null;
   requiresOtp?: boolean;
   otpVerifiedAt?: string | null;
+  /** Delivery slot + gift (wave 27, doc 17 batch O9-2) — persisted
+   *  Order columns, populated by the repository mapper. deliverySlot
+   *  is the slot ID from Settings orders.delivery_slots (labels are
+   *  display-time, resolved from the setting); giftMessage is the
+   *  verbatim message — null/absent = no gift, "" = gift requested
+   *  with no message. Optional because client fixtures predate them. */
+  deliverySlot?: string | null;
+  giftMessage?: string | null;
   tags: string[];
   assignee?: string;
   history: OrderStatusHistoryEntry[];
