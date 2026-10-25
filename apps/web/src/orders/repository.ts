@@ -1208,7 +1208,10 @@ export type OrderPaymentSource =
   | "gateway_verify"
   | "payment_webhook"
   | "gateway_refund"
-  | "refund_workbench";
+  | "refund_workbench"
+  // Doc 17 O7-2: the returned-goods credit recorded as a Payment on
+  // an exchange replacement order (src/orders/exchange.ts).
+  | "exchange_credit";
 
 export interface MarkOrderPaymentInput {
   /**

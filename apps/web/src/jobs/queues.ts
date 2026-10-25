@@ -45,9 +45,27 @@ export interface SmsJob {
    * to HandlerDeps.orderOtpSmsSend (src/orders/otp.ts). Their payload
    * is ids-only EXCEPT otpCode below — see its comment.
    */
-  jobKind?: "callcenter-automation" | "order-otp";
+  jobKind?: "callcenter-automation" | "order-otp" | "return-update";
   /** Order-OTP flavour marker (jobKind === "order-otp"). */
   purpose?: "order_otp";
+  /**
+   * Return-update flavour (jobKind === "return-update", doc 17 O7-2):
+   * produced by src/orders/return-notify.ts whenever a return changes
+   * status. `returnId` + `status` say what changed; `phone` is the
+   * recipient number RESOLVED SERVER-SIDE from the Order row at
+   * enqueue time — it is never accepted from client input. (This is a
+   * deliberate, documented exception to the ids-only habit above: a
+   * return can belong to a guest order whose phone exists only on the
+   * Order row, and the worker's send path needs the number on the job
+   * until a return-specific send handler resolves it from the DB the
+   * way the OTP path does. The file-header rule still holds: the
+   * number is never written to logs.)
+   */
+  returnId?: string;
+  /** The return's new status (REQUESTED / APPROVED / RECEIVED / EXCHANGED / …). */
+  status?: string;
+  /** Recipient phone for a return-update job — see returnId above. */
+  phone?: string;
   /**
    * The 6-digit code for an order-OTP job. This is the ONE payload
    * field that carries a secret-shaped value, by necessity: the DB

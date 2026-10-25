@@ -87,6 +87,12 @@ enum StockMovementType {
   TRANSFER_IN
   RETURN_RECEIVE
   DAMAGE
+  // RMA receive-step restock (wave 25, doc 17 batch O7): written only
+  // by src/orders/returns.ts when a received return line is judged
+  // RESTOCKABLE. Distinct from the inventory module's generic
+  // RETURN_RECEIVE so RMA restocks stay attributable to a Return row
+  // (referenceType "RETURN", referenceId = return id).
+  RETURN_RESTOCK
 }
 
 enum CouponType {
@@ -113,6 +119,25 @@ enum ReturnStatus {
   RETURNED
   REFUNDED
   EXCHANGED
+  // RMA lifecycle (wave 25, doc 17 batch O7): the admin returns flow
+  // runs REQUESTED -> APPROVED -> RECEIVED -> COMPLETED, with REJECTED
+  // (from REQUESTED) and CLOSED (from RECEIVED, no refund) as terminal
+  // side-exits. The legacy values above (RETURNING / RETURNED /
+  // REFUNDED / EXCHANGED) predate the flow and are kept for compat.
+  APPROVED
+  REJECTED
+  RECEIVED
+  COMPLETED
+  CLOSED
+}
+
+// Per-line condition recorded at the RMA receive step (wave 25):
+// RESTOCKABLE lines go back on the shelf (and are the only lines a
+// completion refunds); DAMAGED lines are kept out of stock and are
+// never refunded.
+enum ReturnItemCondition {
+  RESTOCKABLE
+  DAMAGED
 }
 
 enum NotificationChannel {
@@ -812,6 +837,7 @@ model OrderItem {
   unitPricePoisha Int
   quantity        Int
   createdAt       DateTime       @default(now())
+  returnItems     ReturnItem[]
   @@index([orderId])
   @@index([variantId])
 }
@@ -859,10 +885,47 @@ model Return {
   status          ReturnStatus @default(REQUESTED)
   qcNote          String?
   restockDecision String?
+  // RMA flow fields (wave 25, doc 17 batch O7) — the columns above
+  // predate any writer; these complete the model minimally:
+  //   source        — "admin" | "customer" (createReturn contract
+  //                   vocabulary, same convention as Order.source).
+  //   customerNote  — free text the requester attached at create.
+  //   decisionReason— staff reason for a REJECTED / CLOSED outcome.
+  //   actorLabel    — who created the return (admin user id, or
+  //                   "customer:<id>" from the self-service flow).
+  //   refundId      — the ONE PENDING Refund the completion created in
+  //                   the refund workbench (src/orders/refunds.ts);
+  //                   also the completion idempotency guard.
+  source          String       @default("admin")
+  customerNote    String?
+  decisionReason  String?
+  actorLabel      String?
+  refundId        String?
+  refund          Refund?      @relation(fields: [refundId], references: [id])
+  items           ReturnItem[]
   deletedAt       DateTime?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   @@index([orderId])
+  @@index([status])
+}
+
+// One line of a Return (wave 25, doc 17 batch O7): the per-line detail
+// the original Return model had no place for. quantity is the amount
+// the customer sends back; condition is stamped at the receive step
+// (null until then) and drives both restock and refund eligibility.
+model ReturnItem {
+  id          String              @id @default(cuid())
+  returnId    String
+  return      Return              @relation(fields: [returnId], references: [id])
+  orderItemId String
+  orderItem   OrderItem           @relation(fields: [orderItemId], references: [id])
+  quantity    Int
+  reason      String?
+  condition   ReturnItemCondition?
+  createdAt   DateTime            @default(now())
+  @@index([returnId])
+  @@index([orderItemId])
 }
 
 // ---------------------------------------------------------------- Payment (canonical)
@@ -950,6 +1013,7 @@ model Refund {
   status       String   @default("PENDING")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  returns      Return[]
   @@index([paymentId])
   @@index([orderId])
 }

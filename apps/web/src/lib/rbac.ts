@@ -23,6 +23,11 @@ export const PERMISSIONS = [
   // Advance override (wave 21, doc 17 O3): confirm an order whose
   // required advance is unpaid (or OTP pending) with a recorded reason.
   "orders.override_advance",
+  // Returns / RMA (wave 25, doc 17 O7): dedicated pair — the returns
+  // flow previously borrowed nothing because it did not exist; the POS
+  // precedent is to give a real workflow its own permissions.
+  "returns.view",
+  "returns.manage",
   // Products / catalog
   "products.view",
   "products.create",
@@ -104,6 +109,7 @@ export function isPermissionKey(value: string): value is PermissionKey {
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, readonly PermissionKey[]> = {
   Manager: [
     "orders.view", "orders.create", "orders.update_status", "orders.edit", "orders.export", "orders.print", "orders.override_advance",
+    "returns.view", "returns.manage",
     "products.view", "products.create", "products.edit", "products.import", "products.export",
     "customers.view", "customers.edit", "customers.view_full_phone",
     "inventory.view", "inventory.adjust", "inventory.purchase_order",
@@ -119,6 +125,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, readonly PermissionKey[]> 
   ],
   "Order Processor": [
     "orders.view", "orders.create", "orders.update_status", "orders.print",
+    "returns.view", "returns.manage",
     "products.view",
     "customers.view",
     "payments.view",
@@ -133,10 +140,12 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, readonly PermissionKey[]> 
   Support: [
     "orders.view",
     "customers.view",
+    "returns.view",
     "content.page",
   ],
   Accountant: [
     "orders.view", "orders.export",
+    "returns.view",
     "payments.view", "payments.refund", "payments.export",
     "shipments.view",
     "reports.view", "reports.export", "reports.accounting",

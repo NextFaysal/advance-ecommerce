@@ -28,6 +28,7 @@ import { ShipmentsPanel } from "./shipments-panel";
 import { PhoneReveal } from "./phone-reveal";
 import { EditPanel } from "./edit-panel";
 import { ManagementPanel } from "./management-panel";
+import { ReturnsPanel } from "./returns-panel";
 import { AdvancePanel } from "./advance-panel";
 import type { OrderAdvanceView } from "../../../../src/orders/advance";
 import { StatusTimeline } from "../../../../src/orders/components/StatusTimeline";
@@ -399,6 +400,12 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
               tags / operational hold / internal notes. Self-fetches
               by order id; the hold is a loud UI signal only. */}
           <ManagementPanel orderId={order.id} />
+
+          {/* Returns / RMA (doc 17, O7) — this order's returns + a
+              create form for DELIVERED orders; the lifecycle itself
+              (approve / receive + restock / complete) runs in the
+              returns queue. Self-fetches by order id. */}
+          <ReturnsPanel orderId={order.id} />
 
           {/* Order editing (doc 17, O6) — line qty/remove/add with
               transactional stock deltas and full money recompute.

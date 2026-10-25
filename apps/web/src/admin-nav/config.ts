@@ -110,6 +110,20 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: null,
   },
   {
+    id: "returns",
+    path: "/admin/returns",
+    labelBn: "রিটার্ন (RMA)",
+    labelEn: "Returns (RMA)",
+    icon: "Package",
+    section: "sales",
+    // Dedicated returns permissions (wave 25): the returns API guards
+    // reads on returns.view and every lifecycle move on
+    // returns.manage; nav uses returns.view as the read gate.
+    permission: "returns.view",
+    featureFlag: null,
+    badge: null,
+  },
+  {
     id: "payments",
     path: "/admin/payments",
     labelBn: "পেমেন্ট",

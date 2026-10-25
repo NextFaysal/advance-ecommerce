@@ -41,6 +41,8 @@ const PERMISSIONS: Array<{ key: string; module: string; action: string }> = [
   { key: "orders.export", module: "orders", action: "export" },
   { key: "orders.print", module: "orders", action: "print" },
   { key: "orders.override_advance", module: "orders", action: "override_advance" },
+  { key: "returns.view", module: "returns", action: "view" },
+  { key: "returns.manage", module: "returns", action: "manage" },
   { key: "products.view", module: "products", action: "view" },
   { key: "products.create", module: "products", action: "create" },
   { key: "products.edit", module: "products", action: "edit" },
@@ -100,6 +102,7 @@ const PERMISSIONS: Array<{ key: string; module: string; action: string }> = [
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   Manager: [
     "orders.view", "orders.create", "orders.update_status", "orders.edit", "orders.export", "orders.print", "orders.override_advance",
+    "returns.view", "returns.manage",
     "products.view", "products.create", "products.edit", "products.import", "products.export",
     "customers.view", "customers.edit", "customers.view_full_phone",
     "inventory.view", "inventory.adjust", "inventory.purchase_order",
@@ -114,14 +117,15 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   ],
   "Order Processor": [
     "orders.view", "orders.create", "orders.update_status", "orders.print",
+    "returns.view", "returns.manage",
     "products.view", "customers.view", "payments.view",
     "shipments.view", "shipments.book",
     "pos.view", "pos.manage",
   ],
   Inventory: ["products.view", "inventory.view", "inventory.adjust", "inventory.purchase_order", "orders.view"],
-  Support: ["orders.view", "customers.view", "content.page"],
+  Support: ["orders.view", "customers.view", "returns.view", "content.page"],
   Accountant: [
-    "orders.view", "orders.export", "payments.view", "payments.refund", "payments.export",
+    "orders.view", "orders.export", "returns.view", "payments.view", "payments.refund", "payments.export",
     "shipments.view", "reports.view", "reports.export", "reports.accounting",
   ],
   "Content Editor": ["products.view", "products.create", "products.edit", "content.page", "content.blog", "content.media"],
