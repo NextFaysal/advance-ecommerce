@@ -28,13 +28,25 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   const repo = await tryCatalogRepository();
   const product = repo ? await repo.getPublicProductBySlug(params.slug) : null;
   if (!product) return { title: "পণ্য পাওয়া যায়নি" };
+  const title = product.seoTitle?.bn ?? product.title.bn;
+  const description = product.seoDescription?.bn ?? product.description.bn;
+  // Share image: the product's dedicated OG image wins; otherwise the
+  // first gallery image (images arrive sorted by sortOrder).
+  const shareImage = product.ogImage ?? product.images[0]?.url;
   return {
-    title: product.seoTitle?.bn ?? product.title.bn,
-    description: product.seoDescription?.bn ?? product.description.bn,
+    title,
+    description,
     openGraph: {
-      title: product.seoTitle?.bn ?? product.title.bn,
-      description: product.seoDescription?.bn ?? product.description.bn,
+      title,
+      description,
       type: "website",
+      ...(shareImage ? { images: [{ url: shareImage, alt: product.title.bn }] } : {}),
+    },
+    twitter: {
+      card: shareImage ? "summary_large_image" : "summary",
+      title,
+      description,
+      ...(shareImage ? { images: [shareImage] } : {}),
     },
   };
 }
@@ -155,11 +167,24 @@ export default async function ProductPage({ params }: { params: { slug: string }
 
   // JSON-LD outline — display-only conversion (fromPoisha) for schema.org;
   // internal money stays integer poisha everywhere else.
+  const galleryUrls = product.images.map((img) => img.url);
+  const firstVariant = product.variants[0];
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
     name: product.title.bn,
     description: product.description.bn,
+    ...(galleryUrls.length > 0 ? { image: galleryUrls } : {}),
+    ...(firstVariant ? { sku: firstVariant.sku } : {}),
+    ...(product.reviewCount > 0 && product.ratingAverage !== null
+      ? {
+          aggregateRating: {
+            "@type": "AggregateRating",
+            ratingValue: product.ratingAverage,
+            reviewCount: product.reviewCount,
+          },
+        }
+      : {}),
     brand: product.brandName ? { "@type": "Brand", name: product.brandName } : undefined,
     offers: {
       "@type": "Offer",

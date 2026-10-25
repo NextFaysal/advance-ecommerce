@@ -25,7 +25,7 @@ import { z } from "zod";
 import type { Category, Product, ProductImage, ProductVariant, PublicProduct } from "./types";
 import { toPublicProduct } from "./types";
 import type { ProductFilter } from "./search";
-import { applyProductFilter } from "./search";
+import { applyProductFilter, expandQueryTokens } from "./search";
 import { removeProductFromSearchIndex, syncProductSearchIndex } from "./indexer";
 import { MOCK_CATEGORIES, MOCK_PRODUCTS } from "./mock";
 
@@ -87,6 +87,7 @@ export const productInputSchema = z.object({
   seoTitleEn: z.string().max(255).nullable().optional(),
   seoDescriptionBn: z.string().max(500).nullable().optional(),
   seoDescriptionEn: z.string().max(500).nullable().optional(),
+  ogImage: z.string().url().max(2048).nullable().optional(),
   images: z.array(imageInputSchema).max(20).default([]),
   variants: z.array(variantInputSchema).min(1).max(200),
 });
@@ -126,6 +127,7 @@ export interface ProductRow {
   seoTitleEn: string | null;
   seoDescriptionBn: string | null;
   seoDescriptionEn: string | null;
+  ogImage: string | null;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -193,6 +195,7 @@ export function mapRowToProduct(row: ProductRow): Product {
       row.seoDescriptionBn !== null || row.seoDescriptionEn !== null
         ? { bn: row.seoDescriptionBn ?? "", en: row.seoDescriptionEn ?? "" }
         : null,
+    ogImage: row.ogImage,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -369,6 +372,7 @@ export interface PrismaProductRow {
   seoTitleEn: string | null;
   seoDescriptionBn: string | null;
   seoDescriptionEn: string | null;
+  ogImage: string | null;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -429,6 +433,7 @@ export function mapPrismaRowToProductRow(row: PrismaProductRow): ProductRow {
     seoTitleEn: row.seoTitleEn,
     seoDescriptionBn: row.seoDescriptionBn,
     seoDescriptionEn: row.seoDescriptionEn,
+    ogImage: row.ogImage,
     deletedAt: row.deletedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -539,16 +544,53 @@ export class PrismaCatalogRepository implements CatalogRepository {
       deletedAt: null,
       ...(filter.status === "ALL" ? {} : { status: filter.status ?? "ACTIVE" }),
     };
+    // Filters live in the SQL where (wave-13 parent fix, doc 16 #17):
+    // previously q/category/brand/price/stock were applied in memory
+    // AFTER pagination and `total` counted only the status filter, so
+    // filtered totals and page contents were wrong.
+    const variantSome: Record<string, unknown> = { isActive: true, deletedAt: null };
+    if (filter.inStockOnly) variantSome.stock = { gt: 0 };
+    if (filter.minPricePoisha !== undefined || filter.maxPricePoisha !== undefined) {
+      variantSome.pricePoisha = {
+        ...(filter.minPricePoisha !== undefined ? { gte: filter.minPricePoisha } : {}),
+        ...(filter.maxPricePoisha !== undefined ? { lte: filter.maxPricePoisha } : {}),
+      };
+    }
+    const needsVariantFilter =
+      filter.inStockOnly || filter.minPricePoisha !== undefined || filter.maxPricePoisha !== undefined;
+    const queryTerms = filter.query ? expandQueryTokens(filter.query) : [];
+    const fullWhere: Record<string, unknown> = {
+      ...where,
+      ...(filter.categorySlug ? { category: { slug: filter.categorySlug } } : {}),
+      ...(filter.brandName ? { brand: { name: filter.brandName } } : {}),
+      ...(needsVariantFilter ? { variants: { some: variantSome } } : {}),
+      ...(queryTerms.length
+        ? {
+            OR: queryTerms.flatMap((t) => [
+              { titleBn: { contains: t, mode: "insensitive" } },
+              { titleEn: { contains: t, mode: "insensitive" } },
+              { slug: { contains: t, mode: "insensitive" } },
+            ]),
+          }
+        : {}),
+    };
+    const orderBy =
+      filter.sort === "rating"
+        ? { ratingAverage: "desc" as const }
+        : { createdAt: "desc" as const };
     const rows = await this.client.product.findMany({
-      where,
+      where: fullWhere,
       include: PRODUCT_INCLUDE,
-      orderBy: { createdAt: "desc" },
+      orderBy,
       skip: (page - 1) * pageSize,
       take: pageSize,
     });
     const products = rows.map((r) => mapRowToProduct(mapPrismaRowToProductRow(r)));
+    // applyProductFilter stays for the price sorts (no SQL equivalent for
+    // min-variant-price ordering) — its filter predicates are idempotent
+    // over rows the SQL already matched.
     const filtered = applyProductFilter(products, filter);
-    const total = await this.client.product.count({ where });
+    const total = await this.client.product.count({ where: fullWhere });
     return { products: filtered, total, page, pageSize };
   }
 
@@ -720,6 +762,7 @@ export class PrismaCatalogRepository implements CatalogRepository {
           seoTitleEn: input.seoTitleEn ?? null,
           seoDescriptionBn: input.seoDescriptionBn ?? null,
           seoDescriptionEn: input.seoDescriptionEn ?? null,
+          ogImage: input.ogImage ?? null,
           images: {
             create: input.images.map((i) => ({
               url: i.url,
@@ -908,6 +951,7 @@ export class PrismaCatalogRepository implements CatalogRepository {
       if (input.seoTitleEn !== undefined) data.seoTitleEn = input.seoTitleEn;
       if (input.seoDescriptionBn !== undefined) data.seoDescriptionBn = input.seoDescriptionBn;
       if (input.seoDescriptionEn !== undefined) data.seoDescriptionEn = input.seoDescriptionEn;
+      if (input.ogImage !== undefined) data.ogImage = input.ogImage;
       if (input.categorySlug !== undefined) {
         data.categoryId = await this.resolveCategoryId(tx, input.categorySlug);
       }

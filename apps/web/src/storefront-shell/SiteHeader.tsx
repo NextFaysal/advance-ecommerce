@@ -44,7 +44,8 @@ import { cartItemCount } from "@/cart/types";
 import { CART_UPDATED_EVENT } from "@/cart/components/AddToCartButton";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { NumeralsToggle, useDigitText } from "@/components/ui/numerals";
-import type { Category, PublicProduct } from "@/catalog/types";
+import type { PublicProduct } from "@/catalog/types";
+import type { PublicCategoryNode } from "@/catalog/category-tree";
 import { minVariantPricePoisha } from "@/catalog/types";
 import { DEFAULT_HEADER_MENU, type SiteMenuItem } from "@/cms/site-content-types";
 
@@ -52,10 +53,11 @@ export interface SiteHeaderProps {
   brandName?: string;
   /** Overrides the guest-cart localStorage count when provided. */
   cartCount?: number;
-  /** Public categories for the mega menu; `undefined` while the shell's
-      fetch is still in flight (the row renders, the panel shows a
-      loading state). An empty array means no categories exist. */
-  categories?: ReadonlyArray<Category>;
+  /** Public category TREE for the mega menu (Wave 13-2: roots with
+      nested `children`); `undefined` while the shell's fetch is still
+      in flight (the row renders, the panel shows a loading state).
+      An empty array means no categories exist. */
+  categories?: ReadonlyArray<PublicCategoryNode>;
   /** Owner-configured header menu (Admin → Content, CMS site content),
    *  already visible-filtered by the public API. Omit / pass undefined
    *  to render the built-in default menu (DEFAULT_HEADER_MENU) —
@@ -670,25 +672,50 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                 ) : categories.length > 0 ? (
                 <div className="grid grid-cols-3 gap-3 rounded-2xl border border-border bg-card p-4 shadow-pop xl:grid-cols-4">
                   {categories.map((c, i) => (
-                    <a
-                      key={c.slug}
-                      href={`/shop?category=${c.slug}`}
-                      onClick={() => setMegaOpen(false)}
-                      className={`cat-tint-${(i % 8) + 1} flex items-center gap-3 rounded-xl p-3 transition duration-200 hover:-translate-y-0.5 hover:shadow-md`}
-                    >
-                      {c.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={c.imageUrl} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" />
-                      ) : (
-                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface/80 text-base font-extrabold text-text-main shadow-sm">
-                          {c.name.bn.charAt(0)}
+                    /* Wave 13-2: each root is a GROUP — the tinted tile
+                       stays exactly as before, and its sub-categories
+                       (children from the tree API) list underneath,
+                       depth 2 only. With no children the cell is just
+                       the tile, identical to the old flat menu. */
+                    <div key={c.slug} className="min-w-0">
+                      <a
+                        href={`/shop?category=${c.slug}`}
+                        onClick={() => setMegaOpen(false)}
+                        className={`cat-tint-${(i % 8) + 1} flex items-center gap-3 rounded-xl p-3 transition duration-200 hover:-translate-y-0.5 hover:shadow-md`}
+                      >
+                        {c.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={c.imageUrl} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" />
+                        ) : (
+                          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface/80 text-base font-extrabold text-text-main shadow-sm">
+                            {c.name.bn.charAt(0)}
+                          </span>
+                        )}
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-bold">{c.name.bn}</span>
+                          <span className="block text-xs opacity-75">{c.productCount}টি পণ্য</span>
                         </span>
-                      )}
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-bold">{c.name.bn}</span>
-                        <span className="block text-xs opacity-75">{c.productCount}টি পণ্য</span>
-                      </span>
-                    </a>
+                      </a>
+                      {c.children.length > 0 ? (
+                        <ul className="mt-1 space-y-0.5 px-1.5">
+                          {c.children.map((child) => (
+                            <li key={child.slug}>
+                              <a
+                                href={`/shop?category=${child.slug}`}
+                                onClick={() => setMegaOpen(false)}
+                                className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-[13px] text-text-muted transition hover:bg-surface-2 hover:text-brand-700"
+                              >
+                                <span className="min-w-0 truncate">
+                                  <span aria-hidden="true" className="mr-1 text-text-subtle">↳</span>
+                                  {child.name.bn}
+                                </span>
+                                <span className="shrink-0 text-[11px] text-text-subtle">{child.productCount}টি</span>
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
                   ))}
                 </div>
                 ) : (
@@ -754,14 +781,30 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
               <div className="mt-1 border-t border-border pt-1">
                 <p className="px-3 pb-1 pt-2.5 text-xs font-bold text-text-subtle">ক্যাটাগরি</p>
                 {categories.map((c) => (
-                  <a
-                    key={c.slug}
-                    href={`/shop?category=${c.slug}`}
-                    className="flex min-h-[44px] items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm text-text-main hover:bg-surface-2"
-                  >
-                    <span className="min-w-0 truncate">{c.name.bn}</span>
-                    <span className="shrink-0 text-xs text-text-subtle">{c.productCount}টি পণ্য</span>
-                  </a>
+                  <span key={c.slug} className="block">
+                    <a
+                      href={`/shop?category=${c.slug}`}
+                      className="flex min-h-[44px] items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm text-text-main hover:bg-surface-2"
+                    >
+                      <span className="min-w-0 truncate">{c.name.bn}</span>
+                      <span className="shrink-0 text-xs text-text-subtle">{c.productCount}টি পণ্য</span>
+                    </a>
+                    {/* Wave 13-2: sub-categories indented under their
+                        parent (depth 2, same as the desktop menu). */}
+                    {c.children.map((child) => (
+                      <a
+                        key={child.slug}
+                        href={`/shop?category=${child.slug}`}
+                        className="flex min-h-[44px] items-center justify-between gap-3 rounded-lg py-2.5 pl-9 pr-3 text-sm text-text-muted hover:bg-surface-2"
+                      >
+                        <span className="min-w-0 truncate">
+                          <span aria-hidden="true" className="mr-1 text-text-subtle">↳</span>
+                          {child.name.bn}
+                        </span>
+                        <span className="shrink-0 text-xs text-text-subtle">{child.productCount}টি পণ্য</span>
+                      </a>
+                    ))}
+                  </span>
                 ))}
               </div>
             ) : null}

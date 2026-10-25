@@ -1,11 +1,15 @@
-// Media pipeline outline — Agent 8 (Step 9 contract).
-// No real upload happens here and no credential is read or stored.
-// R2 is S3-compatible; the real upload (signed URL / direct upload +
-// WebP/AVIF encode + thumbnail) is wired by the storage adapter owner.
-// What this module DOES define, so admin + storefront agree:
-//  - R2 key layout, CDN URL derivation, variant derivation names
+// Media pipeline — Agent 8 (Step 9 contract); real uploads landed in
+// P1 (doc 16): POST /api/v1/admin/products/upload presigns direct-to-
+// storage PUT URLs and the admin editor uploads the bytes itself, so
+// this module stays the pure, client-safe contract:
+//  - R2/S3 key layout, CDN URL derivation, variant derivation names
 //  - sortOrder reorder (drag-reorder in admin), per-variant image pick
 //  - validation: allowed types, max size, alt text required for SEO
+// The SERVER half (storage config resolution from Admin Settings +
+// SigV4 presigning, credentials never leave the server) lives in
+// ./media-server.ts — the same pure/server split as platform/push.ts
+// vs push-server.ts. WebP/AVIF re-encode + thumbnail variants remain a
+// storage-adapter concern; the original file is what gets stored.
 
 export interface MediaVariant {
   /** e.g. "thumb" 320w, "medium" 800w, "large" 1600w, "original" */
@@ -27,6 +31,17 @@ export interface MediaAsset {
 
 const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB original, before encode
+
+/** Direct-upload cap enforced by the P1 upload endpoint: the declared
+ *  size is signed into the presigned URL (content-length is a signed
+ *  header), so storage itself rejects an oversize PUT. */
+export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB per uploaded file
+export const UPLOAD_EXPIRES_SECONDS = 900; // presigned PUT lifetime: 15 min
+export const MAX_UPLOADS_PER_REQUEST = 10;
+
+export function isAllowedImageMime(mime: string): boolean {
+  return ALLOWED_MIME.has(mime);
+}
 
 export function validateMediaFile(input: { mime: string; sizeBytes: number; altBn: string; altEn: string }): string[] {
   const errors: string[] = [];
@@ -101,4 +116,14 @@ export interface SignedUploadResponse {
   uploadUrl: string;
   key: string;
   expiresInSeconds: number;
+}
+
+/** One file's presigned direct-upload ticket (P1 upload endpoint). */
+export interface PresignedUploadTicket extends SignedUploadResponse {
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  /** Final public URL of the object once the PUT succeeds — this is
+   *  what gets stored in ProductImage.url / Product.ogImage. */
+  publicUrl: string;
 }

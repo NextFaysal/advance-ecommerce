@@ -11,9 +11,9 @@ import {
 // Brands admin (Wave P2a) — RBAC reuses the products keys (no separate
 // brand permission exists in the seed): view=products.view, create=
 // products.create, edit=products.edit, delete=products.delete.
-// Data: src/catalog/taxonomy-admin.ts. NOTE: the Brand model has no
-// description column (schema gap, no migration in this wave), so the
-// API carries name/slug/logoUrl only.
+// Data: src/catalog/taxonomy-admin.ts. Wave 13: Brand.description
+// exists in the schema now, so the API carries it alongside
+// name/slug/logoUrl.
 
 function taxonomyFailure(e: unknown): NextResponse {
   if (e instanceof TaxonomyError) {
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       action: "brands.create",
       entityType: "Brand",
       entityId: brand.id,
-      afterJson: { slug: brand.slug, name: brand.name },
+      afterJson: { slug: brand.slug, name: brand.name, description: brand.description },
       ip: req.headers.get("x-forwarded-for") ?? undefined,
       userAgent: req.headers.get("user-agent") ?? undefined,
     });

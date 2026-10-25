@@ -20,7 +20,14 @@
 //     stock_movements ledger.
 //   - Images are URL rows (url + alt bn/en + up/down ordering); on
 //     PATCH the API replaces the image set inside the transaction.
-//     File UPLOAD is P1 — this editor never pretends to upload.
+//     File UPLOAD (P1) is real: the Media tab asks
+//     POST /api/v1/admin/products/upload for presigned PUT tickets
+//     and uploads each file straight to the configured R2/S3 storage
+//     with per-file progress; the resulting public URL lands as a row
+//     here. When storage is not configured the endpoint says so
+//     (STORAGE_NOT_CONFIGURED) and the tab shows that honestly while
+//     URL rows keep working. OG image (SEO tab) is Product.ogImage;
+//     empty means the PDP falls back to the first gallery image.
 //   - Price-change rule: when any EXISTING variant's price differs
 //     from the loaded price, PATCH requires `reason`
 //     (products.price_change audit). The editor detects the change
@@ -233,6 +240,14 @@ export function ProductEditor({
   const [seoTitleEn, setSeoTitleEn] = useState(initial?.seoTitle?.en ?? "");
   const [seoDescriptionBn, setSeoDescriptionBn] = useState(initial?.seoDescription?.bn ?? "");
   const [seoDescriptionEn, setSeoDescriptionEn] = useState(initial?.seoDescription?.en ?? "");
+  const [ogImage, setOgImage] = useState(initial?.ogImage ?? "");
+
+  // --- Image upload (P1: presigned direct-to-storage) ------------------------
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadItems, setUploadItems] = useState<
+    { id: number; name: string; progress: number; status: "uploading" | "done" | "error"; error?: string }[]
+  >([]);
+  const [uploadNotice, setUploadNotice] = useState("");
 
   // --- Save state -------------------------------------------------------------
   const [reason, setReason] = useState("");
@@ -488,6 +503,7 @@ export function ProductEditor({
       seoTitleEn: emptyToNull(seoTitleEn),
       seoDescriptionBn: emptyToNull(seoDescriptionBn),
       seoDescriptionEn: emptyToNull(seoDescriptionEn),
+      ogImage: emptyToNull(ogImage),
       images,
       variants,
     };
@@ -572,6 +588,101 @@ export function ProductEditor({
     }
   }
 
+  /** PUT one file straight to storage at its presigned URL, reporting
+   *  progress into uploadItems. Content-Type is set from the file so it
+   *  matches the signed header exactly; Content-Length is the file's
+   *  own size (also signed), so storage rejects any tampered transfer. */
+  function putFileWithProgress(
+    file: File,
+    ticket: { uploadUrl: string; publicUrl: string },
+    itemId: number,
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      const fail = (message: string) => {
+        setUploadItems((prev) =>
+          prev.map((it) => (it.id === itemId ? { ...it, status: "error" as const, error: message } : it)),
+        );
+        resolve();
+      };
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", ticket.uploadUrl);
+      xhr.setRequestHeader("Content-Type", file.type);
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const pct = Math.round((event.loaded / event.total) * 100);
+          setUploadItems((prev) => prev.map((it) => (it.id === itemId ? { ...it, progress: pct } : it)));
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setUploadItems((prev) =>
+            prev.map((it) => (it.id === itemId ? { ...it, progress: 100, status: "done" as const } : it)),
+          );
+          setImageRows((prev) => [...prev, { key: nextKey(), url: ticket.publicUrl, altBn: "", altEn: "" }]);
+          resolve();
+        } else {
+          fail(`স্টোরেজ আপলোড ব্যর্থ হয়েছে (HTTP ${xhr.status}) — আবার চেষ্টা করুন।`);
+        }
+      };
+      xhr.onerror = () => fail("নেটওয়ার্ক সমস্যায় আপলোড ব্যর্থ হয়েছে — সংযোগ দেখে আবার চেষ্টা করুন।");
+      xhr.onabort = () => fail("আপলোড বাতিল হয়েছে।");
+      xhr.send(file);
+    });
+  }
+
+  /** File-picker flow: ask the server for presigned tickets (metadata
+   *  only — the bytes go straight to storage), then PUT each file.
+   *  A STORAGE_NOT_CONFIGURED answer becomes a clear notice on the
+   *  Media tab; URL rows remain fully usable either way. */
+  async function handleFilesSelected(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    const files = Array.from(list);
+    const items = files.map((f) => ({
+      id: nextKey(),
+      name: f.name,
+      progress: 0,
+      status: "uploading" as const,
+    }));
+    setUploadItems((prev) => [...prev, ...items]);
+    setUploadNotice("");
+    const markAllError = (message: string) =>
+      setUploadItems((prev) =>
+        prev.map((it) =>
+          items.some((i) => i.id === it.id) ? { ...it, status: "error" as const, error: message } : it,
+        ),
+      );
+    try {
+      const res = await fetch("/api/v1/admin/products/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productSlug: slug.trim() || null,
+          files: files.map((f) => ({ filename: f.name, contentType: f.type, sizeBytes: f.size })),
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        data?: { uploads?: { uploadUrl: string; publicUrl: string }[] };
+        error?: { code?: string; message?: string };
+      };
+      if (!res.ok) {
+        const message = data.error?.message ?? "আপলোড শুরু করা যায়নি।";
+        if (data.error?.code === "STORAGE_NOT_CONFIGURED") setUploadNotice(message);
+        markAllError(message);
+        return;
+      }
+      const uploads = data.data?.uploads ?? [];
+      await Promise.all(
+        uploads.map((ticket, idx) => {
+          const file = files[idx];
+          const item = items[idx];
+          return file && item ? putFileWithProgress(file, ticket, item.id) : Promise.resolve();
+        }),
+      );
+    } catch {
+      markAllError("Network error — আপলোড সার্ভারে পৌঁছানো যায়নি।");
+    }
+  }
+
   const qualityDone = {
     title: Boolean(titleBn.trim() && titleEn.trim()),
     image: imageRows.some((i) => i.url.trim() !== ""),
@@ -581,7 +692,7 @@ export function ProductEditor({
   };
   const QUALITY_CHECKLIST = [
     { key: "title", label: "টাইটেল (বাংলা + English)" },
-    { key: "image", label: "কমপক্ষে ১টি ছবি (URL)" },
+    { key: "image", label: "কমপক্ষে ১টি ছবি (আপলোড বা URL)" },
     { key: "description", label: "বিবরণ (বাংলা + English)" },
     { key: "price", label: "কমপক্ষে ১টি ভেরিয়েন্টে দাম + স্টক" },
     { key: "seo", label: "SEO: slug + meta" },
@@ -723,8 +834,64 @@ export function ProductEditor({
       {tab === "media" && (
         <div className="mt-4">
           <p className="text-sm text-text-muted">
-            ছবির URL বসান — ক্রম অনুযায়ী প্রথম ছবিটাই প্রধান ছবি হিসেবে স্টোরে দেখাবে। ফাইল আপলোড পরের ধাপে (P1) আসছে; আপাতত হোস্ট করা ছবির লিংক ব্যবহার করুন।
+            নিজের ডিভাইস থেকে ছবি আপলোড করুন, অথবা হোস্ট করা ছবির URL বসান — ক্রম অনুযায়ী প্রথম ছবিটাই প্রধান ছবি হিসেবে স্টোরে দেখাবে।
           </p>
+          <div className="mt-3 rounded-lg border border-border bg-card p-3 shadow-sm">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition motion-fast hover:brightness-105"
+              >
+                ছবি আপলোড করুন
+              </button>
+              <span className="text-xs text-text-subtle">
+                JPEG, PNG, WebP বা AVIF — প্রতিটি ছবি সর্বোচ্চ 5 MB, একবারে সর্বোচ্চ 10টি। আপলোড শেষ হলে ছবিটি নিচের তালিকায় যোগ হয়ে যাবে; সেভ না করা পর্যন্ত পণ্যে যুক্ত হবে না।
+              </span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/avif"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  void handleFilesSelected(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+            {uploadNotice && (
+              <p role="status" className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                ⚠️ {uploadNotice}
+              </p>
+            )}
+            {uploadItems.length > 0 && (
+              <ul className="mt-3 space-y-2.5">
+                {uploadItems.map((it) => (
+                  <li key={it.id} className="text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 truncate text-text-main">{it.name}</span>
+                      <span className="shrink-0 text-xs font-medium">
+                        {it.status === "done" ? (
+                          <span className="text-emerald-700">✅ আপলোড হয়েছে</span>
+                        ) : it.status === "error" ? (
+                          <span className="text-rose-600">❌ ব্যর্থ</span>
+                        ) : (
+                          <span className="text-text-muted">আপলোড হচ্ছে… {it.progress}%</span>
+                        )}
+                      </span>
+                    </div>
+                    {it.status === "uploading" && (
+                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuenow={it.progress} aria-valuemin={0} aria-valuemax={100}>
+                        <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${it.progress}%` }} />
+                      </div>
+                    )}
+                    {it.status === "error" && it.error && <p className="mt-1 text-xs text-rose-600">{it.error}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <div className="mt-3 space-y-3">
             {imageRows.length === 0 && (
               <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-text-subtle">
@@ -951,6 +1118,30 @@ export function ProductEditor({
             SEO Description (English)
             <textarea value={seoDescriptionEn} onChange={(e) => setSeoDescriptionEn(e.target.value)} rows={3} className={inputCls} />
           </label>
+          <div className="md:col-span-2">
+            <label className="block text-sm">
+              OG ছবি (সোশ্যাল মিডিয়ায় শেয়ার করলে যে ছবি দেখাবে)
+              <input value={ogImage} onChange={(e) => setOgImage(e.target.value)} className={inputCls} placeholder="https://…" />
+            </label>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              {ogImage.trim() !== "" && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={ogImage} alt="" className="h-16 w-28 shrink-0 rounded-md border border-border object-cover" />
+              )}
+              <button
+                type="button"
+                disabled={!imageRows.some((i) => i.url.trim() !== "")}
+                onClick={() => {
+                  const first = imageRows.find((i) => i.url.trim() !== "");
+                  if (first) setOgImage(first.url.trim());
+                }}
+                className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium transition motion-fast hover:border-brand-300 disabled:opacity-40"
+              >
+                প্রথম গ্যালারি ছবি ব্যবহার করুন
+              </button>
+              <span className="text-xs text-text-subtle">খালি রাখলে শেয়ারিংয়ে প্রথম গ্যালারি ছবিটাই যাবে। মিডিয়া ট্যাব থেকে আপলোড করা ছবির URL-ও এখানে বসানো যাবে।</span>
+            </div>
+          </div>
           <p className="text-sm text-text-muted md:col-span-2">
             স্টোরের ঠিকানা: <span className="font-mono">/product/{slug || "…"}</span> — এই slug দিয়েই সার্চ ইঞ্জিনে পণ্যটি আসবে।
           </p>

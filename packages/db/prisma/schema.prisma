@@ -337,6 +337,10 @@ model Category {
   slug      String     @unique
   nameBn    String
   nameEn    String
+  seoTitleBn       String?
+  seoTitleEn       String?
+  seoDescriptionBn String?
+  seoDescriptionEn String?
   parentId  String?
   parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
   children  Category[] @relation("CategoryTree")
@@ -355,6 +359,7 @@ model Brand {
   name      String    @unique
   slug      String    @unique
   logoUrl   String?
+  description String?
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -380,6 +385,7 @@ model Product {
   seoTitleEn       String?
   seoDescriptionBn String?
   seoDescriptionEn String?
+  ogImage          String?
   deletedAt        DateTime?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt

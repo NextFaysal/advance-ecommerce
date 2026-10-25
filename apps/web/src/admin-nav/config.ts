@@ -239,6 +239,21 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: null,
   },
   {
+    // Wave 13-2: attribute-set library (ProductAttribute) — reusable
+    // key/value sets (size, colour…) managed as a library; wiring the
+    // sets into the product editor is a later wave. Same products
+    // permission family as categories/brands.
+    id: "attributes",
+    path: "/admin/attributes",
+    labelBn: "অ্যাট্রিবিউট",
+    labelEn: "Attributes",
+    icon: "ListOrdered",
+    section: "catalog",
+    permission: "products.view",
+    featureFlag: null,
+    badge: null,
+  },
+  {
     id: "inventory",
     path: "/admin/inventory",
     labelBn: "ইনভেন্টরি",

@@ -46,8 +46,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       action: "categories.update",
       entityType: "Category",
       entityId: category.id,
-      beforeJson: { slug: before.slug, nameEn: before.nameEn, parentId: before.parentId, isActive: before.isActive, sortOrder: before.sortOrder },
-      afterJson: { slug: category.slug, nameEn: category.nameEn, parentId: category.parentId, isActive: category.isActive, sortOrder: category.sortOrder },
+      beforeJson: { slug: before.slug, nameEn: before.nameEn, parentId: before.parentId, isActive: before.isActive, sortOrder: before.sortOrder, seoTitleBn: before.seoTitleBn, seoTitleEn: before.seoTitleEn, seoDescriptionBn: before.seoDescriptionBn, seoDescriptionEn: before.seoDescriptionEn },
+      afterJson: { slug: category.slug, nameEn: category.nameEn, parentId: category.parentId, isActive: category.isActive, sortOrder: category.sortOrder, seoTitleBn: category.seoTitleBn, seoTitleEn: category.seoTitleEn, seoDescriptionBn: category.seoDescriptionBn, seoDescriptionEn: category.seoDescriptionEn },
       ip: req.headers.get("x-forwarded-for") ?? undefined,
       userAgent: req.headers.get("user-agent") ?? undefined,
     });

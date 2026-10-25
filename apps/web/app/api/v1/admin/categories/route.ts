@@ -53,7 +53,13 @@ export async function POST(req: Request) {
       action: "categories.create",
       entityType: "Category",
       entityId: category.id,
-      afterJson: { slug: category.slug, nameEn: category.nameEn, parentId: category.parentId },
+      afterJson: {
+        slug: category.slug,
+        nameEn: category.nameEn,
+        parentId: category.parentId,
+        seoTitleBn: category.seoTitleBn,
+        seoTitleEn: category.seoTitleEn,
+      },
       ip: req.headers.get("x-forwarded-for") ?? undefined,
       userAgent: req.headers.get("user-agent") ?? undefined,
     });

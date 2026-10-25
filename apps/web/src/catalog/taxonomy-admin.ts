@@ -24,9 +24,11 @@
  * Slugs are globally unique in the schema INCLUDING soft-deleted rows,
  * so uniqueness checks look at every row, not just live ones.
  *
- * Brand note: the schema has NO description column (name/slug/logoUrl
- * only) and this wave ships no migration, so brand descriptions are
- * not part of the API yet — a schema gap, flagged in the wave report.
+ * Wave 13 extension (doc 16 §P2 remainder): the schema gained the
+ * Category SEO columns (seoTitleBn / seoTitleEn / seoDescriptionBn /
+ * seoDescriptionEn) and Brand.description, so both surfaces are now
+ * carried by the schemas, shapes and managers below. Empty strings
+ * are stored as null (same convention as imageUrl / logoUrl).
  */
 import { prisma } from "@advance-ecommerce/db";
 import { z } from "zod";
@@ -67,6 +69,9 @@ const optionalUrl = z
   .refine((v) => v === "" || /^https?:\/\//i.test(v), "Must be an http(s) URL or empty.")
   .optional();
 
+const optionalSeoTitle = z.string().trim().max(300).optional();
+const optionalSeoDescription = z.string().trim().max(1000).optional();
+
 export const categoryCreateSchema = z.object({
   nameBn: z.string().trim().min(1, "Bangla name is required.").max(200),
   nameEn: z.string().trim().min(1, "English name is required.").max(200),
@@ -75,6 +80,10 @@ export const categoryCreateSchema = z.object({
   imageUrl: optionalUrl,
   sortOrder: z.number().int().min(-10000).max(10000).optional(),
   isActive: z.boolean().optional(),
+  seoTitleBn: optionalSeoTitle,
+  seoTitleEn: optionalSeoTitle,
+  seoDescriptionBn: optionalSeoDescription,
+  seoDescriptionEn: optionalSeoDescription,
 });
 export type CategoryCreateInput = z.infer<typeof categoryCreateSchema>;
 
@@ -88,6 +97,7 @@ export const brandCreateSchema = z.object({
   name: z.string().trim().min(1, "Brand name is required.").max(200),
   slug: z.string().trim().max(160).optional(),
   logoUrl: optionalUrl,
+  description: z.string().trim().max(2000).optional(),
 });
 export type BrandCreateInput = z.infer<typeof brandCreateSchema>;
 
@@ -112,6 +122,10 @@ export interface AdminCategory {
   imageUrl: string | null;
   sortOrder: number;
   isActive: boolean;
+  seoTitleBn: string | null;
+  seoTitleEn: string | null;
+  seoDescriptionBn: string | null;
+  seoDescriptionEn: string | null;
   /** Non-deleted products in ANY status — the admin truth for delete guards. */
   productCount: number;
   childCount: number;
@@ -124,6 +138,7 @@ export interface AdminBrand {
   name: string;
   slug: string;
   logoUrl: string | null;
+  description: string | null;
   productCount: number;
   createdAt: string;
   updatedAt: string;
@@ -159,6 +174,10 @@ function mapCategory(row: NonNullable<CategoryRow>): AdminCategory {
     imageUrl: row.imageUrl,
     sortOrder: row.sortOrder,
     isActive: row.isActive,
+    seoTitleBn: row.seoTitleBn,
+    seoTitleEn: row.seoTitleEn,
+    seoDescriptionBn: row.seoDescriptionBn,
+    seoDescriptionEn: row.seoDescriptionEn,
     productCount: row._count.products,
     childCount: row._count.children,
     createdAt: row.createdAt.toISOString(),
@@ -171,6 +190,7 @@ function mapBrand(row: {
   name: string;
   slug: string;
   logoUrl: string | null;
+  description: string | null;
   createdAt: Date;
   updatedAt: Date;
   _count: { products: number };
@@ -180,6 +200,7 @@ function mapBrand(row: {
     name: row.name,
     slug: row.slug,
     logoUrl: row.logoUrl,
+    description: row.description,
     productCount: row._count.products,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -261,6 +282,10 @@ export async function createCategoryAdmin(input: CategoryCreateInput): Promise<A
         imageUrl: input.imageUrl ? input.imageUrl : null,
         sortOrder: input.sortOrder ?? 0,
         isActive: input.isActive ?? true,
+        seoTitleBn: input.seoTitleBn ? input.seoTitleBn : null,
+        seoTitleEn: input.seoTitleEn ? input.seoTitleEn : null,
+        seoDescriptionBn: input.seoDescriptionBn ? input.seoDescriptionBn : null,
+        seoDescriptionEn: input.seoDescriptionEn ? input.seoDescriptionEn : null,
       },
       include: categoryInclude,
     });
@@ -281,6 +306,10 @@ export async function updateCategoryAdmin(id: string, input: CategoryUpdateInput
     imageUrl?: string | null;
     sortOrder?: number;
     isActive?: boolean;
+    seoTitleBn?: string | null;
+    seoTitleEn?: string | null;
+    seoDescriptionBn?: string | null;
+    seoDescriptionEn?: string | null;
   } = {};
   if (input.nameBn !== undefined) data.nameBn = input.nameBn;
   if (input.nameEn !== undefined) data.nameEn = input.nameEn;
@@ -299,6 +328,14 @@ export async function updateCategoryAdmin(id: string, input: CategoryUpdateInput
   if (input.imageUrl !== undefined) data.imageUrl = input.imageUrl ? input.imageUrl : null;
   if (input.sortOrder !== undefined) data.sortOrder = input.sortOrder;
   if (input.isActive !== undefined) data.isActive = input.isActive;
+  if (input.seoTitleBn !== undefined) data.seoTitleBn = input.seoTitleBn ? input.seoTitleBn : null;
+  if (input.seoTitleEn !== undefined) data.seoTitleEn = input.seoTitleEn ? input.seoTitleEn : null;
+  if (input.seoDescriptionBn !== undefined) {
+    data.seoDescriptionBn = input.seoDescriptionBn ? input.seoDescriptionBn : null;
+  }
+  if (input.seoDescriptionEn !== undefined) {
+    data.seoDescriptionEn = input.seoDescriptionEn ? input.seoDescriptionEn : null;
+  }
   try {
     const row = await prisma.category.update({ where: { id }, data, include: categoryInclude });
     return mapCategory(row);
@@ -372,7 +409,12 @@ export async function createBrandAdmin(input: BrandCreateInput): Promise<AdminBr
   await assertBrandFree(input.name, slug);
   try {
     const row = await prisma.brand.create({
-      data: { name: input.name, slug, logoUrl: input.logoUrl ? input.logoUrl : null },
+      data: {
+        name: input.name,
+        slug,
+        logoUrl: input.logoUrl ? input.logoUrl : null,
+        description: input.description ? input.description : null,
+      },
       include: brandInclude,
     });
     return mapBrand(row);
@@ -389,10 +431,11 @@ export async function updateBrandAdmin(id: string, input: BrandUpdateInput): Pro
   if (input.name !== undefined || input.slug !== undefined) {
     await assertBrandFree(name, slug, id);
   }
-  const data: { name?: string; slug?: string; logoUrl?: string | null } = {};
+  const data: { name?: string; slug?: string; logoUrl?: string | null; description?: string | null } = {};
   if (input.name !== undefined) data.name = input.name;
   if (input.slug !== undefined) data.slug = slug;
   if (input.logoUrl !== undefined) data.logoUrl = input.logoUrl ? input.logoUrl : null;
+  if (input.description !== undefined) data.description = input.description ? input.description : null;
   try {
     const row = await prisma.brand.update({ where: { id }, data, include: brandInclude });
     return mapBrand(row);

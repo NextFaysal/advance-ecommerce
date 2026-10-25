@@ -14,9 +14,14 @@ import { Modal } from "@/components/ui/modal";
 export function DeleteProductButton({
   productId,
   productTitle,
+  onDeleted,
 }: {
   productId: string;
   productTitle: string;
+  /** Optional: the list is client-fetched now (Wave 13-3), so the
+   *  table passes a refetch callback; router.refresh() alone would
+   *  leave the deleted row on screen. */
+  onDeleted?: () => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -45,6 +50,7 @@ export function DeleteProductButton({
         setOpen(false);
         setReason("");
         router.refresh();
+        onDeleted?.();
       } else {
         setError(body?.error ? `${body.error.code}: ${body.error.message}` : `HTTP ${res.status}`);
       }

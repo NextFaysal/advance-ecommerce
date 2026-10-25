@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { SiteFooter, SiteHeader } from "@/storefront-shell";
-import type { Category } from "@/catalog/types";
+import type { PublicCategoryNode } from "@/catalog/category-tree";
 import type {
   FooterMenuGroup,
   SiteContentConfigured,
@@ -24,7 +24,9 @@ import ResellerRefCapture from "@/reseller/RefCapture";
 // Design v3 (§4 mega menu): categories are loaded from the EXISTING
 // public categories API (GET /api/v1/public/categories — force-dynamic,
 // the same repository data path the shop/home pages read server-side)
-// and passed into SiteHeader for the mega menu. This shell is a client
+// and passed into SiteHeader for the mega menu. Since Wave 13-2 the
+// API returns the category TREE (roots with nested `children`), which
+// the mega menu renders as grouped sub-categories. This shell is a client
 // component (it needs usePathname), and the middleware only sets
 // x-pathname for /admin + /dashboard, so a server-side pathname read
 // here would break the /product/* bottom-nav rule — the fetch stays
@@ -41,7 +43,7 @@ interface SiteContentResponse {
 
 export default function StorefrontShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const [categories, setCategories] = useState<ReadonlyArray<Category> | undefined>(undefined);
+  const [categories, setCategories] = useState<ReadonlyArray<PublicCategoryNode> | undefined>(undefined);
   const [siteContent, setSiteContent] = useState<SiteContentResponse | undefined>(undefined);
 
   useEffect(() => {
@@ -50,7 +52,7 @@ export default function StorefrontShell({ children }: { children: ReactNode }) {
       .then((res) => (res.ok ? res.json() : null))
       .then((json: { data?: unknown } | null) => {
         if (live && json && Array.isArray(json.data)) {
-          setCategories(json.data as Category[]);
+          setCategories(json.data as PublicCategoryNode[]);
         }
       })
       .catch(() => {

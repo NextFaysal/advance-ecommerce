@@ -4,14 +4,16 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { Textarea } from "@/components/ui/textarea";
 import { Toast } from "@/components/ui/toast";
 import type { AdminBrand } from "@/catalog/taxonomy-admin";
 
 // Brands manager (Wave P2a) — list + create/edit modal + guarded
 // delete against the real /api/v1/admin/brands API. A brand that
 // still has products cannot be deleted (API answers 409 with the
-// reason, shown verbatim). The Brand model has no description /
-// isActive column, so the form carries name/slug/logo only.
+// reason, shown verbatim). Wave 13: the form also carries the brand
+// description (Brand.description). Brand still has no isActive
+// column, so there is no active toggle here.
 
 interface ApiErrorBody {
   error?: { code?: string; message?: string };
@@ -33,9 +35,10 @@ interface BrandForm {
   name: string;
   slug: string;
   logoUrl: string;
+  description: string;
 }
 
-const EMPTY_FORM: BrandForm = { name: "", slug: "", logoUrl: "" };
+const EMPTY_FORM: BrandForm = { name: "", slug: "", logoUrl: "", description: "" };
 
 export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
   const [brands, setBrands] = useState<AdminBrand[]>(initial);
@@ -58,7 +61,12 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
 
   function openEdit(brand: AdminBrand) {
     setEditing(brand);
-    setForm({ name: brand.name, slug: brand.slug, logoUrl: brand.logoUrl ?? "" });
+    setForm({
+      name: brand.name,
+      slug: brand.slug,
+      logoUrl: brand.logoUrl ?? "",
+      description: brand.description ?? "",
+    });
     setFormOpen(true);
   }
 
@@ -66,6 +74,9 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
     const payload: Record<string, unknown> = {
       name: form.name.trim(),
       logoUrl: form.logoUrl.trim(),
+      // Always sent ("" → stored as null by the API) so clearing the
+      // field in the form really clears the description.
+      description: form.description.trim(),
     };
     if (form.slug.trim() !== "") payload.slug = form.slug.trim();
     try {
@@ -143,7 +154,12 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
                       ) : (
                         <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-md bg-surface-2 text-base ring-1 ring-border">🏷️</span>
                       )}
-                      <span className="font-medium text-text-main">{brand.name}</span>
+                      <span className="min-w-0">
+                        <span className="block font-medium text-text-main">{brand.name}</span>
+                        {brand.description ? (
+                          <span className="block max-w-md truncate text-xs text-text-muted">{brand.description}</span>
+                        ) : null}
+                      </span>
                     </div>
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-text-muted">{brand.slug}</td>
@@ -201,6 +217,16 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
               <span className="text-xs text-text-muted">লোগো প্রিভিউ</span>
             </div>
           ) : null}
+          <Textarea
+            label="বর্ণনা (Description)"
+            name="description"
+            rows={3}
+            maxLength={2000}
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            placeholder="ব্র্যান্ডের সংক্ষিপ্ত পরিচিতি"
+            helper="ঐচ্ছিক — ব্র্যান্ডের পরিচিতিমূলক লেখা।"
+          />
         </div>
       </Modal>
 

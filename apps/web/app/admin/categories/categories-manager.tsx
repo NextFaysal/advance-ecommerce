@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { Textarea } from "@/components/ui/textarea";
 import { Toast } from "@/components/ui/toast";
 import type { AdminCategory } from "@/catalog/taxonomy-admin";
 
@@ -38,6 +39,10 @@ interface CategoryForm {
   imageUrl: string;
   sortOrder: string;
   isActive: boolean;
+  seoTitleBn: string;
+  seoTitleEn: string;
+  seoDescriptionBn: string;
+  seoDescriptionEn: string;
 }
 
 const EMPTY_FORM: CategoryForm = {
@@ -48,6 +53,10 @@ const EMPTY_FORM: CategoryForm = {
   imageUrl: "",
   sortOrder: "0",
   isActive: true,
+  seoTitleBn: "",
+  seoTitleEn: "",
+  seoDescriptionBn: "",
+  seoDescriptionEn: "",
 };
 
 function buildTreeRows(categories: AdminCategory[]): { cat: AdminCategory; depth: number }[] {
@@ -123,6 +132,10 @@ export function CategoriesManager({ initial }: { initial: AdminCategory[] }) {
       imageUrl: cat.imageUrl ?? "",
       sortOrder: String(cat.sortOrder),
       isActive: cat.isActive,
+      seoTitleBn: cat.seoTitleBn ?? "",
+      seoTitleEn: cat.seoTitleEn ?? "",
+      seoDescriptionBn: cat.seoDescriptionBn ?? "",
+      seoDescriptionEn: cat.seoDescriptionEn ?? "",
     });
     setFormOpen(true);
   }
@@ -135,6 +148,12 @@ export function CategoriesManager({ initial }: { initial: AdminCategory[] }) {
       imageUrl: form.imageUrl.trim(),
       sortOrder: Number.parseInt(form.sortOrder, 10) || 0,
       isActive: form.isActive,
+      // SEO fields are always sent ("" → stored as null by the API),
+      // so clearing a field in the form really clears it.
+      seoTitleBn: form.seoTitleBn.trim(),
+      seoTitleEn: form.seoTitleEn.trim(),
+      seoDescriptionBn: form.seoDescriptionBn.trim(),
+      seoDescriptionEn: form.seoDescriptionEn.trim(),
     };
     if (form.slug.trim() !== "") payload.slug = form.slug.trim();
     setBusyId(editing?.id ?? "new");
@@ -345,6 +364,50 @@ export function CategoriesManager({ initial }: { initial: AdminCategory[] }) {
               />
               <span className="text-sm text-text-main">স্টোরে সক্রিয়</span>
             </label>
+          </div>
+
+          <div className="border-t border-border pt-4">
+            <p className="text-sm font-semibold text-text-main">SEO — সার্চ ইঞ্জিনের জন্য</p>
+            <p className="mb-3 mt-0.5 text-xs leading-relaxed text-text-muted">
+              এই ক্যাটাগরির পেজ (/shop?category=…) গুগলে যেভাবে দেখাবে। খালি রাখলে
+              ক্যাটাগরির নাম থেকেই টাইটেল তৈরি হবে।
+            </p>
+            <div className="grid gap-3">
+              <Input
+                label="SEO টাইটেল (বাংলা)"
+                name="seoTitleBn"
+                maxLength={300}
+                value={form.seoTitleBn}
+                onChange={(e) => setForm({ ...form, seoTitleBn: e.target.value })}
+                placeholder="যেমন: সেরা পোশাক কালেকশন"
+              />
+              <Input
+                label="SEO Title (English)"
+                name="seoTitleEn"
+                maxLength={300}
+                value={form.seoTitleEn}
+                onChange={(e) => setForm({ ...form, seoTitleEn: e.target.value })}
+                placeholder="e.g. Best Fashion Collection"
+              />
+              <Textarea
+                label="SEO বর্ণনা (বাংলা)"
+                name="seoDescriptionBn"
+                rows={2}
+                maxLength={1000}
+                value={form.seoDescriptionBn}
+                onChange={(e) => setForm({ ...form, seoDescriptionBn: e.target.value })}
+                placeholder="সার্চ রেজাল্টে টাইটেলের নিচে দেখানো এক-দুই লাইনের বর্ণনা"
+              />
+              <Textarea
+                label="SEO Description (English)"
+                name="seoDescriptionEn"
+                rows={2}
+                maxLength={1000}
+                value={form.seoDescriptionEn}
+                onChange={(e) => setForm({ ...form, seoDescriptionEn: e.target.value })}
+                placeholder="One or two lines shown under the title in search results"
+              />
+            </div>
           </div>
         </div>
       </Modal>

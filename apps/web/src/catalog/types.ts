@@ -64,6 +64,8 @@ export interface Product {
   /** SEO fields — see SCHEMA-ADDITIONS.md */
   seoTitle: LocalizedText | null;
   seoDescription: LocalizedText | null;
+  /** Social-share (OG/Twitter) image URL; null = PDP falls back to the first gallery image. */
+  ogImage: string | null;
   createdAt: string;
   updatedAt: string;
 }

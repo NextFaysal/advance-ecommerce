@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ProductCard } from "@/catalog/ProductCard";
 import type { SortOption } from "@/catalog/search";
+import { findPublicCategoryBySlug } from "@/catalog/category-tree";
 import { listCategories, listPublicProducts } from "@/catalog/server-read";
 import { MobileFilterDrawer } from "./MobileFilterDrawer";
 
@@ -15,10 +16,32 @@ import { MobileFilterDrawer } from "./MobileFilterDrawer";
 // links remain shareable/SEO-friendly and no behaviour changed.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "দোকান — Advance Ecommerce",
-  description: "সব পণ্য — ফিল্টার, সর্ট ও সার্চ দিয়ে খুঁজুন।",
-};
+const SHOP_DEFAULT_TITLE = "দোকান — Advance Ecommerce";
+const SHOP_DEFAULT_DESCRIPTION = "সব পণ্য — ফিল্টার, সর্ট ও সার্চ দিয়ে খুঁজুন।";
+
+// Category landing metadata (Wave 13-2): /shop?category=<slug> IS the
+// category landing page, so its metadata comes from the category's
+// SEO fields (Admin → ক্যাটাগরি → SEO) when set — Bangla first, like
+// the PDP — falling back to the category name, then to the generic
+// shop metadata. A failed lookup never breaks the page: defaults win.
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: { category?: string | string[] };
+}): Promise<Metadata> {
+  const slug = first(searchParams.category);
+  if (!slug) return { title: SHOP_DEFAULT_TITLE, description: SHOP_DEFAULT_DESCRIPTION };
+  const category = await findPublicCategoryBySlug(slug);
+  if (!category) return { title: SHOP_DEFAULT_TITLE, description: SHOP_DEFAULT_DESCRIPTION };
+  const title = category.seoTitle?.bn ?? category.seoTitle?.en ?? `${category.name.bn} — Advance Ecommerce`;
+  const description =
+    category.seoDescription?.bn ?? category.seoDescription?.en ?? SHOP_DEFAULT_DESCRIPTION;
+  return {
+    title,
+    description,
+    openGraph: { title, description, type: "website" },
+  };
+}
 
 // SearchParams are strings in App Router; parse defensively, never trust the client.
 function parseSort(value: string | string[] | undefined): SortOption {
