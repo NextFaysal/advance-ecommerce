@@ -53,13 +53,13 @@ export function ReportsExportButton({ from, to }: { from: string; to: string }) 
   return (
     <div className="flex flex-col items-end gap-2">
       {open ? (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input
             type="text"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="এক্সপোর্টের কারণ (বাধ্যতামূলক)"
-            className="h-10 w-64 rounded-md border border-border bg-surface px-3 text-sm"
+            className="h-10 w-full rounded-md border border-border bg-surface px-3 text-sm sm:w-64"
             aria-label="Export reason"
           />
           <button

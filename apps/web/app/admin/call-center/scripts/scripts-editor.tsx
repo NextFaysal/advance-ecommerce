@@ -8,10 +8,25 @@
  * state so the new version shows immediately. Steps can be added,
  * removed and reordered; the Bangla prompt is required, English is an
  * optional training gloss.
+ *
+ * CD3 (doc 20) presentation pass: each source card gains a state
+ * accent (amber = built-in fallback in effect, emerald = custom
+ * saved), an icon version chip (v{n} — the payload's versionLabel)
+ * and numbered step discs. Fields and the save call are untouched.
+ * The header carries CD0's SourceChip for the four real sources;
+ * the DEFAULT pseudo-source has no SOURCE_VISUAL entry, so it keeps
+ * this file's pre-existing SOURCE_LABELS title only. Version HISTORY
+ * is not rendered: the effective-scripts payload carries only the
+ * current version + updatedAt (src/callcenter/scripts-store.ts), no
+ * history list.
  */
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Icon } from "@/components/ui/icon";
+import { SourceChip } from "@/callcenter/components/badges";
+import { SOURCE_VISUAL, type StatusVisual } from "@/callcenter/components/visuals";
+import type { CallQueueSource } from "@/callcenter/types";
 
 export interface ScriptStepData {
   key: string;
@@ -119,17 +134,30 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
     <div className="space-y-8">
       {scripts.map((script) => {
         const label = SOURCE_LABELS[script.source] ?? { bn: script.source, en: script.source };
+        const sourceV = (SOURCE_VISUAL as Record<string, StatusVisual>)[script.source];
         return (
-          <Card key={script.source} className="p-5">
+          <Card
+            key={script.source}
+            className={`border-l-4 p-5 ${script.isDefault ? "border-l-amber-400" : "border-l-emerald-400"}`}
+          >
             <div className="mb-1 flex flex-wrap items-center gap-2">
+              {sourceV ? <SourceChip source={script.source as CallQueueSource} /> : null}
               <h2 className="text-base font-semibold">{label.bn}</h2>
               <span className="text-sm text-text-muted">({label.en})</span>
-              <Badge tone={script.isDefault ? "warning" : "success"}>{script.versionLabel}</Badge>
-              {script.isDefault ? (
-                <Badge tone="warning">বিল্ট-ইন ডিফল্ট — এখনো কাস্টম সেভ হয়নি</Badge>
-              ) : (
-                <Badge tone="info">কাস্টম স্ক্রিপ্ট</Badge>
-              )}
+              <span className="ml-auto flex flex-wrap items-center gap-2">
+                <Badge tone="info" icon={<Icon name="tag" size={12} />}>
+                  {script.versionLabel}
+                </Badge>
+                {script.isDefault ? (
+                  <Badge tone="warning" icon={<Icon name="info" size={12} />}>
+                    বিল্ট-ইন ডিফল্ট — এখনো কাস্টম সেভ হয়নি
+                  </Badge>
+                ) : (
+                  <Badge tone="success" icon={<Icon name="check" size={12} />}>
+                    কাস্টম স্ক্রিপ্ট
+                  </Badge>
+                )}
+              </span>
             </div>
             <p className="mb-4 text-sm text-text-muted">
               {script.isDefault
@@ -141,7 +169,15 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
               {script.steps.map((step, idx) => (
                 <div key={idx} className="rounded-md border border-border p-3">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium">ধাপ {idx + 1}</span>
+                    <span className="inline-flex items-center gap-2 text-sm font-medium">
+                      <span
+                        aria-hidden="true"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 font-mono text-xs font-bold text-brand-700"
+                      >
+                        {idx + 1}
+                      </span>
+                      ধাপ
+                    </span>
                     <input
                       className="h-9 w-44 rounded-md border border-border px-2 text-sm"
                       value={step.key}

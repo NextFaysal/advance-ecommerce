@@ -2,14 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
+import { Icon } from "@/components/ui/icon";
+import { SourceChip, TaskStatusBadge } from "@/callcenter/components";
 import type { StaffAgentOption, SupervisorTaskView } from "@/callcenter/supervisor-store";
+import { ageLabel } from "./board-ui";
 
-// Supervisor task-management controls (C2). Renders the board's open
-// tasks with reassign / release / force-close controls; every action
-// POSTs to /api/v1/admin/call-center/supervisor/actions (staff.manage +
+// Supervisor task-management controls (C2, CD2 redesign). Renders the
+// board's open tasks as action cards with reassign / release /
+// force-close controls; every action POSTs to
+// /api/v1/admin/call-center/supervisor/actions (staff.manage +
 // module.call_center gated server-side) and router.refresh()es on
-// success so the server-rendered board re-reads the DB. Props are plain
-// serializable data only — no function props cross the boundary.
+// success so the server-rendered board re-reads the DB. The action
+// plumbing (bodies, disabled rules, result messaging) is unchanged
+// from the table version — only the presentation moved. Props are
+// plain serializable data only — no function props cross the boundary.
 interface Props {
   tasks: SupervisorTaskView[];
   agents: StaffAgentOption[];
@@ -19,6 +26,11 @@ type ActionBody =
   | { action: "reassign"; taskId: string; agentId: string }
   | { action: "release"; taskId: string }
   | { action: "force-close"; taskId: string; reason: string };
+
+const inputCls =
+  "min-h-[44px] w-full rounded-md border border-border bg-card px-3 text-sm text-text-main outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-300/40 disabled:opacity-50 sm:min-h-[38px]";
+const btnBase =
+  "inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-md px-3.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[38px]";
 
 export function SupervisorControls({ tasks, agents }: Props) {
   const router = useRouter();
@@ -54,95 +66,110 @@ export function SupervisorControls({ tasks, agents }: Props) {
   }
 
   if (tasks.length === 0) {
-    return <p>No open tasks right now — nothing to manage.</p>;
+    return <p className="text-sm text-text-muted">No open tasks right now — nothing to manage.</p>;
   }
 
   return (
     <div>
       {message ? (
-        <p role="status" style={{ color: message.ok ? "green" : "crimson" }}>
+        <p
+          role="status"
+          className={`mb-4 rounded-md px-3.5 py-2.5 text-sm ${
+            message.ok ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
+          }`}
+        >
           {message.text}
         </p>
       ) : null}
-      <table>
-        <thead>
-          <tr>
-            <th>Customer</th>
-            <th>Phone</th>
-            <th>Source</th>
-            <th>Status</th>
-            <th>Order</th>
-            <th>Assignee</th>
-            <th>Age</th>
-            <th>Attempts</th>
-            <th>Manage</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tasks.map((t) => {
-            const busy = busyTaskId === t.id;
-            const chosenAgent = selectedAgent[t.id] ?? "";
-            const reason = reasons[t.id] ?? "";
-            return (
-              <tr key={t.id}>
-                <td>{t.customerName || "—"}</td>
-                <td>{t.phoneMasked}</td>
-                <td>{t.source}</td>
-                <td>{t.status}</td>
-                <td>{t.orderNo ?? "—"}</td>
-                <td>{t.assignedAgentName ?? t.assignedAgentId ?? "—"}</td>
-                <td>{t.ageMinutes}m</td>
-                <td>{t.attempts}</td>
-                <td>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                    <select
-                      aria-label={`Reassign target for task ${t.id}`}
-                      value={chosenAgent}
-                      disabled={busy}
-                      onChange={(e) => setSelectedAgent((s) => ({ ...s, [t.id]: e.target.value }))}
-                    >
-                      <option value="">Select agent…</option>
-                      {agents.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name ?? a.id}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      disabled={busy || chosenAgent === "" || chosenAgent === t.assignedAgentId}
-                      onClick={() => run({ action: "reassign", taskId: t.id, agentId: chosenAgent })}
-                    >
-                      Reassign
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy || t.assignedAgentId === null}
-                      onClick={() => run({ action: "release", taskId: t.id })}
-                    >
-                      Release
-                    </button>
-                    <input
-                      aria-label={`Force-close reason for task ${t.id}`}
-                      placeholder="Force-close reason (required)"
-                      value={reason}
-                      disabled={busy}
-                      onChange={(e) => setReasons((s) => ({ ...s, [t.id]: e.target.value }))}
-                    />
-                    <button
-                      type="button"
-                      disabled={busy || reason.trim() === ""}
-                      onClick={() => run({ action: "force-close", taskId: t.id, reason: reason.trim() })}
-                    >
-                      Force-close
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <ul className="space-y-3">
+        {tasks.map((t) => {
+          const busy = busyTaskId === t.id;
+          const chosenAgent = selectedAgent[t.id] ?? "";
+          const reason = reasons[t.id] ?? "";
+          return (
+            <li key={t.id} className="rounded-lg border border-border/70 bg-card p-4 shadow-card">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-text-main">{t.customerName || "—"}</p>
+                  <p className="mt-0.5 font-mono text-xs tabular-nums text-text-muted">{t.phoneMasked}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <SourceChip source={t.source} />
+                  <TaskStatusBadge status={t.status} />
+                  {t.orderNo ? (
+                    <Badge tone="neutral" icon={<Icon name="package" size={12} />}>
+                      {t.orderNo}
+                    </Badge>
+                  ) : null}
+                </div>
+              </div>
+
+              <p className="mt-2.5 text-xs text-text-muted">
+                দায়িত্বে:{" "}
+                <span className="font-medium text-text-main">
+                  {t.assignedAgentName ?? t.assignedAgentId ?? "কেউ নয়"}
+                </span>{" "}
+                · বয়স: <span className="font-medium text-text-main">{ageLabel(t.ageMinutes)}</span> · চেষ্টা:{" "}
+                <span className="font-medium text-text-main">{t.attempts}</span>
+              </p>
+
+              <div className="mt-3.5 grid gap-2 border-t border-border/60 pt-3.5 sm:grid-cols-[1fr_auto] lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto]">
+                <select
+                  aria-label={`Reassign target for task ${t.id}`}
+                  value={chosenAgent}
+                  disabled={busy}
+                  onChange={(e) => setSelectedAgent((s) => ({ ...s, [t.id]: e.target.value }))}
+                  className={inputCls}
+                >
+                  <option value="">Select agent…</option>
+                  {agents.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name ?? a.id}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={busy || chosenAgent === "" || chosenAgent === t.assignedAgentId}
+                  onClick={() => run({ action: "reassign", taskId: t.id, agentId: chosenAgent })}
+                  className={`${btnBase} bg-brand-600 text-white hover:bg-brand-700`}
+                >
+                  <Icon name="users" size={15} />
+                  Reassign
+                </button>
+                <input
+                  aria-label={`Force-close reason for task ${t.id}`}
+                  placeholder="Force-close reason (required)"
+                  value={reason}
+                  disabled={busy}
+                  onChange={(e) => setReasons((s) => ({ ...s, [t.id]: e.target.value }))}
+                  className={inputCls}
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={busy || t.assignedAgentId === null}
+                    onClick={() => run({ action: "release", taskId: t.id })}
+                    className={`${btnBase} flex-1 border border-border bg-card text-text-main hover:bg-slate-50 lg:flex-none`}
+                  >
+                    <Icon name="rotate-ccw" size={15} />
+                    Release
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || reason.trim() === ""}
+                    onClick={() => run({ action: "force-close", taskId: t.id, reason: reason.trim() })}
+                    className={`${btnBase} flex-1 bg-rose-600 text-white hover:bg-rose-700 lg:flex-none`}
+                  >
+                    <Icon name="x" size={15} />
+                    Force-close
+                  </button>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

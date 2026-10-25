@@ -9,10 +9,48 @@
  * row (loaded or appended) goes through PATCH qa/[logId]
  * { qaScore 0..5, qaComment }. Scores are a supervisor action
  * (staff.manage) — a 403 from the PATCH is shown verbatim.
+ *
+ * CD3 (doc 20) presentation pass: outcome/source/disposition render
+ * through CD0's badges (src/callcenter/components — OutcomeBadge,
+ * SourceChip, DispositionChip; fraud-signal dispositions get CD0's
+ * danger + shield treatment), the saved QA score gains a 5-star
+ * meter, and rows stack into cards on small screens. The raw code
+ * stays visible in mono beside each badge. Fetch/pagination/save
+ * logic is untouched. (An outcome string outside the CallOutcome
+ * union — never expected in this queue — falls back to this file's
+ * pre-existing tone rule on a plain Badge.)
  */
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Icon } from "@/components/ui/icon";
 import { dispositionDef, isCallDisposition } from "@/callcenter/dispositions";
+import { DispositionChip, OutcomeBadge, SourceChip } from "@/callcenter/components/badges";
+import { OUTCOME_VISUAL, SOURCE_VISUAL, type StatusVisual } from "@/callcenter/components/visuals";
+import type { CallOutcome, CallQueueSource } from "@/callcenter/types";
+
+/** Saved QA score as a 5-star meter (display only — the editable
+ *  draft lives in the number input beside it). */
+function ScoreMeter({ score }: { score: number | null }) {
+  return (
+    <span
+      className="mt-1 flex items-center gap-0.5"
+      role="img"
+      aria-label={score === null ? "এখনো স্কোর হয়নি" : `স্কোর ${score}/৫`}
+    >
+      {[0, 1, 2, 3, 4].map((i) => (
+        <Icon
+          key={i}
+          name="star"
+          size={13}
+          className={score !== null && i < score ? "text-amber-500" : "text-slate-300"}
+        />
+      ))}
+      <span className="ml-1 font-mono text-[11px] tabular-nums text-text-muted">
+        {score === null ? "—/৫" : `${score}/৫`}
+      </span>
+    </span>
+  );
+}
 
 interface QaLog {
   id: string;
@@ -231,8 +269,8 @@ export function QaTable() {
         <p className="text-sm text-text-muted">কোনো সম্পন্ন কল পাওয়া যায়নি। (No completed calls found.)</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead>
+          <table className="w-full border-collapse text-sm max-lg:block">
+            <thead className="max-lg:hidden">
               <tr className="border-b border-border text-left">
                 <th className="py-2 pr-3">সময়</th>
                 <th className="py-2 pr-3">উৎস</th>
@@ -245,30 +283,71 @@ export function QaTable() {
                 <th className="py-2">সংরক্ষণ</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="max-lg:block">
               {logs.map((log) => {
                 const draft = drafts[log.id] ?? { score: "", comment: "" };
+                const disp =
+                  log.disposition && isCallDisposition(log.disposition)
+                    ? dispositionDef(log.disposition)
+                    : null;
+                const outcomeV = (OUTCOME_VISUAL as Record<string, StatusVisual>)[
+                  log.outcome
+                ];
+                const sourceV = (SOURCE_VISUAL as Record<string, StatusVisual>)[log.source];
                 return (
-                  <tr key={log.id} className="border-b border-border align-top">
-                    <td className="py-2 pr-3 whitespace-nowrap">
+                  <tr
+                    key={log.id}
+                    className="border-b border-border align-top max-lg:mb-3 max-lg:block max-lg:rounded-md max-lg:border max-lg:p-3"
+                  >
+                    <td className="py-2 pr-3 whitespace-nowrap max-lg:block max-lg:py-1 max-lg:pr-0">
                       {new Date(log.calledAt).toLocaleString("bn-BD", { timeZone: "Asia/Dhaka" })}
                     </td>
-                    <td className="py-2 pr-3">{log.source}</td>
-                    <td className="py-2 pr-3">{log.agentName ?? "—"}</td>
-                    <td className="py-2 pr-3">
-                      <Badge tone={log.outcome === "CONFIRMED" ? "success" : log.outcome === "CANCELLED" || log.outcome === "WRONG_NUMBER" ? "danger" : "info"}>
-                        {log.outcome}
-                      </Badge>
+                    <td className="py-2 pr-3 max-lg:block max-lg:py-1 max-lg:pr-0">
+                      {sourceV ? (
+                        <SourceChip source={log.source as CallQueueSource} />
+                      ) : (
+                        log.source
+                      )}
                     </td>
-                    <td className="py-2 pr-3">
-                      {log.disposition && isCallDisposition(log.disposition)
-                        ? `${dispositionDef(log.disposition).labelBn} (${log.disposition})`
-                        : (log.disposition ?? "—")}
+                    <td className="py-2 pr-3 max-lg:block max-lg:py-1 max-lg:pr-0">{log.agentName ?? "—"}</td>
+                    <td className="py-2 pr-3 max-lg:block max-lg:py-1 max-lg:pr-0">
+                      {outcomeV ? (
+                        <span className="inline-flex flex-wrap items-center gap-2">
+                          <OutcomeBadge outcome={log.outcome as CallOutcome} />
+                          <span className="font-mono text-[11px] text-text-muted">
+                            {log.outcome}
+                          </span>
+                        </span>
+                      ) : (
+                        <Badge tone={log.outcome === "CONFIRMED" ? "success" : log.outcome === "CANCELLED" || log.outcome === "WRONG_NUMBER" ? "danger" : "info"}>
+                          {log.outcome}
+                        </Badge>
+                      )}
                     </td>
-                    <td className="py-2 pr-3">{log.scriptVersion ?? "—"}</td>
-                    <td className="py-2 pr-3 max-w-56">{log.note ?? "—"}</td>
-                    <td className="py-2 pr-3">
-                      <div className="flex items-center gap-2">
+                    <td className="py-2 pr-3 max-lg:block max-lg:py-1 max-lg:pr-0">
+                      {disp ? (
+                        <span className="inline-flex flex-wrap items-center gap-2">
+                          <DispositionChip disposition={disp.code} />
+                          <span className="font-mono text-[11px] text-text-muted">
+                            ({disp.code})
+                          </span>
+                        </span>
+                      ) : (
+                        (log.disposition ?? "—")
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 max-lg:block max-lg:py-1 max-lg:pr-0">
+                      {log.scriptVersion ? (
+                        <span className="inline-flex h-6 items-center rounded-md bg-slate-100 px-2 font-mono text-xs font-medium text-slate-600 ring-1 ring-inset ring-black/5">
+                          {log.scriptVersion}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 max-w-56 max-lg:block max-lg:max-w-none max-lg:py-1 max-lg:pr-0">{log.note ?? "—"}</td>
+                    <td className="py-2 pr-3 max-lg:block max-lg:py-1 max-lg:pr-0">
+                      <div className="flex flex-wrap items-center gap-2">
                         <input
                           type="number"
                           min={0}
@@ -280,7 +359,7 @@ export function QaTable() {
                           aria-label="QA score"
                         />
                         <input
-                          className="h-10 w-48 rounded-md border border-border px-2"
+                          className="h-10 w-full rounded-md border border-border px-2 sm:w-48"
                           value={draft.comment}
                           onChange={(e) => setDrafts((p) => ({ ...p, [log.id]: { ...draft, comment: e.target.value } }))}
                           placeholder="QA মন্তব্য (ঐচ্ছিক)"
@@ -292,9 +371,10 @@ export function QaTable() {
                       ) : (
                         <span className="text-xs text-text-muted">এখনো স্কোর হয়নি</span>
                       )}
+                      <ScoreMeter score={log.qaScore} />
                       {rowError[log.id] ? <div className="text-xs text-rose-700">{rowError[log.id]}</div> : null}
                     </td>
-                    <td className="py-2">
+                    <td className="py-2 max-lg:block max-lg:py-1">
                       <button
                         type="button"
                         className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
