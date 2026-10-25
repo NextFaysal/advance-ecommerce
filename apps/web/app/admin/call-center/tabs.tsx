@@ -26,7 +26,7 @@ export function CallCenterTabs({ active }: { active: CallCenterTabId }) {
             key={t.id}
             href={t.href}
             aria-current={isActive ? "page" : undefined}
-            className={`relative flex min-h-[44px] shrink-0 items-center px-3.5 text-sm font-medium transition ${
+            className={`relative flex min-h-[44px] shrink-0 items-center rounded-sm px-3.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${
               isActive ? "text-brand-700" : "text-text-muted hover:text-text-main"
             }`}
           >

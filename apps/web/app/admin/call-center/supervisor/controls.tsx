@@ -30,7 +30,7 @@ type ActionBody =
 const inputCls =
   "min-h-[44px] w-full rounded-md border border-border bg-card px-3 text-sm text-text-main outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-300/40 disabled:opacity-50 sm:min-h-[38px]";
 const btnBase =
-  "inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-md px-3.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[38px]";
+  "inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-md px-3.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[38px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300";
 
 export function SupervisorControls({ tasks, agents }: Props) {
   const router = useRouter();
@@ -150,7 +150,7 @@ export function SupervisorControls({ tasks, agents }: Props) {
                     type="button"
                     disabled={busy || t.assignedAgentId === null}
                     onClick={() => run({ action: "release", taskId: t.id })}
-                    className={`${btnBase} flex-1 border border-border bg-card text-text-main hover:bg-slate-50 lg:flex-none`}
+                    className={`${btnBase} flex-1 border border-border bg-card text-text-main hover:bg-surface-2 lg:flex-none`}
                   >
                     <Icon name="rotate-ccw" size={15} />
                     Release

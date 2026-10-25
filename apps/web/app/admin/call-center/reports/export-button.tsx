@@ -59,21 +59,21 @@ export function ReportsExportButton({ from, to }: { from: string; to: string }) 
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="এক্সপোর্টের কারণ (বাধ্যতামূলক)"
-            className="h-10 w-full rounded-md border border-border bg-surface px-3 text-sm sm:w-64"
+            className="h-10 w-full rounded-md border border-border bg-surface px-3 text-sm sm:w-64 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             aria-label="Export reason"
           />
           <button
             type="button"
             onClick={run}
             disabled={busy}
-            className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-white disabled:opacity-50"
+            className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             {busy ? "হচ্ছে…" : "ডাউনলোড"}
           </button>
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="h-10 rounded-md border border-border px-3 text-sm"
+            className="h-10 rounded-md border border-border px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             বাতিল
           </button>
@@ -82,7 +82,7 @@ export function ReportsExportButton({ from, to }: { from: string; to: string }) 
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="h-10 rounded-md border border-border px-4 text-sm font-medium"
+          className="h-10 rounded-md border border-border px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
           CSV এক্সপোর্ট
         </button>

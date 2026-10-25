@@ -51,22 +51,22 @@ export function QueueRail({
           className="absolute inset-0 bg-slate-900/50 xl:hidden"
         />
       ) : null}
-      <aside className="relative flex h-full w-[86vw] max-w-xs flex-col gap-4 overflow-y-auto bg-white p-4 shadow-xl xl:h-auto xl:w-auto xl:max-w-none xl:bg-transparent xl:p-0 xl:shadow-none">
+      <aside className="relative flex h-full w-[86vw] max-w-xs flex-col gap-4 overflow-y-auto bg-card p-4 shadow-xl xl:h-auto xl:w-auto xl:max-w-none xl:bg-transparent xl:p-0 xl:shadow-none">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-text-muted">
             কিউ (Queue)
           </h3>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200 xl:hidden"
+            className="rounded-md bg-surface-2 px-2.5 py-1 text-xs font-medium text-text-main hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 xl:hidden"
           >
             ✕ বন্ধ করুন
           </button>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <p className="text-sm text-slate-600">অ্যাসাইন না করা টাস্ক বাকি</p>
+        <div className="rounded-xl border border-border bg-surface-2 p-3">
+          <p className="text-sm text-text-muted">অ্যাসাইন না করা টাস্ক বাকি</p>
           <p className="mt-0.5 text-3xl font-bold tabular-nums">{unassignedCount}টি</p>
         </div>
 
@@ -76,7 +76,7 @@ export function QueueRail({
               type="button"
               disabled={busy}
               onClick={onClaimNext}
-              className="w-full rounded-md bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="w-full rounded-md bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
               📞 পরবর্তী কল নিন (Claim next task)
             </button>
@@ -90,16 +90,16 @@ export function QueueRail({
                       type="button"
                       disabled={busy}
                       onClick={() => onClaimTask(upNext.id)}
-                      className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                      className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
                       এই কলটি নিন
                     </button>
                   }
                 />
-                <p className="mt-1.5 text-xs text-slate-500">{SOURCE_LABEL[upNext.source]}</p>
+                <p className="mt-1.5 text-xs text-text-muted">{SOURCE_LABEL[upNext.source]}</p>
               </div>
             ) : (
-              <p className="mt-3 text-sm text-slate-500">
+              <p className="mt-3 text-sm text-text-muted">
                 এই মুহূর্তে দেওয়ার মতো টাস্ক নেই — নতুন অর্ডার/কলব্যাক এলে এখানে আসবে।
               </p>
             )}

@@ -75,6 +75,11 @@
  * panel, callbacks strip, manual form). Same client tree, no
  * server/client boundary added.
  *
+ * CD4: keyboard outcome shortcuts (1–5 select/press, Enter confirms
+ * a pending selection) live in one shell effect below — every key
+ * calls the same recordOutcome as the buttons, so no validation
+ * path is added, bypassed or duplicated.
+ *
  * Props: none — everything is fetched (the reviews-manager pattern),
  * so no server/client function-prop boundary exists.
  */
@@ -86,6 +91,7 @@ import { Customer360Panel } from "./workbench/context-panel";
 import { ManualTaskForm } from "./workbench/manual-form";
 import { QueueRail } from "./workbench/queue-rail";
 import {
+  OUTCOME_BUTTONS,
   automationSummaryLines,
   initialElapsedSec,
   readJson,
@@ -401,6 +407,62 @@ export function CallCenterWorkbench() {
     [current, callbackOpen, callbackAt, note, armedOutcome, disposition, elapsedSec, refreshSideData, router],
   );
 
+  /* CD4: keyboard outcome shortcuts. Keys 1–5 press the outcome
+   * buttons in OUTCOME_BUTTONS order; Enter confirms a pending
+   * selection. Every key goes through the SAME recordOutcome the
+   * buttons call, so its state machine applies untouched: CALLBACK's
+   * first press only opens the time picker (Enter then submits, and
+   * recordOutcome's future-time validation still runs), and
+   * CANCELLED / WRONG_NUMBER's first press only arms the disposition
+   * select (Enter submits). CONFIRMED / NO_ANSWER have no selection
+   * step in the button flow, so their key submits exactly like their
+   * button does — no new flow is invented for them.
+   * Guards: nothing fires while busy, while the mobile queue drawer
+   * is open, with a modifier held, on key-repeat, or while the agent
+   * is typing in an input / textarea / select / contentEditable (a
+   * digit inside the callback time field is data, not a shortcut).
+   * Enter is additionally ignored when focus sits on a button or
+   * link — the browser already turns that Enter into the very same
+   * click, and handling it here too would fire recordOutcome twice.
+   * The mobile outcome bar needs no guard of its own: it renders
+   * buttons only (clicks); this single window listener is the only
+   * keyboard path, so the bar can never double-fire. */
+  useEffect(() => {
+    if (!current || busy || queueOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.isContentEditable ||
+          target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT")
+      ) {
+        return;
+      }
+      if (e.key >= "1" && e.key <= "5") {
+        const btn = OUTCOME_BUTTONS[Number(e.key) - 1];
+        if (btn) {
+          e.preventDefault();
+          void recordOutcome(btn.key);
+        }
+        return;
+      }
+      if (e.key === "Enter") {
+        // Confirm ONLY a pending selection — the two states where
+        // recordOutcome's first call deliberately did not submit.
+        const pending: CallOutcome | null = callbackOpen ? "CALLBACK" : armedOutcome;
+        if (!pending) return;
+        if (target?.closest("button, a")) return;
+        e.preventDefault();
+        void recordOutcome(pending);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [current, busy, queueOpen, callbackOpen, armedOutcome, recordOutcome]);
+
   const createManual = useCallback(
     async (e: FormEvent) => {
       e.preventDefault();
@@ -442,9 +504,9 @@ export function CallCenterWorkbench() {
 
   if (loadState === "loading") {
     return (
-      <section aria-busy="true" className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
+      <section aria-busy="true" className="mb-6 rounded-lg border border-border bg-card p-4">
         <h2 className="text-lg font-semibold">এজেন্ট ওয়ার্কবেঞ্চ</h2>
-        <p className="mt-2 text-sm text-slate-500">কিউ লোড হচ্ছে…</p>
+        <p className="mt-2 text-sm text-text-muted">কিউ লোড হচ্ছে…</p>
       </section>
     );
   }
@@ -471,7 +533,7 @@ export function CallCenterWorkbench() {
         <button
           type="button"
           onClick={() => void load()}
-          className="mt-3 rounded-md bg-slate-700 px-3 py-1.5 text-sm text-white hover:bg-slate-800"
+          className="mt-3 rounded-md bg-slate-700 px-3 py-1.5 text-sm text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
           আবার চেষ্টা করুন
         </button>
@@ -480,18 +542,18 @@ export function CallCenterWorkbench() {
   }
 
   return (
-    <section className={`mb-6 rounded-lg border border-slate-200 bg-white p-4 ${current ? "pb-24 xl:pb-4" : ""}`}>
+    <section className={`mb-6 rounded-lg border border-border bg-card p-4 ${current ? "pb-24 xl:pb-4" : ""}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">এজেন্ট ওয়ার্কবেঞ্চ (Agent Workbench)</h2>
         <button
           type="button"
           onClick={() => setQueueOpen(true)}
-          className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 xl:hidden"
+          className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 xl:hidden"
         >
           🗂 কিউ ({unassignedCount})
         </button>
       </div>
-      <p className="mt-1 text-sm text-slate-500">
+      <p className="mt-1 text-sm text-text-muted">
         অ্যাসাইন না করা টাস্ক বাকি: <strong>{unassignedCount}</strong>টি। টাস্ক নিয়ে কাজ শেষে ফলাফল
         রেকর্ড করুন — পরের টাস্ক এখানেই আসবে।
       </p>

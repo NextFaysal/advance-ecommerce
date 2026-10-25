@@ -55,13 +55,14 @@ export function OutcomeControls({
   if (size === "bar") {
     return (
       <div className="flex snap-x gap-2 overflow-x-auto">
-        {OUTCOME_BUTTONS.map((b) => (
+        {OUTCOME_BUTTONS.map((b, i) => (
           <button
             key={b.key}
             type="button"
             disabled={busy}
+            aria-keyshortcuts={String(i + 1)}
             onClick={() => onRecordOutcome(b.key)}
-            className={`shrink-0 snap-start rounded-md px-3 py-2.5 text-sm font-medium disabled:opacity-50 ${b.className} ${
+            className={`shrink-0 snap-start rounded-md px-3 py-2.5 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${b.className} ${
               b.key === "CALLBACK" && callbackOpen ? "ring-2 ring-amber-300" : ""
             } ${armedOutcome === b.key ? "ring-2 ring-slate-400" : ""}`}
           >
@@ -70,6 +71,12 @@ export function OutcomeControls({
               : armedOutcome === b.key
                 ? `${b.label} — নিশ্চিত করুন`
                 : b.label}
+            <kbd
+              aria-hidden="true"
+              className="ml-1.5 rounded border border-white/50 bg-black/20 px-1 font-mono text-[10px] font-semibold leading-4"
+            >
+              {i + 1}
+            </kbd>
           </button>
         ))}
       </div>
@@ -79,36 +86,36 @@ export function OutcomeControls({
   return (
     <>
       <label className="mt-4 block text-sm">
-        <span className="text-slate-600">নোট (ঐচ্ছিক)</span>
+        <span className="text-text-muted">নোট (ঐচ্ছিক)</span>
         <input
           type="text"
           value={note}
           maxLength={500}
           onChange={(e) => onNoteChange(e.target.value)}
-          className="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-2"
+          className="mt-1 w-full rounded-md border border-border px-2.5 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           placeholder="কলের সংক্ষিপ্ত নোট…"
         />
       </label>
 
       {callbackOpen ? (
         <label className="mt-3 block text-sm">
-          <span className="text-slate-600">কলব্যাকের সময় (আবশ্যক)</span>
+          <span className="text-text-muted">কলব্যাকের সময় (আবশ্যক)</span>
           <input
             type="datetime-local"
             value={callbackAt}
             onChange={(e) => onCallbackAtChange(e.target.value)}
-            className="mt-1 w-full rounded-md border border-amber-400 px-2.5 py-2"
+            className="mt-1 w-full rounded-md border border-amber-400 px-2.5 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           />
         </label>
       ) : null}
 
       {armedOutcome === "CANCELLED" || armedOutcome === "WRONG_NUMBER" ? (
         <label className="mt-3 block text-sm">
-          <span className="text-slate-600">কারণ / ডিসপজিশন (ঐচ্ছিক)</span>
+          <span className="text-text-muted">কারণ / ডিসপজিশন (ঐচ্ছিক)</span>
           <select
             value={disposition}
             onChange={(e) => onDispositionChange(e.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2.5 py-2"
+            className="mt-1 w-full rounded-md border border-border bg-card px-2.5 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             <option value="">— কারণ বেছে দিন (ঐচ্ছিক) —</option>
             {DISPOSITIONS.map((d) => (
@@ -117,7 +124,7 @@ export function OutcomeControls({
               </option>
             ))}
           </select>
-          <span className="mt-1 block text-xs text-slate-500">
+          <span className="mt-1 block text-xs text-text-muted">
             বেছে দিলে ফলাফলের সঙ্গে কারণটি কল লগে জমা থাকবে। তারপর নিচের বোতামটি আবার চাপ
             দিয়ে ফলাফল নিশ্চিত করুন।
           </span>
@@ -125,13 +132,14 @@ export function OutcomeControls({
       ) : null}
 
       <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {OUTCOME_BUTTONS.map((b) => (
+        {OUTCOME_BUTTONS.map((b, i) => (
           <button
             key={b.key}
             type="button"
             disabled={busy}
+            aria-keyshortcuts={String(i + 1)}
             onClick={() => onRecordOutcome(b.key)}
-            className={`rounded-lg px-4 py-3 text-base font-semibold disabled:opacity-50 ${b.className} ${
+            className={`rounded-lg px-4 py-3 text-base font-semibold disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${b.className} ${
               b.key === "CALLBACK" && callbackOpen ? "ring-2 ring-amber-300" : ""
             } ${armedOutcome === b.key ? "ring-2 ring-slate-400" : ""} ${
               b.key === "CONFIRMED" ? "sm:col-span-2" : ""
@@ -142,12 +150,22 @@ export function OutcomeControls({
               : armedOutcome === b.key
                 ? `${b.label} — নিশ্চিত করুন`
                 : b.label}
+            <kbd
+              aria-hidden="true"
+              className="ml-1.5 rounded border border-white/50 bg-black/20 px-1 font-mono text-[10px] font-semibold leading-4"
+            >
+              {i + 1}
+            </kbd>
           </button>
         ))}
       </div>
-      <p className="mt-2 text-xs text-slate-500">
+      <p className="mt-2 text-xs text-text-muted">
         কনফার্ম/বাতিল হলে সংযুক্ত অর্ডারের অবস্থাও আপডেট হয়। ফোন না ধরলে টাস্ক আবার কিউতে ফিরে
         যায় (সর্বোচ্চ ৩ বার চেষ্টা)।
+      </p>
+      <p className="mt-1.5 text-xs text-text-muted">
+        ⌨️ কীবোর্ড: 1–5 কী দিয়ে ফলাফলের বোতাম চাপ দিন — কলব্যাক/বাতিলের ক্ষেত্রে সময় বা কারণ
+        ঠিক করে Enter চাপ দিয়ে নিশ্চিত করুন। (কোনো ঘরে লিখতে থাকলে শর্টকাট কী কাজ করবে না।)
       </p>
     </>
   );
@@ -184,10 +202,10 @@ export function CallStage({
 }) {
   if (!current) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+      <div className="rounded-xl border border-dashed border-border bg-surface-2 p-6 text-center">
         <p className="text-4xl" aria-hidden="true">📞</p>
         <h3 className="mt-2 text-base font-semibold">কোনো কল চলছে না</h3>
-        <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
+        <p className="mx-auto mt-1 max-w-sm text-sm text-text-muted">
           কিউ থেকে পরবর্তী কল নিন — টাস্ক এলে গ্রাহকের তথ্য, স্ক্রিপ্ট আর ফলাফলের বোতাম এখানে
           আসবে।
         </p>
@@ -208,13 +226,13 @@ export function CallStage({
           <p className="mt-1 truncate text-2xl font-bold">{current.customerName}</p>
           <p className="mt-0.5 text-lg font-medium">
             {current.phoneFull ? (
-              <a className="text-indigo-700 underline" href={`tel:${current.phoneFull}`}>
+              <a className="rounded-sm text-indigo-700 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300" href={`tel:${current.phoneFull}`}>
                 {current.phoneFull}
               </a>
             ) : (
               <>
                 {current.phoneMasked}
-                <span className="ml-2 align-middle text-xs font-normal text-slate-500">
+                <span className="ml-2 align-middle text-xs font-normal text-text-muted">
                   (সম্পূর্ণ নম্বর দেখার অনুমতি নেই)
                 </span>
               </>
@@ -239,35 +257,35 @@ export function CallStage({
 
       <dl className="mt-3 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
         <div>
-          <dt className="text-slate-500">ধরন</dt>
+          <dt className="text-text-muted">ধরন</dt>
           <dd>{SOURCE_LABEL[current.source]}</dd>
         </div>
         <div>
-          <dt className="text-slate-500">অর্ডার</dt>
+          <dt className="text-text-muted">অর্ডার</dt>
           <dd>
             {current.orderNo ?? "—"}
             {current.orderTotalPoisha > 0 ? ` · মোট ${formatBdt(current.orderTotalPoisha)}` : ""}
           </dd>
         </div>
         <div>
-          <dt className="text-slate-500">আগের চেষ্টা</dt>
+          <dt className="text-text-muted">আগের চেষ্টা</dt>
           <dd>{current.attempts} বার</dd>
         </div>
         {current.lastOutcome ? (
           <div>
-            <dt className="text-slate-500">শেষ ফলাফল</dt>
+            <dt className="text-text-muted">শেষ ফলাফল</dt>
             <dd>{current.lastOutcome}</dd>
           </div>
         ) : null}
         {current.note ? (
           <div>
-            <dt className="text-slate-500">টাস্কের নোট</dt>
+            <dt className="text-text-muted">টাস্কের নোট</dt>
             <dd>{current.note}</dd>
           </div>
         ) : null}
         {current.nextAttemptAt ? (
           <div>
-            <dt className="text-slate-500">পরবর্তী চেষ্টা (অটোমেশন)</dt>
+            <dt className="text-text-muted">পরবর্তী চেষ্টা (অটোমেশন)</dt>
             <dd>{bnDateTime(current.nextAttemptAt)}</dd>
           </div>
         ) : null}
@@ -278,7 +296,7 @@ export function CallStage({
           href={wa}
           target="_blank"
           rel="noreferrer"
-          className="mt-3 inline-block rounded-md bg-green-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-green-700"
+          className="mt-3 inline-block rounded-md bg-green-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-green-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
           💬 WhatsApp-এ মেসেজ পাঠান
         </a>
@@ -286,8 +304,8 @@ export function CallStage({
 
       {/* Script card */}
       {(current.script?.steps ?? script).length > 0 ? (
-        <details className="mt-3 rounded-lg border border-indigo-100 bg-white p-3" open>
-          <summary className="cursor-pointer text-sm font-semibold">
+        <details className="mt-3 rounded-lg border border-indigo-100 bg-card p-3" open>
+          <summary className="cursor-pointer rounded-sm text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
             কথা বলার স্ক্রিপ্ট{current.script ? ` — ${current.script.version}` : ""}
           </summary>
           <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">
@@ -348,7 +366,7 @@ export function MobileOutcomeBar({
 }) {
   if (!current || callbackOpen || armedOutcome) return null;
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-2px_10px_rgba(0,0,0,0.08)] backdrop-blur xl:hidden">
+    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-2px_10px_rgba(0,0,0,0.08)] backdrop-blur xl:hidden">
       <OutcomeControls
         size="bar"
         busy={busy}

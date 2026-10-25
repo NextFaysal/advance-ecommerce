@@ -100,7 +100,7 @@ function AgentLoadCard({ load, maxActive }: { load: SupervisorAgentLoad; maxActi
           <span className="font-mono font-semibold tabular-nums text-text-main">{active}</span>
         </div>
         <div
-          className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100"
+          className="mt-1.5 h-2 overflow-hidden rounded-full bg-surface-2"
           role="img"
           aria-label={`Active tasks ${active} of board max ${maxActive}`}
         >
@@ -118,7 +118,7 @@ function AgentLoadCard({ load, maxActive }: { load: SupervisorAgentLoad; maxActi
           <span className="font-mono font-semibold tabular-nums text-text-main">{load.outcomesToday}</span>
         </div>
         <div
-          className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-slate-100"
+          className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-surface-2"
           role="img"
           aria-label={`Confirmed ${load.confirmedToday} of ${load.outcomesToday} outcomes today`}
         >
@@ -320,7 +320,7 @@ function Board({ board }: { board: SupervisorBoard }) {
             { status: "IN_CALL" as const, title: "কলে আছে · In Call", tasks: inCallTasks, count: board.countsByStatus.IN_CALL },
           ]
         ).map((col) => (
-          <section key={col.status} aria-label={col.title} className="rounded-lg border border-border/70 bg-slate-50/60 p-3.5">
+          <section key={col.status} aria-label={col.title} className="rounded-lg border border-border/70 bg-surface-2/60 p-3.5">
             <h3 className="mb-3 flex items-center justify-between text-sm font-semibold text-text-main">
               <span className="flex items-center gap-2">
                 <Icon name={col.status === "QUEUED" ? "clock" : "phone"} size={16} />

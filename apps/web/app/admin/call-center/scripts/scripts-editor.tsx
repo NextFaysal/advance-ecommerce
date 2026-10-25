@@ -179,18 +179,18 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
                       ধাপ
                     </span>
                     <input
-                      className="h-9 w-44 rounded-md border border-border px-2 text-sm"
+                      className="h-9 w-44 rounded-md border border-border px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                       value={step.key}
                       onChange={(e) => patchStep(script.source, idx, "key", e.target.value)}
                       placeholder="step-key"
                       aria-label="Step key"
                     />
                     <span className="ml-auto flex gap-1">
-                      <button type="button" className="rounded-md border border-border px-2 py-1 text-sm" onClick={() => moveStep(script.source, idx, -1)} disabled={idx === 0} aria-label="Move up">↑</button>
-                      <button type="button" className="rounded-md border border-border px-2 py-1 text-sm" onClick={() => moveStep(script.source, idx, 1)} disabled={idx === script.steps.length - 1} aria-label="Move down">↓</button>
+                      <button type="button" className="rounded-md border border-border px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300" onClick={() => moveStep(script.source, idx, -1)} disabled={idx === 0} aria-label="Move up">↑</button>
+                      <button type="button" className="rounded-md border border-border px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300" onClick={() => moveStep(script.source, idx, 1)} disabled={idx === script.steps.length - 1} aria-label="Move down">↓</button>
                       <button
                         type="button"
-                        className="rounded-md border border-border px-2 py-1 text-sm text-rose-700"
+                        className="rounded-md border border-border px-2 py-1 text-sm text-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                         onClick={() => patch(script.source, script.steps.filter((_, i) => i !== idx))}
                         disabled={script.steps.length <= 1}
                         aria-label="Remove step"
@@ -200,7 +200,7 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
                     </span>
                   </div>
                   <textarea
-                    className="mb-2 w-full rounded-md border border-border px-2 py-2 text-sm"
+                    className="mb-2 w-full rounded-md border border-border px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     rows={2}
                     value={step.promptBn}
                     onChange={(e) => patchStep(script.source, idx, "promptBn", e.target.value)}
@@ -208,7 +208,7 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
                     aria-label="Bangla prompt"
                   />
                   <input
-                    className="w-full rounded-md border border-border px-2 py-2 text-sm"
+                    className="w-full rounded-md border border-border px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     value={step.promptEn}
                     onChange={(e) => patchStep(script.source, idx, "promptEn", e.target.value)}
                     placeholder="English gloss (optional, for training)"
@@ -221,14 +221,14 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                className="rounded-md border border-border px-3 py-2 text-sm"
+                className="rounded-md border border-border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                 onClick={() => patch(script.source, [...script.steps, { key: "", promptBn: "", promptEn: "" }])}
               >
                 + ধাপ যোগ করুন
               </button>
               <button
                 type="button"
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                 onClick={() => save(script)}
                 disabled={savingSource === script.source || script.steps.some((st) => !st.promptBn.trim())}
               >

@@ -93,17 +93,17 @@ export function TaskCard({
   const main = (
     <>
       <div className="flex items-start justify-between gap-2">
-        <p className="min-w-0 truncate text-sm font-semibold text-slate-900">
+        <p className="min-w-0 truncate text-sm font-semibold text-text-main">
           {task.customerName || (bn ? "অজানা গ্রাহক" : "Unknown customer")}
         </p>
         {slaState ? <SlaChip state={slaState} lang={lang} /> : null}
       </div>
 
-      <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-600">
+      <p className="mt-1 flex items-center gap-1.5 text-sm text-text-muted">
         <Icon name="phone" size={13} />
         <span className="font-mono tabular-nums">{task.phoneMasked}</span>
         {task.orderNo ? (
-          <span className="text-slate-400">
+          <span className="text-text-subtle">
             · <span className="font-mono">{task.orderNo}</span>
           </span>
         ) : null}
@@ -111,7 +111,7 @@ export function TaskCard({
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <SourceChip source={task.source} lang={lang} />
-        <span className="inline-flex h-6 items-center gap-1.5 rounded-full bg-slate-100 px-2.5 text-xs font-medium leading-none text-slate-600 ring-1 ring-inset ring-black/5">
+        <span className="inline-flex h-6 items-center gap-1.5 rounded-full bg-surface-2 px-2.5 text-xs font-medium leading-none text-text-muted ring-1 ring-inset ring-black/5">
           <span
             aria-hidden="true"
             className={`h-1.5 w-1.5 rounded-full ${STATUS_TONE_DOT_CLASS[statusVisual.tone]}`}
@@ -121,7 +121,7 @@ export function TaskCard({
         {task.lastOutcome ? <OutcomeBadge outcome={task.lastOutcome} lang={lang} /> : null}
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
         {task.orderTotalPoisha ? (
           <span className="inline-flex items-center gap-1">
             <Icon name="banknote" size={12} />
@@ -145,7 +145,7 @@ export function TaskCard({
       </div>
 
       {task.callbackAt || task.createdAt ? (
-        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500">
+        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-text-muted">
           <Icon name={task.callbackAt ? "clock" : "info"} size={12} />
           {task.callbackAt
             ? `${bn ? "কলব্যাক" : "Callback"}: ${formatDhakaTime(task.callbackAt)}`
@@ -154,15 +154,15 @@ export function TaskCard({
       ) : null}
 
       {task.note ? (
-        <p className="mt-1.5 line-clamp-2 text-xs text-slate-500">{task.note}</p>
+        <p className="mt-1.5 line-clamp-2 text-xs text-text-muted">{task.note}</p>
       ) : null}
     </>
   );
 
   return (
     <article
-      className={`rounded-xl bg-white p-3.5 shadow-sm ring-1 ${
-        selected ? "ring-2 ring-brand-500" : "ring-slate-200"
+      className={`rounded-xl bg-card p-3.5 shadow-sm ring-1 ${
+        selected ? "ring-2 ring-brand-500" : "ring-border"
       } ${className}`}
     >
       {onSelect ? (
@@ -170,7 +170,7 @@ export function TaskCard({
           type="button"
           onClick={onSelect}
           aria-pressed={selected}
-          className="block w-full text-left"
+          className="block w-full rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
           {main}
         </button>
@@ -179,7 +179,7 @@ export function TaskCard({
       )}
       {children}
       {actions ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
           {actions}
         </div>
       ) : null}

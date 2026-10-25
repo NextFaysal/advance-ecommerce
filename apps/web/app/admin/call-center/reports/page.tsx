@@ -157,7 +157,7 @@ export default async function AdminCallCenterReportsPage({
     <Link
       key={d}
       href={`/admin/call-center/reports?days=${d}`}
-      className={`rounded-md border px-3 py-1.5 text-sm ${
+      className={`rounded-md border px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${
         activeDays === d ? "border-primary bg-primary/10 font-semibold" : "border-border"
       }`}
     >
@@ -264,7 +264,7 @@ export default async function AdminCallCenterReportsPage({
                 </>
               }
               icon={<Icon name="refresh-ccw" size={22} />}
-              accent="bg-slate-100 text-slate-600"
+              accent="bg-surface-2 text-text-muted"
             />
           </div>
 
@@ -286,7 +286,7 @@ export default async function AdminCallCenterReportsPage({
                     </span>
                   </div>
                   <div
-                    className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"
+                    className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2"
                     role="img"
                     aria-label={`তৈরি ${s.created}টি — মোট ${totalCreated}টির মধ্যে`}
                   >
@@ -296,7 +296,7 @@ export default async function AdminCallCenterReportsPage({
                     />
                   </div>
                   <div className="mt-2 flex items-center gap-2">
-                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
                       <div
                         className="h-full rounded-full bg-emerald-500"
                         style={{ width: `${sharePct(s.completed, s.created)}%` }}
@@ -331,7 +331,7 @@ export default async function AdminCallCenterReportsPage({
                         // stay on the neutral surface tint.
                         backgroundColor:
                           b.attempts === 0
-                            ? "rgb(241 245 249)"
+                            ? "rgb(var(--c-surface-2))"
                             : `rgba(79, 70, 229, ${(0.12 + 0.88 * ratio).toFixed(3)})`,
                         color: ratio > 0.55 ? "#ffffff" : undefined,
                       }}
@@ -386,7 +386,7 @@ export default async function AdminCallCenterReportsPage({
                     </span>
                   </div>
                   <div
-                    className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-slate-100"
+                    className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-surface-2"
                     role="img"
                     aria-label={`কনফার্ম ${a.confirmed}, কলব্যাক ${a.callbacks}, বাতিল ${a.cancelled}, No Answer ${a.noAnswer}, Wrong Number ${a.wrongNumber}`}
                   >
@@ -408,7 +408,7 @@ export default async function AdminCallCenterReportsPage({
                   </p>
                   <div className="mt-3 flex items-center gap-2">
                     <span className="w-16 shrink-0 text-[11px] text-text-muted">মোট সময়</span>
-                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
                       <div
                         className="h-full rounded-full bg-brand-500"
                         style={{ width: `${sharePct(a.totalTalkSeconds, maxTalk)}%` }}

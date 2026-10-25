@@ -38,7 +38,7 @@ function CallbackRow({
               type="button"
               disabled={busy}
               onClick={() => onClaimTask(task.id)}
-              className={`rounded-md px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-50 ${
+              className={`rounded-md px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${
                 accent === "amber"
                   ? "bg-amber-500 hover:bg-amber-600"
                   : "bg-sky-600 hover:bg-sky-700"
@@ -56,7 +56,7 @@ function CallbackRow({
           <SlaChip state="overdue" />
         ) : null}
         {task.callbackAt ? (
-          <span className="text-xs text-slate-600">সময়: {bnDateTime(task.callbackAt)}</span>
+          <span className="text-xs text-text-muted">সময়: {bnDateTime(task.callbackAt)}</span>
         ) : null}
       </div>
     </li>

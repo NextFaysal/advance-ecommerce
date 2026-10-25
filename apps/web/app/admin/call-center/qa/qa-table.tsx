@@ -236,7 +236,7 @@ export function QaTable() {
         <label className="text-sm">
           এজেন্ট:{" "}
           <select
-            className="h-10 rounded-md border border-border px-2"
+            className="h-10 rounded-md border border-border px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             value={agentFilter}
             onChange={(e) => setAgentFilter(e.target.value)}
           >
@@ -249,7 +249,7 @@ export function QaTable() {
         <label className="text-sm">
           সর্বনিম্ন স্কোর:{" "}
           <select
-            className="h-10 rounded-md border border-border px-2"
+            className="h-10 rounded-md border border-border px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             value={minScoreFilter}
             onChange={(e) => setMinScoreFilter(e.target.value)}
           >
@@ -338,7 +338,7 @@ export function QaTable() {
                     </td>
                     <td className="py-2 pr-3 max-lg:block max-lg:py-1 max-lg:pr-0">
                       {log.scriptVersion ? (
-                        <span className="inline-flex h-6 items-center rounded-md bg-slate-100 px-2 font-mono text-xs font-medium text-slate-600 ring-1 ring-inset ring-black/5">
+                        <span className="inline-flex h-6 items-center rounded-md bg-surface-2 px-2 font-mono text-xs font-medium text-text-muted ring-1 ring-inset ring-black/5">
                           {log.scriptVersion}
                         </span>
                       ) : (
@@ -353,13 +353,13 @@ export function QaTable() {
                           min={0}
                           max={5}
                           step={1}
-                          className="h-10 w-16 rounded-md border border-border px-2"
+                          className="h-10 w-16 rounded-md border border-border px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                           value={draft.score}
                           onChange={(e) => setDrafts((p) => ({ ...p, [log.id]: { ...draft, score: e.target.value } }))}
                           aria-label="QA score"
                         />
                         <input
-                          className="h-10 w-full rounded-md border border-border px-2 sm:w-48"
+                          className="h-10 w-full rounded-md border border-border px-2 sm:w-48 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                           value={draft.comment}
                           onChange={(e) => setDrafts((p) => ({ ...p, [log.id]: { ...draft, comment: e.target.value } }))}
                           placeholder="QA মন্তব্য (ঐচ্ছিক)"
@@ -377,7 +377,7 @@ export function QaTable() {
                     <td className="py-2 max-lg:block max-lg:py-1">
                       <button
                         type="button"
-                        className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                        className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                         onClick={() => saveScore(log)}
                         disabled={savingId === log.id}
                       >
@@ -396,7 +396,7 @@ export function QaTable() {
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
-            className="rounded-md border border-border px-4 py-2 text-sm font-medium disabled:opacity-50"
+            className="rounded-md border border-border px-4 py-2 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             onClick={loadMore}
             disabled={loadingMore}
           >
