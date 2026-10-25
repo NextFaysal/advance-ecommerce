@@ -3,6 +3,7 @@ import { toQueueItemView } from "@/callcenter/queue";
 import { loadCallTasks } from "@/callcenter/store";
 import { CONFIRMATION_SCRIPT } from "@/callcenter/types";
 import { formatBdt } from "@/checkout/pricing";
+import { CallCenterTabs } from "./tabs";
 import { CallCenterWorkbench } from "./workbench";
 
 // Call center admin — Agent 14, Step 46 (A10).
@@ -33,6 +34,7 @@ export default async function AdminCallCenterPage() {
   return (
     <main style={{ padding: 24, fontFamily: "system-ui" }}>
       <h1>Call Center — Queue</h1>
+      <CallCenterTabs active="workbench" />
       <p>Live data from the database. Highest priority first: failed delivery, then pending orders, abandoned checkouts, manual.</p>
       <CallCenterWorkbench />
       <h2>সব টাস্ক (Supervisor Queue)</h2>

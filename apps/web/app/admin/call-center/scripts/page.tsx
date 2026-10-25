@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
 import { listEffectiveScripts } from "@/callcenter/scripts-store";
+import { CallCenterTabs } from "../tabs";
 import { ScriptsEditor, type ScriptSourceData } from "./scripts-editor";
 
 // Call-center scripts editor — C3. Per-source scripts are versioned
@@ -48,6 +49,7 @@ export default async function AdminCallCenterScriptsPage() {
         description="প্রতিটি টাস্কের ধরন অনুযায়ী এজেন্টের বলার স্ক্রিপ্ট। সেভ করলে সংস্করণ বাড়ে (বিল্ট-ইন = v1); কল লগে কোন সংস্করণ ব্যবহার হয়েছে তা ছাপ থাকে। (Call Scripts — per-source, versioned)"
         breadcrumb="Admin / Call Center"
       />
+      <CallCenterTabs active="scripts" />
       {scripts === null ? (
         <p role="alert" className="rounded-md bg-rose-50 px-3.5 py-2.5 text-small leading-relaxed text-rose-700">
           ডাটাবেস থেকে স্ক্রিপ্ট পড়া যায়নি — কোনো স্ক্রিপ্ট দেখানো হচ্ছে না। (Could not

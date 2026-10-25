@@ -1,5 +1,6 @@
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
 import { loadSupervisorBoard, type SupervisorBoard } from "@/callcenter/supervisor-store";
+import { CallCenterTabs } from "../tabs";
 import { AutoRefresh } from "./auto-refresh";
 import { SupervisorControls } from "./controls";
 
@@ -43,6 +44,7 @@ function Board({ board }: { board: SupervisorBoard }) {
   return (
     <main style={{ padding: 24, fontFamily: "system-ui" }}>
       <h1>Call Center — Supervisor</h1>
+      <CallCenterTabs active="supervisor" />
       <p>
         Live board from the database (masked numbers only), generated {fmtTime(board.generatedAt)} (Asia/Dhaka).
         Auto-refreshes every 20 seconds while this tab is visible — polling, not realtime; realtime waits for the

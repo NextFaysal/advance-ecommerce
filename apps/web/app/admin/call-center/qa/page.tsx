@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
+import { CallCenterTabs } from "../tabs";
 import { QaTable } from "./qa-table";
 
 // Call QA review — C3. Supervisors sample completed call logs and
@@ -30,6 +31,7 @@ export default function AdminCallCenterQaPage() {
         description="সম্পন্ন কলগুলোর নমুনা যাচাই — প্রতিটি কলে ০–৫ স্কোর ও মন্তব্য দিন (শুধু সুপারভাইজার, staff.manage)। কোন স্ক্রিপ্ট সংস্করণে কল হয়েছে এবং কী disposition দেওয়া হয়েছে তাও দেখা যায়। (Call QA Review — sampled call logs with supervisor scoring)"
         breadcrumb="Admin / Call Center"
       />
+      <CallCenterTabs active="qa" />
       <QaTable />
     </main>
   );

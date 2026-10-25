@@ -9,6 +9,7 @@ import {
   parseReportRange,
   type CallCenterReport,
 } from "@/callcenter/reports";
+import { CallCenterTabs } from "../tabs";
 import { daysAgoInDhaka, todayInDhaka } from "@/reports/db-rows";
 import type { DateRange } from "@/reports/types";
 import { ReportsExportButton } from "./export-button";
@@ -94,6 +95,7 @@ export default async function AdminCallCenterReportsPage({
         description={`কল সেন্টারের কার্যকারিতা — আসল CallTask/CallLogEntry ডেটা থেকে। পরিসর: ${range.from} → ${range.to} (ঢাকা সময়)। (Call Reports — C5)`}
         breadcrumb="Admin / Call Center"
       />
+      <CallCenterTabs active="reports" />
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">{presets}</div>
