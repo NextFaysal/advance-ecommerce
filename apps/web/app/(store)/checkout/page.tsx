@@ -18,6 +18,7 @@ import Link from "next/link";
 import type { Cart } from "../../../src/cart/types";
 import { cartSubtotalPoisha } from "../../../src/cart/types";
 import { clearGuestCart, loadGuestCart } from "../../../src/cart/persistence";
+import { readStoredResellerRef } from "../../../src/reseller/attribution";
 import { findStockProblems } from "../../../src/checkout/stock";
 import { computePricing, formatBdt } from "../../../src/checkout/pricing";
 import { useDigitText } from "@/components/ui/numerals";
@@ -109,6 +110,13 @@ export default function CheckoutPage() {
       items: cart.items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
       idempotencyKey,
       couponCode: data.get("couponCode") || undefined,
+      // Reseller attribution (wave 6): the ?ref= code the storefront
+      // shell captured into localStorage, while it is inside the
+      // 30-day window. The server resolves it (ACTIVE resellers
+      // only); an expired/absent ref simply omits the field. The ref
+      // is NOT cleared after ordering — repeat orders inside the
+      // window attribute to the same reseller.
+      resellerCode: readStoredResellerRef() ?? undefined,
     });
     if (!result.ok) {
       setErrors(result.errors);

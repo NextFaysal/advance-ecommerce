@@ -1540,6 +1540,11 @@ model Reseller {
   phone     String   @unique
   status    String   @default("PENDING_APPROVAL")
   tier      String   @default("STANDARD")
+  // Public attribution code for ?ref=CODE share links (wave 6). Nullable:
+  // codes are generated in app code at create time and lazily backfilled
+  // on admin reads, so pre-existing rows start NULL. Unique when present
+  // (Postgres allows many NULLs under a unique constraint).
+  code      String?  @unique
   createdAt DateTime @default(now())
   priceEntries ResellerPriceEntry[]
   walletEntries ResellerWalletEntry[]

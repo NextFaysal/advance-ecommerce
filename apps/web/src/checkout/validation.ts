@@ -52,6 +52,15 @@ export const checkoutFormSchema = z.object({
   /** Idempotency key: a UUID v4 generated once per checkout attempt. */
   idempotencyKey: z.string().uuid("Idempotency key UUID hote hobe"),
   couponCode: z.string().optional(),
+  /**
+   * Optional reseller attribution code (wave 6): captured client-side
+   * from a ?ref=CODE link into localStorage. Deliberately permissive
+   * here — the server normalizes it and resolves it against ACTIVE
+   * resellers only (src/reseller/store.resolveResellerAttribution);
+   * an unknown or ineligible code never fails the order, it simply
+   * attributes nothing.
+   */
+  resellerCode: z.string().max(32).optional(),
 });
 
 export type CheckoutForm = z.infer<typeof checkoutFormSchema>;

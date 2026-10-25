@@ -352,10 +352,11 @@ export interface CreateOrderRecordInput {
   /** Create channel stored on Order.source. Defaults to "website"
    *  (public checkout); the admin manual-create route passes "manual". */
   source?: string;
-  /** Reseller attribution stored on Order.resellerId. No caller passes
-   *  this yet — checkout has no reseller attribution mechanism (no
-   *  reseller code/link capture exists); the field is here so a future
-   *  attribution path records it at create instead of patching later. */
+  /** Reseller attribution stored on Order.resellerId (wave 6): the
+   *  public checkout route and the admin manual-create route resolve
+   *  the submitted ?ref= code via resolveResellerAttribution (ACTIVE
+   *  resellers only) and pass the id here, so attribution is recorded
+   *  at create instead of patched later. */
   resellerId?: string;
 }
 

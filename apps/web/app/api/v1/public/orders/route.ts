@@ -26,6 +26,14 @@
  *   FRAUD_BLOCKED (generic message, no signal details leave the server);
  *   "require_advance" -> the order is created flagged advanceRequired +
  *   requiresOtp. The real score is persisted as Order.riskScore.
+ * - Reseller attribution (wave 6): an optional resellerCode (captured
+ *   client-side from a ?ref=CODE share link) is resolved by
+ *   src/reseller/store.resolveResellerAttribution — ACTIVE resellers
+ *   only, mirroring the wallet credit guard — and persisted as
+ *   Order.resellerId in the create transaction, which is what makes
+ *   the delivered-order reseller credit fire. Unknown/ineligible
+ *   codes attribute nothing and never fail the order; the outcome is
+ *   reported as meta.resellerAttributed.
  * - Idempotency: a duplicate idempotencyKey returns the ORIGINAL order
  *   (a replay never re-applies a coupon or re-scores), never a second
  *   order. The durable backstop is the UNIQUE Order.idempotencyKey
@@ -65,6 +73,7 @@ import {
 } from "@/checkout/order-enrichment";
 import { scoreFraud } from "@/fraud/scoring";
 import { publishOrderCreated } from "@/orders/event-bus";
+import { resolveResellerAttribution } from "@/reseller/store";
 import {
   createOrderRecord,
   findOrderByIdempotencyKey,
@@ -207,6 +216,13 @@ export async function POST(req: Request) {
     );
   }
 
+  // Reseller attribution (wave 6): the optional ?ref= code captured
+  // client-side resolves to an ACTIVE reseller or to nothing — an
+  // unknown/ineligible code never fails the order (see
+  // resolveResellerAttribution). Resolved before the create so the id
+  // is persisted on the Order row in the same transaction.
+  const attribution = await resolveResellerAttribution(form.resellerCode);
+
   // Persist in ONE transaction (see repository.createOrderRecord). A
   // concurrent create with the same key loses the UNIQUE race and comes
   // back as a replay of the winning row.
@@ -227,6 +243,7 @@ export async function POST(req: Request) {
     },
     paymentMethod: form.paymentMethod,
     riskScore: assessment.score, // real scoreFraud() score, 0-100
+    resellerId: attribution?.id,
     appliedCoupon:
       coupon.status === "applied" && coupon.code
         ? { code: coupon.code, discountPoisha: coupon.discountPoisha }
@@ -253,6 +270,7 @@ export async function POST(req: Request) {
     paymentMethod: form.paymentMethod,
     paymentStatus: "UNPAID", // non-COD stays UNPAID until the gateway verifies payment
     status: "PENDING",
+    ...(attribution ? { resellerId: attribution.id } : {}),
     riskScore: assessment.score,
     riskBand: assessment.level,
     fraudAction: assessment.suggestedAction,
@@ -293,6 +311,7 @@ export async function POST(req: Request) {
         source: "DATABASE",
         couponApplied: coupon.status === "applied",
         couponStatus: coupon.status,
+        resellerAttributed: attribution !== null,
         fraudScored: true,
         advanceRequired: order.advanceRequired,
         note: "Order persisted to the database (Prisma). Coupon records + fraud lists are DB-backed (marketing/fraud modules); checkout assembles fraud input from DB lists and the coupon lookup from a DB snapshot.",

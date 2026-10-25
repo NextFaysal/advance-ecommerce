@@ -10,6 +10,9 @@ import { formatBdt } from "@/checkout/pricing";
 // (Admin > Settings), never a code change.
 // Data: Prisma DB via src/reseller/store.ts (dashboards are built by the
 // same pure builder as before; wallet balances are ledger sums).
+// Wave 6: each row also shows the reseller's attribution code and its
+// ?ref= share link — orders placed through that link inside 30 days
+// persist Order.resellerId and credit this reseller on DELIVERED.
 export default async function AdminResellersPage() {
   if (!isResellerEnabled(demoResellerFlags)) {
     return (
@@ -27,6 +30,10 @@ export default async function AdminResellersPage() {
     listPriceEntries(),
     listWithdrawals(),
   ]);
+  // Share-link base: the public storefront origin (NEXT_PUBLIC_APP_URL,
+  // same env the bd-tools payment links use). Unset locally -> the
+  // path-only form is shown, which still carries the code truthfully.
+  const appBaseUrl = process.env["NEXT_PUBLIC_APP_URL"] ?? "";
   return (
     <main style={{ padding: 24, fontFamily: "system-ui" }}>
       <h1>Resellers</h1>
@@ -36,6 +43,7 @@ export default async function AdminResellersPage() {
           <tr>
             <th>Reseller</th><th>Phone</th><th>Tier</th><th>Commission</th>
             <th>Lifetime Sales</th><th>Wallet Balance</th><th>Pending Withdrawal</th>
+            <th>Referral Code</th><th>Share Link</th>
           </tr>
         </thead>
         <tbody>
@@ -48,6 +56,14 @@ export default async function AdminResellersPage() {
               <td>{formatBdt(d.lifetimeSalesPoisha)}</td>
               <td>{formatBdt(d.walletBalancePoisha)}</td>
               <td>{formatBdt(d.pendingWithdrawalPoisha)}</td>
+              <td>{d.code ? <code>{d.code}</code> : "—"}</td>
+              <td>
+                {d.code ? (
+                  <code>{`${appBaseUrl}/?ref=${d.code}`}</code>
+                ) : (
+                  "—"
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

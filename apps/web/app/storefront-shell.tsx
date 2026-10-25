@@ -11,6 +11,7 @@ import type {
   SiteMenuItem,
 } from "@/cms/site-content-types";
 import InstallPrompt from "@/pwa/install-prompt";
+import ResellerRefCapture from "@/reseller/RefCapture";
 
 // Storefront shell mount (integration for Agent 31): header + footer on
 // storefront routes only — never on /admin or /offline. Later, brandName
@@ -96,6 +97,10 @@ export default function StorefrontShell({ children }: { children: ReactNode }) {
         footerMenu={siteContent?.configured.footerMenu ? siteContent.footerMenu : undefined}
       />
       <InstallPrompt />
+      {/* Reseller attribution (wave 6): captures ?ref=CODE into
+          localStorage on any storefront page; renders nothing. Only
+          mounted in this storefront branch — never on /admin. */}
+      <ResellerRefCapture />
     </div>
   );
 }

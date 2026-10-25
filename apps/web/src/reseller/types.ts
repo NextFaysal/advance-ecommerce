@@ -38,6 +38,13 @@ export interface Reseller {
   tier: ResellerTier;
   /** Lifetime DELIVERED sales total, poisha. Tier derives from this. */
   lifetimeSalesPoisha: number;
+  /**
+   * Public attribution code (wave 6) for ?ref=CODE share links —
+   * generated at create, lazily backfilled on admin reads
+   * (src/reseller/store.ts). Absent only for in-memory fixtures and
+   * rows whose backfill has not run yet.
+   */
+  code?: string;
   createdAt: string;
 }
 
@@ -119,6 +126,8 @@ export interface ResellerDashboard {
   resellerId: string;
   name: string;
   phoneMasked: string;
+  /** Attribution code for the ?ref= share link (wave 6), when assigned. */
+  code?: string;
   tier: ResellerTier;
   /** Next tier + how much more lifetime sales (poisha) to reach it; null at GOLD. */
   nextTier: ResellerTier | null;

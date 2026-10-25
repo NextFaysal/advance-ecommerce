@@ -48,6 +48,7 @@ import { computePricing } from "@/checkout/pricing";
 import { assembleFraudInput, fraudEnforcement } from "@/checkout/order-enrichment";
 import { scoreFraud } from "@/fraud/scoring";
 import { publishOrderCreated } from "@/orders/event-bus";
+import { resolveResellerAttribution } from "@/reseller/store";
 
 function err(code: string, message: string, status: number, details?: unknown) {
   return NextResponse.json({ error: { code, message, details } }, { status });
@@ -225,9 +226,13 @@ async function handleBulkAction(req: Request, session: AdminSession, body: unkno
 // key per form attempt and reuses it across retries, so a double
 // submit replays instead of duplicating; without a key the server
 // mints one (the UNIQUE Order.idempotencyKey column is the backstop,
-// exactly as in the public create path).
+// exactly as in the public create path). resellerCode (wave 6) lets
+// staff attribute a phone order to a reseller by their ?ref= code; it
+// resolves exactly like public checkout (ACTIVE resellers only) and an
+// unknown/ineligible code never fails the create.
 const manualCreateSchema = manualOrderSchema.extend({
   idempotencyKey: z.string().uuid().optional(),
+  resellerCode: z.string().max(32).optional(),
 });
 
 /**
@@ -345,6 +350,11 @@ async function handleManualCreate(req: Request, session: AdminSession, body: unk
     );
   }
 
+  // Reseller attribution (wave 6): the optional code staff entered
+  // resolves exactly like public checkout — ACTIVE resellers only,
+  // never failing the create (see resolveResellerAttribution).
+  const attribution = await resolveResellerAttribution(input.resellerCode);
+
   // Staff note + price-override record share the order's note row, so
   // the negotiated pricing is visible in the order history.
   const noteParts = [
@@ -373,6 +383,7 @@ async function handleManualCreate(req: Request, session: AdminSession, body: unk
     appliedCoupon: null,
     note: noteParts.length > 0 ? noteParts.join("\n") : undefined,
     source: "manual",
+    resellerId: attribution?.id,
   });
   if (created.replayed) {
     const row = await findOrderByIdempotencyKey(idempotencyKey);
@@ -405,6 +416,7 @@ async function handleManualCreate(req: Request, session: AdminSession, body: unk
       paymentMethod: input.paymentMethod,
       itemCount: items.length,
       riskScore: assessment.score,
+      resellerId: attribution?.id ?? null,
     },
     ip: req.headers.get("x-forwarded-for") ?? undefined,
     userAgent: req.headers.get("user-agent") ?? undefined,
@@ -417,6 +429,7 @@ async function handleManualCreate(req: Request, session: AdminSession, body: unk
         source: "DATABASE",
         createdVia: "admin-manual",
         fraudScored: true,
+        resellerAttributed: attribution !== null,
         advanceRequired: enforcement.advanceRequired,
         note: "Manual order persisted via the shared create path. Item prices are staff-entered (DB snapshot for name/SKU/stock); no coupon and no shipping charge on manual create — total is the items subtotal.",
       },

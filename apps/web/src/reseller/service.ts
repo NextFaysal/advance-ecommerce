@@ -107,6 +107,7 @@ export function buildDashboard(
     resellerId: reseller.id,
     name: reseller.name,
     phoneMasked: maskPhone(reseller.phone),
+    ...(reseller.code ? { code: reseller.code } : {}),
     tier,
     nextTier: progress.nextTier,
     toNextTierPoisha: progress.toNextTierPoisha,
