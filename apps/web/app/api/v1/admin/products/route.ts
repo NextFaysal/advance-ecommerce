@@ -7,7 +7,9 @@ import {
   writeCatalogAudit,
 } from "@/catalog/api";
 import { stripCostPrice, hasPermission } from "@/lib/rbac";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { productInputSchema, validateCreateInput } from "@/catalog/service";
+import { productTypePayloadLocked } from "@/catalog/product-types";
 
 // GET /api/v1/admin/products — admin list. Cost price returned ONLY
 // when the caller has products.edit_cost_price; otherwise stripped.
@@ -54,6 +56,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const session = await requireAdminSession();
   if (session instanceof NextResponse) return session;
+  await ensureDbFeatureFlags();
   if (!hasPermission(session.permissions, "products.create")) {
     return apiError("FORBIDDEN", "Missing permission: products.create", 403);
   }
@@ -69,6 +72,14 @@ export async function POST(req: Request) {
         },
       },
       { status: 400 },
+    );
+  }
+  // Wave 15: product-type payloads require module.product_types.
+  if (productTypePayloadLocked(parsed.data)) {
+    return apiError(
+      "FEATURE_LOCKED",
+      "Product types are locked for this install (module.product_types is OFF).",
+      403,
     );
   }
   const payloadErrors = validateCreateInput(parsed.data);

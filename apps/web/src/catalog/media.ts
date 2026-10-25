@@ -118,6 +118,37 @@ export interface SignedUploadResponse {
   expiresInSeconds: number;
 }
 
+/** Digital product files (wave 15): NOT public assets — no publicUrl
+ *  exists for them; buyers reach bytes only through a DownloadGrant.
+ *  The editor stores `storageKey` (+ filename/size) on the product via
+ *  the normal create/PATCH payloads. */
+export const MAX_DIGITAL_FILE_BYTES = 200 * 1024 * 1024; // 200 MB per digital file
+export const MAX_DIGITAL_UPLOADS_PER_REQUEST = 10;
+export const DIGITAL_MIME_TYPES: ReadonlySet<string> = new Set([
+  "application/zip",
+  "application/x-zip-compressed",
+  "application/pdf",
+  "application/epub+zip",
+  "application/octet-stream",
+]);
+
+export function isAllowedDigitalMime(contentType: string): boolean {
+  return DIGITAL_MIME_TYPES.has((contentType ?? "").toLowerCase());
+}
+
+/** One digital file's presigned upload ticket (wave 15). */
+export interface DigitalUploadTicket {
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  /** The object key — stored as DigitalFile.storageKey. */
+  storageKey: string;
+  /** Presigned PUT URL; the PUT must carry the SAME Content-Type and
+   *  Content-Length (both are signed). */
+  uploadUrl: string;
+  expiresInSeconds: number;
+}
+
 /** One file's presigned direct-upload ticket (P1 upload endpoint). */
 export interface PresignedUploadTicket extends SignedUploadResponse {
   filename: string;

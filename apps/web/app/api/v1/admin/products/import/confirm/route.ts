@@ -147,6 +147,10 @@ export async function POST(req: Request) {
     const candidate: ProductInput = {
       slug: first.slug,
       relatedIds: [],
+      // Wave 15: imports are always SIMPLE products with no per-type data.
+      type: "SIMPLE",
+      digitalFiles: [],
+      bundleComponents: [],
       titleBn: first.title_bn,
       titleEn: first.title_en,
       descriptionBn: first.description_bn,

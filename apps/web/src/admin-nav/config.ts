@@ -254,6 +254,30 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: null,
   },
   {
+    // Wave 15-3: sourcing import + landed-cost calculator (Part H).
+    id: "sourcing",
+    path: "/admin/sourcing",
+    labelBn: "সোর্সিং",
+    labelEn: "Sourcing",
+    icon: "Truck",
+    section: "catalog",
+    permission: "products.view",
+    featureFlag: "module.sourcing",
+    badge: null,
+  },
+  {
+    // Wave 15-3: barcode label print sheet (module.product_extras).
+    id: "product-labels",
+    path: "/admin/products/labels",
+    labelBn: "লেবেল প্রিন্ট",
+    labelEn: "Labels",
+    icon: "ScrollText",
+    section: "catalog",
+    permission: "products.view",
+    featureFlag: "module.product_extras",
+    badge: null,
+  },
+  {
     id: "inventory",
     path: "/admin/inventory",
     labelBn: "ইনভেন্টরি",

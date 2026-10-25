@@ -12,6 +12,11 @@ import { toggleWishlistId } from "./wishlist";
 import { useDigitText } from "@/components/ui/numerals";
 import type { PublicProduct } from "./types";
 import { minVariantPricePoisha } from "./types";
+import {
+  PRODUCT_TYPE_BADGE_LABEL,
+  productTypeOf,
+  type PublicProductWithTypeFields,
+} from "./product-type-contract";
 import { AddToCartButton } from "@/cart/components/AddToCartButton";
 import { QuickView } from "./QuickView";
 
@@ -95,6 +100,13 @@ export function ProductCard({ product }: { product: PublicProduct }) {
   const rating = product.ratingAverage ?? 0;
   const fullStars = Math.round(rating);
   const imageUrl = product.images[0]?.url ?? defaultVariant?.imageUrl ?? null;
+  // Product-type badge (wave 15): non-SIMPLE types only; SIMPLE —
+  // including every product while the module flag is off — renders
+  // exactly as before.
+  const cardType = productTypeOf(product as PublicProductWithTypeFields);
+  const typeBadgeLabel = cardType !== "SIMPLE" ? PRODUCT_TYPE_BADGE_LABEL[cardType] : null;
+  const typeBadgeCls =
+    cardType === "DIGITAL" ? "bg-violet-600" : cardType === "BUNDLE" ? "bg-amber-600" : "bg-sky-600";
 
   return (
     <article className="group relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-lg">
@@ -131,8 +143,17 @@ export function ProductCard({ product }: { product: PublicProduct }) {
               <BagIcon />
             </div>
           )}
+          {typeBadgeLabel ? (
+            <span
+              className={`absolute left-2.5 top-2.5 z-[5] rounded-full px-2 py-0.5 text-[11px] font-bold text-white shadow-sm ${typeBadgeCls}`}
+            >
+              {typeBadgeLabel}
+            </span>
+          ) : null}
           {discountPct > 0 ? (
-            <span className="absolute left-2.5 top-2.5 rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
+            <span
+              className={`absolute left-2.5 ${typeBadgeLabel ? "top-9" : "top-2.5"} rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm`}
+            >
               {digits(`-${discountPct}%`)}
             </span>
           ) : null}

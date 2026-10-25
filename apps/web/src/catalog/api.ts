@@ -67,6 +67,8 @@ export function handleServiceError(error: unknown): NextResponse {
   if (error instanceof DbNotReadyError) return apiError("DB_NOT_READY", error.message, 503);
   if (error instanceof Error && error.message.includes("not found")) return apiError("NOT_FOUND", error.message, 404);
   if (error instanceof Error && error.message.includes("Reason is required")) return apiError("REASON_REQUIRED", error.message, 400);
+  // Wave 15: bundle-component validation failures are client errors.
+  if (error instanceof Error && error.message.startsWith("Bundle component")) return apiError("VALIDATION_ERROR", error.message, 400);
   console.error("Catalog API error");
   void error;
   return apiError("INTERNAL", "Something went wrong.", 500);

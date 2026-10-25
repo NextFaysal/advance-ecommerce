@@ -33,11 +33,15 @@ import {
   getSetting,
 } from "@/lib/settings";
 import {
+  MAX_DIGITAL_FILE_BYTES,
+  MAX_DIGITAL_UPLOADS_PER_REQUEST,
   MAX_UPLOADS_PER_REQUEST,
   MAX_UPLOAD_BYTES,
   UPLOAD_EXPIRES_SECONDS,
   buildR2Key,
+  isAllowedDigitalMime,
   isAllowedImageMime,
+  type DigitalUploadTicket,
   type PresignedUploadTicket,
 } from "./media";
 
@@ -302,4 +306,138 @@ export async function createProductImageUploads(input: {
     };
   });
   return { ok: true, uploads };
+}
+
+/* ------------------------------------------------------------------ */
+/* Digital product files (wave 15) — presigned PUT tickets + GET       */
+/* ------------------------------------------------------------------ */
+
+export type CreateDigitalUploadsResult =
+  | { ok: true; uploads: DigitalUploadTicket[] }
+  | { ok: false; code: "STORAGE_NOT_CONFIGURED"; message: string }
+  | { ok: false; code: "INVALID_FILE"; message: string };
+
+/**
+ * Validate a digital-file batch and mint one presigned PUT ticket per
+ * file, under the `digital/` prefix. Same honesty rule as images: no
+ * storage config -> STORAGE_NOT_CONFIGURED and nothing is signed.
+ * Digital files are never public — the ticket deliberately carries no
+ * publicUrl; downloads happen only via DownloadGrant presigned GETs.
+ */
+export async function createDigitalFileUploads(input: {
+  productSlug?: string | null;
+  files: UploadFileRequest[];
+}): Promise<CreateDigitalUploadsResult> {
+  if (input.files.length === 0) {
+    return { ok: false, code: "INVALID_FILE", message: "কোনো ফাইল পাঠানো হয়নি।" };
+  }
+  if (input.files.length > MAX_DIGITAL_UPLOADS_PER_REQUEST) {
+    return {
+      ok: false,
+      code: "INVALID_FILE",
+      message: `একবারে সর্বোচ্চ ${MAX_DIGITAL_UPLOADS_PER_REQUEST}টি ফাইল আপলোড করা যাবে।`,
+    };
+  }
+  for (const file of input.files) {
+    if (!isAllowedDigitalMime(file.contentType)) {
+      return {
+        ok: false,
+        code: "INVALID_FILE",
+        message: `অসমর্থিত ফাইলের ধরন: ${file.filename} (${file.contentType || "unknown"}) — ZIP, PDF, EPUB বা BIN ব্যবহার করুন।`,
+      };
+    }
+    if (!Number.isInteger(file.sizeBytes) || file.sizeBytes <= 0 || file.sizeBytes > MAX_DIGITAL_FILE_BYTES) {
+      return {
+        ok: false,
+        code: "INVALID_FILE",
+        message: `${file.filename}: ফাইলের আকার 0-এর বেশি এবং সর্বোচ্চ ${MAX_DIGITAL_FILE_BYTES / (1024 * 1024)} MB হতে হবে।`,
+      };
+    }
+    if (typeof file.filename !== "string" || file.filename.trim() === "") {
+      return { ok: false, code: "INVALID_FILE", message: "ফাইলের নাম আবশ্যক।" };
+    }
+  }
+
+  const config = await resolveStorageConfig();
+  if (config === null) {
+    return {
+      ok: false,
+      code: "STORAGE_NOT_CONFIGURED",
+      message:
+        "স্টোরেজ কনফিগার করা হয়নি — Admin > Settings-এ R2/S3 endpoint, bucket ও access key সেট করুন, তারপর আবার চেষ্টা করুন।",
+    };
+  }
+
+  const slug = sanitizeSlug(input.productSlug);
+  const uploads: DigitalUploadTicket[] = input.files.map((file) => {
+    const safeName = file.filename
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "file";
+    const key = `digital/${slug}/${Date.now()}-${randomBytes(4).toString("hex")}-${safeName}`;
+    return {
+      filename: file.filename,
+      contentType: file.contentType,
+      sizeBytes: file.sizeBytes,
+      storageKey: key,
+      uploadUrl: presignPutObject({ config, key, contentType: file.contentType, sizeBytes: file.sizeBytes }),
+      expiresInSeconds: UPLOAD_EXPIRES_SECONDS,
+    };
+  });
+  return { ok: true, uploads };
+}
+
+/**
+ * Presign a GET for one object (wave 15 download grants). Host-only
+ * signed headers — a GET carries no content headers to bind. Returns
+ * null when storage is not configured (the caller answers honestly
+ * instead of redirecting nowhere).
+ */
+export function presignGetObject(input: {
+  config: StorageConfig;
+  key: string;
+  expiresInSeconds?: number;
+}): string {
+  const { config, key } = input;
+  const expires = input.expiresInSeconds ?? 900;
+
+  const endpointUrl = new URL(config.endpoint);
+  const host = `${config.bucket}.${endpointUrl.host}`;
+  const basePath = endpointUrl.pathname.replace(/\/+$/, "");
+  const canonicalUri = `${basePath}/${encodeKeyPath(key)}`;
+
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const credentialScope = `${dateStamp}/${config.region}/s3/aws4_request`;
+  const signedHeaders = "host";
+
+  const queryParams: Record<string, string> = {
+    "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+    "X-Amz-Credential": `${config.accessKeyId}/${credentialScope}`,
+    "X-Amz-Date": amzDate,
+    "X-Amz-Expires": String(expires),
+    "X-Amz-SignedHeaders": signedHeaders,
+  };
+  const canonicalQuery = Object.keys(queryParams)
+    .sort()
+    .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(queryParams[k] as string)}`)
+    .join("&");
+
+  const canonicalRequest = [
+    "GET",
+    canonicalUri,
+    canonicalQuery,
+    `host:${host}\n`,
+    signedHeaders,
+    "UNSIGNED-PAYLOAD",
+  ].join("\n");
+
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, credentialScope, sha256Hex(canonicalRequest)].join("\n");
+  const signature = createHmac("sha256", deriveSigningKey(config.secretAccessKey, dateStamp, config.region))
+    .update(stringToSign, "utf8")
+    .digest("hex");
+
+  const scheme = endpointUrl.protocol.replace(/:$/, "");
+  return `${scheme}://${host}${canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`;
 }

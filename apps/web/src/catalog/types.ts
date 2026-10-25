@@ -12,6 +12,50 @@ export interface LocalizedText {
 
 export type ProductStatus = "DRAFT" | "ACTIVE" | "ARCHIVED";
 
+/** Product types (wave 15, doc 16 P7) — everything type-specific is
+ *  gated by the module.product_types feature flag. */
+export type ProductType = "SIMPLE" | "DIGITAL" | "BUNDLE" | "PREORDER";
+
+/** Staff view of a digital file: includes the storage key (needed by
+ *  the editor to round-trip the row). NEVER sent publicly. */
+export interface DigitalFileMeta {
+  id: string;
+  storageKey: string;
+  fileName: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+/** Public view of a digital file: name + size only — no storage key. */
+export interface PublicDigitalFile {
+  id: string;
+  fileName: string;
+  sizeBytes: number;
+}
+
+/** One bundle component as read everywhere: the component variant's
+ *  identity + how many units one bundle sale consumes + the variant's
+ *  current stock cache (drives bundleAvailability). */
+export interface BundleComponentView {
+  variantId: string;
+  sku: string;
+  productTitle: LocalizedText;
+  productSlug: string;
+  /** Attributes summary ("Size: M · Colour: Red") or null when none. */
+  variantLabel: string | null;
+  unitPricePoisha: number;
+  quantity: number;
+  componentStock: number;
+}
+
+/** Pre-order terms of record (stored on Product.preorder* columns). */
+export interface PreorderTerms {
+  depositPercent: number | null;
+  /** ISO date (yyyy-mm-dd) or null. */
+  expectedDate: string | null;
+  maxUnits: number | null;
+}
+
 export interface ProductAttribute {
   /** e.g. "color" | "size" */
   key: string;
@@ -99,6 +143,17 @@ export interface Product {
   heightMm: number | null;
   /** Per-product low-stock threshold override; null = global default. */
   lowStockThreshold: number | null;
+  /** Product type (wave 15); SIMPLE for everything pre-existing. */
+  type: ProductType;
+  /** DIGITAL files (staff view — carries storageKey). */
+  digitalFiles: DigitalFileMeta[];
+  /** BUNDLE components; empty for non-bundles. */
+  bundleComponents: BundleComponentView[];
+  /** Sellable units of a BUNDLE = min over components of
+   *  floor(componentStock / quantity); null for non-bundles. */
+  bundleAvailability: number | null;
+  /** PREORDER terms; null unless set (and only meaningful for PREORDER). */
+  preorder: PreorderTerms | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -112,8 +167,11 @@ export interface Category {
 
 /** Public product view: costPoisha stripped. Admin view uses Product directly. */
 export type PublicVariant = Omit<ProductVariant, "costPoisha">;
-export type PublicProduct = Omit<Product, "variants"> & {
+export type PublicProduct = Omit<Product, "variants" | "digitalFiles"> & {
   variants: PublicVariant[];
+  /** Public digital files: fileName/sizeBytes only — the storage key
+   *  and any license material never leave the server. */
+  digitalFiles: PublicDigitalFile[];
   /**
    * Derived sale-window state (wave 14): true when `now` falls inside
    * [saleStartsAt, saleEndsAt] — a null bound is open (no start = the
@@ -139,8 +197,25 @@ export function toPublicProduct(product: Product): PublicProduct {
   return {
     ...product,
     variants: product.variants.map(({ costPoisha: _cost, ...rest }) => rest),
+    digitalFiles: product.digitalFiles.map((f) => ({
+      id: f.id,
+      fileName: f.fileName,
+      sizeBytes: f.sizeBytes,
+    })),
     saleActive: isSaleActive(product),
   };
+}
+
+/** Sellable bundle units from component stock: the scarcest component
+ *  (in whole bundle units) caps the bundle. Empty component list = 0
+ *  (a bundle with no components can never be fulfilled). */
+export function computeBundleAvailability(
+  components: ReadonlyArray<{ quantity: number; componentStock: number }>,
+): number {
+  if (components.length === 0) return 0;
+  return Math.min(
+    ...components.map((c) => Math.floor(c.componentStock / Math.max(1, c.quantity))),
+  );
 }
 
 /** Structural minimum the price helpers need — accepts both the admin

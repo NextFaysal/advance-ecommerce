@@ -22,8 +22,20 @@
 //    `ledgerPending: true` instead of silently dropping it.
 
 import { z } from "zod";
-import type { Category, FaqItem, Product, ProductImage, ProductVariant, PublicProduct, SizeChart } from "./types";
-import { toPublicProduct } from "./types";
+import type {
+  BundleComponentView,
+  Category,
+  DigitalFileMeta,
+  FaqItem,
+  PreorderTerms,
+  Product,
+  ProductImage,
+  ProductType,
+  ProductVariant,
+  PublicProduct,
+  SizeChart,
+} from "./types";
+import { computeBundleAvailability, toPublicProduct } from "./types";
 import type { ProductFilter } from "./search";
 import { applyProductFilter, expandQueryTokens } from "./search";
 import { removeProductFromSearchIndex, syncProductSearchIndex } from "./indexer";
@@ -93,6 +105,36 @@ export const faqItemsSchema = z
 /** Non-negative integer or null — physicals + thresholds (wave 14). */
 const nonNegativeIntOrNull = z.number().int().min(0).nullable().optional();
 
+/** Product types (wave 15, doc 16 P7) — gated by module.product_types
+ *  at the route layer; the schema accepts the payloads so the editor
+ *  can round-trip them. */
+export const PRODUCT_TYPES = ["SIMPLE", "DIGITAL", "BUNDLE", "PREORDER"] as const;
+
+/** One digital file row as the editor sends it: metadata captured from
+ *  the presigned upload ticket (storageKey + fileName + sizeBytes).
+ *  `id` rides along on updates for readability; replace semantics key
+ *  on storageKey, so the id is accepted and ignored. */
+export const digitalFileInputSchema = z.object({
+  id: z.string().max(64).optional(),
+  storageKey: z.string().min(1).max(1024),
+  fileName: z.string().min(1).max(255),
+  sizeBytes: z.number().int().min(1),
+});
+
+export const bundleComponentInputSchema = z.object({
+  variantId: z.string().min(1).max(64),
+  quantity: z.number().int().min(1).max(10000).default(1),
+});
+
+/** Pre-order terms (wave 15): depositPercent is informational for
+ *  checkout display this wave (no payment split); maxUnits caps the
+ *  total non-cancelled ordered units across all orders. */
+export const preorderInputSchema = z.object({
+  depositPercent: z.number().int().min(0).max(100).nullable().optional(),
+  expectedDate: z.string().max(32).nullable().optional(),
+  maxUnits: z.number().int().min(1).nullable().optional(),
+});
+
 export const productInputSchema = z.object({
   slug: z.string().regex(SLUG_REGEX, "Slug must be lowercase letters, digits and hyphens only"),
   titleBn: z.string().min(1).max(255),
@@ -122,6 +164,11 @@ export const productInputSchema = z.object({
   widthMm: nonNegativeIntOrNull,
   heightMm: nonNegativeIntOrNull,
   lowStockThreshold: nonNegativeIntOrNull,
+  // --- Wave 15 (doc 16 P7): product types ---
+  type: z.enum(PRODUCT_TYPES).default("SIMPLE"),
+  digitalFiles: z.array(digitalFileInputSchema).max(50).default([]),
+  bundleComponents: z.array(bundleComponentInputSchema).max(100).default([]),
+  preorder: preorderInputSchema.nullable().optional(),
   images: z.array(imageInputSchema).max(20).default([]),
   variants: z.array(variantInputSchema).min(1).max(200),
 });
@@ -174,6 +221,10 @@ export interface ProductRow {
   widthMm: number | null;
   heightMm: number | null;
   lowStockThreshold: number | null;
+  type: ProductType;
+  digitalFiles: DigitalFileMeta[];
+  bundleComponents: BundleComponentView[];
+  preorder: PreorderTerms | null;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -254,6 +305,12 @@ export function mapRowToProduct(row: ProductRow): Product {
     widthMm: row.widthMm,
     heightMm: row.heightMm,
     lowStockThreshold: row.lowStockThreshold,
+    type: row.type,
+    digitalFiles: row.digitalFiles,
+    bundleComponents: row.bundleComponents,
+    bundleAvailability:
+      row.type === "BUNDLE" ? computeBundleAvailability(row.bundleComponents) : null,
+    preorder: row.preorder,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -465,11 +522,33 @@ export interface PrismaProductRow {
   widthMm: number | null;
   heightMm: number | null;
   lowStockThreshold: number | null;
+  type: string;
+  preorderDepositPercent: number | null;
+  preorderExpectedDate: Date | null;
+  preorderMaxUnits: number | null;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   category: { slug: string; nameBn: string; nameEn: string };
   brand: { name: string } | null;
+  digitalFiles: {
+    id: string;
+    storageKey: string;
+    fileName: string;
+    sizeBytes: number;
+    createdAt: Date;
+  }[];
+  bundleComponents: {
+    quantity: number;
+    componentVariant: {
+      id: string;
+      sku: string;
+      stock: number;
+      pricePoisha: number;
+      attributes: unknown;
+      product: { titleBn: string; titleEn: string; slug: string };
+    };
+  }[];
   images: { id: string; url: string; altBn: string; altEn: string; sortOrder: number }[];
   variants: {
     id: string;
@@ -567,6 +646,41 @@ export function mapPrismaRowToProductRow(row: PrismaProductRow): ProductRow {
     widthMm: row.widthMm,
     heightMm: row.heightMm,
     lowStockThreshold: row.lowStockThreshold,
+    type: PRODUCT_TYPES.includes(row.type as ProductType) ? (row.type as ProductType) : "SIMPLE",
+    digitalFiles: (row.digitalFiles ?? []).map((f) => ({
+      id: f.id,
+      storageKey: f.storageKey,
+      fileName: f.fileName,
+      sizeBytes: f.sizeBytes,
+      createdAt: f.createdAt.toISOString(),
+    })),
+    bundleComponents: (row.bundleComponents ?? []).map((c) => ({
+      variantId: c.componentVariant.id,
+      sku: c.componentVariant.sku,
+      productTitle: { bn: c.componentVariant.product.titleBn, en: c.componentVariant.product.titleEn },
+      productSlug: c.componentVariant.product.slug,
+      variantLabel:
+        c.componentVariant.attributes && typeof c.componentVariant.attributes === "object"
+          ? Object.entries(c.componentVariant.attributes as Record<string, unknown>)
+              .map(([k, v]) => `${k}: ${String(v)}`)
+              .join(" · ") || null
+          : null,
+      unitPricePoisha: c.componentVariant.pricePoisha,
+      quantity: c.quantity,
+      componentStock: c.componentVariant.stock,
+    })),
+    preorder:
+      row.preorderDepositPercent !== null ||
+      row.preorderExpectedDate !== null ||
+      row.preorderMaxUnits !== null
+        ? {
+            depositPercent: row.preorderDepositPercent,
+            expectedDate: row.preorderExpectedDate
+              ? row.preorderExpectedDate.toISOString().slice(0, 10)
+              : null,
+            maxUnits: row.preorderMaxUnits,
+          }
+        : null,
     deletedAt: row.deletedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -580,6 +694,21 @@ const PRODUCT_INCLUDE = {
   brand: { select: { name: true } },
   images: true,
   variants: { where: { deletedAt: null } },
+  digitalFiles: true,
+  bundleComponents: {
+    include: {
+      componentVariant: {
+        select: {
+          id: true,
+          sku: true,
+          stock: true,
+          pricePoisha: true,
+          attributes: true,
+          product: { select: { titleBn: true, titleEn: true, slug: true } },
+        },
+      },
+    },
+  },
 };
 
 /** Service ledger vocabulary -> StockMovementType DB enum. */
@@ -623,11 +752,21 @@ export interface PrismaLikeClient {
     create: (args: Record<string, unknown>) => Promise<{ id: string }>;
   };
   productVariant: {
-    findMany: (args: Record<string, unknown>) => Promise<{ sku: string }[]>;
+    findMany: (
+      args: Record<string, unknown>,
+    ) => Promise<{ sku: string; id?: string; productId?: string; deletedAt?: Date | null }[]>;
     create: (args: Record<string, unknown>) => Promise<{ id: string; sku: string; stock: number }>;
     update: (args: Record<string, unknown>) => Promise<unknown>;
   };
   productImage: {
+    deleteMany: (args: Record<string, unknown>) => Promise<unknown>;
+    createMany: (args: Record<string, unknown>) => Promise<unknown>;
+  };
+  digitalFile: {
+    deleteMany: (args: Record<string, unknown>) => Promise<unknown>;
+    createMany: (args: Record<string, unknown>) => Promise<unknown>;
+  };
+  bundleComponent: {
     deleteMany: (args: Record<string, unknown>) => Promise<unknown>;
     createMany: (args: Record<string, unknown>) => Promise<unknown>;
   };
@@ -907,8 +1046,53 @@ export class PrismaCatalogRepository implements CatalogRepository {
     return true;
   }
 
+  /**
+   * Bundle component sanity (wave 15): components must be real, live
+   * variants of OTHER products, never the bundle itself, and never a
+   * variant of another BUNDLE (stock math stays single-level — a
+   * bundle of bundles would need recursive reservation).
+   */
+  private async validateBundleComponents(
+    client: PrismaLikeClient,
+    bundleProductId: string | null,
+    components: { variantId: string; quantity: number }[],
+  ): Promise<void> {
+    if (components.length === 0) return;
+    const ids = components.map((c) => c.variantId);
+    if (new Set(ids).size !== ids.length) {
+      throw new Error("Bundle component variants must be unique.");
+    }
+    const variants = await client.productVariant.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, productId: true, deletedAt: true },
+    });
+    const byId = new Map(variants.map((v) => [v.id, v]));
+    for (const c of components) {
+      const v = byId.get(c.variantId);
+      if (!v || v.deletedAt !== null) {
+        throw new Error(`Bundle component variant not found: ${c.variantId}`);
+      }
+      if (bundleProductId !== null && v.productId === bundleProductId) {
+        throw new Error("Bundle components cannot belong to the bundle product itself.");
+      }
+    }
+    const productIds = [...new Set(variants.map((v) => v.productId).filter((p): p is string => typeof p === "string"))];
+    if (productIds.length > 0) {
+      const products = await client.product.findMany({
+        where: { id: { in: productIds } },
+        select: { id: true, type: true },
+      });
+      for (const p of products) {
+        if (p.type === "BUNDLE") {
+          throw new Error("Bundle components cannot belong to another bundle product (no nested bundles).");
+        }
+      }
+    }
+  }
+
   async createProduct(input: ProductInput, actorId: string | null) {
     const result = await this.client.$transaction(async (tx) => {
+      await this.validateBundleComponents(tx, null, input.bundleComponents);
       const categoryId = await this.resolveCategoryId(tx, input.categorySlug);
       const brandId =
         input.brandName !== null && input.brandName !== undefined && input.brandName !== ""
@@ -942,6 +1126,25 @@ export class PrismaCatalogRepository implements CatalogRepository {
           widthMm: input.widthMm ?? null,
           heightMm: input.heightMm ?? null,
           lowStockThreshold: input.lowStockThreshold ?? null,
+          type: input.type,
+          preorderDepositPercent: input.preorder?.depositPercent ?? null,
+          preorderExpectedDate: input.preorder?.expectedDate
+            ? new Date(input.preorder.expectedDate)
+            : null,
+          preorderMaxUnits: input.preorder?.maxUnits ?? null,
+          digitalFiles: {
+            create: input.digitalFiles.map((f) => ({
+              storageKey: f.storageKey,
+              fileName: f.fileName,
+              sizeBytes: f.sizeBytes,
+            })),
+          },
+          bundleComponents: {
+            create: input.bundleComponents.map((c) => ({
+              componentVariantId: c.variantId,
+              quantity: c.quantity,
+            })),
+          },
           images: {
             create: input.images.map((i) => ({
               url: i.url,
@@ -1006,6 +1209,9 @@ export class PrismaCatalogRepository implements CatalogRepository {
       throw new Error("Reason is required when variant prices change (products.price_change).");
     }
     const result = await this.client.$transaction(async (tx) => {
+      if (input.bundleComponents !== undefined) {
+        await this.validateBundleComponents(tx, id, input.bundleComponents);
+      }
       const ledgerEntries: StockLedgerEntry[] = [];
       const movementRows: StockMovementWrite[] = [];
 
@@ -1118,8 +1324,46 @@ export class PrismaCatalogRepository implements CatalogRepository {
         }
       }
 
+      // Wave 15 per-type payloads — replace semantics, same contract
+      // as images: when the field is present in the payload it fully
+      // replaces the stored set (the editor always sends the full set).
+      if (input.digitalFiles !== undefined) {
+        await tx.digitalFile.deleteMany({ where: { productId: id } });
+        if (input.digitalFiles.length > 0) {
+          await tx.digitalFile.createMany({
+            data: input.digitalFiles.map((f) => ({
+              productId: id,
+              storageKey: f.storageKey,
+              fileName: f.fileName,
+              sizeBytes: f.sizeBytes,
+            })),
+          });
+        }
+      }
+      if (input.bundleComponents !== undefined) {
+        await tx.bundleComponent.deleteMany({ where: { bundleProductId: id } });
+        if (input.bundleComponents.length > 0) {
+          await tx.bundleComponent.createMany({
+            data: input.bundleComponents.map((c) => ({
+              bundleProductId: id,
+              componentVariantId: c.variantId,
+              quantity: c.quantity,
+            })),
+          });
+        }
+      }
+
       const data: Record<string, unknown> = {};
       if (input.slug !== undefined) data.slug = input.slug;
+      if (input.type !== undefined) data.type = input.type;
+      if (input.preorder !== undefined) {
+        // null clears every term; an object replaces all three.
+        data.preorderDepositPercent = input.preorder?.depositPercent ?? null;
+        data.preorderExpectedDate = input.preorder?.expectedDate
+          ? new Date(input.preorder.expectedDate)
+          : null;
+        data.preorderMaxUnits = input.preorder?.maxUnits ?? null;
+      }
       if (input.titleBn !== undefined) data.titleBn = input.titleBn;
       if (input.titleEn !== undefined) data.titleEn = input.titleEn;
       if (input.descriptionBn !== undefined) data.descriptionBn = input.descriptionBn;
@@ -1251,6 +1495,20 @@ export function validateCreateInput(input: ProductInput): string[] {
   for (const v of input.variants) {
     if (seen.has(v.sku)) errors.push(`Duplicate SKU in payload: ${v.sku}`);
     seen.add(v.sku);
+  }
+  const seenComponents = new Set<string>();
+  for (const c of input.bundleComponents) {
+    if (seenComponents.has(c.variantId)) {
+      errors.push(`Duplicate bundle component in payload: ${c.variantId}`);
+    }
+    seenComponents.add(c.variantId);
+  }
+  const seenKeys = new Set<string>();
+  for (const f of input.digitalFiles) {
+    if (seenKeys.has(f.storageKey)) {
+      errors.push(`Duplicate digital file in payload: ${f.storageKey}`);
+    }
+    seenKeys.add(f.storageKey);
   }
   return errors;
 }

@@ -14,10 +14,19 @@ import { WishlistToggleButton } from "@/catalog/WishlistToggleButton";
 import { ProductCard } from "@/catalog/ProductCard";
 import { renderDescriptionHtml } from "@/catalog/description";
 import { getRelatedProducts } from "@/catalog/related";
+import {
+  bundleAvailabilityState,
+  formatFileSize,
+  productTypeOf,
+  type PublicProductWithTypeFields,
+} from "@/catalog/product-type-contract";
 import { BdtAmount, DigitText } from "@/components/ui/numerals";
 import { ReviewSection } from "@/reviews/components/ReviewSection";
 import type { RecentlyViewedEntry } from "@/storefront-ux/types";
 import { Gallery } from "./Gallery";
+import { SpinViewer } from "./SpinViewer";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { DescriptionSection } from "./DescriptionSection";
 import { ProductVideo } from "./ProductVideo";
 import { SizeChartButton, SizeChartSection } from "./SizeChart";
@@ -136,6 +145,10 @@ export default async function ProductPage({ params }: { params: { slug: string }
   const repo = await tryCatalogRepository();
   const raw = repo ? await repo.getPublicProductBySlug(params.slug) : null;
   if (!raw) notFound();
+  // Wave 15-3: 360° spin viewer (module.product_extras) for products
+  // with enough gallery frames to spin.
+  await ensureDbFeatureFlags();
+  const spinEnabled = isFeatureEnabled("module.product_extras") && raw.images.length >= 6;
   // Public view: costPoisha stripped — never render cost to customers.
   const product = toPublicProduct(raw);
   const minPrice = minVariantPricePoisha(raw);
@@ -153,6 +166,44 @@ export default async function ProductPage({ params }: { params: { slug: string }
     ? Math.round(((bestDiscount.compare - bestDiscount.price) / bestDiscount.compare) * 100)
     : 0;
   const inStock = product.variants.some((v) => v.isActive && v.stock > 0);
+  // Product types (wave 15, doc 16 §P7): the public shape carries
+  // `type` + the per-type blocks (toPublicProduct's spread preserves
+  // them). SIMPLE — the default whenever the module flag is off —
+  // changes nothing on this page.
+  const typeFields = product as PublicProductWithTypeFields;
+  const productType = productTypeOf(typeFields);
+  const digitalFiles = typeFields.digitalFiles ?? [];
+  const bundleComponents = typeFields.bundleComponents ?? [];
+  // The service's fulfilment verdict for bundles; null = it said
+  // nothing, so the bundle keeps the variant-stock behaviour.
+  const bundleAvailable =
+    productType === "BUNDLE" ? bundleAvailabilityState(typeFields) : null;
+  const bundleUnavailable = bundleAvailable === false;
+  // The service's numeric bundle count (wave-15 parent fix): a bundle
+  // variant's own stock cache is not the sellable count, so the buy
+  // box is fed the component-derived count (server re-checks anyway).
+  const bundleCount =
+    productType === "BUNDLE" && typeof typeFields.bundleAvailability === "number"
+      ? typeFields.bundleAvailability
+      : null;
+  const displayInStock = bundleUnavailable ? false : bundleCount !== null ? bundleCount > 0 : inStock;
+  const preorder = typeFields.preorder ?? null;
+  const preorderExpectedLabel = preorder?.expectedDate
+    ? (() => {
+        const d = new Date(preorder.expectedDate as string);
+        return Number.isNaN(d.getTime())
+          ? null
+          : d.toLocaleDateString("bn-BD", { day: "numeric", month: "long", year: "numeric" });
+      })()
+    : null;
+  // Component sum for the "buy separately vs bundle" line — only
+  // when EVERY component carries a public price; otherwise the line
+  // is skipped rather than showing a partial (wrong) total.
+  const bundleComponentsTotal =
+    bundleComponents.length > 0 &&
+    bundleComponents.every((c) => typeof c.unitPricePoisha === "number")
+      ? bundleComponents.reduce((s, c) => s + (c.unitPricePoisha as number) * c.quantity, 0)
+      : null;
   // Sale window (Wave 14-2): when the product carries a sale window
   // (saleStartsAt/saleEndsAt) that is NOT currently active, the
   // compare-at strike + discount badge are hidden — the price itself
@@ -256,11 +307,19 @@ export default async function ProductPage({ params }: { params: { slug: string }
             titleBn={product.title.bn}
           />
           {product.videoUrl ? <ProductVideo videoUrl={product.videoUrl} titleBn={product.title.bn} /> : null}
+          {spinEnabled ? (
+            <SpinViewer images={product.images.map((i) => i.url)} title={product.title.bn} />
+          ) : null}
         </div>
 
         {/* Buy box — sticky on desktop (offset clears the taller
             v3 header: main row + mega-menu row) */}
         <div className="min-w-0 lg:sticky lg:top-[8.5rem]">
+          {productType === "PREORDER" ? (
+            <span className="mb-2 inline-flex rounded-full bg-sky-600 px-3 py-1 text-xs font-bold text-white">
+              প্রি-অর্ডার
+            </span>
+          ) : null}
           <h1 className="break-words text-[28px] font-extrabold leading-snug text-text-main [overflow-wrap:anywhere]">
             {product.title.bn}
           </h1>
@@ -282,8 +341,8 @@ export default async function ProductPage({ params }: { params: { slug: string }
               </>
             ) : null}
             <span aria-hidden="true" className="text-border">•</span>
-            <span className={`font-semibold ${inStock ? "text-emerald-600" : "text-rose-600"}`}>
-              {inStock ? "স্টকে আছে" : "স্টক শেষ"}
+            <span className={`font-semibold ${displayInStock ? "text-emerald-600" : "text-rose-600"}`}>
+              {displayInStock ? "স্টকে আছে" : "স্টক শেষ"}
             </span>
           </p>
 
@@ -334,6 +393,64 @@ export default async function ProductPage({ params }: { params: { slug: string }
               })}
             </div>
 
+            {/* Product-type notices (wave 15) — inside the buy card,
+                right where the buying decision happens. */}
+            {productType === "DIGITAL" ? (
+              <div className="mt-6 rounded-2xl border border-violet-200 bg-violet-50 p-4">
+                <p className="text-sm font-bold text-violet-900">
+                  📥 ডিজিটাল পণ্য — পেমেন্টের পরেই ডাউনলোড লিংক
+                </p>
+                <p className="mt-1 text-sm leading-relaxed text-violet-800">
+                  এটি কোনো ফিজিক্যাল পণ্য নয়, কুরিয়ারে কিছু আসবে না — পেমেন্ট সম্পূর্ণ হলেই
+                  ডাউনলোড লিংক (আর লাইসেন্স কী থাকলে সেটিও) পৌঁছে যাবে।
+                </p>
+                {digitalFiles.length > 0 ? (
+                  <ul className="mt-3 space-y-1.5 border-t border-violet-200 pt-3 text-sm text-violet-900">
+                    {digitalFiles.map((f, i) => (
+                      <li key={`${f.fileName}-${i}`} className="flex flex-wrap items-baseline justify-between gap-2">
+                        <span className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">{f.fileName}</span>
+                        <span className="shrink-0 text-xs text-violet-700">
+                          <DigitText text={formatFileSize(f.sizeBytes)} />
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
+            {productType === "PREORDER" ? (
+              <div className="mt-6 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+                <p className="font-bold">🗓️ এটি একটি প্রি-অর্ডার পণ্য — এখন বুকিং চলছে</p>
+                {preorderExpectedLabel ? (
+                  <p className="mt-1">
+                    সম্ভাব্য ডেলিভারি: <span className="font-semibold">{preorderExpectedLabel}</span>
+                  </p>
+                ) : null}
+                {preorder?.depositPercent != null ? (
+                  <p className="mt-1">
+                    বুকিং কনফার্ম করতে অগ্রিম{" "}
+                    <span className="font-semibold">
+                      <DigitText text={`${preorder.depositPercent}%`} />
+                    </span>{" "}
+                    দিতে হবে — বাকি টাকা ডেলিভারির সময়।
+                  </p>
+                ) : null}
+                {preorder?.maxUnits != null ? (
+                  <p className="mt-1">
+                    সীমিত প্রি-অর্ডার: সর্বোচ্চ <DigitText text={`${preorder.maxUnits}`} />
+                    টি পর্যন্ত বুকিং নেওয়া হবে।
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {productType === "BUNDLE" && bundleUnavailable ? (
+              <p className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">
+                এই বান্ডলের অন্তত একটি কম্পোনেন্ট আপাতত স্টকে নেই — তাই বান্ডলটি এখন কেনা যাচ্ছে না।
+              </p>
+            ) : null}
+
             <div id="buy-box" className="mt-6">
               {/* Add-to-cart + buy-now (Agent 35): client variant picker +
                   quantity + guest-cart write via src/cart contracts. */}
@@ -341,7 +458,17 @@ export default async function ProductPage({ params }: { params: { slug: string }
                 productId={product.id}
                 productTitleBn={product.title.bn}
                 imageUrl={product.images[0]?.url ?? null}
-                variants={product.variants}
+                variants={
+                  bundleCount !== null
+                    ? product.variants.map((v) => ({ ...v, stock: bundleCount }))
+                    : product.variants
+                }
+                {...(productType === "PREORDER"
+                  ? { ctaLabel: "প্রি-অর্ডার করুন", buyNowLabel: "এখনই প্রি-অর্ডার করুন" }
+                  : {})}
+                {...(bundleUnavailable
+                  ? { forceUnavailable: true, unavailableLabel: "বান্ডল স্টকে নেই" }
+                  : {})}
               />
             </div>
 
@@ -413,6 +540,77 @@ export default async function ProductPage({ params }: { params: { slug: string }
         </section>
       ) : null}
 
+      {/* Bundle contents (wave 15) — exactly what ships together.
+          Component titles link to their own PDPs when the public
+          shape carries the component slug. */}
+      {productType === "BUNDLE" && bundleComponents.length > 0 ? (
+        <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8">
+          <h2 className="text-lg font-extrabold text-text-main">এই বান্ডলে যা যা আছে</h2>
+          <ul className="mt-3 max-w-3xl divide-y divide-border">
+            {bundleComponents.map((c, i) => {
+              const title = c.productTitle?.bn ?? c.productTitle?.en ?? "";
+              const linePrice =
+                typeof c.unitPricePoisha === "number" ? c.unitPricePoisha * c.quantity : null;
+              return (
+                <li
+                  key={`${c.variantId}-${i}`}
+                  className="flex flex-wrap items-baseline justify-between gap-2 py-2.5 text-[15px]"
+                >
+                  <span className="min-w-0">
+                    {c.productSlug && title ? (
+                      <Link href={`/product/${c.productSlug}`} className="font-semibold text-brand-700 hover:underline">
+                        {title}
+                      </Link>
+                    ) : (
+                      <span className="font-semibold text-text-main">{title || "কম্পোনেন্ট পণ্য"}</span>
+                    )}
+                    {c.variantLabel ? (
+                      <span className="block text-xs text-text-subtle">{c.variantLabel}</span>
+                    ) : c.sku ? (
+                      <span className="block text-xs text-text-subtle">SKU: {c.sku}</span>
+                    ) : null}
+                  </span>
+                  <span className="shrink-0 text-text-muted">
+                    × <DigitText text={`${c.quantity}`} />
+                    {linePrice !== null ? (
+                      <>
+                        {" "}
+                        —{" "}
+                        <BdtAmount poisha={linePrice} className="font-semibold tabular-nums" />
+                      </>
+                    ) : null}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          {bundleComponentsTotal !== null ? (
+            <p className="mt-3 max-w-3xl text-sm leading-relaxed text-text-muted">
+              আলাদা করে কিনলে মোট:{" "}
+              <BdtAmount poisha={bundleComponentsTotal} className="font-semibold tabular-nums" /> — বান্ডল
+              দাম:{" "}
+              <BdtAmount poisha={minPrice} className="font-semibold tabular-nums text-brand-700" />
+              {bundleComponentsTotal > minPrice ? (
+                <>
+                  {" "}
+                  (সাশ্রয়{" "}
+                  <BdtAmount
+                    poisha={bundleComponentsTotal - minPrice}
+                    className="font-semibold tabular-nums text-emerald-700"
+                  />
+                  )
+                </>
+              ) : null}
+            </p>
+          ) : null}
+          {bundleUnavailable ? (
+            <p className="mt-2 max-w-3xl text-sm font-medium text-rose-600">
+              আপাতত বান্ডলটি স্টকে নেই — কম্পোনেন্টগুলো আলাদাভাবে কিনতে উপরের লিংকগুলো দেখুন।
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
       {/* Customer reviews — real APPROVED rows from the Review table
           + the moderated submission form (src/reviews). */}
       <ReviewSection productId={product.id} productSlug={product.slug} />
@@ -430,7 +628,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
       ) : null}
 
       <RecentlyViewedRail excludeProductId={product.id} />
-      <StickyBuyBar titleBn={product.title.bn} pricePoisha={minPrice} inStock={inStock} buyBoxId="buy-box" />
+      <StickyBuyBar titleBn={product.title.bn} pricePoisha={minPrice} inStock={displayInStock} buyBoxId="buy-box" />
       <CompareTray />
     </main>
   );

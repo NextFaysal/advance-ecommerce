@@ -7,7 +7,9 @@ import {
   writeCatalogAudit,
 } from "@/catalog/api";
 import { hasPermission } from "@/lib/rbac";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { productUpdateSchema } from "@/catalog/service";
+import { productTypePayloadLocked } from "@/catalog/product-types";
 
 // GET /api/v1/admin/products/[id]
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
@@ -31,6 +33,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await requireAdminSession();
   if (session instanceof NextResponse) return session;
+  await ensureDbFeatureFlags();
   if (!hasPermission(session.permissions, "products.edit")) {
     return apiError("FORBIDDEN", "Missing permission: products.edit", 403);
   }
@@ -46,6 +49,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         },
       },
       { status: 400 },
+    );
+  }
+  // Wave 15: product-type payloads require module.product_types.
+  if (productTypePayloadLocked(parsed.data)) {
+    return apiError(
+      "FEATURE_LOCKED",
+      "Product types are locked for this install (module.product_types is OFF).",
+      403,
     );
   }
   try {

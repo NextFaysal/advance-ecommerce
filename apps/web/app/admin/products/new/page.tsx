@@ -6,6 +6,7 @@
 // audit-logged, initial stock booked in the stock_movements ledger);
 // on success the editor redirects to the new product's edit page.
 import { listBrandNames, listCategories } from "@/catalog/server-read";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProductEditor, type CategoryOption } from "../product-editor";
 
@@ -13,6 +14,9 @@ export const dynamic = "force-dynamic";
 
 export default async function NewProductPage() {
   const [categories, brandNames] = await Promise.all([listCategories(), listBrandNames()]);
+  // Product types (wave 15, doc 16 §P7): the editor shows the type
+  // selector + per-type panels only when the module flag is on.
+  const productTypesEnabled = isFeatureEnabled("module.product_types");
   const categoryOptions: CategoryOption[] = categories.map((c) => ({
     slug: c.slug,
     nameBn: c.name.bn,
@@ -25,7 +29,13 @@ export default async function NewProductPage() {
         description="সব তথ্য দিয়ে সেভ করুন — স্ট্যাটাস খসড়া (DRAFT) রাখলে স্টোরে দেখা যাবে না, প্রকাশ (ACTIVE) করলেই লাইভ হবে। সেভ হলে পণ্যটির এডিট পেজে নিয়ে যাওয়া হবে।"
         breadcrumb="পণ্য / নতুন পণ্য"
       />
-      <ProductEditor mode="create" categories={categoryOptions} brandNames={brandNames} initial={null} />
+      <ProductEditor
+        mode="create"
+        categories={categoryOptions}
+        brandNames={brandNames}
+        initial={null}
+        productTypesEnabled={productTypesEnabled}
+      />
     </main>
   );
 }

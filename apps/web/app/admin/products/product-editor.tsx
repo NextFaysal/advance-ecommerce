@@ -36,13 +36,33 @@
 // Cost price stays visible to all staff in this form, matching the
 // editor's long-standing behaviour; field-level hiding is a separate
 // RBAC item and is deliberately not invented here.
+//
+// Product types (wave 15, doc 16 §P7): behind the prop
+// `productTypesEnabled` (the server pages read the
+// `module.product_types` flag). When the flag is OFF the editor
+// behaves exactly as before — no selector, no panels — and the
+// payload only gains `type: "SIMPLE"`. The one exception: a product
+// that ALREADY has a non-SIMPLE type keeps its type UI visible and
+// round-trips its type + per-type block untouched, so an unrelated
+// price edit can never silently strip a digital product's files.
+// When the UI is visible, the payload sends `type` plus ONLY the
+// active type's block (digitalFiles / bundleComponents / preorder —
+// see src/catalog/product-type-contract.ts); switching type keeps
+// the other blocks' data in state for when the merchant switches
+// back. Digital files upload through
+// POST /api/v1/admin/products/digital-upload exactly like images do
+// through /upload (metadata -> presigned PUT -> row), and the
+// license-key pool is managed against
+// /api/v1/admin/products/[id]/license-keys (edit mode only — a
+// product must exist before keys can belong to it).
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { generateVariantDrafts, validateVariantDrafts } from "@/catalog/variants";
 import { renderDescriptionHtml } from "@/catalog/description";
+import { formatFileSize, type ProductTypeValue, type ProductWithTypeFields } from "@/catalog/product-type-contract";
 import type { Product, ProductAttribute, ProductStatus } from "@/catalog/types";
 
 export interface CategoryOption {
@@ -73,6 +93,32 @@ interface ImageRow {
   url: string;
   altBn: string;
   altEn: string;
+}
+
+/** Digital deliverable row (wave 15): storageKey + display name +
+ *  size. sizeBytes stays text in state (manual rows type it in);
+ *  it is parsed to an integer when the payload is built. */
+interface DigitalFileRow {
+  key: number;
+  storageKey: string;
+  fileName: string;
+  sizeBytes: string;
+}
+
+/** Bundle component row (wave 15). The payload needs only
+ *  variantId + quantity; the display fields are filled from the
+ *  loaded product shape and/or the picker search so staff can see
+ *  WHAT they bundled. unitPricePoisha is null when unknown (the
+ *  summary line then says so instead of guessing). */
+interface BundleRow {
+  key: number;
+  variantId: string;
+  quantity: string;
+  productTitle: string;
+  productSlug: string;
+  variantSku: string;
+  variantLabel: string;
+  unitPricePoisha: number | null;
 }
 
 type Tab = "basic" | "media" | "variants" | "content" | "seo";
@@ -270,12 +316,16 @@ export function ProductEditor({
   categories,
   brandNames,
   initial,
+  productTypesEnabled = false,
 }: {
   mode: "create" | "edit";
   productId?: string;
   categories: CategoryOption[];
   brandNames: string[];
   initial: Product | null;
+  /** module.product_types flag, read server-side by the pages.
+   *  Default false: every other consumer keeps today's behaviour. */
+  productTypesEnabled?: boolean;
 }) {
   const router = useRouter();
   const keySeq = useRef(1);
@@ -407,6 +457,94 @@ export function ProductEditor({
   // page (parallel section) — the editor's duty here is only to
   // ROUND-TRIP the loaded ids unchanged so a save never wipes them.
   const [relatedIds] = useState<string[]>(initial?.relatedIds ?? []);
+
+  // --- Product types (wave 15) ---------------------------------------------
+  // The loaded type blocks ride the Product shape (service contract —
+  // see src/catalog/product-type-contract.ts); read them through the
+  // view type so this file does not depend on ./types carrying them.
+  const initialTypeFields = (initial ?? null) as ProductWithTypeFields | null;
+  const loadedType: ProductTypeValue = initialTypeFields?.type ?? "SIMPLE";
+  const [productType, setProductType] = useState<ProductTypeValue>(loadedType);
+  // Selector + panels render when the module flag is on, OR when the
+  // product already IS a typed product (its data must stay visible
+  // and editable even if the flag was later switched off).
+  const showTypeUi = productTypesEnabled || loadedType !== "SIMPLE";
+
+  const [digitalRows, setDigitalRows] = useState<DigitalFileRow[]>(() =>
+    (initialTypeFields?.digitalFiles ?? []).map((f) => ({
+      key: keySeq.current++,
+      storageKey: f.storageKey ?? "",
+      fileName: f.fileName,
+      sizeBytes: String(f.sizeBytes ?? 0),
+    })),
+  );
+  // Digital upload mirrors the image upload (metadata -> presigned
+  // PUT -> row) with its own item list + notice.
+  const digitalFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [digitalUploadItems, setDigitalUploadItems] = useState<
+    { id: number; name: string; progress: number; status: "uploading" | "done" | "error"; error?: string }[]
+  >([]);
+  const [digitalUploadNotice, setDigitalUploadNotice] = useState("");
+
+  // License-key pool (edit mode + DIGITAL only — the keys belong to
+  // a saved product). GET returns MASKED keys + counts; POST takes a
+  // pasted batch. Assigned state comes from the service.
+  const [licenseKeys, setLicenseKeys] = useState<
+    { id: string; masked: string; assigned: boolean }[]
+  >([]);
+  const [licenseCounts, setLicenseCounts] = useState<{
+    total: number;
+    available: number;
+    assigned: number;
+  } | null>(null);
+  const [licensePaste, setLicensePaste] = useState("");
+  const [licenseBusy, setLicenseBusy] = useState(false);
+  const [licenseNotice, setLicenseNotice] = useState("");
+  const [licenseLoaded, setLicenseLoaded] = useState(false);
+
+  const [bundleRows, setBundleRows] = useState<BundleRow[]>(() =>
+    (initialTypeFields?.bundleComponents ?? []).map((c) => ({
+      key: keySeq.current++,
+      variantId: c.variantId,
+      quantity: String(c.quantity ?? 1),
+      productTitle: c.productTitle?.bn ?? c.productTitle?.en ?? "",
+      productSlug: c.productSlug ?? "",
+      variantSku: c.sku ?? "",
+      variantLabel: c.variantLabel ?? "",
+      unitPricePoisha: c.unitPricePoisha ?? null,
+    })),
+  );
+  const [bundleQuery, setBundleQuery] = useState("");
+  const [bundleHits, setBundleHits] = useState<
+    {
+      productId: string;
+      productTitle: string;
+      productSlug: string;
+      variantId: string;
+      variantSku: string;
+      variantLabel: string;
+      pricePoisha: number;
+      stock: number;
+    }[]
+  >([]);
+  const [bundleSearching, setBundleSearching] = useState(false);
+  const bundleDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [preorderDeposit, setPreorderDeposit] = useState(
+    initialTypeFields?.preorder?.depositPercent != null
+      ? String(initialTypeFields.preorder.depositPercent)
+      : "",
+  );
+  const [preorderExpected, setPreorderExpected] = useState(
+    initialTypeFields?.preorder?.expectedDate
+      ? initialTypeFields.preorder.expectedDate.slice(0, 10)
+      : "",
+  );
+  const [preorderMaxUnits, setPreorderMaxUnits] = useState(
+    initialTypeFields?.preorder?.maxUnits != null
+      ? String(initialTypeFields.preorder.maxUnits)
+      : "",
+  );
 
   // --- Image upload (P1: presigned direct-to-storage) ------------------------
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -707,6 +845,75 @@ export function ProductEditor({
       faqItemsValue.push({ q: row.q, a: row.a });
     }
 
+    // --- Product types (wave 15): validate + build the ACTIVE type's
+    // block. The other blocks stay in state untouched — switching
+    // type away and back never loses what staff typed.
+    let digitalFilesValue: { storageKey: string; fileName: string; sizeBytes: number }[] | undefined;
+    if (productType === "DIGITAL") {
+      digitalFilesValue = [];
+      for (const row of digitalRows) {
+        const storageKey = row.storageKey.trim();
+        const fileName = row.fileName.trim();
+        const sizeText = row.sizeBytes.trim();
+        if (storageKey === "" && fileName === "" && (sizeText === "" || sizeText === "0")) continue;
+        if (storageKey === "" || fileName === "") {
+          errors.push("ডিজিটাল ফাইল: প্রতিটি সারিতে storage key ও ফাইলের নাম দুটোই লাগবে।");
+          break;
+        }
+        const size = Number(sizeText);
+        if (sizeText === "" || !Number.isInteger(size) || size < 0) {
+          errors.push(`ডিজিটাল ফাইল "${fileName}": সাইজ (bytes) শূন্য বা তার বেশি পূর্ণ সংখ্যা হতে হবে।`);
+          continue;
+        }
+        digitalFilesValue.push({ storageKey, fileName, sizeBytes: size });
+      }
+      if (effectiveStatus === "ACTIVE" && digitalFilesValue.length === 0) {
+        errors.push("ডিজিটাল পণ্য প্রকাশ করতে অন্তত ১টি ফাইল যোগ করুন — ফাইল ছাড়া ক্রেতা কিছুই ডাউনলোড করতে পারবে না।");
+      }
+    }
+    let bundleComponentsValue: { variantId: string; quantity: number }[] | undefined;
+    if (productType === "BUNDLE") {
+      bundleComponentsValue = [];
+      const seen = new Set<string>();
+      for (const row of bundleRows) {
+        if (seen.has(row.variantId)) continue;
+        seen.add(row.variantId);
+        const qty = Number(row.quantity);
+        if (row.quantity.trim() === "" || !Number.isInteger(qty) || qty < 1) {
+          errors.push(`বান্ডল কম্পোনেন্ট ${row.variantSku || row.variantId}: পরিমাণ কমপক্ষে ১ হতে হবে।`);
+          continue;
+        }
+        bundleComponentsValue.push({ variantId: row.variantId, quantity: qty });
+      }
+      if (effectiveStatus === "ACTIVE" && bundleComponentsValue.length === 0) {
+        errors.push("বান্ডল প্রকাশ করতে অন্তত ১টি কম্পোনেন্ট যোগ করুন।");
+      }
+    }
+    let preorderValue:
+      | { depositPercent: number | null; expectedDate: string | null; maxUnits: number | null }
+      | undefined;
+    if (productType === "PREORDER") {
+      const depositText = preorderDeposit.trim();
+      let deposit: number | null = null;
+      if (depositText !== "") {
+        const n = Number(depositText);
+        if (!Number.isFinite(n) || n < 0 || n > 100) {
+          errors.push("অগ্রিম (%): ০ থেকে ১০০-এর মধ্যে হতে হবে।");
+        } else {
+          deposit = n;
+        }
+      }
+      const maxUnits = parseNonNegativeInt(preorderMaxUnits, "সর্বোচ্চ প্রি-অর্ডার সংখ্যা", errors);
+      if (maxUnits !== null && maxUnits < 1) {
+        errors.push("সর্বোচ্চ প্রি-অর্ডার সংখ্যা কমপক্ষে ১ হতে হবে।");
+      }
+      preorderValue = {
+        depositPercent: deposit,
+        expectedDate: preorderExpected.trim() === "" ? null : preorderExpected.trim(),
+        maxUnits,
+      };
+    }
+
     if (errors.length > 0) return { errors };
 
     const payload: Record<string, unknown> = {
@@ -739,6 +946,15 @@ export function ProductEditor({
       images,
       variants,
     };
+    // Product types (wave 15): `type` always rides along; ONLY the
+    // active type's block is sent. A SIMPLE product's payload is
+    // therefore exactly the pre-type payload + type: "SIMPLE".
+    payload.type = productType;
+    if (productType === "DIGITAL") payload.digitalFiles = digitalFilesValue ?? [];
+    if (productType === "BUNDLE") payload.bundleComponents = bundleComponentsValue ?? [];
+    if (productType === "PREORDER") {
+      payload.preorder = preorderValue ?? { depositPercent: null, expectedDate: null, maxUnits: null };
+    }
     if (mode === "edit" && priceChanged) {
       if (reason.trim() === "") {
         return { errors: ["দাম বদলেছে — সেভ করার আগে দাম বদলের কারণ লিখুন (অডিটে থাকবে)।"] };
@@ -915,6 +1131,351 @@ export function ProductEditor({
     }
   }
 
+  // --- Product types: digital upload (mirrors the image flow) --------------
+  /** PUT one digital file at its presigned URL with progress, then
+   *  land it as a digital-file row carrying the ticket's storage key. */
+  function putDigitalFileWithProgress(
+    file: File,
+    ticket: { uploadUrl: string; storageKey: string },
+    itemId: number,
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      const fail = (message: string) => {
+        setDigitalUploadItems((prev) =>
+          prev.map((it) => (it.id === itemId ? { ...it, status: "error" as const, error: message } : it)),
+        );
+        resolve();
+      };
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", ticket.uploadUrl);
+      if (file.type) xhr.setRequestHeader("Content-Type", file.type);
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const pct = Math.round((event.loaded / event.total) * 100);
+          setDigitalUploadItems((prev) => prev.map((it) => (it.id === itemId ? { ...it, progress: pct } : it)));
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setDigitalUploadItems((prev) =>
+            prev.map((it) => (it.id === itemId ? { ...it, progress: 100, status: "done" as const } : it)),
+          );
+          setDigitalRows((prev) => [
+            ...prev,
+            { key: nextKey(), storageKey: ticket.storageKey, fileName: file.name, sizeBytes: String(file.size) },
+          ]);
+          resolve();
+        } else {
+          fail(`স্টোরেজ আপলোড ব্যর্থ হয়েছে (HTTP ${xhr.status}) — আবার চেষ্টা করুন।`);
+        }
+      };
+      xhr.onerror = () => fail("নেটওয়ার্ক সমস্যায় আপলোড ব্যর্থ হয়েছে — সংযোগ দেখে আবার চেষ্টা করুন।");
+      xhr.onabort = () => fail("আপলোড বাতিল হয়েছে।");
+      xhr.send(file);
+    });
+  }
+
+  /** Digital file-picker flow: metadata -> tickets from
+   *  /digital-upload -> direct PUT per file. STORAGE_NOT_CONFIGURED
+   *  becomes the panel notice; manual storage-key rows keep working. */
+  async function handleDigitalFilesSelected(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    const files = Array.from(list);
+    const items = files.map((f) => ({
+      id: nextKey(),
+      name: f.name,
+      progress: 0,
+      status: "uploading" as const,
+    }));
+    setDigitalUploadItems((prev) => [...prev, ...items]);
+    setDigitalUploadNotice("");
+    const markAllError = (message: string) =>
+      setDigitalUploadItems((prev) =>
+        prev.map((it) =>
+          items.some((i) => i.id === it.id) ? { ...it, status: "error" as const, error: message } : it,
+        ),
+      );
+    try {
+      const res = await fetch("/api/v1/admin/products/digital-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productSlug: slug.trim() || null,
+          files: files.map((f) => ({ filename: f.name, contentType: f.type, sizeBytes: f.size })),
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        data?: { uploads?: { key?: string; storageKey?: string; uploadUrl: string }[] };
+        error?: { code?: string; message?: string };
+      };
+      if (!res.ok) {
+        const message = data.error?.message ?? "আপলোড শুরু করা যায়নি।";
+        if (data.error?.code === "STORAGE_NOT_CONFIGURED") setDigitalUploadNotice(message);
+        markAllError(message);
+        return;
+      }
+      const uploads = data.data?.uploads ?? [];
+      await Promise.all(
+        uploads.map((ticket, idx) => {
+          const file = files[idx];
+          const item = items[idx];
+          const storageKey = ticket.key ?? ticket.storageKey ?? "";
+          if (!file || !item) return Promise.resolve();
+          if (storageKey === "") {
+            markAllError("সার্ভার আপলোডের storage key দেয়নি — ফাইলটি যোগ করা যায়নি।");
+            return Promise.resolve();
+          }
+          return putDigitalFileWithProgress(file, { uploadUrl: ticket.uploadUrl, storageKey }, item.id);
+        }),
+      );
+    } catch {
+      markAllError("Network error — আপলোড সার্ভারে পৌঁছানো যায়নি।");
+    }
+  }
+
+  // --- Product types: license-key pool --------------------------------------
+  const loadLicenseKeys = useCallback(async () => {
+    if (mode !== "edit" || !productId) return;
+    try {
+      const res = await fetch(`/api/v1/admin/products/${productId}/license-keys`);
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: {
+          keys?: { id?: string; masked?: string; maskedKey?: string; assigned?: boolean; status?: string }[];
+          items?: { id?: string; masked?: string; maskedKey?: string; assigned?: boolean; status?: string }[];
+          counts?: { total?: number; available?: number; assigned?: number };
+          total?: number;
+          available?: number;
+          assigned?: number;
+          poolTotal?: number;
+          poolAvailable?: number;
+        };
+        error?: { message?: string };
+      };
+      if (!res.ok) {
+        setLicenseNotice(json.error?.message ?? "লাইসেন্স কী লোড করা যায়নি।");
+        setLicenseLoaded(true);
+        return;
+      }
+      const raw = json.data?.keys ?? json.data?.items ?? [];
+      const keys = raw.map((k, i) => ({
+        id: k.id ?? `key-${i}`,
+        masked: k.masked ?? k.maskedKey ?? "",
+        assigned: k.assigned ?? k.status === "ASSIGNED",
+      }));
+      const c = json.data?.counts;
+      const assignedCount = keys.filter((k) => k.assigned).length;
+      setLicenseKeys(keys);
+      setLicenseCounts({
+        total: c?.total ?? json.data?.total ?? json.data?.poolTotal ?? keys.length,
+        available: c?.available ?? json.data?.available ?? json.data?.poolAvailable ?? keys.length - assignedCount,
+        assigned: c?.assigned ?? json.data?.assigned ?? assignedCount,
+      });
+      setLicenseLoaded(true);
+    } catch {
+      setLicenseNotice("Network error — লাইসেন্স কী লোড করা যায়নি।");
+      setLicenseLoaded(true);
+    }
+  }, [mode, productId]);
+
+  useEffect(() => {
+    if (showTypeUi && productType === "DIGITAL" && mode === "edit" && !licenseLoaded) {
+      void loadLicenseKeys();
+    }
+  }, [showTypeUi, productType, mode, licenseLoaded, loadLicenseKeys]);
+
+  async function handleAddLicenseKeys() {
+    if (mode !== "edit" || !productId) return;
+    const keys = licensePaste
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (keys.length === 0) {
+      setLicenseNotice("আগে অন্তত একটি কী পেস্ট করুন (প্রতি লাইনে একটি)।");
+      return;
+    }
+    setLicenseBusy(true);
+    setLicenseNotice("");
+    try {
+      const res = await fetch(`/api/v1/admin/products/${productId}/license-keys`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keys }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: { added?: number; inserted?: number; duplicates?: number; skipped?: number; skippedDuplicates?: number };
+        error?: { message?: string };
+      };
+      if (!res.ok) {
+        setLicenseNotice(json.error?.message ?? "লাইসেন্স কী যোগ করা যায়নি।");
+        return;
+      }
+      const added = json.data?.added ?? json.data?.inserted ?? keys.length;
+      const dup = json.data?.duplicates ?? json.data?.skippedDuplicates ?? json.data?.skipped ?? 0;
+      setLicensePaste("");
+      setLicenseNotice(
+        `✅ ${added}টি নতুন লাইসেন্স কী যোগ হয়েছে${dup > 0 ? ` — ${dup}টি আগে থেকেই ছিল, বাদ দেওয়া হয়েছে` : ""}।`,
+      );
+      // Reload the masked list + counts from the server (source of truth).
+      setLicenseLoaded(false);
+    } catch {
+      setLicenseNotice("Network error — লাইসেন্স কী যোগ করা যায়নি।");
+    } finally {
+      setLicenseBusy(false);
+    }
+  }
+
+  // --- Product types: bundle component search --------------------------------
+  const searchBundle = useCallback(
+    async (q: string) => {
+      if (q.trim().length < 2) {
+        setBundleHits([]);
+        return;
+      }
+      setBundleSearching(true);
+      try {
+        const params = new URLSearchParams({ q: q.trim(), status: "ALL", page: "1", pageSize: "10" });
+        const res = await fetch(`/api/v1/admin/products?${params.toString()}`);
+        const json = (await res.json().catch(() => ({}))) as {
+          data?: Array<{
+            id: string;
+            slug: string;
+            title: { bn: string; en: string };
+            variants: {
+              id: string;
+              sku: string;
+              attributes: Record<string, string>;
+              pricePoisha: number;
+              stock: number;
+            }[];
+          }>;
+        };
+        const hits: typeof bundleHits = [];
+        for (const p of json.data ?? []) {
+          // A product never bundles ITSELF (its own variants would
+          // make fulfilment circular); other products are fair game.
+          if (productId && p.id === productId) continue;
+          for (const v of p.variants ?? []) {
+            hits.push({
+              productId: p.id,
+              productTitle: p.title.bn,
+              productSlug: p.slug,
+              variantId: v.id,
+              variantSku: v.sku,
+              variantLabel: Object.values(v.attributes ?? {}).join(" / ") || "স্ট্যান্ডার্ড",
+              pricePoisha: v.pricePoisha,
+              stock: v.stock,
+            });
+          }
+        }
+        setBundleHits(hits);
+      } catch {
+        setBundleHits([]);
+      } finally {
+        setBundleSearching(false);
+      }
+    },
+    [productId],
+  );
+
+  useEffect(() => {
+    if (bundleDebounce.current) clearTimeout(bundleDebounce.current);
+    bundleDebounce.current = setTimeout(() => void searchBundle(bundleQuery), 250);
+    return () => {
+      if (bundleDebounce.current) clearTimeout(bundleDebounce.current);
+    };
+  }, [bundleQuery, searchBundle]);
+
+  // Loaded bundle rows may carry only variantId + quantity (the wire
+  // minimum). Resolve their display data once from the admin list so
+  // staff see titles/SKUs/prices instead of raw ids; unresolved rows
+  // keep the id display and stay fully editable.
+  const bundleResolveTried = useRef(false);
+  useEffect(() => {
+    if (bundleResolveTried.current) return;
+    if (mode !== "edit" || loadedType !== "BUNDLE") return;
+    if (!bundleRows.some((r) => r.unitPricePoisha === null || r.productTitle === "")) return;
+    bundleResolveTried.current = true;
+    void (async () => {
+      try {
+        const params = new URLSearchParams({ status: "ALL", page: "1", pageSize: "100" });
+        const res = await fetch(`/api/v1/admin/products?${params.toString()}`);
+        const json = (await res.json().catch(() => ({}))) as {
+          data?: Array<{
+            id: string;
+            slug: string;
+            title: { bn: string; en: string };
+            variants: {
+              id: string;
+              sku: string;
+              attributes: Record<string, string>;
+              pricePoisha: number;
+            }[];
+          }>;
+        };
+        const byVariant = new Map<
+          string,
+          { productTitle: string; productSlug: string; variantSku: string; variantLabel: string; unitPricePoisha: number }
+        >();
+        for (const p of json.data ?? []) {
+          for (const v of p.variants ?? []) {
+            byVariant.set(v.id, {
+              productTitle: p.title.bn,
+              productSlug: p.slug,
+              variantSku: v.sku,
+              variantLabel: Object.values(v.attributes ?? {}).join(" / ") || "স্ট্যান্ডার্ড",
+              unitPricePoisha: v.pricePoisha,
+            });
+          }
+        }
+        setBundleRows((prev) =>
+          prev.map((r) => {
+            const found = byVariant.get(r.variantId);
+            if (!found) return r;
+            return {
+              ...r,
+              productTitle: r.productTitle || found.productTitle,
+              productSlug: r.productSlug || found.productSlug,
+              variantSku: r.variantSku || found.variantSku,
+              variantLabel: r.variantLabel || found.variantLabel,
+              unitPricePoisha: r.unitPricePoisha ?? found.unitPricePoisha,
+            };
+          }),
+        );
+      } catch {
+        // Display resolution is best-effort; the rows remain valid.
+      }
+    })();
+    // One-shot: bundleRows is read as the initial snapshot on purpose.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, loadedType]);
+
+  function addBundleComponent(hit: (typeof bundleHits)[number]) {
+    setBundleRows((prev) => {
+      if (prev.some((r) => r.variantId === hit.variantId)) return prev;
+      return [
+        ...prev,
+        {
+          key: nextKey(),
+          variantId: hit.variantId,
+          quantity: "1",
+          productTitle: hit.productTitle,
+          productSlug: hit.productSlug,
+          variantSku: hit.variantSku,
+          variantLabel: hit.variantLabel,
+          unitPricePoisha: hit.pricePoisha,
+        },
+      ];
+    });
+  }
+
+  // Bundle summary: components' total (known prices only) vs this
+  // product's own default price from the Basic tab.
+  const bundleKnownTotal = bundleRows.reduce(
+    (sum, r) => sum + (r.unitPricePoisha !== null ? r.unitPricePoisha * (Number(r.quantity) || 0) : 0),
+    0,
+  );
+  const bundleHasUnknownPrice = bundleRows.some((r) => r.unitPricePoisha === null);
+
   const qualityDone = {
     title: Boolean(titleBn.trim() && titleEn.trim()),
     image: imageRows.some((i) => i.url.trim() !== ""),
@@ -1039,6 +1600,24 @@ export function ProductEditor({
               <option value="ARCHIVED">আর্কাইভ (ARCHIVED)</option>
             </select>
           </label>
+          {showTypeUi && (
+            <label className="block text-sm">
+              ধরন
+              <select
+                value={productType}
+                onChange={(e) => setProductType(e.target.value as ProductTypeValue)}
+                className={inputCls}
+              >
+                <option value="SIMPLE">সাধারণ পণ্য (SIMPLE)</option>
+                <option value="DIGITAL">ডিজিটাল পণ্য (DIGITAL) — ডাউনলোড / লাইসেন্স</option>
+                <option value="BUNDLE">বান্ডল (BUNDLE) — একসাথে কয়েকটি পণ্য</option>
+                <option value="PREORDER">প্রি-অর্ডার (PREORDER)</option>
+              </select>
+              <span className="mt-1 block text-xs text-text-subtle">
+                ধরন বদলালে আগের ধরনের তথ্য হারায় না — সেভের সময় শুধু সক্রিয় ধরনের ব্লকটাই যাবে। ধরন অনুযায়ী সেটিংস নিচে আসবে।
+              </span>
+            </label>
+          )}
           <label className="block text-sm">
             ক্যাটাগরি *
             <select value={categorySlug} onChange={(e) => setCategorySlug(e.target.value)} className={inputCls}>
@@ -1139,6 +1718,338 @@ export function ProductEditor({
             </p>
           </div>
         </div>
+      )}
+
+      {tab === "basic" && showTypeUi && productType === "DIGITAL" && (
+        <section className="mt-4 rounded-lg border border-border bg-card p-4 shadow-sm">
+          <h3 className="text-sm font-semibold">ডিজিটাল ফাইল — ক্রেতা পেমেন্টের পর যা ডাউনলোড করবে</h3>
+          <p className="mt-1 text-xs leading-relaxed text-text-subtle">
+            ফাইল আপলোড করুন (সরাসরি স্টোরেজে যাবে), অথবা স্টোরেজে আগে থেকে থাকা ফাইলের key হাতে বসান। প্রকাশ (ACTIVE) করতে অন্তত ১টি ফাইল লাগবে।
+          </p>
+          <div className="mt-3 rounded-lg border border-border bg-surface-2 p-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => digitalFileInputRef.current?.click()}
+                className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition motion-fast hover:brightness-105"
+              >
+                ফাইল আপলোড করুন
+              </button>
+              <span className="text-xs text-text-subtle">
+                যেকোনো ধরনের ফাইল (PDF, ZIP, MP4, সফটওয়্যার…)। আপলোড শেষ হলে ফাইলটি নিচের তালিকায় যোগ হবে; সেভ না করা পর্যন্ত পণ্যে যুক্ত হবে না।
+              </span>
+              <input
+                ref={digitalFileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  void handleDigitalFilesSelected(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+            {digitalUploadNotice && (
+              <p role="status" className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                ⚠️ {digitalUploadNotice} — স্টোরেজ সেটআপ না থাকলে উপরের পদ্ধতিতে আপলোড হবে না; তখন key হাতে বসিয়ে সেভ করা যাবে।
+              </p>
+            )}
+            {digitalUploadItems.length > 0 && (
+              <ul className="mt-3 space-y-2.5">
+                {digitalUploadItems.map((it) => (
+                  <li key={it.id} className="text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 truncate text-text-main">{it.name}</span>
+                      <span className="shrink-0 text-xs font-medium">
+                        {it.status === "done" ? (
+                          <span className="text-emerald-700">✅ আপলোড হয়েছে</span>
+                        ) : it.status === "error" ? (
+                          <span className="text-rose-600">❌ ব্যর্থ</span>
+                        ) : (
+                          <span className="text-text-muted">আপলোড হচ্ছে… {it.progress}%</span>
+                        )}
+                      </span>
+                    </div>
+                    {it.status === "uploading" && (
+                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-card" role="progressbar" aria-valuenow={it.progress} aria-valuemin={0} aria-valuemax={100}>
+                        <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${it.progress}%` }} />
+                      </div>
+                    )}
+                    {it.status === "error" && it.error && <p className="mt-1 text-xs text-rose-600">{it.error}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="mt-3 space-y-2.5">
+            {digitalRows.length === 0 && (
+              <p className="rounded-lg border border-dashed border-border px-4 py-5 text-center text-sm text-text-subtle">
+                এখনো কোনো ফাইল যোগ হয়নি।
+              </p>
+            )}
+            {digitalRows.map((row) => (
+              <div key={row.key} className="grid items-end gap-2 rounded-md border border-border p-2.5 md:grid-cols-[1.3fr_1fr_0.55fr_auto]">
+                <label className="block text-xs">
+                  Storage key *
+                  <input
+                    value={row.storageKey}
+                    onChange={(e) =>
+                      setDigitalRows((prev) => prev.map((p) => (p.key === row.key ? { ...p, storageKey: e.target.value } : p)))
+                    }
+                    className={`${cellInputCls} font-mono text-xs`}
+                    placeholder="products/slug/files/guide.pdf"
+                  />
+                </label>
+                <label className="block text-xs">
+                  ফাইলের নাম (ক্রেতা যা দেখবে) *
+                  <input
+                    value={row.fileName}
+                    onChange={(e) =>
+                      setDigitalRows((prev) => prev.map((p) => (p.key === row.key ? { ...p, fileName: e.target.value } : p)))
+                    }
+                    className={cellInputCls}
+                    placeholder="guide.pdf"
+                  />
+                </label>
+                <label className="block text-xs">
+                  সাইজ (bytes)
+                  <input
+                    value={row.sizeBytes}
+                    onChange={(e) =>
+                      setDigitalRows((prev) => prev.map((p) => (p.key === row.key ? { ...p, sizeBytes: e.target.value } : p)))
+                    }
+                    inputMode="numeric"
+                    className={cellInputCls}
+                  />
+                  <span className="mt-0.5 block text-[11px] text-text-subtle">
+                    {formatFileSize(Number(row.sizeBytes) || 0)}
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setDigitalRows((prev) => prev.filter((p) => p.key !== row.key))}
+                  className="rounded-md border border-border px-2.5 py-1.5 text-xs text-rose-600"
+                >
+                  মুছুন
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              setDigitalRows((prev) => [...prev, { key: nextKey(), storageKey: "", fileName: "", sizeBytes: "" }])
+            }
+            className="mt-3 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium transition motion-fast hover:border-brand-300"
+          >
+            + ফাইল হাতে যোগ করুন
+          </button>
+
+          <div className="mt-5 border-t border-border pt-4">
+            <h4 className="text-sm font-semibold">লাইসেন্স কী পুল</h4>
+            {mode !== "edit" ? (
+              <p className="mt-1 text-sm text-text-muted">
+                লাইসেন্স কী যোগ করা যায় পণ্যটি তৈরি হওয়ার পর — এডিট পেজে এসে এই অংশেই কী পুল পাবেন।
+              </p>
+            ) : (
+              <>
+                {licenseCounts && (
+                  <p className="mt-1 text-xs text-text-muted">
+                    মোট {licenseCounts.total}টি কী — ফাঁকা আছে {licenseCounts.available}টি, বরাদ্দ হয়ে গেছে {licenseCounts.assigned}টি।
+                    {licenseCounts.available === 0 && " পুল খালি হলে নতুন অর্ডারে কী দেওয়া যাবে না — আরও কী যোগ করুন।"}
+                  </p>
+                )}
+                <label className="mt-2 block text-xs">
+                  নতুন কী পেস্ট করুন (প্রতি লাইনে একটি)
+                  <textarea
+                    value={licensePaste}
+                    onChange={(e) => setLicensePaste(e.target.value)}
+                    rows={4}
+                    className={`${cellInputCls} font-mono text-xs`}
+                    placeholder={"XXXX-XXXX-XXXX-XXXX\nYYYY-YYYY-YYYY-YYYY"}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void handleAddLicenseKeys()}
+                  disabled={licenseBusy}
+                  className="mt-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition motion-fast hover:brightness-105 disabled:opacity-50"
+                >
+                  {licenseBusy ? "যোগ হচ্ছে…" : "কী যোগ করুন"}
+                </button>
+                {licenseNotice && (
+                  <p role="status" className="mt-2 text-sm text-text-muted">
+                    {licenseNotice}
+                  </p>
+                )}
+                {!licenseLoaded ? (
+                  <p className="mt-3 text-sm text-text-subtle">লাইসেন্স কী লোড হচ্ছে…</p>
+                ) : licenseKeys.length === 0 ? (
+                  <p className="mt-3 text-sm text-text-subtle">এখনো কোনো লাইসেন্স কী যোগ হয়নি।</p>
+                ) : (
+                  <ul className="mt-3 max-h-56 space-y-1 overflow-y-auto rounded-md border border-border p-2.5">
+                    {licenseKeys.map((k) => (
+                      <li key={k.id} className="flex items-center justify-between gap-3 text-xs">
+                        <span className="min-w-0 truncate font-mono">{k.masked}</span>
+                        <span className={`shrink-0 font-medium ${k.assigned ? "text-text-subtle" : "text-emerald-700"}`}>
+                          {k.assigned ? "বরাদ্দ হয়ে গেছে" : "ফাঁকা"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="mt-2 text-[11px] text-text-subtle">
+                  নিরাপত্তার জন্য কীগুলো এখানে মাস্ক করা দেখায় — পুরো কী এই পেজে কখনো পাঠানো হয় না।
+                </p>
+              </>
+            )}
+          </div>
+        </section>
+      )}
+
+      {tab === "basic" && showTypeUi && productType === "BUNDLE" && (
+        <section className="mt-4 rounded-lg border border-border bg-card p-4 shadow-sm">
+          <h3 className="text-sm font-semibold">বান্ডল কম্পোনেন্ট — এই পণ্যটি কিনলে যা যা একসাথে মিলবে</h3>
+          <p className="mt-1 text-xs leading-relaxed text-text-subtle">
+            অন্য পণ্যের ভেরিয়েন্ট খুঁজে যোগ করুন ও পরিমাণ ঠিক করুন। প্রকাশ (ACTIVE) করতে অন্তত ১টি কম্পোনেন্ট লাগবে। এই পণ্যের নিজের ভেরিয়েন্ট কম্পোনেন্ট হিসেবে যোগ করা যায় না।
+          </p>
+          <label className="mt-3 block text-sm">
+            কম্পোনেন্ট খুঁজুন (পণ্যের নাম বা SKU)
+            <input
+              value={bundleQuery}
+              onChange={(e) => setBundleQuery(e.target.value)}
+              className={inputCls}
+              placeholder="কমপক্ষে ২ অক্ষর লিখুন…"
+            />
+          </label>
+          {bundleSearching && <p className="mt-2 text-xs text-text-subtle">খোঁজা হচ্ছে…</p>}
+          {bundleHits.length > 0 && (
+            <ul className="mt-2 max-h-64 space-y-1.5 overflow-y-auto rounded-md border border-border p-2">
+              {bundleHits.map((hit) => {
+                const added = bundleRows.some((r) => r.variantId === hit.variantId);
+                return (
+                  <li key={hit.variantId} className="flex flex-wrap items-center gap-2 rounded-md bg-surface-2 px-2.5 py-2 text-sm">
+                    <span className="min-w-0 flex-1">
+                      <span className="font-medium">{hit.productTitle}</span>
+                      <span className="block text-xs text-text-subtle">
+                        {hit.variantSku} — {hit.variantLabel} • {formatBdt(hit.pricePoisha)} • স্টক: {hit.stock}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      disabled={added}
+                      onClick={() => addBundleComponent(hit)}
+                      className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold transition motion-fast hover:border-brand-300 disabled:opacity-50"
+                    >
+                      {added ? "যোগ হয়েছে ✓" : "যোগ করুন"}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <div className="mt-3 space-y-2">
+            {bundleRows.length === 0 && (
+              <p className="rounded-lg border border-dashed border-border px-4 py-5 text-center text-sm text-text-subtle">
+                এখনো কোনো কম্পোনেন্ট যোগ হয়নি — উপরে খুঁজে যোগ করুন।
+              </p>
+            )}
+            {bundleRows.map((r) => (
+              <div key={r.key} className="flex flex-wrap items-center gap-2.5 rounded-md border border-border p-2.5 text-sm">
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium">{r.productTitle || "অজানা পণ্য"}</span>
+                  <span className="block text-xs text-text-subtle">
+                    {r.variantSku || r.variantId}
+                    {r.variantLabel ? ` — ${r.variantLabel}` : ""}
+                    {r.unitPricePoisha !== null ? ` • একক দাম ${formatBdt(r.unitPricePoisha)}` : ""}
+                  </span>
+                </span>
+                <label className="flex items-center gap-1.5 text-xs">
+                  পরিমাণ
+                  <input
+                    value={r.quantity}
+                    onChange={(e) =>
+                      setBundleRows((prev) => prev.map((p) => (p.key === r.key ? { ...p, quantity: e.target.value } : p)))
+                    }
+                    inputMode="numeric"
+                    className="w-20 rounded-md border border-border bg-card px-2 py-1.5 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                  />
+                </label>
+                {r.unitPricePoisha !== null && (
+                  <span className="text-xs font-medium text-text-muted">
+                    = {formatBdt(r.unitPricePoisha * (Number(r.quantity) || 0))}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setBundleRows((prev) => prev.filter((p) => p.key !== r.key))}
+                  className="rounded-md border border-border px-2.5 py-1.5 text-xs text-rose-600"
+                >
+                  মুছুন
+                </button>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 rounded-md bg-surface-2 px-3 py-2 text-sm text-text-muted">
+            কম্পোনেন্টগুলোর মোট দাম: <strong className="text-text-main">{formatBdt(bundleKnownTotal)}</strong>
+            {"  "}— এই পণ্যের ডিফল্ট দাম: <strong className="text-text-main">{formatBdt(basePricePoisha)}</strong>
+            {bundleKnownTotal > 0 && basePricePoisha > 0 && (
+              <>
+                {"  "}— পার্থক্য:{" "}
+                <strong className={bundleKnownTotal - basePricePoisha >= 0 ? "text-emerald-700" : "text-rose-600"}>
+                  {formatBdt(Math.abs(bundleKnownTotal - basePricePoisha))}{" "}
+                  {bundleKnownTotal - basePricePoisha >= 0 ? "সাশ্রয়" : "বেশি"}
+                </strong>
+              </>
+            )}
+            {bundleHasUnknownPrice && (
+              <span className="mt-1 block text-xs text-amber-700">
+                কয়েকটি কম্পোনেন্টের দাম জানা যায়নি — মোটটি অসম্পূর্ণ হতে পারে।
+              </span>
+            )}
+          </p>
+        </section>
+      )}
+
+      {tab === "basic" && showTypeUi && productType === "PREORDER" && (
+        <section className="mt-4 rounded-lg border border-border bg-card p-4 shadow-sm">
+          <h3 className="text-sm font-semibold">প্রি-অর্ডার সেটিংস</h3>
+          <p className="mt-1 text-xs leading-relaxed text-text-subtle">
+            সব ঘরই ঐচ্ছিক — যা বসাবেন, স্টোরে প্রি-অর্ডার ব্যাজের পাশাপাশি ঠিক সেটাই দেখাবে (অগ্রিমের নোট ও সম্ভাব্য তারিখ)।
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <label className="block text-sm">
+              অগ্রিম (%) — বুকিংয়ের সময় যা নেওয়া হবে
+              <input
+                value={preorderDeposit}
+                onChange={(e) => setPreorderDeposit(e.target.value)}
+                inputMode="decimal"
+                className={inputCls}
+                placeholder="যেমন: 30"
+              />
+            </label>
+            <label className="block text-sm">
+              সম্ভাব্য ডেলিভারির তারিখ
+              <input
+                type="date"
+                value={preorderExpected}
+                onChange={(e) => setPreorderExpected(e.target.value)}
+                className={inputCls}
+              />
+            </label>
+            <label className="block text-sm">
+              সর্বোচ্চ প্রি-অর্ডার সংখ্যা (খালি = সীমা নেই)
+              <input
+                value={preorderMaxUnits}
+                onChange={(e) => setPreorderMaxUnits(e.target.value)}
+                inputMode="numeric"
+                className={inputCls}
+                placeholder="যেমন: 100"
+              />
+            </label>
+          </div>
+        </section>
       )}
 
       {tab === "media" && (

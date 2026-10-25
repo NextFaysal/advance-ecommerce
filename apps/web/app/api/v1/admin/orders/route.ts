@@ -41,6 +41,7 @@ import {
   orderRowToEnriched,
 } from "@/orders/repository";
 import type { Order } from "@/orders/types";
+import { productTypesEnabledInDb } from "@/catalog/product-types";
 import { enqueueBulkJob, processBulkJob } from "@/jobs/bulk-actions";
 import { manualOrderSchema } from "@/orders/manual-order";
 import { normalizeBdPhone } from "@/checkout/validation";
@@ -287,6 +288,9 @@ async function handleManualCreate(req: Request, session: AdminSession, body: unk
   // DB snapshots: existence, stock, product name + SKU. Only the unit
   // price is staff-entered (see header note).
   const snapshots = await getVariantSnapshots(input.items.map((i) => i.variantId));
+  // Wave 15: bundle availability is component-derived while the
+  // product-types flag is ON (same rule as public checkout).
+  const typesOn = await productTypesEnabledInDb();
   const items: Order["items"] = [];
   const priceOverrides: string[] = [];
   let subtotalPoisha = 0;
@@ -295,11 +299,15 @@ async function handleManualCreate(req: Request, session: AdminSession, body: unk
     if (!server) {
       return err("VARIANT_NOT_FOUND", `Variant not found: ${item.variantId}`, 400);
     }
-    if (server.stock < item.quantity) {
+    const availableStock =
+      typesOn && server.productType === "BUNDLE" && server.bundleAvailability !== null
+        ? server.bundleAvailability
+        : server.stock;
+    if (availableStock < item.quantity) {
       return err("INSUFFICIENT_STOCK", `Insufficient stock for ${server.sku}.`, 400, {
         variantId: item.variantId,
         sku: server.sku,
-        availableStock: server.stock,
+        availableStock,
         requested: item.quantity,
       });
     }

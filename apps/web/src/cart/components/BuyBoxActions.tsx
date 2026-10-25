@@ -38,6 +38,18 @@ export interface BuyBoxActionsProps {
   /** Product-level fallback image when a variant has none. */
   imageUrl?: string | null;
   variants: BuyBoxVariant[];
+  /** Optional CTA overrides (wave 15 product types): a PREORDER
+   *  product labels its buy box "প্রি-অর্ডার করুন". Unset = the
+   *  standard labels, byte-identical to before. */
+  ctaLabel?: string;
+  buyNowLabel?: string;
+  /** Force the sold-out state regardless of variant stock — a BUNDLE
+   *  whose components cannot currently fulfil it (PDP reads the
+   *  service's bundleAvailability) disables buying exactly like a
+   *  sold-out variant. */
+  forceUnavailable?: boolean;
+  /** Label shown on the disabled CTA when forceUnavailable applies. */
+  unavailableLabel?: string;
 }
 
 function variantLabel(variant: BuyBoxVariant): string {
@@ -49,6 +61,10 @@ export function BuyBoxActions({
   productTitleBn,
   imageUrl,
   variants,
+  ctaLabel,
+  buyNowLabel,
+  forceUnavailable,
+  unavailableLabel,
 }: BuyBoxActionsProps) {
   const router = useRouter();
   const digits = useDigitText();
@@ -69,7 +85,7 @@ export function BuyBoxActions({
   const selected =
     activeVariants.find((v) => v.id === selectedId) ?? defaultVariant;
   const stockCap = selected ? Math.max(0, selected.stock) : 0;
-  const outOfStock = !selected || stockCap <= 0;
+  const outOfStock = Boolean(forceUnavailable) || !selected || stockCap <= 0;
 
   // Keep the quantity inside the newly selected variant's stock.
   useEffect(() => {
@@ -188,7 +204,7 @@ export function BuyBoxActions({
           onClick={addSelected}
           className="flex-1"
         >
-          {outOfStock ? "স্টক শেষ" : "কার্টে যোগ করুন"}
+          {outOfStock ? (unavailableLabel ?? "স্টক শেষ") : (ctaLabel ?? "কার্টে যোগ করুন")}
         </Button>
       </div>
 
@@ -200,7 +216,7 @@ export function BuyBoxActions({
         onClick={buyNow}
         className="w-full"
       >
-        এখনই কিনুন
+        {buyNowLabel ?? "এখনই কিনুন"}
       </Button>
 
       {notice ? (

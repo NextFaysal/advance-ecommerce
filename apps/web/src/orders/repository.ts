@@ -56,6 +56,14 @@
  * impossible.
  */
 import { prisma } from "@advance-ecommerce/db";
+import {
+  deductBundleComponents,
+  productTypesEnabledInDb,
+  restoreBundleComponentsForOrder,
+  runDigitalFulfilmentForOrder,
+  validateProductTypeRules,
+} from "../catalog/product-types";
+import { computeBundleAvailability } from "../catalog/types";
 import { getSetting } from "../lib/settings";
 import { riskLevel } from "./customer";
 import { runDeliveredOrderHooks } from "./delivered-hooks";
@@ -295,6 +303,13 @@ export interface ServerVariantSnapshot {
   sku: string;
   unitPricePoisha: number;
   stock: number;
+  /** Wave 15: the owning product's type + component-derived bundle
+   *  availability (null for non-bundles / component-less bundles).
+   *  Checkout pre-checks use the bundle number when the product-types
+   *  flag is ON — a bundle variant's own stock cache is not the
+   *  sellable count. */
+  productType: string;
+  bundleAvailability: number | null;
 }
 
 /**
@@ -310,16 +325,34 @@ export async function getVariantSnapshots(
 ): Promise<Map<string, ServerVariantSnapshot>> {
   const variants = await prisma.productVariant.findMany({
     where: { id: { in: variantIds }, deletedAt: null },
-    include: { product: { select: { titleEn: true } } },
+    include: {
+      product: {
+        select: {
+          titleEn: true,
+          type: true,
+          bundleComponents: {
+            select: { quantity: true, componentVariant: { select: { stock: true } } },
+          },
+        },
+      },
+    },
   });
   const map = new Map<string, ServerVariantSnapshot>();
   for (const v of variants) {
+    const components = v.product.bundleComponents ?? [];
     map.set(v.id, {
       variantId: v.id,
       productName: v.product.titleEn,
       sku: v.sku,
       unitPricePoisha: v.pricePoisha,
       stock: v.stock,
+      productType: v.product.type,
+      bundleAvailability:
+        v.product.type === "BUNDLE" && components.length > 0
+          ? computeBundleAvailability(
+              components.map((c) => ({ quantity: c.quantity, componentStock: c.componentVariant.stock })),
+            )
+          : null,
     });
   }
   return map;
@@ -447,6 +480,13 @@ async function nextOrderNo(): Promise<string> {
  * Stock reservation: the checkout path never called the inventory
  * ledger before this swap (stock was a read-only check), so nothing is
  * called now either — the inventory module's swap owns that wiring.
+ * WAVE 15 EXCEPTION (product types, module.product_types flag): inside
+ * this same transaction, validateProductTypeRules enforces PREORDER
+ * unit caps and BUNDLE component availability, and
+ * deductBundleComponents then reserves the components through the
+ * stock ledger (SALE_RESERVE) — see src/catalog/product-types.ts for
+ * the exact seam behaviour. Typed failures (BundleStockError /
+ * PreorderCapError) roll the whole create back.
  */
 export async function createOrderRecord(
   input: CreateOrderRecordInput,
@@ -467,6 +507,10 @@ export async function createOrderRecord(
   let noteId: string | null = null;
   try {
     const created = await prisma.$transaction(async (tx) => {
+      // Wave 15 (product types): preorder caps + bundle component
+      // availability, validated before anything is written; the
+      // returned needs are deducted after the order row exists.
+      const { componentNeeds } = await validateProductTypeRules(tx, input.items);
       const customer = await tx.customer.upsert({
         where: { phone: input.customerPhone },
         create: {
@@ -530,6 +574,10 @@ export async function createOrderRecord(
           },
         },
       });
+      // Wave 15: reserve bundle components through the stock ledger
+      // (no-op for non-bundle orders / flag OFF — the needs map is
+      // empty in both cases).
+      await deductBundleComponents(tx, componentNeeds, order.id, orderNo);
       await tx.orderStatusHistory.create({
         data: { orderId: order.id, from: null, to: "PENDING", changedById: null },
       });
@@ -631,6 +679,11 @@ export async function applyOrderTransition(
   if (to === "DELIVERED") {
     await runDeliveredOrderHooks(row.id);
   }
+  // Wave 15: cancelling releases any bundle component reserves this
+  // order holds (ledger-idempotent, never throws — see product-types).
+  if (to === "CANCELLED") {
+    await restoreBundleComponentsForOrder(row.id);
+  }
   return { kind: "ok", order: result.order, from: order.status };
 }
 
@@ -690,6 +743,10 @@ export async function saveOrder(order: Order): Promise<void> {
   // credit functions; see src/orders/delivered-hooks.ts).
   if (row.status !== "DELIVERED" && order.status === "DELIVERED") {
     await runDeliveredOrderHooks(order.id);
+  }
+  // Wave 15: same bundle-reserve release on the bulk-actions path.
+  if (row.status !== "CANCELLED" && order.status === "CANCELLED") {
+    await restoreBundleComponentsForOrder(order.id);
   }
 }
 
@@ -831,6 +888,12 @@ export async function markOrderPayment(
       paidPoisha: outcome.netPaid,
       totalPoisha: order.totalPoisha,
     });
+    // Digital fulfilment (wave 15, module.product_types): download
+    // grants + license keys are issued on PAID — digital goods
+    // deliver on payment, not on the physical DELIVERED transition.
+    // The fulfilment function is flag-gated and never throws, so a
+    // fulfilment failure can never fail the payment itself.
+    await runDigitalFulfilmentForOrder(order.id);
   }
   return {
     orderId: order.id,

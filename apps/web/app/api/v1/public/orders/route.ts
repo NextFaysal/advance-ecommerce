@@ -81,6 +81,7 @@ import {
   listOrdersByPhone,
   orderRowToEnriched,
 } from "@/orders/repository";
+import { BundleStockError, PreorderCapError, productTypesEnabledInDb } from "@/catalog/product-types";
 import type { Order } from "@/orders/types";
 
 function shippingPoisha(method: string): number {
@@ -135,6 +136,10 @@ export async function POST(req: Request) {
 
   // Server-side re-validation: price, SKU, name, stock from the DB only.
   const serverPrices = await getVariantSnapshots(form.items.map((i) => i.variantId));
+  // Wave 15: a BUNDLE variant's sellable count is component-derived
+  // (its own stock cache is not the count) — only while the
+  // product-types flag is ON, matching the transaction's gate.
+  const typesOn = await productTypesEnabledInDb();
   const snapshotItems: Order["items"] = [];
   let subtotalPoisha = 0;
   for (const item of form.items) {
@@ -142,12 +147,16 @@ export async function POST(req: Request) {
     if (!server) {
       return errorResponse("VARIANT_NOT_FOUND", `Variant not found: ${item.variantId}`, 400);
     }
-    if (server.stock < item.quantity) {
+    const availableStock =
+      typesOn && server.productType === "BUNDLE" && server.bundleAvailability !== null
+        ? server.bundleAvailability
+        : server.stock;
+    if (availableStock < item.quantity) {
       return errorResponse(
         "INSUFFICIENT_STOCK",
         `Insufficient stock for ${server.sku}.`,
         400,
-        { variantId: item.variantId, sku: server.sku, availableStock: server.stock, requested: item.quantity },
+        { variantId: item.variantId, sku: server.sku, availableStock, requested: item.quantity },
       );
     }
     snapshotItems.push({
@@ -225,8 +234,12 @@ export async function POST(req: Request) {
 
   // Persist in ONE transaction (see repository.createOrderRecord). A
   // concurrent create with the same key loses the UNIQUE race and comes
-  // back as a replay of the winning row.
-  const created = await createOrderRecord({
+  // back as a replay of the winning row. Wave 15 product-type failures
+  // (bundle component stock, preorder cap) roll the create back and are
+  // mapped to honest client errors here instead of a 500.
+  let created: Awaited<ReturnType<typeof createOrderRecord>>;
+  try {
+    created = await createOrderRecord({
     idempotencyKey: form.idempotencyKey,
     customerName: form.customerName,
     customerPhone: form.phone, // already normalized to +8801XXXXXXXXX by Zod transform
@@ -249,7 +262,16 @@ export async function POST(req: Request) {
         ? { code: coupon.code, discountPoisha: coupon.discountPoisha }
         : null,
     note: form.note,
-  });
+    });
+  } catch (err) {
+    if (err instanceof BundleStockError) {
+      return errorResponse("INSUFFICIENT_STOCK", err.message, 400, err.details);
+    }
+    if (err instanceof PreorderCapError) {
+      return errorResponse("PREORDER_CAP_REACHED", err.message, 409, err.details);
+    }
+    throw err;
+  }
   if (created.replayed) {
     const existing =
       enrichmentByOrderId.get(created.existing.id) ?? orderRowToEnriched(created.existing);

@@ -9,6 +9,7 @@
 // product renders an honest not-found state, never mock data.
 import Link from "next/link";
 import { getProductForAdminEdit, listBrandNames, listCategories } from "@/catalog/server-read";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProductEditor, type CategoryOption } from "../product-editor";
 import { RelatedPicker, type RelatedPick } from "./related-picker";
@@ -81,6 +82,7 @@ export default async function EditProductPage({
         categories={categoryOptions}
         brandNames={brandNames}
         initial={product}
+        productTypesEnabled={isFeatureEnabled("module.product_types")}
       />
       <RelatedPicker productId={product.id} initialPicks={relatedPicks} />
     </main>

@@ -408,6 +408,18 @@ model Product {
   heightMm         Int?
   // Per-product low-stock threshold override (null = global default).
   lowStockThreshold Int?
+  // Wave 15 (doc 16 P7): product types — SIMPLE | DIGITAL | BUNDLE |
+  // PREORDER, validated in the catalog service zod (house style: a
+  // free String column, not a DB enum). Everything below is inert for
+  // SIMPLE products and gated by the module.product_types flag.
+  type         String @default("SIMPLE")
+  // Pre-order terms live on the product (deposit %, expected date,
+  // total-unit cap). NOTE: the PreOrder model below is a per-CUSTOMER
+  // pre-order record owned by advanced-orders — it is NOT product
+  // config, so terms do not live there.
+  preorderDepositPercent Int?
+  preorderExpectedDate    DateTime?
+  preorderMaxUnits       Int?
   deletedAt        DateTime?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
@@ -416,6 +428,9 @@ model Product {
   flashSaleItems   FlashSaleItem[]
   vendorProducts   VendorProduct[]
   reviews          Review[]
+  digitalFiles     DigitalFile[]
+  licenseKeys      LicenseKey[]
+  bundleComponents BundleComponent[] @relation("ProductBundleComponents")
   @@index([categoryId])
   @@index([status])
 }
@@ -444,6 +459,7 @@ model ProductVariant {
   flashSaleItems  FlashSaleItem[]
   purchaseOrderItems PurchaseOrderItem[]
   vendorProducts  VendorProduct[]
+  bundleComponentOf BundleComponent[] @relation("BundleComponentVariant")
   @@index([productId])
 }
 
@@ -457,6 +473,71 @@ model ProductImage {
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   @@index([productId])
+}
+
+// ---------------------------------------------------------------------------
+// Product types (wave 15, doc 16 P7) — all gated by module.product_types.
+// ---------------------------------------------------------------------------
+
+// A downloadable file attached to a DIGITAL product. The bytes live in
+// R2/S3 under `storageKey` (digital/ prefix, minted by the presigned
+// upload-ticket endpoint); this row is metadata only. storageKey is
+// STAFF-ONLY — public shapes expose fileName/sizeBytes only.
+model DigitalFile {
+  id             String          @id @default(cuid())
+  productId      String
+  product        Product         @relation(fields: [productId], references: [id])
+  storageKey     String
+  fileName       String
+  sizeBytes      Int
+  createdAt      DateTime        @default(now())
+  downloadGrants DownloadGrant[]
+  @@index([productId])
+}
+
+// A license key in a DIGITAL product's pool. Assigned at fulfilment
+// (orderId + assignedAt set); the key itself is STAFF-ONLY — admin
+// lists mask it to the last 4 characters.
+model LicenseKey {
+  id         String    @id @default(cuid())
+  productId  String
+  product    Product   @relation(fields: [productId], references: [id])
+  key        String    @unique
+  orderId    String?
+  assignedAt DateTime?
+  createdAt  DateTime  @default(now())
+  @@index([productId, assignedAt])
+}
+
+// One buyer's right to download one digital file for one order item.
+// Only the SHA-256 hash of the bearer token is stored — the raw token
+// exists once, in the fulfilment result / buyer-facing link.
+model DownloadGrant {
+  id            String      @id @default(cuid())
+  orderId       String
+  orderItemId   String
+  digitalFileId String
+  digitalFile   DigitalFile @relation(fields: [digitalFileId], references: [id])
+  tokenHash     String      @unique
+  expiresAt     DateTime
+  maxDownloads  Int         @default(5)
+  downloadsUsed Int         @default(0)
+  createdAt     DateTime    @default(now())
+  @@index([orderId])
+}
+
+// One component line of a BUNDLE product: the bundle's own variants
+// are price/stock shells; selling one bundle unit consumes `quantity`
+// units of the component variant (enforced at order create).
+model BundleComponent {
+  id                 String         @id @default(cuid())
+  bundleProductId    String
+  bundleProduct      Product        @relation("ProductBundleComponents", fields: [bundleProductId], references: [id])
+  componentVariantId String
+  componentVariant   ProductVariant @relation("BundleComponentVariant", fields: [componentVariantId], references: [id])
+  quantity           Int            @default(1)
+  @@unique([bundleProductId, componentVariantId])
+  @@index([bundleProductId])
 }
 
 model ProductAttribute {
@@ -1227,6 +1308,10 @@ model PreOrder {
   variantId     String?
   quantity      Int
   depositPoisha Int            @default(0)
+  // Wave 15: the deposit PERCENT applied to this record (nullable —
+  // rows written by advanced-orders before this wave have none; the
+  // product-level terms of record live on Product.preorder* columns).
+  depositPercent Int?
   totalPoisha   Int
   expectedDate  DateTime?
   status        PreOrderStatus @default(OPEN)

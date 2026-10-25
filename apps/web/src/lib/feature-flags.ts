@@ -70,6 +70,9 @@ export const FEATURE_FLAG_DEFINITIONS = [
   { key: "module.erp_lite", description: "ERP-lite accounting (v2 add-on)" },
   { key: "module.loyalty", description: "Loyalty, referral & affiliate (v2 add-on)" },
   { key: "module.advanced_orders", description: "Advanced orders: split, partial, exchange, pre-order (v2 add-on)" },
+  { key: "module.product_types", description: "Product types: digital, bundle & pre-order products (v2 add-on)" },
+  { key: "module.sourcing", description: "Sourcing import + landed-cost calculator (v2 add-on)" },
+  { key: "module.product_extras", description: "Product extras: 360° view + barcode labels (v2 add-on)" },
 ] as const satisfies readonly FeatureFlagDefinition[];
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_DEFINITIONS)[number]["key"];

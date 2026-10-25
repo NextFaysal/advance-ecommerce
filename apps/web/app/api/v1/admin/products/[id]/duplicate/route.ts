@@ -92,6 +92,21 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const input: ProductInput = {
       slug,
       relatedIds: [],
+      // Wave 15: a copy keeps the source's type + per-type data
+      // (digital file references and bundle components are shared /
+      // re-pointed at the same variants; license-key pools are NOT
+      // copied — keys belong to the original product alone).
+      type: source.type,
+      digitalFiles: source.digitalFiles.map((f) => ({
+        storageKey: f.storageKey,
+        fileName: f.fileName,
+        sizeBytes: f.sizeBytes,
+      })),
+      bundleComponents: source.bundleComponents.map((c) => ({
+        variantId: c.variantId,
+        quantity: c.quantity,
+      })),
+      preorder: source.preorder,
       titleBn: copyTitle(source.title.bn),
       titleEn: copyTitle(source.title.en),
       descriptionBn: source.description.bn,
