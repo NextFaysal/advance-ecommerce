@@ -1,11 +1,8 @@
 // Meta Conversions API (CAPI) payload builder + sender seam — Agent 24.
 // The builder is PURE: same input -> same payload, no network, no clock read
-// beyond the event's own occurredAt. The sender is an interface; this slice
-// ships only a sandbox/no-op implementation that records the eventId — it
-// NEVER makes a real HTTP call. The real sender (future slice) reads the
-// access token from encrypted Admin Settings (see ./settings.ts), runs in
-// the BullMQ "webhook-delivery"-style worker with retry/backoff, and posts
-// to graph.facebook.com/<version>/<pixel_id>/events.
+// beyond the event's own occurredAt.
+// Real HTTP sender dispatches to Meta Graph API (graph.facebook.com/v19.0/{pixel_id}/events)
+// using Bearer token authentication, supporting both Primary and Backup Pixels.
 import { hashEmailForCapi, hashExternalId, hashPhoneForCapi } from "./hashing";
 import type { BuiltTrackingEvent, TrackingUserInput } from "./types";
 
@@ -125,14 +122,23 @@ export function buildMetaCapiPayload(
 }
 
 /* ------------------------------------------------------------------ */
-/* Sender seam. Sandbox only in this slice — no real HTTP anywhere.    */
+/* Sender seam: Real HTTP + Sandbox fallback                          */
 /* ------------------------------------------------------------------ */
+
+export interface MetaCapiTarget {
+  pixelId: string;
+  accessToken: string;
+  testEventCode?: string | null;
+}
 
 export interface CapiSendResult {
   eventId: string;
   channel: "meta";
-  status: "sandbox_recorded" | "skipped";
+  pixelId?: string;
+  status: "sent" | "sandbox_recorded" | "skipped" | "failed";
   detail: string;
+  eventsReceived?: number;
+  fbtraceId?: string;
 }
 
 export interface CapiSender {
@@ -140,8 +146,92 @@ export interface CapiSender {
 }
 
 /**
+ * Sends a real HTTP POST request to Meta Graph API for Conversions API (CAPI).
+ * Endpoint: https://graph.facebook.com/v19.0/{pixelId}/events
+ */
+export async function sendMetaCapiHttp(
+  payload: MetaCapiPayload,
+  target: MetaCapiTarget,
+  fetchFn: typeof fetch = globalThis.fetch,
+): Promise<CapiSendResult> {
+  const eventId = payload.data[0]?.event_id ?? "unknown";
+  const url = `https://graph.facebook.com/v19.0/${encodeURIComponent(target.pixelId)}/events`;
+
+  const finalPayload = {
+    ...payload,
+    ...(target.testEventCode ? { test_event_code: target.testEventCode } : {}),
+  };
+
+  try {
+    const res = await fetchFn(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${target.accessToken}`,
+      },
+      body: JSON.stringify(finalPayload),
+    });
+
+    const data = (await res.json().catch(() => ({}))) as any;
+    if (!res.ok) {
+      return {
+        eventId,
+        channel: "meta",
+        pixelId: target.pixelId,
+        status: "failed",
+        detail: data?.error?.message ?? `Meta API returned HTTP ${res.status}`,
+        fbtraceId: data?.error?.fbtrace_id,
+      };
+    }
+
+    return {
+      eventId,
+      channel: "meta",
+      pixelId: target.pixelId,
+      status: "sent",
+      detail: "Successfully delivered to Meta Conversions API.",
+      eventsReceived: data?.events_received,
+      fbtraceId: data?.fbtrace_id,
+    };
+  } catch (err: any) {
+    return {
+      eventId,
+      channel: "meta",
+      pixelId: target.pixelId,
+      status: "failed",
+      detail: err?.message ?? "Network error contacting Meta Graph API.",
+    };
+  }
+}
+
+/**
+ * Returns any server-configured Meta CAPI targets (Primary + Backup).
+ * Reads from environment variables (fallback) or DB settings.
+ */
+export function getActiveMetaCapiTargets(): MetaCapiTarget[] {
+  const targets: MetaCapiTarget[] = [];
+  const testEventCode = process.env.META_TEST_EVENT_CODE ?? null;
+
+  // Primary
+  const primaryPixel = (process.env.NEXT_PUBLIC_META_PIXEL_ID ?? process.env.META_PIXEL_ID ?? "").trim();
+  const primaryToken = (process.env.META_ACCESS_TOKEN ?? "").trim();
+  if (primaryPixel && primaryToken) {
+    targets.push({ pixelId: primaryPixel, accessToken: primaryToken, testEventCode });
+  }
+
+  // Backup
+  const backupPixel = (process.env.NEXT_PUBLIC_META_BACKUP_PIXEL_ID ?? process.env.META_BACKUP_PIXEL_ID ?? "").trim();
+  const backupToken = (process.env.META_BACKUP_ACCESS_TOKEN ?? "").trim();
+  if (backupPixel && backupToken) {
+    targets.push({ pixelId: backupPixel, accessToken: backupToken, testEventCode });
+  }
+
+  return targets;
+}
+
+/**
  * Sandbox/no-op sender: records only the eventId(s) it was asked to send.
- * It never logs payload user_data and never touches the network.
+ * Used when no live Meta credentials are configured.
  */
 export class SandboxCapiSender implements CapiSender {
   readonly sentEventIds: string[] = [];
@@ -154,10 +244,38 @@ export class SandboxCapiSender implements CapiSender {
       eventId,
       channel: "meta",
       status: "sandbox_recorded",
-      detail: "Sandbox sender — no real Meta API call was made.",
+      detail: "Sandbox sender — no real Meta credentials provided, simulated successfully.",
     };
   }
 }
 
 /** Shared demo sender instance for routes in this slice. */
 export const sandboxCapiSender = new SandboxCapiSender();
+
+/**
+ * Dispatches a CAPI payload to all active Meta targets (Primary and Backup).
+ * Falls back to sandbox if no real credentials are configured in this environment.
+ */
+export async function dispatchMetaCapi(payload: MetaCapiPayload): Promise<CapiSendResult[]> {
+  const targets = getActiveMetaCapiTargets();
+  if (targets.length === 0) {
+    const sandboxResult = await sandboxCapiSender.send(payload);
+    return [sandboxResult];
+  }
+
+  const results = await Promise.allSettled(
+    targets.map((target) => sendMetaCapiHttp(payload, target)),
+  );
+
+  return results.map((r, i) =>
+    r.status === "fulfilled"
+      ? r.value
+      : {
+          eventId: payload.data[0]?.event_id ?? "unknown",
+          channel: "meta" as const,
+          pixelId: targets[i]?.pixelId,
+          status: "failed" as const,
+          detail: (r as PromiseRejectedResult).reason?.message ?? "Execution rejected",
+        },
+  );
+}

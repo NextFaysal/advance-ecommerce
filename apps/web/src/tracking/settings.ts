@@ -11,14 +11,17 @@
 // route response, never in this module.
 export const TRACKING_SETTING_KEYS = {
   metaPixelId: "seo.meta.pixel_id",
+  metaBackupPixelId: "seo.meta.backup_pixel_id", // Secondary / Backup Meta Pixel
   metaCapiEnabled: "seo.meta.capi_enabled",
   metaTestEventCode: "seo.meta.test_event_code",
   metaAccessToken: "seo.meta.access_token", // SECRET — encrypted, write-only in UI
+  metaBackupAccessToken: "seo.meta.backup_access_token", // SECRET — encrypted, write-only in UI
   ga4MeasurementId: "seo.ga4.measurement_id",
   ga4ApiSecret: "seo.ga4.api_secret", // SECRET — encrypted, write-only in UI
   tiktokPixelId: "seo.tiktok.pixel_id",
   tiktokAccessToken: "seo.tiktok.access_token", // SECRET — encrypted, write-only in UI
   gtmContainerId: "seo.gtm.container_id",
+  clarityProjectId: "seo.clarity.project_id", // Microsoft Clarity Project ID
 } as const;
 
 export type TrackingSettingKey = (typeof TRACKING_SETTING_KEYS)[keyof typeof TRACKING_SETTING_KEYS];
@@ -26,6 +29,7 @@ export type TrackingSettingKey = (typeof TRACKING_SETTING_KEYS)[keyof typeof TRA
 /** Secret tracking keys: the admin may SET them but can never READ them back. */
 export const TRACKING_SECRET_KEYS: readonly string[] = [
   TRACKING_SETTING_KEYS.metaAccessToken,
+  TRACKING_SETTING_KEYS.metaBackupAccessToken,
   TRACKING_SETTING_KEYS.ga4ApiSecret,
   TRACKING_SETTING_KEYS.tiktokAccessToken,
 ];
@@ -38,14 +42,19 @@ export const TRACKING_SECRET_KEYS: readonly string[] = [
 export interface TrackingConfigStatus {
   metaPixelId: string | null;
   metaPixelConfigured: boolean;
+  metaBackupPixelId: string | null;
+  metaBackupPixelConfigured: boolean;
   metaCapiEnabled: boolean;
   metaAccessTokenConfigured: boolean;
+  metaBackupAccessTokenConfigured: boolean;
   metaTestEventCode: string | null;
   ga4MeasurementId: string | null;
   ga4Configured: boolean;
   tiktokPixelId: string | null;
   tiktokConfigured: boolean;
   gtmContainerId: string | null;
+  clarityProjectId: string | null;
+  clarityConfigured: boolean;
 }
 
 /**
@@ -58,12 +67,17 @@ export interface TrackingConfigStatus {
 export const UNCONFIGURED_TRACKING_STATUS: TrackingConfigStatus = {
   metaPixelId: null,
   metaPixelConfigured: false,
+  metaBackupPixelId: null,
+  metaBackupPixelConfigured: false,
   metaCapiEnabled: false,
   metaAccessTokenConfigured: false,
+  metaBackupAccessTokenConfigured: false,
   metaTestEventCode: null,
   ga4MeasurementId: null,
   ga4Configured: false,
   tiktokPixelId: null,
   tiktokConfigured: false,
   gtmContainerId: null,
+  clarityProjectId: null,
+  clarityConfigured: false,
 };

@@ -34,10 +34,14 @@ export type TrackingClientMode = "active" | "noop-unconfigured";
 
 export interface TrackingClientConfig {
   /**
-   * Meta pixel id (a PUBLIC identifier, not a secret/token). Supplied by
-   * the TrackingProvider prop. Empty/null => no-op mode (see header).
+   * Primary Meta pixel id (a PUBLIC identifier, not a secret/token). Supplied by
+   * the TrackingProvider prop. Supports single ID or comma-separated IDs. Empty/null => no-op mode (see header).
    */
   pixelId?: string | null;
+  /**
+   * Optional multiple Meta pixel IDs (e.g. backup, agency or secondary pixels).
+   */
+  pixelIds?: string[] | null;
   /** Intake endpoint override; defaults to the public track-events route. */
   endpoint?: string;
   /** Fetch implementation override (tests / nonstandard runtimes). */
@@ -96,6 +100,7 @@ const MAX_QUEUE = 50;
 
 export interface TrackingClient {
   readonly mode: TrackingClientMode;
+  readonly pixelIds: readonly string[];
   track(input: ClientTrackInput): Promise<TrackResult>;
   /** Number of events waiting for a consent decision. */
   pendingCount(): number;
@@ -104,8 +109,15 @@ export interface TrackingClient {
 }
 
 export function createTrackingClient(config: TrackingClientConfig = {}): TrackingClient {
-  const pixelId = (config.pixelId ?? "").trim();
-  const mode: TrackingClientMode = pixelId !== "" ? "active" : "noop-unconfigured";
+  const extractedIds = [
+    ...(config.pixelId ? config.pixelId.split(",") : []),
+    ...(config.pixelIds ?? []),
+  ]
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+
+  const uniquePixelIds = Array.from(new Set(extractedIds));
+  const mode: TrackingClientMode = uniquePixelIds.length > 0 ? "active" : "noop-unconfigured";
   const endpoint = config.endpoint ?? TRACK_EVENTS_ENDPOINT;
   const doFetch: typeof fetch =
     config.fetchFn ?? ((...args: Parameters<typeof fetch>) => globalThis.fetch(...args));
@@ -224,6 +236,29 @@ export function createTrackingClient(config: TrackingClientConfig = {}): Trackin
       };
     }
 
+    // Direct browser-side Meta Pixel (fbq) tracking with exact shared eventID for dedup
+    if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
+      try {
+        const customData: Record<string, any> = {};
+        if (payload.valuePoisha !== null) {
+          customData.value = Number((payload.valuePoisha / 100).toFixed(2));
+          customData.currency = "BDT";
+        }
+        if (payload.items && payload.items.length > 0) {
+          customData.content_ids = payload.items.map((i) => i.productId);
+          customData.contents = payload.items.map((i) => ({
+            id: i.productId,
+            quantity: i.quantity,
+            item_price: Number((i.itemPricePoisha / 100).toFixed(2)),
+          }));
+          customData.content_type = "product";
+        }
+        (window as any).fbq("track", payload.eventName, customData, { eventID: eventId });
+      } catch {
+        // Ignore extension blocker interference
+      }
+    }
+
     const ok = await send(payload);
     return {
       eventId,
@@ -237,6 +272,7 @@ export function createTrackingClient(config: TrackingClientConfig = {}): Trackin
 
   return {
     mode,
+    pixelIds: uniquePixelIds,
     track,
     pendingCount: () => queue.length,
     flushPending,

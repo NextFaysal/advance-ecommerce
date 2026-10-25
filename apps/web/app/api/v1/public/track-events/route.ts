@@ -2,20 +2,18 @@
  * POST /api/v1/public/track-events — server-side tracking intake. Agent 24.
  *
  * Flow: Zod validate -> consent gate -> build event (shared eventId dedup
- * with the browser pixel) -> dedup check -> Meta CAPI payload -> SANDBOX
- * sender (records the eventId only; no real Meta call exists in this
- * slice). Plain phone/email are accepted only as builder input and are
+ * with the browser pixel) -> dedup check -> Meta CAPI payload ->
+ * Production CAPI Dispatcher (dispatches real HTTPS requests to graph.facebook.com
+ * for configured Meta Primary & Backup tokens, or sandbox fallback if unconfigured).
+ *
+ * Plain phone/email are accepted only as builder input and are
  * hashed inside the payload builder — they are never logged, stored, or
  * echoed in the response.
- *
- * TEMPORARY: dedup store is in-memory demo and tracking config resolves to
- * UNCONFIGURED (fail-closed) until the DB settings reader lands. Response
- * contract ({ data, meta } / { error }) does not change when they swap.
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { buildTrackingEvent, demoDedupStore, trackingEventInputSchema } from "@/tracking/events";
-import { buildMetaCapiPayload, sandboxCapiSender } from "@/tracking/capi";
+import { buildMetaCapiPayload, dispatchMetaCapi } from "@/tracking/capi";
 import { evaluateTrackingConsent, CONSENT_STATES, type TrackingConsentState } from "@/tracking/consent";
 import { utmParamsSchema } from "@/tracking/attribution";
 import { UNCONFIGURED_TRACKING_STATUS } from "@/tracking/settings";
@@ -82,11 +80,17 @@ export async function POST(req: Request) {
         }
       : undefined;
 
+  const testEventCode = process.env.META_TEST_EVENT_CODE ?? UNCONFIGURED_TRACKING_STATUS.metaTestEventCode;
+
   const payload = buildMetaCapiPayload(event, user, {
     includeUserData: decision.mode === "full",
-    testEventCode: UNCONFIGURED_TRACKING_STATUS.metaTestEventCode,
+    testEventCode,
   });
-  const sendResult = await sandboxCapiSender.send(payload);
+
+  // Dispatches to real Meta Graph API if META_ACCESS_TOKEN is present, or sandbox fallback.
+  const capiResults = await dispatchMetaCapi(payload);
+
+  const hasSent = capiResults.some((r) => r.status === "sent");
 
   return NextResponse.json({
     data: {
@@ -94,12 +98,14 @@ export async function POST(req: Request) {
       accepted: true,
       duplicate: false,
       consentMode: decision.mode,
-      capiStatus: sendResult.status,
+      capiDispatches: capiResults,
     },
     meta: {
-      source: "IN_MEMORY_DEMO",
-      sender: "sandbox",
-      note: "Sandbox sender only — no real Meta CAPI call. Config unconfigured (fail-closed) until DB settings wiring.",
+      source: "SERVER_SIDE_INTAKE",
+      sender: hasSent ? "live_meta_capi" : "sandbox_simulated",
+      note: hasSent
+        ? "Successfully delivered to Meta Conversions API over HTTPS."
+        : "Simulated in sandbox. Provide META_ACCESS_TOKEN in .env.local to dispatch live to graph.facebook.com.",
     },
   });
 }

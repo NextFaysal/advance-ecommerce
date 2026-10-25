@@ -1,29 +1,23 @@
 "use client";
 
 /**
- * TrackingProvider — Agent 26.
+ * TrackingProvider — Agent 26 + Multi-Pixel & Microsoft Clarity Live Engine.
  *
- * MOUNT CONTRACT (for the main agent wiring the root layout):
- *   <TrackingProvider pixelId={...} pathname={...}>
+ * MOUNT CONTRACT:
+ *   <TrackingProvider
+ *     pixelId={...}
+ *     pixelIds={[...]}
+ *     clarityProjectId={...}
+ *     pathname={...}
+ *   >
  *     {children}
  *   </TrackingProvider>
  *
- * - pixelId: the Meta pixel id from the PUBLIC tracking settings, or
- *   null/omitted while unconfigured — the client then runs in no-op mode
- *   (no network sends; track() still returns shared eventIds). Never pass
- *   an access token here; tokens are server-only (../settings.ts).
- * - pathname: pass the current path on every route change (in Next.js App
- *   Router, a small client wrapper in the root layout passes
- *   usePathname()). This component deliberately does NOT import
- *   next/navigation. When pathname is omitted it falls back to the initial
- *   page load + popstate (browser back/forward) PageViews only, and SPA
- *   navigations will NOT be tracked — pass pathname for full coverage.
- * - Mount <ConsentBanner /> as a sibling (usually right after this
- *   provider) — the banner writes the consent choice that this provider's
- *   client reads on every track() call.
- * - Descendants read the client via useTracking(): the context value is
- *   { client, mode, track } — call track({ eventName: "AddToCart", ... })
- *   and pass result.eventId to the server flow for CAPI dedup.
+ * - pixelId / pixelIds: Meta pixel ID(s) (public). Supports a single ID,
+ *   comma-separated IDs, or array of IDs. Initializes all configured pixels via fbq('init', id).
+ * - clarityProjectId: Microsoft Clarity project ID (e.g. "k9x3...").
+ *   Automatically initializes Microsoft Clarity session recording & heatmaps on client.
+ * - pathname: Current path on route change for SPA navigation PageViews.
  */
 import {
   createContext,
@@ -58,9 +52,13 @@ export function useTracking(): TrackingContextValue {
 }
 
 export interface TrackingProviderProps {
-  /** Meta pixel id (public), or null/omitted for no-op mode. */
-  pixelId?: string | null;
-  /** Current pathname from the host router — see the mount contract. */
+  /** Primary Meta pixel id (or comma-separated ids), or null/omitted for no-op mode. */
+  pixelId?: string | string[] | null;
+  /** Multiple Meta pixel ids (primary + backup/agency pixels). */
+  pixelIds?: string[] | null;
+  /** Microsoft Clarity Project ID (alphanumeric), or null/omitted to disable. */
+  clarityProjectId?: string | null;
+  /** Current pathname from the host router. */
   pathname?: string | null;
   /** Set false to disable UTM capture on mount (default: capture). */
   captureUtm?: boolean;
@@ -69,11 +67,28 @@ export interface TrackingProviderProps {
 
 export function TrackingProvider({
   pixelId,
+  pixelIds,
+  clarityProjectId,
   pathname,
   captureUtm = true,
   children,
 }: TrackingProviderProps) {
-  const [client] = useState<TrackingClient>(() => createTrackingClient({ pixelId }));
+  const parsedPixelIds = useMemo(() => {
+    const list: string[] = [];
+    if (typeof pixelId === "string") {
+      list.push(...pixelId.split(","));
+    } else if (Array.isArray(pixelId)) {
+      list.push(...pixelId);
+    }
+    if (Array.isArray(pixelIds)) {
+      list.push(...pixelIds);
+    }
+    return Array.from(new Set(list.map((id) => id.trim()).filter((id) => id.length > 0)));
+  }, [pixelId, pixelIds]);
+
+  const [client] = useState<TrackingClient>(() =>
+    createTrackingClient({ pixelIds: parsedPixelIds }),
+  );
 
   const value = useMemo<TrackingContextValue>(
     () => ({ client, mode: client.mode, track: client.track }),
@@ -85,9 +100,67 @@ export function TrackingProvider({
     if (captureUtm) captureUtmFromUrl();
   }, [captureUtm]);
 
-  // PageView on route change. When the host passes `pathname`, every
-  // change fires; otherwise fall back to popstate (back/forward) so the
-  // component still works outside Next.js routing.
+  // 1. Meta (Facebook) Pixel Base Script & Multi-Pixel Initialization
+  useEffect(() => {
+    if (parsedPixelIds.length === 0 || typeof window === "undefined") return;
+
+    try {
+      const win = window as any;
+      if (!win.fbq) {
+        const n: any = (win.fbq = function () {
+          n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
+        });
+        if (!win._fbq) win._fbq = n;
+        n.push = n;
+        n.loaded = true;
+        n.version = "2.0";
+        n.queue = [];
+        const t = document.createElement("script");
+        t.async = true;
+        t.id = "meta-pixel-script";
+        t.src = "https://connect.facebook.net/en_US/fbevents.js";
+        const s = document.getElementsByTagName("script")[0];
+        s?.parentNode?.insertBefore(t, s);
+      }
+
+      // Initialize all configured pixels (Primary + Backup / Agency pixels)
+      parsedPixelIds.forEach((pid) => {
+        win.fbq("init", pid);
+      });
+    } catch {
+      // Ignore injection error in non-standard / sandboxed environments
+    }
+  }, [parsedPixelIds]);
+
+  // 2. Microsoft Clarity Script Injection (Heatmaps & Session Recordings)
+  useEffect(() => {
+    const cid = (clarityProjectId ?? "").trim();
+    if (!cid || typeof window === "undefined") return;
+
+    // Guard: do not double-inject Clarity
+    const existing = document.getElementById("microsoft-clarity-tag");
+    if (existing) return;
+
+    try {
+      (function (c: any, l: any, a: any, r: any, i: any, t?: any, y?: any) {
+        c[a] =
+          c[a] ||
+          function () {
+            (c[a].q = c[a].q || []).push(arguments);
+          };
+        t = l.createElement(r);
+        t.async = 1;
+        t.id = "microsoft-clarity-tag";
+        t.src = "https://www.clarity.ms/tag/" + i;
+        y = l.getElementsByTagName(r)[0];
+        y.parentNode?.insertBefore(t, y);
+      })(window, document, "clarity", "script", cid);
+    } catch {
+      // Ignore injection error in non-standard environments
+    }
+  }, [clarityProjectId]);
+
+  // PageView on route change
   const lastTrackedPath = useRef<string | null>(null);
   useEffect(() => {
     const firePageView = (path: string): void => {
