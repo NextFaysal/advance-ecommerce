@@ -57,11 +57,13 @@
  */
 import { prisma } from "@advance-ecommerce/db";
 import {
+  BundleStockError,
   deductBundleComponents,
   productTypesEnabledInDb,
   restoreBundleComponentsForOrder,
   runDigitalFulfilmentForOrder,
   validateProductTypeRules,
+  type ProductTypesTx,
 } from "../catalog/product-types";
 import { computeBundleAvailability } from "../catalog/types";
 import { getSetting } from "../lib/settings";
@@ -311,6 +313,13 @@ export interface ServerVariantSnapshot {
    *  sellable count. */
   productType: string;
   bundleAvailability: number | null;
+  /** Wave 20: the owning product's per-unit weight (Product.weightGrams,
+   *  0 when unset) — the create route sums weight x qty into the
+   *  shipping engine's totalWeightGrams. */
+  weightGrams: number;
+  /** Wave 20: the owning product's category slug — the create route's
+   *  COD rules (orders.rules.cod_disabled_categories) match on it. */
+  categorySlug: string;
 }
 
 /**
@@ -331,6 +340,8 @@ export async function getVariantSnapshots(
         select: {
           titleEn: true,
           type: true,
+          weightGrams: true,
+          category: { select: { slug: true } },
           bundleComponents: {
             select: { quantity: true, componentVariant: { select: { stock: true } } },
           },
@@ -348,6 +359,8 @@ export async function getVariantSnapshots(
       unitPricePoisha: v.pricePoisha,
       stock: v.stock,
       productType: v.product.type,
+      weightGrams: v.product.weightGrams ?? 0,
+      categorySlug: v.product.category.slug,
       bundleAvailability:
         v.product.type === "BUNDLE" && components.length > 0
           ? computeBundleAvailability(
@@ -357,6 +370,248 @@ export async function getVariantSnapshots(
     });
   }
   return map;
+}
+
+/* ------------------------------------------------------------------ */
+/* Stock reservation for order lines (wave 19, plan 17 batch O1)       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Reserve EVERY ordinary order line through the stock ledger, inside
+ * the create transaction — the generalisation of the wave-15 bundle
+ * component seam (src/catalog/product-types.ts) to all items:
+ *
+ *  - Quantities are aggregated per variant (duplicate lines claim
+ *    once) and claimed in sorted variant-id order, so concurrent
+ *    creates take variant row locks in the same sequence.
+ *  - The claim is a GUARDED decrement (UPDATE ... WHERE stock >= qty):
+ *    the row lock + predicate re-check make oversell impossible under
+ *    concurrency. A failed claim throws BundleStockError — the typed
+ *    INSUFFICIENT_STOCK error both create routes already map to a 400 —
+ *    and the whole create transaction rolls back: no order, no partial
+ *    reserves, nothing.
+ *  - Each claimed line writes the same ledger shape as the bundle
+ *    seam: a SALE_RESERVE StockMovement (referenceType "ORDER",
+ *    referenceId = order id) against the default warehouse, and an
+ *    InventoryItem upsert whose quantityOnHand mirrors the variant
+ *    cache with quantityReserved incremented. If no warehouse exists,
+ *    the cache still moves and the movement is skipped with a warning
+ *    (the bundle seam's ledgerPending precedent).
+ *  - BUNDLE line variants are SKIPPED while the product-types flag is
+ *    ON (validateProductTypeRules reports them): the bundle variant is
+ *    a pricing shell — deductBundleComponents reserves its components
+ *    instead, and claiming the shell too would double-claim. While the
+ *    flag is OFF the set is empty and a bundle variant's own cache is
+ *    claimed like any other line, matching the routes' pre-check.
+ *  - SIMPLE, PREORDER and DIGITAL lines all reserve. PREORDER: the
+ *    routes already gate preorder lines on the variant cache (the cap
+ *    in validateProductTypeRules is an ADDITIONAL gate), so claiming
+ *    keeps create semantics identical — a preorder unit now also holds
+ *    its stock. DIGITAL: delivery is by grant, but the routes check
+ *    the same cache, so claiming keeps one uniform stock truth.
+ *
+ * There is NO commit step at DELIVERED: this codebase never
+ * implemented reserve->commit for any item (the wave-15 header
+ * documents SALE_RESERVE as the terminal ledger state for bundle
+ * components), so ordinary reservations are likewise terminal at
+ * delivery. RETURNED orders are NOT auto-restocked here — restocking
+ * is the RMA/QC decision (plan 17, batch O7).
+ */
+async function reserveOrderLineItems(
+  tx: ProductTypesTx,
+  items: Order["items"],
+  bundleVariantIds: ReadonlySet<string>,
+  orderId: string,
+  orderNo: string,
+): Promise<void> {
+  const wanted = new Map<string, number>();
+  for (const item of items) {
+    if (bundleVariantIds.has(item.variantId)) continue;
+    wanted.set(item.variantId, (wanted.get(item.variantId) ?? 0) + item.quantity);
+  }
+  if (wanted.size === 0) return;
+  const warehouse = await tx.warehouse.findFirst({
+    where: { deletedAt: null, isActive: true },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  for (const variantId of [...wanted.keys()].sort()) {
+    const qty = wanted.get(variantId) ?? 0;
+    const variant = await tx.productVariant.findUnique({
+      where: { id: variantId },
+      select: { stock: true, sku: true },
+    });
+    if (!variant) {
+      throw new BundleStockError(`Variant ${variantId} vanished during order create.`, {
+        variantId,
+        sku: "",
+        available: 0,
+        required: qty,
+      });
+    }
+    // The atomic claim: guarded decrement. count 0 means another
+    // transaction took the stock first (or it never sufficed) — fail
+    // the whole order rather than oversell.
+    const claimed = await tx.productVariant.updateMany({
+      where: { id: variantId, deletedAt: null, stock: { gte: qty } },
+      data: { stock: { decrement: qty } },
+    });
+    if (claimed.count !== 1) {
+      throw new BundleStockError(`Insufficient stock for ${variant.sku}.`, {
+        variantId,
+        sku: variant.sku,
+        available: variant.stock,
+        required: qty,
+      });
+    }
+    if (!warehouse) {
+      console.warn(
+        `[orders] stock reserve for order ${orderNo}: no warehouse to book the ledger movement against (variant ${variantId}, qty ${qty}) — stock cache moved, movement skipped.`,
+      );
+      continue;
+    }
+    // Re-read after the claim so the movement's before/after are the
+    // committed figures even when a concurrent claim landed first.
+    const afterRow = await tx.productVariant.findUnique({
+      where: { id: variantId },
+      select: { stock: true },
+    });
+    const after = afterRow?.stock ?? variant.stock - qty;
+    const before = after + qty;
+    await tx.stockMovement.create({
+      data: {
+        variantId,
+        warehouseId: warehouse.id,
+        type: "SALE_RESERVE",
+        quantityDelta: -qty,
+        quantityBefore: before,
+        quantityAfter: after,
+        referenceType: "ORDER",
+        referenceId: orderId,
+        reason: `Stock reserve for order ${orderNo}`,
+        actorId: null,
+      },
+    });
+    await tx.inventoryItem.upsert({
+      where: { variantId_warehouseId: { variantId, warehouseId: warehouse.id } },
+      create: {
+        variantId,
+        warehouseId: warehouse.id,
+        quantityOnHand: after,
+        quantityReserved: qty,
+      },
+      update: {
+        quantityOnHand: after,
+        quantityReserved: { increment: qty },
+      },
+    });
+  }
+}
+
+/**
+ * Release every unreleased SALE_RESERVE an order holds (ordinary
+ * lines AND bundle components), restoring the variant caches. Runs on
+ * CANCELLED from both status funnels, right after the wave-15 bundle
+ * release; unlike that function this one is NOT gated by the
+ * product-types flag, so a reserve written while the flag was ON is
+ * still released if the flag has since been turned OFF.
+ *
+ * Ledger-idempotent, grouped per (variant, warehouse): released
+ * quantity is recomputed from the persisted SALE_RELEASE movements on
+ * every call, so a second run (or a run after the bundle release
+ * already freed everything) is a strict no-op. Never throws — callers
+ * run it after the status commit (delivered-hooks discipline).
+ */
+export async function releaseOrderStockReservations(orderId: string): Promise<void> {
+  try {
+    const reserves = await prisma.stockMovement.findMany({
+      where: { referenceType: "ORDER", referenceId: orderId, type: "SALE_RESERVE" },
+      select: { variantId: true, warehouseId: true, quantityDelta: true },
+    });
+    if (reserves.length === 0) return;
+    const releases = await prisma.stockMovement.findMany({
+      where: { referenceType: "ORDER", referenceId: orderId, type: "SALE_RELEASE" },
+      select: { variantId: true, warehouseId: true, quantityDelta: true },
+    });
+    const keyOf = (variantId: string, warehouseId: string) => `${variantId}|${warehouseId}`;
+    const reservedByKey = new Map<string, { variantId: string; warehouseId: string; qty: number }>();
+    for (const r of reserves) {
+      const key = keyOf(r.variantId, r.warehouseId);
+      const entry = reservedByKey.get(key) ?? { variantId: r.variantId, warehouseId: r.warehouseId, qty: 0 };
+      entry.qty += -r.quantityDelta;
+      reservedByKey.set(key, entry);
+    }
+    const releasedByKey = new Map<string, number>();
+    for (const r of releases) {
+      const key = keyOf(r.variantId, r.warehouseId);
+      releasedByKey.set(key, (releasedByKey.get(key) ?? 0) + r.quantityDelta);
+    }
+    for (const { variantId, warehouseId, qty } of reservedByKey.values()) {
+      const outstanding = qty - (releasedByKey.get(keyOf(variantId, warehouseId)) ?? 0);
+      if (outstanding <= 0) continue;
+      await prisma.$transaction(async (tx) => {
+        // Recompute inside the transaction: a concurrent release run
+        // for the same order may have freed some (or all) of this
+        // group since the outer scan — release only what is still
+        // outstanding so two runs can never double-restore.
+        const releasedNow = await tx.stockMovement.aggregate({
+          where: {
+            referenceType: "ORDER",
+            referenceId: orderId,
+            type: "SALE_RELEASE",
+            variantId,
+            warehouseId,
+          },
+          _sum: { quantityDelta: true },
+        });
+        const toRelease = qty - (releasedNow._sum.quantityDelta ?? 0);
+        if (toRelease <= 0) return;
+        // Guarded increment back, then re-read so the movement's
+        // before/after are the committed figures.
+        const restored = await tx.productVariant.updateMany({
+          where: { id: variantId },
+          data: { stock: { increment: toRelease } },
+        });
+        if (restored.count !== 1) return;
+        const row = await tx.productVariant.findUnique({
+          where: { id: variantId },
+          select: { stock: true },
+        });
+        if (!row) return;
+        const after = row.stock;
+        const before = after - toRelease;
+        await tx.stockMovement.create({
+          data: {
+            variantId,
+            warehouseId,
+            type: "SALE_RELEASE",
+            quantityDelta: toRelease,
+            quantityBefore: before,
+            quantityAfter: after,
+            referenceType: "ORDER",
+            referenceId: orderId,
+            reason: "Order stock reservation released (order cancelled)",
+            actorId: null,
+          },
+        });
+        await tx.inventoryItem.upsert({
+          where: { variantId_warehouseId: { variantId, warehouseId } },
+          create: {
+            variantId,
+            warehouseId,
+            quantityOnHand: after,
+            quantityReserved: 0,
+          },
+          update: {
+            quantityOnHand: after,
+            quantityReserved: { decrement: toRelease },
+          },
+        });
+      });
+    }
+  } catch (err) {
+    console.error(`[orders] stock reservation release failed for order ${orderId}:`, err);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -452,18 +707,41 @@ function isUniqueViolation(e: unknown, field?: string): boolean {
   return Array.isArray(target) ? target.includes(field) : String(target ?? "").includes(field);
 }
 
-async function nextOrderNo(): Promise<string> {
-  const base = `ORD-${Date.now()}`;
-  let candidate = base;
-  let suffix = 2;
-  // orderNo is UNIQUE; same-millisecond creates get a -2/-3 suffix
-  // instead of colliding (the P2002 guard in createOrderRecord is the
-  // backstop for the remaining race).
-  while (await prisma.order.findUnique({ where: { orderNo: candidate }, select: { id: true } })) {
-    candidate = `${base}-${suffix}`;
-    suffix += 1;
-  }
-  return candidate;
+/** Asia/Dhaka calendar day as YYYYMMDD — order numbers are sequenced
+ *  per LOCAL day (the shop's day), not per UTC day. */
+function dhakaDayStamp(now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${part("year")}${part("month")}${part("day")}`;
+}
+
+/**
+ * Human order numbers (wave 20, plan 17 batch O2): ORD-YYYYMMDD-NNNN,
+ * sequenced per Asia/Dhaka day from the OrderSequence counter INSIDE
+ * the create transaction. The INSERT ... ON CONFLICT DO UPDATE ...
+ * RETURNING increment is atomic, so concurrent creates can never draw
+ * the same sequence (and a rolled-back create simply skips a number —
+ * gaps are acceptable, duplicates are not). NNNN is zero-padded to 4
+ * and grows past 9999 naturally. This replaces the old ORD-<epoch-ms>
+ * scheme (timestamp-based: guessable, leaked volume); existing orders
+ * keep their historical numbers — nothing renumbers history. The
+ * orderNo @unique constraint remains as the backstop.
+ */
+async function nextOrderNoTx(tx: ProductTypesTx): Promise<string> {
+  const day = dhakaDayStamp();
+  const rows = await tx.$queryRaw<{ lastSeq: number }[]>`
+    INSERT INTO "OrderSequence" ("day", "lastSeq")
+    VALUES (${day}, 1)
+    ON CONFLICT ("day") DO UPDATE
+    SET "lastSeq" = "OrderSequence"."lastSeq" + 1
+    RETURNING "lastSeq"`;
+  const seq = rows[0]?.lastSeq ?? 1;
+  return `ORD-${day}-${String(seq).padStart(4, "0")}`;
 }
 
 /**
@@ -478,11 +756,21 @@ async function nextOrderNo(): Promise<string> {
  * Idempotency: the caller checks findOrderByIdempotencyKey first; the
  * UNIQUE idempotencyKey column is the backstop — a P2002 on it is
  * converted here into { replayed: true } with the winning row.
- * Stock reservation: the checkout path never called the inventory
- * ledger before this swap (stock was a read-only check), so nothing is
- * called now either — the inventory module's swap owns that wiring.
- * WAVE 15 EXCEPTION (product types, module.product_types flag): inside
- * this same transaction, validateProductTypeRules enforces PREORDER
+ * Order numbers (wave 20): ORD-YYYYMMDD-NNNN, minted inside this
+ * transaction from the per-day OrderSequence counter — every caller
+ * of this funnel (public checkout, admin manual create, ...) gets
+ * the human format with no per-route work.
+ * Stock reservation (WAVE 19, plan 17 batch O1): inside this same
+ * transaction, reserveOrderLineItems claims EVERY ordinary line
+ * through the stock ledger (guarded variant-cache decrement +
+ * SALE_RESERVE movement + InventoryItem upsert), so a reservation can
+ * never exist without its order and concurrent creates cannot
+ * oversell. The claim sits after the idempotency gates (the caller's
+ * replay check and the UNIQUE backstop below), so a replayed create
+ * never double-reserves. CANCELLED releases via
+ * releaseOrderStockReservations (both status funnels).
+ * WAVE 15 (product types, module.product_types flag): inside this
+ * same transaction, validateProductTypeRules enforces PREORDER
  * unit caps and BUNDLE component availability, and
  * deductBundleComponents then reserves the components through the
  * stock ledger (SALE_RESERVE) — see src/catalog/product-types.ts for
@@ -504,14 +792,20 @@ export async function createOrderRecord(
   const vatRateBps = await readConfiguredVatRateBps();
   const vatSplit =
     vatRateBps !== null ? computeVatInclusiveSplit(input.pricing.totalPoisha, vatRateBps) : null;
-  const orderNo = await nextOrderNo();
   let noteId: string | null = null;
   try {
     const created = await prisma.$transaction(async (tx) => {
+      // Wave 20: the order number is minted INSIDE the transaction
+      // from the per-day OrderSequence counter (see nextOrderNoTx), so
+      // the sequence draw and the order commit or roll back together.
+      const orderNo = await nextOrderNoTx(tx);
       // Wave 15 (product types): preorder caps + bundle component
       // availability, validated before anything is written; the
       // returned needs are deducted after the order row exists.
-      const { componentNeeds } = await validateProductTypeRules(tx, input.items);
+      // Wave 19: bundleVariantIds tells the general reservation which
+      // line variants are bundle shells (skip — components carry the
+      // stock) while the flag is ON; empty when the flag is OFF.
+      const { componentNeeds, bundleVariantIds } = await validateProductTypeRules(tx, input.items);
       const customer = await tx.customer.upsert({
         where: { phone: input.customerPhone },
         create: {
@@ -579,6 +873,10 @@ export async function createOrderRecord(
       // (no-op for non-bundle orders / flag OFF — the needs map is
       // empty in both cases).
       await deductBundleComponents(tx, componentNeeds, order.id, orderNo);
+      // Wave 19 (plan 17, O1): reserve every ordinary line the same
+      // way — guarded claim inside this transaction, so the order and
+      // its reservations commit or roll back together.
+      await reserveOrderLineItems(tx, input.items, bundleVariantIds, order.id, orderNo);
       await tx.orderStatusHistory.create({
         data: { orderId: order.id, from: null, to: "PENDING", changedById: null },
       });
@@ -682,8 +980,13 @@ export async function applyOrderTransition(
   }
   // Wave 15: cancelling releases any bundle component reserves this
   // order holds (ledger-idempotent, never throws — see product-types).
+  // Wave 19 (plan 17, O1): the general release then frees every
+  // remaining unreleased reserve (ordinary lines; also bundle
+  // components when the product-types flag is OFF at cancel time and
+  // the wave-15 release skipped). Sequentially idempotent.
   if (to === "CANCELLED") {
     await restoreBundleComponentsForOrder(row.id);
+    await releaseOrderStockReservations(row.id);
   }
   // Wave 18 (plan 17, O0): reversal engine — cancelling restores the
   // coupon usage; RETURNED / REFUNDED claw back the delivered-order
@@ -754,8 +1057,11 @@ export async function saveOrder(order: Order): Promise<void> {
     await runDeliveredOrderHooks(order.id);
   }
   // Wave 15: same bundle-reserve release on the bulk-actions path.
+  // Wave 19 (plan 17, O1): same general release as the single-order
+  // funnel — one release path for both funnels.
   if (row.status !== "CANCELLED" && order.status === "CANCELLED") {
     await restoreBundleComponentsForOrder(order.id);
+    await releaseOrderStockReservations(order.id);
   }
   // Wave 18 (plan 17, O0): same reversal engine on the bulk-actions
   // path — only when THIS save moved the stored status INTO a reversal

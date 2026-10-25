@@ -19,6 +19,23 @@
  * flushes them to the POS sale API (src/pos/sync.ts), which dedupes
  * on the sale's idempotencyKey — see rowToSale for how status reads.
  *
+ * STOCK (doc 17 batch O1): a synced sale DOES move stock, with the
+ * SAME effect as an order line — inside the sale transaction the
+ * variant cache is decremented and a SALE_RESERVE StockMovement is
+ * written against the default warehouse (referenceType "POS_SALE",
+ * referenceId = the PosSale row id), with the InventoryItem row
+ * upserted the way the bundle seam in src/catalog/product-types.ts
+ * does it (quantityOnHand mirrors the cache, quantityReserved += qty).
+ * Why SALE_RESERVE: the StockMovementType enum has no POS/direct-sale
+ * kind, and the platform never implemented reserve->commit for any
+ * channel (SALE_COMMIT exists in the enum but nothing writes it —
+ * the ledger's commit() rule consumes a prior reservation, which a
+ * counter sale never made). SALE_RESERVE is the terminal sale-out
+ * movement for orders, so POS reuses it: counter units and online
+ * units leave the same stock picture through the same movement kind.
+ * The stock effect hangs off the idempotency gate — a replayed key
+ * returns the stored sale and moves NOTHING a second time.
+ *
  * Deliberate TS <-> schema mappings (drift per docs/AGENT14-REVIEW.md):
  * - PosRegister.status ("ACTIVE") <-> TS isActive. Schema `location`
  *   has no TS counterpart and is not surfaced as warehouseId (it is a
@@ -226,9 +243,136 @@ export async function closeShiftDb(
   };
 }
 
+/** A line whose requested quantity exceeded the stock on hand at sync. */
+export interface PosStockShortfall {
+  variantId: string;
+  sku: string;
+  requested: number;
+  /** Cache stock immediately before this sale's decrement. */
+  availableBefore: number;
+}
+
+export interface PosSaleStockReport {
+  /**
+   * "now" — this call applied the stock effect; "already" — the sale
+   * was a replay and its stock effect landed with the FIRST sync;
+   * nothing was moved again.
+   */
+  applied: "now" | "already";
+  /**
+   * Lines sold beyond the recorded stock. A counter sale is never
+   * rejected at sync (the goods already left the shop), so the cache
+   * is decremented past zero into the true negative figure and the
+   * shortfall is reported here instead of hidden.
+   */
+  shortfalls: PosStockShortfall[];
+  /** Lines whose variantId no longer resolves to a variant row —
+   *  the sale is recorded, but there is no cache left to decrement. */
+  missingVariantIds: string[];
+}
+
 export type CreateSaleResult =
-  | { ok: true; sale: PosSale; duplicate: boolean }
+  | { ok: true; sale: PosSale; duplicate: boolean; stock: PosSaleStockReport }
   | { ok: false; status: number; code: string; message: string };
+
+type Tx = Omit<
+  typeof prisma,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
+>;
+
+/**
+ * Apply a synced POS sale's stock effect inside the sale transaction —
+ * the bundle/order seam (deductBundleComponents) mirrored for the
+ * counter: per variant, decrement the ProductVariant.stock cache and
+ * book a SALE_RESERVE movement + InventoryItem upsert against the
+ * default warehouse. Differences from the order path, both deliberate:
+ *  - the decrement is atomic (`decrement` + read-back) and NEVER
+ *    throws on insufficient stock: the sale already happened at the
+ *    counter, so the truth is recorded (cache may go negative) and
+ *    the shortfall is returned for the caller to surface;
+ *  - referenceType is "POS_SALE" (a free String column), so order
+ *    cancel/release logic keyed on "ORDER" can never touch these.
+ */
+async function applyPosSaleStock(
+  tx: Tx,
+  saleId: string,
+  receiptNo: string,
+  lines: readonly PosSaleLine[],
+): Promise<{ shortfalls: PosStockShortfall[]; missingVariantIds: string[] }> {
+  const shortfalls: PosStockShortfall[] = [];
+  const missingVariantIds: string[] = [];
+  // One movement per variant per sale, however many lines name it.
+  const qtyByVariant = new Map<string, number>();
+  for (const line of lines) {
+    qtyByVariant.set(line.variantId, (qtyByVariant.get(line.variantId) ?? 0) + line.quantity);
+  }
+  if (qtyByVariant.size === 0) return { shortfalls, missingVariantIds };
+  const warehouse = await tx.warehouse.findFirst({
+    where: { deletedAt: null, isActive: true },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  for (const [variantId, qty] of qtyByVariant) {
+    const variant = await tx.productVariant.findUnique({
+      where: { id: variantId },
+      select: { stock: true, sku: true },
+    });
+    if (!variant) {
+      missingVariantIds.push(variantId);
+      console.warn(
+        `[pos] sale ${receiptNo}: variant ${variantId} no longer exists — sale recorded, no stock to decrement (qty ${qty}).`,
+      );
+      continue;
+    }
+    const updated = await tx.productVariant.update({
+      where: { id: variantId },
+      data: { stock: { decrement: qty } },
+      select: { stock: true },
+    });
+    const after = updated.stock;
+    const before = after + qty;
+    if (before < qty) {
+      shortfalls.push({ variantId, sku: variant.sku, requested: qty, availableBefore: before });
+      console.warn(
+        `[pos] sale ${receiptNo}: variant ${variant.sku} sold ${qty} with only ${before} in stock — cache decremented to ${after}; counter sale stands, shortfall flagged.`,
+      );
+    }
+    if (warehouse) {
+      await tx.stockMovement.create({
+        data: {
+          variantId,
+          warehouseId: warehouse.id,
+          type: "SALE_RESERVE",
+          quantityDelta: -qty,
+          quantityBefore: before,
+          quantityAfter: after,
+          referenceType: "POS_SALE",
+          referenceId: saleId,
+          reason: `POS counter sale ${receiptNo}`,
+          actorId: null,
+        },
+      });
+      await tx.inventoryItem.upsert({
+        where: { variantId_warehouseId: { variantId, warehouseId: warehouse.id } },
+        create: {
+          variantId,
+          warehouseId: warehouse.id,
+          quantityOnHand: after,
+          quantityReserved: qty,
+        },
+        update: {
+          quantityOnHand: { decrement: qty },
+          quantityReserved: { increment: qty },
+        },
+      });
+    } else {
+      console.warn(
+        `[pos] sale ${receiptNo}: no warehouse to book the ledger movement against (variant ${variantId}, qty ${qty}) — stock cache moved, movement skipped.`,
+      );
+    }
+  }
+  return { shortfalls, missingVariantIds };
+}
 
 /** Receipt number derived from the (unique) idempotency key — stable across replays. */
 function receiptNoFor(idempotencyKey: string): string {
@@ -247,7 +391,13 @@ export async function createSaleDb(input: CreatePosSaleInput): Promise<CreateSal
   });
   if (existingRow) {
     const shiftRow = await prisma.posShift.findUnique({ where: { id: existingRow.shiftId } });
-    return { ok: true, sale: rowToSale(existingRow, shiftRow?.registerId ?? ""), duplicate: true };
+    return {
+      ok: true,
+      sale: rowToSale(existingRow, shiftRow?.registerId ?? ""),
+      duplicate: true,
+      // The stock effect landed with the first sync; a replay moves nothing.
+      stock: { applied: "already", shortfalls: [], missingVariantIds: [] },
+    };
   }
   const shiftRow = await prisma.posShift.findUnique({ where: { id: input.shiftId } });
   if (!shiftRow) {
@@ -274,18 +424,48 @@ export async function createSaleDb(input: CreatePosSaleInput): Promise<CreateSal
     return { ok: false, status: 422, code: "SALE_REJECTED", message: result.error };
   }
   const sale = result.sale;
-  const row = await prisma.posSale.create({
-    data: {
-      shiftId: input.shiftId,
-      receiptNo: receiptNoFor(input.idempotencyKey),
-      itemsJson: sale.lines as unknown as object,
-      totalPoisha: sale.totalPoisha,
-      discountPoisha: sale.discountPoisha,
-      paymentMethod: sale.paymentMethod,
-      tenderedPoisha: sale.tenderedPoisha ?? null,
-      idempotencyKey: input.idempotencyKey,
-      syncedOrderId: null,
-    },
-  });
-  return { ok: true, sale: rowToSale(row, shiftRow.registerId), duplicate: false };
+  const receiptNo = receiptNoFor(input.idempotencyKey);
+  try {
+    // Sale row + stock effect commit or roll back together: a sale
+    // that failed to move stock must not read as recorded, and stock
+    // must never move for a sale that was not recorded.
+    const { row, stock } = await prisma.$transaction(async (tx) => {
+      const created = await tx.posSale.create({
+        data: {
+          shiftId: input.shiftId,
+          receiptNo,
+          itemsJson: sale.lines as unknown as object,
+          totalPoisha: sale.totalPoisha,
+          discountPoisha: sale.discountPoisha,
+          paymentMethod: sale.paymentMethod,
+          tenderedPoisha: sale.tenderedPoisha ?? null,
+          idempotencyKey: input.idempotencyKey,
+          syncedOrderId: null,
+        },
+      });
+      const applied = await applyPosSaleStock(tx, created.id, receiptNo, sale.lines);
+      return { row: created, stock: { applied: "now" as const, ...applied } };
+    });
+    return { ok: true, sale: rowToSale(row, shiftRow.registerId), duplicate: false, stock };
+  } catch (err) {
+    // Lost a race against a concurrent sync of the same key: the
+    // @unique backstop rolled our transaction back (stock included),
+    // so the winning row is the one and only record — return it as
+    // the duplicate it is.
+    if (typeof err === "object" && err !== null && (err as { code?: string }).code === "P2002") {
+      const winner = await prisma.posSale.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+      });
+      if (winner) {
+        const winnerShift = await prisma.posShift.findUnique({ where: { id: winner.shiftId } });
+        return {
+          ok: true,
+          sale: rowToSale(winner, winnerShift?.registerId ?? ""),
+          duplicate: true,
+          stock: { applied: "already", shortfalls: [], missingVariantIds: [] },
+        };
+      }
+    }
+    throw err;
+  }
 }

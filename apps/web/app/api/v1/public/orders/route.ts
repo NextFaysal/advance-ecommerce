@@ -39,8 +39,11 @@
  *   order. The durable backstop is the UNIQUE Order.idempotencyKey
  *   column (src/orders/repository.createOrderRecord converts a P2002
  *   race into a replay); the in-memory claim below still guards
- *   double-submits inside this process, including the FRAUD_BLOCKED
- *   retry -> 409 behaviour.
+ *   double-submits inside this process. Wave 20: the claim is RELEASED
+ *   on every failure outcome (variant/stock validation, shop rules,
+ *   fraud block, create errors) — a corrected retry with the same key
+ *   succeeds instead of 409ing on a poisoned claim; only a persisted
+ *   order keeps the claim (and replays via the DB lookup above).
  * - Persistence (DB swap): the order is written by
  *   src/orders/repository.createOrderRecord in ONE prisma.$transaction:
  *   Customer find-or-create by phone (+ default Address), Order +
@@ -50,6 +53,24 @@
  *   orderId]) backstop). meta.db = "PRISMA".
  * - order.created is published on the in-process bus only after the
  *   transaction commits — never on a replay or a fraud block.
+ * - Shipping (wave 20): priced by the shipping engine
+ *   (src/checkout/shipping.computeOrderShipping) — the zone is DERIVED
+ *   from the submitted district (a customer can no longer self-declare
+ *   the cheap Dhaka zone for an outside-Dhaka address), weight slabs
+ *   price off the summed Product.weightGrams, and the COD fee is the
+ *   engine's configured value. The submitted shippingMethod stays the
+ *   fulfilment choice (delivery speed / pickup); on a zone mismatch
+ *   the derived zone prices the order and is reported as
+ *   meta.shippingZone. Pickup stays pickup (zone "pickup", no
+ *   delivery charge).
+ * - Shop rules (wave 20, src/checkout/order-rules): Settings-driven
+ *   orders.rules.* — minimum merchandise subtotal, COD disabled by
+ *   district / category (422 bilingual, names the rule), and a
+ *   mandatory-advance flag for large COD orders surfaced in the
+ *   response meta (advanceRequired + advancePoisha; collection and
+ *   confirmation gating are plan 17 batch O3). All default OFF.
+ * - Order numbers (wave 20): ORD-YYYYMMDD-NNNN per Asia/Dhaka day,
+ *   minted inside the create transaction (src/orders/repository).
  *
  * STILL DEMO / NOT THIS SLICE:
  * - The coupon RECORDS evaluated by evaluateOrderCoupon still come from
@@ -61,9 +82,16 @@
  *   module owns the ledger wiring).
  */
 import { NextResponse } from "next/server";
-import { checkoutFormSchema } from "@/checkout/validation";
-import { computePricing } from "@/checkout/pricing";
+import { checkoutFormSchema, type CheckoutForm } from "@/checkout/validation";
+import { computePricing, formatBdt } from "@/checkout/pricing";
 import { InMemoryIdempotencyStore } from "@/checkout/idempotency";
+import { computeOrderShipping } from "@/checkout/shipping";
+import {
+  belowMinimum,
+  codViolation,
+  evaluateAdvanceRule,
+  loadOrderRules,
+} from "@/checkout/order-rules";
 import {
   assembleFraudInput,
   evaluateOrderCoupon,
@@ -83,16 +111,6 @@ import {
 } from "@/orders/repository";
 import { BundleStockError, PreorderCapError, productTypesEnabledInDb } from "@/catalog/product-types";
 import type { Order } from "@/orders/types";
-
-function shippingPoisha(method: string): number {
-  if (method === "inside_dhaka") return 6000; // ৳60, configurable via settings later
-  if (method === "outside_dhaka") return 12000; // ৳120
-  return 0; // pickup
-}
-
-function codFeePoisha(paymentMethod: string): number {
-  return paymentMethod === "cod" ? 0 : 0; // COD fee configurable later; 0 for now, never float
-}
 
 function errorResponse(code: string, message: string, status: number, details?: unknown) {
   return NextResponse.json({ error: { code, message, details } }, { status });
@@ -134,6 +152,24 @@ export async function POST(req: Request) {
     return errorResponse("IDEMPOTENCY_CONFLICT", "This checkout attempt was already processed.", 409);
   }
 
+  // Wave 20: the claim is held only while this attempt can still
+  // produce the order. ANY failure outcome from processCreate
+  // (400/409/422) — or a throw — means no order was persisted for the
+  // key, so the claim is RELEASED and a corrected retry with the same
+  // key can succeed; the DB UNIQUE Order.idempotencyKey remains the
+  // real guarantee against duplicates. A success (201) or an
+  // in-create replay (200) keeps the claim: an order exists for it.
+  try {
+    const res = await processCreate(form);
+    if (res.status >= 400) idempotencyStore.release(form.idempotencyKey);
+    return res;
+  } catch (err) {
+    idempotencyStore.release(form.idempotencyKey);
+    throw err;
+  }
+}
+
+async function processCreate(form: CheckoutForm): Promise<NextResponse> {
   // Server-side re-validation: price, SKU, name, stock from the DB only.
   const serverPrices = await getVariantSnapshots(form.items.map((i) => i.variantId));
   // Wave 15: a BUNDLE variant's sellable count is component-derived
@@ -142,6 +178,11 @@ export async function POST(req: Request) {
   const typesOn = await productTypesEnabledInDb();
   const snapshotItems: Order["items"] = [];
   let subtotalPoisha = 0;
+  // Wave 20: the shipping engine prices off the order's total weight,
+  // and the COD rules match the items' category slugs — both come
+  // from the same server snapshots as price/stock (never the client).
+  let totalWeightGrams = 0;
+  const categorySlugs = new Set<string>();
   for (const item of form.items) {
     const server = serverPrices.get(item.variantId);
     if (!server) {
@@ -167,6 +208,38 @@ export async function POST(req: Request) {
       quantity: item.quantity,
     });
     subtotalPoisha += server.unitPricePoisha * item.quantity;
+    totalWeightGrams += server.weightGrams * item.quantity;
+    categorySlugs.add(server.categorySlug);
+  }
+
+  // Shop rules (wave 20, src/checkout/order-rules): Settings-driven
+  // policy, every rule default OFF. COD availability is checked
+  // against the submitted district + the items' category slugs;
+  // violations are a 422 that names the rule, in both languages.
+  const rules = await loadOrderRules();
+  if (form.paymentMethod === "cod") {
+    const violation = codViolation(rules, {
+      district: form.address.district,
+      categorySlugs: [...categorySlugs],
+    });
+    if (violation) {
+      return errorResponse(
+        "COD_NOT_AVAILABLE",
+        violation.rule === "orders.rules.cod_disabled_districts"
+          ? `এই জেলায় ক্যাশ অন ডেলিভারি (COD) সুবিধা নেই — অনুগ্রহ করে অনলাইন পেমেন্ট বেছে নিন। / Cash on Delivery is not available for the ${form.address.district} district — please choose an online payment method.`
+          : "এই অর্ডারের পণ্যের জন্য ক্যাশ অন ডেলিভারি (COD) সুবিধা নেই — অনুগ্রহ করে অনলাইন পেমেন্ট বেছে নিন। / Cash on Delivery is not available for one or more items in this order — please choose an online payment method.",
+        422,
+        { rule: violation.rule, match: violation.match },
+      );
+    }
+  }
+  if (belowMinimum(rules, subtotalPoisha)) {
+    return errorResponse(
+      "MIN_ORDER_NOT_MET",
+      `ন্যূনতম অর্ডার মূল্য ${formatBdt(rules.minOrderPoisha)} — আপনার পণ্যের মূল্য ${formatBdt(subtotalPoisha)}। / Minimum order value is ${formatBdt(rules.minOrderPoisha)} — your items total ${formatBdt(subtotalPoisha)}.`,
+      422,
+      { rule: "orders.rules.min_order_poisha", minOrderPoisha: rules.minOrderPoisha, subtotalPoisha },
+    );
   }
 
   // The customer's prior orders (real, from the DB) feed both the
@@ -178,7 +251,21 @@ export async function POST(req: Request) {
   // breakdown, the order total and the item snapshots all agree. An
   // ineligible/unknown code does NOT fail the order — discount stays 0
   // and the outcome carries couponStatus "rejected" + the bn/en reason.
-  const baseShippingPoisha = shippingPoisha(form.shippingMethod);
+  // Shipping (wave 20): the engine derives the zone from the
+  // submitted district and prices zone + weight slabs from Settings.
+  // The customer's shippingMethod remains the fulfilment choice;
+  // where it disagrees with the derived zone, the DERIVED zone prices
+  // the order (meta.shippingZone reports it) — pickup is the
+  // exception: the pickup choice always stays pickup. The engine
+  // returns its configured COD fee verbatim; per its contract the
+  // caller (here) applies it to COD orders only.
+  const shipping = await computeOrderShipping({
+    district: form.address.district,
+    shippingMethod: form.shippingMethod,
+    totalWeightGrams,
+    subtotalPoisha,
+  });
+  const baseShippingPoisha = shipping.shippingPoisha;
   const coupon = evaluateOrderCoupon({
     code: form.couponCode,
     subtotalPoisha,
@@ -190,7 +277,7 @@ export async function POST(req: Request) {
     itemsSubtotalPoisha: subtotalPoisha,
     couponDiscountPoisha: coupon.discountPoisha,
     shippingPoisha: coupon.shippingPoisha,
-    codFeePoisha: codFeePoisha(form.paymentMethod),
+    codFeePoisha: form.paymentMethod === "cod" ? shipping.codFeePoisha : 0,
     taxBps: 0,
   });
 
@@ -215,15 +302,25 @@ export async function POST(req: Request) {
   const enforcement = fraudEnforcement(assessment);
   if (enforcement.blocked) {
     // Generic message only: no signal, list or score details are leaked
-    // to the public caller. The idempotency key stays claimed (same
-    // pattern as the validation failures above), so a verbatim retry is
-    // a 409 conflict rather than a second scoring attempt.
+    // to the public caller. Wave 20: the wrapper releases the
+    // idempotency claim on this 422, so a corrected retry with the
+    // same key is scored fresh instead of 409ing on a poisoned claim.
     return errorResponse(
       "FRAUD_BLOCKED",
       "দুঃখিত, এই অর্ডারটি গ্রহণ করা যাচ্ছে না। সহায়তার জন্য আমাদের সাথে যোগাযোগ করুন। / Sorry, this order cannot be accepted. Please contact support for help.",
       422,
     );
   }
+
+  // Mandatory-advance rule (wave 20): a COD order above the configured
+  // threshold is flagged advance-required in the response — plumbing
+  // only: nothing is persisted and nothing collects the advance yet
+  // (plan 17 batch O3). Combined with the fraud band's flag below —
+  // either source can require the advance.
+  const ruleAdvance = evaluateAdvanceRule(rules, {
+    paymentMethod: form.paymentMethod,
+    grandTotalPoisha: pricing.grandTotalPoisha,
+  });
 
   // Reseller attribution (wave 6): the optional ?ref= code captured
   // client-side resolves to an ACTIVE reseller or to nothing — an
@@ -296,7 +393,7 @@ export async function POST(req: Request) {
     riskScore: assessment.score,
     riskBand: assessment.level,
     fraudAction: assessment.suggestedAction,
-    advanceRequired: enforcement.advanceRequired,
+    advanceRequired: enforcement.advanceRequired || ruleAdvance.advanceRequired,
     requiresOtp: enforcement.requiresOtp,
     couponCode: coupon.code,
     couponStatus: coupon.status,
@@ -336,6 +433,18 @@ export async function POST(req: Request) {
         resellerAttributed: attribution !== null,
         fraudScored: true,
         advanceRequired: order.advanceRequired,
+        // Wave 20: the rules-based advance (amount + source rule) and
+        // the engine's derived shipping outcome. advancePoisha is
+        // present only when the rules threshold fired — the fraud
+        // band's flag carries no amount until batch O3.
+        ...(ruleAdvance.advanceRequired
+          ? {
+              advancePoisha: ruleAdvance.advancePoisha,
+              advanceRule: "orders.rules.advance_required_above_poisha",
+            }
+          : {}),
+        shippingZone: shipping.zone,
+        freeShippingApplied: shipping.freeShippingApplied,
         note: "Order persisted to the database (Prisma). Coupon records + fraud lists are DB-backed (marketing/fraud modules); checkout assembles fraud input from DB lists and the coupon lookup from a DB snapshot.",
       },
     },

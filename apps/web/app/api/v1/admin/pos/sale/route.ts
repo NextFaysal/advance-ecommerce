@@ -14,8 +14,11 @@ import { posGuardError, requirePosAdmin } from "../guard";
 // The sale is recorded in the Prisma DB (src/pos/store.ts) ONLY. It
 // does NOT create a real Order (createsOrder: false stays honest):
 // an Order requires a customer phone + address that a walk-in sale
-// does not have. Receipt data is the shared orders PrintData shape
-// via buildPosReceipt().
+// does not have. As of doc 17 batch O1 the sync DOES move stock —
+// same SALE_RESERVE seam as an order line, reported per sale in
+// data.stock (shortfalls flagged, never hidden; a replayed key
+// reports applied: "already" and moves nothing). Receipt data is
+// the shared orders PrintData shape via buildPosReceipt().
 export async function POST(req: Request) {
   const guard = await requirePosAdmin("pos.manage");
   if (!guard.ok) return NextResponse.json(posGuardError(guard), { status: guard.status });
@@ -56,6 +59,7 @@ export async function POST(req: Request) {
         receipt: buildPosReceipt(sale),
         subtotalPoisha,
         duplicate: true,
+        stock: result.stock,
       },
       meta: { persistence: "database", createsOrder: false },
     });
@@ -67,11 +71,12 @@ export async function POST(req: Request) {
         receipt: buildPosReceipt(sale),
         subtotalPoisha,
         duplicate: false,
+        stock: result.stock,
       },
       meta: {
         persistence: "database",
         createsOrder: false,
-        note: "Database record only — no real Order is created. This POST is the offline-sync endpoint: queued sales flush here by idempotencyKey.",
+        note: "Database record only — no real Order is created. This POST is the offline-sync endpoint: queued sales flush here by idempotencyKey. Stock was decremented for this sale (see data.stock).",
       },
     },
     { status: 201 },

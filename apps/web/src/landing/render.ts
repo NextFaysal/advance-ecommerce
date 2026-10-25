@@ -23,6 +23,36 @@ export interface ResolvedOffer {
   imageUrl: string | null;
 }
 
+/** One selectable variant of a quick-order product (catalog values, unchanged). */
+export interface ResolvedOrderVariant {
+  variantId: string;
+  variantLabel: string;
+  sku: string;
+  /** Integer poisha — catalog value, unchanged. */
+  pricePoisha: number;
+  /** Integer poisha, nullable — catalog value, unchanged. */
+  compareAtPoisha: number | null;
+  stock: number;
+  inStock: boolean;
+  imageUrl: string | null;
+}
+
+/**
+ * The product a quick_order section sells, with EVERY active variant so
+ * the form can offer a real variant choice (ResolvedOffer collapses to
+ * a single variant; the order form must not). `defaultVariantId` is the
+ * section's pinned variant when it is still active, else the first
+ * in-stock variant, else the first active one.
+ */
+export interface ResolvedOrderProduct {
+  productId: string;
+  productSlug: string;
+  productTitleBn: string;
+  productTitleEn: string;
+  variants: ResolvedOrderVariant[];
+  defaultVariantId: string;
+}
+
 export type LandingViewSection =
   | { kind: "hero"; id: string; titleBn: string; titleEn: string; subtitleBn: string; subtitleEn: string; imageUrl: string | null; ctaLabelBn: string; ctaLabelEn: string }
   | { kind: "product_offer"; id: string; offer: ResolvedOffer | null; discountNoteBn: string; discountNoteEn: string; showCountdown: boolean; countdownEndsAt: string | null }
@@ -30,6 +60,7 @@ export type LandingViewSection =
   | { kind: "how_to_order"; id: string; headingBn: string; headingEn: string; steps: HowToOrderStep[] }
   | { kind: "faq"; id: string; headingBn: string; headingEn: string; items: FaqItem[] }
   | { kind: "order_form_note"; id: string; textBn: string; textEn: string }
+  | { kind: "quick_order"; id: string; headingBn: string; headingEn: string; product: ResolvedOrderProduct | null }
   | { kind: "footer_note"; id: string; textBn: string; textEn: string };
 
 export interface LandingViewModel {
@@ -70,6 +101,45 @@ export function resolveOffer(
   };
 }
 
+/**
+ * Resolve a quick_order section's product with its full active variant
+ * list. Returns null when the product is gone or has no active variant
+ * at all — the renderer then shows the same unavailable note the
+ * product_offer section uses. A product whose variants are all out of
+ * stock still resolves (the form renders but cannot be submitted).
+ */
+export function resolveOrderProduct(
+  section: Extract<LandingSection, { type: "quick_order" }>,
+  catalog: readonly LandingCatalogProduct[],
+): ResolvedOrderProduct | null {
+  const product = catalog.find((p) => p.id === section.productId);
+  if (!product) return null;
+  const active = product.variants.filter((v) => v.isActive);
+  if (active.length === 0) return null;
+  const variants: ResolvedOrderVariant[] = active.map((v) => ({
+    variantId: v.id,
+    variantLabel: Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড",
+    sku: v.sku,
+    pricePoisha: v.pricePoisha,
+    compareAtPoisha: v.compareAtPoisha,
+    stock: v.stock,
+    inStock: v.stock > 0,
+    imageUrl: v.imageUrl ?? product.images[0]?.url ?? null,
+  }));
+  const fallback =
+    variants.find((v) => v.variantId === section.variantId) ??
+    variants.find((v) => v.inStock) ??
+    variants[0];
+  return {
+    productId: product.id,
+    productSlug: product.slug,
+    productTitleBn: product.title.bn,
+    productTitleEn: product.title.en,
+    variants,
+    defaultVariantId: fallback.variantId,
+  };
+}
+
 export function buildLandingViewModel(
   page: LandingPage,
   catalog: readonly LandingCatalogProduct[],
@@ -88,6 +158,8 @@ export function buildLandingViewModel(
         return { kind: "faq", id: section.id, headingBn: section.headingBn, headingEn: section.headingEn, items: section.items };
       case "order_form_note":
         return { kind: "order_form_note", id: section.id, textBn: section.textBn, textEn: section.textEn };
+      case "quick_order":
+        return { kind: "quick_order", id: section.id, headingBn: section.headingBn, headingEn: section.headingEn, product: resolveOrderProduct(section, catalog) };
       case "footer_note":
         return { kind: "footer_note", id: section.id, textBn: section.textBn, textEn: section.textEn };
     }

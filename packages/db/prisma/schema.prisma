@@ -751,6 +751,18 @@ model Order {
   @@index([deletedAt])
 }
 
+// Per-day order-number sequence (wave 20, plan 17 batch O2). The human
+// order number ORD-YYYYMMDD-NNNN is minted inside the create
+// transaction (src/orders/repository.ts nextOrderNoTx) from this
+// counter: one row per Asia/Dhaka calendar day, incremented with an
+// atomic INSERT ... ON CONFLICT DO UPDATE so concurrent creates can
+// never draw the same sequence. Existing orders keep their historical
+// ORD-<epoch-ms> numbers — nothing renumbers history.
+model OrderSequence {
+  day     String @id // Asia/Dhaka day, YYYYMMDD
+  lastSeq Int    @default(0)
+}
+
 model OrderItem {
   id              String         @id @default(cuid())
   orderId         String

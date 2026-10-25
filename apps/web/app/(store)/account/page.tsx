@@ -20,6 +20,7 @@ import {
   listCustomerOrders,
   type AccountOrderSummary,
 } from "@/customer-auth/auth";
+import ReorderButton from "./reorder-button";
 import AuthForms from "@/customer-auth/components/AuthForms";
 import AddressManager from "@/customer-auth/components/AddressManager";
 import LogoutButton from "@/customer-auth/components/LogoutButton";
@@ -53,24 +54,29 @@ function formatDate(iso: string): string {
 
 function OrderRow({ order }: { order: AccountOrderSummary }) {
   return (
-    <li className="flex items-center justify-between gap-3 px-4 py-3">
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-text-main">
-          <a href={`/track?orderNo=${encodeURIComponent(order.orderNo)}`} className="hover:text-brand-700 hover:underline">
-            {order.orderNo}
-          </a>
-          <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
-            {ORDER_STATUS_BN[order.status] ?? order.status}
-          </span>
-        </p>
-        <p className="mt-1 truncate text-xs leading-5 text-text-muted">
-          {formatDate(order.createdAt)} · {order.itemCount}টি পণ্য
-          {order.firstItemName ? ` · ${order.firstItemName}` : ""}
+    <li className="px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-text-main">
+            <a href={`/track?orderNo=${encodeURIComponent(order.orderNo)}`} className="hover:text-brand-700 hover:underline">
+              {order.orderNo}
+            </a>
+            <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
+              {ORDER_STATUS_BN[order.status] ?? order.status}
+            </span>
+          </p>
+          <p className="mt-1 truncate text-xs leading-5 text-text-muted">
+            {formatDate(order.createdAt)} · {order.itemCount}টি পণ্য
+            {order.firstItemName ? ` · ${order.firstItemName}` : ""}
+          </p>
+        </div>
+        <p className="shrink-0 text-sm font-bold text-text-main">
+          <BdtAmount poisha={order.totalPoisha} />
         </p>
       </div>
-      <p className="shrink-0 text-sm font-bold text-text-main">
-        <BdtAmount poisha={order.totalPoisha} />
-      </p>
+      <div className="mt-2.5">
+        <ReorderButton orderId={order.id} orderNo={order.orderNo} />
+      </div>
     </li>
   );
 }

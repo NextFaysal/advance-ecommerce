@@ -41,12 +41,22 @@ import {
   orderRowToEnriched,
 } from "@/orders/repository";
 import type { Order } from "@/orders/types";
-import { productTypesEnabledInDb } from "@/catalog/product-types";
+import {
+  BundleStockError,
+  PreorderCapError,
+  productTypesEnabledInDb,
+} from "@/catalog/product-types";
 import { enqueueBulkJob, processBulkJob } from "@/jobs/bulk-actions";
 import { manualOrderSchema } from "@/orders/manual-order";
+import { calculateShipping, loadShippingRates } from "@/checkout/shipping";
 import { normalizeBdPhone } from "@/checkout/validation";
 import { computePricing } from "@/checkout/pricing";
-import { assembleFraudInput, fraudEnforcement } from "@/checkout/order-enrichment";
+import {
+  assembleFraudInput,
+  evaluateOrderCoupon,
+  fraudEnforcement,
+  recordCouponUse,
+} from "@/checkout/order-enrichment";
 import { scoreFraud } from "@/fraud/scoring";
 import { publishOrderCreated } from "@/orders/event-bus";
 import { resolveResellerAttribution } from "@/reseller/store";
@@ -248,10 +258,18 @@ const manualCreateSchema = manualOrderSchema.extend({
  *   orders may carry a negotiated price). Product name + SKU still
  *   come from the DB snapshot, never from the client, and any price
  *   that differs from the catalog price is recorded on the order note.
- * - No coupon and no shipping method exist on the manual form, so
- *   discount and shipping are 0 — the total is the items subtotal.
  * - The order is stored with source "manual" (Order.source) instead of
  *   the public path's "website".
+ *
+ * V2 (doc 17 batch O2): shipping and coupon now flow exactly like
+ * public checkout — the delivery charge comes from the shared
+ * shipping engine with live Settings rates (the staff-chosen method
+ * is the zone; an absent method defaults to inside_dhaka, an explicit
+ * shippingOverridePoisha replaces the rate and is noted on the order),
+ * and an optional couponCode is evaluated by the SAME
+ * evaluateOrderCoupon the public route uses, so the discount lands
+ * inside the pricing pipeline and the CouponUsage row is written in
+ * the create transaction. An ineligible code never fails the order.
  */
 async function handleManualCreate(req: Request, session: AdminSession, body: unknown) {
   const parsed = manualCreateSchema.safeParse(body);
@@ -327,10 +345,39 @@ async function handleManualCreate(req: Request, session: AdminSession, body: unk
   }
 
   const priorOrders = await listOrdersByPhone(phone);
+
+  // Shipping (v2): the public-checkout rate for the chosen method, or
+  // the staff override when one was set. An absent method defaults to
+  // inside_dhaka — the common phone-order case — and meta says so.
+  const shippingMethod = input.shippingMethod ?? "inside_dhaka";
+  // Settings-backed rates via the shared shipping engine (wave 20): the
+  // staff-picked method IS the zone for phone orders (explicit zone input),
+  // weight is unknown here (0) — the staff override covers special cases.
+  const shippingRates = await loadShippingRates();
+  const rateShippingPoisha = calculateShipping(shippingRates, {
+    zone: shippingMethod,
+    shippingMethod,
+    totalWeightGrams: 0,
+    subtotalPoisha,
+  }).shippingPoisha;
+  const baseShippingPoisha = input.shippingOverridePoisha ?? rateShippingPoisha;
+
+  // Coupon (v2): the SAME evaluator public checkout uses. It sees the
+  // base shipping above, so a free-shipping coupon zeroes even a staff
+  // override — identical semantics to the storefront. An ineligible or
+  // unknown code never fails the order: discount 0, outcome in meta.
+  const coupon = evaluateOrderCoupon({
+    code: input.couponCode,
+    subtotalPoisha,
+    shippingPoisha: baseShippingPoisha,
+    userKey: phone,
+    isFirstOrder: priorOrders.length === 0,
+  });
+
   const pricing = computePricing({
     itemsSubtotalPoisha: subtotalPoisha,
-    couponDiscountPoisha: 0,
-    shippingPoisha: 0,
+    couponDiscountPoisha: coupon.discountPoisha,
+    shippingPoisha: coupon.shippingPoisha,
     codFeePoisha: 0,
     taxBps: 0,
   });
@@ -370,29 +417,52 @@ async function handleManualCreate(req: Request, session: AdminSession, body: unk
     priceOverrides.length > 0
       ? `ম্যানুয়াল অর্ডার — কর্মীর নির্ধারিত দাম: ${priceOverrides.join("; ")}`
       : null,
+    input.shippingOverridePoisha !== undefined &&
+    input.shippingOverridePoisha !== rateShippingPoisha
+      ? `ম্যানুয়াল অর্ডার — ডেলিভারি চার্জ কর্মীর নির্ধারিত ${input.shippingOverridePoisha} পয়সা (${shippingMethod} অনুযায়ী ${rateShippingPoisha} পয়সা)`
+      : null,
   ].filter((p): p is string => p !== null);
 
-  const created = await createOrderRecord({
-    idempotencyKey,
-    customerName: input.customerName,
-    customerPhone: phone,
-    address: input.address,
-    items,
-    pricing: {
-      subtotalPoisha: pricing.subtotalPoisha,
-      discountPoisha: pricing.couponDiscountPoisha,
-      shippingPoisha: pricing.shippingPoisha,
-      codFeePoisha: pricing.codFeePoisha,
-      taxPoisha: pricing.taxPoisha,
-      totalPoisha: pricing.grandTotalPoisha,
-    },
-    paymentMethod: input.paymentMethod,
-    riskScore: assessment.score,
-    appliedCoupon: null,
-    note: noteParts.length > 0 ? noteParts.join("\n") : undefined,
-    source: "manual",
-    resellerId: attribution?.id,
-  });
+  // input.customerId (from the builder's phone lookup) is deliberately
+  // NOT passed on: createOrderRecord resolves the customer by phone
+  // (find-or-create), the same contract as public checkout.
+  let created: Awaited<ReturnType<typeof createOrderRecord>>;
+  try {
+    created = await createOrderRecord({
+      idempotencyKey,
+      customerName: input.customerName,
+      customerPhone: phone,
+      address: input.address,
+      items,
+      pricing: {
+        subtotalPoisha: pricing.subtotalPoisha,
+        discountPoisha: pricing.couponDiscountPoisha,
+        shippingPoisha: pricing.shippingPoisha,
+        codFeePoisha: pricing.codFeePoisha,
+        taxPoisha: pricing.taxPoisha,
+        totalPoisha: pricing.grandTotalPoisha,
+      },
+      paymentMethod: input.paymentMethod,
+      riskScore: assessment.score,
+      appliedCoupon:
+        coupon.status === "applied" && coupon.code
+          ? { code: coupon.code, discountPoisha: coupon.discountPoisha }
+          : null,
+      note: noteParts.length > 0 ? noteParts.join("\n") : undefined,
+      source: "manual",
+      resellerId: attribution?.id,
+    });
+  } catch (e) {
+    // Wave 15 product-type failures roll the create back — map them
+    // to honest client errors like the public route does, not a 500.
+    if (e instanceof BundleStockError) {
+      return err("INSUFFICIENT_STOCK", e.message, 400, e.details);
+    }
+    if (e instanceof PreorderCapError) {
+      return err("PREORDER_CAP_REACHED", e.message, 409, e.details);
+    }
+    throw e;
+  }
   if (created.replayed) {
     const row = await findOrderByIdempotencyKey(idempotencyKey);
     if (row) {
@@ -412,6 +482,12 @@ async function handleManualCreate(req: Request, session: AdminSession, body: unk
   const storedRow = await findOrderByIdempotencyKey(idempotencyKey);
   const stored = storedRow ? orderRowToEnriched(storedRow) : null;
   if (stored) publishOrderCreated(stored);
+  // Coupon usage bookkeeping — only now that the order exists, never
+  // on a fraud block (returned above) or a replay (returned earlier);
+  // the durable CouponUsage row was written in the create transaction.
+  if (coupon.status === "applied" && coupon.record) {
+    recordCouponUse(coupon.record, phone);
+  }
   await writeAudit({
     actorId: session.user.id,
     action: "orders.create",
@@ -425,6 +501,12 @@ async function handleManualCreate(req: Request, session: AdminSession, body: unk
       itemCount: items.length,
       riskScore: assessment.score,
       resellerId: attribution?.id ?? null,
+      shippingMethod,
+      shippingPoisha: pricing.shippingPoisha,
+      shippingOverridden: input.shippingOverridePoisha !== undefined,
+      couponCode: coupon.code,
+      couponStatus: coupon.status,
+      customerId: input.customerId ?? null,
     },
     ip: req.headers.get("x-forwarded-for") ?? undefined,
     userAgent: req.headers.get("user-agent") ?? undefined,
@@ -439,7 +521,22 @@ async function handleManualCreate(req: Request, session: AdminSession, body: unk
         fraudScored: true,
         resellerAttributed: attribution !== null,
         advanceRequired: enforcement.advanceRequired,
-        note: "Manual order persisted via the shared create path. Item prices are staff-entered (DB snapshot for name/SKU/stock); no coupon and no shipping charge on manual create — total is the items subtotal.",
+        pricing: {
+          subtotalPoisha: pricing.subtotalPoisha,
+          discountPoisha: pricing.couponDiscountPoisha,
+          shippingPoisha: pricing.shippingPoisha,
+          codFeePoisha: pricing.codFeePoisha,
+          taxPoisha: pricing.taxPoisha,
+          totalPoisha: pricing.grandTotalPoisha,
+        },
+        shippingMethod,
+        shippingDefaulted: input.shippingMethod === undefined,
+        couponApplied: coupon.status === "applied",
+        couponStatus: coupon.status,
+        couponCode: coupon.code,
+        couponReasonBn: coupon.reasonBn,
+        couponReasonEn: coupon.reasonEn,
+        note: "Manual order persisted via the shared create path. Item prices are staff-entered (DB snapshot for name/SKU/stock); shipping is the public-checkout rate for the method (or the staff override), and a coupon code is evaluated by the same evaluator as public checkout.",
       },
     },
     { status: 201 },

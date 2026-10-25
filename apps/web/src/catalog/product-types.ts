@@ -7,12 +7,14 @@
  * run and digital fulfilment does not issue grants.
  *
  * STOCK SEAM — read this before touching checkout:
- * This platform's order create (src/orders/repository.createOrderRecord)
- * NEVER moved stock for ordinary items: variant.stock is a read-only
- * check at the route, no SALE_RESERVE/COMMIT movements are written for
- * any product today (documented in the public orders route header).
- * Bundle components are the exception the P7 contract demands, and
- * they are wired HERE, inside createOrderRecord's single transaction:
+ * Historically this platform's order create NEVER moved stock for
+ * ordinary items: variant.stock was a read-only check at the route.
+ * WAVE 19 (plan 17, batch O1) generalised the seam: createOrderRecord
+ * now reserves EVERY ordinary line through the same ledger shape used
+ * here (guarded cache decrement + SALE_RESERVE movement + InventoryItem
+ * upsert, released on CANCELLED by releaseOrderStockReservations in
+ * src/orders/repository.ts). Bundle components remain wired HERE,
+ * inside createOrderRecord's single transaction:
  *
  *  - CHECK: for every BUNDLE item, each component variant must hold
  *    stock >= component.quantity x ordered qty (summed across all
@@ -143,16 +145,25 @@ interface OrderLineLike {
 /**
  * Pre-check + cap enforcement, run INSIDE the create transaction
  * before the order row exists. Returns the bundle component needs so
- * the caller can deduct after the order id exists. Throws
- * PreorderCapError / BundleStockError (typed, route-mappable).
+ * the caller can deduct after the order id exists, plus the set of
+ * line variant ids that belong to BUNDLE products (wave 19: the
+ * caller's general stock reservation must skip those — a bundle
+ * variant is a pricing shell whose sellable stock lives in its
+ * components; reserving the shell itself would double-claim). The set
+ * is empty while the flag is OFF: flag-off semantics treat a bundle
+ * variant's own cache as the sellable count (the routes' pre-check
+ * does the same), so the general reservation claims it like any other
+ * line. Throws PreorderCapError / BundleStockError (typed,
+ * route-mappable).
  */
 export async function validateProductTypeRules(
   tx: PrismaTx,
   items: OrderLineLike[],
-): Promise<{ componentNeeds: Map<string, number> }> {
+): Promise<{ componentNeeds: Map<string, number>; bundleVariantIds: Set<string> }> {
   const componentNeeds = new Map<string, number>();
-  if (items.length === 0) return { componentNeeds };
-  if (!(await productTypesEnabledInDb())) return { componentNeeds };
+  const bundleVariantIds = new Set<string>();
+  if (items.length === 0) return { componentNeeds, bundleVariantIds };
+  if (!(await productTypesEnabledInDb())) return { componentNeeds, bundleVariantIds };
 
   const variantIds = [...new Set(items.map((i) => i.variantId))];
   const variants = await tx.productVariant.findMany({
@@ -164,6 +175,10 @@ export async function validateProductTypeRules(
     },
   });
   const byId = new Map(variants.map((v) => [v.id, v]));
+  for (const item of items) {
+    const v = byId.get(item.variantId);
+    if (v && v.product.type === "BUNDLE") bundleVariantIds.add(item.variantId);
+  }
 
   // --- Pre-order caps (per product, across all its variants) ---
   const preorderRequested = new Map<string, number>();
@@ -202,7 +217,7 @@ export async function validateProductTypeRules(
     const v = byId.get(item.variantId);
     if (v && v.product.type === "BUNDLE") bundleProductIds.add(v.product.id);
   }
-  if (bundleProductIds.size === 0) return { componentNeeds };
+  if (bundleProductIds.size === 0) return { componentNeeds, bundleVariantIds };
 
   const components = await tx.bundleComponent.findMany({
     where: { bundleProductId: { in: [...bundleProductIds] } },
@@ -252,7 +267,7 @@ export async function validateProductTypeRules(
       );
     }
   }
-  return { componentNeeds };
+  return { componentNeeds, bundleVariantIds };
 }
 
 /**
@@ -332,6 +347,15 @@ export async function deductBundleComponents(
  * Ledger-idempotent: an order whose SALE_RESERVE movements already
  * have matching SALE_RELEASE movements is a no-op. Never throws —
  * callers run it after the status commit (delivered-hooks discipline).
+ *
+ * WAVE 19 NOTE: the status funnels also call
+ * releaseOrderStockReservations (src/orders/repository.ts) right after
+ * this — a NON-flag-gated generalisation that releases every remaining
+ * unreleased SALE_RESERVE for the order (ordinary lines, plus any
+ * component reserve this function skipped because the flag was OFF at
+ * cancel time). The two are sequentially idempotent in either order;
+ * this function remains the flag-on fast path and its per-order scan
+ * already covers every SALE_RESERVE the order wrote.
  */
 export async function restoreBundleComponentsForOrder(orderId: string): Promise<void> {
   try {

@@ -67,6 +67,22 @@ export async function searchPublicProducts(
           product.status === "ACTIVE" &&
           (product.publishAt === null || new Date(product.publishAt).getTime() <= now)
         ) {
+          // inStockOnly alignment (doc 17 batch O1): the index's
+          // `inStock` boolean is computed at reindex time, but order
+          // and POS stock movements do not reindex — a variant sold
+          // out since the last reindex would still pass the engine's
+          // `inStock = true` clause. Hydration reads the LIVE variant
+          // cache from Postgres, so re-check it here and drop what
+          // checkout would refuse, exactly as applyProductFilter does
+          // on the Postgres path. (The engine `total` still counts
+          // every matched document, so a page can come back short —
+          // same caveat the stale-status gate above already carries.)
+          if (
+            filter.inStockOnly &&
+            !product.variants.some((v) => v.isActive && v.stock > 0)
+          ) {
+            continue;
+          }
           hydrated.push(toPublicProduct(product));
         }
       }

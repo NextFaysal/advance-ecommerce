@@ -10,9 +10,18 @@
 // output (the route parses the same checkoutFormSchema). The client
 // sends NO prices — the server re-reads variant prices/stock from the
 // DB; the totals below are a preview of the server's own pipeline
-// (shipping: inside_dhaka 6000 / outside_dhaka 12000 / pickup 0 poisha,
-// exactly as the orders route; a coupon's discount is evaluated
-// server-side only, so the preview carries 0 until the order returns).
+// (a coupon's discount is evaluated server-side only, so the preview
+// carries 0 until the order returns).
+//
+// Address + shipping (doc 17 O2): division/district/upazila are
+// cascade selects fed by GET /api/v1/public/geo, so the submitted
+// values are canonical geo-dataset names by construction. The
+// customer no longer picks a delivery zone — the zone is derived
+// from the chosen district, and the preview charge comes from the
+// shipping engine's pure calculator (src/checkout/shipping-core) at
+// the built-in default rates. There is no public settings endpoint,
+// so the preview is labelled আনুমানিক; the server's engine result
+// (live Settings rates, real order weight) is authoritative.
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Cart } from "../../../src/cart/types";
@@ -21,6 +30,19 @@ import { clearGuestCart, loadGuestCart } from "../../../src/cart/persistence";
 import { readStoredResellerRef } from "../../../src/reseller/attribution";
 import { findStockProblems } from "../../../src/checkout/stock";
 import { computePricing, formatBdt } from "../../../src/checkout/pricing";
+import {
+  calculateShipping,
+  DEFAULT_SHIPPING_RATES,
+  zoneForDistrict,
+  type ShippingZone,
+} from "../../../src/checkout/shipping-core";
+import {
+  districtsOf,
+  findDistrict,
+  upazilasOf,
+  type GeoTree,
+} from "../../../src/checkout/geo-tree";
+import { parseAddress } from "../../../src/bd/address-parser";
 import { useDigitText } from "@/components/ui/numerals";
 import { newIdempotencyKey, validateCheckoutForm } from "../../../src/checkout";
 import { BkashMark, CodMark, NagadMark, SslCommerzMark } from "@/components/brand-marks";
@@ -35,13 +57,6 @@ const INPUT_CLASS =
   "h-12 w-full rounded-xl border border-border bg-card px-4 text-sm text-text-main outline-none transition placeholder:text-text-subtle focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30";
 const PAYMENT_TILE_CLASS =
   "inline-flex h-[52px] cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-3 transition has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50 has-[:checked]:ring-1 has-[:checked]:ring-brand-500/40";
-
-/** Display-only mirror of the orders route's shipping charges (poisha). */
-const SHIPPING_POISHA: Record<string, number> = {
-  inside_dhaka: 6000,
-  outside_dhaka: 12000,
-  pickup: 0,
-};
 
 type PlacedOrder = {
   orderNo: string;
@@ -59,10 +74,28 @@ export default function CheckoutPage() {
   const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null);
-  // Display-only mirror of the shipping <select> so the summary totals
-  // follow the chosen zone; the submitted value still comes from the
-  // form itself (name/defaultValue unchanged).
-  const [shippingMethod, setShippingMethod] = useState<string>("inside_dhaka");
+  // Geo cascade (doc 17 O2): division/district/upazila are picked
+  // from the canonical geo tree, so submitted values are dataset
+  // names by construction. If the geo fetch fails, the form falls
+  // back to free-text inputs under the same field names — checkout
+  // never blocks on it.
+  const [geoTree, setGeoTree] = useState<GeoTree | null>(null);
+  const [geoFailed, setGeoFailed] = useState(false);
+  const [division, setDivision] = useState("");
+  const [district, setDistrict] = useState("");
+  const [upazila, setUpazila] = useState("");
+  // Delivery vs pickup is the only shipping choice left to the
+  // customer; the zone itself is derived from the district.
+  const [deliveryType, setDeliveryType] = useState<"delivery" | "pickup">("delivery");
+  // Paste-a-full-address helper: the parser's reading is offered as
+  // a suggestion chip and applied ONLY on the customer's tap — the
+  // form is never silently rewritten.
+  const [pasteText, setPasteText] = useState("");
+  const [suggestion, setSuggestion] = useState<{
+    division: string;
+    district: string;
+    upazila: string;
+  } | null>(null);
   // One key per checkout attempt; reused on retry, never regenerated on retry.
   const [idempotencyKey] = useState<string>(() => newIdempotencyKey());
 
@@ -71,22 +104,115 @@ export default function CheckoutPage() {
     setLoaded(true);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/public/geo")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("geo fetch failed"))))
+      .then((json: { data?: GeoTree }) => {
+        if (cancelled) return;
+        if (Array.isArray(json.data)) setGeoTree(json.data);
+        else setGeoFailed(true);
+      })
+      .catch(() => {
+        if (!cancelled) setGeoFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Zone from the district alone (before any district is picked the
+  // preview assumes Dhaka, the pre-O2 default — it is a preview only).
+  const districtZone: ShippingZone = zoneForDistrict(district || "Dhaka");
+  const submittedZone: ShippingZone = deliveryType === "pickup" ? "pickup" : districtZone;
+
+  function onDivisionChange(value: string) {
+    setDivision(value);
+    setDistrict("");
+    setUpazila("");
+  }
+
+  function onDistrictChange(value: string) {
+    setDistrict(value);
+    setUpazila("");
+  }
+
+  function onPasteChange(value: string) {
+    setPasteText(value);
+    if (!geoTree || value.trim().length < 8) {
+      setSuggestion(null);
+      return;
+    }
+    const parsed = parseAddress(value);
+    if (!parsed.district) {
+      setSuggestion(null);
+      return;
+    }
+    const located = findDistrict(geoTree, parsed.district);
+    if (!located) {
+      setSuggestion(null);
+      return;
+    }
+    const candidate = parsed.upazila ?? parsed.area;
+    const upazilaPick =
+      candidate && located.district.upazilas.some((u) => u.nameEn === candidate) ? candidate : "";
+    const next = {
+      division: located.division.nameEn,
+      district: located.district.nameEn,
+      upazila: upazilaPick,
+    };
+    setSuggestion(next.division !== division || next.district !== district ? next : null);
+  }
+
+  function applySuggestion() {
+    if (!suggestion) return;
+    setDivision(suggestion.division);
+    setDistrict(suggestion.district);
+    setUpazila(suggestion.upazila);
+    setSuggestion(null);
+  }
+
+  // Bangla label for the suggestion chip, from the tree's names.
+  const suggestionLabel = (() => {
+    if (!suggestion || !geoTree) return "";
+    const located = findDistrict(geoTree, suggestion.district);
+    if (!located) return suggestion.district;
+    const parts = [`${located.district.nameBn} জেলা`];
+    const up = located.district.upazilas.find((u) => u.nameEn === suggestion.upazila);
+    if (up) parts.push(`${up.nameBn} উপজেলা`);
+    return parts.join(", ");
+  })();
+
   const items = useMemo(() => cart?.items ?? [], [cart]);
   const stockProblems = useMemo(() => findStockProblems(items), [items]);
   const totalQuantity = useMemo(
     () => items.reduce((sum, item) => sum + item.quantity, 0),
     [items],
   );
+  // Preview via the shipping engine's pure calculator at the
+  // built-in default rates (no public settings endpoint exists) and
+  // with no weight data (the cart carries none) — labelled আনুমানিক
+  // in the summary; the server's engine result is authoritative.
+  const shippingPreview = useMemo(
+    () =>
+      calculateShipping(DEFAULT_SHIPPING_RATES, {
+        district: district || undefined,
+        shippingMethod: submittedZone,
+        totalWeightGrams: 0,
+        subtotalPoisha: cart ? cartSubtotalPoisha(cart) : 0,
+      }),
+    [cart, district, submittedZone],
+  );
   const pricing = useMemo(
     () =>
       computePricing({
         itemsSubtotalPoisha: cart ? cartSubtotalPoisha(cart) : 0,
         couponDiscountPoisha: 0,
-        shippingPoisha: SHIPPING_POISHA[shippingMethod] ?? 6000,
+        shippingPoisha: shippingPreview.shippingPoisha,
         codFeePoisha: 0,
         taxBps: 0,
       }),
-    [cart, shippingMethod],
+    [cart, shippingPreview],
   );
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -307,7 +433,9 @@ export default function CheckoutPage() {
             <dd className="tabular-nums">{digits(formatBdt(pricing.subtotalPoisha))}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-text-muted">ডেলিভারি চার্জ</dt>
+            <dt className="text-text-muted">
+              ডেলিভারি চার্জ <span className="text-text-subtle">(আনুমানিক)</span>
+            </dt>
             <dd className="tabular-nums">{digits(formatBdt(pricing.shippingPoisha))}</dd>
           </div>
           <div className="flex justify-between pt-1 text-base font-bold text-text-main">
@@ -316,7 +444,8 @@ export default function CheckoutPage() {
           </div>
         </dl>
         <p className="mt-2 text-xs text-text-subtle">
-          চূড়ান্ত হিসাব সার্ভারে আবার যাচাই হবে — কুপনের ছাড় থাকলে তা অর্ডারের মোটে কমে যাবে।
+          ডেলিভারি চার্জ আনুমানিক — চূড়ান্ত চার্জ সার্ভারে জেলা ও ওজন অনুযায়ী নির্ধারিত হবে।
+          কুপনের ছাড় থাকলে তা অর্ডারের মোটে কমে যাবে।
         </p>
         {stockProblems.length > 0 && (
           <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
@@ -346,18 +475,122 @@ export default function CheckoutPage() {
           <span className="mb-1.5 block text-sm font-medium text-text-main">ইমেইল (ঐচ্ছিক)</span>
           <input name="email" type="email" inputMode="email" autoComplete="email" className={INPUT_CLASS} />
         </label>
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">বিভাগ *</span>
-          <input name="division" required className={INPUT_CLASS} />
-        </label>
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">জেলা *</span>
-          <input name="district" required className={INPUT_CLASS} />
-        </label>
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">উপজেলা *</span>
-          <input name="upazila" required className={INPUT_CLASS} />
-        </label>
+        {geoTree ? (
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-text-main">
+              সম্পূর্ণ ঠিকানা একসাথে লিখুন (ঐচ্ছিক)
+            </span>
+            <input
+              value={pasteText}
+              onChange={(e) => onPasteChange(e.target.value)}
+              placeholder="যেমন: বাসা ১২, রোড ৫, মিরপুর ১০, ঢাকা"
+              className={INPUT_CLASS}
+            />
+          </label>
+        ) : null}
+        {suggestion ? (
+          <div
+            role="status"
+            className="flex flex-wrap items-center gap-2 rounded-xl bg-brand-50 px-4 py-3 text-sm text-text-main"
+          >
+            <span>
+              আপনি কি <strong>{suggestionLabel}</strong> বোঝাতে চেয়েছেন?
+            </span>
+            <button
+              type="button"
+              onClick={applySuggestion}
+              className="inline-flex h-9 items-center rounded-lg bg-brand-600 px-3 text-sm font-semibold text-white transition hover:bg-brand-700"
+            >
+              হ্যাঁ, ব্যবহার করুন
+            </button>
+            <button
+              type="button"
+              onClick={() => setSuggestion(null)}
+              className="inline-flex h-9 items-center rounded-lg border border-border bg-card px-3 text-sm font-medium text-text-main transition hover:bg-surface-2"
+            >
+              না
+            </button>
+          </div>
+        ) : null}
+        {geoTree ? (
+          <>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-text-main">বিভাগ *</span>
+              <select
+                name="division"
+                required
+                value={division}
+                onChange={(e) => onDivisionChange(e.target.value)}
+                className={INPUT_CLASS}
+              >
+                <option value="">বিভাগ বেছে নিন</option>
+                {geoTree.map((d) => (
+                  <option key={d.nameEn} value={d.nameEn}>
+                    {d.nameBn}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-text-main">জেলা *</span>
+              <select
+                name="district"
+                required
+                value={district}
+                disabled={!division}
+                onChange={(e) => onDistrictChange(e.target.value)}
+                className={INPUT_CLASS}
+              >
+                <option value="">জেলা বেছে নিন</option>
+                {districtsOf(geoTree, division).map((d) => (
+                  <option key={d.nameEn} value={d.nameEn}>
+                    {d.nameBn}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-text-main">উপজেলা *</span>
+              <select
+                name="upazila"
+                required
+                value={upazila}
+                disabled={!district}
+                onChange={(e) => setUpazila(e.target.value)}
+                className={INPUT_CLASS}
+              >
+                <option value="">উপজেলা বেছে নিন</option>
+                {upazilasOf(geoTree, division, district).map((u) => (
+                  <option key={u.nameEn} value={u.nameEn}>
+                    {u.nameBn}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : geoFailed ? (
+          <>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-text-main">বিভাগ *</span>
+              <input name="division" required className={INPUT_CLASS} />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-text-main">জেলা *</span>
+              <input name="district" required className={INPUT_CLASS} />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-text-main">উপজেলা *</span>
+              <input name="upazila" required className={INPUT_CLASS} />
+            </label>
+          </>
+        ) : (
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-text-main">বিভাগ / জেলা / উপজেলা *</span>
+            <select disabled className={INPUT_CLASS}>
+              <option>এলাকার তালিকা লোড হচ্ছে…</option>
+            </select>
+          </label>
+        )}
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-text-main">ইউনিয়ন (ঐচ্ছিক)</span>
           <input name="union" className={INPUT_CLASS} />
@@ -371,15 +604,19 @@ export default function CheckoutPage() {
           <input name="note" className={INPUT_CLASS} />
         </label>
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">ডেলিভারি এলাকা</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">ডেলিভারি মাধ্যম</span>
           <select
             name="shippingMethod"
-            defaultValue="inside_dhaka"
-            onChange={(e) => setShippingMethod(e.target.value)}
+            value={submittedZone}
+            onChange={(e) => setDeliveryType(e.target.value === "pickup" ? "pickup" : "delivery")}
             className={INPUT_CLASS}
           >
-            <option value="inside_dhaka">ঢাকার ভিতরে</option>
-            <option value="outside_dhaka">ঢাকার বাইরে</option>
+            <option value={districtZone}>
+              হোম ডেলিভারি
+              {district
+                ? ` — ${districtZone === "inside_dhaka" ? "ঢাকার ভিতরে" : "ঢাকার বাইরে"} (জেলা অনুযায়ী স্বয়ংক্রিয়)`
+                : ""}
+            </option>
             <option value="pickup">পিকআপ (নিজে এসে নেবেন)</option>
           </select>
         </label>

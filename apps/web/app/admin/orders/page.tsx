@@ -7,22 +7,24 @@
 // computed from those real rows — an empty DB shows an honest empty
 // state, never sample rows. Bulk actions go through the BulkActionBar
 // (real job pipeline, per-order results from the Jobs API). The manual
-// order form below validates with manualOrderSchema and POSTs to the
-// admin create endpoint (POST /api/v1/admin/orders without an `action`
-// field), which persists through the same repository path as public
-// checkout (DB snapshots, fraud scoring, one transaction, source
-// "manual"); on success the list reloads so the order appears, on
-// failure the server's message is shown in the form.
+// order builder below (ManualOrderBuilder, doc 17 batch O2) validates
+// with manualOrderSchema v2 and POSTs to the admin create endpoint
+// (POST /api/v1/admin/orders without an `action` field), which
+// persists through the same repository path as public checkout (DB
+// snapshots, fraud scoring, coupon evaluation, shipping charge, one
+// transaction, source "manual"); on success the list reloads so the
+// order appears, on failure the server's message is shown in the form.
 //
 // Presentation (Design Refresh R3): Tailwind table system — sticky
 // header, status pills, payment/risk badges, filter chips with real
 // counts, designed empty/loading states. Data flow unchanged.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Order, OrderStatus } from "../../../src/orders/types";
-import { MANUAL_ORDER_STEPS, manualOrderSchema } from "../../../src/orders/manual-order";
+import { MANUAL_ORDER_STEPS } from "../../../src/orders/manual-order";
 import { displayPhone, riskLevel } from "../../../src/orders/customer";
 import { formatBdt } from "../../../src/checkout/pricing";
 import { BulkActionBar } from "../../../src/orders/components/BulkActionBar";
+import { ManualOrderBuilder } from "./manual-order-builder";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -93,10 +95,6 @@ const ORDER_PICKER_COLUMNS = [
 ] as const;
 const ORDER_HIDEABLE_KEYS = ORDER_PICKER_COLUMNS.map((c) => c.key);
 
-const inputCls =
-  "h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
-const labelCls = "mb-1.5 block text-small font-medium text-text-main";
-
 /** Sortable column header (table v2): click toggles direction; the
  *  chevron points up for ascending, down for descending, and stays
  *  faint while the column is not the active sort. */
@@ -156,13 +154,6 @@ export default function AdminOrdersPage() {
   const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
   const orderViews = useSavedViews<OrderViewState>("orders");
   const orderCols = useHiddenColumns("orders", ORDER_HIDEABLE_KEYS);
-  const [manualResult, setManualResult] = useState<string>("");
-  const [manualOk, setManualOk] = useState(false);
-  const [manualBusy, setManualBusy] = useState(false);
-  // One idempotency key per manual-create attempt: kept across retries
-  // (a double submit replays the stored order instead of duplicating
-  // it) and rotated after a successful create.
-  const manualKeyRef = useRef<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
@@ -274,90 +265,6 @@ export default function AdminOrdersPage() {
       else orders.forEach((o) => next.add(o.id));
       return next;
     });
-  }
-
-  function newIdempotencyKey(): string {
-    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-      return crypto.randomUUID();
-    }
-    // Fallback UUID v4 shape for older browsers.
-    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === "x" ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
-  }
-
-  async function onManualSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const data = new FormData(e.currentTarget);
-    const parsed = manualOrderSchema.safeParse({
-      phone: data.get("phone"),
-      customerName: data.get("customerName"),
-      address: {
-        division: data.get("division"),
-        district: data.get("district"),
-        upazila: data.get("upazila"),
-        addressLine: data.get("addressLine"),
-      },
-      items: [{ variantId: data.get("variantId"), quantity: Number(data.get("quantity")), unitPricePoisha: Number(data.get("unitPricePoisha")) }],
-      paymentMethod: data.get("paymentMethod"),
-      note: data.get("note") || undefined,
-    });
-    if (!parsed.success) {
-      setManualOk(false);
-      setManualResult(parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(" | "));
-      return;
-    }
-    if (!manualKeyRef.current) manualKeyRef.current = newIdempotencyKey();
-    // Optional reseller attribution (wave 7): the admin create API
-    // accepts resellerCode since wave 6; the shared manualOrderSchema
-    // does not carry it, so it rides alongside parsed.data and is
-    // sent ONLY when staff actually typed a code.
-    const resellerCode = String(data.get("resellerCode") ?? "").trim();
-    setManualBusy(true);
-    setManualResult("");
-    try {
-      const res = await fetch("/api/v1/admin/orders", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          ...parsed.data,
-          idempotencyKey: manualKeyRef.current,
-          ...(resellerCode ? { resellerCode } : {}),
-        }),
-      });
-      const body = (await res.json().catch(() => null)) as
-        | {
-            data?: { order?: Order | null };
-            meta?: { idempotentReplay?: boolean };
-            error?: { code: string; message: string };
-          }
-        | null;
-      if (res.ok && body?.data?.order) {
-        const order = body.data.order;
-        setManualOk(true);
-        setManualResult(
-          body.meta?.idempotentReplay
-            ? `এই অর্ডারটি আগেই তৈরি হয়েছে: ${order.orderNo} — মোট ${formatBdt(order.totalPoisha)}। নিচের তালিকায় দেখুন।`
-            : `অর্ডার তৈরি হয়েছে: ${order.orderNo} — মোট ${formatBdt(order.totalPoisha)}। নিচের তালিকায় দেখুন।`,
-        );
-        manualKeyRef.current = null;
-        await load();
-      } else {
-        setManualOk(false);
-        setManualResult(
-          body?.error
-            ? `${body.error.code}: ${body.error.message}`
-            : `HTTP ${res.status} — অর্ডার তৈরি হয়নি।`,
-        );
-      }
-    } catch {
-      setManualOk(false);
-      setManualResult("নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি। আবার চেষ্টা করুন; একই চেষ্টায় ডুপ্লিকেট অর্ডার হবে না।");
-    } finally {
-      setManualBusy(false);
-    }
   }
 
   return (
@@ -738,42 +645,9 @@ export default function AdminOrdersPage() {
           </div>
         </div>
         <p className="mt-3 rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
-          সাবমিটে আসল অর্ডার তৈরি হয় — পণ্যের নাম, SKU ও স্টক ডাটাবেস থেকে যাচাই হয়, ফ্রড স্কোরিং চলে এবং অর্ডারটি ওয়েবসাইট অর্ডারের মতোই সংরক্ষিত হয় (সোর্স: ম্যানুয়াল)। একক দাম কর্মী দিতে পারেন; ক্যাটালগ দাম থেকে ভিন্ন হলে তা অর্ডার নোটে লেখা থাকে। ম্যানুয়াল অর্ডারে কুপন ও ডেলিভারি চার্জ প্রযোজ্য নয় — মোট = পণ্যের মোট দাম।
+          সাবমিটে আসল অর্ডার তৈরি হয় — পণ্যের নাম, SKU ও স্টক ডাটাবেস থেকে যাচাই হয়, ফ্রড স্কোরিং চলে এবং অর্ডারটি ওয়েবসাইট অর্ডারের মতোই সংরক্ষিত হয় (সোর্স: ম্যানুয়াল)। একক দাম কর্মী দিতে পারেন; ক্যাটালগ দাম থেকে ভিন্ন হলে তা অর্ডার নোটে লেখা থাকে। ডেলিভারি চার্জ ওয়েবসাইটের হারেই ধরা হয় (নিজে বসানোর সুযোগ আছে) এবং কুপন কোড ওয়েবসাইটের নিয়মেই যাচাই হয়।
         </p>
-        <form onSubmit={onManualSubmit} className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div><label className={labelCls} htmlFor="mo-phone">ফোন</label><input id="mo-phone" name="phone" placeholder="01XXXXXXXXX" required className={inputCls} /></div>
-          <div><label className={labelCls} htmlFor="mo-name">গ্রাহকের নাম</label><input id="mo-name" name="customerName" placeholder="নাম" required className={inputCls} /></div>
-          <div><label className={labelCls} htmlFor="mo-division">বিভাগ</label><input id="mo-division" name="division" placeholder="বিভাগ" required className={inputCls} /></div>
-          <div><label className={labelCls} htmlFor="mo-district">জেলা</label><input id="mo-district" name="district" placeholder="জেলা" required className={inputCls} /></div>
-          <div><label className={labelCls} htmlFor="mo-upazila">উপজেলা</label><input id="mo-upazila" name="upazila" placeholder="উপজেলা" required className={inputCls} /></div>
-          <div><label className={labelCls} htmlFor="mo-address">পুরো ঠিকানা</label><input id="mo-address" name="addressLine" placeholder="ঠিকানা" required className={inputCls} /></div>
-          <div><label className={labelCls} htmlFor="mo-variant">ভ্যারিয়েন্ট ID</label><input id="mo-variant" name="variantId" placeholder="Variant ID" required className={inputCls} /></div>
-          <div><label className={labelCls} htmlFor="mo-qty">পরিমাণ</label><input id="mo-qty" name="quantity" type="number" defaultValue={1} min={1} className={inputCls} /></div>
-          <div><label className={labelCls} htmlFor="mo-price">একক দাম (পয়সা, পূর্ণসংখ্যা)</label><input id="mo-price" name="unitPricePoisha" type="number" placeholder="Poisha" required className={inputCls} /></div>
-          <div>
-            <label className={labelCls} htmlFor="mo-pay">পেমেন্ট</label>
-            <select id="mo-pay" name="paymentMethod" defaultValue="cod" className={inputCls}>
-              <option value="cod">ক্যাশ অন ডেলিভারি</option><option value="bkash">বিকাশ</option><option value="nagad">নগদ</option>
-            </select>
-          </div>
-          <div><label className={labelCls} htmlFor="mo-note">নোট (ঐচ্ছিক)</label><input id="mo-note" name="note" placeholder="নোট" className={inputCls} /></div>
-          <div><label className={labelCls} htmlFor="mo-reseller">রিসেলার কোড (ঐচ্ছিক) — Reseller code</label><input id="mo-reseller" name="resellerCode" placeholder="যেমন: TESTAB24" className={inputCls} /></div>
-          <div className="flex items-end">
-            <Button type="submit" variant="primary" className="w-full" disabled={manualBusy}>
-              {manualBusy ? "তৈরি হচ্ছে…" : "ম্যানুয়াল অর্ডার তৈরি করুন"}
-            </Button>
-          </div>
-        </form>
-        {manualResult && (
-          <p
-            role="status"
-            className={`mt-4 rounded-md px-3.5 py-2.5 text-small leading-relaxed ${
-              manualOk ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-700"
-            }`}
-          >
-            {manualResult}
-          </p>
-        )}
+        <ManualOrderBuilder onCreated={load} />
       </Card>
     </main>
   );

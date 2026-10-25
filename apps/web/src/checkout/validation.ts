@@ -18,13 +18,25 @@ export function maskPhone(normalized: string): string {
   return `${normalized.slice(0, 5)}******${normalized.slice(-2)}`;
 }
 
+// Address values are canonicalised by construction, not by hard
+// schema membership (doc 17 O2): the storefront checkout picks
+// division/district/upazila from the geo cascade (GET
+// /api/v1/public/geo), so what arrives here is already the canonical
+// dataset nameEn. This schema is SHARED with staff manual orders,
+// where free text + parser suggestions are the flow — a hard
+// dataset-membership reject would break legitimate staff entries
+// (Bangla spellings, newly created upazilas), so the fields stay
+// strings. Fields are trimmed so " Dhaka " can never split one
+// district into two spellings downstream; the shipping engine
+// derives the delivery zone from the district server-side and never
+// trusts a client-picked zone.
 export const bdAddressSchema = z.object({
-  division: z.string().min(1, "Division dite hobe"),
-  district: z.string().min(1, "District dite hobe"),
-  upazila: z.string().min(1, "Upazila dite hobe"),
+  division: z.string().trim().min(1, "Division dite hobe"),
+  district: z.string().trim().min(1, "District dite hobe"),
+  upazila: z.string().trim().min(1, "Upazila dite hobe"),
   /** Union optional per the platform spec. */
-  union: z.string().optional(),
-  addressLine: z.string().min(5, "Purno thikana (basa/holding/area) dite hobe"),
+  union: z.string().trim().optional(),
+  addressLine: z.string().trim().min(5, "Purno thikana (basa/holding/area) dite hobe"),
 });
 
 export type BdAddress = z.infer<typeof bdAddressSchema>;

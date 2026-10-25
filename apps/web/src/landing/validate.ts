@@ -26,6 +26,11 @@ export const landingSectionSchema: z.ZodType<LandingSection> = z.discriminatedUn
   z.object({ id: z.string().min(1), type: z.literal("how_to_order"), headingBn: z.string(), headingEn: z.string(), steps: z.array(stepSchema) }),
   z.object({ id: z.string().min(1), type: z.literal("faq"), headingBn: z.string(), headingEn: z.string(), items: z.array(faqItemSchema) }),
   z.object({ id: z.string().min(1), type: z.literal("order_form_note"), textBn: z.string(), textEn: z.string() }),
+  z.object({
+    id: z.string().min(1), type: z.literal("quick_order"),
+    productId: z.string(), variantId: z.string().nullable(),
+    headingBn: z.string(), headingEn: z.string(),
+  }),
   z.object({ id: z.string().min(1), type: z.literal("footer_note"), textBn: z.string(), textEn: z.string() }),
 ]);
 
@@ -99,6 +104,17 @@ export function validateLandingPage(
         }
         if (section.showCountdown && section.countdownEndsAt && Number.isNaN(Date.parse(section.countdownEndsAt))) {
           err("COUNTDOWN_INVALID", "কাউন্টডাউনের তারিখ সঠিক নয়।", "Countdown end date is invalid.", section.id);
+        }
+        break;
+      }
+      case "quick_order": {
+        // Same linkage rules as product_offer: the product (and the
+        // pinned default variant, when set) must resolve in the catalog.
+        const product = catalog.find((p) => p.id === section.productId);
+        if (!section.productId || !product) {
+          err("PRODUCT_NOT_FOUND", "অর্ডার ফর্মের পণ্যটি ক্যাটালগে পাওয়া যায়নি।", "Order form product does not resolve in the catalog.", section.id);
+        } else if (section.variantId && !product.variants.some((v) => v.id === section.variantId)) {
+          err("VARIANT_NOT_FOUND", "অর্ডার ফর্মের ভেরিয়েন্টটি ওই পণ্যে পাওয়া যায়নি।", "Order form variant does not resolve on that product.", section.id);
         }
         break;
       }

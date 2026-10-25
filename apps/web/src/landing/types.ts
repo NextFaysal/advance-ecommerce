@@ -15,6 +15,7 @@ export type LandingSectionType =
   | "how_to_order"
   | "faq"
   | "order_form_note"
+  | "quick_order"
   | "footer_note";
 
 export interface HeroSection {
@@ -94,6 +95,26 @@ export interface OrderFormNoteSection {
   textEn: string;
 }
 
+/**
+ * One-page COD order form for the linked product (plan 17 batch O2):
+ * name + phone + address + variant/qty, submitted straight to
+ * POST /api/v1/public/orders — the classic BD landing flow where the
+ * customer never leaves the page. Product linkage mirrors
+ * ProductOfferSection: a catalog productId plus an optional pinned
+ * variantId (the form's default selection; the customer can still
+ * pick another variant of the same product).
+ */
+export interface QuickOrderSection {
+  id: string;
+  type: "quick_order";
+  /** Catalog product id — must resolve against the provided catalog. */
+  productId: string;
+  /** Default variant id, or null = the product's first in-stock variant. */
+  variantId: string | null;
+  headingBn: string;
+  headingEn: string;
+}
+
 export interface FooterNoteSection {
   id: string;
   type: "footer_note";
@@ -108,6 +129,7 @@ export type LandingSection =
   | HowToOrderSection
   | FaqSection
   | OrderFormNoteSection
+  | QuickOrderSection
   | FooterNoteSection;
 
 export interface LandingPage {
@@ -150,6 +172,7 @@ export const LANDING_SECTION_LABELS: Record<LandingSectionType, { bn: string; en
   how_to_order: { bn: "কীভাবে অর্ডার করবেন", en: "How to Order" },
   faq: { bn: "সাধারণ জিজ্ঞাসা", en: "FAQ" },
   order_form_note: { bn: "অর্ডার ফর্ম নোট (COD)", en: "Order Form Note" },
+  quick_order: { bn: "অর্ডার ফর্ম (COD)", en: "Order Form (COD)" },
   footer_note: { bn: "ফুটার নোট", en: "Footer Note" },
 };
 
@@ -183,6 +206,8 @@ export function createEmptySection(type: LandingSectionType): LandingSection {
       return { id, type, headingBn: "সাধারণ জিজ্ঞাসা", headingEn: "FAQ", items: [{ questionBn: "", questionEn: "", answerBn: "", answerEn: "" }] };
     case "order_form_note":
       return { id, type, textBn: "ক্যাশ অন ডেলিভারি — পণ্য হাতে পেয়ে যাচাই করে তারপর টাকা দিন। কোনো অগ্রিম পেমেন্ট লাগবে না।", textEn: "Cash on Delivery — check the product in hand, then pay. No advance payment needed." };
+    case "quick_order":
+      return { id, type, productId: "", variantId: null, headingBn: "অর্ডার করুন — ক্যাশ অন ডেলিভারি", headingEn: "Order now — Cash on Delivery" };
     case "footer_note":
       return { id, type, textBn: "", textEn: "" };
   }

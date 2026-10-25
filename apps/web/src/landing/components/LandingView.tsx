@@ -8,6 +8,7 @@
 import { formatBdt } from "@advance-ecommerce/validators";
 import { AddToCartButton } from "@/cart/components/AddToCartButton";
 import { CountdownNote } from "./CountdownNote";
+import { QuickOrderForm } from "./QuickOrderForm";
 import type { LandingViewModel, ResolvedOffer } from "../render";
 
 function OfferBuy({ offer, ctaLabelBn }: { offer: ResolvedOffer; ctaLabelBn?: string }) {
@@ -135,6 +136,25 @@ export function LandingView({ view }: { view: LandingViewModel }) {
                     <OfferBuy offer={view.primaryOffer} />
                   </div>
                 ) : null}
+              </section>
+            );
+          case "quick_order":
+            if (!section.product) {
+              return (
+                <section key={section.id} className="px-5 py-6 text-center text-sm text-text-muted">
+                  এই অফারের পণ্যটি এখন পাওয়া যাচ্ছে না।
+                </section>
+              );
+            }
+            return (
+              <section key={section.id} className="px-5 py-8">
+                <h2 className="text-xl font-bold">{section.headingBn}</h2>
+                <p className="mt-1 text-sm leading-6 text-text-muted">
+                  ফর্মটি পূরণ করুন — কোনো অ্যাকাউন্ট বা অগ্রিম পেমেন্ট লাগবে না।
+                </p>
+                <div className="mt-4">
+                  <QuickOrderForm product={section.product} />
+                </div>
               </section>
             );
           case "footer_note":

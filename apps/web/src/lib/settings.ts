@@ -96,12 +96,50 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   // opening. Whole hours, 0-23.
   "call_center.calling_start_hour": { category: "general", value: "9", isPublic: false },
   "call_center.calling_end_hour": { category: "general", value: "21", isPublic: false },
+  // Shipping engine (doc 17 O2 — src/checkout/shipping.ts). Rates are
+  // integer poisha; reads fall back to these defaults, which are the
+  // pre-O2 hardcoded charges. Registered so setSetting() accepts them
+  // (the category enum has no shipping member; they live under
+  // "general" like the call-center keys). isPublic: rates are price
+  // config, not secrets. weight_slabs is a JSON array of
+  // { upToGrams, addPoisha } bands — empty = no weight component;
+  // the exact slab semantics are documented in
+  // src/checkout/shipping-core.ts.
+  "shipping.inside_dhaka_poisha": { category: "general", value: "6000", isPublic: true },
+  "shipping.outside_dhaka_poisha": { category: "general", value: "12000", isPublic: true },
+  "shipping.pickup_poisha": { category: "general", value: "0", isPublic: true },
+  // Subtotal (poisha) at/above which delivery is free. 0 = OFF.
+  "shipping.free_above_poisha": { category: "general", value: "0", isPublic: true },
+  // Flat COD handling fee (poisha), added by the caller for COD only.
+  "shipping.cod_fee_poisha": { category: "general", value: "0", isPublic: true },
+  "shipping.weight_slabs": { category: "general", value: "", isPublic: true },
   // Call-center data retention (C7 / doc 15 R6.2 —
   // src/callcenter/retention.ts). Call-log free text (note/qaComment)
   // and terminal-task PII (full phone, name, note) older than this
   // many calendar months are anonymized by the retention job; outcomes,
   // dispositions, scores and timestamps are kept so reporting survives.
   "call_center.log_retention_months": { category: "general", value: "12", isPublic: false },
+  // Order-create rules (wave 20, plan 17 batch O2 —
+  // src/checkout/order-rules.ts, enforced in the public create route).
+  // Every rule defaults OFF / permissive: an unconfigured shop checks
+  // out exactly as before. Registered so setSetting() accepts them
+  // (the category enum has no orders member; "general" is the fallback
+  // for unlisted prefixes, same as the call_center.* keys above).
+  // Minimum merchandise subtotal (poisha) for a public order; 0 = off.
+  "orders.rules.min_order_poisha": { category: "general", value: "0", isPublic: false },
+  // Comma/newline-separated district names where COD is refused
+  // (matched case-insensitively against the submitted district).
+  "orders.rules.cod_disabled_districts": { category: "general", value: "", isPublic: false },
+  // Comma/newline-separated category slugs: an order containing any
+  // item from one of these categories cannot be paid COD.
+  "orders.rules.cod_disabled_categories": { category: "general", value: "", isPublic: false },
+  // COD orders whose grand total exceeds this (poisha) are flagged
+  // advance-required in the create response (meta only this wave —
+  // collection/enforcement is plan 17 batch O3). 0 = off.
+  "orders.rules.advance_required_above_poisha": { category: "general", value: "0", isPublic: false },
+  // Percent of the grand total asked as advance when the rule above
+  // fires (integer 1-100; invalid stored values fall back to 20).
+  "orders.rules.advance_percent": { category: "general", value: "20", isPublic: false },
 };
 
 /** Env fallback map: setting key -> env var name. No secret value lives here. */
