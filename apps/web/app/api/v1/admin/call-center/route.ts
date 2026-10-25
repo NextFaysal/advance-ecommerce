@@ -8,9 +8,12 @@ import { normalizeBdPhone } from "@/checkout/validation";
 
 // Call center queue — Agent 14, Step 46 (A10). RBAC: orders.view (list) / orders.create (manual task).
 // Feature flag: module.call_center (defaults OFF -> 403 FEATURE_LOCKED).
-// Persistence: Prisma DB via src/callcenter/store.ts. The DB stores only
-// MASKED phones on tasks; a full number is served only when it resolved
-// from the linked order AND the caller holds customers.view_full_phone.
+// Persistence: Prisma DB via src/callcenter/store.ts. Order-linked
+// tasks store only the MASKED phone (the full number resolves from the
+// linked order at read time); MANUAL tasks store their own full number
+// + name + note (C1) since no order exists to resolve from. Either way a
+// full number is served only when one is available server-side AND the
+// caller holds customers.view_full_phone.
 // Assignment (G3, Agent 58): the queue ALWAYS serves the session user's own
 // tasks plus the unassigned pool — there is no ?agentId= preview; another
 // agent's tasks are never listed here.
@@ -28,7 +31,9 @@ function dbNotReady() {
   );
 }
 
-/** View gate: full phone only when permitted AND actually resolved from an order. */
+/** View gate: full phone only when permitted AND a full number is
+ *  available server-side (phoneResolved — from the linked order, or a
+ *  manual task's own stored number, C1). */
 function view(task: DbCallTask | (CallTask & { phoneResolved?: boolean }), canViewFullPhone: boolean) {
   return toQueueItemView(task, canViewFullPhone && task.phoneResolved === true);
 }
@@ -59,11 +64,24 @@ export async function GET() {
     const unassignedCount = tasks.filter(
       (t) => t.status === "QUEUED" && t.assignedAgentId === null,
     ).length;
+    // C1 "my callbacks": every pending callback assigned to the SESSION
+    // agent (due or not), earliest first — dueCallbacks above only
+    // carries the ones already due. Rows come from the same scoped
+    // load, so no other agent's callback can appear here.
+    const myCallbacks = tasks
+      .filter(
+        (t) =>
+          t.assignedAgentId === agentId &&
+          t.callbackAt !== undefined &&
+          (t.status === "QUEUED" || t.status === "IN_CALL"),
+      )
+      .sort((a, b) => (a.callbackAt as string).localeCompare(b.callbackAt as string));
     return NextResponse.json({
       data: {
         queue: visible.map((t) => view(t, canViewFullPhone)),
         nextTask: next ? view(next, canViewFullPhone) : null,
         dueCallbacks: due.map((t) => view(t, canViewFullPhone)),
+        myCallbacks: myCallbacks.map((t) => view(t, canViewFullPhone)),
         unassignedCount,
         script: CONFIRMATION_SCRIPT,
       },
@@ -74,7 +92,11 @@ export async function GET() {
   }
 }
 
-/** POST a MANUAL call task (e.g. a number from a Facebook comment). Phone is normalized server-side; only its masked form is stored. */
+/** POST a MANUAL call task (e.g. a number from a Facebook comment).
+ *  Phone is normalized server-side. A manual task has no order to
+ *  resolve a number from, so the full number + name + note ARE stored
+ *  on the task (C1) — the full number is still only SERVED to callers
+ *  holding customers.view_full_phone. */
 export async function POST(req: Request) {
   const guard = await requireAdmin("orders.create");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
@@ -94,7 +116,11 @@ export async function POST(req: Request) {
     );
   }
   try {
-    const task = await createManualTask({ customerName: parsed.data.customerName, phone });
+    const task = await createManualTask({
+      customerName: parsed.data.customerName,
+      phone,
+      note: parsed.data.note,
+    });
     const canViewFullPhone = guard.permissions.includes("customers.view_full_phone");
     return NextResponse.json(
       { data: { task: view(task, canViewFullPhone) }, meta: { persistence: "database" } },

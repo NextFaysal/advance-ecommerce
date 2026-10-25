@@ -1,0 +1,98 @@
+"use client";
+
+import { useState } from "react";
+
+// CSV export for the call-center report — small client leaf (plain
+// serializable props only). The API requires a reason and audit-logs the
+// export, mirroring the audit-log export; this leaf collects the reason,
+// downloads the returned CSV, and surfaces server errors verbatim.
+export function ReportsExportButton({ from, to }: { from: string; to: string }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    const trimmed = reason.trim();
+    if (!trimmed) {
+      setError("কারণ লেখা বাধ্যতামূলক। (A reason is required.)");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch(
+        `/api/v1/admin/call-center/reports/export?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&reason=${encodeURIComponent(trimmed)}`,
+      );
+      const body = (await res.json().catch(() => null)) as
+        | { data?: { csv: string; filename: string }; error?: { message?: string } }
+        | null;
+      if (!res.ok || !body?.data) {
+        setError(body?.error?.message ?? `Export failed (${res.status}).`);
+        return;
+      }
+      const blob = new Blob([body.data.csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = body.data.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMessage("এক্সপোর্ট ডাউনলোড হয়েছে — অডিট লগে নথিভুক্ত। (Exported; recorded in the audit log.)");
+      setOpen(false);
+      setReason("");
+    } catch {
+      setError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন। (Network error.)");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-2">
+      {open ? (
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="এক্সপোর্টের কারণ (বাধ্যতামূলক)"
+            className="h-10 w-64 rounded-md border border-border bg-surface px-3 text-sm"
+            aria-label="Export reason"
+          />
+          <button
+            type="button"
+            onClick={run}
+            disabled={busy}
+            className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {busy ? "হচ্ছে…" : "ডাউনলোড"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="h-10 rounded-md border border-border px-3 text-sm"
+          >
+            বাতিল
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="h-10 rounded-md border border-border px-4 text-sm font-medium"
+        >
+          CSV এক্সপোর্ট
+        </button>
+      )}
+      {message ? <p className="text-xs text-emerald-600">{message}</p> : null}
+      {error ? (
+        <p role="alert" className="text-xs text-rose-600">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}

@@ -8,20 +8,30 @@
  * rows, runs the pure functions, and persists the results.
  *
  * Deliberate TS <-> schema mappings (drift, see final report):
- * - Schema `kind` <-> TS `source`. Schema stores ONLY
- *   `customerPhoneMasked` — a full phone number is NEVER persisted on a
- *   call task. For order-linked tasks the full number is resolved at
- *   read time from the linked Order (orders table) and exposed via the
- *   existing phoneFull gate only when it truly resolved
- *   (`phoneResolved`); masking a masked number is idempotent, so the
- *   always-masked phoneMasked contract holds either way.
+ * - Schema `kind` <-> TS `source`.
+ * - PHONE PRIVACY (C1): the full number is persisted on a task ONLY
+ *   when the task has no linked order (MANUAL tasks, `customerPhone`
+ *   column) — an agent could never dial a manual task otherwise.
+ *   Order-linked tasks still store the masked form ONLY
+ *   (`customerPhoneMasked`); their full number is resolved at read time
+ *   from the linked Order (orders table), never copied onto the task.
+ *   Either way the number leaves the server via the existing phoneFull
+ *   gate only when a full number is available server-side
+ *   (`phoneResolved`) AND the caller holds the full-phone permission;
+ *   masking a masked number is idempotent, so the always-masked
+ *   phoneMasked contract holds either way.
  * - customerName / orderNo / orderTotalPoisha come from the linked
- *   Order; MANUAL tasks (no order) have no name column, so the name is
- *   not persisted (only the masked phone is).
- * - CallLogEntry has no callbackAt / durationSeconds /
- *   supervisorOverride columns. The outcome RESPONSE carries those from
- *   the pure recordOutcome result of the action just performed; log
- *   read-backs omit them (totalTalkSeconds therefore reads 0).
+ *   Order. MANUAL tasks persist their own `customerName` + `note`
+ *   columns (C1) — before C1 both were silently dropped at create.
+ * - CallLogEntry has no callbackAt / supervisorOverride columns. The
+ *   outcome RESPONSE carries those from the pure recordOutcome result
+ *   of the action just performed; log read-backs omit them.
+ *   durationSeconds DOES have a column (C1): the workbench sends the
+ *   timer's elapsed seconds with the outcome, it is persisted on the
+ *   log row and read back (so agentPerformance's totalTalkSeconds is
+ *   real). disposition / scriptVersion / qaScore / qaComment also have
+ *   columns (C3): disposition + scriptVersion are stamped at outcome
+ *   time, qaScore / qaComment are written later by a supervisor.
  * - assignedAt has no column and is not persisted.
  *
  * Linked-order wiring (previously pending DB): a CONFIRMED outcome
@@ -34,6 +44,7 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@advance-ecommerce/db";
 import { maskPhone, normalizeBdPhone } from "../checkout/validation";
+import { riskLevel, type RiskLevel } from "../orders/customer";
 import { applyOrderTransition } from "../orders/repository";
 import {
   checkOutcomeAccess,
@@ -52,7 +63,13 @@ import type {
   RecordOutcomeInput,
 } from "./types";
 
-/** A CallTask loaded from the DB, plus whether its full phone resolved. */
+/**
+ * A CallTask loaded from the DB, plus whether a FULL phone number is
+ * available server-side for it — resolved from the linked Order, or the
+ * manual task's own stored `customerPhone` (C1). The routes' view gate
+ * serves phoneFull only when this is true AND the caller holds
+ * customers.view_full_phone.
+ */
 export type DbCallTask = CallTask & { phoneResolved: boolean };
 
 type CallTaskRow = NonNullable<Awaited<ReturnType<typeof prisma.callTask.findUnique>>>;
@@ -73,6 +90,11 @@ function rowToLog(row: CallLogRow): CallLogEntry {
     outcome: row.outcome as CallOutcome,
     note: row.note ?? undefined,
     calledAt: row.createdAt.toISOString(),
+    durationSeconds: row.durationSeconds ?? undefined,
+    disposition: row.disposition ?? undefined,
+    scriptVersion: row.scriptVersion ?? undefined,
+    qaScore: row.qaScore ?? undefined,
+    qaComment: row.qaComment ?? undefined,
   };
 }
 
@@ -91,16 +113,21 @@ function rowToTask(
   const source = (SOURCES as readonly string[]).includes(row.kind)
     ? (row.kind as CallQueueSource)
     : "MANUAL";
+  // Full phone: the linked order's number first; for a task with no
+  // order (MANUAL) the task's own stored number (C1). Order-linked
+  // tasks never have customerPhone set — the privacy design keeps
+  // their number on the Order row only.
+  const fullPhone = order?.customerPhone ?? row.customerPhone ?? undefined;
   return {
     id: row.id,
     source,
     orderId: row.orderId ?? undefined,
     orderNo: order?.orderNo,
-    customerName: order?.customerName ?? "",
-    // Full phone only when resolved from the linked order; otherwise the
+    customerName: order?.customerName ?? row.customerName ?? "",
+    // Full phone only when one is available server-side; otherwise the
     // stored masked form (masking it again in views is a no-op).
-    phone: order?.customerPhone ?? row.customerPhoneMasked,
-    phoneResolved: order !== undefined,
+    phone: fullPhone ?? row.customerPhoneMasked,
+    phoneResolved: fullPhone !== undefined,
     orderTotalPoisha: order?.totalPoisha ?? 0,
     priority: row.priority,
     status: row.status as CallTaskStatus,
@@ -108,6 +135,7 @@ function rowToTask(
     attempts: row.attempts,
     lastOutcome,
     callbackAt: row.callbackAt?.toISOString(),
+    note: row.note ?? undefined,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -152,14 +180,24 @@ export async function loadCallLogs(agentId?: string): Promise<CallLogEntry[]> {
   return rows.map(rowToLog);
 }
 
-/** Create a MANUAL task. Only the MASKED phone is persisted — by design. */
+/**
+ * Create a MANUAL task (C1). A manual task has no linked order to
+ * resolve a number from, so the normalized FULL phone + the customer
+ * name + the staff note are persisted on the task itself
+ * (customerPhone / customerName / note columns) — before C1 all three
+ * were discarded at create and an agent could never dial the task.
+ * The masked form is still stored alongside, and the full number only
+ * ever leaves via the permission-gated phoneFull view.
+ */
 export async function createManualTask(input: {
   customerName: string;
   phone: string;
+  note?: string;
 }): Promise<DbCallTask> {
   // Normalize here as well as at the route, so no caller can persist an
-  // unnormalized (and therefore differently-masked) number. If the input
-  // cannot be normalized, the raw value is still only ever stored masked.
+  // unnormalized (and therefore differently-masked) number. If the
+  // input cannot be normalized, the raw value is stored as given —
+  // views still only ever expose it through the permission gate.
   const normalized = normalizeBdPhone(input.phone) ?? input.phone;
   const row = await prisma.callTask.create({
     data: {
@@ -167,12 +205,13 @@ export async function createManualTask(input: {
       priority: priorityForSource("MANUAL"),
       status: "QUEUED",
       customerPhoneMasked: maskPhone(normalized),
+      customerPhone: normalized,
+      customerName: input.customerName,
+      note: input.note ?? null,
       attempts: 0,
     },
   });
-  // customerName has no schema column for a manual task (drift) — the
-  // returned task carries it for this response only.
-  return { ...rowToTask(row, undefined, undefined), customerName: input.customerName };
+  return rowToTask(row, undefined, undefined);
 }
 
 /**
@@ -249,7 +288,13 @@ export type RecordOutcomeDbResult =
  */
 export async function recordOutcomeDb(
   taskId: string,
-  input: RecordOutcomeInput,
+  input: RecordOutcomeInput & {
+    /** C3: disposition sub-reason for the outcome (workbench sends it
+     *  for CANCELLED / WRONG_NUMBER); persisted on the log row. */
+    disposition?: string;
+    /** C3: script version the agent followed; persisted on the log row. */
+    scriptVersion?: string;
+  },
   meta: { agentId: string; isSupervisor: boolean },
 ): Promise<RecordOutcomeDbResult> {
   const task = await loadCallTask(taskId);
@@ -291,9 +336,16 @@ export async function recordOutcomeDb(
         agentId: result.log.agentId,
         outcome: result.log.outcome,
         note: result.log.note ?? null,
+        // durationSeconds arrives via RecordOutcomeInput (the pure
+        // recordOutcome already validated + carried it onto the log).
+        durationSeconds: result.log.durationSeconds ?? null,
+        disposition: input.disposition ?? null,
+        scriptVersion: input.scriptVersion ?? null,
       },
     });
   });
+  if (input.disposition !== undefined) result.log.disposition = input.disposition;
+  if (input.scriptVersion !== undefined) result.log.scriptVersion = input.scriptVersion;
 
   // Linked-order effect via the orders repository contract. The outcome
   // is already persisted — a failed/invalid order transition is reported
@@ -328,4 +380,206 @@ export async function recordOutcomeDb(
     log: result.log,
     orderEffect,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Customer 360 (C1)                                                    */
+/* ------------------------------------------------------------------ */
+
+export interface CallTaskContextOrderItem {
+  productName: string;
+  sku: string;
+  quantity: number;
+  unitPricePoisha: number;
+}
+
+export interface CallTaskContextOrder {
+  id: string;
+  orderNo: string;
+  status: string;
+  paymentMethod: string;
+  paymentStatus: string;
+  /** Raw stored number — the ROUTE masks it unless the caller holds
+   *  customers.view_full_phone (same gate as the task view). */
+  customerPhone: string;
+  address: {
+    division: string;
+    district: string;
+    upazila: string;
+    union?: string;
+    addressLine: string;
+  };
+  items: CallTaskContextOrderItem[];
+  subtotalPoisha: number;
+  discountPoisha: number;
+  shippingPoisha: number;
+  codFeePoisha: number;
+  totalPoisha: number;
+  riskScore: number;
+  riskBand: RiskLevel;
+  createdAt: string;
+}
+
+export interface CallTaskContextRecentOrder {
+  id: string;
+  orderNo: string;
+  createdAt: string;
+  totalPoisha: number;
+  status: string;
+}
+
+export interface CallTaskContextPastCall {
+  id: string;
+  taskId: string;
+  /** Source (kind) of the task the call was recorded on. */
+  source: CallQueueSource;
+  outcome: CallOutcome;
+  note?: string;
+  disposition?: string;
+  agentId: string;
+  /** Staff display name when the user row still exists. */
+  agentName?: string;
+  calledAt: string;
+}
+
+export interface CallTaskContext {
+  task: DbCallTask;
+  /** Null for a MANUAL task (no linked order). */
+  order: CallTaskContextOrder | null;
+  /** The linked customer's last 10 orders (incl. the linked one);
+   *  empty for a MANUAL task — no customer is linked to it. */
+  recentOrders: CallTaskContextRecentOrder[];
+  /** Past call logs for the same phone / order, newest first (max 20). */
+  pastCalls: CallTaskContextPastCall[];
+}
+
+/**
+ * Assemble the Customer-360 context for one task (C1). Read-only.
+ * Past-call matching is EXACT, never by masked prefix: logs on tasks
+ * sharing the linked order, tasks whose order carries the same full
+ * phone, and manual tasks storing the same full phone.
+ */
+export async function loadTaskContext(taskId: string): Promise<CallTaskContext | null> {
+  const row = await prisma.callTask.findUnique({ where: { id: taskId } });
+  if (!row) return null;
+  const task = await loadCallTask(taskId);
+  if (!task) return null;
+
+  let order: CallTaskContextOrder | null = null;
+  let recentOrders: CallTaskContextRecentOrder[] = [];
+  let fullPhone: string | null = row.customerPhone ?? null;
+
+  if (row.orderId) {
+    const orderRow = await prisma.order.findUnique({
+      where: { id: row.orderId },
+      include: { items: { orderBy: { createdAt: "asc" } } },
+    });
+    if (orderRow) {
+      fullPhone = orderRow.customerPhone;
+      order = {
+        id: orderRow.id,
+        orderNo: orderRow.orderNo,
+        status: orderRow.status,
+        paymentMethod: orderRow.paymentMethod,
+        paymentStatus: orderRow.paymentStatus,
+        customerPhone: orderRow.customerPhone,
+        address: {
+          division: orderRow.division,
+          district: orderRow.district,
+          upazila: orderRow.upazila,
+          union: orderRow.union ?? undefined,
+          addressLine: orderRow.addressLine,
+        },
+        items: orderRow.items.map((i) => ({
+          productName: i.productName,
+          sku: i.sku,
+          quantity: i.quantity,
+          unitPricePoisha: i.unitPricePoisha,
+        })),
+        subtotalPoisha: orderRow.subtotalPoisha,
+        discountPoisha: orderRow.discountPoisha,
+        shippingPoisha: orderRow.shippingPoisha,
+        codFeePoisha: orderRow.codFeePoisha,
+        totalPoisha: orderRow.totalPoisha,
+        riskScore: orderRow.riskScore,
+        riskBand: riskLevel(orderRow.riskScore),
+        createdAt: orderRow.createdAt.toISOString(),
+      };
+      const recent = await prisma.order.findMany({
+        where: { customerId: orderRow.customerId },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        select: { id: true, orderNo: true, createdAt: true, totalPoisha: true, status: true },
+      });
+      recentOrders = recent.map((o) => ({
+        id: o.id,
+        orderNo: o.orderNo,
+        createdAt: o.createdAt.toISOString(),
+        totalPoisha: o.totalPoisha,
+        status: o.status,
+      }));
+    }
+  }
+
+  // Past calls: collect the exact-match task ids first. The task's own
+  // earlier attempts always belong to its history.
+  const matchedTaskIds = new Set<string>([taskId]);
+  if (fullPhone) {
+    const samePhoneOrders = await prisma.order.findMany({
+      where: { customerPhone: fullPhone },
+      select: { id: true },
+    });
+    const orderTaskRows = samePhoneOrders.length
+      ? await prisma.callTask.findMany({
+          where: {
+            OR: [
+              { orderId: { in: samePhoneOrders.map((o) => o.id) } },
+              { customerPhone: fullPhone },
+            ],
+          },
+          select: { id: true },
+        })
+      : await prisma.callTask.findMany({
+          where: { customerPhone: fullPhone },
+          select: { id: true },
+        });
+    for (const t of orderTaskRows) matchedTaskIds.add(t.id);
+  }
+
+  let pastCalls: CallTaskContextPastCall[] = [];
+  if (matchedTaskIds.size > 0) {
+    const [logRows, taskKindRows] = await Promise.all([
+      prisma.callLogEntry.findMany({
+        where: { taskId: { in: [...matchedTaskIds] } },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      }),
+      prisma.callTask.findMany({
+        where: { id: { in: [...matchedTaskIds] } },
+        select: { id: true, kind: true },
+      }),
+    ]);
+    const kindByTask = new Map(taskKindRows.map((t) => [t.id, t.kind]));
+    const agentIds = [...new Set(logRows.map((l) => l.agentId).filter((x): x is string => !!x))];
+    const agents = agentIds.length
+      ? await prisma.user.findMany({ where: { id: { in: agentIds } }, select: { id: true, name: true } })
+      : [];
+    const nameByAgent = new Map(agents.map((u) => [u.id, u.name ?? undefined]));
+    pastCalls = logRows.map((l) => {
+      const kind = kindByTask.get(l.taskId) ?? "MANUAL";
+      return {
+        id: l.id,
+        taskId: l.taskId,
+        source: (SOURCES as readonly string[]).includes(kind) ? (kind as CallQueueSource) : "MANUAL",
+        outcome: l.outcome as CallOutcome,
+        note: l.note ?? undefined,
+        disposition: l.disposition ?? undefined,
+        agentId: l.agentId ?? "",
+        agentName: l.agentId ? nameByAgent.get(l.agentId) : undefined,
+        calledAt: l.createdAt.toISOString(),
+      };
+    });
+  }
+
+  return { task, order, recentOrders, pastCalls };
 }

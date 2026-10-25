@@ -69,6 +69,17 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   // key holds a valid rate in the DB; the ERP sales-VAT report reads
   // only orders that carry a recorded split.
   "accounting.vat_rate_bps": { category: "accounting", value: "", isPublic: false },
+  // Call-center SLA thresholds, in minutes (C2 supervisor console). A
+  // PENDING_ORDER confirmation task still unattempted this long after
+  // creation is an SLA breach on the supervisor board; same for a
+  // FAILED_DELIVERY rescue task. Plain built-in defaults — the
+  // supervisor store falls back to the same numbers when a stored
+  // value is missing or not a positive integer. Registered so
+  // setSetting() accepts them (the category enum has no call-center
+  // member; settingCategoryForKey falls back to "general" for this
+  // prefix, exactly as it does for any unlisted prefix).
+  "call_center.sla_confirm_minutes": { category: "general", value: "30", isPublic: false },
+  "call_center.sla_rescue_minutes": { category: "general", value: "60", isPublic: false },
 };
 
 /** Env fallback map: setting key -> env var name. No secret value lives here. */

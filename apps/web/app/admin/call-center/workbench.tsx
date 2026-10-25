@@ -19,6 +19,28 @@
  *   POST /api/v1/admin/call-center          -> manual task create
  *        (manualTaskSchema: customerName + BD phone + optional note).
  *
+ * C1 additions:
+ *   GET queue response also carries `myCallbacks` — every pending
+ *        callback assigned to me (due or not), overdue highlighted.
+ *   GET  /api/v1/admin/call-center/tasks/[id]/context -> Customer 360
+ *        for the claimed task (order detail, last 10 orders of the
+ *        customer, past call logs for the same phone/order), rendered
+ *        in the panel beside the task card. A failed context load
+ *        never loses the claimed task.
+ *   One-click order actions in the 360 panel reuse the EXISTING
+ *        orders API: PATCH /api/v1/admin/orders/[id] { to, reason? } —
+ *        Confirm order / Cancel order (reason required). The API's
+ *        own guards decide; its result/error is shown verbatim.
+ *   Call timer: elapsed mm:ss while a task is IN_CALL, counted from
+ *        when the task card mounted in THIS session; the elapsed
+ *        whole seconds are sent as `durationSeconds` with the outcome
+ *        POST and persisted on the call log (CallLogEntry column).
+ *   Outcome payloads may carry `disposition` (CANCELLED /
+ *        WRONG_NUMBER sub-reason) and always carry
+ *        `scriptVersion: "v1"` — "v1" is the version of the built-in
+ *        CONFIRMATION_SCRIPT this workbench renders; DB-versioned
+ *        scripts (C3) will replace the constant when they land.
+ *
  * Phone rendering: the API view is the ONLY source — `phoneFull` is
  * rendered when the API sent it (caller holds
  * customers.view_full_phone and the number resolved from the order);
@@ -58,6 +80,7 @@ interface TaskView {
   attempts: number;
   lastOutcome?: CallOutcome;
   callbackAt?: string;
+  note?: string;
 }
 
 interface ScriptStep {
@@ -79,9 +102,74 @@ interface QueueResponse {
     queue: TaskView[];
     nextTask: TaskView | null;
     dueCallbacks: TaskView[];
+    myCallbacks: TaskView[];
     unassignedCount: number;
     script: ScriptStep[];
   };
+  error?: { code: string; message: string };
+}
+
+/* ------------------------- Customer 360 (C1) ------------------------ */
+
+interface ContextOrder {
+  id: string;
+  orderNo: string;
+  status: string;
+  paymentMethod: string;
+  paymentStatus: string;
+  customerPhone: string;
+  address: {
+    division: string;
+    district: string;
+    upazila: string;
+    union?: string;
+    addressLine: string;
+  };
+  items: Array<{ productName: string; sku: string; quantity: number; unitPricePoisha: number }>;
+  subtotalPoisha: number;
+  discountPoisha: number;
+  shippingPoisha: number;
+  codFeePoisha: number;
+  totalPoisha: number;
+  riskScore: number;
+  riskBand: string;
+  createdAt: string;
+}
+
+interface ContextRecentOrder {
+  id: string;
+  orderNo: string;
+  createdAt: string;
+  totalPoisha: number;
+  status: string;
+}
+
+interface ContextPastCall {
+  id: string;
+  taskId: string;
+  source: CallQueueSource;
+  outcome: CallOutcome;
+  note?: string;
+  disposition?: string;
+  agentId: string;
+  agentName?: string;
+  calledAt: string;
+}
+
+interface TaskContext {
+  task: TaskView;
+  order: ContextOrder | null;
+  recentOrders: ContextRecentOrder[];
+  pastCalls: ContextPastCall[];
+}
+
+interface ContextResponse {
+  data?: TaskContext;
+  error?: { code: string; message: string };
+}
+
+interface OrderActionResponse {
+  data?: { orderNo?: string; status?: string };
   error?: { code: string; message: string };
 }
 
@@ -133,6 +221,24 @@ function bnDateTime(iso: string): string {
   });
 }
 
+function fmtElapsed(totalSec: number): string {
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+/** C3 dispositions for CANCELLED / WRONG_NUMBER outcomes (values are
+ *  the API contract — do not translate the keys). */
+const DISPOSITIONS: Array<{ key: string; label: string }> = [
+  { key: "PRICE", label: "দাম বেশি (Price)" },
+  { key: "DELIVERY_CHARGE", label: "ডেলিভারি চার্জ (Delivery charge)" },
+  { key: "CHANGED_MIND", label: "মন বদলেছেন (Changed mind)" },
+  { key: "DUPLICATE_ORDER", label: "ডুপ্লিকেট অর্ডার (Duplicate order)" },
+  { key: "FAKE_ORDER", label: "ভুয়া অর্ডার (Fake order)" },
+  { key: "WRONG_NUMBER_CONFIRMED", label: "নম্বর ভুল নিশ্চিত (Wrong number confirmed)" },
+  { key: "OTHER", label: "অন্যান্য (Other)" },
+];
+
 /** Fill the script placeholders we truthfully have ({name}, {total});
  *  {store} / {items} / {address} stay literal — the API view does not
  *  carry them, and inventing them would be worse than showing the
@@ -159,6 +265,7 @@ export function CallCenterWorkbench() {
   const [loadError, setLoadError] = useState("");
   const [script, setScript] = useState<ScriptStep[]>([]);
   const [dueCallbacks, setDueCallbacks] = useState<TaskView[]>([]);
+  const [myCallbacks, setMyCallbacks] = useState<TaskView[]>([]);
   const [unassignedCount, setUnassignedCount] = useState(0);
   const [current, setCurrent] = useState<TaskView | null>(null);
   const [upNext, setUpNext] = useState<TaskView | null>(null);
@@ -168,6 +275,12 @@ export function CallCenterWorkbench() {
   const [note, setNote] = useState("");
   const [callbackOpen, setCallbackOpen] = useState(false);
   const [callbackAt, setCallbackAt] = useState("");
+  // C3 disposition: CANCELLED / WRONG_NUMBER are two-step (first click
+  // arms the outcome + shows the dropdown, second click submits).
+  const [armedOutcome, setArmedOutcome] = useState<CallOutcome | null>(null);
+  const [disposition, setDisposition] = useState("");
+  // C1 call timer — display-only (see header note).
+  const [elapsedSec, setElapsedSec] = useState(0);
   // Manual-task form
   const [mName, setMName] = useState("");
   const [mPhone, setMPhone] = useState("");
@@ -195,6 +308,7 @@ export function CallCenterWorkbench() {
       }
       setScript(body.data.script);
       setDueCallbacks(body.data.dueCallbacks);
+      setMyCallbacks(body.data.myCallbacks ?? []);
       setUnassignedCount(body.data.unassignedCount);
       const inCall = body.data.queue.find((t) => t.status === "IN_CALL") ?? null;
       setCurrent(inCall);
@@ -214,6 +328,7 @@ export function CallCenterWorkbench() {
       const body = await readJson<QueueResponse>(res);
       if (res.ok && body.data) {
         setDueCallbacks(body.data.dueCallbacks);
+        setMyCallbacks(body.data.myCallbacks ?? []);
         setUnassignedCount(body.data.unassignedCount);
       }
     } catch {
@@ -224,6 +339,23 @@ export function CallCenterWorkbench() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /* Call timer (C1): counts up from when the current task's card
+   * mounted in this session. The elapsed seconds ride the outcome
+   * POST as durationSeconds and land on the call log. */
+  const currentId = current?.id;
+  useEffect(() => {
+    if (!currentId) {
+      setElapsedSec(0);
+      return;
+    }
+    setElapsedSec(0);
+    const startedAt = Date.now();
+    const iv = setInterval(() => {
+      setElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [currentId]);
 
   const claim = useCallback(
     async (taskId?: string) => {
@@ -251,6 +383,8 @@ export function CallCenterWorkbench() {
         setNote("");
         setCallbackOpen(false);
         setCallbackAt("");
+        setArmedOutcome(null);
+        setDisposition("");
         void refreshSideData();
         router.refresh();
       } catch {
@@ -269,14 +403,40 @@ export function CallCenterWorkbench() {
         // First click only opens the time picker — a callback without a
         // concrete time is rejected server-side anyway.
         setCallbackOpen(true);
+        setArmedOutcome(null);
         setActionError(null);
         return;
       }
-      const payload: { taskId: string; outcome: CallOutcome; note?: string; callbackAt?: string } = {
+      if ((outcome === "CANCELLED" || outcome === "WRONG_NUMBER") && armedOutcome !== outcome) {
+        // C3: first click arms the outcome and shows the (optional)
+        // disposition dropdown — the second click submits.
+        setArmedOutcome(outcome);
+        setCallbackOpen(false);
+        setActionError(null);
+        return;
+      }
+      const payload: {
+        taskId: string;
+        outcome: CallOutcome;
+        note?: string;
+        callbackAt?: string;
+        disposition?: string;
+        scriptVersion?: string;
+        durationSeconds?: number;
+      } = {
         taskId: current.id,
         outcome,
+        // "v1" = the built-in CONFIRMATION_SCRIPT version this
+        // workbench renders (C3 — see the file header).
+        scriptVersion: "v1",
+        // Timer value (whole seconds). The outcome schema caps this
+        // at 7200 — clamp so a forgotten tab can never 400 the call.
+        durationSeconds: Math.min(elapsedSec, 7200),
       };
       if (note.trim()) payload.note = note.trim();
+      if ((outcome === "CANCELLED" || outcome === "WRONG_NUMBER") && disposition) {
+        payload.disposition = disposition;
+      }
       if (outcome === "CALLBACK") {
         if (!callbackAt) {
           setActionError("কলব্যাকের সময় বেছে দিন — সময় ছাড়া কলব্যাক রেকর্ড হয় না।");
@@ -321,6 +481,8 @@ export function CallCenterWorkbench() {
         setNote("");
         setCallbackOpen(false);
         setCallbackAt("");
+        setArmedOutcome(null);
+        setDisposition("");
         void refreshSideData();
         router.refresh();
       } catch {
@@ -329,7 +491,7 @@ export function CallCenterWorkbench() {
         setBusy(false);
       }
     },
-    [current, callbackOpen, callbackAt, note, refreshSideData, router],
+    [current, callbackOpen, callbackAt, note, armedOutcome, disposition, elapsedSec, refreshSideData, router],
   );
 
   const createManual = useCallback(
@@ -457,10 +619,58 @@ export function CallCenterWorkbench() {
         </div>
       ) : null}
 
+      {/* My callbacks (C1) — all pending callbacks assigned to me */}
+      {myCallbacks.length > 0 ? (
+        <div className="mt-4 rounded-md border border-sky-300 bg-sky-50 p-3">
+          <h3 className="text-sm font-semibold text-sky-900">
+            🗓 আমার কলব্যাক ({myCallbacks.length}টি)
+          </h3>
+          <ul className="mt-2 space-y-2">
+            {myCallbacks.map((t) => {
+              const overdue = t.callbackAt ? new Date(t.callbackAt).getTime() < Date.now() : false;
+              return (
+                <li key={t.id} className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-medium">{t.customerName}</span>
+                  <span>{t.phoneFull ?? t.phoneMasked}</span>
+                  {t.callbackAt ? (
+                    <span className={overdue ? "font-semibold text-rose-700" : "text-sky-800"}>
+                      সময়: {bnDateTime(t.callbackAt)}
+                    </span>
+                  ) : null}
+                  {overdue ? (
+                    <span className="rounded bg-rose-600 px-1.5 py-0.5 text-xs font-semibold text-white">
+                      দেরি
+                    </span>
+                  ) : null}
+                  {!current ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void claim(t.id)}
+                      className="rounded-md bg-sky-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+                    >
+                      এই কলটি নিন
+                    </button>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+
       {/* Current task / claim area */}
       {current ? (
-        <div className="mt-4 rounded-md border-2 border-indigo-200 bg-indigo-50/50 p-4">
-          <h3 className="text-base font-semibold">📞 এখনকার কল</h3>
+        <div className="mt-4 grid items-start gap-4 xl:grid-cols-2">
+        <div className="rounded-md border-2 border-indigo-200 bg-indigo-50/50 p-4">
+          <h3 className="text-base font-semibold">
+            📞 এখনকার কল
+            {current.status === "IN_CALL" ? (
+              <span className="ml-3 rounded bg-slate-800 px-2 py-0.5 align-middle font-mono text-sm text-white">
+                ⏱ {fmtElapsed(elapsedSec)}
+              </span>
+            ) : null}
+          </h3>
           <dl className="mt-2 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-slate-500">গ্রাহক</dt>
@@ -504,6 +714,12 @@ export function CallCenterWorkbench() {
                 <dd>{current.lastOutcome}</dd>
               </div>
             ) : null}
+            {current.note ? (
+              <div>
+                <dt className="text-slate-500">টাস্কের নোট</dt>
+                <dd>{current.note}</dd>
+              </div>
+            ) : null}
           </dl>
 
           {script.length > 0 ? (
@@ -541,6 +757,28 @@ export function CallCenterWorkbench() {
             </label>
           ) : null}
 
+          {armedOutcome === "CANCELLED" || armedOutcome === "WRONG_NUMBER" ? (
+            <label className="mt-3 block text-sm">
+              <span className="text-slate-600">কারণ / ডিসপজিশন (ঐচ্ছিক)</span>
+              <select
+                value={disposition}
+                onChange={(e) => setDisposition(e.target.value)}
+                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5"
+              >
+                <option value="">— কারণ বেছে দিন (ঐচ্ছিক) —</option>
+                {DISPOSITIONS.map((d) => (
+                  <option key={d.key} value={d.key}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-slate-500">
+                বেছে দিলে ফলাফলের সঙ্গে কারণটি কল লগে জমা থাকবে। তারপর নিচের বোতামটি আবার চাপ
+                দিয়ে ফলাফল নিশ্চিত করুন।
+              </span>
+            </label>
+          ) : null}
+
           <div className="mt-4 flex flex-wrap gap-2">
             {OUTCOME_BUTTONS.map((b) => (
               <button
@@ -550,9 +788,13 @@ export function CallCenterWorkbench() {
                 onClick={() => void recordOutcome(b.key)}
                 className={`rounded-md px-3.5 py-2 text-sm font-medium disabled:opacity-50 ${b.className} ${
                   b.key === "CALLBACK" && callbackOpen ? "ring-2 ring-amber-300" : ""
-                }`}
+                } ${armedOutcome === b.key ? "ring-2 ring-slate-400" : ""}`}
               >
-                {b.key === "CALLBACK" && callbackOpen ? "🕐 সময় দিয়ে কলব্যাক নিশ্চিত করুন" : b.label}
+                {b.key === "CALLBACK" && callbackOpen
+                  ? "🕐 সময় দিয়ে কলব্যাক নিশ্চিত করুন"
+                  : armedOutcome === b.key
+                    ? `${b.label} — নিশ্চিত করুন`
+                    : b.label}
               </button>
             ))}
           </div>
@@ -560,6 +802,8 @@ export function CallCenterWorkbench() {
             কনফার্ম/বাতিল হলে সংযুক্ত অর্ডারের অবস্থাও আপডেট হয়। ফোন না ধরলে টাস্ক আবার কিউতে ফিরে
             যায় (সর্বোচ্চ ৩ বার চেষ্টা)।
           </p>
+        </div>
+        <Customer360Panel key={current.id} taskId={current.id} onOrderMutated={() => router.refresh()} />
         </div>
       ) : (
         <div className="mt-4">
@@ -601,7 +845,9 @@ export function CallCenterWorkbench() {
       <form onSubmit={createManual} className="mt-6 rounded-md border border-slate-200 p-4">
         <h3 className="text-sm font-semibold">ম্যানুয়াল টাস্ক যোগ করুন</h3>
         <p className="mt-1 text-xs text-slate-500">
-          যেমন ফেসবুক কমেন্ট থেকে পাওয়া নম্বর। নম্বরটি শুধু মুখোশ (মাস্ক) করা অবস্থায় সংরক্ষণ হয়।
+          যেমন ফেসবুক কমেন্ট থেকে পাওয়া নম্বর। ম্যানুয়াল টাস্কে নাম, নোট ও নম্বরটি সংরক্ষণ করা
+          হয় যাতে এজেন্ট কল করতে পারে — সম্পূর্ণ নম্বর শুধু অনুমতিপ্রাপ্ত
+          (customers.view_full_phone) ব্যবহারকারীরাই দেখতে পান; বাকি সব জায়গায় মাস্ক করা থাকে।
         </p>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="block text-sm">
@@ -656,5 +902,333 @@ export function CallCenterWorkbench() {
         </button>
       </form>
     </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Customer 360 panel (C1) — self-contained: fetches its own context  */
+/* for the claimed task (parent remounts it per task via `key`), so a  */
+/* failed load can never lose the claimed task in the workbench.      */
+/* One-click order actions reuse the EXISTING orders API              */
+/* (PATCH /api/v1/admin/orders/[id]) — no parallel transition path.   */
+/* ------------------------------------------------------------------ */
+
+function Customer360Panel({
+  taskId,
+  onOrderMutated,
+}: {
+  taskId: string;
+  onOrderMutated: () => void;
+}) {
+  const [ctx, setCtx] = useState<TaskContext | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [cancelArmed, setCancelArmed] = useState(false);
+  const [reason, setReason] = useState("");
+  const [orderBusy, setOrderBusy] = useState(false);
+  const [orderMsg, setOrderMsg] = useState<string | null>(null);
+  const [orderErr, setOrderErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    (async () => {
+      try {
+        const res = await fetch(`/api/v1/admin/call-center/tasks/${taskId}/context`);
+        const body = await readJson<ContextResponse>(res);
+        if (cancelled) return;
+        if (!res.ok || !body.data) {
+          setLoadError(body.error?.message ?? `তথ্য লোড হয়নি (${res.status})`);
+          setCtx(null);
+          return;
+        }
+        setCtx(body.data);
+      } catch {
+        if (!cancelled) {
+          setLoadError("নেটওয়ার্ক ত্রুটি — গ্রাহকের তথ্য লোড হয়নি।");
+          setCtx(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [taskId, reloadKey]);
+
+  const orderAction = useCallback(
+    async (to: "CONFIRMED" | "CANCELLED") => {
+      if (!ctx?.order) return;
+      if (to === "CANCELLED" && !cancelArmed) {
+        // First click only arms the reason input — the orders API
+        // requires a reason for CANCELLED and rejects without one.
+        setCancelArmed(true);
+        setOrderErr(null);
+        return;
+      }
+      if (to === "CANCELLED" && !reason.trim()) {
+        setOrderErr("বাতিলের কারণ আবশ্যক — কারণ না লিখলে অর্ডার বাতিল হবে না।");
+        return;
+      }
+      setOrderBusy(true);
+      setOrderErr(null);
+      setOrderMsg(null);
+      try {
+        const res = await fetch(`/api/v1/admin/orders/${ctx.order.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(to === "CANCELLED" ? { to, reason: reason.trim() } : { to }),
+        });
+        const body = await readJson<OrderActionResponse>(res);
+        if (!res.ok || body.error) {
+          // The orders API's own verdict, verbatim (its guards decide —
+          // a 403 for a missing permission lands here unchanged).
+          setOrderErr(body.error?.message ?? `অর্ডার আপডেট হয়নি (${res.status})`);
+          return;
+        }
+        setOrderMsg(
+          to === "CONFIRMED"
+            ? `অর্ডার ${body.data?.orderNo ?? ""} CONFIRMED করা হয়েছে।`
+            : `অর্ডার ${body.data?.orderNo ?? ""} CANCELLED করা হয়েছে।`,
+        );
+        setCancelArmed(false);
+        setReason("");
+        setReloadKey((k) => k + 1);
+        onOrderMutated();
+      } catch {
+        setOrderErr("নেটওয়ার্ক ত্রুটি — অর্ডার আপডেট হয়নি। আবার চেষ্টা করুন।");
+      } finally {
+        setOrderBusy(false);
+      }
+    },
+    [ctx, cancelArmed, reason, onOrderMutated],
+  );
+
+  const order = ctx?.order ?? null;
+  const canCancel =
+    order !== null &&
+    (order.status === "PENDING" ||
+      order.status === "CONFIRMED" ||
+      order.status === "PROCESSING" ||
+      order.status === "PACKED");
+
+  return (
+    <div className="rounded-md border border-slate-300 bg-white p-4">
+      <h3 className="text-base font-semibold">🧾 গ্রাহক ৩৬০ (Customer 360)</h3>
+
+      {loading ? (
+        <p className="mt-2 text-sm text-slate-500">গ্রাহকের তথ্য লোড হচ্ছে…</p>
+      ) : loadError ? (
+        <div className="mt-2">
+          <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            গ্রাহকের তথ্য লোড করা যায়নি: {loadError} — কলটি তবু চালিয়ে যেতে পারবেন।
+          </p>
+          <button
+            type="button"
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="mt-2 rounded-md bg-slate-700 px-3 py-1.5 text-sm text-white hover:bg-slate-800"
+          >
+            আবার চেষ্টা করুন
+          </button>
+        </div>
+      ) : ctx ? (
+        <>
+          {order ? (
+            <>
+              <dl className="mt-2 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
+                <div>
+                  <dt className="text-slate-500">অর্ডার</dt>
+                  <dd className="font-medium">
+                    {order.orderNo} · <span>{order.status}</span>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">পেমেন্ট</dt>
+                  <dd>
+                    {order.paymentMethod} · {order.paymentStatus}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">ফোন (অর্ডারে)</dt>
+                  <dd className="font-medium">{order.customerPhone}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">রিস্ক স্কোর</dt>
+                  <dd>
+                    {order.riskScore} ({order.riskBand})
+                  </dd>
+                </div>
+                <div className="sm:col-span-2">
+                  <dt className="text-slate-500">ঠিকানা</dt>
+                  <dd>
+                    {order.address.addressLine}
+                    {order.address.union ? `, ${order.address.union}` : ""}, {order.address.upazila},{" "}
+                    {order.address.district}, {order.address.division}
+                  </dd>
+                </div>
+              </dl>
+
+              <h4 className="mt-3 text-sm font-semibold">পণ্যসমূহ</h4>
+              <ul className="mt-1 space-y-1 text-sm">
+                {order.items.map((i, idx) => (
+                  <li key={idx} className="flex flex-wrap justify-between gap-2">
+                    <span>
+                      {i.productName} <span className="text-slate-500">({i.sku})</span> × {i.quantity}
+                    </span>
+                    <span>{formatBdt(i.unitPricePoisha * i.quantity)}</span>
+                  </li>
+                ))}
+              </ul>
+              <dl className="mt-2 space-y-0.5 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">সাবটোটাল</dt>
+                  <dd>{formatBdt(order.subtotalPoisha)}</dd>
+                </div>
+                {order.discountPoisha > 0 ? (
+                  <div className="flex justify-between">
+                    <dt className="text-slate-500">ছাড়</dt>
+                    <dd>−{formatBdt(order.discountPoisha)}</dd>
+                  </div>
+                ) : null}
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">ডেলিভারি</dt>
+                  <dd>{formatBdt(order.shippingPoisha)}</dd>
+                </div>
+                {order.codFeePoisha > 0 ? (
+                  <div className="flex justify-between">
+                    <dt className="text-slate-500">COD ফি</dt>
+                    <dd>{formatBdt(order.codFeePoisha)}</dd>
+                  </div>
+                ) : null}
+                <div className="flex justify-between border-t border-slate-200 pt-1 font-semibold">
+                  <dt>মোট</dt>
+                  <dd>{formatBdt(order.totalPoisha)}</dd>
+                </div>
+              </dl>
+
+              {/* One-click order actions (existing orders API) */}
+              <div className="mt-3 rounded-md bg-slate-50 p-3">
+                <h4 className="text-sm font-semibold">এক ক্লিকে অর্ডার অ্যাকশন</h4>
+                {orderMsg ? (
+                  <p role="status" className="mt-2 rounded-md bg-emerald-50 px-2.5 py-1.5 text-sm text-emerald-800">
+                    {orderMsg}
+                  </p>
+                ) : null}
+                {orderErr ? (
+                  <p role="alert" className="mt-2 rounded-md bg-rose-50 px-2.5 py-1.5 text-sm text-rose-700">
+                    {orderErr}
+                  </p>
+                ) : null}
+                {cancelArmed ? (
+                  <label className="mt-2 block text-sm">
+                    <span className="text-slate-600">বাতিলের কারণ (আবশ্যক)</span>
+                    <input
+                      type="text"
+                      value={reason}
+                      maxLength={500}
+                      onChange={(e) => setReason(e.target.value)}
+                      className="mt-1 w-full rounded-md border border-rose-300 px-2.5 py-1.5"
+                      placeholder="কেন বাতিল হচ্ছে…"
+                    />
+                  </label>
+                ) : null}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {order.status === "PENDING" ? (
+                    <button
+                      type="button"
+                      disabled={orderBusy}
+                      onClick={() => void orderAction("CONFIRMED")}
+                      className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      ✓ অর্ডার কনফার্ম করুন
+                    </button>
+                  ) : null}
+                  {canCancel ? (
+                    <button
+                      type="button"
+                      disabled={orderBusy}
+                      onClick={() => void orderAction("CANCELLED")}
+                      className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+                    >
+                      {cancelArmed ? "✕ কারণসহ বাতিল নিশ্চিত করুন" : "✕ অর্ডার বাতিল করুন"}
+                    </button>
+                  ) : null}
+                  {order.status !== "PENDING" && !canCancel ? (
+                    <p className="text-xs text-slate-500">
+                      এই অবস্থায় ({order.status}) এখান থেকে কনফার্ম/বাতিল করা যায় না।
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="mt-2 text-sm text-slate-600">
+              ম্যানুয়াল টাস্ক — কোনো অর্ডার যুক্ত নেই।
+              {ctx.task.note ? (
+                <>
+                  {" "}
+                  টাস্কের নোট: <span className="font-medium">{ctx.task.note}</span>
+                </>
+              ) : null}
+            </p>
+          )}
+
+          {ctx.recentOrders.length > 0 ? (
+            <>
+              <h4 className="mt-4 text-sm font-semibold">
+                গ্রাহকের আগের অর্ডার (সর্বশেষ {ctx.recentOrders.length}টি)
+              </h4>
+              <table className="mt-1 w-full text-left text-sm">
+                <thead>
+                  <tr className="text-slate-500">
+                    <th className="py-1 pr-2 font-medium">অর্ডার</th>
+                    <th className="py-1 pr-2 font-medium">তারিখ</th>
+                    <th className="py-1 pr-2 font-medium">মোট</th>
+                    <th className="py-1 font-medium">অবস্থা</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ctx.recentOrders.map((o) => (
+                    <tr key={o.id} className="border-t border-slate-100">
+                      <td className="py-1 pr-2">
+                        {o.orderNo}
+                        {order && o.id === order.id ? (
+                          <span className="ml-1 text-xs text-indigo-600">(এই অর্ডার)</span>
+                        ) : null}
+                      </td>
+                      <td className="py-1 pr-2">{bnDateTime(o.createdAt)}</td>
+                      <td className="py-1 pr-2">{formatBdt(o.totalPoisha)}</td>
+                      <td className="py-1">{o.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          ) : null}
+
+          <h4 className="mt-4 text-sm font-semibold">আগের কলসমূহ</h4>
+          {ctx.pastCalls.length > 0 ? (
+            <ul className="mt-1 space-y-2 text-sm">
+              {ctx.pastCalls.map((c) => (
+                <li key={c.id} className="rounded-md bg-slate-50 px-3 py-2">
+                  <span className="font-medium">{bnDateTime(c.calledAt)}</span> ·{" "}
+                  {SOURCE_LABEL[c.source]} · ফলাফল: {c.outcome}
+                  {c.disposition ? ` (${c.disposition})` : ""} · এজেন্ট:{" "}
+                  {c.agentName ?? c.agentId}
+                  {c.note ? (
+                    <span className="block text-slate-600">নোট: {c.note}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-sm text-slate-500">এই নম্বরে/অর্ডারে আগের কোনো কল নেই।</p>
+          )}
+        </>
+      ) : null}
+    </div>
   );
 }

@@ -57,6 +57,12 @@ export interface CallTask {
   lastOutcome?: CallOutcome;
   /** ISO time the callback is due; set only while a CALLBACK is pending. */
   callbackAt?: string;
+  /**
+   * Staff note captured at task creation. Persisted ONLY for MANUAL
+   * tasks (CallTask.note, C1); order-linked tasks have no note column
+   * usage — their context lives on the order.
+   */
+  note?: string;
   createdAt: string;
 }
 
@@ -86,6 +92,8 @@ export interface CallTaskView {
   attempts: number;
   lastOutcome?: CallOutcome;
   callbackAt?: string;
+  /** Creation-time staff note (MANUAL tasks only — see CallTask.note). */
+  note?: string;
 }
 
 export interface CallLogEntry {
@@ -104,6 +112,15 @@ export interface CallLogEntry {
   callbackAt?: string;
   calledAt: string;
   durationSeconds?: number;
+  /** C3: sub-reason for the outcome (e.g. PRICE, FAKE_ORDER) — stamped
+   *  by the workbench for CANCELLED / WRONG_NUMBER outcomes. */
+  disposition?: string;
+  /** C3: version of the script the agent followed (e.g. "v1"). */
+  scriptVersion?: string;
+  /** C3 QA: supervisor score (0–5 per criterion rollup) + comment,
+   *  written after the call, never by the recording agent. */
+  qaScore?: number;
+  qaComment?: string;
 }
 
 export const recordOutcomeSchema = z.object({

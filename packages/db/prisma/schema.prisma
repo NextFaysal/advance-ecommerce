@@ -1606,6 +1606,12 @@ model CallTask {
   priority   Int      @default(10)
   status     String   @default("PENDING")
   customerPhoneMasked String
+  // C1: full phone + name + note are stored ONLY for tasks with no
+  // linked order (MANUAL tasks) — an order-linked task's number is
+  // resolved from the Order at read time and never copied here.
+  customerPhone String?
+  customerName  String?
+  note          String?
   orderId    String?
   assignedToId String?
   callbackAt DateTime?
@@ -1622,6 +1628,15 @@ model CallLogEntry {
   agentId   String?
   outcome   String
   note      String?
+  // C3: disposition sub-reason + script version stamped at outcome
+  // time; QA score/comment are written later by a supervisor.
+  disposition   String?
+  scriptVersion String?
+  qaScore       Int?
+  qaComment     String?
+  // C1/C5: talk time in whole seconds, sent by the workbench timer
+  // with the outcome; reporting (agentPerformance) sums it.
+  durationSeconds Int?
   createdAt DateTime @default(now())
   @@index([taskId, createdAt])
 }

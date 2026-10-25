@@ -292,5 +292,6 @@ export function toQueueItemView(task: CallTask, canViewFullPhone: boolean): Call
     attempts: task.attempts,
     lastOutcome: task.lastOutcome,
     callbackAt: task.callbackAt,
+    note: task.note,
   };
 }
