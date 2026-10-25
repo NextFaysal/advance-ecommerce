@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import {
   forceCloseTask,
   reassignTask,
@@ -57,6 +58,7 @@ function respond(result: SupervisorActionResult) {
 export async function POST(req: Request) {
   const guard = await requireAdmin("staff.manage");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
+  await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
 
   const parsed = actionSchema.safeParse(await req.json().catch(() => ({})));

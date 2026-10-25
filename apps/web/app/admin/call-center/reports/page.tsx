@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { DataTable } from "@/components/ui/table";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import {
   defaultReportRange,
   getCallCenterReport,
@@ -51,6 +52,7 @@ export default async function AdminCallCenterReportsPage({
 }: {
   searchParams: { days?: string; from?: string; to?: string };
 }) {
+  await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
       <main>

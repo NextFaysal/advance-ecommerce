@@ -18,6 +18,8 @@ import {
   type IntegrationStatus,
 } from "@/lib/settings";
 import { TRACKING_SETTING_KEYS } from "@/tracking/settings";
+import { loadOrderRules } from "@/checkout/order-rules";
+import { loadDeliverySlots } from "@/checkout/delivery-slots";
 
 // Settings index — landing page for Admin > Settings.
 // The card statuses are REAL (2026-10-25; previously labelled demo
@@ -221,6 +223,26 @@ export default async function AdminSettingsPage() {
     } satisfies CardStatus;
   });
 
+  // Order rules + delivery slots (doc 18 F2-1): the effective state is
+  // what the checkout loaders compute — the same fail-open parse the
+  // order flow enforces, not the raw stored strings.
+  const orders = await probe(async () => {
+    const rules = await loadOrderRules();
+    const slots = await loadDeliverySlots();
+    const activeRules =
+      (rules.minOrderPoisha > 0 ? 1 : 0) +
+      (rules.advanceRequiredAbovePoisha > 0 ? 1 : 0) +
+      (rules.codDisabledDistricts.length > 0 ? 1 : 0) +
+      (rules.codDisabledCategories.length > 0 ? 1 : 0);
+    return {
+      tone: activeRules > 0 ? "success" : "neutral",
+      label: activeRules > 0 ? `${activeRules}টি নিয়ম চালু` : "সব নিয়ম বন্ধ",
+      detail:
+        `সর্বনিম্ন অর্ডার ${rules.minOrderPoisha > 0 ? "চালু" : "বন্ধ"} · অগ্রিম নিয়ম ${rules.advanceRequiredAbovePoisha > 0 ? "চালু" : "বন্ধ"} · ` +
+        `COD বন্ধ: জেলা ${rules.codDisabledDistricts.length}টি, ক্যাটাগরি ${rules.codDisabledCategories.length}টি · ডেলিভারি স্লট ${slots.length}টি।`,
+    } satisfies CardStatus;
+  });
+
   const cards: SettingsCardInfo[] = [
     {
       href: "/admin/settings/payments",
@@ -269,6 +291,14 @@ export default async function AdminSettingsPage() {
       titleEn: "Accounting / VAT",
       description: "বিক্রয়ের VAT হার (accounting.vat_rate_bps) — সেট থাকলে প্রতিটি অর্ডারে VAT বিভাজন সংরক্ষিত হয়; রিপোর্ট ERP পেজে।",
       status: accounting,
+    },
+    {
+      href: "/admin/settings/orders",
+      icon: <Icon name="cart" size={22} />,
+      titleBn: "অর্ডার নিয়ম ও স্লট",
+      titleEn: "Order Rules & Slots",
+      description: "সর্বনিম্ন অর্ডার, অগ্রিমের সীমা ও হার, COD বন্ধের জেলা/ক্যাটাগরি (orders.rules.*) এবং ডেলিভারি স্লট (orders.delivery_slots)।",
+      status: orders,
     },
   ];
 

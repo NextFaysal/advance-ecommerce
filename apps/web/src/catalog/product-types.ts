@@ -451,6 +451,42 @@ function hashToken(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
 }
 
+export interface MintedDownloadGrant {
+  id: string;
+  /** The RAW bearer token — returned exactly once, never persisted. */
+  token: string;
+  expiresAt: Date;
+}
+
+/**
+ * Mint ONE download grant (fresh random token; only its SHA-256 hash
+ * is stored). This is the ONE grant-minting path: fulfilment calls it
+ * per file at PAID, and the re-issue approval
+ * (src/catalog/download-reissue.ts, doc 18 F3) calls it for the
+ * replacement grant — so TTL and max-downloads can never drift
+ * between an original grant and its re-issue.
+ */
+export async function mintDownloadGrant(
+  client: PrismaTx | typeof prisma,
+  input: { orderId: string; orderItemId: string; digitalFileId: string },
+): Promise<MintedDownloadGrant> {
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + DOWNLOAD_GRANT_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const row = await client.downloadGrant.create({
+    data: {
+      orderId: input.orderId,
+      orderItemId: input.orderItemId,
+      digitalFileId: input.digitalFileId,
+      tokenHash: hashToken(token),
+      expiresAt,
+      maxDownloads: DOWNLOAD_GRANT_MAX_DOWNLOADS,
+      downloadsUsed: 0,
+    },
+    select: { id: true },
+  });
+  return { id: row.id, token, expiresAt };
+}
+
 /**
  * Issue download grants + license keys for an order's DIGITAL items.
  * Idempotent per order: existing grants short-circuit (their raw
@@ -495,30 +531,22 @@ export async function runDigitalFulfilmentForOrder(
       return { orderId, grants: [], licenseKeys: [], alreadyFulfilled: true };
     }
 
-    const expiresAt = new Date(Date.now() + DOWNLOAD_GRANT_TTL_DAYS * 24 * 60 * 60 * 1000);
     const grants: IssuedDownloadGrant[] = [];
     const licenseKeys: DigitalFulfilmentResult["licenseKeys"] = [];
     await prisma.$transaction(async (tx) => {
       for (const item of digitalItems) {
         for (const file of item.variant.product.digitalFiles) {
-          const token = randomBytes(32).toString("hex");
-          await tx.downloadGrant.create({
-            data: {
-              orderId,
-              orderItemId: item.id,
-              digitalFileId: file.id,
-              tokenHash: hashToken(token),
-              expiresAt,
-              maxDownloads: DOWNLOAD_GRANT_MAX_DOWNLOADS,
-              downloadsUsed: 0,
-            },
+          const minted = await mintDownloadGrant(tx, {
+            orderId,
+            orderItemId: item.id,
+            digitalFileId: file.id,
           });
           grants.push({
             orderItemId: item.id,
             digitalFileId: file.id,
             fileName: file.fileName,
-            token,
-            expiresAt: expiresAt.toISOString(),
+            token: minted.token,
+            expiresAt: minted.expiresAt.toISOString(),
           });
         }
         // One license key per digital order ITEM, from the product's
@@ -559,30 +587,50 @@ export type RedeemDownloadResult =
   | { ok: true; url: string; fileName: string; downloadsRemaining: number }
   | {
       ok: false;
-      code: "NOT_FOUND" | "EXPIRED" | "EXHAUSTED" | "STORAGE_NOT_CONFIGURED" | "FEATURE_LOCKED";
+      code:
+        | "NOT_FOUND"
+        | "REVOKED"
+        | "EXPIRED"
+        | "EXHAUSTED"
+        | "STORAGE_NOT_CONFIGURED"
+        | "FEATURE_LOCKED";
       message: string;
     };
 
+interface GrantForConsume {
+  id: string;
+  expiresAt: Date;
+  maxDownloads: number;
+  downloadsUsed: number;
+  revokedAt: Date | null;
+  digitalFile: { storageKey: string; fileName: string };
+}
+
+const GRANT_CONSUME_SELECT = {
+  id: true,
+  expiresAt: true,
+  maxDownloads: true,
+  downloadsUsed: true,
+  revokedAt: true,
+  digitalFile: { select: { storageKey: true, fileName: true } },
+} as const;
+
 /**
- * Redeem one download token: hash lookup, expiry + count enforced,
- * the use is consumed only when a signed URL can actually be issued.
+ * The ONE consume chain behind BOTH redemption paths (the public
+ * bearer-token route and the session-authorized account access,
+ * doc 18 F3): revocation → expiry → exhaustion are checked first,
+ * storage is resolved BEFORE anything is consumed (unconfigured
+ * storage answers 503 and the use is NOT spent), and the consume is a
+ * guarded increment so two concurrent clicks can never mint more
+ * than maxDownloads.
  */
-export async function redeemDownloadToken(token: string): Promise<RedeemDownloadResult> {
-  if (!(await productTypesEnabledInDb())) {
-    return { ok: false, code: "FEATURE_LOCKED", message: "ডিজিটাল ডাউনলোড এই ইনস্টলে সক্রিয় নয়।" };
-  }
-  const grant = await prisma.downloadGrant.findUnique({
-    where: { tokenHash: hashToken(token) },
-    select: {
-      id: true,
-      expiresAt: true,
-      maxDownloads: true,
-      downloadsUsed: true,
-      digitalFile: { select: { storageKey: true, fileName: true } },
-    },
-  });
-  if (!grant) {
-    return { ok: false, code: "NOT_FOUND", message: "ডাউনলোড লিংকটি পাওয়া যায়নি।" };
+async function consumeGrantDownload(grant: GrantForConsume): Promise<RedeemDownloadResult> {
+  if (grant.revokedAt !== null) {
+    return {
+      ok: false,
+      code: "REVOKED",
+      message: "এই ডাউনলোড লিংকটি বাতিল করা হয়েছে — নতুন লিংকের জন্য অ্যাকাউন্ট থেকে অনুরোধ করুন।",
+    };
   }
   if (grant.expiresAt.getTime() <= Date.now()) {
     return { ok: false, code: "EXPIRED", message: "ডাউনলোড লিংকটির মেয়াদ শেষ হয়ে গেছে।" };
@@ -622,6 +670,60 @@ export async function redeemDownloadToken(token: string): Promise<RedeemDownload
     fileName: grant.digitalFile.fileName,
     downloadsRemaining: grant.maxDownloads - grant.downloadsUsed - 1,
   };
+}
+
+/**
+ * Redeem one download token: hash lookup, then the shared consume
+ * chain (revocation + expiry + count enforced, the use is consumed
+ * only when a signed URL can actually be issued).
+ */
+export async function redeemDownloadToken(token: string): Promise<RedeemDownloadResult> {
+  if (!(await productTypesEnabledInDb())) {
+    return { ok: false, code: "FEATURE_LOCKED", message: "ডিজিটাল ডাউনলোড এই ইনস্টলে সক্রিয় নয়।" };
+  }
+  const grant = await prisma.downloadGrant.findUnique({
+    where: { tokenHash: hashToken(token) },
+    select: GRANT_CONSUME_SELECT,
+  });
+  if (!grant) {
+    return { ok: false, code: "NOT_FOUND", message: "ডাউনলোড লিংকটি পাওয়া যায়নি।" };
+  }
+  return consumeGrantDownload(grant);
+}
+
+/**
+ * Session-authorized redemption (doc 18 F3): the signed-in OWNER of
+ * the grant's order downloads WITHOUT the bearer token — this is
+ * what makes every grant reachable from the account page even though
+ * raw tokens are unrecoverable by design. Ownership is the grant's
+ * order's customerId; a grant belonging to another customer answers
+ * NOT_FOUND, exactly like an unknown id (the endpoint never confirms
+ * that someone else's grant exists). All other rules are the shared
+ * consume chain: revoked/expired/exhausted refuse, storage is
+ * resolved before the use is consumed.
+ */
+export async function accessDownloadGrantById(
+  grantId: string,
+  customerId: string,
+): Promise<RedeemDownloadResult> {
+  if (!(await productTypesEnabledInDb())) {
+    return { ok: false, code: "FEATURE_LOCKED", message: "ডিজিটাল ডাউনলোড এই ইনস্টলে সক্রিয় নয়।" };
+  }
+  const grant = await prisma.downloadGrant.findUnique({
+    where: { id: grantId },
+    select: { ...GRANT_CONSUME_SELECT, orderId: true },
+  });
+  if (!grant) {
+    return { ok: false, code: "NOT_FOUND", message: "ডাউনলোডটি পাওয়া যায়নি।" };
+  }
+  const order = await prisma.order.findUnique({
+    where: { id: grant.orderId },
+    select: { customerId: true },
+  });
+  if (!order || order.customerId !== customerId) {
+    return { ok: false, code: "NOT_FOUND", message: "ডাউনলোডটি পাওয়া যায়নি।" };
+  }
+  return consumeGrantDownload(grant);
 }
 
 /* ------------------------------------------------------------------ */

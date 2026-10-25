@@ -130,10 +130,47 @@ export interface BullMqFactory {
 /* Processor factory: envelope -> handler, dead-letter on final fail */
 /* ------------------------------------------------------------------ */
 
+/** One exhausted call-center automation job, as handed to the
+ *  timeline hook below (ids/refs only — never a phone number). */
+export interface CallCenterDeadLetterInfo {
+  /** BullMQ job id (for these jobs = the producer's idempotency key). */
+  jobId: string;
+  /** SmsJob.automationKind: NO_ANSWER_SMS / CALLBACK_REMINDER_SMS / RESCUE_SMS. */
+  automationKind?: string;
+  /** SmsJob.taskId — the CallTask the automation belongs to. */
+  taskId?: string;
+  /** SmsJob.orderId — fallback timeline target when no task resolves. */
+  orderId?: string;
+  /** Total attempts made (attemptsMade + 1 at the final failure). */
+  attempts: number;
+  /** Error class/code only, same convention as DeadLetterEntry. */
+  errorCode: string;
+}
+
 export interface WorkerRuntimeDeps extends HandlerDeps {
   idempotencyStore?: IdempotencyStore;
   deadLetterSink?: DeadLetterSink;
+  /**
+   * Doc 18 F1: timeline hook fired ONLY when a call-center automation
+   * SMS job (sms queue, payload jobKind "callcenter-automation")
+   * exhausts its retries — in the same final-attempt branch that
+   * records the DeadLetterEntry. The worker deps assembly wires it to
+   * src/callcenter/dead-letter.ts, which leaves an AUTO_SMS_DEAD_LETTER
+   * row on the task (or an OrderNote on the order) so staff see the
+   * automation gave up instead of silence. Absent outside the worker
+   * process, where the hook simply never fires.
+   */
+  callCenterDeadLetter?: (info: CallCenterDeadLetterInfo) => Promise<void>;
 }
+
+/** The runtime shape createProcessor consumes: the two stores are
+ *  guaranteed present (createWorkers defaults them), the rest of the
+ *  handler deps + the optional dead-letter hook pass through. */
+type ProcessorRuntime = Required<
+  Pick<WorkerRuntimeDeps, "idempotencyStore" | "deadLetterSink">
+> &
+  HandlerDeps &
+  Pick<WorkerRuntimeDeps, "callCenterDeadLetter">;
 
 function errorCodeOf(error: unknown): string {
   if (error instanceof Error) {
@@ -145,8 +182,7 @@ function errorCodeOf(error: unknown): string {
 
 export function createProcessor<TPayload>(
   queue: QueueName,
-  runtime: Required<Pick<WorkerRuntimeDeps, "idempotencyStore" | "deadLetterSink">> &
-    HandlerDeps,
+  runtime: ProcessorRuntime,
 ): (job: BullMqJobLike<TPayload & { idempotencyKey?: string }>) => Promise<HandlerResult> {
   const handlers = createHandlers(runtime, runtime.idempotencyStore);
   const handler = handlers[queue];
@@ -176,6 +212,34 @@ export function createProcessor<TPayload>(
           failedAt: new Date().toISOString(),
           payloadRef: envelope.idempotencyKey,
         });
+        // Doc 18 F1: a call-center automation job that exhausts its
+        // retries ALSO leaves a row on the task/order timeline (via
+        // the injected hook) — the DeadLetterEntry above is the
+        // system of record, but staff work from the task timeline,
+        // where silence reads as "still waiting". Scoped strictly to
+        // the sms queue + jobKind "callcenter-automation"; every
+        // other queue/kind records only the DeadLetterEntry.
+        // Best-effort: a timeline write failure must never mask the
+        // job's own error or change BullMQ's failure handling.
+        if (queue === QUEUE_NAMES.sms && runtime.callCenterDeadLetter !== undefined) {
+          const data = (job.data ?? {}) as unknown as Record<string, unknown>;
+          if (data.jobKind === "callcenter-automation") {
+            try {
+              await runtime.callCenterDeadLetter({
+                jobId: envelope.jobId,
+                automationKind:
+                  typeof data.automationKind === "string" ? data.automationKind : undefined,
+                taskId: typeof data.taskId === "string" ? data.taskId : undefined,
+                orderId: typeof data.orderId === "string" ? data.orderId : undefined,
+                attempts: job.attemptsMade + 1,
+                errorCode: errorCodeOf(error),
+              });
+            } catch {
+              // The DeadLetterEntry above already recorded the
+              // failure; the timeline row is an audit nicety on top.
+            }
+          }
+        }
       }
       throw error;
     }
@@ -202,8 +266,7 @@ export function createWorkers(
   factory: BullMqFactory,
   connection: unknown,
 ): CreatedWorkers {
-  const fullRuntime: Required<Pick<WorkerRuntimeDeps, "idempotencyStore" | "deadLetterSink">> &
-    HandlerDeps = {
+  const fullRuntime: ProcessorRuntime = {
     ...runtime,
     idempotencyStore: runtime.idempotencyStore ?? new InMemoryIdempotencyStore(),
     deadLetterSink: runtime.deadLetterSink ?? new InMemoryDeadLetterSink(),

@@ -174,6 +174,11 @@ function orderRowToOrder(row: OrderRow): Order {
       quantity: i.quantity,
     })),
     totalPoisha: row.totalPoisha,
+    // Doc 18 (F1): the persisted money split rides the detail view so
+    // the invoice print centre can render real shipping/discount lines
+    // (it previously had to net them into one adjustment figure).
+    shippingPoisha: row.shippingPoisha,
+    discountPoisha: row.discountPoisha,
     paymentMethod: paymentMethodFromDb(row.paymentMethod),
     paymentStatus: row.paymentStatus as PaymentStatus,
     status: row.status as OrderStatus,

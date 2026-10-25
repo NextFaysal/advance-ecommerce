@@ -31,6 +31,13 @@
  *                               conversion enters through this same
  *                               contract, so a stored draft payload is
  *                               re-validated here, never trusted.
+ *       advanceLinkPolicy? (doc 18 F3, ADDITIVE) — "issue" (default)
+ *                               creates the advance payment link as
+ *                               before; "suppress" creates NO link,
+ *                               for callers that credit the advance
+ *                               themselves immediately after create
+ *                               (preorder fulfilment). The choice is
+ *                               recorded on the order note + audit.
  *   - actor is the authenticated staff member on whose behalf the
  *     order is created: { id, permissions, ip?, userAgent? }. The id
  *     lands on the audit row; ip/userAgent are audit context only.
@@ -114,6 +121,15 @@ export const manualCreateInputSchema = manualOrderSchema.extend({
    *  requirement is the MAX of this, the fraud band, and a prepaid
    *  method's full total. */
   advanceRequiredPoisha: z.number().int().min(0).optional(),
+  /** Advance payment-link policy (doc 18 batch F3, ADDITIVE).
+   *  Default "issue": a payment link is created for the persisted
+   *  advance requirement, exactly as before. "suppress": NO link is
+   *  created — for flows that credit the advance themselves in the
+   *  same breath (preorder fulfilment credits the already-paid
+   *  deposit immediately after create; a live link in between would
+   *  let the customer pay that deposit a second time). Suppression
+   *  is recorded on the order note + audit, never silent. */
+  advanceLinkPolicy: z.enum(["issue", "suppress"]).optional(),
   /** Order.source label for this channel. Default "manual". */
   source: z.string().min(1).max(32).optional(),
   /** Extra note line prepended to the order note — e.g. the inbox
@@ -403,6 +419,11 @@ export async function createManualOrder(
     data.shippingOverridePoisha !== rateShippingPoisha
       ? `ম্যানুয়াল অর্ডার — ডেলিভারি চার্জ কর্মীর নির্ধারিত ${data.shippingOverridePoisha} পয়সা (${shippingMethod} অনুযায়ী ${rateShippingPoisha} পয়সা)`
       : null,
+    // Doc 18 F3: a suppressed advance link is stated on the order's
+    // own timeline, so staff never wonder where the link went.
+    data.advanceLinkPolicy === "suppress" && advanceRequirement.advanceRequiredPoisha > 0
+      ? `অগ্রিম লিংক ইস্যু করা হয়নি — জমা সরাসরি ক্রেডিট হিসেবে জমা হয়েছে। / Advance payment link not issued — the advance is credited directly.`
+      : null,
   ].filter((p): p is string => p !== null);
 
   // data.customerId (from the builder's phone lookup) is deliberately
@@ -488,8 +509,14 @@ export async function createManualOrder(
   // Advance collection (wave 21): issue the payment link for exactly
   // the persisted requirement (fresh creates only — replays returned
   // above). A failure leaves the result with amount + reason only.
+  // Doc 18 F3: advanceLinkPolicy "suppress" skips issuance entirely —
+  // the caller credits the advance itself right after create
+  // (preorder fulfilment), so no live link ever exists that could be
+  // paid twice. Noted on the order (noteParts above) + audit below.
+  const advanceLinkSuppressed =
+    data.advanceLinkPolicy === "suppress" && advanceRequirement.advanceRequiredPoisha > 0;
   const advanceLink =
-    advanceRequirement.advanceRequiredPoisha > 0
+    advanceRequirement.advanceRequiredPoisha > 0 && !advanceLinkSuppressed
       ? await issueAdvancePaymentLink(created.orderId, advanceRequirement.advanceRequiredPoisha)
       : null;
   // Coupon usage bookkeeping — only now that the order exists, never
@@ -520,6 +547,7 @@ export async function createManualOrder(
       advanceRequiredPoisha: advanceRequirement.advanceRequiredPoisha,
       advanceReason: advanceRequirement.advanceReason,
       advanceLinkIssued: advanceLink !== null,
+      advanceLinkSuppressed,
     },
     ip: actor.ip,
     userAgent: actor.userAgent,

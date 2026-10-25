@@ -22,6 +22,7 @@ import {
 } from "@/customer-auth/auth";
 import ReorderButton from "./reorder-button";
 import ReturnsSection from "./returns-section";
+import DownloadsSection from "./downloads-section";
 import AuthForms from "@/customer-auth/components/AuthForms";
 import AddressManager from "@/customer-auth/components/AddressManager";
 import LogoutButton from "@/customer-auth/components/LogoutButton";
@@ -171,6 +172,8 @@ export default async function AccountPage() {
       <ReturnsSection
         orders={orders.map((o) => ({ id: o.id, orderNo: o.orderNo, status: o.status }))}
       />
+
+      <DownloadsSection />
 
       <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label="সংরক্ষিত ঠিকানা">
         <h2 className="text-base font-bold text-text-main">সংরক্ষিত ঠিকানা</h2>

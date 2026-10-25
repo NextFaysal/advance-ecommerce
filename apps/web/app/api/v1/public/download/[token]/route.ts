@@ -13,6 +13,9 @@ import { redeemDownloadToken } from "@/catalog/product-types";
 //   404 NOT_FOUND              — unknown token
 //   410 EXPIRED                — past the grant's 7-day expiry
 //   403 EXHAUSTED              — maxDownloads (5) already used
+//   403 REVOKED                — staff revoked the grant (doc 18 F3:
+//                                a re-issue approval revokes the old
+//                                grant, so its old link dies here)
 //   403 FEATURE_LOCKED         — module.product_types is OFF
 //   503 STORAGE_NOT_CONFIGURED — storage settings missing (the use is
 //                                NOT consumed in this case)
@@ -20,6 +23,7 @@ const STATUS_BY_CODE: Record<string, number> = {
   NOT_FOUND: 404,
   EXPIRED: 410,
   EXHAUSTED: 403,
+  REVOKED: 403,
   FEATURE_LOCKED: 403,
   STORAGE_NOT_CONFIGURED: 503,
 };

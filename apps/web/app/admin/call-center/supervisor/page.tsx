@@ -1,4 +1,5 @@
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { loadSupervisorBoard, type SupervisorBoard } from "@/callcenter/supervisor-store";
 import { CallCenterTabs } from "../tabs";
 import { AutoRefresh } from "./auto-refresh";
@@ -162,6 +163,7 @@ function Board({ board }: { board: SupervisorBoard }) {
 }
 
 export default async function AdminCallCenterSupervisorPage() {
+  await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
       <main style={{ padding: 24, fontFamily: "system-ui" }}>

@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { CallCenterTabs } from "../tabs";
 import { QaTable } from "./qa-table";
 
@@ -10,7 +11,8 @@ import { QaTable } from "./qa-table";
 // Guarded by the module flag here and by the API's permissions.
 export const dynamic = "force-dynamic";
 
-export default function AdminCallCenterQaPage() {
+export default async function AdminCallCenterQaPage() {
+  await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
       <main>

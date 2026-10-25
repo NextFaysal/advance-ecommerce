@@ -80,6 +80,14 @@ export type Order = {
   address: BdAddress;
   items: OrderItem[];
   totalPoisha: number;
+  /** Money split (doc 18, F1) — persisted Order columns exposed by the
+   *  repository mapper so consumers can render the real lines instead
+   *  of a net figure: the invoice print centre shows ডেলিভারি চার্জ /
+   *  ছাড় separately when these are present and falls back to its old
+   *  net line when a payload predates them. Optional because client
+   *  fixtures predate them. */
+  shippingPoisha?: number;
+  discountPoisha?: number;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
   status: OrderStatus;

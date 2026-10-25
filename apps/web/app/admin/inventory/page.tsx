@@ -5,6 +5,7 @@ import {
   LOW_STOCK_THRESHOLD,
   getVariantCostMapDb,
   getVariantProductMetaDb,
+  getVariantStockCacheDb,
   listInventoryItemsDb,
 } from "@/inventory/repository";
 import { getSetting } from "@/lib/settings";
@@ -16,6 +17,15 @@ import { Icon } from "@/components/ui/icon";
 // Admin inventory — reads the stock_movements ledger state from the DB
 // (InventoryItem rows, src/inventory/repository.ts). Direct quantity
 // edits are forbidden; stock changes only via movements (API below).
+//
+// Availability headline (doc 18, F1): per variant, the headline number
+// is ProductVariant.stock — the cache the order funnel claims against
+// (getVariantStockCacheDb). Σ InventoryItem.quantityAvailable
+// double-subtracts order reservations (the order seam mirrors the
+// post-claim cache into quantityOnHand AND increments
+// quantityReserved), so the ledger sum can read lower than what
+// checkout will sell. The warehouse table below is the secondary,
+// per-godown breakdown; low-stock is judged on the headline.
 //
 // Presentation (Design v3 consistency pass): PageHeader + token table
 // system + status badges + designed empty states, aligned with the
@@ -41,9 +51,10 @@ interface LowStockNamed {
 export default async function AdminInventoryPage() {
   const items = await listInventoryItemsDb();
   const variantIds = items.map((i) => i.variantId);
-  const [costMap, metaMap, settingsThresholdRaw] = await Promise.all([
+  const [costMap, metaMap, stockCacheMap, settingsThresholdRaw] = await Promise.all([
     getVariantCostMapDb(variantIds),
     getVariantProductMetaDb(variantIds),
+    getVariantStockCacheDb(variantIds),
     getSetting("inventory.low_stock_threshold").catch(() => null),
   ]);
   const costedItems = items.filter((i) => costMap.has(i.variantId));
@@ -64,13 +75,24 @@ export default async function AdminInventoryPage() {
     return { threshold: LOW_STOCK_THRESHOLD, source: "default" };
   };
 
-  // Low stock BY NAME: availability is totalled per variant across
-  // warehouses (a variant split across two godowns is one product
-  // line), then compared against ITS effective threshold.
-  const availableByVariant = new Map<string, number>();
+  // Low stock BY NAME: availability is taken per variant (a variant
+  // split across two godowns is one product line), then compared
+  // against ITS effective threshold. The per-variant figure is the
+  // CANONICAL cache (ProductVariant.stock — what the order funnel
+  // claims against), NOT the sum of the warehouse rows: that sum
+  // double-subtracts reservations and can disagree with checkout
+  // (doc 18, F1). The ledger sum is only a fallback for a variant
+  // whose ProductVariant row no longer exists.
+  const ledgerAvailableByVariant = new Map<string, number>();
   for (const i of items) {
-    availableByVariant.set(i.variantId, (availableByVariant.get(i.variantId) ?? 0) + i.quantityAvailable);
+    ledgerAvailableByVariant.set(i.variantId, (ledgerAvailableByVariant.get(i.variantId) ?? 0) + i.quantityAvailable);
   }
+  const availableByVariant = new Map<string, number>();
+  for (const [variantId, ledgerTotal] of ledgerAvailableByVariant) {
+    availableByVariant.set(variantId, stockCacheMap.get(variantId) ?? ledgerTotal);
+  }
+  const headlineFor = (variantId: string, rowAvailable: number): number =>
+    stockCacheMap.get(variantId) ?? rowAvailable;
   const low: LowStockNamed[] = [...availableByVariant.entries()]
     .map(([variantId, quantityAvailable]) => {
       const { threshold, source } = thresholdFor(variantId);
@@ -131,28 +153,37 @@ export default async function AdminInventoryPage() {
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
-          <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-            <thead>
-              <tr className="bg-surface-2 text-left [&>th]:border-b [&>th]:border-border">
-                {["ভ্যারিয়েন্ট", "গুদাম", "হাতে আছে", "রিজার্ভ", "উপলব্ধ", "অবস্থা"].map((h) => (
-                  <th key={h} scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((i) => (
-                <tr key={`${i.variantId}-${i.warehouseId}`} className="border-t border-border transition motion-fast first:border-t-0 hover:bg-surface-2/70">
-                  <td className="px-4 py-3 font-mono text-small">{i.variantId}</td>
-                  <td className="px-4 py-3 text-text-muted">{i.warehouseId}</td>
-                  <td className="px-4 py-3 font-mono tabular-nums">{i.quantityOnHand}</td>
-                  <td className="px-4 py-3 font-mono tabular-nums">{i.quantityReserved}</td>
-                  <td className="px-4 py-3 font-mono font-semibold tabular-nums">{i.quantityAvailable}</td>
-                  <td className="px-4 py-3">{stockBadge(i.quantityAvailable, thresholdFor(i.variantId).threshold)}</td>
+        <div>
+          <p className="mb-2 text-small font-semibold text-text-main">গুদাম অনুযায়ী বিবরণ (সেকেন্ডারি)</p>
+          <p className="mb-3 max-w-3xl text-caption leading-relaxed text-text-muted">
+            প্রতি গুদামের লেজার হিসাব নিচে — কিন্তু অর্ডার/চেকআউট যে সংখ্যা দেখে বিক্রি করে, তা হলো
+            <span className="font-semibold text-text-main"> "মোট উপলব্ধ (অর্ডারের হিসাব)"</span> কলামের সংখ্যা
+            (ভ্যারিয়েন্টের ক্যাশ স্টক)। রিজার্ভ করা অর্ডারের কারণে গুদামের "উপলব্ধ" যোগফল এর চেয়ে কম দেখাতে পারে।
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
+            <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+              <thead>
+                <tr className="bg-surface-2 text-left [&>th]:border-b [&>th]:border-border">
+                  {["ভ্যারিয়েন্ট", "গুদাম", "হাতে আছে", "রিজার্ভ", "এই গুদামে উপলব্ধ", "মোট উপলব্ধ (অর্ডারের হিসাব)", "অবস্থা"].map((h) => (
+                    <th key={h} scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((i) => (
+                  <tr key={`${i.variantId}-${i.warehouseId}`} className="border-t border-border transition motion-fast first:border-t-0 hover:bg-surface-2/70">
+                    <td className="px-4 py-3 font-mono text-small">{i.variantId}</td>
+                    <td className="px-4 py-3 text-text-muted">{i.warehouseId}</td>
+                    <td className="px-4 py-3 font-mono tabular-nums">{i.quantityOnHand}</td>
+                    <td className="px-4 py-3 font-mono tabular-nums">{i.quantityReserved}</td>
+                    <td className="px-4 py-3 font-mono tabular-nums">{i.quantityAvailable}</td>
+                    <td className="px-4 py-3 font-mono font-semibold tabular-nums">{stockCacheMap.get(i.variantId) ?? "—"}</td>
+                    <td className="px-4 py-3">{stockBadge(headlineFor(i.variantId, i.quantityAvailable), thresholdFor(i.variantId).threshold)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

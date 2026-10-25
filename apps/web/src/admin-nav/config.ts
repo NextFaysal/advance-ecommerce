@@ -124,6 +124,20 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: null,
   },
   {
+    id: "downloads",
+    path: "/admin/downloads",
+    labelBn: "ডাউনলোড রি-ইস্যু",
+    labelEn: "Download Re-issue",
+    icon: "FileText",
+    section: "sales",
+    // Doc 18 F3: the downloads API guards reads (queue + order
+    // lookup) on products.view and approve/reject decisions on
+    // products.edit; nav uses the read gate, like returns.
+    permission: "products.view",
+    featureFlag: null,
+    badge: null,
+  },
+  {
     id: "payments",
     path: "/admin/payments",
     labelBn: "পেমেন্ট",
@@ -623,6 +637,19 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     labelBn: "হিসাব / VAT",
     labelEn: "Accounting / VAT",
     icon: "Calculator",
+    section: "system",
+    permission: "settings.view",
+    featureFlag: null,
+    badge: null,
+  },
+  {
+    // Doc 18 F2-1: the orders.rules.* keys + orders.delivery_slots
+    // finally have an editor UI (they were generic-API-only before).
+    id: "settings-orders",
+    path: "/admin/settings/orders",
+    labelBn: "অর্ডার নিয়ম ও স্লট",
+    labelEn: "Order Rules & Slots",
+    icon: "ShoppingCart",
     section: "system",
     permission: "settings.view",
     featureFlag: null,

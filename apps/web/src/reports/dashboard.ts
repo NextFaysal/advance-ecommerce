@@ -8,7 +8,7 @@
 import { prisma } from "@advance-ecommerce/db";
 import { aggregateSales } from "./service";
 import { daysAgoInDhaka, fetchSalesRows, todayInDhaka } from "./db-rows";
-import { listInventoryItemsDb, listWarehousesDb, LOW_STOCK_THRESHOLD } from "../inventory/repository";
+import { getVariantStockCacheDb, listInventoryItemsDb, listWarehousesDb, LOW_STOCK_THRESHOLD } from "../inventory/repository";
 import type { LowStockRow } from "../inventory/service";
 import type { DateRange, Totals } from "./types";
 import type { OrderStatus } from "../orders/types";
@@ -102,13 +102,38 @@ export async function getDashboardData(): Promise<DashboardData> {
   ]);
 
   const warehouseName = new Map(warehouses.map((w) => [w.id, w.name]));
-  const lowStock = items
-    .map((i) => ({
-      ...i,
-      threshold: LOW_STOCK_THRESHOLD,
-      isLow: i.quantityAvailable <= LOW_STOCK_THRESHOLD,
-      warehouseName: warehouseName.get(i.warehouseId) ?? i.warehouseId,
-    }))
+  // Doc 18 F1 alignment: low stock is judged on the CANONICAL variant
+  // stock cache (ProductVariant.stock — the number checkout claims
+  // against), not on Σ InventoryItem.quantityAvailable, which subtracts
+  // every reservation twice (the order seam mirrors the post-claim
+  // cache into quantityOnHand AND increments quantityReserved). One row
+  // per variant: available = cache (fallback Σ available when the
+  // variant row is gone), reserved = Σ across warehouses.
+  const stockCache = await getVariantStockCacheDb([...new Set(items.map((i) => i.variantId))]);
+  const byVariant = new Map<string, (typeof items)[number][]>();
+  for (const i of items) {
+    const rows = byVariant.get(i.variantId) ?? [];
+    rows.push(i);
+    byVariant.set(i.variantId, rows);
+  }
+  const lowStock = [...byVariant.values()]
+    .map((rows) => {
+      const first = rows[0];
+      const available =
+        stockCache.get(first.variantId) ?? rows.reduce((s, r) => s + r.quantityAvailable, 0);
+      const warehouseIds = [...new Set(rows.map((r) => r.warehouseId))];
+      return {
+        ...first,
+        quantityAvailable: available,
+        quantityReserved: rows.reduce((s, r) => s + r.quantityReserved, 0),
+        threshold: LOW_STOCK_THRESHOLD,
+        isLow: available <= LOW_STOCK_THRESHOLD,
+        warehouseName:
+          warehouseIds.length > 1
+            ? "একাধিক গুদাম"
+            : (warehouseName.get(warehouseIds[0]) ?? warehouseIds[0]),
+      };
+    })
     .filter((r) => r.isLow)
     .sort((a, b) => a.quantityAvailable - b.quantityAvailable);
 

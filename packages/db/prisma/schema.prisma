@@ -549,17 +549,52 @@ model LicenseKey {
 // Only the SHA-256 hash of the bearer token is stored — the raw token
 // exists once, in the fulfilment result / buyer-facing link.
 model DownloadGrant {
-  id            String      @id @default(cuid())
-  orderId       String
-  orderItemId   String
-  digitalFileId String
-  digitalFile   DigitalFile @relation(fields: [digitalFileId], references: [id])
-  tokenHash     String      @unique
-  expiresAt     DateTime
-  maxDownloads  Int         @default(5)
-  downloadsUsed Int         @default(0)
-  createdAt     DateTime    @default(now())
+  id              String                   @id @default(cuid())
+  orderId         String
+  orderItemId     String
+  digitalFileId   String
+  digitalFile     DigitalFile              @relation(fields: [digitalFileId], references: [id])
+  tokenHash       String                   @unique
+  expiresAt       DateTime
+  maxDownloads    Int                      @default(5)
+  downloadsUsed   Int                      @default(0)
+  // Set when staff revoke this grant (doc 18 F3: a re-issue approval
+  // revokes the old grant). BOTH redemption paths (bearer token and
+  // the session-authorized account access) refuse revoked grants.
+  revokedAt       DateTime?
+  createdAt       DateTime                 @default(now())
+  reissueRequests DownloadReissueRequest[]
   @@index([orderId])
+}
+
+enum DownloadReissueStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// A customer's request for a fresh download grant (doc 18 F3). Grant
+// tokens are hash-only and unrecoverable BY DESIGN, so a lost/expired/
+// exhausted link can only be replaced: the customer asks here, staff
+// approve in /admin/downloads, approval mints a NEW grant and revokes
+// the old one. At most one PENDING request per grant (enforced by a
+// partial unique index in the migration — Prisma cannot express it).
+model DownloadReissueRequest {
+  id           String                @id @default(cuid())
+  grantId      String
+  grant        DownloadGrant         @relation(fields: [grantId], references: [id])
+  customerId   String
+  customer     Customer              @relation(fields: [customerId], references: [id])
+  reason       String?
+  status       DownloadReissueStatus @default(PENDING)
+  decidedById  String?
+  decisionNote String?
+  newGrantId   String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  @@index([status, createdAt])
+  @@index([grantId])
+  @@index([customerId])
 }
 
 // One component line of a BUNDLE product: the bundle's own variants
@@ -655,6 +690,7 @@ model Customer {
   couponUsages        CouponUsage[]
   sessions            CustomerSession[]
   reviews             Review[]
+  downloadReissueRequests DownloadReissueRequest[]
   @@index([phone])
   @@index([deletedAt])
 }

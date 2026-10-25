@@ -200,6 +200,54 @@ export function checkOutcomeAccess(
   };
 }
 
+export type ContextAccess =
+  | { allowed: true; supervisorOverride: boolean }
+  | { allowed: false; code: "TASK_UNASSIGNED" | "TASK_ASSIGNED_TO_OTHER"; error: string };
+
+/**
+ * Assignment gate for READING a task's Customer-360 context (plan doc
+ * 15, R2.5 — decided with doc 18 F2, 2026-10-25: RESTRICT to the
+ * assigned agent + staff.manage, replacing the earlier "readable by any
+ * orders.view staff" status quo; the doc-15 keep-as-is default applied
+ * only while the owner decision was unanswered). The context payload is
+ * the richest customer surface in the module (the full linked order,
+ * the customer's last 10 orders, exact-phone call history), so unlike
+ * checkOutcomeAccess there is NO terminal-status pass-through: the
+ * assignment stamped on a DONE task names its handler (recordOutcome
+ * keeps it), and that handler — or any supervisor — keeps read access;
+ * everyone else is refused. An UNASSIGNED task has no agent who needs
+ * its context yet: claim first, the same rule as recording an outcome.
+ * The route resolves `isSupervisor` from the caller's permissions
+ * (staff.manage) — this pure function only applies the assignment
+ * rules. Phone discipline is untouched by this gate: an allowed read
+ * still masks unless the caller holds customers.view_full_phone, and a
+ * full-phone reveal is still audited by the route (R6.1).
+ */
+export function checkContextAccess(
+  task: CallTask,
+  agentId: string,
+  isSupervisor: boolean,
+): ContextAccess {
+  if (task.assignedAgentId === agentId) {
+    return { allowed: true, supervisorOverride: false };
+  }
+  if (isSupervisor) {
+    return { allowed: true, supervisorOverride: true };
+  }
+  if (task.assignedAgentId === null) {
+    return {
+      allowed: false,
+      code: "TASK_UNASSIGNED",
+      error: "Task is unassigned — claim it before viewing its customer context.",
+    };
+  }
+  return {
+    allowed: false,
+    code: "TASK_ASSIGNED_TO_OTHER",
+    error: "Task is assigned to another agent.",
+  };
+}
+
 export type OutcomeResult =
   | { ok: true; task: CallTask; log: CallLogEntry }
   | { ok: false; error: string };

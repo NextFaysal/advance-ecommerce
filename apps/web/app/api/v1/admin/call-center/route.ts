@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { dueCallbacks, nextTaskForAgent, toQueueItemView } from "@/callcenter/queue";
 import { getEffectiveScript } from "@/callcenter/scripts-store";
 import { createManualTask, loadCallTasks, type DbCallTask } from "@/callcenter/store";
@@ -130,6 +131,7 @@ async function auditQueuePhoneViews(
 export async function GET() {
   const guard = await requireAdmin("orders.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
+  await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   const canViewFullPhone = guard.permissions.includes("customers.view_full_phone");
   const now = new Date().toISOString();
@@ -214,6 +216,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const guard = await requireAdmin("orders.create");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
+  await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   const parsed = manualTaskSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {

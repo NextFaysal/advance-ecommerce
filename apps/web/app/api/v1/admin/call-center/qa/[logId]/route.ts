@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { prisma } from "@advance-ecommerce/db";
 import { writeAudit } from "@/lib/audit";
 import { z } from "zod";
@@ -32,6 +33,7 @@ const patchBodySchema = z.object({
 export async function PATCH(req: Request, { params }: { params: { logId: string } }) {
   const guard = await requireAdmin("staff.manage");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
+  await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   const parsed = patchBodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {

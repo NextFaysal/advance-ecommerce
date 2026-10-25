@@ -48,6 +48,13 @@
  *    independently-computed amount), and the credit Payment of the
  *    same amount satisfies it exactly once via markOrderPayment's
  *    advanceSatisfiedAt stamp. Order payable = total − deposit.
+ *  - LINK WART (doc 18 batch F3): manual-create issues an advance
+ *    payment link for any persisted requirement, which would leave a
+ *    LIVE deposit link on the fulfilment order until the credit
+ *    below lands — a customer could open it and pay the deposit
+ *    twice. Fulfilment therefore passes advanceLinkPolicy
+ *    "suppress": no link is ever issued for a fulfilment order; the
+ *    deposit credit is the only money path.
  *  - Price: the row's snapshot — totalPoisha is the only money column,
  *    unit price = floor(totalPoisha / quantity), the same read the
  *    advanced-orders store uses.
@@ -503,7 +510,12 @@ export async function fulfilPreorder(
       // explicitly because createManualOrder computes no preorder
       // candidate of its own (the public route does). The credit
       // Payment below then satisfies exactly this amount, once.
-      ...(depositPoisha > 0 ? { advanceRequiredPoisha: depositPoisha } : {}),
+      // advanceLinkPolicy "suppress" (doc 18 F3): the credit lands
+      // immediately after create, so NO payment link is issued — a
+      // live link would let the customer pay this deposit twice.
+      ...(depositPoisha > 0
+        ? { advanceRequiredPoisha: depositPoisha, advanceLinkPolicy: "suppress" as const }
+        : {}),
       source: "preorder",
       internalNote: `প্রি-অর্ডার ${pre.id} থেকে সরবরাহ — আগাম জমা ${depositPoisha} পয়সা এই অর্ডারে ক্রেডিট হিসেবে ধরা হবে; বাকি ডেলিভারিতে পরিশোধ্য। / Fulfilment of pre-order ${pre.id} — the ${depositPoisha} poisha deposit already paid is credited to this order; the balance is payable on delivery.`,
       idempotencyKey: conversionIdempotencyKey("preorder", pre.id),

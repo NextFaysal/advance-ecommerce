@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { loadSupervisorBoard } from "@/callcenter/supervisor-store";
 
 // Call-center SUPERVISOR board — C2. Whole-board aggregates (counts by
@@ -31,6 +32,7 @@ function dbNotReady() {
 export async function GET() {
   const guard = await requireAdmin("staff.manage");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
+  await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   try {
     const board = await loadSupervisorBoard();

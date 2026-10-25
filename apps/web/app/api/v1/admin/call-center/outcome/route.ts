@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { agentPerformance, nextTaskForAgent, toQueueItemView } from "@/callcenter/queue";
 import { loadCallLogs, loadCallTasks, recordOutcomeDb, type DbCallTask } from "@/callcenter/store";
 import { recordOutcomeSchema, type CallTask } from "@/callcenter/types";
@@ -57,6 +58,7 @@ function view(task: DbCallTask | (CallTask & { phoneResolved?: boolean }), canVi
 export async function GET() {
   const guard = await requireAdmin("orders.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
+  await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   try {
     const logs = await loadCallLogs(guard.userId);
@@ -79,6 +81,7 @@ const outcomeBodySchema = recordOutcomeSchema.extend({
 export async function POST(req: Request) {
   const guard = await requireAdmin("orders.update_status");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
+  await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   const body = (await req.json().catch(() => ({}))) as { taskId?: string };
   const parsed = outcomeBodySchema.safeParse(body);

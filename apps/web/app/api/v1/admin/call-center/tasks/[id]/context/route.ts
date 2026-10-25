@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
-import { toQueueItemView } from "@/callcenter/queue";
-import { loadTaskContext, type DbCallTask } from "@/callcenter/store";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
+import { checkContextAccess, toQueueItemView } from "@/callcenter/queue";
+import { loadCallTask, loadTaskContext, type DbCallTask } from "@/callcenter/store";
 import { maskPhone } from "@/checkout/validation";
 import { writeAudit } from "@/lib/audit";
 
@@ -15,6 +16,14 @@ import { writeAudit } from "@/lib/audit";
 // Phone discipline is identical to the queue view: the task's full
 // number travels only in phoneFull under customers.view_full_phone,
 // and the order's customerPhone is masked unless the caller holds it.
+// Context scoping (plan doc 15, R2.5 — decided with doc 18 F2,
+// 2026-10-25): beyond the orders.view base guard, the payload is
+// restricted to the task's ASSIGNED agent plus staff.manage holders
+// (supervisor override, mirroring the G3 outcome gate). Unassigned
+// tasks answer 409 TASK_UNASSIGNED (claim first); another agent's
+// task answers 403 TASK_ASSIGNED_TO_OTHER. The scoping never widens
+// phone visibility — masking + the R6.1 reveal audit below are
+// unchanged, and a refused read reveals and audits nothing.
 function locked() {
   return NextResponse.json(
     { error: { code: "FEATURE_LOCKED", message: "Call center module is locked for this install (module.call_center is OFF)." } },
@@ -65,9 +74,39 @@ async function auditPhoneView(
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const guard = await requireAdmin("orders.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
+  await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   const canViewFullPhone = guard.permissions.includes("customers.view_full_phone");
+  const isSupervisor = guard.permissions.includes("staff.manage");
   try {
+    // R2.5 scoping: resolve the task + its assignment BEFORE assembling
+    // (or revealing) any context — a refused caller gets no payload.
+    const task = await loadCallTask(params.id);
+    if (!task) {
+      return NextResponse.json(
+        { error: { code: "NOT_FOUND", message: "Call task not found." } },
+        { status: 404 },
+      );
+    }
+    const access = checkContextAccess(task, guard.userId, isSupervisor);
+    if (!access.allowed) {
+      if (access.code === "TASK_UNASSIGNED") {
+        return NextResponse.json(
+          {
+            error: {
+              code: access.code,
+              message: access.error,
+              details: { hint: "Claim the task first: POST /api/v1/admin/call-center/claim" },
+            },
+          },
+          { status: 409 },
+        );
+      }
+      return NextResponse.json(
+        { error: { code: access.code, message: access.error } },
+        { status: 403 },
+      );
+    }
     const ctx = await loadTaskContext(params.id);
     if (!ctx) {
       return NextResponse.json(

@@ -13,14 +13,18 @@
  * chrome reaches paper, with a page break between invoices.
  * window.print() fires once after every fetch settles.
  *
- * Money lines, honestly: the detail API's order view does not expose
- * the subtotal / shipping / discount split (the repository mapper
- * omits those columns), so the invoice shows the exact items
- * subtotal (summed from the purchase-time snapshots), then ONE net
+ * Money lines, honestly: the detail API's order view exposes the
+ * persisted shippingPoisha / discountPoisha split (doc 18, F1 — the
+ * repository mapper carries both columns), so the invoice shows the
+ * exact items subtotal (summed from the purchase-time snapshots),
+ * then the real lines — delivery charge, discount when > 0, and any
+ * residual (COD fee / tax) as one labelled remainder so the lines
+ * always sum to the total. A payload that predates the split (no
+ * numeric shipping/discount fields) falls back to the old ONE net
  * line — "delivery & adjustments, net of discount" = total −
- * subtotal — then the total. Paid comes from the advance read model
- * on the same payload (advance.paidPoisha); the due amount is
- * highlighted whenever the order is not fully PAID.
+ * subtotal. Paid comes from the advance read model on the same
+ * payload (advance.paidPoisha); the due amount is highlighted
+ * whenever the order is not fully PAID.
  *
  * The customer phone prints exactly as the detail API returned it:
  * full for viewers holding customers.view_full_phone, masked
@@ -66,6 +70,11 @@ interface InvoiceOrder {
   };
   items: InvoiceItem[];
   totalPoisha: number;
+  /** Persisted money split (doc 18, F1). Optional: payloads that
+   *  predate the mapper change carry neither field and the invoice
+   *  falls back to the net-adjustment line for that order. */
+  shippingPoisha?: number;
+  discountPoisha?: number;
   paymentMethod: string;
   paymentStatus: string;
   status: string;
@@ -76,6 +85,15 @@ interface InvoiceOrder {
 interface LoadedInvoice {
   order: InvoiceOrder;
   subtotalPoisha: number;
+  /** null = the payload carried no numeric split for this order —
+   *  render the fallback net line instead of the real lines. */
+  shippingPoisha: number | null;
+  discountPoisha: number | null;
+  /** Residual charges inside the total that are neither shipping nor
+   *  discount (COD fee / tax): total − (subtotal − discount +
+   *  shipping). Shown only in split mode and only when non-zero, so
+   *  the printed lines always reconcile to the total. */
+  otherPoisha: number;
   netAdjustmentPoisha: number;
   paidPoisha: number;
   duePoisha: number;
@@ -89,9 +107,19 @@ function toInvoice(order: InvoiceOrder): LoadedInvoice {
   const paidPoisha =
     order.advance?.paidPoisha ??
     (order.paymentStatus === "PAID" ? order.totalPoisha : 0);
+  const hasSplit =
+    typeof order.shippingPoisha === "number" && typeof order.discountPoisha === "number";
+  const shippingPoisha = hasSplit ? (order.shippingPoisha as number) : null;
+  const discountPoisha = hasSplit ? (order.discountPoisha as number) : null;
   return {
     order,
     subtotalPoisha,
+    shippingPoisha,
+    discountPoisha,
+    otherPoisha:
+      shippingPoisha !== null && discountPoisha !== null
+        ? order.totalPoisha - (subtotalPoisha - discountPoisha + shippingPoisha)
+        : 0,
     netAdjustmentPoisha: order.totalPoisha - subtotalPoisha,
     paidPoisha,
     duePoisha: Math.max(0, order.totalPoisha - paidPoisha),
@@ -219,7 +247,7 @@ function PrintCentreInner() {
       )}
 
       <div id="order-invoice-print">
-        {(invoices ?? []).map(({ order, subtotalPoisha, netAdjustmentPoisha, paidPoisha, duePoisha }) => (
+        {(invoices ?? []).map(({ order, subtotalPoisha, shippingPoisha, discountPoisha, otherPoisha, netAdjustmentPoisha, paidPoisha, duePoisha }) => (
           <section
             key={order.id}
             className="invoice-sheet mb-8 rounded-lg border border-border bg-white p-6 text-text-main shadow-card print:mb-0 print:rounded-none print:border-0 print:shadow-none"
@@ -285,11 +313,32 @@ function PrintCentreInner() {
                 <dt className="text-text-muted">সাবটোটাল (পণ্য)</dt>
                 <dd className="tabular-nums">{formatBdt(subtotalPoisha)}</dd>
               </div>
-              {netAdjustmentPoisha !== 0 && (
-                <div className="flex justify-between">
-                  <dt className="text-text-muted">ডেলিভারি চার্জ ও সমন্বয় (ছাড় বাদে নিট)</dt>
-                  <dd className="tabular-nums">{formatBdt(netAdjustmentPoisha)}</dd>
-                </div>
+              {shippingPoisha !== null && discountPoisha !== null ? (
+                <>
+                  <div className="flex justify-between">
+                    <dt className="text-text-muted">ডেলিভারি চার্জ</dt>
+                    <dd className="tabular-nums">{formatBdt(shippingPoisha)}</dd>
+                  </div>
+                  {discountPoisha > 0 && (
+                    <div className="flex justify-between">
+                      <dt className="text-text-muted">ছাড়</dt>
+                      <dd className="tabular-nums">−{formatBdt(discountPoisha)}</dd>
+                    </div>
+                  )}
+                  {otherPoisha !== 0 && (
+                    <div className="flex justify-between">
+                      <dt className="text-text-muted">সিওডি ফি ও অন্যান্য চার্জ</dt>
+                      <dd className="tabular-nums">{formatBdt(otherPoisha)}</dd>
+                    </div>
+                  )}
+                </>
+              ) : (
+                netAdjustmentPoisha !== 0 && (
+                  <div className="flex justify-between">
+                    <dt className="text-text-muted">ডেলিভারি চার্জ ও সমন্বয় (ছাড় বাদে নিট)</dt>
+                    <dd className="tabular-nums">{formatBdt(netAdjustmentPoisha)}</dd>
+                  </div>
+                )
               )}
               <div className="flex justify-between border-t border-border pt-2 text-body font-bold">
                 <dt>সর্বমোট</dt>

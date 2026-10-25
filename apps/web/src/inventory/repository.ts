@@ -211,6 +211,30 @@ export async function getVariantCostMapDb(variantIds: string[]): Promise<Map<str
   return map;
 }
 
+/** variantId -> ProductVariant.stock — the CANONICAL per-variant
+ *  availability (doc 18, F1). This cache is the number the order
+ *  funnel actually claims against: reserveOrderLineItems runs its
+ *  guarded decrement (WHERE stock >= qty) on ProductVariant.stock,
+ *  and the storefront/checkout reads the same column. Admin surfaces
+ *  must headline THIS number per variant.
+ *
+ *  Why not Σ InventoryItem.quantityAvailable: the order seam's
+ *  InventoryItem upsert sets quantityOnHand to the POST-CLAIM cache
+ *  value while ALSO incrementing quantityReserved, so the ledger
+ *  rows subtract every reservation twice (once inside the cache,
+ *  once as reserved) and the summed availability reads lower than
+ *  what checkout will sell — the wave-19 divergence. The warehouse
+ *  rows stay useful as a secondary breakdown (where stock physically
+ *  sits, per the ledger), never as the headline. */
+export async function getVariantStockCacheDb(variantIds: string[]): Promise<Map<string, number>> {
+  if (variantIds.length === 0) return new Map();
+  const rows = await prisma.productVariant.findMany({
+    where: { id: { in: variantIds } },
+    select: { id: true, stock: true },
+  });
+  return new Map(rows.map((r) => [r.id, r.stock]));
+}
+
 /* ------------------------------------------------------------------ */
 /* Movements (the ledger write path)                                   */
 /* ------------------------------------------------------------------ */

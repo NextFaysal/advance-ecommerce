@@ -373,6 +373,40 @@ export default function LandingBuilder({ catalogProducts, initialPages }: { cata
                       </div>
                     ) : null}
 
+                    {section.type === "quick_order" ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <TextField label="শিরোনাম (বাংলা)" value={section.headingBn ?? ""} onChange={(v) => updateSection(section.id, (s) => (s.type === "quick_order" ? { ...s, headingBn: v } : s))} />
+                        <TextField label="শিরোনাম (ইংরেজি)" value={section.headingEn ?? ""} onChange={(v) => updateSection(section.id, (s) => (s.type === "quick_order" ? { ...s, headingEn: v } : s))} />
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-medium text-text-muted">পণ্য (আসল ক্যাটালগ — ডাটাবেস)</span>
+                          <select
+                            value={section.productId ?? ""}
+                            onChange={(e) => updateSection(section.id, (s) => (s.type === "quick_order" ? { ...s, productId: e.target.value, variantId: null } : s))}
+                            className="h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm"
+                          >
+                            <option value="">— পণ্য বেছে নিন —</option>
+                            {catalogProducts.map((p) => <option key={p.id} value={p.id}>{p.title.bn} ({p.id})</option>)}
+                          </select>
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-medium text-text-muted">ডিফল্ট ভেরিয়েন্ট</span>
+                          <select
+                            value={section.variantId ?? ""}
+                            onChange={(e) => updateSection(section.id, (s) => (s.type === "quick_order" ? { ...s, variantId: e.target.value || null } : s))}
+                            className="h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm"
+                          >
+                            <option value="">প্রথম স্টক-থাকা ভেরিয়েন্ট (অটো)</option>
+                            {(catalogProducts.find((p) => p.id === section.productId)?.variants ?? []).map((v) => (
+                              <option key={v.id} value={v.id}>{Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড"} — {v.sku}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <p className="text-xs leading-5 text-text-muted sm:col-span-2">
+                          এই পণ্যের সব সক্রিয় ভেরিয়েন্ট ফর্মে দেখাবে — ডিফল্ট ভেরিয়েন্টটি আগে থেকে বাছাই থাকবে, ক্রেতা চাইলে বদলাতে পারবে। ফর্মের বোতামের লেখা নির্দিষ্ট: “অর্ডার করুন — ক্যাশ অন ডেলিভারি”।
+                        </p>
+                      </div>
+                    ) : null}
+
                     {section.type === "benefits" ? (
                       <div className="space-y-2">
                         {section.items.map((item, i) => (

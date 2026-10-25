@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { getCallCenterReport, parseReportRange } from "@/callcenter/reports";
 
 // Call-center reports — C5. RBAC: orders.view (same as the queue route).
@@ -26,6 +27,7 @@ function dbNotReady() {
 export async function GET(req: Request) {
   const guard = await requireAdmin("orders.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
+  await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
 
   const url = new URL(req.url);

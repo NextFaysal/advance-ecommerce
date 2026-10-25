@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { toQueueItemView } from "@/callcenter/queue";
 import { getEffectiveScript } from "@/callcenter/scripts-store";
 import { claimNextTaskDb, claimTaskDb, type DbCallTask } from "@/callcenter/store";
@@ -85,6 +86,7 @@ async function auditPhoneView(
 export async function POST(req: Request) {
   const guard = await requireAdmin("orders.update_status");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
+  await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   const canViewFullPhone = guard.permissions.includes("customers.view_full_phone");
   const body = (await req.json().catch(() => ({}))) as { taskId?: unknown };

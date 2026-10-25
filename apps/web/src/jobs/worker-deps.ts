@@ -52,6 +52,10 @@
  *  - callCenterSmsSend — C4: the send path for call-center automation
  *    SMS jobs, delegated from the SMS handler to
  *    src/callcenter/automation.ts (lazy import — see the dep below).
+ *  - callCenterDeadLetter — doc 18 F1: the timeline hook the
+ *    processor fires when a call-center automation job exhausts its
+ *    retries, delegated to src/callcenter/dead-letter.ts (lazy import
+ *    — same pattern as callCenterSmsSend).
  *
  * PRISMA LANDMINE — read before touching the settings import:
  * src/lib/settings.ts imports the Prisma client at module top level,
@@ -247,6 +251,17 @@ export const workerDeps: WorkerRuntimeDeps = {
   callCenterSmsSend: async (job) => {
     const automation = await import("../callcenter/automation");
     return automation.processCallCenterSmsJob(job, { smsProvider: resolveSmsProvider });
+  },
+  // Doc 18 F1: an exhausted call-center automation job leaves an
+  // AUTO_SMS_DEAD_LETTER row on the task timeline (or an OrderNote on
+  // the order) via src/callcenter/dead-letter.ts. Lazy import for the
+  // same reason as callCenterSmsSend above: the module pulls in
+  // Prisma at module top level, and a load failure there must never
+  // stop the worker from starting (the processor also treats the
+  // hook as best-effort — the DeadLetterEntry is the system record).
+  callCenterDeadLetter: async (info) => {
+    const deadLetter = await import("../callcenter/dead-letter");
+    await deadLetter.recordCallCenterDeadLetter(info);
   },
   // O3: order-OTP SMS jobs (sms queue, jobKind "order-otp") delegate
   // here. Lazy import for the same reason as callCenterSmsSend above:

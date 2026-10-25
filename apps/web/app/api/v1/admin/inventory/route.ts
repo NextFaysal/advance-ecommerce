@@ -4,6 +4,7 @@ import {
   LOW_STOCK_THRESHOLD,
   applyMovementDb,
   getVariantCostMapDb,
+  getVariantStockCacheDb,
   listInventoryItemsDb,
 } from "@/inventory/repository";
 import { writeAudit } from "@/lib/audit";
@@ -34,7 +35,10 @@ export async function GET() {
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   try {
     const items = await listInventoryItemsDb();
-    const costMap = await getVariantCostMapDb(items.map((i) => i.variantId));
+    const [costMap, stockCacheMap] = await Promise.all([
+      getVariantCostMapDb(items.map((i) => i.variantId)),
+      getVariantStockCacheDb(items.map((i) => i.variantId)),
+    ]);
     const costedItems = items.filter((i) => costMap.has(i.variantId));
     // Pure reporting helpers over the DB snapshot (same pattern the
     // admin page used with the demo store — the store here is only an
@@ -43,6 +47,13 @@ export async function GET() {
     return NextResponse.json({
       data: {
         items,
+        // Canonical per-variant availability (doc 18, F1):
+        // ProductVariant.stock — the number the order funnel claims
+        // against. `items[].quantityAvailable` is the warehouse
+        // ledger's view, which double-subtracts order reservations
+        // (see getVariantStockCacheDb); headline THIS map per
+        // variant, exactly as the admin page does.
+        stockCacheByVariant: Object.fromEntries(stockCacheMap),
         lowStock: lowStockList(adapter, LOW_STOCK_THRESHOLD),
         lowStockThreshold: LOW_STOCK_THRESHOLD,
         valuationPoisha: valuationPoisha(costedItems, Object.fromEntries(costMap)),

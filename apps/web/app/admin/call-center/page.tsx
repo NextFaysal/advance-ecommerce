@@ -1,4 +1,5 @@
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { toQueueItemView } from "@/callcenter/queue";
 import { loadCallTasks } from "@/callcenter/store";
 import { CONFIRMATION_SCRIPT } from "@/callcenter/types";
@@ -18,6 +19,7 @@ import { CallCenterWorkbench } from "./workbench";
 // so an agent can actually work the queue; this page's table + script
 // remain the supervisor view.
 export default async function AdminCallCenterPage() {
+  await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
       <main style={{ padding: 24, fontFamily: "system-ui" }}>

@@ -31,7 +31,15 @@ export const stockMovementSchema = z.object({
   ]),
   /** Signed delta: positive = stock in, negative = stock out. Zero is invalid. */
   quantityDelta: z.number().int().refine((n) => n !== 0, "quantityDelta must not be 0"),
-  referenceType: z.enum(["order", "purchase", "adjustment", "transfer", "return"]),
+  // "POS_SALE" (doc 18, F1): the POS counter path (src/pos/store.ts)
+  // books its SALE_RESERVE movements with this referenceType so order
+  // cancel/release logic keyed on "ORDER" can never touch them. The DB
+  // column is a free string and the persisted values are uppercase;
+  // this enum types the rows the repository reads back (it casts, per
+  // its header convention). The inventory API's own movement-input
+  // schema (src/inventory/service.ts) deliberately does NOT accept
+  // it — staff movements cannot claim to be POS sales.
+  referenceType: z.enum(["order", "purchase", "adjustment", "transfer", "return", "POS_SALE"]),
   referenceId: z.string().min(1),
   reason: z.string().min(1),
   actorId: z.string().min(1),

@@ -48,6 +48,7 @@
  */
 import { prisma } from "@advance-ecommerce/db";
 import { maskPhone } from "../checkout/validation";
+import { ensureDbFeatureFlags } from "../lib/feature-flags-db";
 import { subscribeOrderEvents, type DomainEvent } from "../orders/event-bus";
 import { isCallCenterEnabled } from "./flags";
 import { priorityForSource } from "./queue";
@@ -138,6 +139,17 @@ export async function createAutoCallTask(
  */
 export async function handleOrderEventForCallTasks(event: DomainEvent): Promise<void> {
   try {
+    // Hydrate the DB flag source before the sync read below: in a
+    // cold process the unified reader would otherwise answer with
+    // the catalogue default (OFF) and task generation would silently
+    // never run — the same cold-process fix as the call-center routes
+    // (doc 18 F1), mirroring runOutcomeAutomations in automation.ts.
+    try {
+      await ensureDbFeatureFlags();
+    } catch {
+      // Flag source unavailable: the reader fails closed (OFF),
+      // which the check below honours — no tasks are generated.
+    }
     if (!isCallCenterEnabled()) return;
     if (event.type === "order.created") {
       const order = await prisma.order.findUnique({
