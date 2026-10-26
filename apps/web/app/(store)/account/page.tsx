@@ -34,6 +34,8 @@ import LogoutButton from "@/customer-auth/components/LogoutButton";
 import PushSubscribeToggle from "@/pwa/push-subscribe";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getB2bProfileByPhone } from "@/b2b/portal";
+import { coursesEnabled } from "@/courses/flags";
+import { listCustomerCourses } from "@/courses/service";
 import MembershipTierCard from "./membership-tier-card";
 import {
   getOrderWarrantyCards,
@@ -256,6 +258,11 @@ export default async function AccountPage({
     ? await getB2bProfileByPhone(customer.phone)
     : null;
 
+  // Courses entry (ADV-23 vertical 6): shown only while the module
+  // is on AND this customer currently has access to at least one
+  // course (access is order-derived — see src/courses/service).
+  const myCourses = coursesEnabled() ? await listCustomerCourses(customer.id) : [];
+
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -379,6 +386,28 @@ export default async function AccountPage({
       />
 
       <DownloadsSection />
+
+      {myCourses.length > 0 ? (
+        <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label="আমার কোর্স">
+          <h2 className="flex items-center gap-2.5 text-base font-bold text-text-main">
+            <span
+              aria-hidden="true"
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white text-sm"
+            >
+              ▶
+            </span>
+            আমার কোর্স
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">
+            আপনার {myCourses.length}টি কোর্সে অ্যাক্সেস আছে — লেসনগুলো এখান থেকে দেখুন।
+          </p>
+          <p className="mt-3">
+            <a href="/account/courses" className="font-semibold text-brand-700 hover:underline">
+              আমার কোর্সে যান →
+            </a>
+          </p>
+        </section>
+      ) : null}
 
       <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label="সাপোর্ট টিকিট">
         <h2 className="text-base font-bold text-text-main">সাপোর্ট টিকিট</h2>

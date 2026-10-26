@@ -480,6 +480,17 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     featureFlag: null,
     badge: null,
   },
+  {
+    id: "courses",
+    path: "/admin/courses",
+    labelBn: "কোর্স",
+    labelEn: "Courses",
+    icon: "ListOrdered",
+    section: "catalog",
+    permission: "products.view",
+    featureFlag: "module.courses",
+    badge: "locked-add-on",
+  },
 
   // ---- Customers ----------------------------------------------------------
   {

@@ -11,6 +11,8 @@ import { SubscribeSaveSection } from "@/subscriptions/subscribe-save-section";
 import { BoxSubscribeSection } from "@/boxes/box-subscribe-section";
 import { getBoxPdpData } from "@/boxes/service";
 import { getPodPdpNote } from "@/pod/customisation";
+import { getCoursePdpData } from "@/courses/service";
+import { CourseOutlineSection } from "@/courses/course-outline-section";
 import { RecordRecentlyViewed } from "@/storefront-ux/components/RecordRecentlyViewed";
 import { RecentlyViewedRail } from "@/storefront-ux/components/RecentlyViewedRail";
 import { StickyBuyBar } from "@/storefront-ux/components/StickyBuyBar";
@@ -191,7 +193,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
   // is only fetched when the product has no chart of its own, and
   // the pack/grocery resolvers return null/[] at ~zero cost while
   // their module flag is off.
-  const [ageRestriction, packSizeChart, weightedInfos, related, boxPdpData, podPdpNote] = await Promise.all([
+  const [ageRestriction, packSizeChart, weightedInfos, related, boxPdpData, podPdpNote, courseOutline] = await Promise.all([
     priceOnRequest ? null : getAgeRestrictionForCategorySlug(product.categorySlug),
     sizeChart ? null : resolvePdpPackSizeChart(product.categorySlug),
     getWeightedInfosForProduct(product.id),
@@ -204,6 +206,12 @@ export default async function ProductPage({ params }: { params: { slug: string }
     // module.print_on_demand is ON and a variant of this product
     // is on the printable list (same ~zero-cost contract).
     priceOnRequest ? null : getPodPdpNote(product.variants.map((v) => v.id)),
+    // ADV-23 vertical 6: course outline (module/lesson TITLES
+    // only — the outline projection never carries lesson bodies)
+    // — null unless module.courses is ON, a variant of this
+    // product is a listed course variant, and content exists
+    // (same ~zero-cost contract).
+    priceOnRequest ? null : getCoursePdpData(product.id, product.variants.map((v) => v.id)),
   ]);
   // ADV-22 (fashion pack): when the product has NO chart of its own,
   // the pack chart for its category is the fallback (per-category
@@ -722,6 +730,11 @@ export default async function ProductPage({ params }: { params: { slug: string }
           />
         </Reveal>
       ) : null}
+
+      {/* Course outline (ADV-23 vertical 6) — titles only, public;
+          lesson bodies live behind the account player + the
+          order-derived access check. */}
+      {courseOutline ? <CourseOutlineSection outline={courseOutline} /> : null}
 
       {/* Specification — union of variant attributes */}
       {specRows.length > 0 ? (
