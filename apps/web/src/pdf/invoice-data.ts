@@ -1,0 +1,231 @@
+/**
+ * Invoice read model for the PDF invoice — ADV-29 (doc 22).
+ *
+ * Built from EXACTLY the read models the screens use, so the PDF can
+ * never disagree with them:
+ *   - the order itself via src/orders/repository.getOrderByIdOrNo
+ *     (the admin detail API's loader — items are purchase-time
+ *     snapshots, totals are the persisted Order columns);
+ *   - paid money via src/orders/advance.getOrderAdvanceView
+ *     (data.advance on the detail payload, the print centre's paid
+ *     source);
+ *   - the money split via the print centre / MoneyBreakdown
+ *     arithmetic (src/orders/components/MoneyBreakdown): subtotal −
+ *     discount + shipping + residual = total, the residual labelled
+ *     "COD fee & other charges".
+ *
+ * Wave-41 follow-up closed here: the print centre folds a gift-card
+ * redemption into that residual (mislabelled). The PDF decomposes
+ * it from the RECORDED ledger instead — GiftCardTransaction rows
+ * for this order (REDEEM negative, REFUND_RESTORE positive) — and
+ * prints a real gift-card line, so gross total − gift card =
+ * Order.totalPoisha exactly. The discount line is the recorded
+ * Order.discountPoisha (coupon + membership-tier combined, exactly
+ * as persisted by the create pipeline — the split lives in the
+ * create response, not on the order row).
+ *
+ * Store identity comes from Settings (general.store_name /
+ * general.store_address / general.store_bin — the same keys the
+ * Mushak 6.3 print uses). Empty values stay empty: no invented
+ * brand, address or BIN is ever printed.
+ */
+import { prisma } from "@advance-ecommerce/db";
+import { getOrderByIdOrNo } from "@/orders/repository";
+import { getOrderAdvanceView } from "@/orders/advance";
+import { getSetting } from "@/lib/settings";
+import { formatBdt } from "@/checkout/pricing";
+
+export interface InvoiceMoneyRow {
+  labelBn: string;
+  labelEn: string;
+  /** Signed poisha (the discount / gift-card rows are negative). */
+  poisha: number;
+  emphasis?: "total" | "due";
+}
+
+export interface InvoiceData {
+  orderId: string;
+  orderNo: string;
+  status: string;
+  paymentStatus: string;
+  paymentMethodLabel: string;
+  createdAtLabel: string;
+  storeName: string;
+  storeAddress: string;
+  storeBin: string;
+  customerName: string;
+  /** Already policy-applied by the caller (admin: phoneForViewer,
+   *  customer: masked own number) — this module never re-decides. */
+  customerPhone: string;
+  addressText: string;
+  giftMessage: string | null;
+  items: {
+    productName: string;
+    sku: string;
+    quantity: number;
+    unitPricePoisha: number;
+    lineTotalPoisha: number;
+  }[];
+  moneyRows: InvoiceMoneyRow[];
+  totalPoisha: number;
+}
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cod: "Cash on Delivery (COD)",
+  bkash: "bKash",
+  nagad: "Nagad",
+  rocket: "Rocket",
+  card: "Card",
+  sslcommerz: "SSLCommerz",
+  aamarpay: "AamarPay",
+  shurjopay: "ShurjoPay",
+};
+
+function dhakaDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
+}
+
+export interface InvoiceMoneyInput {
+  subtotalPoisha: number;
+  /** null = the payload predates the persisted split (print-centre
+   *  fallback: ONE net line, exactly like the print view). */
+  discountPoisha: number | null;
+  shippingPoisha: number | null;
+  totalPoisha: number;
+  /** Net gift-card coverage from the ledger (>= 0). */
+  giftCardNetPoisha: number;
+  giftCardLast4: string | null;
+  paidPoisha: number;
+}
+
+/** Pure row builder — the print centre's arithmetic, with the
+ *  gift-card tender decomposed out of the residual. */
+export function computeInvoiceMoneyRows(input: InvoiceMoneyInput): InvoiceMoneyRow[] {
+  const rows: InvoiceMoneyRow[] = [
+    { labelBn: "সাবটোটাল (পণ্য)", labelEn: "Subtotal", poisha: input.subtotalPoisha },
+  ];
+  const grossPoisha = input.totalPoisha + input.giftCardNetPoisha;
+  if (input.discountPoisha === null || input.shippingPoisha === null) {
+    const net = grossPoisha - input.subtotalPoisha;
+    if (net !== 0) {
+      rows.push({ labelBn: "ডেলিভারি ও সমন্বয় (নেট)", labelEn: "Delivery & adjustments (net)", poisha: net });
+    }
+  } else {
+    if (input.discountPoisha > 0) {
+      rows.push({ labelBn: "ছাড়", labelEn: "Discount", poisha: -input.discountPoisha });
+    }
+    rows.push({ labelBn: "ডেলিভারি চার্জ", labelEn: "Delivery charge", poisha: input.shippingPoisha });
+    const residual = grossPoisha - (input.subtotalPoisha - input.discountPoisha + input.shippingPoisha);
+    if (residual !== 0) {
+      rows.push({ labelBn: "সিওডি ফি ও অন্যান্য চার্জ", labelEn: "COD fee & other charges", poisha: residual });
+    }
+  }
+  if (input.giftCardNetPoisha > 0) {
+    rows.push({
+      labelBn: "মোট (গিফট কার্ডের আগে)",
+      labelEn: "Total before gift card",
+      poisha: grossPoisha,
+      emphasis: "total",
+    });
+    rows.push({
+      labelBn: `গিফট কার্ড (…${input.giftCardLast4 ?? "????"})`,
+      labelEn: "Gift card",
+      poisha: -input.giftCardNetPoisha,
+    });
+  }
+  rows.push({ labelBn: "সর্বমোট", labelEn: "Total", poisha: input.totalPoisha, emphasis: "total" });
+  rows.push({ labelBn: "পরিশোধিত", labelEn: "Paid", poisha: input.paidPoisha });
+  const due = input.totalPoisha - input.paidPoisha;
+  if (due > 0) {
+    rows.push({ labelBn: "বকেয়া", labelEn: "Due", poisha: due, emphasis: "due" });
+  }
+  return rows;
+}
+
+/** Net gift-card coverage for an order from the recorded ledger:
+ *  −Σ(REDEEM + REFUND_RESTORE amounts) — REDEEM is stored negative,
+ *  a restore positive, so a fully restored card nets to 0. */
+export async function getOrderGiftCardCoverage(
+  orderId: string,
+): Promise<{ netPoisha: number; codeLast4: string | null }> {
+  const txns = await prisma.giftCardTransaction.findMany({
+    where: { orderId, kind: { in: ["REDEEM", "REFUND_RESTORE"] } },
+    orderBy: { createdAt: "asc" },
+    select: { amountPoisha: true, kind: true, giftCard: { select: { codeLast4: true } } },
+  });
+  let net = 0;
+  let last4: string | null = null;
+  for (const t of txns) {
+    net -= t.amountPoisha;
+    if (t.kind === "REDEEM") last4 = t.giftCard.codeLast4;
+  }
+  return { netPoisha: Math.max(0, net), codeLast4: last4 };
+}
+
+/**
+ * Build the invoice data for one order. `customerPhoneDisplay` is
+ * the phone string the CALLER's policy allows on paper (admin route:
+ * phoneForViewer; customer route: the masked own number) — the same
+ * policy the print centre inherits from the detail API.
+ * Returns null when the order does not exist.
+ */
+export async function buildInvoiceData(
+  idOrNo: string,
+  customerPhoneDisplay: string,
+): Promise<InvoiceData | null> {
+  const order = await getOrderByIdOrNo(idOrNo);
+  if (!order) return null;
+  const [advance, giftCard, storeName, storeAddress, storeBin] = await Promise.all([
+    getOrderAdvanceView(order.id),
+    getOrderGiftCardCoverage(order.id),
+    getSetting("general.store_name"),
+    getSetting("general.store_address"),
+    getSetting("general.store_bin"),
+  ]);
+  const subtotalPoisha = order.items.reduce((sum, i) => sum + i.unitPricePoisha * i.quantity, 0);
+  const a = order.address;
+  return {
+    orderId: order.id,
+    orderNo: order.orderNo,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    paymentMethodLabel: PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod,
+    createdAtLabel: dhakaDateTime(order.createdAt),
+    storeName: (storeName ?? "").trim(),
+    storeAddress: (storeAddress ?? "").trim(),
+    storeBin: (storeBin ?? "").trim(),
+    customerName: order.customerName,
+    customerPhone: customerPhoneDisplay,
+    addressText: [a.addressLine, a.union, a.upazila, a.district, a.division].filter(Boolean).join(", "),
+    giftMessage: order.giftMessage ?? null,
+    items: order.items.map((i) => ({
+      productName: i.productName,
+      sku: i.sku,
+      quantity: i.quantity,
+      unitPricePoisha: i.unitPricePoisha,
+      lineTotalPoisha: i.unitPricePoisha * i.quantity,
+    })),
+    moneyRows: computeInvoiceMoneyRows({
+      subtotalPoisha,
+      discountPoisha: typeof order.discountPoisha === "number" ? order.discountPoisha : null,
+      shippingPoisha: typeof order.shippingPoisha === "number" ? order.shippingPoisha : null,
+      totalPoisha: order.totalPoisha,
+      giftCardNetPoisha: giftCard.netPoisha,
+      giftCardLast4: giftCard.codeLast4,
+      paidPoisha: advance?.paidPoisha ?? 0,
+    }),
+    totalPoisha: order.totalPoisha,
+  };
+}
+
+export { formatBdt };

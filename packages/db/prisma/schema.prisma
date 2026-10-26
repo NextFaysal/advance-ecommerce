@@ -1871,6 +1871,14 @@ model ApiKey {
   revokedAt  DateTime?
   lastUsedAt DateTime?
   createdAt  DateTime  @default(now())
+  // ADV-26 (doc 22): partner API keys productised on this same table.
+  // keyPrefix/scopes are first-class columns for the partner surface
+  // (the legacy extensibility store keeps reading the scopesJson bag
+  // { scopes, keyPrefix, pluginId }; createPartnerApiKey writes BOTH
+  // so the two readers never disagree). createdById = staff user id.
+  keyPrefix  String    @default("")
+  scopes     String[]  @default([])
+  createdById String?
 }
 
 model WebhookSubscription {
@@ -1881,6 +1889,62 @@ model WebhookSubscription {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   @@index([event, isActive])
+}
+
+// ---- Developer platform (ADV-26, doc 22): productised outbound -------
+// ---- webhooks + delivery log. The legacy WebhookSubscription above ---
+// ---- stays for the plugin/extensibility store; NEW admin-managed -----
+// ---- endpoints live here, with a durable per-delivery row. -----------
+
+model WebhookEndpoint {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  // Event names from the webhook catalogue (src/webhooks/events.ts):
+  // order.created, order.status_changed, payment.succeeded,
+  // checkout.abandoned, stock.low, customer.registered, webhook.test.
+  events    String[]
+  // Signing secret: ENCRYPTED at rest (AES-256-GCM via lib/settings
+  // encryptValue) because the worker must RECOVER it to sign each
+  // delivery — a hash alone cannot sign. The plaintext is shown ONCE
+  // at creation; only secretPrefix (e.g. "whsec_ab12…") is displayed
+  // afterwards. Never logged, never returned by list APIs.
+  secretEncrypted String
+  secretPrefix    String
+  enabled   Boolean  @default(true)
+  createdById String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deliveries WebhookDelivery[]
+
+  @@index([enabled])
+}
+
+model WebhookDelivery {
+  id            String   @id @default(cuid())
+  endpointId    String
+  endpoint      WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  event         String
+  entityId      String?
+  // The exact payload object POSTed (serialised once at attempt time;
+  // the signature covers the exact bytes sent).
+  payloadJson   Json
+  // PENDING (queued / awaiting retry) | SENT (real 2xx) |
+  // FAILED (last attempt failed, retry scheduled) | DEAD (exhausted).
+  status        String   @default("PENDING")
+  attempts      Int      @default(0)
+  responseCode  Int?
+  // First 200 chars of the response body — evidence, never headers or
+  // anything credential-shaped.
+  responseSnippet String?
+  lastError     String?
+  nextRetryAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([endpointId, status])
+  @@index([status, nextRetryAt])
 }
 
 // ---- Loyalty / Referral / Affiliate (added by integration, Agent 36 remaining wiring) ----

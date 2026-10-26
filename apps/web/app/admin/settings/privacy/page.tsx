@@ -12,6 +12,9 @@ import {
 } from "@/privacy/ledger";
 import { maskPhone } from "@/checkout/validation";
 import { MaintenanceCard } from "./maintenance-card";
+import { AgeGateCard } from "./age-gate-card";
+import { loadAgeRestrictions } from "@/catalog/age-restrictions";
+import { prisma } from "@advance-ecommerce/db";
 
 // Admin > Settings > Privacy (ADV-29) — the operator surface for
 // the privacy machinery in src/privacy/:
@@ -57,6 +60,21 @@ export default async function AdminPrivacySettingsPage() {
   } catch {
     dbReady = false;
   }
+  // Age gate (ADV-29): the current restriction document + the real
+  // category slugs for the editor's datalist. Same honesty rule as
+  // the ledgers above — a failed read shows defaults and says so.
+  let ageRestrictions: { slug: string; minAge: number }[] = [];
+  let categorySlugs: string[] = [];
+  try {
+    const [restrictions, categories] = await Promise.all([
+      loadAgeRestrictions(),
+      prisma.category.findMany({ where: { deletedAt: null }, select: { slug: true }, orderBy: { slug: "asc" } }),
+    ]);
+    ageRestrictions = restrictions;
+    categorySlugs = categories.map((c) => c.slug);
+  } catch {
+    dbReady = false;
+  }
 
   return (
     <main>
@@ -73,6 +91,10 @@ export default async function AdminPrivacySettingsPage() {
           initialMessageEn={maintenance.messageEn}
           dbReady={dbReady}
         />
+      </div>
+
+      <div className="mb-6">
+        <AgeGateCard initialRestrictions={ageRestrictions} categorySlugs={categorySlugs} dbReady={dbReady} />
       </div>
 
       <Card className="mb-6">

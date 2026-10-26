@@ -198,8 +198,10 @@ export interface HandlerDeps {
   smsProvider?: (providerName: string | null) => Promise<SmsProvider>;
   emailProvider?: (providerName: string | null) => Promise<EmailProvider>;
   courierProvider?: (provider: CourierProviderName) => Promise<CourierProvider>;
-  /** Webhook delivery to a subscriber endpoint is performed elsewhere;
-   *  this hook only acknowledges the event for fan-out (Step 32). */
+  /** Webhook delivery processor (ADV-26): performs ONE attempt of
+   *  the WebhookDelivery row named by job.payloadId and advances its
+   *  DB retry state machine (src/webhooks/deliver.ts), wired in
+   *  worker-deps. Unwired deployments skip honestly. */
   webhookFanout?: (job: WebhookJob) => Promise<{ deliveredToRef: string }>;
   reportRunner?: (job: ReportJob) => Promise<{ fileRef: string }>;
   automationRunner?: (job: AutomationJob) => Promise<{ ruleRef: string }>;

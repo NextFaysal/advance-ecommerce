@@ -35,6 +35,7 @@
 import { prisma } from "@advance-ecommerce/db";
 import { notifyBackInStockForVariant } from "../storefront-ux/back-in-stock-notify";
 import { emitAutomationEvent } from "../automation/producers";
+import { dispatchWebhookEvent } from "../webhooks/dispatch";
 import {
   planMovement,
   type MovementAction,
@@ -382,6 +383,8 @@ export async function applyMovementDb(
     const threshold = meta?.lowStockThreshold ?? LOW_STOCK_THRESHOLD;
     if (cacheAfter <= threshold) {
       await emitAutomationEvent("stock.low", input.variantId);
+      // Webhooks (ADV-26): same emit seam. Never throws.
+      await dispatchWebhookEvent("stock.low", input.variantId);
     }
   }
   return result;

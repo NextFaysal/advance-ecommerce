@@ -381,6 +381,33 @@ export async function processEmailJob(
     return { status: "succeeded", ref: result.messageId, detail: "scheduled report email via adapter" };
   }
 
+  if (job.templateKey === "daily_digest") {
+    // ADV-27b: team daily digest (producer: src/team/digest.ts). The
+    // job carries only the recipient + `digest:<yyyy-mm-dd>` in
+    // recipientRef — the digest is REBUILT from current data at send
+    // time (the report_delivery ids-only pattern).
+    const toEmail = (job.toEmail ?? "").trim();
+    const ref = (job.recipientRef ?? "").trim();
+    const ymd = ref.startsWith("digest:") ? ref.slice("digest:".length) : "";
+    if (toEmail === "" || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+      return { status: "skipped", ref, detail: "malformed daily_digest payload" };
+    }
+    const { buildDailyDigest, renderDigestText } = await import("../team/digest");
+    const digest = await buildDailyDigest(ymd);
+    const text = renderDigestText(digest, identity.locale);
+    const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const result = await provider.send({
+      to: toEmail,
+      subject: `${identity.storeName} — দৈনিক ডাইজেস্ট ${ymd}`,
+      body: text,
+      html: `<pre style="font-family:inherit;white-space:pre-wrap">${escaped}</pre>`,
+      templateKey: job.templateKey,
+      orderId: null,
+    });
+    if (result.status === "failed") throw new Error("EMAIL_SEND_FAILED:provider");
+    return { status: "succeeded", ref: result.messageId, detail: "daily digest email via adapter" };
+  }
+
   return {
     status: "skipped",
     ref,

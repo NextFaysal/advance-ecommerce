@@ -291,6 +291,49 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
     value: "[]",
     isPublic: false,
   },
+  // Age-restricted categories (ADV-29 — src/catalog/age-restrictions.ts):
+  // a JSON document { "restrictions": [{ "slug": "...", "minAge": 18 }] }.
+  // Products in a listed category require a customer age ATTESTATION
+  // at checkout (a recorded self-declaration — NOT identity or age
+  // verification). The category enum has no "catalog" member, so this
+  // rides "general" like meta.* / stores.* above. Default = no
+  // restrictions. MUST stay in sync with EMPTY_AGE_RESTRICTIONS_JSON
+  // in that module (no import — cycle).
+  "catalog.age_restricted_categories": {
+    category: "general",
+    value: "{\"restrictions\":[]}",
+    isPublic: false,
+  },
+  // Outbound connectors (ADV-25 part 2 — src/connectors/*). Slack /
+  // Telegram / Google Sheets fan-out on order + stock lifecycle
+  // events, hooked once at the automation producer seam. The category
+  // enum has no "connectors" member, so these ride "general" (the
+  // settingCategoryForKey fallback for unlisted prefixes, exactly
+  // like meta.* above). bot_token is a secret by the suffix rule;
+  // webhook_url and service_account_json are credentials too and are
+  // treated as secrets via EXACT_SECRET_KEYS in isSecretSettingKey()
+  // below. ALL credentials default empty = NOT configured: the
+  // channel is skipped / reports NOT_CONFIGURED with the missing keys
+  // named, never a fake send. events = comma-separated subset of
+  // order.created, order.status_changed, payment.succeeded, stock.low.
+  "connectors.slack.enabled": { category: "general", value: "false", isPublic: false },
+  "connectors.slack.webhook_url": { category: "general", value: "", isPublic: false },
+  "connectors.slack.events": { category: "general", value: "order.created,order.status_changed,payment.succeeded,stock.low", isPublic: false },
+  "connectors.telegram.enabled": { category: "general", value: "false", isPublic: false },
+  "connectors.telegram.bot_token": { category: "general", value: "", isPublic: false },
+  "connectors.telegram.chat_id": { category: "general", value: "", isPublic: false },
+  // API base override — for self-hosted Bot API servers / proxies and
+  // for tests. The token is appended as /bot<token>/sendMessage, so
+  // the token never appears in a stored URL.
+  "connectors.telegram.api_base": { category: "general", value: "https://api.telegram.org", isPublic: false },
+  "connectors.telegram.events": { category: "general", value: "order.created,order.status_changed,payment.succeeded,stock.low", isPublic: false },
+  // Google Sheets fires on order.created ONLY (one appended row per
+  // order — a spreadsheet is an order log, not a chat channel), so it
+  // has no events key.
+  "connectors.sheets.enabled": { category: "general", value: "false", isPublic: false },
+  "connectors.sheets.service_account_json": { category: "general", value: "", isPublic: false },
+  "connectors.sheets.spreadsheet_id": { category: "general", value: "", isPublic: false },
+  "connectors.sheets.sheet_name": { category: "general", value: "Orders", isPublic: false },
   // Maintenance mode (ADV-29 — src/privacy/maintenance.ts): ONE JSON
   // document { enabled, message_bn, message_en }. The storefront gate
   // (middleware -> GET /api/v1/public/site-status) reads it through
@@ -318,8 +361,21 @@ export const SETTING_ENV_FALLBACK: Record<string, string> = {
 
 const SECRET_KEY_SUFFIXES = ["api_key", "secret", "password", "token", "private_key", "client_secret", "access_key"];
 
+/**
+ * Credential keys whose names carry no secret suffix but whose VALUES
+ * are credentials (ADV-25): a Slack incoming-webhook URL is a bearer
+ * credential by itself, and a Google service-account JSON embeds the
+ * account's private key. Both must encrypt at rest and never be
+ * returned by a "safe" getter, suffix or not.
+ */
+const EXACT_SECRET_KEYS = new Set([
+  "connectors.slack.webhook_url",
+  "connectors.sheets.service_account_json",
+]);
+
 export function isSecretSettingKey(key: string): boolean {
   const lower = key.toLowerCase();
+  if (EXACT_SECRET_KEYS.has(lower)) return true;
   return SECRET_KEY_SUFFIXES.some((suffix) => lower.endsWith(suffix) || lower.includes(`.${suffix}`));
 }
 

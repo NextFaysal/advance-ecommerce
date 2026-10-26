@@ -36,14 +36,11 @@
 //                         src/courier/order-sync.ts) directly;
 //                         a future worker-host poller/cron is
 //                         the producer that will feed this queue
-//  webhook-delivery       NONE — buildWebhookJob() exists in       runners.ts createWebhookFanout (real:      CONSUMER-ONLY
-//                         src/extensibility/webhooks.ts but no     DB subscriptions, HMAC signing,
-//                         code enqueues it; domain events ride     classified retries; delivery logs
-//                         the in-process event bus                 in-memory — no DB table yet)
-//                         (src/orders/event-bus.ts, SSE) — the
-//                         producer lands when that publisher
-//                         becomes Redis-backed (its own header
-//                         already plans exactly that change)
+//  webhook-delivery       ADV-26 — src/webhooks/dispatch.ts       worker-deps webhookFanout ->           LIVE
+//                         fans the lifecycle emit seam out to      src/webhooks/deliver.ts
+//                         WebhookEndpoint rows, writes a durable   processWebhookDelivery (real: signed
+//                         WebhookDelivery per endpoint and         POST, DB retry state machine
+//                         enqueues { event, payloadId: deliveryId } 1m/10m/1h/6h -> DEAD, admin log)
 //  import-export          NONE — admin catalog import/export       runners.ts createImportExportRunner        CONSUMER-ONLY
 //                         routes run the same catalog services     (real for products; orders/customers
 //                         synchronously (preview -> confirm,       throw UNSUPPORTED_ENTITY)

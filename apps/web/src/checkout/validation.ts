@@ -136,6 +136,23 @@ export const checkoutFormSchema = z.object({
       attested: z.literal(true),
     })
     .optional(),
+  /**
+   * Optional age attestation (ADV-29, age gate): submitted when the
+   * cart contains a product from an age-restricted category
+   * (Settings catalog.age_restricted_categories). `confirmed` must be
+   * literally true. This is a SELF-DECLARATION — the customer states
+   * they meet the category's minimum age; no identity document or
+   * birth date is collected or verified, and the orders route
+   * re-derives the requirement from DB category slugs (never the
+   * client) and refuses a restricted order without it
+   * (400 AGE_ATTESTATION_REQUIRED). The attestation is recorded in
+   * the order's create-time note (src/catalog/age-restrictions.ts).
+   */
+  ageAttestation: z
+    .object({
+      confirmed: z.literal(true),
+    })
+    .optional(),
 });
 
 export type CheckoutForm = z.infer<typeof checkoutFormSchema>;

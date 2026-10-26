@@ -612,6 +612,20 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: null,
   },
   {
+    // Webhooks + API keys (ADV-26): outbound webhook endpoints,
+    // durable delivery log, partner API keys. APIs guard on
+    // settings.integrations (same as this entry).
+    id: "webhooks",
+    path: "/admin/webhooks",
+    labelBn: "ওয়েবহুক ও API",
+    labelEn: "Webhooks & API",
+    icon: "Plug",
+    section: "addons",
+    permission: "settings.integrations",
+    featureFlag: null,
+    badge: null,
+  },
+  {
     id: "erp",
     path: "/admin/erp",
     labelBn: "ERP হিসাব",
@@ -772,6 +786,17 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     path: "/admin/staff",
     labelBn: "স্টাফ ও ভূমিকা",
     labelEn: "Staff & Roles",
+    icon: "Users",
+    section: "system",
+    permission: "staff.view",
+    featureFlag: null,
+    badge: null,
+  },
+  {
+    id: "team",
+    path: "/admin/team",
+    labelBn: "টিম (উপস্থিতি ও টার্গেট)",
+    labelEn: "Team (Attendance & Targets)",
     icon: "Users",
     section: "system",
     permission: "staff.view",

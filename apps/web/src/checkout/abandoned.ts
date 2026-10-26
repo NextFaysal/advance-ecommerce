@@ -40,6 +40,7 @@ import {
 } from "../orders/advance";
 import { publishOrderCreated } from "../orders/event-bus";
 import { emitAutomationEvent } from "../automation/producers";
+import { dispatchWebhookEvent } from "../webhooks/dispatch";
 import {
   createOrderRecord,
   findOrderByIdempotencyKey,
@@ -259,6 +260,10 @@ export async function captureAbandonedCheckout(
   // flag-gated and never throws.
   if (existing === null) {
     await emitAutomationEvent("checkout.abandoned", row.id);
+    // Webhooks (ADV-26): additive call at the same emit seam — the
+    // payload builder exposes ids/totals only, never the phone or
+    // address this row carries. Never throws.
+    await dispatchWebhookEvent("checkout.abandoned", row.id);
   }
   return { id: row.id, status: "OPEN", closed: false, droppedVariantIds };
 }

@@ -2,12 +2,15 @@
   "dependencies": {
     "@advance-ecommerce/db": "workspace:*",
     "@advance-ecommerce/validators": "workspace:*",
+    "@pdf-lib/fontkit": "^1.1.1",
     "bullmq": "^6.4.1",
     "ioredis": "^6.0.0",
     "jsbarcode": "^3.12.3",
     "next": "^14.2.0",
+    "pdf-lib": "^1.17.1",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
+    "regenerator-runtime": "^0.14.1",
     "xlsx": "^0.18.5",
     "zod": "^3.23.0"
   },
@@ -15,6 +18,7 @@
     "@types/node": "^20.0.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
+    "@types/regenerator-runtime": "^0.13.8",
     "autoprefixer": "^10.4.0",
     "postcss": "^8.4.0",
     "tailwindcss": "^3.4.0",

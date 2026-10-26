@@ -170,6 +170,24 @@ export async function emitAutomationEvent(
   entityId: string,
   opts: { dedupeSuffix?: string; deps?: AutomationProducerDeps } = {},
 ): Promise<AutomationDispatchResult> {
+  // ADV-25 outbound connectors (Slack / Telegram / Google Sheets):
+  // an additive fan-out hooked here ONCE, because every funnel emit
+  // passes through this seam post-commit. It is fire-and-forget and
+  // deliberately INDEPENDENT of the module.automation flag below —
+  // the connectors carry their own per-channel enabled switches in
+  // Settings (connectors.*). notifyExternal never throws by
+  // contract; the import + call are guarded anyway, so a connector
+  // outage can never reach a funnel.
+  if (
+    trigger === "order.created" ||
+    trigger === "order.status_changed" ||
+    trigger === "payment.succeeded" ||
+    trigger === "stock.low"
+  ) {
+    void import("../connectors/notify")
+      .then((mod) => mod.notifyExternal(trigger, { entityId }))
+      .catch(() => undefined);
+  }
   try {
     const deps = opts.deps ?? {};
     const flagEnabled = deps.flagEnabled ?? defaultFlagEnabled;

@@ -297,6 +297,44 @@ export default async function AdminSettingsPage() {
         } satisfies CardStatus;
   });
 
+  // Outbound connectors (ADV-25 part 2): per-channel enabled +
+  // credential presence, resolved exactly as the fan-out resolves
+  // them at send time (src/connectors/config.ts). Presence is read
+  // from getSetting() and reduced to booleans here — no credential
+  // value is rendered on this page.
+  const connectors = await probe(async () => {
+    const present = async (key: string) => ((await getSetting(key)) ?? "").trim() !== "";
+    const channels: { name: string; enabled: boolean; ready: boolean }[] = [
+      {
+        name: "Slack",
+        enabled: ((await getSetting("connectors.slack.enabled")) ?? "").trim() === "true",
+        ready: await present("connectors.slack.webhook_url"),
+      },
+      {
+        name: "Telegram",
+        enabled: ((await getSetting("connectors.telegram.enabled")) ?? "").trim() === "true",
+        ready:
+          (await present("connectors.telegram.bot_token")) &&
+          (await present("connectors.telegram.chat_id")),
+      },
+      {
+        name: "Google Sheets",
+        enabled: ((await getSetting("connectors.sheets.enabled")) ?? "").trim() === "true",
+        ready:
+          (await present("connectors.sheets.service_account_json")) &&
+          (await present("connectors.sheets.spreadsheet_id")),
+      },
+    ];
+    const live = channels.filter((c) => c.enabled && c.ready).map((c) => c.name);
+    const fmt = (c: (typeof channels)[number]) =>
+      `${c.name}: ${c.enabled ? "চালু" : "বন্ধ"} · ক্রেডেনশিয়াল ${c.ready ? "আছে" : "নেই"}`;
+    return {
+      tone: live.length > 0 ? "success" : "neutral",
+      label: live.length > 0 ? `${live.join(", ")} লাইভ` : "কোনো চ্যানেল লাইভ নয়",
+      detail: `${channels.map(fmt).join(" · ")}।`,
+    } satisfies CardStatus;
+  });
+
   const cards: SettingsCardInfo[] = [
     {
       href: "/admin/settings/payments",
@@ -329,6 +367,14 @@ export default async function AdminSettingsPage() {
       titleEn: "Integrations",
       description: "স্টোরেজ (Cloudflare R2), সার্চ (Meilisearch), Redis ও Web Push — সংযোগ অবস্থা (env আছে/নেই)।",
       status: integrations,
+    },
+    {
+      href: "/admin/settings/connectors",
+      icon: <Icon name="sparkles" size={22} />,
+      titleBn: "কানেক্টর",
+      titleEn: "Connectors",
+      description: "Slack, Telegram ও Google Sheets — অর্ডার/স্টক ইভেন্টের আউটবাউন্ড অ্যালার্ট ও Sheets অর্ডার লগ (connectors.*)।",
+      status: connectors,
     },
     {
       href: "/admin/settings/tracking",

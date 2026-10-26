@@ -133,6 +133,11 @@ import {
   orderRowToEnriched,
 } from "@/orders/repository";
 import { findDeliverySlot, loadDeliverySlots } from "@/checkout/delivery-slots";
+import {
+  ageAttestationNoteText,
+  evaluateAgeGate,
+  loadAgeRestrictions,
+} from "@/catalog/age-restrictions";
 import { findPickupPoint, loadPickupPoints, pickupChoiceNoteText } from "@/checkout/pickup-points";
 import { isPackEnabled } from "@/business-modules/packs";
 import {
@@ -276,6 +281,28 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     subtotalPoisha += server.unitPricePoisha * item.quantity;
     totalWeightGrams += server.weightGrams * item.quantity;
     categorySlugs.add(server.categorySlug);
+  }
+
+  // Age gate (ADV-29): re-derived from the SAME server snapshots'
+  // category slugs (never the client) against Settings
+  // catalog.age_restricted_categories. A restricted cart without an
+  // attestation is REFUSED (400 AGE_ATTESTATION_REQUIRED) — there
+  // is no bypass; with one, the attestation rides the create-time
+  // note (below). The record is a SELF-DECLARATION, not age or
+  // identity verification — the note text says so verbatim
+  // (src/catalog/age-restrictions.ts).
+  const ageGate = evaluateAgeGate(
+    categorySlugs,
+    await loadAgeRestrictions(),
+    form.ageAttestation?.confirmed === true,
+  );
+  if (ageGate.required && !ageGate.ok) {
+    return errorResponse(
+      "AGE_ATTESTATION_REQUIRED",
+      `এই অর্ডারে বয়স-সীমাবদ্ধ পণ্য আছে — অর্ডার করতে বয়স নিশ্চিতকরণ (কমপক্ষে ${ageGate.minAge} বছর) আবশ্যক। / This order contains an age-restricted item — an age attestation (at least ${ageGate.minAge} years old) is required to place it.`,
+      400,
+      { minAge: ageGate.minAge },
+    );
   }
 
   // Pharmacy gate (ADV-22): when the pharmacy pack is on, the
@@ -555,6 +582,10 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
       // pharmacist queue parses back). Present only when the order
       // actually contains Rx items and the gate accepted the record.
       rxOrder && form.prescription ? prescriptionNoteText(form.prescription) : null,
+      // ADV-29: the age attestation rides the same create-time note
+      // seam — present only when the cart was age-restricted and the
+      // gate accepted the customer's self-declaration.
+      ageGate.required && ageGate.minAge !== null ? ageAttestationNoteText(ageGate.minAge) : null,
     ]
       .filter((part): part is string => typeof part === "string" && part.trim() !== "")
       .join("\n") || undefined;
@@ -933,6 +964,10 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
         // ADV-22: pharmacy outcome (present only for Rx orders) +
         // electronics warranty terms for the confirmation screen.
         ...(rxMeta ? { pharmacyRx: rxMeta } : {}),
+        // ADV-29: age-gate outcome (present only for restricted carts).
+        ...(ageGate.required
+          ? { ageGate: { required: true, minAge: ageGate.minAge, attested: true } }
+          : {}),
         ...(warrantyTerms.length > 0 ? { warrantyTerms } : {}),
         note: "Order persisted to the database (Prisma). Coupon records + fraud lists are DB-backed (marketing/fraud modules); checkout assembles fraud input from DB lists and the coupon lookup from a DB snapshot.",
       },

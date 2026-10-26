@@ -35,6 +35,7 @@ import {
 import { maskPhone } from "@/checkout/validation";
 import { findDeliverySlot, loadDeliverySlots } from "@/checkout/delivery-slots";
 import { emitAutomationEvent } from "@/automation/producers";
+import { dispatchWebhookEvent } from "@/webhooks/dispatch";
 
 export const CUSTOMER_SESSION_COOKIE = "customer_session";
 export const CUSTOMER_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -163,6 +164,9 @@ async function fireCustomerRegistered(customerId: string): Promise<void> {
   } catch {
     // Registration already succeeded — automation is downstream.
   }
+  // Webhooks (ADV-26): same emit seam; the payload carries the
+  // customer id + timestamp only — never phone/email. Never throws.
+  await dispatchWebhookEvent("customer.registered", customerId);
 }
 
 /* ------------------------------------------------------------------ */

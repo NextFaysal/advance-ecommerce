@@ -446,8 +446,45 @@ export default function CheckoutPage() {
       cancelled = true;
     };
   }, [items]);
-  const stockProblems = useMemo(() => findStockProblems(items), [items]);
-  const totalQuantity = useMemo(
+  // Age gate (ADV-29): when the cart contains an item from an
+  // age-restricted category (Settings catalog.age_restricted_categories),
+  // the attestation checkbox renders and is submitted with the order.
+  // The check endpoint only drives the form — the server re-derives
+  // the requirement from DB category slugs at submit and refuses a
+  // restricted order without the attestation. The attestation is a
+  // self-declaration, NOT age/identity verification — the copy says so.
+  const [ageGate, setAgeGate] = useState<{ required: boolean; minAge: number | null }>({
+    required: false,
+    minAge: null,
+  });
+  useEffect(() => {
+    if (items.length === 0) {
+      setAgeGate({ required: false, minAge: null });
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/v1/public/catalog/age-check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ variantIds: items.map((i) => i.variantId) }),
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("age check failed"))))
+      .then((json: { data?: { required?: boolean; minAge?: number | null } }) => {
+        if (!cancelled) {
+          setAgeGate({
+            required: json.data?.required === true,
+            minAge: typeof json.data?.minAge === "number" ? json.data.minAge : null,
+          });
+        }
+      })
+      .catch(() => {
+        // Display helper only; the server gate still applies.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
+  const stockProblems = useMemo(() => findStockProblems(items), [items]);  const totalQuantity = useMemo(
     () => items.reduce((sum, item) => sum + item.quantity, 0),
     [items],
   );
@@ -513,6 +550,16 @@ export default function CheckoutPage() {
             registrationNo: String(data.get("rxRegistrationNo") ?? ""),
             imageUrl: data.get("rxImageUrl") || undefined,
             attested: data.get("rxAttested") === "on",
+          }
+        : undefined,
+      // Age attestation (ADV-29): submitted only when the cart
+      // contains an age-restricted item (ageGate.required). The
+      // checkbox maps to the schema's literal true — unticked fails
+      // client validation with an error, and the server gate
+      // refuses anyway (400 AGE_ATTESTATION_REQUIRED).
+      ageAttestation: ageGate.required
+        ? {
+            confirmed: data.get("ageAttested") === "on",
           }
         : undefined,
       // Reseller attribution (wave 6): the ?ref= code the storefront
@@ -1323,6 +1370,22 @@ export default function CheckoutPage() {
             <label className="mt-3 flex items-start gap-2.5 text-sm leading-6 text-text-main">
               <input type="checkbox" name="rxAttested" className="mt-1 h-4 w-4 shrink-0" />
               <span>আমি নিশ্চিত করছি যে আমার কাছে এই প্রেসক্রিপশনটি আছে এবং তথ্যগুলো সঠিক।</span>
+            </label>
+          </fieldset>
+        ) : null}
+        {ageGate.required ? (
+          <fieldset className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-400/30 dark:bg-amber-500/10">
+            <legend className="px-1 text-sm font-semibold text-text-main">
+              🔞 বয়স নিশ্চিতকরণ আবশ্যক
+            </legend>
+            <p className="text-sm leading-6 text-text-muted">
+              আপনার কার্টে বয়স-সীমাবদ্ধ পণ্য আছে — কেনার জন্য বয়স কমপক্ষে {ageGate.minAge ?? 18} বছর হতে
+              হবে। এই নিশ্চিতকরণটি অর্ডারে রেকর্ড থাকবে। এটি একটি স্ব-ঘোষণা — আমরা কোনো পরিচয়পত্র বা
+              জন্মতারিখ যাচাই করি না।
+            </p>
+            <label className="mt-3 flex items-start gap-2.5 text-sm leading-6 text-text-main">
+              <input type="checkbox" name="ageAttested" className="mt-1 h-4 w-4 shrink-0" />
+              <span>আপনি নিশ্চিত করছেন আপনার বয়স {ageGate.minAge ?? 18}+ / I confirm I am at least {ageGate.minAge ?? 18} years old.</span>
             </label>
           </fieldset>
         ) : null}

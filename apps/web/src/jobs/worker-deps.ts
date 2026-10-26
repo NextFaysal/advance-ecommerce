@@ -48,11 +48,14 @@
  *  - The five queue runners from src/jobs/runners.ts — all real
  *    executors over the existing service layer, so no handler reports
  *    "skipped" for them anymore:
- *      webhookFanout — delivers to the DB-registered webhook
- *        subscriptions (signing + classification from
- *        src/extensibility/webhooks.ts; attempts recorded in the
- *        runners' in-memory delivery-log store — no DB table exists
- *        for delivery logs yet, see runners.ts header).
+ *      webhookFanout — ADV-26: processes ONE productised webhook
+ *        delivery (src/webhooks/deliver.ts): the job's payloadId is a
+ *        WebhookDelivery row id; the processor signs with the
+ *        endpoint's decrypted secret, POSTs, and advances the row's
+ *        retry state machine. (The legacy runners.ts fanout over
+ *        WebhookSubscription rows is no longer wired here — nothing
+ *        produced its jobs; subscriptions created in /admin/webhooks
+ *        are the live surface.)
  *      reportRunner — fetchSalesRows + aggregateSales over real DB
  *        rows; returns a computed-summary ref (the reports module
  *        has no result/file store, so no fileRef is ever faked).
@@ -129,8 +132,8 @@ import {
   createImportExportRunner,
   createNotificationRetryRunner,
   createReportRunner,
-  createWebhookFanout,
 } from "./runners";
+import { processWebhookDelivery } from "../webhooks/deliver";
 
 /* ------------------------------------------------------------------ */
 /* Settings lookup — lazy, fail-soft (see the landmine note above)     */
@@ -142,8 +145,7 @@ const ENV_FALLBACK: Record<string, string> = {
   "email.provider": "EMAIL_PROVIDER",
 };
 
-/** Exported for the webhook fanout runner (per-subscription signing
- *  secret lookup: `webhook.secret.<subscriptionId>`). */
+/** Settings lookup shared by the provider resolvers below. */
 export async function readSetting(key: string): Promise<string | null> {
   try {
     const settings = await import("../lib/settings");
@@ -417,7 +419,7 @@ export const workerDeps: WorkerRuntimeDeps = {
     return { ref: processed.id, status: processed.status };
   },
   // The five runners (src/jobs/runners.ts) — see the header.
-  webhookFanout: createWebhookFanout({ readSetting, logger: consoleJobLogger }),
+  webhookFanout: async (job) => processWebhookDelivery(job.payloadId),
   reportRunner: createReportRunner({ logger: consoleJobLogger }),
   automationRunner: createAutomationRunner({
     smsProvider: resolveSmsProvider,

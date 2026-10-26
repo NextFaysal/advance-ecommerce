@@ -80,6 +80,7 @@ import { runDeliveredOrderHooks } from "./delivered-hooks";
 import { runReversalHooks } from "./reversal-hooks";
 import { publishPaymentSucceeded } from "./event-bus";
 import { emitAutomationEvent } from "../automation/producers";
+import { dispatchWebhookEvent } from "../webhooks/dispatch";
 import { redeemGiftCardInTx } from "../marketing/gift-cards";
 import { postOrderPaidErp } from "../erp/auto-posting";
 import { transitionOrder, type TransitionResult } from "./state-machine";
@@ -1059,6 +1060,9 @@ export async function createOrderRecord(
     // is flag-gated and never throws — automation can never fail an
     // order create. Replays return above and never reach here.
     await emitAutomationEvent("order.created", created.id);
+    // Webhooks (ADV-26): same emit seam — subscribed endpoints get a
+    // durable delivery row + queue job. Never throws.
+    await dispatchWebhookEvent("order.created", created.id);
     return {
       replayed: false,
       orderId: created.id,
@@ -1246,6 +1250,8 @@ export async function applyOrderTransition(
   // target status so a re-delivered event for a different transition
   // is not swallowed by BullMQ jobId dedupe. Never throws.
   await emitAutomationEvent("order.status_changed", row.id, { dedupeSuffix: to });
+  // Webhooks (ADV-26): same emit seam. Never throws.
+  await dispatchWebhookEvent("order.status_changed", row.id);
   return { kind: "ok", order: result.order, from: order.status };
 }
 
@@ -1530,6 +1536,8 @@ export async function markOrderPayment(
     // PAID only — the same seam as the event-bus publish above.
     // Never throws.
     await emitAutomationEvent("payment.succeeded", order.id);
+    // Webhooks (ADV-26): same emit seam. Never throws.
+    await dispatchWebhookEvent("payment.succeeded", order.id);
     // ERP auto-posting (ADV-11): the revenue + delivery + recorded-VAT
     // journal entry posts on this same exactly-once transition, gated
     // on module.erp_lite inside the service. Never throws.

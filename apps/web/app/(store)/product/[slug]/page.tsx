@@ -34,6 +34,8 @@ import { DescriptionSection } from "./DescriptionSection";
 import { ProductVideo } from "./ProductVideo";
 import { SizeChartButton, SizeChartSection } from "./SizeChart";
 import { resolvePdpPackSizeChart } from "@/business-modules/fashion-wiring";
+import { getAgeRestrictionForCategorySlug } from "@/catalog/age-restrictions";
+import { AgeGate } from "./AgeGate";
 import { getWeightedInfosForProduct } from "@/business-modules/grocery-pricing";
 
 // Data: real catalog DB via the repository PUBLIC read path
@@ -161,6 +163,14 @@ export default async function ProductPage({ params }: { params: { slug: string }
   // buy box, EMI note, sticky bar and JSON-LD offers are ALL hidden
   // below — the customer asks via the contact/inbox path instead.
   const priceOnRequest = product.priceOnRequest;
+  // Age gate (ADV-29): when the product's category is configured
+  // age-restricted (Settings catalog.age_restricted_categories),
+  // the buy box below is wrapped in the AgeGate interstitial — a
+  // self-declaration prompt, not verification; the binding gate is
+  // the checkout refusal in the orders route.
+  const ageRestriction = priceOnRequest
+    ? null
+    : await getAgeRestrictionForCategorySlug(product.categorySlug);
   const maxPrice = maxVariantPricePoisha(raw);
   const hasPriceRange = maxPrice > minPrice;
   // Best available discount across active variants (display only).
@@ -517,7 +527,10 @@ export default async function ProductPage({ params }: { params: { slug: string }
               ) : (
               <>
               {/* Add-to-cart + buy-now (Agent 35): client variant picker +
-                  quantity + guest-cart write via src/cart contracts. */}
+                  quantity + guest-cart write via src/cart contracts.
+                  ADV-29: wrapped in the age gate when this product's
+                  category is age-restricted (minAge null = no gate). */}
+              <AgeGate productId={product.id} minAge={ageRestriction?.minAge ?? null}>
               <BuyBoxActions
                 productId={product.id}
                 productTitleBn={product.title.bn}
@@ -534,6 +547,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
                   ? { forceUnavailable: true, unavailableLabel: "বান্ডল স্টকে নেই" }
                   : {})}
               />
+              </AgeGate>
               </>
               )}
             </div>

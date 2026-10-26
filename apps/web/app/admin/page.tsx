@@ -30,6 +30,7 @@ import { StatusBadge, type OrderStatus as BadgeOrderStatus } from "@/components/
 import { ADMIN_NAV, isLockedAddOn } from "@/admin-nav/config";
 import { RevenueChart, Sparkline } from "@/admin/revenue-chart";
 import { getDashboardData } from "@/reports/dashboard";
+import { AttendanceCard } from "@/team/attendance-card";
 import type { OrderStatus } from "@/orders/types";
 
 export const dynamic = "force-dynamic";
@@ -227,6 +228,9 @@ export default async function AdminHome() {
           </div>
         </div>
       </section>
+
+      {/* My attendance (ADV-27) — self-fetching card, own record only. */}
+      <AttendanceCard />
 
       {/* KPI row */}
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
