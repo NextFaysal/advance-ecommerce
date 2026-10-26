@@ -3,10 +3,10 @@ import { z } from "zod";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { requireFeature } from "@/ai/feature-flag";
 import { AI_FEATURE_FLAG } from "@/ai/types";
-import { classifyText } from "@/ai/classify";
+import { aiProvider } from "@/ai/provider";
 
 // POST /api/v1/admin/ai/classify { text }
-// KEYWORD FALLBACK ONLY — sentiment/spam decision support for staff.
+// AI Provider sentiment/spam analysis with keyword fallback.
 // Never auto-delete on a spam verdict. RBAC: marketing.campaign.
 const bodySchema = z.object({ text: z.string().min(1).max(5000) });
 
@@ -19,8 +19,14 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "text (1-5000 chars) is required." } }, { status: 400 });
   }
+
+  const result = await aiProvider.classifyText(parsed.data.text);
+
   return NextResponse.json({
-    data: classifyText(parsed.data.text),
-    meta: { engine: "template-fallback", note: "Keyword-based verdict. Matched keywords are included so staff can judge." },
+    data: result,
+    meta: {
+      engine: result.meta.engine,
+      note: result.meta.label,
+    },
   });
 }

@@ -3,12 +3,13 @@ import { z } from "zod";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { requireFeature } from "@/ai/feature-flag";
 import { AI_FEATURE_FLAG } from "@/ai/types";
-import { generateDescription, generateSeo, suggestImageAlt } from "@/ai/description";
+import { suggestImageAlt } from "@/ai/description";
+import { aiProvider } from "@/ai/provider";
 
 // POST /api/v1/admin/ai/describe
-// TEMPLATE FALLBACK ONLY — no AI model is called. Results carry
-// meta.engine "template-fallback" and requiresReview: true; the UI must
-// show that label. RBAC: products.edit. Flag: module.ai_assist.
+// AI PROVIDER with graceful template fallback. Results carry
+// meta.engine ("provider" or "template-fallback") and requiresReview label.
+// RBAC: products.edit. Flag: module.ai_assist.
 const localized = z.object({ bn: z.string().min(1), en: z.string().min(1) });
 const bodySchema = z.object({
   product: z.object({
@@ -36,12 +37,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "Invalid product input.", details: parsed.error.flatten() } }, { status: 400 });
   }
   const input = parsed.data;
+  const [description, seo] = await Promise.all([
+    aiProvider.generateDescription(input),
+    aiProvider.generateSeo(input),
+  ]);
+  const imageAlt = suggestImageAlt(input, input.imageIndex);
+
   return NextResponse.json({
     data: {
-      description: generateDescription(input),
-      seo: generateSeo(input),
-      imageAlt: suggestImageAlt(input, input.imageIndex),
+      description,
+      seo,
+      imageAlt,
     },
-    meta: { engine: "template-fallback", note: "No AI provider is configured. Template output — review before publishing." },
+    meta: {
+      engine: description.meta.engine,
+      note: description.meta.label,
+    },
   });
 }
