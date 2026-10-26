@@ -25,22 +25,21 @@
  *     · manual_mobile_banking — the customer submits a TrxID instead
  *       (the manual-Trx funnel owns that flow);
  *     · aamarpay / shurjopay / rocket / upay / stripe / paypal — no
- *       adapter of any kind exists for them yet;
- *     · mode "live" — NO live adapter exists in this codebase at
- *       all, with or without credentials (see below).
+ *       adapter of any kind exists for them yet.
  *
- * WHAT CHANGES WHEN NAZMUL ADDS LIVE MERCHANT CREDENTIALS:
- * Saving credentials in Settings (payment.<method>.api_key / .secret
- * …) and flipping the mode to "live" is NOT sufficient by itself —
- * a real provider adapter implementing the PaymentGateway interface
- * (src/integrations/payment.ts) must be written per provider and
- * selected here in place of the sandbox factory. Until that adapter
- * lands, mode "live" deliberately returns "not_configured" rather
- * than silently falling back to the sandbox theatre: a customer must
- * never be sent to a simulated checkout believing it is real.
+ * LIVE ADAPTERS EXIST (ADV-4) for bkash (src/integrations/bkash/),
+ * sslcommerz and nagad (src/payments/live-gateways.ts). When
+ * payment.<method>.mode is "live" AND the merchant credentials are
+ * (payment.bkash.username / .password / .app_key / .app_secret) are
+ * complete in encrypted Settings, initiation dispatches to the real
+ * bKash tokenized checkout and the returned URL is bKash's own
+ * hosted page. Live mode with incomplete credentials returns
+ * "not_configured" naming the missing credential fields — never a
+ * silent fallback to the sandbox theatre: a customer must never be
+ * sent to a simulated checkout believing it is real.
  *
  * Idempotency: the initiation key is stable per order + method
- * (`prepaid-<orderId>`), and the sandbox store replays the persisted
+ * (`prepaid-<orderId>`), and the stores replay the persisted
  * attempt for a repeated key — a double call never creates two
  * attempts.
  */
@@ -49,7 +48,19 @@ import {
   SANDBOX_PAYMENT_METHODS,
   type SandboxPaymentMethod,
 } from "../integrations/sandbox/payment-gateway";
-import { getSetting } from "../lib/settings";
+import {
+  buildLiveBkashGateway,
+  diagnoseBkash,
+  type BkashSettingsReader,
+} from "../integrations/bkash/resolver";
+import { getIntegrationConfigWithSecrets, getSetting } from "../lib/settings";
+
+/** Settings reader for the bKash resolver (ADV-4) — the lib/settings
+ *  wiring lives here so the resolver module itself stays DB-free. */
+export const bkashSettingsReader: BkashSettingsReader = {
+  getSetting: (key) => getSetting(key),
+  getProviderSecrets: (provider) => getIntegrationConfigWithSecrets("payment", provider),
+};
 
 export interface PrepaidOrderRef {
   id: string;
@@ -118,6 +129,97 @@ export async function initiatePrepaidPayment(order: PrepaidOrderRef): Promise<In
 
     const mode = (await getSetting(`payment.${method}.mode`)) ?? "sandbox";
     if (mode === "live") {
+      if (method === "bkash") {
+        // ADV-4: the real bKash adapter. Configured = enabled + mode
+        // live + complete credentials in encrypted Settings (the
+        // live-guard semantics: never fake, never fall back).
+        const gateway = await buildLiveBkashGateway(bkashSettingsReader);
+        if (gateway === null) {
+          const diagnosis = await diagnoseBkash(bkashSettingsReader);
+          const missing = diagnosis.missingFields
+            .map((f) => `payment.bkash.${f}`)
+            .join(", ");
+          return {
+            status: "not_configured",
+            provider: method,
+            message:
+              "bkash is set to LIVE mode but its merchant credentials are incomplete in Admin > Settings > Payments" +
+              (missing ? ` (missing: ${missing})` : "") +
+              " — initiation refused rather than falling back to the sandbox checkout. The order stands; collect manually or complete the credentials.",
+          };
+        }
+        const liveBase = appBaseUrl();
+        const liveResult = await gateway.initiate({
+          orderId: order.id,
+          amountPoisha: order.totalPoisha,
+          customerPhone: order.customerPhone,
+          returnUrl: `${liveBase}/track`,
+          cancelUrl: `${liveBase}/track`,
+          idempotencyKey: `prepaid-${order.id}`,
+        });
+        if (liveResult.status === "FAILED" || !liveResult.redirectUrl) {
+          return {
+            status: "failed",
+            provider: method,
+            message:
+              `LIVE bKash initiation for order ${order.orderNo} did not produce a checkout URL (attempt status ${liveResult.status}) — the order stands; collect manually or retry initiation.`,
+          };
+        }
+        return {
+          status: "initiated",
+          url: liveResult.redirectUrl,
+          provider: method,
+          message:
+            `LIVE bKash initiation for order ${order.orderNo}: real bKash hosted checkout — money moves when the customer approves in bKash.`,
+        };
+      }
+      if (method === "sslcommerz" || method === "nagad") {
+        // ADV-4: real Nagad / SSLCommerz adapters (src/payments/
+        // live-gateways.ts). Same live-guard semantics as bKash:
+        // incomplete credentials → not_configured naming the missing
+        // fields, never a sandbox fallback.
+        const { buildConfiguredPaymentGatewayFromSettings, diagnosePaymentProviderFromSettings } =
+          await import("./live-gateways");
+        const liveGateway = await buildConfiguredPaymentGatewayFromSettings(method);
+        if (liveGateway === null) {
+          const diagnosis = await diagnosePaymentProviderFromSettings(method);
+          const missing = (diagnosis.missingFields ?? [])
+            .map((f) => `payment.${method}.${f}`)
+            .join(", ");
+          return {
+            status: "not_configured",
+            provider: method,
+            message:
+              `${method} is set to LIVE mode but its merchant credentials are incomplete in Admin > Settings > Payments` +
+              (missing ? ` (missing: ${missing})` : "") +
+              " — initiation refused rather than falling back to the sandbox checkout. The order stands; collect manually or complete the credentials.",
+          };
+        }
+        const liveBase = appBaseUrl();
+        const liveResult = await liveGateway.initiate({
+          orderId: order.id,
+          amountPoisha: order.totalPoisha,
+          customerPhone: order.customerPhone,
+          returnUrl: `${liveBase}/api/v1/public/payments/${method}/callback`,
+          cancelUrl: `${liveBase}/track`,
+          idempotencyKey: `prepaid-${order.id}`,
+        });
+        if (liveResult.status === "FAILED" || !liveResult.redirectUrl) {
+          return {
+            status: "failed",
+            provider: method,
+            message:
+              `LIVE ${method} initiation for order ${order.orderNo} did not produce a checkout URL (attempt status ${liveResult.status}) — the order stands; collect manually or retry initiation.`,
+          };
+        }
+        return {
+          status: "initiated",
+          url: liveResult.redirectUrl,
+          provider: method,
+          message:
+            `LIVE ${method} initiation for order ${order.orderNo}: real ${method} hosted checkout — money moves when the customer completes payment.`,
+        };
+      }
       return {
         status: "not_configured",
         provider: method,

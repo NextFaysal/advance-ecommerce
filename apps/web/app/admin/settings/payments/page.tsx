@@ -12,6 +12,10 @@
 // Live-mode guard: live cannot be saved without a credential reference.
 import { useState } from "react";
 import { liveModeGuardMessage } from "../../../../src/integrations/sandbox/live-guard";
+import {
+  ADAPTER_NOT_BUILT_BN,
+  isAdapterlessGatewayMethod,
+} from "../../../../src/checkout/payment-methods";
 
 const METHODS = [
   { key: "cod", label: "COD" },
@@ -77,6 +81,14 @@ async function postJson(url: string, body: Record<string, string>): Promise<{ ok
 function MethodSection({ methodKey, label }: { methodKey: MethodKey; label: string }) {
   const [state, setState] = useState<MethodState>(initialState);
   const set = (patch: Partial<MethodState>) => setState((s) => ({ ...s, ...patch }));
+  // Checkout honesty (doc 22 ADV-4): a gateway method with NO adapter
+  // (capability map: src/checkout/payment-methods) can never complete
+  // a payment, so it is never offered at checkout — and staff must not
+  // be able to "enable" it into a dead end from here either. The
+  // enable control is locked off with the reason visible; the stored
+  // settings keys/semantics are unchanged (a save still writes
+  // enabled=false for such a method).
+  const adapterless = isAdapterlessGatewayMethod(methodKey);
 
   async function handleSave() {
     if (state.mode === "live") {
@@ -87,7 +99,7 @@ function MethodSection({ methodKey, label }: { methodKey: MethodKey; label: stri
       }
     }
     const entries: Array<[string, string]> = [
-      [`payment.${methodKey}.enabled`, String(state.enabled)],
+      [`payment.${methodKey}.enabled`, String(adapterless ? false : state.enabled)],
       [`payment.${methodKey}.mode`, state.mode],
       [`payment.${methodKey}.credential_ref`, state.credentialRef],
       [`payment.${methodKey}.min_poisha`, state.minPoisha],
@@ -119,15 +131,40 @@ function MethodSection({ methodKey, label }: { methodKey: MethodKey; label: stri
 
   return (
     <section style={{ border: "1px solid #E6E8F2", padding: 16, marginBottom: 12 }}>
-      <h2>{label}</h2>
+      <h2>
+        {label}
+        {adapterless ? (
+          <span
+            style={{
+              marginLeft: 8,
+              padding: "2px 8px",
+              borderRadius: 999,
+              background: "#FEF3C7",
+              color: "#92400E",
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            {ADAPTER_NOT_BUILT_BN}
+          </span>
+        ) : null}
+      </h2>
       <label>
         Enabled{" "}
         <input
           type="checkbox"
-          checked={state.enabled}
+          checked={adapterless ? false : state.enabled}
+          disabled={adapterless}
           onChange={(e) => set({ enabled: e.target.checked })}
         />
       </label>{" "}
+      {adapterless ? (
+        <p style={{ color: "#92400E", fontSize: 13, margin: "6px 0" }}>
+          এই পদ্ধতির কোনো পেমেন্ট অ্যাডাপ্টার এখনো তৈরি হয়নি — তাই এটি checkout-এ
+          customers-কে দেখানো হয় না এবং এখান থেকে চালু করা যাবে না। অ্যাডাপ্টার তৈরি
+          হলে এই নিয়ন্ত্রণটি নিজে থেকেই সক্রিয় হবে।
+        </p>
+      ) : null}
       <label>
         Mode{" "}
         <select
@@ -182,6 +219,12 @@ export default function PaymentsSettingsPage() {
       <p>
         Admin-configurable: env is only a default. Live mode must not turn on without a
         verified credential reference, and sandbox is the default for every new method.
+      </p>
+      <p>
+        Checkout-এ শুধু সেই পদ্ধতিগুলোই দেখানো হয় যেগুলো এখানে Enabled এবং যাদের
+        সক্রিয় অ্যাডাপ্টার আছে (বর্তমানে bKash, Nagad, SSLCommerz + COD)।{" "}
+        {ADAPTER_NOT_BUILT_BN} ব্যাজওয়ালা পদ্ধতি চালু করা যায় না — অ্যাডাপ্টার তৈরি
+        না হওয়া পর্যন্ত সেগুলো customers-এর কাছ থেকে লুকানো থাকে।
       </p>
       <p>
         Manual TrxID rule: the same (method, TrxID) can never be approved twice —

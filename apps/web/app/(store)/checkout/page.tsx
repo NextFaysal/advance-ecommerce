@@ -58,6 +58,7 @@ import { newIdempotencyKey, normalizeBdPhone, validateCheckoutForm } from "../..
 import { BkashMark, CodMark, NagadMark, SslCommerzMark } from "@/components/brand-marks";
 import { Icon } from "@/components/ui/icon";
 import OrderOtpPanel from "@/storefront-ux/order-otp-panel";
+import { PAYMENT_NOT_LIVE_MESSAGE_BN } from "../../../src/checkout/payment-methods";
 
 // Responsive pass (Design v3 §3): single-column flow at every width,
 // 44px+ touch targets (h-12 fields, 52px payment tiles), numeric keypad
@@ -90,6 +91,13 @@ type PlacedOrder = {
   /** meta.otp.sms — whether the first OTP code's SMS was queued. */
   otpSms?: string;
   couponStatus?: string;
+  /** meta.paymentInitiation — the hosted-payment initiation result
+   *  for non-COD orders. "initiated" carries the hosted checkout URL;
+   *  "not_configured" means the picked method has no working
+   *  initiation path (adapter-less method, disabled in Settings, or
+   *  a mode flipped ahead of its adapter) — the confirmation must
+   *  say so plainly instead of silently promising a payment step. */
+  paymentInitiation?: { status: string; url?: string };
 };
 
 export default function CheckoutPage() {
@@ -133,6 +141,30 @@ export default function CheckoutPage() {
       })
       .catch(() => {
         // No slot picker; the order is unaffected.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // Payment methods (doc 22 ADV-4): the gateway tiles are NOT
+  // hardcoded. GET /api/v1/public/payment-methods returns only the
+  // methods that are enabled in Admin > Settings > Payments AND have
+  // a working initiation path for their configured mode — the rule
+  // lives in the capability map (src/checkout/payment-methods), so
+  // adapter-less methods (AamarPay, ShurjoPay, Rocket, …) can never
+  // be offered and dead-end a customer again. A failed fetch leaves
+  // COD only — checkout never blocks on the method list.
+  const [gatewayMethods, setGatewayMethods] = useState<{ method: string; label: string }[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/public/payment-methods")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("payment methods fetch failed"))))
+      .then((json: { data?: { methods?: { method: string; label: string }[] } }) => {
+        if (cancelled) return;
+        if (Array.isArray(json.data?.methods)) setGatewayMethods(json.data.methods);
+      })
+      .catch(() => {
+        // COD only; the order flow is unaffected.
       });
     return () => {
       cancelled = true;
@@ -413,6 +445,7 @@ export default function CheckoutPage() {
         meta?: {
           advance?: { requiredPoisha?: number; linkUrl?: string };
           otp?: { required?: boolean; sms?: string };
+          paymentInitiation?: { status?: string; url?: string; provider?: string };
         };
         error?: { code?: string; message?: string; details?: unknown };
       } | null;
@@ -439,6 +472,16 @@ export default function CheckoutPage() {
               : null,
           requiresOtp: Boolean(order.requiresOtp),
           ...(json?.meta?.otp?.sms ? { otpSms: json.meta.otp.sms } : {}),
+          ...(json?.meta?.paymentInitiation?.status
+            ? {
+                paymentInitiation: {
+                  status: json.meta.paymentInitiation.status,
+                  ...(json.meta.paymentInitiation.url
+                    ? { url: json.meta.paymentInitiation.url }
+                    : {}),
+                },
+              }
+            : {}),
           couponStatus: order.couponStatus,
         });
         return;
@@ -504,6 +547,31 @@ export default function CheckoutPage() {
           {placedOrder.paymentMethod === "cod" ? (
             <p className="mt-4 text-sm leading-6 text-text-muted">
               পণ্য হাতে পেয়ে ডেলিভারি ম্যানকে <strong>{digits(formatBdt(placedOrder.totalPoisha))}</strong> পরিশোধ করুন।
+            </p>
+          ) : placedOrder.paymentInitiation?.status === "initiated" && placedOrder.paymentInitiation.url ? (
+            <div className="mt-4">
+              <p className="text-sm leading-6 text-text-muted">
+                অনলাইন পেমেন্টের ধাপটি তৈরি — নিচের বোতামে গিয়ে পেমেন্ট সম্পন্ন করুন।
+              </p>
+              <a
+                href={placedOrder.paymentInitiation.url}
+                className="brand-gradient mt-3 flex h-12 items-center justify-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition hover:opacity-90"
+              >
+                এখনই অনলাইনে পরিশোধ করুন
+              </a>
+            </div>
+          ) : placedOrder.paymentInitiation?.status === "not_configured" ? (
+            // The picked method has NO working initiation path (an
+            // adapter-less method submitted from a stale page or a
+            // direct API call, a disabled method, or a mode flipped
+            // ahead of its adapter). Say so plainly in Bangla — never
+            // a raw "not_configured" — and be honest the order stands.
+            <p role="status" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
+              {PAYMENT_NOT_LIVE_MESSAGE_BN}
+            </p>
+          ) : placedOrder.paymentInitiation ? (
+            <p role="status" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
+              অনলাইন পেমেন্ট এখন শুরু করা যাচ্ছে না — তবে আপনার অর্ডারটি গৃহীত হয়েছে। পেমেন্টের জন্য আমাদের টিম ফোনে যোগাযোগ করবে।
             </p>
           ) : (
             <p className="mt-4 text-sm leading-6 text-text-muted">
@@ -953,28 +1021,33 @@ export default function CheckoutPage() {
               <CodMark />
             </label>
             <label className={PAYMENT_TILE_CLASS}>
-              <input type="radio" name="paymentMethod" value="bkash" className="h-4 w-4 shrink-0 accent-brand-600" />
-              <BkashMark />
+              <input type="radio" name="paymentMethod" value="cod" defaultChecked className="h-4 w-4 shrink-0 accent-brand-600" />
+              <CodMark />
             </label>
-            <label className={PAYMENT_TILE_CLASS}>
-              <input type="radio" name="paymentMethod" value="nagad" className="h-4 w-4 shrink-0 accent-brand-600" />
-              <NagadMark />
-            </label>
-            <label className={PAYMENT_TILE_CLASS}>
-              <input type="radio" name="paymentMethod" value="sslcommerz" className="h-4 w-4 shrink-0 accent-brand-600" />
-              <SslCommerzMark />
-            </label>
-            <label className={PAYMENT_TILE_CLASS}>
-              <input type="radio" name="paymentMethod" value="aamarpay" className="h-4 w-4 shrink-0 accent-brand-600" />
-              <span className="text-sm font-semibold text-text-main">AamarPay</span>
-            </label>
-            <label className={PAYMENT_TILE_CLASS}>
-              <input type="radio" name="paymentMethod" value="shurjopay" className="h-4 w-4 shrink-0 accent-brand-600" />
-              <span className="text-sm font-semibold text-text-main">ShurjoPay</span>
-            </label>
+            {/* Gateway tiles come from GET /api/v1/public/payment-methods
+                (enabled in Settings + a working initiation path for the
+                configured mode, per src/checkout/payment-methods).
+                Adapter-less methods are never returned, so they can
+                never be picked here. */}
+            {gatewayMethods.map((m) => (
+              <label key={m.method} className={PAYMENT_TILE_CLASS}>
+                <input type="radio" name="paymentMethod" value={m.method} className="h-4 w-4 shrink-0 accent-brand-600" />
+                {m.method === "bkash" ? (
+                  <BkashMark />
+                ) : m.method === "nagad" ? (
+                  <NagadMark />
+                ) : m.method === "sslcommerz" ? (
+                  <SslCommerzMark />
+                ) : (
+                  <span className="text-sm font-semibold text-text-main">{m.label}</span>
+                )}
+              </label>
+            ))}
           </div>
           <p className="mt-2.5 text-sm leading-6 text-text-muted">
-            নিরাপদ পেমেন্ট: পণ্য হাতে পেয়ে টাকা দিন (ক্যাশ অন ডেলিভারি), অথবা বিকাশ, নগদ ও কার্ডে অনলাইনে পরিশোধ করুন।
+            {gatewayMethods.length > 0
+              ? "নিরাপদ পেমেন্ট: পণ্য হাতে পেয়ে টাকা দিন (ক্যাশ অন ডেলিভারি), অথবা অনলাইনে পরিশোধ করুন।"
+              : "পণ্য হাতে পেয়ে টাকা দিন (ক্যাশ অন ডেলিভারি)।"}
           </p>
         </fieldset>
         <label className="block">

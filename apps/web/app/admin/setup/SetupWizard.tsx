@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { isAdapterlessGatewayMethod } from "@/checkout/payment-methods";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -249,8 +250,18 @@ export function SetupWizard() {
               {PAYMENT_PROVIDERS.map((p) => (
                 <ToggleRow
                   key={p}
-                  label={PAYMENT_LABELS[p]}
-                  hint={p === "cod" ? "ডিফল্ট চালু" : undefined}
+                  label={
+                    isAdapterlessGatewayMethod(p)
+                      ? `${PAYMENT_LABELS[p]} (অ্যাডাপ্টার তৈরি হয়নি)`
+                      : PAYMENT_LABELS[p]
+                  }
+                  hint={
+                    p === "cod"
+                      ? "ডিফল্ট চালু"
+                      : isAdapterlessGatewayMethod(p)
+                        ? "অ্যাডাপ্টার তৈরি না হওয়া পর্যন্ত checkout-এ দেখাবে না"
+                        : undefined
+                  }
                   on={state.paymentMethods[p]}
                   onToggle={() =>
                     setState({ ...state, paymentMethods: { ...state.paymentMethods, [p]: !state.paymentMethods[p] } })

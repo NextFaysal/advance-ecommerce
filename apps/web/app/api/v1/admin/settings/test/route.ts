@@ -11,11 +11,14 @@ import {
   type SmsSettingsReader,
 } from "@/integrations/sms-resolver";
 import { SmsProviderError } from "@/integrations/sms-providers";
+import { probeBkashConnection, type BkashSettingsReader } from "@/integrations/bkash/resolver";
 
 // POST /api/v1/admin/settings/test — contract in src/integrations/sandbox/SETTINGS-API-CONTRACT.md
 // Sandbox: succeeds without any credential, reported as sandbox (simulated, no real provider call).
 // Live: requires a configured credential reference; real provider test is NOT faked —
 // if configured, returns 503 until the real adapter test is implemented in the provider slice.
+// bKash (ADV-4): the real adapter EXISTS, so the payment/bkash branch is a REAL
+// grant-token probe against the mode-selected bKash environment (token discarded).
 // SMS (ADV-2): the real adapters EXIST, so the sms branch in POST is a REAL balance
 // probe against the named provider (never the fallback): unconfigured -> 422 with
 // the missing pieces named, provider rejection -> 502 with the provider's code.
@@ -108,6 +111,43 @@ export async function POST(req: Request) {
     } catch {
       return NextResponse.json(
         { error: { code: "DB_NOT_READY", message: "SMS settings could not be read (Settings store unavailable)." } },
+        { status: 503 },
+      );
+    }
+  }
+  if (category === "payment" && provider === "bkash") {
+    // ADV-4: the real bKash adapter EXISTS, so this is a REAL probe —
+    // a grant-token call against the environment the saved mode picks
+    // (bKash sandbox host for sandbox creds, production for live).
+    // Unconfigured -> 422 naming the missing Settings fields (names
+    // only); provider rejection -> 502 with the provider code. The
+    // token is discarded inside the probe; no credential or token
+    // value is ever returned.
+    const reader: BkashSettingsReader = {
+      getSetting: (key) => getSetting(key),
+      getProviderSecrets: (name) => getIntegrationConfigWithSecrets("payment", name),
+    };
+    try {
+      const probe = await probeBkashConnection(reader);
+      if (!probe.ok) {
+        const status = probe.code === "BKASH_NOT_CONFIGURED" ? 422 : 502;
+        return NextResponse.json(
+          { error: { code: probe.code, message: probe.message, details: { missingFields: probe.missingFields, mode: probe.mode } } },
+          { status },
+        );
+      }
+      return NextResponse.json({
+        data: {
+          ok: true,
+          status: "connected",
+          provider,
+          mode: probe.mode,
+          message: `bKash token grant succeeded against the ${probe.environment} environment (real provider call; token discarded).`,
+        },
+      });
+    } catch {
+      return NextResponse.json(
+        { error: { code: "DB_NOT_READY", message: "bKash settings could not be read (Settings store unavailable)." } },
         { status: 503 },
       );
     }
