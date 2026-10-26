@@ -12,7 +12,15 @@ export async function GET() {
     const catalog = await getThemeCatalog();
     // Public endpoint only exposes active themes.
     const data = catalog.filter((t) => t.isActive);
-    return NextResponse.json({ data }, { status: 200 });
+    return NextResponse.json(
+      { data },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+        },
+      },
+    );
   } catch {
     return NextResponse.json({ data: [] }, { status: 200 });
   }

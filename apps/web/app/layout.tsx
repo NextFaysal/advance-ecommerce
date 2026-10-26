@@ -1,11 +1,9 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
-import { cookies } from "next/headers";
 import RegisterSW from "./register-sw";
 import TrackingShell from "./tracking-shell";
 import StorefrontShell from "./storefront-shell";
-import { getThemeCatalog } from "@/lib/theme-repository";
-import { THEME_COOKIE, themeToFullStyleString } from "@/lib/theme-engine";
+import ThemeStyleSync from "@/components/ui/theme-style-sync";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 
 export const metadata: Metadata = {
@@ -32,20 +30,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     // Database unreachable — fallback gracefully to catalogue defaults
   }
 
-  // Resolve selected theme from cookie; fall back gracefully if DB is not ready.
-  let themeStyleBlock: string | null = null;
-  try {
-    const themeId = cookies().get(THEME_COOKIE)?.value;
-    if (themeId) {
-      const catalog = await getThemeCatalog();
-      const theme = catalog.find((t) => t.id === themeId) ?? null;
-      if (theme) {
-        themeStyleBlock = themeToFullStyleString(theme);
-      }
-    }
-  } catch {
-    // DB not ready or cookie missing — fall back to globals.css defaults silently.
-  }
+  // Selected-theme CSS is applied entirely on the client (bootstrap
+  // script below + ThemeStyleSync) so this layout never calls cookies()
+  // and pages stay eligible for static rendering / ISR.
 
   return (
     <html lang="bn" suppressHydrationWarning>
@@ -59,15 +46,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             '(function(){try{var t=localStorage.getItem("theme");if(t==="dark"||(!t&&window.matchMedia("(prefers-color-scheme: dark)").matches)){document.documentElement.classList.add("dark")}}catch(e){}})();',
         }}
       />
-      {/* Custom theme CSS variables — injected after globals.css so they
-          override default tokens without !important. Only present when the
-          visitor has a selected_theme cookie pointing at a valid catalog entry. */}
-      {themeStyleBlock ? (
-        <style
-          data-theme-override="true"
-          dangerouslySetInnerHTML={{ __html: themeStyleBlock }}
-        />
-      ) : null}
+      {/* Selected-theme bootstrap: inject the cached theme CSS BEFORE
+          first paint so a themed visitor never flashes the default
+          tokens. The CSS text is computed by ThemeStyleSync /
+          ThemeProvider and cached in localStorage under "ae-theme-css"
+          (keys must stay in sync with
+          src/components/ui/theme-style-sync.tsx). The injected <style>
+          lands in <head> after globals.css, so it overrides default
+          tokens without !important. No cache entry = default theme. */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html:
+            '(function(){try{var css=localStorage.getItem("ae-theme-css");if(css){var s=document.createElement("style");s.setAttribute("data-theme-override","true");s.textContent=css;(document.head||document.documentElement).appendChild(s);}}catch(e){}})();',
+        }}
+      />
       {/* Brand fonts via Google Fonts CDN. The self-hosted woff2 files
           exist locally (public/fonts/) but are NOT in the deployed repo
           (binary files could not be pushed), so production rendered in
@@ -81,6 +73,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       />
       <body className="min-h-screen bg-background font-sans text-foreground antialiased selection:bg-brand-500 selection:text-white">
         <RegisterSW />
+        <ThemeStyleSync />
         <StorefrontShell>
           <TrackingShell>{children}</TrackingShell>
         </StorefrontShell>

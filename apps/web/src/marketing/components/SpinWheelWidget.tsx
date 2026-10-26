@@ -7,6 +7,13 @@
 // and the true odds are printed under the wheel — no fake odds, no
 // fake winners. Dismissal is remembered for the rest of the Dhaka
 // day in localStorage.
+//
+// Wave 46: `signedIn` is OPTIONAL. When the caller doesn't know it
+// (the homepage section no longer reads the session server-side,
+// so the page can render statically), the widget resolves it on
+// mount via GET /api/v1/public/account/me and shows a neutral
+// placeholder — neither the guest phone form nor the member
+// state — until the answer arrives.
 import { useEffect, useMemo, useState } from "react";
 
 export interface SpinWidgetSegment {
@@ -44,11 +51,12 @@ function dhakaToday(): string {
 export function SpinWheelWidget({
   segments,
   dailyLimit,
-  signedIn,
+  signedIn: signedInProp,
 }: {
   segments: SpinWidgetSegment[];
   dailyLimit: number;
-  signedIn: boolean;
+  /** Omit when unknown — the widget resolves it client-side on mount. */
+  signedIn?: boolean;
 }) {
   const [dismissed, setDismissed] = useState(true); // until localStorage is read
   const [phone, setPhone] = useState("");
@@ -56,6 +64,8 @@ export function SpinWheelWidget({
   const [rotation, setRotation] = useState(0);
   const [result, setResult] = useState<SpinSuccess | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // null = not yet known (no prop given, /account/me not answered).
+  const [signedIn, setSignedIn] = useState<boolean | null>(signedInProp ?? null);
 
   useEffect(() => {
     try {
@@ -64,6 +74,30 @@ export function SpinWheelWidget({
       setDismissed(false);
     }
   }, []);
+
+  // Resolve the signed-in state client-side when the caller didn't
+  // supply it. /account/me answers 200 { data: { customer, ... } }
+  // for a valid customer_session and 401 otherwise — anything that
+  // isn't a confirmed customer counts as guest.
+  useEffect(() => {
+    if (signedIn !== null) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/v1/public/account/me", {
+          credentials: "same-origin",
+        });
+        const json: unknown = await res.json().catch(() => null);
+        const customer = (json as { data?: { customer?: unknown } } | null)?.data?.customer;
+        if (!cancelled) setSignedIn(res.ok && customer !== null && customer !== undefined);
+      } catch {
+        if (!cancelled) setSignedIn(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn]);
 
   const totalWeight = useMemo(() => segments.reduce((s, x) => s + x.weightBps, 0), [segments]);
   const gradient = useMemo(() => {
@@ -192,7 +226,7 @@ export function SpinWheelWidget({
             ))}
           </ul>
 
-          {!signedIn ? (
+          {signedIn === false ? (
             <label className="mt-4 block text-sm font-medium text-text-main">
               মোবাইল নম্বর
               <input
@@ -203,6 +237,11 @@ export function SpinWheelWidget({
                 className="mt-1 w-full max-w-xs rounded-xl border border-border bg-surface px-3 py-2 text-text-main"
               />
             </label>
+          ) : signedIn === null ? (
+            /* Signed-in state still resolving: a neutral placeholder
+               of the same height as the guest phone block — neither
+               the guest form nor the member state is shown yet. */
+            <div className="mt-4 h-[66px]" aria-hidden="true" />
           ) : null}
 
           <button

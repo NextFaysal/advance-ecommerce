@@ -5,17 +5,16 @@
  * stored phone is verification data and is never rendered), stored
  * review photos when a row carries them (Review.images), a helpful
  * vote button per review (src/reviews/votes.ts — the viewer's own
- * voted state is resolved server-side), and the submission form
- * (client component, string prop only).
+ * voted state is resolved CLIENT-side via
+ * /api/v1/public/products/[slug]/reviews/votes, so this section —
+ * and the PDP around it — can render statically), and the
+ * submission form (client component, string prop only).
  *
  * Fail-safe like the rest of the PDP's data reads: a store problem
  * degrades to the honest empty state instead of breaking the page.
  */
-import { headers } from "next/headers";
 import { getApprovedReviewAggregate, listApprovedReviews } from "@/reviews/store";
 import { getReviewPhotoStatus } from "@/reviews/photo";
-import { customerVoterKey, guestVoterKey, listVotedReviewIds } from "@/reviews/votes";
-import { getCurrentCustomer } from "@/customer-auth/auth";
 import { HelpfulButton } from "./HelpfulButton";
 import { ReviewForm } from "./ReviewForm";
 import { Stars } from "./Stars";
@@ -44,24 +43,13 @@ export async function ReviewSection({
     getReviewPhotoStatus().catch(() => null),
   ]);
 
-  // Helpful-vote pressed state for THIS viewer: the voter key mirrors
-  // the vote API exactly (customer id when signed in, hashed ip+ua
-  // for guests) so the button state and the server dedupe agree.
-  const voterKey = await (async () => {
-    const customer = await getCurrentCustomer().catch(() => null);
-    if (customer) return customerVoterKey(customer.id);
-    const hdrs = headers();
-    const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-    return guestVoterKey(ip, hdrs.get("user-agent") ?? undefined);
-  })().catch(() => null);
-  const votedIds = new Set(
-    voterKey && reviews.length > 0
-      ? await listVotedReviewIds(
-          voterKey,
-          reviews.map((r) => r.id),
-        ).catch(() => [] as string[])
-      : [],
-  );
+  // Helpful-vote pressed state for THIS viewer is NOT resolved here
+  // any more: it depends on the viewer's session / ip+ua voter key,
+  // which would force the whole PDP dynamic. Each HelpfulButton
+  // starts unpressed and resolves its state on mount from
+  // /api/v1/public/products/[slug]/reviews/votes (same voter-key
+  // derivation, computed by that route), so the button state and
+  // the vote API's server-side dedupe still agree.
 
   return (
     <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8" aria-label="কাস্টমার রিভিউ">
@@ -120,8 +108,9 @@ export async function ReviewSection({
               <div className="mt-3">
                 <HelpfulButton
                   reviewId={r.id}
+                  productSlug={productSlug}
                   initialCount={r.helpfulCount}
-                  initialVoted={votedIds.has(r.id)}
+                  initialVoted={false}
                 />
               </div>
             </li>

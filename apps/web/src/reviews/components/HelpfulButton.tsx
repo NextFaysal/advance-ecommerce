@@ -6,21 +6,55 @@
  * customer id, or a hashed guest key server-side); a repeat click is
  * a server no-op and the button settles into the pressed state with
  * the authoritative count from the response. Serializable props
- * only: review id + initial count/state from the server section.
+ * only: review id + product slug + initial count/state.
+ *
+ * The PDP renders statically, so the viewer's already-voted state
+ * cannot be baked into the page: on mount the button resolves it
+ * from /api/v1/public/products/[slug]/reviews/votes (one shared
+ * request per product per page load — see loadVotedReviewIds) and
+ * settles into the pressed state when its review id comes back.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface HelpfulResponse {
   data?: { helpfulCount: number; counted: boolean };
   error?: { message?: string };
 }
 
+interface VotesResponse {
+  data?: { votedReviewIds?: string[] };
+}
+
+// One votes lookup per product slug per page load, shared by every
+// helpful button rendered for that product (module scope — this
+// file is a client component, so the map lives in the browser).
+const votedIdsBySlug = new Map<string, Promise<Set<string>>>();
+
+function loadVotedReviewIds(productSlug: string): Promise<Set<string>> {
+  let pending = votedIdsBySlug.get(productSlug);
+  if (!pending) {
+    pending = fetch(
+      `/api/v1/public/products/${encodeURIComponent(productSlug)}/reviews/votes`,
+    )
+      .then(async (res) => {
+        if (!res.ok) return new Set<string>();
+        const json = (await res.json().catch(() => null)) as VotesResponse | null;
+        return new Set(json?.data?.votedReviewIds ?? []);
+      })
+      .catch(() => new Set<string>());
+    votedIdsBySlug.set(productSlug, pending);
+  }
+  return pending;
+}
+
 export function HelpfulButton({
   reviewId,
+  productSlug,
   initialCount,
   initialVoted,
 }: {
   reviewId: string;
+  productSlug: string;
   initialCount: number;
   initialVoted: boolean;
 }) {
@@ -28,6 +62,22 @@ export function HelpfulButton({
   const [voted, setVoted] = useState(initialVoted);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+
+  // Merge the viewer's server-resolved voted ids into the pressed
+  // state (initialised from the prop, which the static page renders
+  // as unpressed).
+  useEffect(() => {
+    if (voted) return;
+    let alive = true;
+    loadVotedReviewIds(productSlug)
+      .then((ids) => {
+        if (alive && ids.has(reviewId)) setVoted(true);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [productSlug, reviewId, voted]);
 
   async function onVote() {
     if (busy || voted) return;

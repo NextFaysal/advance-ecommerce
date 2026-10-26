@@ -4,14 +4,15 @@
  * PENDING waits in the admin moderation queue, HIDDEN never shows)
  * plus the ask form. Asking requires a signed-in customer — guests
  * see a login prompt instead of the form, and the API enforces the
- * same rule with a 401.
+ * same rule with a 401. The signed-in-vs-guest choice is resolved
+ * CLIENT-side by AskQuestionGate (via /api/v1/public/account/me)
+ * so this section — and the PDP around it — can render statically.
  *
  * Fail-safe like the review section beside it: a store problem
  * degrades to the honest empty state instead of breaking the PDP.
  */
-import { getCurrentCustomer } from "@/customer-auth/auth";
 import { listAnsweredQuestions } from "@/qa/store";
-import { AskQuestionForm } from "./AskQuestionForm";
+import { AskQuestionGate } from "./AskQuestionGate";
 
 function bnDate(iso: string): string {
   return new Date(iso).toLocaleDateString("bn-BD", {
@@ -29,10 +30,7 @@ export async function QuestionsSection({
   productId: string;
   productSlug: string;
 }) {
-  const [questions, customer] = await Promise.all([
-    listAnsweredQuestions(productId).catch(() => []),
-    getCurrentCustomer().catch(() => null),
-  ]);
+  const questions = await listAnsweredQuestions(productId).catch(() => []);
 
   return (
     <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8" aria-label="পণ্য সম্পর্কে প্রশ্নোত্তর">
@@ -64,22 +62,7 @@ export async function QuestionsSection({
 
       <div className="mt-8 border-t border-border pt-6">
         <h3 className="text-base font-extrabold text-text-main">পণ্য সম্পর্কে প্রশ্ন করুন</h3>
-        {customer ? (
-          <>
-            <p className="mt-1 text-sm text-text-muted">
-              আমাদের টিম উত্তর দিলেই প্রশ্নোত্তরটি এখানে প্রকাশিত হবে।
-            </p>
-            <AskQuestionForm productSlug={productSlug} />
-          </>
-        ) : (
-          <p className="mt-1 text-sm leading-6 text-text-muted">
-            প্রশ্ন করতে{" "}
-            <a href="/account" className="font-semibold text-brand-700 hover:underline">
-              লগইন করুন
-            </a>{" "}
-            — লগইন করা গ্রাহকদের প্রশ্নই শুধু নেওয়া হয়, যাতে উত্তরগুলো নির্ভরযোগ্য থাকে।
-          </p>
-        )}
+        <AskQuestionGate productSlug={productSlug} />
       </div>
     </section>
   );

@@ -43,7 +43,7 @@ import { getWeightedInfosForProduct } from "@/business-modules/grocery-pricing";
 // Design refresh (Direction A): gallery + sticky buy box + trust rows.
 // Presentation only — data flow, cart contracts and child components
 // are unchanged.
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const product = await getLivePublicProductBySlug(params.slug);
@@ -817,4 +817,30 @@ export default async function ProductPage({ params }: { params: { slug: string }
       <CompareTray />
     </main>
   );
+}
+
+/**
+ * ISR (wave 46): pre-render the current catalogue at build time so PDPs
+ * serve from the edge cache; products created later generate on first
+ * visit (dynamicParams default) and are then cached with the same 60s
+ * revalidation. The page itself still enforces the live-publication
+ * gate, so a scheduled/inactive slug pre-rendered here resolves to the
+ * same 404 a dynamic render would produce. Capped at 500 slugs so a
+ * very large catalogue cannot stall the deploy build — the remainder
+ * are covered by on-demand generation. A DB failure returns [] (the
+ * build must never fail because params could not be loaded).
+ */
+export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
+  try {
+    const { prisma } = await import("@advance-ecommerce/db");
+    const rows = await prisma.product.findMany({
+      where: { status: "ACTIVE" },
+      select: { slug: true },
+      orderBy: { updatedAt: "desc" },
+      take: 500,
+    });
+    return rows.map((r) => ({ slug: r.slug }));
+  } catch {
+    return [];
+  }
 }

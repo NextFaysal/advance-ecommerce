@@ -5,12 +5,16 @@
  *
  * Wraps the `useTheme()` hook which lets any client component:
  *   - Read the current theme id
- *   - Switch to a different theme (sets cookie + reloads for SSR injection)
+ *   - Switch to a different theme
  *   - List available themes
  *
- * The actual CSS injection happens server-side in layout.tsx via the
- * selected_theme cookie. Switching a theme sets the cookie and triggers
- * a router refresh so the server re-renders with the new theme style block.
+ * Theme CSS is injected entirely on the client: setTheme still records
+ * the choice in the selected_theme cookie (so ThemeStyleSync can resolve
+ * it on any page), but the visible switch is instant — the theme's CSS is
+ * computed here with themeToFullStyleString, cached in localStorage
+ * ("ae-theme-css" / "ae-theme-css-for") for the layout bootstrap script,
+ * and swapped into the <style data-theme-override> element immediately.
+ * No server round-trip or router refresh is involved.
  */
 import {
   createContext,
@@ -20,9 +24,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useRouter } from "next/navigation";
 import type { AppTheme } from "@/lib/themes";
-import { THEME_COOKIE } from "@/lib/theme-engine";
+import { THEME_COOKIE, themeToFullStyleString } from "@/lib/theme-engine";
+import {
+  clearThemeCss,
+  storeAndApplyThemeCss,
+} from "@/components/ui/theme-style-sync";
 
 /* ------------------------------------------------------------------ */
 /* Context shape                                                        */
@@ -51,7 +58,6 @@ const ThemeContext = createContext<ThemeContextValue>({
 /* ------------------------------------------------------------------ */
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const router = useRouter();
   const [themes, setThemes] = useState<AppTheme[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [themeId, setThemeIdState] = useState<string | null>(null);
@@ -84,17 +90,23 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const setTheme = useCallback(
     (id: string | null) => {
       if (id === null) {
-        // Clear cookie
+        // Clear cookie + cached CSS + injected style element.
         document.cookie = `${THEME_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
         setThemeIdState(null);
+        clearThemeCss();
       } else {
         document.cookie = `${THEME_COOKIE}=${id}; path=/; max-age=31536000; SameSite=Lax`;
         setThemeIdState(id);
+        // Apply instantly from the already-fetched catalog. If the
+        // catalog hasn't loaded yet, ThemeStyleSync resolves the
+        // cookie on the next page load instead.
+        const theme = themes.find((t) => t.id === id);
+        if (theme) {
+          storeAndApplyThemeCss(id, themeToFullStyleString(theme));
+        }
       }
-      // Refresh so layout.tsx re-runs and injects the new theme style block.
-      router.refresh();
     },
-    [router],
+    [themes],
   );
 
   return (

@@ -9,9 +9,9 @@ import { NewsletterForm } from "@/newsletter/components/NewsletterForm";
 import { FlashSaleCountdownSection } from "@/marketing/flash-sale-section";
 import { HeroSlides } from "@/cms/HeroSlides";
 import { getActiveHeroSlides } from "@/cms/site-content";
-import { cookies } from "next/headers";
 import { marketingMechanicsEnabled } from "@/marketing/docs";
-import { resolveHeroForVisitor, VISITOR_COOKIE } from "@/marketing/experiments";
+import { getRunningHeroExperiment } from "@/marketing/experiments";
+import { HeroExperiment } from "@/marketing/components/HeroExperiment";
 import { SpinWheelSection } from "@/marketing/components/SpinWheelSection";
 import { VisitorIdBootstrap } from "@/marketing/components/VisitorIdBootstrap";
 import { listHomepageReviews } from "@/reviews/store";
@@ -26,7 +26,12 @@ import { Stars } from "@/reviews/components/Stars";
 // tinted category tiles, flash-sale + featured rails, inverse "why us"
 // band, testimonials, newsletter. Sections with no data hide themselves
 // entirely — the homepage never shows a bare empty box.
-export const dynamic = "force-dynamic";
+// Wave 46: statically rendered with ISR (revalidate 60s) — the two
+// per-visitor personalisations that forced force-dynamic moved
+// client-side: the hero A/B variant (HeroExperiment component +
+// /api/v1/public/experiments/hero) and the spin wheel's signed-in
+// state (SpinWheelWidget resolves /account/me on mount).
+export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "Advance Ecommerce — বাংলাদেশের অনলাইন শপ",
@@ -88,21 +93,8 @@ function ShieldIcon({ size = 26 }: { size?: number }) {
   );
 }
 
-function BoltIcon({ size = 26 }: { size?: number }) {
-  return (
-    <svg {...iconProps} width={size} height={size}>
-      <path d="M13 2.5 4.5 13.5H11L9.8 21.5 18.5 10H12l1-7.5z" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg {...iconProps} width="16" height="16" strokeWidth="2.2">
-      <path d="M4.5 12.5 9.5 17.5 19.5 6.5" />
-    </svg>
-  );
-}
+/* BoltIcon + CheckIcon moved into HeroExperiment.tsx with the
+   hero text block (Wave 46) — they were used nowhere else here. */
 
 /* ---------- shared bits ---------- */
 function SectionHeading({
@@ -247,23 +239,19 @@ export default async function Home() {
     // section at all, exactly like the other data-driven sections.
     listHomepageReviews(6).catch(() => []),
   ]);
-  // A/B hero experiment (ADV-18B): when the marketing-mechanics flag
-  // is on and a hero experiment is running, the visitor's assigned
-  // variant copy overrides the hero (exposure is recorded server-
-  // side, deduped per visitor). Control / no experiment / flag off
-  // -> null -> the hero below renders exactly as before.
+  // A/B hero experiment (ADV-18B): the per-visitor resolution now
+  // happens client-side (HeroExperiment fetches
+  // /api/v1/public/experiments/hero, which runs resolveHeroForVisitor
+  // with the same exposure recording) so this page can render
+  // statically. Server-side we only compute whether a variant COULD
+  // apply: mechanics flag on AND a hero experiment running — the
+  // running check needs no visitor id. Fail-safe to false.
   const mechanicsOn = marketingMechanicsEnabled();
-  const heroOverride = mechanicsOn
-    ? await (async () => {
-        try {
-          const visitorId = (await cookies()).get(VISITOR_COOKIE)?.value ?? null;
-          const resolution = await resolveHeroForVisitor(visitorId);
-          return resolution?.hero ?? null;
-        } catch {
-          return null;
-        }
-      })()
-    : null;
+  const experimentActive = mechanicsOn
+    ? await getRunningHeroExperiment()
+        .then((experiment) => experiment !== null)
+        .catch(() => false)
+    : false;
   // Real catalogue totals for the hero stat row (Design v3) — summed
   // from the same category fetch; the row hides when the store is empty.
   const totalProducts = categories.reduce((sum, c) => sum + c.productCount, 0);
@@ -301,60 +289,28 @@ export default async function Home() {
   return (
     <main className="mx-auto min-w-0 max-w-[1440px] px-4 sm:px-6">
       {/* ---------- Hero ---------- */}
-      {heroSlides.length > 0 && heroOverride === null ? (
+      {heroSlides.length > 0 ? (
         /* CMS campaign slides (Admin → Content) replace the static
-           hero copy while at least one slide is active. */
+           hero copy while at least one slide is active. The A/B
+           override never applied while slides exist — unchanged. */
         <HeroSlides slides={heroSlides} visual={<HeroVisual />} stats={heroStats} />
       ) : (
       <section className="brand-soft-gradient mt-5 overflow-hidden rounded-3xl shadow-sm">
         <div className="grid items-center gap-8 p-6 sm:p-10 lg:grid-cols-2 lg:p-12">
           <div className="min-w-0">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-xs font-bold text-brand-700 shadow-sm">
-              <BoltIcon size={13} />
-              বাংলাদেশের নিজস্ব অনলাইন শপ
-            </span>
-            <h1 className="mt-5 break-words text-4xl font-extrabold leading-[1.2] text-text-main [overflow-wrap:anywhere] sm:text-5xl sm:leading-[1.15]">
-              {heroOverride !== null ? (
-                heroOverride.headlineBn
-              ) : (
-                <>
-                  সারাদেশে হোম ডেলিভারি,
-                  <span className="brand-gradient bg-clip-text text-transparent"> পছন্দের সব পণ্য</span>
-                </>
-              )}
-            </h1>
-            <p className="mt-4 max-w-lg break-words text-[15px] leading-7 text-text-muted [overflow-wrap:anywhere]">
-              {heroOverride !== null && heroOverride.subBn !== ""
-                ? heroOverride.subBn
-                : "ফ্যাশন, ইলেকট্রনিক্স, ঘরোয়া পণ্য ও আরও অনেক কিছু — যাচাই করা অরিজিনাল পণ্য, সেরা দামে, ঘরে বসে অর্ডার করুন বাংলায়।"}
-            </p>
-            <div className="mt-7 flex flex-wrap gap-3">
-              <Link
-                href={heroOverride !== null ? heroOverride.ctaHref : "/shop"}
-                className="brand-gradient rounded-xl px-6 py-3.5 text-[15px] font-bold text-white shadow-md transition hover:opacity-90"
-              >
-                {heroOverride !== null ? heroOverride.ctaLabelBn : "কেনাকাটা শুরু করুন"}
-              </Link>
-              <Link
-                href="/shop?sort=newest"
-                className="rounded-xl border border-border bg-surface px-6 py-3.5 text-[15px] font-bold text-text-main shadow-sm transition hover:bg-surface-2"
-              >
-                নতুন কালেকশন দেখুন
-              </Link>
-            </div>
-            <ul className="mt-7 flex flex-wrap gap-x-5 gap-y-2 text-[13px] font-medium text-text-muted">
-              <li className="flex items-center gap-1.5">
-                <span className="text-emerald-600"><CheckIcon /></span> ক্যাশ অন ডেলিভারি
-              </li>
-              <li className="flex items-center gap-1.5">
-                <span className="text-emerald-600"><CheckIcon /></span> সহজ রিটার্ন
-              </li>
-              <li className="flex items-center gap-1.5">
-                <span className="text-emerald-600"><CheckIcon /></span> ১০০% অরিজিনাল পণ্য
-              </li>
-            </ul>
-
-            {heroStats}
+            {/* Static default copy; HeroExperiment swaps in the
+                visitor's A/B variant client-side when a hero
+                experiment is running. heroStats stays a
+                server-rendered child. */}
+            <HeroExperiment
+              headline="সারাদেশে হোম ডেলিভারি, পছন্দের সব পণ্য"
+              sub="ফ্যাশন, ইলেকট্রনিক্স, ঘরোয়া পণ্য ও আরও অনেক কিছু — যাচাই করা অরিজিনাল পণ্য, সেরা দামে, ঘরে বসে অর্ডার করুন বাংলায়।"
+              ctaLabel="কেনাকাটা শুরু করুন"
+              ctaHref="/shop"
+              experimentActive={experimentActive}
+            >
+              {heroStats}
+            </HeroExperiment>
           </div>
 
           <HeroVisual />
