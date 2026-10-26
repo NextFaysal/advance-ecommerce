@@ -150,7 +150,9 @@ function generatePngBuffer(width, height, isMaskable = false) {
   return Buffer.concat([signature, ihdrChunk, idatChunk, iendChunk]);
 }
 
-const outDir = path.resolve("apps/web/public/icons");
+// Resolve against the script's own location so the generator works
+// from any CWD (repo root locally, apps/web under pnpm on Vercel).
+const outDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../apps/web/public/icons");
 if (!fs.existsSync(outDir)) {
   fs.mkdirSync(outDir, { recursive: true });
 }
