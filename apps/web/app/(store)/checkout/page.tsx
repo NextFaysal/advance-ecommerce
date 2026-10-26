@@ -57,6 +57,7 @@ import { useDigitText } from "@/components/ui/numerals";
 import { newIdempotencyKey, normalizeBdPhone, validateCheckoutForm } from "../../../src/checkout";
 import { BkashMark, CodMark, NagadMark, SslCommerzMark } from "@/components/brand-marks";
 import { Icon } from "@/components/ui/icon";
+import OrderOtpPanel from "@/storefront-ux/order-otp-panel";
 
 // Responsive pass (Design v3 §3): single-column flow at every width,
 // 44px+ touch targets (h-12 fields, 52px payment tiles), numeric keypad
@@ -73,11 +74,21 @@ const SLOT_CARD_CLASS =
   "flex min-h-[52px] cursor-pointer items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 py-2.5 transition has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50 has-[:checked]:ring-1 has-[:checked]:ring-brand-500/40";
 
 type PlacedOrder = {
+  /** Order row id — the OTP endpoints are addressed by it. */
+  id: string;
   orderNo: string;
+  /** The phone as submitted (normalized) — the OTP endpoints bind by it. */
+  phone: string;
   totalPoisha: number;
   paymentMethod: string;
   advanceRequired: boolean;
+  /** meta.advance from the create response: the required amount and,
+   *  when issuing succeeded, the one-time payment link (hash-only at
+   *  rest — this confirmation is the ONLY place it can ever be shown). */
+  advance: { requiredPoisha: number; linkUrl?: string } | null;
   requiresOtp: boolean;
+  /** meta.otp.sms — whether the first OTP code's SMS was queued. */
+  otpSms?: string;
   couponStatus?: string;
 };
 
@@ -88,6 +99,8 @@ export default function CheckoutPage() {
   const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null);
+  // Advance-link copy feedback on the confirmation screen.
+  const [linkCopied, setLinkCopied] = useState(false);
   // Geo cascade (doc 17 O2): division/district/upazila are picked
   // from the canonical geo tree, so submitted values are dataset
   // names by construction. If the geo fetch fails, the form falls
@@ -388,6 +401,7 @@ export default function CheckoutPage() {
       const json = (await res.json().catch(() => null)) as {
         data?: {
           order?: {
+            id?: string;
             orderNo?: string;
             totalPoisha?: number;
             paymentMethod?: string;
@@ -395,6 +409,10 @@ export default function CheckoutPage() {
             requiresOtp?: boolean;
             couponStatus?: string;
           };
+        };
+        meta?: {
+          advance?: { requiredPoisha?: number; linkUrl?: string };
+          otp?: { required?: boolean; sms?: string };
         };
         error?: { code?: string; message?: string; details?: unknown };
       } | null;
@@ -406,11 +424,21 @@ export default function CheckoutPage() {
         clearGuestCart();
         setCart(null);
         setPlacedOrder({
+          id: order.id ?? "",
           orderNo: order.orderNo,
+          phone: result.data.phone,
           totalPoisha: order.totalPoisha ?? pricing.grandTotalPoisha,
           paymentMethod: order.paymentMethod ?? result.data.paymentMethod,
           advanceRequired: Boolean(order.advanceRequired),
+          advance:
+            typeof json?.meta?.advance?.requiredPoisha === "number"
+              ? {
+                  requiredPoisha: json.meta.advance.requiredPoisha,
+                  ...(json.meta.advance.linkUrl ? { linkUrl: json.meta.advance.linkUrl } : {}),
+                }
+              : null,
           requiresOtp: Boolean(order.requiresOtp),
+          ...(json?.meta?.otp?.sms ? { otpSms: json.meta.otp.sms } : {}),
           couponStatus: order.couponStatus,
         });
         return;
@@ -482,10 +510,57 @@ export default function CheckoutPage() {
               অনলাইন পেমেন্ট সম্পন্ন না হলে আমাদের টিম ফোনে যোগাযোগ করে পেমেন্টের ধাপ জানিয়ে দেবে।
             </p>
           )}
-          {placedOrder.advanceRequired || placedOrder.requiresOtp ? (
+          {placedOrder.advance?.linkUrl ? (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-4 text-left">
+              <p className="text-sm font-bold text-text-main">
+                অগ্রিম পেমেন্ট প্রয়োজন: {digits(formatBdt(placedOrder.advance.requiredPoisha))}
+              </p>
+              <p className="mt-1 text-sm leading-6 text-text-muted">
+                এই অর্ডারটি নিশ্চিত করতে অগ্রিম{" "}
+                <strong>{digits(formatBdt(placedOrder.advance.requiredPoisha))}</strong>{" "}
+                পরিশোধ করুন। এই একই লিংকটি SMS-এর মাধ্যমে আপনার ফোনে পাঠানোর জন্যও ইস্যু করা
+                হয়েছে — তবে লিংকটি এখানে শুধু এইবারই দেখা যাবে, তাই সংরক্ষণ করে রাখুন।
+              </p>
+              <a
+                href={placedOrder.advance.linkUrl}
+                className="brand-gradient mt-3 flex h-12 items-center justify-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition hover:opacity-90"
+              >
+                এখনই অগ্রিম পরিশোধ করুন
+              </a>
+              <div className="mt-2.5 flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate rounded-lg bg-card px-3 py-2 text-xs text-text-muted" title={placedOrder.advance.linkUrl}>
+                  {placedOrder.advance.linkUrl}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard
+                      ?.writeText(placedOrder.advance?.linkUrl ?? "")
+                      .then(() => setLinkCopied(true))
+                      .catch(() => setLinkCopied(false));
+                  }}
+                  className="inline-flex h-9 shrink-0 items-center rounded-lg border border-border bg-card px-3 text-sm font-medium text-text-main transition hover:bg-surface-2"
+                >
+                  {linkCopied ? "কপি হয়েছে ✓" : "লিংক কপি করুন"}
+                </button>
+              </div>
+            </div>
+          ) : placedOrder.advanceRequired ? (
             <p role="status" className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
-              নিরাপত্তা যাচাইয়ের জন্য এই অর্ডারে অগ্রিম পেমেন্ট বা ফোন যাচাই (OTP) লাগতে পারে — আমাদের টিম যোগাযোগ করবে।
+              এই অর্ডারে অগ্রিম পেমেন্ট
+              {placedOrder.advance
+                ? ` (${digits(formatBdt(placedOrder.advance.requiredPoisha))})`
+                : ""}{" "}
+              প্রয়োজন — পেমেন্ট লিংকটি এখানে দেখানো যাচ্ছে না, আমাদের টিম ফোনে যোগাযোগ করে লিংকটি
+              পাঠিয়ে দেবে।
             </p>
+          ) : null}
+          {placedOrder.requiresOtp ? (
+            <OrderOtpPanel
+              orderId={placedOrder.id}
+              phone={placedOrder.phone}
+              smsState={placedOrder.otpSms}
+            />
           ) : null}
           {placedOrder.couponStatus === "applied" ? (
             <p className="mt-3 text-sm font-medium text-emerald-700">আপনার কুপনটি প্রয়োগ হয়েছে — ছাড়সহ মোট উপরে দেখানো হয়েছে।</p>
@@ -904,7 +979,12 @@ export default function CheckoutPage() {
         </fieldset>
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-text-main">কুপন কোড (ঐচ্ছিক)</span>
-          <input name="couponCode" autoComplete="off" className={INPUT_CLASS} />
+          <input
+            name="couponCode"
+            autoComplete="off"
+            className={INPUT_CLASS}
+            defaultValue={cart.couponCode ?? ""}
+          />
         </label>
         <button
           id="checkout-submit"

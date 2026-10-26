@@ -133,6 +133,18 @@ export default function TrackingSettingsPage() {
         Configure Multi-Pixel tracking, Meta Conversions API (CAPI), Microsoft Clarity Heatmaps & Recordings, Google Analytics 4, and TikTok Pixel.
       </p>
 
+      {/* Honesty banner (doc 21, G3-2): these DB settings are NOT wired
+          to the live pixel/CAPI yet — the runtime reads server env. */}
+      <div
+        role="alert"
+        style={{ border: "1px solid #F59E0B", backgroundColor: "#FFFBEB", color: "#92400E", borderRadius: 8, padding: "12px 16px", marginBottom: 24, fontSize: 14, lineHeight: 1.7 }}
+      >
+        <strong>⚠️ সতর্কতা:</strong> এই পেজের সেটিংস এখনো live pixel/CAPI-তে কার্যকর নয় — live মান আসে
+        সার্ভার env (<code>NEXT_PUBLIC_META_PIXEL_ID</code>, <code>META_PIXEL_ID</code>,{" "}
+        <code>META_ACCESS_TOKEN</code>) থেকে; env সেট থাকলে সেটাই প্রযোজ্য। এখানে সেভ করা মান
+        ডাটাবেসে সংরক্ষিত থাকে, কিন্তু runtime এখনো তা পড়ে না — DB ওয়্যারিং আসবে doc 21-এর W3 ধাপে।
+      </div>
+
       {/* Live Status Card */}
       <section style={{ border: "1px solid #E5E7EB", borderRadius: 8, padding: 18, marginBottom: 24, backgroundColor: "#F9FAFB" }}>
         <h2 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 10px 0" }}>Current Status (Safe Booleans)</h2>

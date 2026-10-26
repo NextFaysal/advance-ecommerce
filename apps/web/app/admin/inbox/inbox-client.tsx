@@ -19,7 +19,7 @@
  * - Phone numbers are masked in every list/panel view (maskPhone, the
  *   same helper src/inbox/service uses for ConversationView).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -173,7 +173,19 @@ export default function InboxClient({
     | null
   >(null);
 
-  const views = conversations;
+  /* ---- W0-E (doc 21 G3-10): read markers. Conversations arrive as
+   * server props; when staff opens one, the mark-read route stamps
+   * lastReadAt server-side and returns the conversation re-read
+   * through the same read model the page used — that returned view
+   * replaces the prop in `readViews`, so the badge clears with the
+   * SERVER's number (a reload recomputes the same value from the
+   * persisted marker — the two always agree). On any failure nothing
+   * is overridden: the badge keeps the last server-reported count. */
+  const [readViews, setReadViews] = useState<Record<string, ConversationView>>({});
+  const views = useMemo(
+    () => conversations.map((c) => readViews[c.id] ?? c),
+    [conversations, readViews],
+  );
   const filteredViews = useMemo(
     () => views.filter((v) => channelFilter === "ALL" || v.channel === channelFilter),
     [views, channelFilter],
@@ -209,6 +221,42 @@ export default function InboxClient({
     setConvShipping("inside_dhaka");
     setConvResult(null);
   }, [selected, threads]);
+
+  // W0-E: opening a conversation marks it read server-side (the
+  // initially displayed conversation counts as opened). One in-flight
+  // call per conversation; the effect re-runs when the returned view
+  // lands in readViews and stops because unreadCount is then 0.
+  const markReadInFlight = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!selectedId) return;
+    const view = views.find((v) => v.id === selectedId);
+    if (!view || view.unreadCount === 0) return;
+    if (markReadInFlight.current.has(selectedId)) return;
+    markReadInFlight.current.add(selectedId);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/v1/admin/inbox/conversations/${selectedId}/mark-read`, {
+          method: "POST",
+        });
+        const payload: unknown = await res.json().catch(() => null);
+        const updated = (
+          payload as { data?: { conversation?: ConversationView } } | null
+        )?.data?.conversation;
+        if (!cancelled && res.ok && updated) {
+          setReadViews((prev) => ({ ...prev, [updated.id]: updated }));
+        }
+      } catch {
+        // Best-effort by design: a failed mark-read leaves the badge
+        // at the last server-reported count — never a fake zero.
+      } finally {
+        markReadInFlight.current.delete(selectedId);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, views]);
 
   const queueReply = () => {
     if (!selected || replyText.trim().length === 0) return;

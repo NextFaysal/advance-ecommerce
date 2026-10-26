@@ -75,9 +75,11 @@ const QUEUE_PRESENTATION: Record<QueueName, QueuePresentation> = {
     purposeEn: "Run automation rules for a trigger event",
   },
   [QUEUE_NAMES.bulkActions]: {
-    // No createHandlers() entry yet: the processor is processBulkJob in
-    // src/jobs/bulk-actions.ts (runs in-process in demo; the BullMQ
-    // handler will call the same function).
+    // createHandlers() in src/jobs/handlers.ts DOES have a bulkActions
+    // entry: it runs the job through the injected bulkActionsRunner,
+    // which the worker deps wire to processBulkJob in
+    // src/jobs/bulk-actions.ts (the admin orders route also runs
+    // processBulkJob in-process).
     handlerName: "processBulkJob (src/jobs/bulk-actions.ts)",
     purposeBn: "একসাথে অনেক অর্ডারের কাজ — কনফার্ম / লেবেল / কুরিয়ার বুকিং",
     purposeEn: "Bulk order actions (confirm / print label / book courier / status / tag) with per-order results",

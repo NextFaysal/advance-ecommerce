@@ -20,6 +20,7 @@ import {
 import { TRACKING_SETTING_KEYS } from "@/tracking/settings";
 import { loadOrderRules } from "@/checkout/order-rules";
 import { loadDeliverySlots } from "@/checkout/delivery-slots";
+import { StoreNameCard } from "./store-name-card";
 
 // Settings index — landing page for Admin > Settings.
 // The card statuses are REAL (2026-10-25; previously labelled demo
@@ -124,6 +125,7 @@ export default async function AdminSettingsPage() {
   const locale = publicSettings["general.locale"] ?? SETTING_DEFAULTS["general.locale"]!.value;
   const currency = publicSettings["general.currency"] ?? SETTING_DEFAULTS["general.currency"]!.value;
   const timezone = publicSettings["general.timezone"] ?? SETTING_DEFAULTS["general.timezone"]!.value;
+  const storeName = publicSettings["general.store_name"] ?? SETTING_DEFAULTS["general.store_name"]!.value;
 
   const payments = await probe(async () => {
     const statuses = await getIntegrationStatus("payment", PAYMENT_PROVIDERS);
@@ -243,6 +245,31 @@ export default async function AdminSettingsPage() {
     } satisfies CardStatus;
   });
 
+  // Call-center timings (doc 21, G3-17): the effective values of the
+  // seven call_center.* keys — getSetting() resolves DB row -> env ->
+  // built-in default, the same resolution the consumers read live.
+  const callCenter = await probe(async () => {
+    const intOf = async (key: string): Promise<number> => {
+      const raw = await getSetting(key);
+      const parsed = raw === null ? NaN : Number.parseInt(raw, 10);
+      return Number.isInteger(parsed)
+        ? parsed
+        : Number.parseInt(SETTING_DEFAULTS[key]!.value, 10);
+    };
+    const [slaConfirm, slaRescue, startHour, endHour, retention] = await Promise.all([
+      intOf("call_center.sla_confirm_minutes"),
+      intOf("call_center.sla_rescue_minutes"),
+      intOf("call_center.calling_start_hour"),
+      intOf("call_center.calling_end_hour"),
+      intOf("call_center.log_retention_months"),
+    ]);
+    return {
+      tone: "neutral",
+      label: "সম্পাদনাযোগ্য",
+      detail: `SLA: কনফার্ম ${slaConfirm} মিনিট · রেসকিউ ${slaRescue} মিনিট · কলিং উইন্ডো ${startHour}:00–${endHour}:00 (ঢাকা) · কল-লগ সংরক্ষণ ${retention} মাস।`,
+    } satisfies CardStatus;
+  });
+
   const cards: SettingsCardInfo[] = [
     {
       href: "/admin/settings/payments",
@@ -300,6 +327,14 @@ export default async function AdminSettingsPage() {
       description: "সর্বনিম্ন অর্ডার, অগ্রিমের সীমা ও হার, COD বন্ধের জেলা/ক্যাটাগরি (orders.rules.*) এবং ডেলিভারি স্লট (orders.delivery_slots)।",
       status: orders,
     },
+    {
+      href: "/admin/settings/call-center",
+      icon: <Icon name="phone" size={22} />,
+      titleBn: "কল সেন্টার",
+      titleEn: "Call Center",
+      description: "সুপারভাইজার SLA সীমা, ফলো-আপ অটোমেশন SMS-এর সময়, কলিং উইন্ডো ও কল-লগ সংরক্ষণের মেয়াদ (call_center.*)।",
+      status: callCenter,
+    },
   ];
 
   return (
@@ -319,7 +354,11 @@ export default async function AdminSettingsPage() {
 
       <Card className="mb-6">
         <h2 className="mb-1 font-semibold">সাধারণ সেটিংস সারাংশ</h2>
-        <dl className="grid gap-2 text-sm sm:grid-cols-3">
+        <dl className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <dt className="text-text-muted">স্টোরের নাম — <code>general.store_name</code></dt>
+            <dd className="font-semibold">{storeName.trim() !== "" ? storeName : "সেট হয়নি (ইনভয়েস/পে পেজে নাম দেখায় না)"}</dd>
+          </div>
           <div>
             <dt className="text-text-muted">ডিফল্ট ভাষা — <code>general.locale</code></dt>
             <dd className="font-semibold">{locale === "bn" ? "bn (বাংলা), fallback en" : locale}</dd>
@@ -341,6 +380,10 @@ export default async function AdminSettingsPage() {
           কনফিগার হয়েছে/হয়নি (boolean) অবস্থা থাকে।
         </p>
       </Card>
+
+      <div className="mb-6">
+        <StoreNameCard initial={storeName} dbReady={dbReady} />
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((card) => (

@@ -33,6 +33,7 @@
  * by the supplied name, and the DB id is what reads back).
  */
 import { prisma } from "@advance-ecommerce/db";
+import { notifyBackInStockForVariant } from "../storefront-ux/back-in-stock-notify";
 import {
   planMovement,
   type MovementAction,
@@ -320,14 +321,37 @@ async function applyMovementInTx(
  * The returned movement is the primary leg (for a transfer_out with a
  * destination, the transfer_in leg is persisted too but not returned —
  * same shape as the in-memory applyMovement contract).
+ *
+ * Doc 21 G3-9 hook: when the movement takes the variant's canonical
+ * availability (ProductVariant.stock) across 0 -> positive, pending
+ * back-in-stock signups may finally be notified. The check reads the
+ * cache before and after THIS transaction commits (so transfers,
+ * whose mirror leg lands in the same tx, correctly net to no
+ * crossing), and the notify itself is fire-and-forget — the producer
+ * never throws and an enqueue failure must never fail a stock write
+ * that already committed.
  */
 export async function applyMovementDb(
   input: MovementAction,
 ): Promise<{ item: InventoryItem; movement: StockMovement }> {
-  return prisma.$transaction(async (tx) => {
+  const cacheBefore = await prisma.productVariant
+    .findUnique({ where: { id: input.variantId }, select: { stock: true } })
+    .then((row) => row?.stock ?? 0)
+    .catch(() => 0);
+  const result = await prisma.$transaction(async (tx) => {
     const actorId = await resolveActorId(tx, input.actorId);
     return applyMovementInTx(tx, input, actorId);
   });
+  if (cacheBefore <= 0) {
+    const cacheAfter = await prisma.productVariant
+      .findUnique({ where: { id: input.variantId }, select: { stock: true } })
+      .then((row) => row?.stock ?? 0)
+      .catch(() => 0);
+    if (cacheAfter > 0) {
+      void notifyBackInStockForVariant(input.variantId).catch(() => undefined);
+    }
+  }
+  return result;
 }
 
 /* ------------------------------------------------------------------ */

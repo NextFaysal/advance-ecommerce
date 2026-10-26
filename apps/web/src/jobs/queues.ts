@@ -45,7 +45,7 @@ export interface SmsJob {
    * to HandlerDeps.orderOtpSmsSend (src/orders/otp.ts). Their payload
    * is ids-only EXCEPT otpCode below — see its comment.
    */
-  jobKind?: "callcenter-automation" | "order-otp" | "return-update";
+  jobKind?: "callcenter-automation" | "order-otp" | "return-update" | "back-in-stock";
   /** Order-OTP flavour marker (jobKind === "order-otp"). */
   purpose?: "order_otp";
   /**
@@ -64,6 +64,22 @@ export interface SmsJob {
   returnId?: string;
   /** The return's new status (REQUESTED / APPROVED / RECEIVED / EXCHANGED / …). */
   status?: string;
+  /** Human order number (ORD-YYYYMMDD-NNNN) for the return-update
+   *  message text — resolved server-side by the producer from the
+   *  Order row, like `phone`. Jobs enqueued before this field existed
+   *  omit it; the send path falls back to the DB. */
+  orderNo?: string;
+  /**
+   * Back-in-stock flavour (jobKind === "back-in-stock", doc 21 G3-9):
+   * produced by src/storefront-ux/back-in-stock-notify.ts when a
+   * variant's availability crosses 0 -> positive and a signup is
+   * waiting. `signupId` is the BackInStockSignup row (also the
+   * recipientRef); `phone` is the signup's number, copied from the DB
+   * row by the producer — the send path re-reads the row and stamps
+   * notifiedAt after a successful send.
+   */
+  signupId?: string;
+  productId?: string;
   /** Recipient phone for a return-update job — see returnId above. */
   phone?: string;
   /**

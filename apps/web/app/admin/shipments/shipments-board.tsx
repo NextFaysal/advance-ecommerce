@@ -1,41 +1,54 @@
 "use client";
 
+/**
+ * Shipments board — REAL records (doc 21 W0-C, G3-7a).
+ *
+ * Was a page-state DEMO over ./demo-data.ts (sample rows, fake booking
+ * minting SBX-…-DEMO ids). Now it renders the server's real Shipment
+ * rows (src/shipments/board.ts, passed in by page.tsx; the same read
+ * backs GET /api/v1/admin/shipments/board). The visual language is the
+ * old board's — stat cards, status tabs, courier filter, data table,
+ * detail card with the OD5 parcel stepper + event timeline — but every
+ * figure is a persisted row: stored charge/COD, real ShipmentEvent
+ * history, no synthesized events or timestamps.
+ *
+ * This board takes NO action on a shipment. Booking, split booking and
+ * status work live per-order in the order workspace (its shipments
+ * panel); every row and the detail card link there
+ * (/admin/orders/<orderId>). The booking panel of the demo is replaced
+ * by an honest explainer card saying exactly that, plus the standing
+ * note that courier adapters are sandbox until live providers land.
+ */
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Icon, type IconName } from "@/components/ui/icon";
 import { Money, formatPoisha } from "@/components/ui/money";
 import { StatCard } from "@/components/ui/stat-card";
 import { DataTable } from "@/components/ui/table";
-import type { ShipmentStatus } from "@/integrations/courier";
-import {
-  DEMO_COURIER_PROVIDERS,
-  FORWARD_FLOW,
-  SANDBOX_COURIER_LABELS_BN,
-  SHIPMENT_STATUS_META,
-  ZONE_LABELS_BN,
-  dhakaDateTime,
-  isProblemStatus,
-  summarizeShipments,
-  type BookingRateCard,
-  type DemoBookableOrder,
-  type DemoShipment,
-  type SandboxCourierProvider,
-} from "./demo-data";
+import type { ShipmentBoardRow, ShipmentsBoardSummary } from "@/shipments/board";
 
-// Shipments board — PAGE-STATE DEMO ONLY.
-// The list starts from SAMPLE records in ./demo-data.ts shaped exactly
-// like the sandbox SandboxShipment records. The booking panel's "book"
-// action adds a row to THIS PAGE's state only: no API call is made and
-// nothing is persisted or sent to a courier. Real booking goes through
-// POST /api/v1/admin/shipments (permission shipments.book, idempotency
-// key required) and live tracking through GET /api/v1/admin/shipments/
-// track once the DB wiring lands — the panel says so in its own copy.
-// Every charge shown comes from the server-computed rate cards (page.tsx
-// calls the real sandbox courierChargePoisha / getRates); no rate math
-// is re-implemented here beyond reading those outputs back.
+/* ------------------------------------------------------------------ */
+/* Display language (moved from the deleted demo-data.ts; the values   */
+/* are presentation only — statuses themselves come from the rows).    */
+/* ------------------------------------------------------------------ */
 
-const STATUS_TAB_ORDER: readonly ShipmentStatus[] = [
+type StatusTone = "warning" | "info" | "success" | "danger" | "brand" | "neutral";
+
+const SHIPMENT_STATUS_META: Record<string, { labelBn: string; labelEn: string; icon: string; tone: StatusTone }> = {
+  CREATED: { labelBn: "তৈরি হয়েছে", labelEn: "CREATED", icon: "📦", tone: "neutral" },
+  PICKED_UP: { labelBn: "পিকআপ হয়েছে", labelEn: "PICKED_UP", icon: "📥", tone: "info" },
+  IN_TRANSIT: { labelBn: "পথে আছে", labelEn: "IN_TRANSIT", icon: "🚚", tone: "info" },
+  OUT_FOR_DELIVERY: { labelBn: "ডেলিভারির জন্য বের হয়েছে", labelEn: "OUT_FOR_DELIVERY", icon: "🛵", tone: "brand" },
+  DELIVERED: { labelBn: "ডেলিভারি সম্পন্ন", labelEn: "DELIVERED", icon: "✓", tone: "success" },
+  FAILED: { labelBn: "ব্যর্থ", labelEn: "FAILED", icon: "⚠", tone: "danger" },
+  RETURNING: { labelBn: "ফেরত আসছে", labelEn: "RETURNING", icon: "↩", tone: "warning" },
+  RETURNED: { labelBn: "ফেরত এসেছে", labelEn: "RETURNED", icon: "↩", tone: "warning" },
+};
+
+const STATUS_TAB_ORDER = [
   "CREATED",
   "PICKED_UP",
   "IN_TRANSIT",
@@ -44,13 +57,42 @@ const STATUS_TAB_ORDER: readonly ShipmentStatus[] = [
   "FAILED",
   "RETURNING",
   "RETURNED",
-];
+] as const;
 
-type StatusFilter = "ALL" | ShipmentStatus;
-type CourierFilter = "all" | SandboxCourierProvider;
+const COURIER_LABELS_BN: Record<string, string> = {
+  steadfast: "স্টেডফাস্ট (Steadfast)",
+  pathao: "পাঠাও (Pathao)",
+  redx: "রেডএক্স (RedX)",
+};
 
-function ShipmentStatusBadge({ status }: { status: ShipmentStatus }) {
-  const s = SHIPMENT_STATUS_META[status];
+function courierLabel(provider: string): string {
+  return COURIER_LABELS_BN[provider] ?? provider;
+}
+
+function isProblemStatus(status: string): boolean {
+  return status === "FAILED" || status === "RETURNING" || status === "RETURNED";
+}
+
+function dhakaDateTime(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Dhaka",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(new Date(iso));
+}
+
+function formatWeight(grams: number | null): string {
+  if (grams === null) return "—";
+  if (grams < 1000) return `${grams} g`;
+  const kg = grams / 1000;
+  return `${Number.isInteger(kg) ? String(kg) : kg.toFixed(1)} kg`;
+}
+
+function ShipmentStatusBadge({ status }: { status: string }) {
+  const s = SHIPMENT_STATUS_META[status] ?? { labelBn: status, labelEn: status, icon: "•", tone: "neutral" as StatusTone };
   return (
     <Badge tone={s.tone}>
       <span aria-hidden="true">{s.icon}</span> {s.labelBn} ({s.labelEn})
@@ -58,133 +100,119 @@ function ShipmentStatusBadge({ status }: { status: ShipmentStatus }) {
   );
 }
 
-function formatWeight(grams: number): string {
-  if (grams < 1000) return `${grams} g`;
-  const kg = grams / 1000;
-  return `${Number.isInteger(kg) ? String(kg) : kg.toFixed(1)} kg`;
+/* ------------------------------------------------------------------ */
+/* OD5 parcel stepper — same pipeline language as the order workspace  */
+/* shipments panel (status only; no fabricated timestamps).            */
+/* ------------------------------------------------------------------ */
+
+const PIPELINE_STEPS = [
+  { status: "CREATED", labelBn: "তৈরি", icon: "package" },
+  { status: "PICKED_UP", labelBn: "পিকআপ", icon: "box" },
+  { status: "IN_TRANSIT", labelBn: "পথে", icon: "truck" },
+  { status: "OUT_FOR_DELIVERY", labelBn: "ডেলিভারিতে", icon: "arrow-right" },
+  { status: "DELIVERED", labelBn: "ডেলিভার্ড", icon: "check" },
+] as const satisfies readonly { status: string; labelBn: string; icon: IconName }[];
+
+const OFF_PATH: Record<string, { labelBn: string; icon: IconName; cls: string }> = {
+  FAILED: { labelBn: "ডেলিভারি ব্যর্থ হয়েছে", icon: "alert", cls: "border-rose-200 bg-rose-50 text-rose-700" },
+  RETURNING: { labelBn: "পার্সেলটি ফেরত আসছে", icon: "rotate-ccw", cls: "border-amber-200 bg-amber-50 text-amber-800" },
+  RETURNED: { labelBn: "পার্সেলটি ফেরত এসেছে", icon: "rotate-ccw", cls: "border-border bg-slate-50 text-slate-600" },
+};
+
+function ParcelStepper({ status }: { status: string }) {
+  const activeIdx = PIPELINE_STEPS.findIndex((s) => s.status === status);
+  if (activeIdx === -1) {
+    const off = OFF_PATH[status];
+    if (!off) return null;
+    return (
+      <p className={`mt-3 flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium ${off.cls}`}>
+        <Icon name={off.icon} size={16} />
+        {off.labelBn}
+      </p>
+    );
+  }
+  return (
+    <ol className="mt-3 flex items-start" aria-label={`পার্সেলের অবস্থা: ${PIPELINE_STEPS[activeIdx].labelBn}`}>
+      {PIPELINE_STEPS.map((step, idx) => {
+        const done = idx < activeIdx || status === "DELIVERED";
+        const active = idx === activeIdx && status !== "DELIVERED";
+        return (
+          <li key={step.status} className={`flex items-start ${idx > 0 ? "flex-1" : ""}`}>
+            {idx > 0 && (
+              <span aria-hidden="true" className={`mx-1 mt-[13px] h-0.5 flex-1 rounded ${idx <= activeIdx ? "bg-emerald-400" : "bg-border"}`} />
+            )}
+            <span className="flex w-14 flex-col items-center gap-1 text-center">
+              <span
+                aria-hidden="true"
+                className={`flex h-[27px] w-[27px] items-center justify-center rounded-full ${
+                  done
+                    ? "bg-emerald-500 text-white"
+                    : active
+                      ? "bg-brand-600 text-white ring-4 ring-brand-100"
+                      : "bg-slate-100 text-slate-400"
+                }`}
+              >
+                <Icon name={done ? "check" : step.icon} size={14} />
+              </span>
+              <span className={`text-xs leading-tight ${done || active ? "font-semibold text-text-main" : "text-text-muted"}`}>
+                {step.labelBn}
+              </span>
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
-const selectClass =
-  "h-11 w-full rounded-[10px] border border-border bg-card px-3 text-sm outline-none focus:border-brand-500";
+/* ------------------------------------------------------------------ */
+
+type StatusFilter = "ALL" | string;
 
 export function ShipmentsBoard({
-  initialShipments,
-  bookableOrders,
-  rateCards,
+  rows,
+  summary,
 }: {
-  initialShipments: DemoShipment[];
-  bookableOrders: DemoBookableOrder[];
-  rateCards: BookingRateCard[];
+  rows: ShipmentBoardRow[];
+  summary: ShipmentsBoardSummary;
 }) {
-  const [shipments, setShipments] = useState<DemoShipment[]>(initialShipments);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
-  const [courierFilter, setCourierFilter] = useState<CourierFilter>("all");
-  const [selectedId, setSelectedId] = useState<string>(initialShipments[0]?.shipmentId ?? "");
+  const [courierFilter, setCourierFilter] = useState<string>("all");
+  const [selectedId, setSelectedId] = useState<string>(rows[0]?.id ?? "");
 
-  // Booking panel state.
-  const [bookedOrderIds, setBookedOrderIds] = useState<string[]>([]);
-  const availableOrders = bookableOrders.filter((o) => !bookedOrderIds.includes(o.orderId));
-  const [bookOrderId, setBookOrderId] = useState<string>(bookableOrders[0]?.orderId ?? "");
-  const [bookProvider, setBookProvider] = useState<SandboxCourierProvider>("steadfast");
-  const [bookWeight, setBookWeight] = useState<number>(bookableOrders[0]?.weightGrams ?? 1000);
-  const [bookedNotice, setBookedNotice] = useState<string | null>(null);
-
-  const summary = useMemo(() => summarizeShipments(shipments), [shipments]);
-  const problemShipments = useMemo(
-    () => shipments.filter((s) => isProblemStatus(s.status)),
-    [shipments],
+  const problemShipments = useMemo(() => rows.filter((s) => isProblemStatus(s.status)), [rows]);
+  const providers = useMemo(
+    () => [...new Set(rows.map((s) => s.provider))].sort(),
+    [rows],
   );
 
   const filtered = useMemo(
     () =>
-      shipments.filter(
+      rows.filter(
         (s) =>
           (statusFilter === "ALL" || s.status === statusFilter) &&
           (courierFilter === "all" || s.provider === courierFilter),
       ),
-    [shipments, statusFilter, courierFilter],
+    [rows, statusFilter, courierFilter],
   );
 
-  const selected = shipments.find((s) => s.shipmentId === selectedId) ?? filtered[0] ?? shipments[0];
+  const selected = rows.find((s) => s.id === selectedId) ?? filtered[0] ?? rows[0];
 
-  const bookOrder = availableOrders.find((o) => o.orderId === bookOrderId) ?? availableOrders[0];
-  const bookCard = bookOrder ? rateCards.find((c) => c.orderId === bookOrder.orderId) : undefined;
-  const bookWeightOptions = bookCard
-    ? Object.keys(bookCard.chargeByWeightGrams).map(Number).sort((a, b) => a - b)
-    : [];
-  const effectiveWeight =
-    bookWeightOptions.includes(bookWeight) ? bookWeight : (bookOrder?.weightGrams ?? 1000);
-  const bookCharge = bookCard ? (bookCard.chargeByWeightGrams[String(effectiveWeight)] ?? 0) : 0;
-  const bookBase = bookCard ? (bookCard.chargeByWeightGrams["1000"] ?? bookCharge) : 0;
-  const bookExtraUnits = bookCharge > bookBase ? Math.round((bookCharge - bookBase) / 2000) : 0;
-
-  function pickOrder(orderId: string) {
-    const order = bookableOrders.find((o) => o.orderId === orderId);
-    setBookOrderId(orderId);
-    if (order) setBookWeight(order.weightGrams);
-    setBookedNotice(null);
-  }
-
-  function book() {
-    if (!bookOrder || !bookCard) return;
-    const seq = shipments.length + 1;
-    const prefix =
-      bookProvider === "steadfast" ? "SF" : bookProvider === "pathao" ? "PT" : "RX";
-    const nowIso = new Date().toISOString();
-    const shipment: DemoShipment = {
-      shipmentId: `SBX-SHIP-${bookProvider.toUpperCase()}-DEMO${seq}`,
-      trackingId: `SBX-${prefix}-DEMO${9000 + seq}`,
-      provider: bookProvider,
-      orderId: bookOrder.orderId,
-      codAmountPoisha: bookOrder.codAmountPoisha,
-      weightGrams: effectiveWeight,
-      status: "CREATED",
-      statusHistory: ["CREATED"],
-      orderStatus: "CONFIRMED",
-      idempotencyKey: `demo-page-booking-${seq}`,
-      createdAt: nowIso,
-      zone: bookOrder.zone,
-      district: bookOrder.address.district,
-      chargePoisha: bookCharge,
-      failureReason: null,
-      events: [
-        {
-          status: "CREATED",
-          at: nowIso,
-          note: "ডেমো বুকিং (শুধু এই পেজে) — কুরিয়ারে পাঠানো হয়নি",
-        },
-      ],
-    };
-    setShipments((prev) => [shipment, ...prev]);
-    setBookedOrderIds((prev) => [...prev, bookOrder.orderId]);
-    setSelectedId(shipment.shipmentId);
-    setBookedNotice(
-      `অর্ডার #${bookOrder.orderId} — ডেমো শিপমেন্ট তৈরি হয়েছে (ট্র্যাকিং ${shipment.trackingId})। এটি শুধু এই পেজের স্টেট; কোনো বুকিং কুরিয়ারে পাঠানো হয়নি।`,
-    );
-    const nextOrder = availableOrders.find((o) => o.orderId !== bookOrder.orderId);
-    if (nextOrder) {
-      setBookOrderId(nextOrder.orderId);
-      setBookWeight(nextOrder.weightGrams);
-    }
-  }
-
-  const rows = filtered.map((s) => ({
+  const tableRows = filtered.map((s) => ({
     order: (
-      <span className="font-mono tabular-nums">
-        #{s.orderId}
+      <Link
+        href={`/admin/orders/${s.orderId}`}
+        className="font-mono tabular-nums text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+      >
+        #{s.orderNo}
         {isProblemStatus(s.status) ? (
           <span className="ml-1 text-rose-600" aria-hidden="true">⚠</span>
         ) : null}
-      </span>
+      </Link>
     ),
-    courier: SANDBOX_COURIER_LABELS_BN[s.provider as SandboxCourierProvider] ?? s.provider,
-    tracking: <span className="font-mono text-xs tabular-nums">{s.trackingId}</span>,
-    destination: (
-      <span>
-        {s.district}
-        <span className="block text-xs text-text-muted">{ZONE_LABELS_BN[s.zone]}</span>
-      </span>
-    ),
+    courier: courierLabel(s.provider),
+    tracking: <span className="font-mono text-xs tabular-nums">{s.trackingId ?? "—"}</span>,
+    destination: <span>{s.district ?? "—"}</span>,
     weight: <span className="tabular-nums">{formatWeight(s.weightGrams)}</span>,
     charge: <Money poisha={s.chargePoisha} />,
     cod:
@@ -193,33 +221,34 @@ export function ShipmentsBoard({
       ) : (
         <span className="text-text-muted">প্রিপেইড</span>
       ),
-    status: (
-      <span>
-        <ShipmentStatusBadge status={s.status} />
-        {s.failureReason ? (
-          <span className="mt-1 block max-w-[220px] text-xs text-rose-700">{s.failureReason}</span>
-        ) : null}
-      </span>
-    ),
+    status: <ShipmentStatusBadge status={s.status} />,
     created: (
       <span className="font-mono text-xs tabular-nums">{dhakaDateTime(s.createdAt)}</span>
     ),
     action: (
-      <Button
-        size="sm"
-        variant={selected?.shipmentId === s.shipmentId ? "secondary" : "outline"}
-        onClick={() => setSelectedId(s.shipmentId)}
-        aria-pressed={selected?.shipmentId === s.shipmentId}
-      >
-        ট্র্যাকিং
-      </Button>
+      <span className="flex items-center gap-2">
+        <Button
+          size="sm"
+          variant={selected?.id === s.id ? "secondary" : "outline"}
+          onClick={() => setSelectedId(s.id)}
+          aria-pressed={selected?.id === s.id}
+        >
+          বিবরণ
+        </Button>
+        <Link
+          href={`/admin/orders/${s.orderId}`}
+          className="whitespace-nowrap text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+        >
+          ওয়ার্কস্পেস →
+        </Link>
+      </span>
     ),
   }));
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="মোট শিপমেন্ট (ডেমো)" value={String(summary.total)} delta="সব কুরিয়ার" icon="🚚" />
+        <StatCard label="মোট শিপমেন্ট" value={String(summary.total)} delta="সব কুরিয়ার" icon="🚚" />
         <StatCard
           label="পথে আছে"
           value={String(summary.inTransit)}
@@ -240,94 +269,116 @@ export function ShipmentsBoard({
         />
       </div>
 
+      {summary.total > rows.length ? (
+        <p className="text-sm text-text-muted">
+          সর্বশেষ {rows.length}টি শিপমেন্ট দেখানো হচ্ছে (মোট {summary.total}টি) — পুরনো রেকর্ড
+          সংশ্লিষ্ট অর্ডারের ওয়ার্কস্পেসে পাওয়া যাবে। উপরের হিসাব পুরো {summary.total}টির
+          উপরেই গণনা করা।
+        </p>
+      ) : null}
+
       {problemShipments.length > 0 ? (
         <section className="space-y-2" aria-label="সমস্যাযুক্ত শিপমেন্ট">
           <h2 className="text-lg font-semibold">
             <span aria-hidden="true">⚠</span> মনোযোগ দরকার — ব্যর্থ / ফেরত শিপমেন্ট ({problemShipments.length})
           </h2>
           {problemShipments.map((s) => (
-            <p key={s.shipmentId} className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            <p key={s.id} className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
               <ShipmentStatusBadge status={s.status} />{" "}
-              <span className="font-mono">{s.trackingId}</span> (অর্ডার #{s.orderId},{" "}
-              {SANDBOX_COURIER_LABELS_BN[s.provider as SandboxCourierProvider] ?? s.provider}) —{" "}
-              {s.failureReason ?? "কারণ নথিভুক্ত নেই (ডেমো)"}। COD{" "}
+              <span className="font-mono">{s.trackingId ?? "—"}</span> (অর্ডার{" "}
+              <Link href={`/admin/orders/${s.orderId}`} className="font-medium underline">
+                #{s.orderNo}
+              </Link>
+              , {courierLabel(s.provider)}) — COD{" "}
               {s.codAmountPoisha > 0 ? <Money poisha={s.codAmountPoisha} /> : "প্রিপেইড"} সংগৃহীত হয়নি।
             </p>
           ))}
         </section>
       ) : null}
 
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="অবস্থা অনুযায়ী ফিল্টার">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={statusFilter === "ALL"}
-            onClick={() => setStatusFilter("ALL")}
-            className={`min-h-[44px] rounded-full px-3 text-sm font-medium ${statusFilter === "ALL" ? "bg-brand-600 text-white" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
-          >
-            সব ({shipments.length})
-          </button>
-          {STATUS_TAB_ORDER.map((status) => {
-            const count = shipments.filter((s) => s.status === status).length;
-            if (count === 0) return null;
-            const meta = SHIPMENT_STATUS_META[status];
-            return (
-              <button
-                key={status}
-                type="button"
-                role="tab"
-                aria-selected={statusFilter === status}
-                onClick={() => setStatusFilter(status)}
-                className={`min-h-[44px] rounded-full px-3 text-sm font-medium ${statusFilter === status ? "bg-brand-600 text-white" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
-              >
-                <span aria-hidden="true">{meta.icon}</span> {meta.labelBn} ({count})
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex flex-wrap items-center gap-2" aria-label="কুরিয়ার অনুযায়ী ফিল্টার">
-          <button
-            type="button"
-            onClick={() => setCourierFilter("all")}
-            aria-pressed={courierFilter === "all"}
-            className={`min-h-[44px] rounded-full px-3 text-sm font-medium ${courierFilter === "all" ? "bg-brand-100 text-brand-700" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
-          >
-            সব কুরিয়ার
-          </button>
-          {DEMO_COURIER_PROVIDERS.map((p) => (
+      {rows.length === 0 ? (
+        <Card>
+          <h2 className="font-semibold">এখনো কোনো শিপমেন্ট বুক হয়নি</h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">
+            কোনো অর্ডারের ওয়ার্কস্পেস থেকে প্রথম বুকিং হলেই তা এখানে দেখা যাবে। বুকিং এই
+            বোর্ড থেকে হয় না — নিচের কার্ডে বিস্তারিত আছে।
+          </p>
+        </Card>
+      ) : (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="অবস্থা অনুযায়ী ফিল্টার">
             <button
-              key={p}
               type="button"
-              onClick={() => setCourierFilter(p)}
-              aria-pressed={courierFilter === p}
-              className={`min-h-[44px] rounded-full px-3 text-sm font-medium ${courierFilter === p ? "bg-brand-100 text-brand-700" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
+              role="tab"
+              aria-selected={statusFilter === "ALL"}
+              onClick={() => setStatusFilter("ALL")}
+              className={`min-h-[44px] rounded-full px-3 text-sm font-medium ${statusFilter === "ALL" ? "bg-brand-600 text-white" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
             >
-              {SANDBOX_COURIER_LABELS_BN[p]}
+              সব ({rows.length})
             </button>
-          ))}
-        </div>
+            {STATUS_TAB_ORDER.map((status) => {
+              const count = rows.filter((s) => s.status === status).length;
+              if (count === 0) return null;
+              const meta = SHIPMENT_STATUS_META[status];
+              return (
+                <button
+                  key={status}
+                  type="button"
+                  role="tab"
+                  aria-selected={statusFilter === status}
+                  onClick={() => setStatusFilter(status)}
+                  className={`min-h-[44px] rounded-full px-3 text-sm font-medium ${statusFilter === status ? "bg-brand-600 text-white" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
+                >
+                  <span aria-hidden="true">{meta.icon}</span> {meta.labelBn} ({count})
+                </button>
+              );
+            })}
+          </div>
+          {providers.length > 1 ? (
+            <div className="flex flex-wrap items-center gap-2" aria-label="কুরিয়ার অনুযায়ী ফিল্টার">
+              <button
+                type="button"
+                onClick={() => setCourierFilter("all")}
+                aria-pressed={courierFilter === "all"}
+                className={`min-h-[44px] rounded-full px-3 text-sm font-medium ${courierFilter === "all" ? "bg-brand-100 text-brand-700" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
+              >
+                সব কুরিয়ার
+              </button>
+              {providers.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setCourierFilter(p)}
+                  aria-pressed={courierFilter === p}
+                  className={`min-h-[44px] rounded-full px-3 text-sm font-medium ${courierFilter === p ? "bg-brand-100 text-brand-700" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
+                >
+                  {courierLabel(p)}
+                </button>
+              ))}
+            </div>
+          ) : null}
 
-        <DataTable
-          caption="শিপমেন্ট — নমুনা (TEMPORARY DEMO), sandbox রেকর্ডের আকারে"
-          columns={[
-            { key: "order", header: "অর্ডার" },
-            { key: "courier", header: "কুরিয়ার" },
-            { key: "tracking", header: "ট্র্যাকিং আইডি" },
-            { key: "destination", header: "গন্তব্য" },
-            { key: "weight", header: "ওজন" },
-            { key: "charge", header: "কুরিয়ার চার্জ" },
-            { key: "cod", header: "COD" },
-            { key: "status", header: "অবস্থা" },
-            { key: "created", header: "তৈরি (Asia/Dhaka)" },
-            { key: "action", header: "" },
-          ]}
-          rows={rows}
-        />
-        {filtered.length === 0 ? (
-          <p className="text-sm text-text-muted">এই ফিল্টারে কোনো শিপমেন্ট নেই (ডেমো)।</p>
-        ) : null}
-      </section>
+          <DataTable
+            caption="শিপমেন্ট — আসল রেকর্ড (সব অর্ডার)"
+            columns={[
+              { key: "order", header: "অর্ডার" },
+              { key: "courier", header: "কুরিয়ার" },
+              { key: "tracking", header: "ট্র্যাকিং আইডি" },
+              { key: "destination", header: "গন্তব্য (জেলা)" },
+              { key: "weight", header: "ওজন" },
+              { key: "charge", header: "কুরিয়ার চার্জ" },
+              { key: "cod", header: "COD" },
+              { key: "status", header: "অবস্থা" },
+              { key: "created", header: "তৈরি (Asia/Dhaka)" },
+              { key: "action", header: "" },
+            ]}
+            rows={tableRows}
+          />
+          {filtered.length === 0 ? (
+            <p className="text-sm text-text-muted">এই ফিল্টারে কোনো শিপমেন্ট নেই।</p>
+          ) : null}
+        </section>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -335,20 +386,21 @@ export function ShipmentsBoard({
           {selected ? (
             <div className="mt-3 space-y-4">
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="font-mono text-xs tabular-nums">{selected.trackingId}</span>
+                <span className="font-mono text-xs tabular-nums">{selected.trackingId ?? "—"}</span>
                 <ShipmentStatusBadge status={selected.status} />
                 <span className="text-text-muted">
-                  অর্ডার #{selected.orderId} ·{" "}
-                  {SANDBOX_COURIER_LABELS_BN[selected.provider as SandboxCourierProvider] ??
-                    selected.provider}
+                  অর্ডার{" "}
+                  <Link href={`/admin/orders/${selected.orderId}`} className="font-medium text-primary hover:underline">
+                    #{selected.orderNo}
+                  </Link>{" "}
+                  · {courierLabel(selected.provider)}
                 </span>
               </div>
+              <ParcelStepper status={selected.status} />
               <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
                 <div>
-                  <dt className="text-xs text-text-muted">গন্তব্য</dt>
-                  <dd>
-                    {selected.district} ({ZONE_LABELS_BN[selected.zone]})
-                  </dd>
+                  <dt className="text-xs text-text-muted">গন্তব্য (জেলা)</dt>
+                  <dd>{selected.district ?? "—"}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-text-muted">ওজন</dt>
@@ -372,67 +424,54 @@ export function ShipmentsBoard({
                   <dt className="text-xs text-text-muted">বুকিং সময়</dt>
                   <dd className="font-mono text-xs tabular-nums">{dhakaDateTime(selected.createdAt)}</dd>
                 </div>
+                <div>
+                  <dt className="text-xs text-text-muted">সর্বশেষ আপডেট</dt>
+                  <dd className="font-mono text-xs tabular-nums">{dhakaDateTime(selected.updatedAt)}</dd>
+                </div>
               </dl>
-              {selected.failureReason ? (
-                <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                  <span aria-hidden="true">⚠️</span> কারণ: {selected.failureReason}
-                </p>
-              ) : null}
-              <ol className="space-y-0">
-                {selected.events.map((event, i) => {
-                  const meta = SHIPMENT_STATUS_META[event.status];
-                  return (
-                    <li key={`${event.status}-${event.at}`} className="relative flex gap-3 pb-4 last:pb-0">
-                      {i < selected.events.length - 1 ||
-                      FORWARD_FLOW.includes(selected.status) ? (
-                        <span
-                          aria-hidden="true"
-                          className="absolute left-[13px] top-7 h-[calc(100%-20px)] w-px bg-border"
-                        />
-                      ) : null}
-                      <span
-                        aria-hidden="true"
-                        className="z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm"
-                      >
-                        {meta.icon}
-                      </span>
-                      <div>
-                        <p className="text-sm font-medium">
-                          {meta.labelBn}{" "}
-                          <span className="font-mono text-xs text-text-muted">({meta.labelEn})</span>
-                        </p>
-                        <p className="font-mono text-xs tabular-nums text-text-muted">
-                          {dhakaDateTime(event.at)}
-                        </p>
-                        {event.note ? <p className="text-xs text-text-muted">{event.note}</p> : null}
-                      </div>
-                    </li>
-                  );
-                })}
-                {FORWARD_FLOW.includes(selected.status) &&
-                selected.status !== "DELIVERED"
-                  ? FORWARD_FLOW.slice(FORWARD_FLOW.indexOf(selected.status) + 1).map((status) => {
-                      const meta = SHIPMENT_STATUS_META[status];
-                      return (
-                        <li key={`pending-${status}`} className="relative flex gap-3 pb-4 last:pb-0 opacity-50">
+              {selected.events.length > 0 ? (
+                <ol className="space-y-0">
+                  {selected.events.map((event, i) => {
+                    const meta = SHIPMENT_STATUS_META[event.status] ?? {
+                      labelBn: event.status,
+                      labelEn: event.status,
+                      icon: "•",
+                    };
+                    return (
+                      <li key={`${event.status}-${event.at}`} className="relative flex gap-3 pb-4 last:pb-0">
+                        {i < selected.events.length - 1 ? (
                           <span
                             aria-hidden="true"
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-2 text-sm"
-                          >
-                            {meta.icon}
-                          </span>
-                          <div>
-                            <p className="text-sm font-medium">{meta.labelBn}</p>
-                            <p className="text-xs text-text-muted">অপেক্ষমাণ</p>
-                          </div>
-                        </li>
-                      );
-                    })
-                  : null}
-              </ol>
+                            className="absolute left-[13px] top-7 h-[calc(100%-20px)] w-px bg-border"
+                          />
+                        ) : null}
+                        <span
+                          aria-hidden="true"
+                          className="z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm"
+                        >
+                          {meta.icon}
+                        </span>
+                        <div>
+                          <p className="text-sm font-medium">
+                            {meta.labelBn}{" "}
+                            <span className="font-mono text-xs text-text-muted">({meta.labelEn})</span>
+                          </p>
+                          <p className="font-mono text-xs tabular-nums text-text-muted">
+                            {dhakaDateTime(event.at)}
+                          </p>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <p className="text-xs text-text-muted">
+                  এই শিপমেন্টের কোনো ইভেন্ট রেকর্ড হয়নি এখনো।
+                </p>
+              )}
               <p className="text-xs text-text-muted">
-                ডেমো ইভেন্ট — আসল ট্র্যাকিং GET /api/v1/admin/shipments/track থেকে আসবে (কুরিয়ার
-                ওয়েবহুকের মাধ্যমে অবস্থা এগোয়)।
+                ইভেন্টগুলো আসল ShipmentEvent রেকর্ড — কুরিয়ার ওয়েবহুক ও অর্ডার-সিঙ্ক যেভাবে
+                অবস্থা এগিয়ে নেয়, সেভাবেই এখানে জমা হয়।
               </p>
             </div>
           ) : (
@@ -441,118 +480,26 @@ export function ShipmentsBoard({
         </Card>
 
         <Card>
-          <h2 className="font-semibold">নতুন শিপমেন্ট বুকিং (ডেমো)</h2>
-          <p className="mt-1 text-sm text-text-muted">
-            TEMPORARY DEMO — “বুক করুন” চাপলে শিপমেন্ট শুধু এই পেজের তালিকায় যোগ হবে; কোনো বুকিং
-            পাঠানো হবে না। আসল বুকিং DB wiring-এর পর POST /api/v1/admin/shipments দিয়ে যাবে
-            (idempotency key বাধ্যতামূলক)।
+          <h2 className="font-semibold">বুকিং কোথায় হয়?</h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">
+            এই বোর্ড শুধু দেখার জন্য — এখান থেকে বুকিং হয় না। নতুন শিপমেন্ট বুক করতে সংশ্লিষ্ট
+            অর্ডারটি খুলুন: অর্ডারের ওয়ার্কস্পেসের <strong>শিপমেন্ট প্যানেল</strong> থেকে পুরো
+            অর্ডার বা লাইন-ভিত্তিক স্প্লিট বুকিং করা যায়। বুকিং হলেই তা এই বোর্ডে সঙ্গে সঙ্গে
+            দেখা যাবে।
           </p>
-          {bookOrder && bookCard ? (
-            <div className="mt-4 space-y-4">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-text-muted">অর্ডার (বুকিং বাকি)</span>
-                <select
-                  value={bookOrder.orderId}
-                  onChange={(e) => pickOrder(e.target.value)}
-                  className={selectClass}
-                >
-                  {availableOrders.map((o) => (
-                    <option key={o.orderId} value={o.orderId}>
-                      #{o.orderId} — {o.address.recipientName}, {o.address.district} · {o.itemCount}টি
-                      আইটেম · COD{" "}
-                      {o.codAmountPoisha > 0 ? formatPoisha(o.codAmountPoisha) : "প্রিপেইড"}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div>
-                <span className="mb-1 block text-xs font-medium text-text-muted">কুরিয়ার</span>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {DEMO_COURIER_PROVIDERS.map((p) => {
-                    const days = bookCard.daysByProvider[p];
-                    return (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setBookProvider(p)}
-                        aria-pressed={bookProvider === p}
-                        className={`min-h-[44px] rounded-[10px] border px-3 py-2 text-left text-sm ${bookProvider === p ? "border-brand-600 bg-brand-50 text-brand-700" : "border-border bg-card hover:bg-surface-2"}`}
-                      >
-                        <span className="block font-medium">{SANDBOX_COURIER_LABELS_BN[p]}</span>
-                        <span className="block text-xs text-text-muted">
-                          আনুমানিক {days !== null ? `${days} দিন` : "—"} · চার্জ{" "}
-                          {formatPoisha(bookCharge)}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-text-muted">পার্সেলের ওজন</span>
-                <select
-                  value={effectiveWeight}
-                  onChange={(e) => setBookWeight(Number(e.target.value))}
-                  className={selectClass}
-                >
-                  {bookWeightOptions.map((w) => (
-                    <option key={w} value={w}>
-                      {formatWeight(w)}
-                      {w === bookOrder.weightGrams ? " (অর্ডারের ওজন)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="rounded-[10px] bg-surface-2 px-4 py-3 text-sm">
-                <p>
-                  জোন: {ZONE_LABELS_BN[bookOrder.zone]} ({bookOrder.address.district}) · গন্তব্য:{" "}
-                  {bookOrder.address.upazila}, {bookOrder.address.district}
-                </p>
-                <p className="mt-1">
-                  কুরিয়ার চার্জ: <Money poisha={bookCharge} />
-                  {bookExtraUnits > 0 ? (
-                    <span className="text-text-muted">
-                      {" "}
-                      = বেস (≤1 kg) {formatPoisha(bookBase)} + অতিরিক্ত {bookExtraUnits} × 500g ×{" "}
-                      {formatPoisha(2000)}
-                    </span>
-                  ) : (
-                    <span className="text-text-muted"> (sandbox জোন-ভিত্তিক বেস চার্জ)</span>
-                  )}
-                </p>
-                <p className="mt-1">
-                  COD সংগ্রহ:{" "}
-                  {bookOrder.codAmountPoisha > 0 ? (
-                    <Money poisha={bookOrder.codAmountPoisha} />
-                  ) : (
-                    "প্রিপেইড — সংগ্রহ নেই"
-                  )}{" "}
-                  · প্রাপক: {bookOrder.address.recipientName}
-                </p>
-                <p className="mt-1 text-xs text-text-muted">
-                  চার্জের হিসাব sandbox-এর আসল নিয়মে (courierChargePoisha): ঢাকার ভিতরে{" "}
-                  {formatPoisha(6000)}, ঢাকার বাইরে {formatPoisha(12000)}, জেলা {formatPoisha(10000)}
-                  ; 1 kg-এর বেশি হলে প্রতি অতিরিক্ত 500g-তে {formatPoisha(2000)}।
-                </p>
-              </div>
-
-              <Button onClick={book} className="w-full">
-                বুক করুন (ডেমো — পাঠানো হবে না)
-              </Button>
-              {bookedNotice ? (
-                <p role="status" className="rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-                  {bookedNotice}
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            <p className="mt-3 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-              সব ডেমো অর্ডার এই পেজে বুক করা হয়ে গেছে — তালিকায় CREATED অবস্থায় দেখুন।
-            </p>
-          )}
+          <p className="mt-3 text-sm leading-6 text-text-muted">
+            মনে রাখবেন: কুরিয়ার অ্যাডাপ্টরগুলো আপাতত <strong>sandbox</strong> — বুকিংয়ে SBX
+            ট্র্যাকিং আইডি আসে এবং কোনো আসল কুরিয়ার কল হয় না। Live provider (Steadfast /
+            Pathao / RedX-এর আসল API) এলে একই বোর্ডেই আসল ট্র্যাকিং দেখা যাবে।
+          </p>
+          <div className="mt-4">
+            <Link
+              href="/admin/orders"
+              className="inline-flex min-h-[44px] items-center rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+            >
+              অর্ডার তালিকা খুলুন →
+            </Link>
+          </div>
         </Card>
       </div>
     </div>

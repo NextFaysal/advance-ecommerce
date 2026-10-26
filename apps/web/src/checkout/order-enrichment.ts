@@ -6,17 +6,16 @@
  * src/marketing/service and fed into computePricing() at the coupon stage
  * of the pipeline (subtotal -> item discounts -> coupon -> shipping ->
  * COD fee -> tax -> total), never subtracted after the fact.
- * Coupon records are looked up in this order (no new copy is created):
- *   1. The marketing repository's DB snapshot (src/marketing/
- *      repository.ts) — Coupon rows + CouponUsage aggregates, refreshed
- *      on module load / admin writes / server start. This evaluation
- *      stays synchronous (the create flow's contract), so it reads the
- *      snapshot rather than awaiting a query; admin-created coupons
- *      are upserted into the snapshot in the same request that creates
- *      them, and usage counts reload from CouponUsage after a restart.
- *   2. couponStoreInMemory — the legacy shared in-memory store.
- *   3. DEMO_COUPONS — the existing demo records in src/cart/components/
- *      resolve.ts that mirror the DB seed (WELCOME10, SAMPLE-FIXED200).
+ * Coupon records resolve ONLY from the marketing repository's DB
+ * snapshot (src/marketing/repository.ts) — real Coupon rows +
+ * CouponUsage aggregates, refreshed on module load / admin writes /
+ * server start. This evaluation stays synchronous (the create flow's
+ * contract), so it reads the snapshot rather than awaiting a query;
+ * admin-created coupons are upserted into the snapshot in the same
+ * request that creates them, and usage counts reload from CouponUsage
+ * after a restart. The legacy in-memory store and the hardcoded demo
+ * records (WELCOME10 / SAMPLE-FIXED200) were removed (doc 21 G3-3):
+ * a code now resolves only when a real Coupon row exists.
  * An ineligible or unknown code never fails the order: the outcome is
  * "rejected" with the Bangla + English reason and a 0 discount.
  *
@@ -37,14 +36,10 @@
  * The assessment's per-signal details are internal (admin fraud UI);
  * nothing here returns them to the public caller.
  */
-import { COUPON_REASON_BN, findDemoCoupon } from "@/cart/components/resolve";
+import { COUPON_REASON_BN } from "@/cart/components/resolve";
 import { fraudListStore } from "@/fraud/lists";
 import type { FraudAssessment, FraudScoreInput, RecentOrderRef } from "@/fraud/types";
-import {
-  applyCoupon,
-  couponStoreInMemory,
-  type CouponRecord,
-} from "@/marketing/service";
+import { applyCoupon, type CouponRecord } from "@/marketing/service";
 import { findCouponInSnapshot } from "@/marketing/repository";
 import type { RiskLevel } from "@/orders/customer";
 import type { Order } from "@/orders/types";
@@ -126,18 +121,14 @@ function rejectedOutcome(
   };
 }
 
-/** Finds the coupon record for a submitted code: the marketing
- *  repository's DB snapshot first (real Coupon rows + CouponUsage
- *  aggregates), then the legacy shared in-memory store, then the
- *  existing seed-mirroring demo records. */
+/** Finds the coupon record for a submitted code: ONLY the marketing
+ *  repository's DB snapshot (real Coupon rows + CouponUsage
+ *  aggregates). No in-memory or demo fallback — a code that is not a
+ *  real Coupon row does not resolve (doc 21 G3-3). */
 export function findOrderCoupon(code: string): CouponRecord | null {
   const normalized = code.trim().toUpperCase();
   if (normalized === "") return null;
-  return (
-    findCouponInSnapshot(normalized) ??
-    couponStoreInMemory.find((c) => c.code === normalized) ??
-    findDemoCoupon(normalized)
-  );
+  return findCouponInSnapshot(normalized);
 }
 
 export function evaluateOrderCoupon(args: {
@@ -194,7 +185,7 @@ export function evaluateOrderCoupon(args: {
 /** Records one use of an applied coupon in-process (the durable
  *  CouponUsage row is written by the orders create transaction itself —
  *  see src/orders/repository.ts — under the @@unique([couponId,
- *  orderId]) backstop; this increment keeps the snapshot/demo record's
+ *  orderId]) backstop; this increment keeps the snapshot record's
  *  counts consistent for later evaluations in the same process).
  *  Call ONLY after the order is created — never on a fraud block and
  *  never on an idempotent replay. */

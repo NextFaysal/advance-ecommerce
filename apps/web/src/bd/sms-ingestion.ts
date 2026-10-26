@@ -361,11 +361,15 @@ export interface IngestSmsDeps {
   orders: readonly SmsMatchCandidateOrder[];
   /**
    * Optional read-only view of TrxIDs already VERIFIED through
-   * sms-verify (demoTrxRegistry). Consulted with has()/lookup() only —
-   * ingestion never registers into it, because registering would claim
-   * a verification that has not happened.
+   * sms-verify — the DB-backed claim registry (SmsTrxClaim, doc 21
+   * G3-8) since W0-D; before that it was the in-memory
+   * demoTrxRegistry. Consulted with lookup() only — ingestion never
+   * claims into it, because claiming would assert a verification
+   * that has not happened. Async because claims live in Postgres.
    */
-  verifiedRegistry?: TrxRegistry;
+  verifiedRegistry?: {
+    lookup(provider: MerchantProvider, trxId: string): Promise<string | null>;
+  };
   now?: Date;
   /** Injectable id for tests; defaults to a random `smsing-…` id. */
   id?: string;
@@ -450,7 +454,9 @@ export async function ingestSms(input: IngestSmsInput, deps: IngestSmsDeps): Pro
   // Already verified through sms-verify? Then this TrxID's money is
   // spoken for — record a DUPLICATE so staff see the attempt, but never
   // re-propose it against another order.
-  const verifiedForOrderId = deps.verifiedRegistry?.lookup(sms.provider, sms.trxId) ?? null;
+  const verifiedForOrderId = deps.verifiedRegistry
+    ? await deps.verifiedRegistry.lookup(sms.provider, sms.trxId)
+    : null;
   if (verifiedForOrderId !== null) {
     const record: SmsIngestionRecord = {
       id,

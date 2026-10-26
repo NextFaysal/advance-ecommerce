@@ -1,24 +1,26 @@
 /**
  * BullMQ worker wiring — Agent 12 (workers base).
  *
- * IMPORTANT — why BullMQ is not imported here:
- * `bullmq` / `ioredis` are NOT yet dependencies of apps/web (checked:
- * no bullmq in node_modules), and this slice may not install packages.
- * So this file defines the complete wiring contract — queue -> handler,
- * retry policy, concurrency, dead-letter on final failure — against a
- * minimal structural factory interface that matches BullMQ's
- * `new Worker(name, processor, opts)` / `new Queue(name, opts)` shape.
+ * Why BullMQ is not statically imported here: `bullmq` / `ioredis`
+ * ARE dependencies of apps/web (package.json), but this module keeps
+ * to a structural factory interface — createWorkers(runtime, factory,
+ * connection) receives the real BullMQ `Worker` constructor from its
+ * caller — so the wiring (queue -> handler, retry policy, concurrency,
+ * dead-letter on final failure) stays unit-testable without a live
+ * Redis, and the Next.js server bundle never pulls in worker-only code.
  *
- * The separate worker entrypoint (worker deployment, NOT the Next.js
- * server) must:
- *   1. `pnpm add bullmq ioredis` in the worker package,
- *   2. create a Redis connection from REDIS_URL (server env only),
- *   3. call createWorkers(deps, { Worker, Queue }, connection)
- *      with the real BullMQ constructors,
- *   4. keep the process running and handle SIGTERM via workers.close().
- * Until that entrypoint exists, these workers do NOT run — this file is
- * the tested wiring + policy layer, not a running daemon. Do not claim
- * otherwise.
+ * The worker entrypoint EXISTS: apps/web/scripts/worker.ts, run with
+ * `pnpm --filter web worker`. It dynamically loads bullmq/ioredis,
+ * creates the Redis connection from REDIS_URL (server env only),
+ * assembles the real handler deps (src/jobs/worker-deps.ts), calls
+ * createWorkers(...) with the real BullMQ constructor, keeps the
+ * process running and handles SIGTERM via workers.close().
+ *
+ * Whether a daemon is actually RUNNING is a deployment fact, not a
+ * property of this file: production has no worker host yet (doc 21
+ * G2 — the VPS lands after development completes), so until a host
+ * runs the entrypoint, queued jobs wait in Redis unconsumed. Do not
+ * claim otherwise.
  *
  * Retry / dead-letter policy:
  *  - Job options use the policies in queues.ts: DEFAULT_RETRY

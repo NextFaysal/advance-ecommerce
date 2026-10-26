@@ -656,6 +656,19 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: null,
   },
   {
+    // Doc 21 W0-F (G3-17): the seven call_center.* keys finally have
+    // an editor UI (they were generic-API-only before).
+    id: "settings-call-center",
+    path: "/admin/settings/call-center",
+    labelBn: "কল সেন্টার সেটিংস",
+    labelEn: "Call Center Settings",
+    icon: "PhoneCall",
+    section: "system",
+    permission: "settings.view",
+    featureFlag: null,
+    badge: null,
+  },
+  {
     id: "staff",
     path: "/admin/staff",
     labelBn: "স্টাফ ও ভূমিকা",

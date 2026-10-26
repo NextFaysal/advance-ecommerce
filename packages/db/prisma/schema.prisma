@@ -1888,6 +1888,24 @@ model SmsIngestion {
   @@index([outcome, createdAt])
 }
 
+// Verify-side TrxID claim registry (doc 21 G3-8, wave W0-D): a
+// (method, trxId) pair may be VERIFIED for exactly one order, ever.
+// Written by the sms-verify flow on a successful match (atomic claim:
+// an insert conflict IS the duplicate signal) and read by sms-ingest to
+// flag already-verified TrxIDs. Replaces the in-memory demoTrxRegistry,
+// whose claims reset on every process restart. Distinct from
+// SmsIngestion above, which dedupes ingestion RECORDS — a TrxID can be
+// ingested (record) without being verified (claim), never the reverse.
+model SmsTrxClaim {
+  id        String   @id @default(cuid())
+  method    String
+  trxId     String
+  orderId   String?
+  claimedAt DateTime @default(now())
+
+  @@unique([method, trxId])
+}
+
 // ---- Courier invoice reconciliation (added by integration, Agent 50 remaining wiring) ----
 model CourierInvoiceRun {
   id            String   @id @default(cuid())
@@ -2073,6 +2091,10 @@ model InboxConversation {
   status           String   @default("OPEN")
   assignedToId     String?
   createdAt        DateTime @default(now())
+  // Staff read marker (doc 21 G3-10, wave W0-D schema; W0-E wires the
+  // store/UI): when a staff member last opened this conversation.
+  // unreadCount derives from messages newer than this stamp.
+  lastReadAt       DateTime?
   messages         InboxMessage[]
   @@unique([channel, externalThreadId])
 }

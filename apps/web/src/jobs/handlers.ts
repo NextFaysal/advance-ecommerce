@@ -217,6 +217,22 @@ export interface HandlerDeps {
    *  payloads (it would send an empty message to a ref and report a
    *  phantom success for a code nobody received). */
   orderOtpSmsSend?: (job: SmsJob) => Promise<HandlerResult>;
+  /** Doc 21 G3-1: send path for return-update SMS jobs (payloads with
+   *  jobKind === "return-update" on the SMS queue), wired by the
+   *  worker deps assembly to src/orders/return-notify.ts. The send
+   *  re-validates the return's current status and composes the real
+   *  Bangla status message — the generic SMS path below must never
+   *  process these payloads (it would send an empty message to the
+   *  return id in recipientRef and report a phantom success). */
+  returnUpdateSmsSend?: (job: SmsJob) => Promise<HandlerResult>;
+  /** Doc 21 G3-9: send path for back-in-stock SMS jobs (payloads with
+   *  jobKind === "back-in-stock" on the SMS queue), wired by the
+   *  worker deps assembly to src/storefront-ux/back-in-stock-notify.ts.
+   *  The send re-reads the signup row, composes the real message and
+   *  stamps notifiedAt — the generic SMS path below must never
+   *  process these payloads (it would send an empty message to a
+   *  signup id and the signup would never be marked notified). */
+  backInStockSmsSend?: (job: SmsJob) => Promise<HandlerResult>;
   logger?: JobLogger;
 }
 
@@ -337,6 +353,40 @@ export function createHandlers(
       const sendOtp = deps.orderOtpSmsSend;
       return runIdempotent(store, envelope, envelope.payload.orderId ?? envelope.payload.recipientRef, () =>
         sendOtp(envelope.payload),
+      );
+    }
+    // Doc 21 G3-1: return-update jobs delegate to their own send path
+    // (return-status re-validation, real Bangla status message,
+    // phone carried on the payload from the Order row). Without the
+    // dep wired they are SKIPPED — never fall through to the generic
+    // send below.
+    if (envelope.payload.jobKind === "return-update") {
+      if (!deps.returnUpdateSmsSend) {
+        return Promise.resolve({
+          status: "skipped" as const,
+          ref: envelope.payload.returnId ?? envelope.payload.recipientRef,
+          detail: "return update send not wired in this deployment",
+        });
+      }
+      const sendReturn = deps.returnUpdateSmsSend;
+      return runIdempotent(store, envelope, envelope.payload.returnId ?? envelope.payload.recipientRef, () =>
+        sendReturn(envelope.payload),
+      );
+    }
+    // Doc 21 G3-9: back-in-stock jobs delegate to their own send path
+    // (signup re-read + notifiedAt stamp). Without the dep wired they
+    // are SKIPPED — never fall through to the generic send below.
+    if (envelope.payload.jobKind === "back-in-stock") {
+      if (!deps.backInStockSmsSend) {
+        return Promise.resolve({
+          status: "skipped" as const,
+          ref: envelope.payload.signupId ?? envelope.payload.recipientRef,
+          detail: "back-in-stock send not wired in this deployment",
+        });
+      }
+      const sendBackInStock = deps.backInStockSmsSend;
+      return runIdempotent(store, envelope, envelope.payload.signupId ?? envelope.payload.recipientRef, () =>
+        sendBackInStock(envelope.payload),
       );
     }
     return runIdempotent(store, envelope, envelope.payload.recipientRef, async () => {

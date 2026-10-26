@@ -7,7 +7,8 @@
  * (Agent 11, E1) — pure logic, no gateway call. This panel checks a
  * pasted SMS on its own; order matching + duplicate-TrxID registration
  * happens in the order flow / POST /api/v1/admin/bd/sms-verify, which
- * uses autoVerifySms() with the demo Trx registry.
+ * uses autoVerifySmsDb() with the DB-backed Trx claim registry
+ * (SmsTrxClaim, doc 21 W0).
  *
  * PRIVACY: only sms.senderPhoneMasked is rendered. The raw sender
  * number the parser also returns is never displayed here, and an

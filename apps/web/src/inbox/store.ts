@@ -16,12 +16,13 @@
  *   customer's own chat text, exactly as in the demo store — and every
  *   outward shape still masks it (toConversationView). Nothing new is
  *   exposed.
- * - InboxMessage has no refId column: PRODUCT_CARD / ORDER_CARD refs are
- *   not persisted, and Conversation.productRefId reads back undefined.
- * - Conversation has no customerId / unreadCount / lastMessageAt
- *   columns: customerId is undefined; lastMessageAt is derived from the
- *   newest message (fallback: conversation createdAt); unreadCount is
- *   derived as the count of INBOUND messages (no read-marker exists).
+ * - Conversation has no customerId column: customerId is undefined;
+ *   lastMessageAt is derived from the newest message (fallback:
+ *   conversation createdAt); unreadCount is derived as the count of
+ *   INBOUND messages created after the conversation's `lastReadAt`
+ *   read marker (ALL inbound messages while the marker is null — see
+ *   markConversationReadDb). PRODUCT_CARD / ORDER_CARD refs are still
+ *   not persisted (InboxMessage has no refId column).
  * - Schema externalMessageId is REQUIRED: locally created messages
  *   without a platform id get a generated `local-<uuid>` id, which also
  *   keeps the dedupe unique constraint meaningful for them.
@@ -61,6 +62,10 @@ function rowToConversation(row: ConversationRow, messages: InboxMessage[]): Conv
     messages.length > 0
       ? messages[messages.length - 1]!.sentAt
       : row.createdAt.toISOString();
+  // Read model: unread = INBOUND messages that arrived after the last
+  // time staff opened the conversation. A null marker (never opened)
+  // means every inbound message is unread.
+  const lastReadMs = row.lastReadAt ? row.lastReadAt.getTime() : null;
   return {
     id: row.id,
     channel: row.channel as InboxChannel,
@@ -69,7 +74,12 @@ function rowToConversation(row: ConversationRow, messages: InboxMessage[]): Conv
     customerPhone: detectedPhone,
     status: row.status as ConversationStatus,
     assignedAgentId: row.assignedToId,
-    unreadCount: messages.filter((m) => m.direction === "INBOUND").length,
+    unreadCount: messages.filter(
+      (m) =>
+        m.direction === "INBOUND" &&
+        (lastReadMs === null || Date.parse(m.sentAt) > lastReadMs),
+    ).length,
+    lastReadAt: row.lastReadAt ? row.lastReadAt.toISOString() : null,
     lastMessageAt,
     createdAt: row.createdAt.toISOString(),
   };
@@ -106,6 +116,30 @@ export async function getConversationDb(
   if (!row) return null;
   const messages = await messagesForConversationDb(row.id);
   return { conversation: rowToConversation(row, messages), messages };
+}
+
+/**
+ * Mark a conversation read: stamps `lastReadAt = now`, so the read
+ * model (rowToConversation) reports unreadCount 0 until a NEW inbound
+ * message arrives after the stamp. Returns the re-read conversation
+ * (its unreadCount is computed from the persisted marker, so a caller
+ * — or a page reload — always agrees), or null when the conversation
+ * does not exist.
+ */
+export async function markConversationReadDb(
+  conversationId: string,
+): Promise<Conversation | null> {
+  const existing = await prisma.inboxConversation.findUnique({
+    where: { id: conversationId },
+    select: { id: true },
+  });
+  if (!existing) return null;
+  const row = await prisma.inboxConversation.update({
+    where: { id: conversationId },
+    data: { lastReadAt: new Date() },
+  });
+  const messages = await messagesForConversationDb(row.id);
+  return rowToConversation(row, messages);
 }
 
 export interface IngestResult {

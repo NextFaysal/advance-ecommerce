@@ -55,6 +55,8 @@ export interface Conversation {
   /** Product variant the conversation started from (post/product card click), if any. */
   productRefId?: string;
   unreadCount: number;
+  /** When staff last opened (marked read) this conversation; null = never. unreadCount counts INBOUND messages newer than this. */
+  lastReadAt?: string | null;
   lastMessageAt: string;
   createdAt: string;
 }

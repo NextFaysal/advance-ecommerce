@@ -66,15 +66,11 @@ function isPaymentStatus(status: string): status is PaymentStatus {
  * block. ONLY figures the account payload actually carries are shown
  * (totalPoisha; the COD due equals the total only while UNPAID — a
  * PARTIAL order's paid amount is not in the payload, so no due figure
- * is invented for it). The payload carries no delivery slot either:
- * `deliverySlotLabel` is accepted so the chip lights up unchanged if
- * a future wave adds the field to AccountOrderSummary.
+ * is invented for it). The delivery-slot chip reads
+ * `deliverySlotLabel`, which listCustomerOrders resolves from the
+ * order's persisted slot id (doc 21 G3-19).
  */
-function OrderCard({
-  order,
-}: {
-  order: AccountOrderSummary & { deliverySlotLabel?: string | null };
-}) {
+function OrderCard({ order }: { order: AccountOrderSummary }) {
   const firstInitial = order.firstItemName ? [...order.firstItemName][0] : null;
   const codDuePoisha =
     order.paymentMethod === "cod" && order.paymentStatus === "UNPAID"

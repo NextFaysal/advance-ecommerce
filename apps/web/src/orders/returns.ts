@@ -71,6 +71,7 @@
 import { prisma } from "@advance-ecommerce/db";
 import { maskPhone } from "@advance-ecommerce/validators";
 import { writeAudit } from "@/lib/audit";
+import { notifyBackInStockForVariant } from "../storefront-ux/back-in-stock-notify";
 import { applyOrderTransition } from "./repository";
 import { createRefund, type RefundMethod } from "./refunds";
 
@@ -782,6 +783,7 @@ export async function receiveReturn(
 
     let restockedUnits = 0;
     let damagedUnits = 0;
+    const restockedVariantIds = new Set<string>();
     await prisma.$transaction(async (tx) => {
       // Guarded status flip FIRST inside the tx: if a racing receive
       // already moved the return, abort before any stock moves (the
@@ -823,6 +825,7 @@ export async function receiveReturn(
           );
           continue;
         }
+        restockedVariantIds.add(variantId);
         const afterRow = await tx.productVariant.findUnique({
           where: { id: variantId },
           select: { stock: true },
@@ -878,6 +881,15 @@ export async function receiveReturn(
         },
       });
     });
+
+    // Doc 21 G3-9: restocked units may have made a sold-out variant
+    // available again — offer its pending back-in-stock signups a
+    // notify job. Fire-and-forget AFTER the receive committed (the
+    // producer itself re-checks the stock cache and never throws);
+    // a queue failure must not fail a completed receive.
+    for (const variantId of restockedVariantIds) {
+      void notifyBackInStockForVariant(variantId).catch(() => undefined);
+    }
 
     await addOrderNote(
       row.orderId,

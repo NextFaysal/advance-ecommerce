@@ -39,7 +39,7 @@ export default async function AdminReportsPage() {
           )}
         </section>
       ))}
-      <p className="mt-4 text-xs text-slate-500">ডাটাবেস থেকে হিসাব করা — API: GET /api/v1/admin/reports?from=&amp;to=&amp;compare=1, CSV: GET /api/v1/admin/reports/export (RBAC reports.export, audit-লগ হয়; watermark এখনো হয়নি)।</p>
+      <p className="mt-4 text-xs text-slate-500">ডাটাবেস থেকে হিসাব করা — API: GET /api/v1/admin/reports?from=&amp;to=&amp;compare=1, CSV: GET /api/v1/admin/reports/export?from=&amp;to=&amp;reason= (RBAC reports.export, কারণ আবশ্যক — CSV-তে watermark থাকে ও audit-লগ হয়)।</p>
     </main>
   );
 }

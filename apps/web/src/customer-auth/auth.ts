@@ -33,6 +33,7 @@ import {
   ACCOUNT_LOCK_MINUTES,
 } from "@/lib/auth";
 import { maskPhone } from "@/checkout/validation";
+import { findDeliverySlot, loadDeliverySlots } from "@/checkout/delivery-slots";
 
 export const CUSTOMER_SESSION_COOKIE = "customer_session";
 export const CUSTOMER_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -287,6 +288,14 @@ export interface AccountOrderSummary {
   firstItemName: string | null;
   phoneMasked: string;
   createdAt: string;
+  /** The persisted delivery-slot id (Order.deliverySlot), or null
+   *  when the customer picked none / the id was dropped at create. */
+  deliverySlot: string | null;
+  /** The slot's CURRENT Bangla label, resolved from the configured
+   *  set (labels are presentation; the id is the durable fact) —
+   *  null when there is no slot or the id is no longer configured.
+   *  Feeds the account order card's slot chip (doc 21 G3-19). */
+  deliverySlotLabel: string | null;
 }
 
 export async function listCustomerOrders(
@@ -294,7 +303,7 @@ export async function listCustomerOrders(
   page: number,
   pageSize: number,
 ): Promise<{ orders: AccountOrderSummary[]; total: number }> {
-  const [rows, total] = await Promise.all([
+  const [rows, total, slots] = await Promise.all([
     prisma.order.findMany({
       where: { customerId, deletedAt: null },
       orderBy: { createdAt: "desc" },
@@ -303,6 +312,7 @@ export async function listCustomerOrders(
       include: { items: { select: { productName: true, quantity: true } } },
     }),
     prisma.order.count({ where: { customerId, deletedAt: null } }),
+    loadDeliverySlots(),
   ]);
   return {
     total,
@@ -317,6 +327,8 @@ export async function listCustomerOrders(
       firstItemName: o.items[0]?.productName ?? null,
       phoneMasked: maskPhone(o.customerPhone),
       createdAt: o.createdAt.toISOString(),
+      deliverySlot: o.deliverySlot ?? null,
+      deliverySlotLabel: findDeliverySlot(slots, o.deliverySlot)?.labelBn ?? null,
     })),
   };
 }

@@ -6,9 +6,14 @@
 // safe getter, never shown in the admin UI. This module holds key NAMES and
 // shapes only; no value, token, or pixel id lives in code.
 //
-// Real CAPI sending reads `seo.meta.access_token` server-side via
-// getIntegrationConfigWithSecrets() inside the queue worker — never in a
-// route response, never in this module.
+// HONESTY NOTE (doc 21, G3-2): no runtime code reads these DB keys
+// yet. The live browser pixel reads NEXT_PUBLIC_META_PIXEL_ID from the
+// server env (app/tracking-shell.tsx), and real CAPI sending reads env
+// via getActiveMetaCapiTargets() in src/tracking/capi.ts (META_PIXEL_ID
+// / META_ACCESS_TOKEN) — NOT `seo.meta.access_token` from this store.
+// Values saved through the admin Tracking page are stored (encrypted
+// where secret) but have no live effect until the runtime is wired to
+// this store; that wiring is doc 21 step W3. Env wins until then.
 export const TRACKING_SETTING_KEYS = {
   metaPixelId: "seo.meta.pixel_id",
   metaBackupPixelId: "seo.meta.backup_pixel_id", // Secondary / Backup Meta Pixel

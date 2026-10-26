@@ -655,6 +655,22 @@ export async function releaseOrderStockReservations(orderId: string): Promise<vo
         });
       });
     }
+    // W0 follow-up (doc 21 G3-9): a release that restores stock can
+    // revive a sold-out variant — offer the released variants to the
+    // back-in-stock producer, which re-checks stock + pending signups
+    // and dedupes by job id, so nobody is notified twice.
+    const releasedVariantIds = [
+      ...new Set([...reservedByKey.values()].map((r) => r.variantId)),
+    ];
+    if (releasedVariantIds.length > 0) {
+      void import("../storefront-ux/back-in-stock-notify")
+        .then((m) => {
+          for (const variantId of releasedVariantIds) {
+            void m.notifyBackInStockForVariant(variantId);
+          }
+        })
+        .catch(() => {});
+    }
   } catch (err) {
     console.error(`[orders] stock reservation release failed for order ${orderId}:`, err);
   }

@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
-import { autoVerifySms, demoTrxRegistry, parseMerchantSmsInputSchema } from "@/bd/sms-autoverify";
+import { parseMerchantSmsInputSchema } from "@/bd/sms-autoverify";
+import { autoVerifySmsDb } from "@/bd/sms-trx-registry-db";
 import { guardError, requireAdmin } from "@/reports/guard";
 
 // POST /api/v1/admin/bd/sms-verify — Agent 11, Step 44 (E1).
 // RBAC: payments.verify_manual.
-// Persistence: the duplicate-Trx registry is IN-MEMORY-DEMO only
-// (demoTrxRegistry). The DB version must enforce UNIQUE(method, trxId).
+// Persistence: DB-backed since doc 21 G3-8 (W0-D) — verified TrxID
+// claims live in the SmsTrxClaim table with UNIQUE(method, trxId)
+// (src/bd/sms-trx-registry-db.ts), so a (provider, TrxID) pair can be
+// verified exactly once across restarts and processes. This route
+// previously used the in-memory demoTrxRegistry and reported
+// meta.persistence "in-memory-demo".
 // The raw SMS body is never stored or logged by this route — only the
 // parsed fields (with the sender phone masked) leave this handler.
 export async function POST(req: Request) {
@@ -19,16 +24,15 @@ export async function POST(req: Request) {
     );
   }
   const { smsText, providerHint, orderId, expectedAmountPoisha, customerPhone } = parsed.data;
-  const { parse, match } = autoVerifySms(
+  const { parse, match } = await autoVerifySmsDb(
     smsText,
     { orderId, amountPoisha: expectedAmountPoisha, customerPhone: customerPhone ?? null },
-    demoTrxRegistry,
     providerHint,
   );
   if (!parse.ok) {
     return NextResponse.json({
       data: { verified: false, parseReason: parse.reason },
-      meta: { persistence: "in-memory-demo" },
+      meta: { persistence: "database" },
     });
   }
   return NextResponse.json({
@@ -42,6 +46,6 @@ export async function POST(req: Request) {
       reasons: match?.reasons ?? [],
       duplicate: match?.duplicate ?? false,
     },
-    meta: { persistence: "in-memory-demo" },
+    meta: { persistence: "database" },
   });
 }

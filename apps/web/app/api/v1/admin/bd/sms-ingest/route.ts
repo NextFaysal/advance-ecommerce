@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { demoTrxRegistry } from "@/bd/sms-autoverify";
+import { dbTrxRegistry } from "@/bd/sms-trx-registry-db";
 import {
   candidateFromOrder,
   ingestSms,
@@ -75,7 +75,7 @@ export async function POST(req: Request) {
   const deps = {
     store: smsIngestionStore,
     orders: orders.map(candidateFromOrder),
-    verifiedRegistry: demoTrxRegistry,
+    verifiedRegistry: dbTrxRegistry,
   };
 
   if (!isBatchRequest(parsed.data)) {

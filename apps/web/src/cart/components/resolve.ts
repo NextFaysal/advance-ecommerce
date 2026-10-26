@@ -9,13 +9,14 @@
 //   snapshot-only lines — no mock data anywhere in this path.
 // - Shipping zone charges mirror the DB seed zones (packages/db seed:
 //   inside Dhaka 6000 poisha, outside Dhaka 12000 poisha).
-// - Demo coupons mirror the admin marketing page SAMPLE rows / DB seed
-//   (WELCOME10: 10%, cap 50000 poisha) — applied via src/marketing/service.
+// - Coupons are NOT resolved on this page: there is no public coupon
+//   read API, so the cart only stores the submitted code and the real
+//   DB coupon set is evaluated server-side at order create (see
+//   src/checkout/order-enrichment.ts). No demo coupon records exist.
 // All money is integer poisha. Prices on the cart item are add-time
 // snapshots; checkout re-validates server-side (see checkout/pricing.ts).
 
 import type { PublicProduct, PublicVariant } from "@/catalog/types";
-import type { CouponRecord } from "@/marketing/service";
 import type { Cart, CartItem } from "../types";
 
 export interface ResolvedCartLine {
@@ -84,51 +85,12 @@ export const CART_SHIPPING_ZONES: CartShippingZone[] = [
   { id: "outside_dhaka", labelBn: "ঢাকার বাইরে", labelEn: "Outside Dhaka", chargePoisha: 12000 },
 ];
 
-// Demo coupon records — same SAMPLE data as the admin marketing page /
-// DB seed. Applied with the real applyCoupon() from src/marketing/service;
-// labelled DEMO on the page because there is no live coupon API read yet.
-export const DEMO_COUPONS: CouponRecord[] = [
-  {
-    id: "cpn_sample_welcome10",
-    code: "WELCOME10",
-    type: "percent",
-    valuePercent: 10,
-    valuePoisha: null,
-    minCartPoisha: null,
-    maxDiscountPoisha: 50000,
-    usageLimit: null,
-    perUserLimit: 1,
-    startsAt: null,
-    endsAt: null,
-    stackable: false,
-    isActive: true,
-    usedCount: 132,
-    usedByUser: {},
-  },
-  {
-    id: "cpn_sample_fixed200",
-    code: "SAMPLE-FIXED200",
-    type: "fixed",
-    valuePercent: null,
-    valuePoisha: 20000,
-    minCartPoisha: 100000,
-    maxDiscountPoisha: null,
-    usageLimit: 500,
-    perUserLimit: null,
-    startsAt: null,
-    endsAt: null,
-    stackable: false,
-    isActive: true,
-    usedCount: 41,
-    usedByUser: {},
-  },
-];
-
-export function findDemoCoupon(code: string): CouponRecord | null {
-  const normalized = code.trim().toUpperCase();
-  return DEMO_COUPONS.find((c) => c.code === normalized) ?? null;
-}
-
+// Coupon rejection reasons (Bangla) — shared with the server-side
+// order enrichment, which maps applyCoupon() reason codes through
+// this table. There are deliberately NO coupon records in this module:
+// the demo records that used to live here (WELCOME10 / SAMPLE-FIXED200)
+// were removed (doc 21 G3-3) so a code resolves only when a real
+// Coupon row exists in the DB.
 export const COUPON_REASON_BN: Record<string, string> = {
   coupon_inactive: "কুপনটি এখন সক্রিয় নয়।",
   coupon_not_started: "কুপনটি এখনো শুরু হয়নি।",
@@ -138,7 +100,7 @@ export const COUPON_REASON_BN: Record<string, string> = {
   per_user_limit_reached: "আপনি এই কুপনের সীমা পর্যন্ত ব্যবহার করেছেন।",
   not_first_order: "এই কুপন শুধু প্রথম অর্ডারের জন্য।",
   not_stackable: "এই কুপন অন্য কুপনের সাথে ব্যবহার করা যাবে না।",
-  not_found: "কুপন কোড পাওয়া যায়নি। (ডেমো কোড: WELCOME10)",
+  not_found: "কুপন কোডটি সঠিক নয়।",
 };
 
 // NOTE: the old TEMPORARY DEMO cart (seeded from the mock catalog) is

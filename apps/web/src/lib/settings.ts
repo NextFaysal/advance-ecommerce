@@ -145,7 +145,9 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   // { id, labelBn, labelEn }. The value below MUST stay in sync with
   // DEFAULT_DELIVERY_SLOTS in that module (it cannot import from
   // there without a cycle). Writable through the generic settings
-  // POST like every orders.* key; no dedicated editor UI yet.
+  // POST like every orders.* key; a dedicated editor UI shipped in
+  // wave 28 (doc 18 F2-1) at app/admin/settings/orders
+  // (delivery-slots-card.tsx).
   "orders.delivery_slots": {
     category: "general",
     value:

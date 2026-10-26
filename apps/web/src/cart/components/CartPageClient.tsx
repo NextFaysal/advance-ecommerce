@@ -10,9 +10,11 @@
 // Totals preview uses the same pipeline order as
 // checkout: subtotal -> item discounts -> coupon -> shipping -> COD fee
 // -> tax -> grand total, computed with checkout/pricing computePricing().
-// Coupon rules run through marketing/service applyCoupon() on DEMO coupon
-// records (labelled) until a live coupon read exists. Checkout still
-// re-validates every price/stock server-side.
+// Coupons are NOT evaluated on this page (doc 21 G3-3): there is no
+// public coupon read API, so the entered code is only stored on the
+// cart and the real DB coupon set is evaluated server-side at order
+// create — the preview therefore carries no coupon discount. Checkout
+// still re-validates every price/stock server-side.
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -24,7 +26,6 @@ import { useBengaliNumerals } from "@/components/ui/numerals";
 import { computePricing } from "@/checkout/pricing";
 import type { PublicProduct } from "@/catalog/types";
 import { getWishlistIds, toggleWishlistId } from "@/catalog/wishlist";
-import { applyCoupon, type CouponRecord } from "@/marketing/service";
 import {
   clearGuestCart,
   loadGuestCart,
@@ -33,18 +34,10 @@ import {
 import { cartSubtotalPoisha, type Cart } from "../types";
 import {
   CART_SHIPPING_ZONES,
-  COUPON_REASON_BN,
   cartItemDiscountPoisha,
-  findDemoCoupon,
   resolveCartLines,
   type CartShippingZone,
 } from "./resolve";
-
-type CouponState = {
-  record: CouponRecord;
-  discountPoisha: number;
-  shippingPoisha: number;
-} | null;
 
 export default function CartPageClient({ catalogProducts }: { catalogProducts: PublicProduct[] }) {
   const bengaliDigits = useBengaliNumerals();
@@ -52,7 +45,10 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
   const [loaded, setLoaded] = useState(false);
   const [zoneId, setZoneId] = useState<CartShippingZone["id"]>("inside_dhaka");
   const [couponInput, setCouponInput] = useState("");
-  const [coupon, setCoupon] = useState<CouponState>(null);
+  // The coupon code stored on the cart (cart.couponCode) — carried to
+  // checkout, where the server evaluates it against the real DB
+  // coupons. It applies NO discount in this page's preview.
+  const [savedCouponCode, setSavedCouponCode] = useState<string | null>(null);
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -60,7 +56,10 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
     const guest = loadGuestCart();
     if (guest && guest.items.length > 0) {
       setCart(guest);
-      if (guest.couponCode) setCouponInput(guest.couponCode);
+      if (guest.couponCode) {
+        setCouponInput(guest.couponCode);
+        setSavedCouponCode(guest.couponCode);
+      }
     } else {
       setCart(null);
     }
@@ -78,24 +77,13 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
   const itemDiscountPoisha = cartItemDiscountPoisha(lines);
   const afterItemDiscountPoisha = Math.max(0, subtotalPoisha - itemDiscountPoisha);
 
-  // Re-evaluate the applied coupon whenever the cart value changes: a
-  // coupon that no longer qualifies (e.g. min cart) drops off visibly.
-  const couponEval = useMemo(() => {
-    if (!coupon) return null;
-    const result = applyCoupon(coupon.record, {
-      code: coupon.record.code,
-      subtotalPoisha: afterItemDiscountPoisha,
-      shippingPoisha: zone.chargePoisha,
-      isFirstOrder: false,
-      alreadyAppliedCodes: [],
-    });
-    return result.eligible ? result : null;
-  }, [coupon, afterItemDiscountPoisha, zone.chargePoisha]);
-
+  // No coupon discount in the preview: the stored code (if any) is
+  // evaluated server-side at order create against the real DB coupons
+  // (doc 21 G3-3) — this page cannot resolve codes honestly.
   const pricing = computePricing({
     itemsSubtotalPoisha: afterItemDiscountPoisha,
-    couponDiscountPoisha: couponEval?.discountPoisha ?? 0,
-    shippingPoisha: couponEval ? couponEval.shippingPoisha : zone.chargePoisha,
+    couponDiscountPoisha: 0,
+    shippingPoisha: zone.chargePoisha,
     // COD fee is 0 in the current pricing config (same as /checkout demo);
     // the row stays in the breakdown so the pipeline order is visible.
     codFeePoisha: 0,
@@ -130,7 +118,7 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
   function clearCart() {
     clearGuestCart();
     setCart(null);
-    setCoupon(null);
+    setSavedCouponCode(null);
     setCouponMessage(null);
     setNotice(null);
   }
@@ -148,36 +136,22 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
     );
   }
 
+  // Stores the code on the cart only — no client-side resolution
+  // exists (no public coupon API). The server evaluates the code
+  // against the real DB coupons when the order is created; a wrong or
+  // ineligible code is reported on the checkout confirmation.
   function applyCouponCode() {
     const code = couponInput.trim().toUpperCase();
     if (!code) return;
-    const record = findDemoCoupon(code);
-    if (!record) {
-      setCoupon(null);
-      setCouponMessage(COUPON_REASON_BN.not_found ?? "কুপন কোড পাওয়া যায়নি।");
-      return;
-    }
-    const result = applyCoupon(record, {
-      code: record.code,
-      subtotalPoisha: afterItemDiscountPoisha,
-      shippingPoisha: zone.chargePoisha,
-      isFirstOrder: false,
-      alreadyAppliedCodes: [],
-    });
-    if (!result.eligible) {
-      setCoupon(null);
-      setCouponMessage(
-        (result.reason && COUPON_REASON_BN[result.reason]) ?? "কুপনটি ব্যবহার করা যাচ্ছে না।",
-      );
-      return;
-    }
-    setCoupon({ record, discountPoisha: result.discountPoisha, shippingPoisha: result.shippingPoisha });
-    setCouponMessage(`কুপন ${record.code} প্রয়োগ হয়েছে।`);
-    if (cart) persist({ ...cart, couponCode: record.code });
+    setSavedCouponCode(code);
+    setCouponMessage(
+      `কুপন ${code} সংরক্ষণ করা হয়েছে — চেকআউটে সার্ভার যাচাই করে ছাড় প্রয়োগ করবে।`,
+    );
+    if (cart) persist({ ...cart, couponCode: code });
   }
 
   function removeCoupon() {
-    setCoupon(null);
+    setSavedCouponCode(null);
     setCouponMessage(null);
     setCouponInput("");
     if (cart) {
@@ -349,10 +323,10 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
           </div>
 
           <div className="mt-4">
-            {coupon && couponEval ? (
+            {savedCouponCode ? (
               <p className="flex items-center justify-between rounded-lg bg-brand-50 px-3 py-2 text-sm">
                 <span>
-                  কুপন <strong>{coupon.record.code}</strong> চালু আছে
+                  কুপন <strong>{savedCouponCode}</strong> সংরক্ষিত — চেকআউটে যাচাই হবে
                 </span>
                 <button type="button" onClick={removeCoupon} className="font-medium text-rose-500">
                   বাতিল
@@ -364,7 +338,7 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
                   <Input
                     label="কুপন কোড"
                     name="couponCode"
-                    placeholder="WELCOME10"
+                    placeholder="কুপন কোড লিখুন"
                     value={couponInput}
                     onChange={(e) => setCouponInput(e.target.value)}
                   />
@@ -377,7 +351,7 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
             {couponMessage ? (
               <p role="status" className="mt-1 text-xs text-text-muted">{couponMessage}</p>
             ) : null}
-            <p className="mt-1 text-xs text-text-subtle">ডেমো কুপন — আসল কুপন যাচাই চেকআউটে সার্ভার করবে।</p>
+            <p className="mt-1 text-xs text-text-subtle">কুপন চেকআউটে সার্ভার যাচাই করবে — সঠিক কুপন হলে ছাড় অর্ডারের মোটে প্রয়োগ হবে।</p>
           </div>
 
           <dl className="mt-4 space-y-2 border-t border-border pt-3 text-sm">
@@ -391,20 +365,10 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
                 <dd className="text-brand-700">−<Money bengaliDigits={bengaliDigits} poisha={itemDiscountPoisha} /></dd>
               </div>
             ) : null}
-            {pricing.couponDiscountPoisha > 0 ? (
-              <div className="flex justify-between">
-                <dt className="text-text-muted">কুপন ছাড় {coupon ? `(${coupon.record.code})` : ""}</dt>
-                <dd className="text-brand-700">−<Money bengaliDigits={bengaliDigits} poisha={pricing.couponDiscountPoisha} /></dd>
-              </div>
-            ) : null}
             <div className="flex justify-between">
               <dt className="text-text-muted">ডেলিভারি চার্জ ({zone.labelBn})</dt>
               <dd>
-                {couponEval && couponEval.shippingPoisha === 0 && zone.chargePoisha > 0 ? (
-                  <span className="font-medium text-brand-700">ফ্রি</span>
-                ) : (
-                  <Money bengaliDigits={bengaliDigits} poisha={pricing.shippingPoisha} />
-                )}
+                <Money bengaliDigits={bengaliDigits} poisha={pricing.shippingPoisha} />
               </dd>
             </div>
             <div className="flex justify-between">

@@ -52,6 +52,13 @@
  *  - callCenterSmsSend — C4: the send path for call-center automation
  *    SMS jobs, delegated from the SMS handler to
  *    src/callcenter/automation.ts (lazy import — see the dep below).
+ *  - returnUpdateSmsSend — doc 21 G3-1: the send path for
+ *    return-update SMS jobs, delegated to
+ *    src/orders/return-notify.ts (lazy import — see the dep below).
+ *  - backInStockSmsSend — doc 21 G3-9: the send path for
+ *    back-in-stock SMS jobs, delegated to
+ *    src/storefront-ux/back-in-stock-notify.ts (lazy import — see the
+ *    dep below).
  *  - callCenterDeadLetter — doc 18 F1: the timeline hook the
  *    processor fires when a call-center automation job exhausts its
  *    retries, delegated to src/callcenter/dead-letter.ts (lazy import
@@ -270,6 +277,22 @@ export const workerDeps: WorkerRuntimeDeps = {
   orderOtpSmsSend: async (job) => {
     const otp = await import("../orders/otp");
     return otp.processOrderOtpSmsJob(job, { smsProvider: resolveSmsProvider });
+  },
+  // Doc 21 G3-1: return-update SMS jobs (sms queue, jobKind
+  // "return-update") delegate here. Lazy import for the same reason
+  // as callCenterSmsSend above: the module pulls in Prisma at module
+  // top level, and a load failure there must never stop a job from
+  // being handled.
+  returnUpdateSmsSend: async (job) => {
+    const returnNotify = await import("../orders/return-notify");
+    return returnNotify.processReturnUpdateSmsJob(job, { smsProvider: resolveSmsProvider });
+  },
+  // Doc 21 G3-9: back-in-stock SMS jobs (sms queue, jobKind
+  // "back-in-stock") delegate here. Lazy import for the same reason
+  // as returnUpdateSmsSend above.
+  backInStockSmsSend: async (job) => {
+    const backInStock = await import("../storefront-ux/back-in-stock-notify");
+    return backInStock.processBackInStockSmsJob(job, { smsProvider: resolveSmsProvider });
   },
   courierProvider: resolveCourierProvider,
   bulkActionsRunner: async (job) => {
