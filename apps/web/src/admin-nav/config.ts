@@ -248,6 +248,17 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: "locked-add-on",
   },
   {
+    id: "print-queue",
+    path: "/admin/print-queue",
+    labelBn: "প্রিন্ট কিউ",
+    labelEn: "Print Queue",
+    icon: "Palette",
+    section: "sales",
+    permission: "orders.view",
+    featureFlag: "module.print_on_demand",
+    badge: "locked-add-on",
+  },
+  {
     id: "pharmacy-rx",
     path: "/admin/pharmacy",
     labelBn: "প্রেসক্রিপশন যাচাই",

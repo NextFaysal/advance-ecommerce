@@ -10,6 +10,7 @@ import { LOW_STOCK_THRESHOLD, socialProofEnabled } from "@/marketing/social-proo
 import { SubscribeSaveSection } from "@/subscriptions/subscribe-save-section";
 import { BoxSubscribeSection } from "@/boxes/box-subscribe-section";
 import { getBoxPdpData } from "@/boxes/service";
+import { getPodPdpNote } from "@/pod/customisation";
 import { RecordRecentlyViewed } from "@/storefront-ux/components/RecordRecentlyViewed";
 import { RecentlyViewedRail } from "@/storefront-ux/components/RecentlyViewedRail";
 import { StickyBuyBar } from "@/storefront-ux/components/StickyBuyBar";
@@ -190,7 +191,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
   // is only fetched when the product has no chart of its own, and
   // the pack/grocery resolvers return null/[] at ~zero cost while
   // their module flag is off.
-  const [ageRestriction, packSizeChart, weightedInfos, related, boxPdpData] = await Promise.all([
+  const [ageRestriction, packSizeChart, weightedInfos, related, boxPdpData, podPdpNote] = await Promise.all([
     priceOnRequest ? null : getAgeRestrictionForCategorySlug(product.categorySlug),
     sizeChart ? null : resolvePdpPackSizeChart(product.categorySlug),
     getWeightedInfosForProduct(product.id),
@@ -199,6 +200,10 @@ export default async function ProductPage({ params }: { params: { slug: string }
     // subscription flags are ON and a variant of this product is a
     // listed box (~zero cost otherwise, the weightedInfos contract).
     priceOnRequest ? null : getBoxPdpData(product.variants.map((v) => v.id)),
+    // ADV-23 vertical 5: print-on-demand note data — null unless
+    // module.print_on_demand is ON and a variant of this product
+    // is on the printable list (same ~zero-cost contract).
+    priceOnRequest ? null : getPodPdpNote(product.variants.map((v) => v.id)),
   ]);
   // ADV-22 (fashion pack): when the product has NO chart of its own,
   // the pack chart for its category is the fallback (per-category
@@ -589,6 +594,21 @@ export default async function ProductPage({ params }: { params: { slug: string }
                   : {})}
               />
               </AgeGate>
+              {/* Custom print (ADV-23 vertical 5): a NOTE only —
+                  the print text + colour are entered at checkout
+                  (the guest cart carries no customisation), and
+                  this says so before the customer adds to cart. */}
+              {podPdpNote ? (
+                <p className="mt-3 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
+                  🎨 <strong className="text-text-main">কাস্টম প্রিন্ট:</strong> এই পণ্যে আপনার
+                  নিজের লেখা ছাপানো যাবে (সর্বোচ্চ {podPdpNote.textMaxChars} অক্ষর
+                  {podPdpNote.hasColors ? ", রঙও বেছে নেওয়া যাবে" : ""}) — লেখাটি চেকআউটে
+                  দিতে হবে।
+                  {podPdpNote.printFeePoisha > 0
+                    ? ` প্রিন্ট ফি প্রতি আইটেমে ${fromPoisha(podPdpNote.printFeePoisha)} টাকা, অর্ডারের মোটে যোগ হবে।`
+                    : ""}
+                </p>
+              ) : null}
               </>
               )}
             </div>

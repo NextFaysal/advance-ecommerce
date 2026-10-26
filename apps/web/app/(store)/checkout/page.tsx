@@ -40,6 +40,7 @@ import { clearGuestCart, loadGuestCart } from "../../../src/cart/persistence";
 import { readStoredResellerRef } from "../../../src/reseller/attribution";
 import { findStockProblems } from "../../../src/checkout/stock";
 import { computePricing, formatBdt } from "../../../src/checkout/pricing";
+import { lineTotalPoisha } from "../../../src/lib/quantity";
 import {
   calculateShipping,
   DEFAULT_SHIPPING_RATES,
@@ -140,6 +141,11 @@ type PlacedOrder = {
    *  depositPoisha is the frozen deposit already included in the
    *  order total, refunded manually on return. */
   rental?: { startDate: string; endDate: string; days: number; depositPoisha: number; status: string };
+  /** ADV-23 vertical 5: meta.pod — present only when a custom
+   *  print was frozen with this order (print-on-demand module on +
+   *  print text entered at checkout). feePoisha is the total
+   *  print fee already included in the order total. */
+  pod?: { printText: string; printColor: string | null; feePoisha: number };
 };
 
 export default function CheckoutPage() {
@@ -387,6 +393,59 @@ export default function CheckoutPage() {
       cancelled = true;
     };
   }, []);
+  // Print-on-demand (ADV-23 vertical 5, wave 56): from GET
+  // /api/v1/public/pod/config — rendered ONLY when the POD module
+  // is enabled AND the cart contains a variant from the merchant's
+  // printable list (podVariantIds). The customer types the print
+  // text and optionally picks a palette colour; the choice rides
+  // the create payload as `pod` and is re-validated server-side
+  // against pod.config (list, cap, palette) before being frozen
+  // onto the order note — this section is a convenience, never
+  // the authority. A failed fetch hides the section; checkout
+  // never blocks on it. No image upload is offered in v1
+  // (storage-gated) — the section is text + colour only.
+  const [podConfig, setPodConfig] = useState<{
+    enabled: boolean;
+    podVariantIds: string[];
+    printFeePoisha: number;
+    textMaxChars: number;
+    colors: string[];
+  } | null>(null);
+  const [podText, setPodText] = useState("");
+  const [podColor, setPodColor] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/public/pod/config")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("pod config fetch failed"))))
+      .then(
+        (json: {
+          data?: {
+            enabled?: boolean;
+            podVariantIds?: string[];
+            printFeePoisha?: number;
+            textMaxChars?: number;
+            colors?: string[];
+          };
+        }) => {
+          if (cancelled) return;
+          setPodConfig({
+            enabled: json.data?.enabled === true,
+            podVariantIds: Array.isArray(json.data?.podVariantIds) ? json.data.podVariantIds : [],
+            printFeePoisha:
+              typeof json.data?.printFeePoisha === "number" ? json.data.printFeePoisha : 0,
+            textMaxChars:
+              typeof json.data?.textMaxChars === "number" ? json.data.textMaxChars : 20,
+            colors: Array.isArray(json.data?.colors) ? json.data.colors : [],
+          });
+        },
+      )
+      .catch(() => {
+        // No POD section; the order flow is unaffected.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // The (single, v1) rental line in this cart: the FIRST cart line
   // whose variant is on the merchant's rental list. Quantity must
   // be exactly 1 to rent (the server enforces the same rule).
@@ -407,6 +466,22 @@ export default function CheckoutPage() {
     }
     return 0;
   }, [rentalConfig, rentalLine]);
+  // The (single, v1) POD line in this cart: the FIRST cart line
+  // whose variant is on the merchant's printable list. Unlike a
+  // rental its quantity may exceed 1 — the print fee is per item.
+  const podLine = useMemo(() => {
+    if (!podConfig?.enabled || !cart) return null;
+    const ids = new Set(podConfig.podVariantIds);
+    return cart.items.find((i) => ids.has(i.variantId)) ?? null;
+  }, [podConfig, cart]);
+  // The print fee this cart would carry once a text is entered,
+  // previewed from the config (display only — the server
+  // recomputes it from the same config and freezes it on the
+  // order note).
+  const podFeePreview = useMemo(() => {
+    if (!podConfig?.enabled || !podLine || podText.trim() === "") return 0;
+    return lineTotalPoisha(podConfig.printFeePoisha, podLine.quantity);
+  }, [podConfig, podLine, podText]);
   // Default the range to today → today when a rental line appears.
   useEffect(() => {
     if (rentalLine && !rentalStart) {
@@ -799,8 +874,12 @@ export default function CheckoutPage() {
         // summary total so the page never shows a smaller total
         // than the order will carry (server recomputes it exactly).
         rentalDepositPoisha: rentalLine && rentalQty === 1 ? rentalDepositPreview : 0,
+        // ADV-23 vertical 5 (wave 56): the print-fee preview joins
+        // the summary total the same way, once a print text has
+        // been entered (no text = no customisation = no fee).
+        printFeePoisha: podFeePreview,
       }),
-    [cart, shippingPreview, rentalLine, rentalQty, rentalDepositPreview],
+    [cart, shippingPreview, rentalLine, rentalQty, rentalDepositPreview, podFeePreview],
   );
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -828,6 +907,23 @@ export default function CheckoutPage() {
       }
       if (rentalAvailability && rentalAvailability.availableUnits <= 0) {
         setErrors(["এই তারিখের জন্য সব ইউনিট ইতিমধ্যে ভাড়া হয়ে গেছে — অন্য তারিখ বেছে নিন। / All units are already rented for these dates — please choose other dates."]);
+        return;
+      }
+    }
+    // Print-on-demand (ADV-23 vertical 5): a printable line must
+    // carry its print text — without one the order would silently
+    // be a plain purchase of what the merchant sells as a custom
+    // print. The cap is the merchant's config value; the server
+    // re-checks it (after sanitising) either way.
+    if (podLine) {
+      if (podText.trim() === "") {
+        setErrors(["কাস্টম প্রিন্টের জন্য ছাপানোর লেখাটি লিখুন। / Please enter the text to print."]);
+        return;
+      }
+      if ([...podText.trim()].length > (podConfig?.textMaxChars ?? 20)) {
+        setErrors([
+          `ছাপানোর লেখা সর্বোচ্চ ${podConfig?.textMaxChars ?? 20} অক্ষরের হতে পারবে। / The print text can be at most ${podConfig?.textMaxChars ?? 20} characters.`,
+        ]);
         return;
       }
     }
@@ -929,6 +1025,21 @@ export default function CheckoutPage() {
         rentalConfig?.enabled && rentalLine && rentalQty === 1 && rentalStart && rentalEnd
           ? { variantId: rentalLine.variantId, startDate: rentalStart, endDate: rentalEnd }
           : undefined,
+      // Print-on-demand (ADV-23 vertical 5): sent only when the
+      // POD module is on, the cart holds a printable line, and a
+      // print text was entered (enforced above). The server
+      // re-validates it against pod.config and freezes it onto
+      // the order note — an unlisted variant, an over-cap text or
+      // an off-palette colour comes back as a bilingual 400 in
+      // the error list.
+      pod:
+        podConfig?.enabled && podLine && podText.trim() !== ""
+          ? {
+              variantId: podLine.variantId,
+              printText: podText,
+              printColor: podColor || undefined,
+            }
+          : undefined,
     });
     if (!result.ok) {
       setErrors(result.errors);
@@ -966,6 +1077,7 @@ export default function CheckoutPage() {
           restaurant?: PlacedOrder["restaurant"];
           booking?: PlacedOrder["booking"];
           rental?: PlacedOrder["rental"];
+          pod?: PlacedOrder["pod"];
         };
         error?: { code?: string; message?: string; details?: unknown };
       } | null;
@@ -1012,6 +1124,7 @@ export default function CheckoutPage() {
           ...(json?.meta?.restaurant ? { restaurant: json.meta.restaurant } : {}),
           ...(json?.meta?.booking ? { booking: json.meta.booking } : {}),
           ...(json?.meta?.rental ? { rental: json.meta.rental } : {}),
+          ...(json?.meta?.pod ? { pod: json.meta.pod } : {}),
           couponStatus: order.couponStatus,
         });
         return;
@@ -1099,6 +1212,18 @@ export default function CheckoutPage() {
                   {placedOrder.rental.startDate} → {placedOrder.rental.endDate} ({placedOrder.rental.days} দিন)
                   {placedOrder.rental.depositPoisha > 0
                     ? ` — জামানত ${digits(formatBdt(placedOrder.rental.depositPoisha))} মোটে অন্তর্ভুক্ত (ফেরতে ফেরতযোগ্য)`
+                    : ""}
+                </dd>
+              </div>
+            ) : null}
+            {placedOrder.pod ? (
+              <div className="flex justify-between gap-3">
+                <dt className="shrink-0 text-text-muted">কাস্টম প্রিন্ট</dt>
+                <dd className="text-right font-semibold">
+                  «{placedOrder.pod.printText}»
+                  {placedOrder.pod.printColor ? ` • রঙ: ${placedOrder.pod.printColor}` : ""}
+                  {placedOrder.pod.feePoisha > 0
+                    ? ` — প্রিন্ট ফি ${digits(formatBdt(placedOrder.pod.feePoisha))} মোটে অন্তর্ভুক্ত`
                     : ""}
                 </dd>
               </div>
@@ -1820,6 +1945,96 @@ export default function CheckoutPage() {
                   </p>
                 )}
               </>
+            )}
+          </fieldset>
+        )}
+        {/* Print-on-demand (ADV-23 vertical 5, wave 56): rendered
+            ONLY when the POD module is enabled AND the cart holds
+            a printable variant (the public config fetch above).
+            The customer types the exact text to print (character
+            counter against the merchant's cap) and optionally
+            picks a palette colour; the choice rides the create
+            payload as `pod` and is re-validated + frozen
+            server-side — this section is a convenience, never the
+            authority. No image upload is offered: artwork upload
+            is storage-gated and does not exist in v1. */}
+        {podConfig?.enabled && podLine && (
+          <fieldset className="m-0 border-0 p-0">
+            <legend className="mb-2 text-sm font-medium text-text-main">কাস্টম প্রিন্ট (আবশ্যক)</legend>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-text-main">
+                ছাপানোর লেখা — {podLine.name}
+              </span>
+              <input
+                type="text"
+                value={podText}
+                maxLength={Math.max(podConfig.textMaxChars * 2, podConfig.textMaxChars)}
+                onChange={(e) => setPodText(e.target.value)}
+                placeholder="যেমন: আপনার নাম বা প্রিয় লাইন"
+                className={INPUT_CLASS}
+              />
+              <span
+                className={`mt-1 block text-xs ${
+                  [...podText.trim()].length > podConfig.textMaxChars
+                    ? "font-semibold text-rose-600"
+                    : "text-text-muted"
+                }`}
+              >
+                {[...podText.trim()].length}/{podConfig.textMaxChars} অক্ষর — ঠিক এই লেখাটিই ছাপা হবে,
+                বানান যাচাই করে লিখুন।
+              </span>
+            </label>
+            {podConfig.colors.length > 0 && (
+              <div className="mt-3">
+                <span className="mb-1.5 block text-sm font-medium text-text-main">প্রিন্টের রঙ (ঐচ্ছিক)</span>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPodColor("")}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                      podColor === ""
+                        ? "border-brand-600 bg-brand-50 text-brand-700"
+                        : "border-border bg-card text-text-main hover:bg-surface-2"
+                    }`}
+                  >
+                    দোকানের ডিফল্ট
+                  </button>
+                  {podConfig.colors.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setPodColor(color)}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                        podColor === color
+                          ? "border-brand-600 bg-brand-50 text-brand-700"
+                          : "border-border bg-card text-text-main hover:bg-surface-2"
+                      }`}
+                    >
+                      {/^#[0-9a-fA-F]{6}$/.test(color) && (
+                        <span
+                          aria-hidden="true"
+                          className="h-3 w-3 rounded-full border border-border"
+                          style={{ backgroundColor: color }}
+                        />
+                      )}
+                      {color}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {podConfig.printFeePoisha > 0 && (
+              <p className="mt-3 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
+                প্রিন্ট ফি: প্রতি আইটেমে{" "}
+                <strong className="text-text-main">{digits(formatBdt(podConfig.printFeePoisha))}</strong>
+                {podFeePreview > 0 && (
+                  <>
+                    {" "}— এই অর্ডারে মোট{" "}
+                    <strong className="text-text-main">{digits(formatBdt(podFeePreview))}</strong>{" "}
+                    অর্ডারের মোট মূল্যে যোগ হবে।
+                  </>
+                )}
+              </p>
             )}
           </fieldset>
         )}
