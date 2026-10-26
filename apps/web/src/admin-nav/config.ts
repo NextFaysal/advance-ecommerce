@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Admin navigation — single source of truth (Agent 23).
  *
  * Pure data + helpers, safe to import from server or client components.
@@ -31,6 +31,7 @@ export type AdminNavSectionId =
   | "marketing"
   | "insights"
   | "addons"
+  | "appearance"
   | "system";
 
 export interface AdminNavSection {
@@ -50,6 +51,7 @@ export const ADMIN_NAV_SECTIONS: readonly AdminNavSection[] = [
   { id: "insights", labelBn: "ইনসাইট", labelEn: "Insights" },
   { id: "addons", labelBn: "অ্যাড-অন মডিউল", labelEn: "Add-on Modules" },
   { id: "system", labelBn: "সিস্টেম", labelEn: "System" },
+  { id: "appearance", labelBn: "অ্যাপিয়ারেন্স", labelEn: "Appearance" },
 ];
 
 export interface AdminNavItem {
@@ -861,7 +863,19 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     featureFlag: null,
     badge: null,
   },
-];
+
+  // ---- Appearance ---------------------------------------------------------
+  {
+    id: "themes",
+    path: "/admin/appearance/themes",
+    labelBn: "থিম",
+    labelEn: "Themes",
+    icon: "Palette",
+    section: "appearance",
+    permission: "settings.edit",
+    featureFlag: null,
+    badge: null,
+  },];
 
 export interface AdminNavGroup {
   section: AdminNavSection;

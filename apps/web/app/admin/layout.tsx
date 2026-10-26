@@ -113,7 +113,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               </span>
             </a>
             <div className="mt-4 flex items-center gap-2 rounded-md bg-surface-2 px-3 py-2">
-              <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+              <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 animate-pulse" />
               <span className="truncate text-small font-medium">আমার দোকান</span>
               <span className="ml-auto rounded-full bg-emerald-50 px-2 py-0.5 text-caption font-semibold text-emerald-700">
                 লাইভ
@@ -186,7 +186,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         {/* Content column */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Topbar — sticky, translucent (glass sparingly) */}
-          <header className="sticky top-0 z-40 flex h-16 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur sm:px-6">
+          <header className="sticky top-0 z-40 flex h-16 items-center gap-3 border-b border-border/80 bg-card/85 px-4 backdrop-blur-xl shadow-xs sm:px-6">
             <span className="font-bold text-brand-700 md:hidden">Advance Ecommerce</span>
             {/* Breadcrumb */}
             <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-1.5 text-sm md:flex">

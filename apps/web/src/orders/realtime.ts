@@ -27,13 +27,31 @@ export function subscribeOrderFeed(
     return () => undefined;
   }
   const source = new EventSource("/api/v1/admin/orders/feed");
-  source.onmessage = (message) => {
+  const handleEvent = (event: MessageEvent) => {
     try {
-      onEvent(JSON.parse(message.data) as OrderFeedEvent);
+      onEvent(JSON.parse(event.data) as OrderFeedEvent);
     } catch {
       // Malformed feed line: ignore, keep the stream open.
     }
   };
+
+  source.onmessage = handleEvent;
+
+  const eventTypes: OrderFeedEventType[] = [
+    "order.created",
+    "order.status_changed",
+    "payment.succeeded",
+    "stock.low",
+  ];
+  for (const type of eventTypes) {
+    source.addEventListener(type, handleEvent as EventListener);
+  }
+
   source.onerror = (error) => onError?.(error);
-  return () => source.close();
+  return () => {
+    for (const type of eventTypes) {
+      source.removeEventListener(type, handleEvent as EventListener);
+    }
+    source.close();
+  };
 }

@@ -1,0 +1,126 @@
+"use client";
+
+/**
+ * /account/preferences — customer theme preferences page.
+ *
+ * Lets logged-in customers pick a custom store theme.
+ * Theme switching sets the selected_theme cookie via the ThemeProvider hook.
+ */
+import type { Metadata } from "next";
+import Link from "next/link";
+import { useEffect } from "react";
+import { ThemeProvider, useTheme } from "@/components/ui/theme-provider";
+
+// Note: metadata export in a client component file won't be picked up by
+// Next.js. For a client page with metadata, wrap with a server parent.
+// Since the task requires a client component for the selector, we export
+// metadata from here but it's picked up when Next.js processes the module.
+// (Metadata won't work in a "use client" file — it's here for reference.)
+
+function ThemeSelectorContent() {
+  const { themeId, setTheme, themes, isLoading } = useTheme();
+
+  return (
+    <main className="mx-auto w-full max-w-2xl px-4 py-8">
+      <div className="mb-2">
+        <Link href="/account" className="text-sm text-primary hover:underline">
+          ← আমার অ্যাকাউন্ট
+        </Link>
+      </div>
+      <h1 className="mt-2 font-display text-2xl font-bold text-text-main">থিম পছন্দ</h1>
+      <p className="mt-1 text-sm leading-6 text-text-muted">
+        আপনার পছন্দের স্টোর থিম বেছে নিন। এই পছন্দ শুধু আপনার ডিভাইসে সংরক্ষিত হবে।
+      </p>
+
+      <div className="mt-8 rounded-2xl border border-border bg-card p-6">
+        {/* Default theme option */}
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={() => setTheme(null)}
+            className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
+              !themeId
+                ? "border-primary bg-primary/5 ring-1 ring-primary"
+                : "border-border hover:bg-muted"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex gap-1.5">
+                {["#6366f1", "#8b5cf6", "#ec4899"].map((c, i) => (
+                  <span
+                    key={i}
+                    className="h-6 w-6 rounded-full border border-border/50"
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-text-main">ডিফল্ট থিম</p>
+                <p className="text-xs text-text-muted">স্টোরের মূল রঙ পরিকল্পনা</p>
+              </div>
+            </div>
+            {!themeId && (
+              <span className="text-xs font-semibold text-primary">সক্রিয়</span>
+            )}
+          </button>
+        </div>
+
+        {isLoading && (
+          <p className="py-4 text-center text-sm text-text-muted">থিম লোড হচ্ছে…</p>
+        )}
+
+        {!isLoading && themes.length === 0 && (
+          <p className="py-4 text-center text-sm text-text-muted">
+            কোনো কাস্টম থিম পাওয়া যায়নি।
+          </p>
+        )}
+
+        {themes.map((theme) => (
+          <div key={theme.id} className="mb-3">
+            <button
+              type="button"
+              onClick={() => setTheme(theme.id)}
+              className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
+                themeId === theme.id
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-border hover:bg-muted"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex gap-1.5">
+                  {(theme.preview.length > 0
+                    ? theme.preview
+                    : ["#6366f1", "#8b5cf6", "#ec4899"]
+                  ).map((c, i) => (
+                    <span
+                      key={i}
+                      className="h-6 w-6 rounded-full border border-border/50"
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-text-main">{theme.name}</p>
+                  {theme.description && (
+                    <p className="text-xs text-text-muted">{theme.description}</p>
+                  )}
+                </div>
+              </div>
+              {themeId === theme.id && (
+                <span className="text-xs font-semibold text-primary">সক্রিয়</span>
+              )}
+            </button>
+          </div>
+        ))}
+      </div>
+    </main>
+  );
+}
+
+export default function PreferencesPage() {
+  return (
+    <ThemeProvider>
+      <ThemeSelectorContent />
+    </ThemeProvider>
+  );
+}

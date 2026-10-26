@@ -427,28 +427,10 @@ export function decryptValue(stored: string): string {
 /* Cache — in-memory fallback for local dev; Redis in production.     */
 /* ------------------------------------------------------------------ */
 
-const settingsCache = new Map<string, { value: string; expiresAt: number }>();
-const CACHE_TTL_MS = 5 * 60 * 1000;
-
-function cacheGet(key: string): string | null {
-  const entry = settingsCache.get(key);
-  if (entry === undefined || entry.expiresAt < Date.now()) {
-    settingsCache.delete(key);
-    return null;
-  }
-  return entry.value;
-}
-
-function cacheSet(key: string, value: string): void {
-  settingsCache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
-}
+import { getCachedValue, setCachedValue, invalidateCacheKey } from "./redis";
 
 export function invalidateSettingCache(key?: string): void {
-  if (key === undefined) {
-    settingsCache.clear();
-  } else {
-    settingsCache.delete(key);
-  }
+  invalidateCacheKey(key).catch(() => {});
 }
 
 /* ------------------------------------------------------------------ */
@@ -456,12 +438,12 @@ export function invalidateSettingCache(key?: string): void {
 /* ------------------------------------------------------------------ */
 
 export async function getSetting(key: string): Promise<string | null> {
-  const cached = cacheGet(key);
+  const cached = await getCachedValue(key);
   if (cached !== null) return cached;
   const row = await prisma.setting.findUnique({ where: { key } });
   if (row !== null) {
     const value = row.valueEncrypted ? decryptValue(row.value) : row.value;
-    cacheSet(key, value);
+    await setCachedValue(key, value);
     return value;
   }
   const envName = SETTING_ENV_FALLBACK[key];

@@ -12,11 +12,10 @@
  *     PRISMA_PENDING instead of running unauthenticated.
  *  4. Permission string present in the session's permission list.
  *
- * NOTE for the RBAC/seed owner: `automation.view`, `automation.manage`,
- * `fraud.view` and `fraud.manage` are enforced here as plain permission
- * strings (checked against the DB-backed session list, not the typed
- * catalogue) and still need to be added to PERMISSIONS in src/lib/rbac.ts
- * and to the seed catalogue so roles can be granted them.
+ * `automation.view`, `automation.manage`, `fraud.view` and `fraud.manage`
+ * are registered in PERMISSIONS (src/lib/rbac.ts) and in the seed catalogue
+ * so roles can be granted them. The guard checks the DB-backed session list
+ * at runtime.
  */
 import { cookies } from "next/headers";
 import { demoFeatureFlags, type FeatureFlagKey } from "./flags";

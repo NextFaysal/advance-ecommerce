@@ -1,6 +1,7 @@
 import { computeRfm, segmentCounts } from "@/analytics/rfm";
 import type { CustomerOrderSummary } from "@/analytics/rfm";
-import { rankCouriers, type CourierStats } from "@/analytics/performance";
+import { rankCouriers, staffPerformance, type CourierStats, type StaffStats } from "@/analytics/performance";
+import { prisma } from "@advance-ecommerce/db";
 import { buildCohortTable, buildCustomerActivity } from "@/analytics/cohort";
 import { averageOrderValuePoisha, computeUnitEconomics } from "@/analytics/unit-economics";
 import { getFunnelData, resolveFunnelEventStore } from "@/analytics/funnel-events";
@@ -67,6 +68,44 @@ export default async function AdminAnalyticsPage() {
     courierMap.set(r.courier, s);
   }
   const couriers = rankCouriers(Array.from(courierMap.values()));
+  // Staff performance (v2-merge, PR #1): call-center outcomes per agent
+  // from real CallLogEntry rows, scored by the same pure functions the
+  // staff-performance API route uses. Read failure degrades to an
+  // empty section, never a page crash.
+  let staffScores: ReturnType<typeof staffPerformance> = [];
+  try {
+    const users = await prisma.user.findMany({ select: { id: true, name: true }, take: 20 });
+    const callLogs = await prisma.callLogEntry.findMany({
+      select: { agentId: true, outcome: true, durationSeconds: true },
+      take: 1000,
+    });
+    const staffMap = new Map<string, StaffStats>();
+    for (const u of users) {
+      staffMap.set(u.id, {
+        staffId: u.id,
+        name: u.name || "Staff",
+        ordersProcessed: 0,
+        ordersConfirmed: 0,
+        callsHandled: 0,
+        slaMet: 0,
+        slaTotal: 0,
+      });
+    }
+    for (const log of callLogs) {
+      if (!log.agentId) continue;
+      const staff = staffMap.get(log.agentId);
+      if (staff) {
+        staff.ordersProcessed += 1;
+        staff.callsHandled += 1;
+        staff.slaTotal += 1;
+        if (log.outcome === "CONFIRMED") staff.ordersConfirmed += 1;
+        if (!log.durationSeconds || log.durationSeconds <= 600) staff.slaMet += 1;
+      }
+    }
+    staffScores = staffPerformance(Array.from(staffMap.values()));
+  } catch {
+    staffScores = [];
+  }
   const totalRevenue = rows.reduce((sum, r) => sum + r.revenuePoisha - r.refundPoisha, 0);
   const orderIds = new Set(rows.filter((r) => r.status !== "CANCELLED").map((r) => r.orderId));
   const customerCount = new Set(rows.map((r) => r.customerId)).size;
@@ -178,6 +217,37 @@ export default async function AdminAnalyticsPage() {
           ))}
         </ul>
         {couriers.length === 0 && <p className="mt-2 text-sm text-text-muted">No courier data in this period.</p>}
+      </section>
+
+      <section className="mt-6">
+        <h2 className="font-semibold">স্টাফ ও কল সেন্টার কর্মদক্ষতা (Staff Performance)</h2>
+        {staffScores.length === 0 ? (
+          <p className="mt-2 text-sm text-text-muted">কোনো স্টাফ হিস্টোরি পাওয়া যায়নি।</p>
+        ) : (
+          <div className="mt-2 overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead>
+                <tr>
+                  <th className="border-b p-2">স্টাফ নাম</th>
+                  <th className="border-b p-2">প্রসেস করা অর্ডার</th>
+                  <th className="border-b p-2">কনফার্মেশন রেট</th>
+                  <th className="border-b p-2">SLA রেট</th>
+                </tr>
+              </thead>
+              <tbody>
+                {staffScores.map((s) => (
+                  <tr key={s.staffId}>
+                    <td className="border-b p-2 font-medium">{s.name}</td>
+                    <td className="border-b p-2">{s.ordersProcessed} টি</td>
+                    <td className="border-b p-2">{(s.confirmRateBps / 100).toFixed(1)}%</td>
+                    <td className="border-b p-2">{(s.slaRateBps / 100).toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="mt-2 text-xs text-text-muted">কল লগ থেকে হিসাব করা (সর্বশেষ ১০০০টি এন্ট্রি)। API: GET /api/v1/admin/analytics/staff-performance</p>
       </section>
 
       <section className="mt-6">

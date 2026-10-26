@@ -1,3 +1,4 @@
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { PageHeader } from "@/components/ui/page-header";
 import { maskPhone } from "@/checkout/validation";
 import { demoInboxFlags, isInboxEnabled } from "@/inbox/flags";
@@ -28,6 +29,7 @@ import InboxClient from "./inbox-client";
 // Full numbers stay server-side; the order draft is built by POST
 // /api/v1/admin/inbox/draft, which resolves the phone server-side.
 export default async function AdminInboxPage() {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isInboxEnabled(demoInboxFlags)) {
     return (
       <main>

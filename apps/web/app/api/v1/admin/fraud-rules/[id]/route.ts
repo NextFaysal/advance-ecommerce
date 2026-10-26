@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { featureGuardError, requireFeatureAdmin } from "@/automation/guard";
 import { fraudListStore } from "@/fraud/lists";
+import { writeAudit } from "@/lib/audit";
 
 // Remove one blacklist / whitelist entry by id — Agent 13.
-// List management is DB-backed (fraudListStore); a remove should still
-// carry a reason in the admin UI flow and be audit-logged (writeAudit
-// via the API owner) — that audit hook is not wired yet, noted in meta.
+// Audit-logged: every fraud list removal is written to the AuditLog table
+// (action "fraud.list_entry.remove", entityType "FraudListEntry") so the
+// admin audit trail captures who removed which entry and when.
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   const guard = await requireFeatureAdmin("module.fraud_scoring", "fraud.manage");
@@ -14,8 +15,16 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   if (!removed) {
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "List entry not found." } }, { status: 404 });
   }
+  await writeAudit({
+    actorId: guard.userId,
+    action: "fraud.list_entry.remove",
+    entityType: "FraudListEntry",
+    entityId: params.id,
+    beforeJson: { id: params.id },
+    afterJson: null,
+  });
   return NextResponse.json({
     data: { deleted: true },
-    meta: { persistence: "database", audit: "pending-db-wiring" },
+    meta: { persistence: "database", audit: "written" },
   });
 }

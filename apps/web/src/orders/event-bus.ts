@@ -116,10 +116,45 @@ export type OrderEventListener = (event: DomainEvent) => void;
 
 const listeners = new Set<OrderEventListener>();
 
+const INSTANCE_ID = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+  ? crypto.randomUUID()
+  : Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+let redisSubActive = false;
+
+function initRedisSubIfNeeded() {
+  if (redisSubActive || typeof window !== "undefined" || !process.env.REDIS_URL) return;
+  redisSubActive = true;
+  import("../lib/redis")
+    .then(({ redisSubscribe }) => {
+      redisSubscribe("orders.events", (msgStr) => {
+        try {
+          const payload = JSON.parse(msgStr);
+          if (payload && payload._origin === INSTANCE_ID) {
+            // Already delivered locally in this process
+            return;
+          }
+          const { _origin, ...domainEvent } = payload;
+          for (const listener of [...listeners]) {
+            try {
+              listener(domainEvent as DomainEvent);
+            } catch {
+              listeners.delete(listener);
+            }
+          }
+        } catch {
+          // Swallowed
+        }
+      }).catch(() => {});
+    })
+    .catch(() => {});
+}
+
 /** Subscribe to domain events. Returns the unsubscribe function;
  *  callers MUST unsubscribe on teardown (the SSE route does so on
  *  client disconnect) or the listener leaks for the process lifetime. */
 export function subscribeOrderEvents(listener: OrderEventListener): () => void {
+  initRedisSubIfNeeded();
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
@@ -147,10 +182,25 @@ export function publishOrderEvent(event: DomainEvent): void {
         listeners.delete(listener);
       }
     }
+
+    // Forward to Redis Pub/Sub (realtime SSE fan-out across instances).
+    // v2-merge note (PR #1): the v2 branch also bridged every event into
+    // src/events/publisher (demo hook registry + legacy automation /
+    // webhook-subscription stores, with a hardcoded fallback signing
+    // secret). That bridge is deliberately NOT merged: on main,
+    // automation, outbound webhooks and external connectors are fired
+    // from src/automation/producers.ts (emitAutomationEvent +
+    // dispatchWebhookEvent + notifyExternal) against the real DB
+    // stores, and re-firing them here would double-send. The Redis
+    // bridge above is the part the realtime feed actually needs.
+    if (typeof window === "undefined") {
+      import("../lib/redis").then(({ redisPublish }) => redisPublish("orders.events", { ...event, _origin: INSTANCE_ID })).catch(() => {});
+    }
   } catch {
     // Publishing must never throw into the order mutation path.
   }
 }
+
 
 /* ------------------------------------------------------------------ */
 /* Typed publish helpers — the only calls publishers should make       */

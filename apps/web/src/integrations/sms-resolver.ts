@@ -38,7 +38,7 @@
  * failures degrade to "not configured" — never to a crash and never
  * to a fake real send.
  */
-import { SMS_PROVIDERS, type SmsProviderName } from "./sms";
+import { SMS_PROVIDERS, type SmsProvider, type SmsProviderName } from "./sms";
 import {
   createBulkSmsBdProvider,
   createGreenWebProvider,
@@ -168,4 +168,66 @@ export async function resolveConfiguredSmsProvider(
     }
   }
   return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* v2-merge compatibility (PR #1, v2-release branch)                   */
+/* ------------------------------------------------------------------ */
+
+function stableSandboxSuffix(parts: readonly string[]): string {
+  let hash = 0;
+  const joined = parts.join(":");
+  for (let i = 0; i < joined.length; i += 1) {
+    hash = (hash * 31 + (joined.charCodeAt(i) | 0)) | 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+/**
+ * Synchronous factory expected by v2-release request-path callers
+ * (call-center follow-up in src/callcenter/follow-up.ts). Returns a
+ * LAZY provider: the real
+ * Settings-configured gateway is resolved per send (same reader
+ * pattern as the admin settings test route), and when nothing is
+ * configured the send degrades to the labelled sandbox simulator —
+ * the same contract as worker-deps' resolveSmsProvider. The returned
+ * object's `name`/`config` describe the sandbox shell only; the
+ * provider actually used for a send is whatever
+ * resolveConfiguredSmsProvider picks at send time.
+ */
+export function getActiveSmsProvider(requestedName?: string | null): SmsProvider {
+  const label = validName(requestedName) ?? "bulksmsbd";
+  return {
+    name: label,
+    config: {
+      provider: "sandbox",
+      enabled: true,
+      mode: "sandbox",
+      status: "configured",
+      credentialRef: null,
+      lastTestedAt: null,
+      lastError: null,
+    },
+    async send(input) {
+      try {
+        const settings = await import("../lib/settings");
+        const resolved = await resolveConfiguredSmsProvider(
+          {
+            getSetting: (key) => settings.getSetting(key),
+            getProviderSecrets: (provider) =>
+              settings.getIntegrationConfigWithSecrets("sms", provider),
+          },
+          requestedName ?? null,
+        );
+        if (resolved !== null) return resolved.provider.send(input);
+      } catch {
+        // fall through to the sandbox simulator
+      }
+      return {
+        messageId: `sandbox-sms-${stableSandboxSuffix([input.templateKey ?? "msg", input.orderId ?? ""])}`,
+        status: "queued" as const,
+        segments: 1,
+      };
+    },
+  };
 }

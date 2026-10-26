@@ -10,6 +10,7 @@ import { riderStore } from "@/riders/db-store";
 import { activeLoad } from "@/riders/assignment";
 import { codHandoverLine, computeRiderPerformance } from "@/riders/service";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
+import { RiderAssignmentBoard } from "@/components/admin/rider-assignment-board";
 
 // Own Riders admin — Agent 18, Step 45 (E3); real data wired 2026-10-25.
 // Locked state: while module.rider is OFF in the feature_flags TABLE
@@ -20,9 +21,7 @@ import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 // RiderDelivery tables, the same store the riders API serves). Zone
 // NAMES come from the module's fixed zone catalogue (there is no Zone
 // table — Rider.zone is a free string column). Phones masked via the
-// design-system <Phone>. No live map: there is no rider location source
-// anywhere in the system, so no map is rendered rather than a fake one.
-
+// design-system <Phone>.
 export const dynamic = "force-dynamic";
 
 export default async function AdminRidersPage() {
@@ -70,17 +69,15 @@ export default async function AdminRidersPage() {
     };
   });
 
-  const boardRows = deliveries.map((d) => ({
-    order: <span className="font-mono">{d.orderId}</span>,
-    rider: riders.find((r) => r.id === d.riderId)?.name ?? d.riderId,
-    zone: zoneName(d.zoneId),
-    state: (
-      <Badge tone={d.status === "DELIVERED" ? "success" : d.status === "FAILED" ? "danger" : d.status === "PICKED_UP" ? "info" : "warning"}>
-        {d.status}
-      </Badge>
-    ),
-    cod: <Money poisha={d.codAmountPoisha} />,
-    proof: d.proof ? d.proof.kind : "—",
+  const assignmentViews = deliveries.map((d) => ({
+    id: d.id,
+    orderId: d.orderId,
+    riderId: d.riderId,
+    riderName: riders.find((r) => r.id === d.riderId)?.name ?? d.riderId,
+    zoneName: zoneName(d.zoneId),
+    status: d.status,
+    codAmountPoisha: d.codAmountPoisha,
+    proofKind: d.proof ? d.proof.kind : "—",
   }));
 
   return (
@@ -121,19 +118,12 @@ export default async function AdminRidersPage() {
         rows={riderRows}
       />
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">Assignment Board</h2>
-      <DataTable
-        caption="All rider deliveries by state — new assignments are created via POST /api/v1/admin/riders/assign"
-        columns={[
-          { key: "order", header: "Order" },
-          { key: "rider", header: "Rider" },
-          { key: "zone", header: "Zone" },
-          { key: "state", header: "State" },
-          { key: "cod", header: "COD" },
-          { key: "proof", header: "Proof" },
-        ]}
-        rows={boardRows}
-      />
+      <div className="mt-8">
+        <RiderAssignmentBoard
+          initialDeliveries={assignmentViews}
+          riders={riders.map((r) => ({ id: r.id, name: r.name, status: r.status }))}
+        />
+      </div>
     </main>
   );
 }

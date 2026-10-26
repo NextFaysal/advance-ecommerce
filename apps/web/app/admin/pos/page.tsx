@@ -1,3 +1,4 @@
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { PageHeader } from "@/components/ui/page-header";
 import { listActiveProducts } from "@/catalog/server-read";
 import { demoPosFlags, isPosEnabled } from "@/pos/flags";
@@ -14,6 +15,7 @@ import PosRegisterClient, { type PosCatalogEntry } from "./register-client";
 export const dynamic = "force-dynamic";
 
 export default async function AdminPosPage() {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isPosEnabled(demoPosFlags)) {
     return (
       <main>

@@ -718,6 +718,14 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
   // Delivery is the in-process bus (src/orders/event-bus); the helper
   // never throws into this mutation path.
   publishOrderCreated(order);
+
+  // v2-merge (PR #1): the branch dispatched its own direct-send OTP
+  // challenge here (src/checkout/otp.ts). Removed — main already
+  // issues and sends the order OTP a few lines below via
+  // src/orders/otp (issueOrderOtp + sendOrderOtpSms, queue-backed,
+  // verified by the [id]/otp routes + OrderOtpPanel). Running both
+  // would text the customer two different codes.
+
   // Coupon usage is recorded only now that the order exists — never on a
   // fraud block (returned above) and never on an idempotent replay
   // (returned at the top of this handler). (CouponUsage row: written
