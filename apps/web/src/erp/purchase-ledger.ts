@@ -3,11 +3,11 @@
  *
  * Built ONLY over real records:
  *  - Ordered / received value: PurchaseOrder + PurchaseOrderItem rows
- *    (received = Σ quantityReceived × costPoisha). AUDIT NOTE: no
- *    code path in the system writes quantityReceived / receivedAt
- *    today (there is no PO receive flow — see auto-posting.ts), so
- *    received figures are 0 until a receive flow exists; the view
- *    shows them as recorded, never estimated.
+ *    (received = Σ quantityReceived × costPoisha). Received figures
+ *    are written by the PO receive flow (ADV-11b,
+ *    src/inventory/purchase-receive.ts); POs nobody has received
+ *    against still read 0 — figures are shown as recorded, never
+ *    estimated.
  *  - Payments: POSTED journal entries with sourceKind
  *    "supplier_payment" (written via the ERP journal — the typed
  *    builder in ledger.ts stores the amount as the Dr 2000 line and

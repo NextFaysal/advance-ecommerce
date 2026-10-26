@@ -93,6 +93,14 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   "meta.whatsapp_phone_number_id": { category: "general", value: "", isPublic: false },
   "meta.whatsapp_access_token": { category: "general", value: "", isPublic: false },
   "meta.ig_id": { category: "general", value: "", isPublic: false },
+  // Google customer sign-in (ADV-15 — src/customer-auth/google.ts).
+  // client_secret is a secret by the suffix rule in
+  // isSecretSettingKey() ("client_secret" is a listed suffix) and is
+  // stored encrypted; the client id is plain config. BOTH default
+  // empty = NOT configured: the Google start route answers 503 and
+  // the login page does not render the Google button at all.
+  "auth.google.client_id": { category: "general", value: "", isPublic: false },
+  "auth.google.client_secret": { category: "general", value: "", isPublic: false },
   // VAT rate in basis points (1500 = 15%). EMPTY default = NOT
   // configured — there is deliberately no built-in rate: order creation
   // records a VAT split (Order.vatPoisha / vatRateBps) only while this

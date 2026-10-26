@@ -1,17 +1,19 @@
 /**
- * /account — customer account (phone + password).
+ * /account — customer account (ADV-15: phone-OTP primary, password
+ * secondary, Google when configured in Settings).
  *
- * Logged OUT: login + registration forms (AuthForms). Registering with
- * a phone claims the guest Customer row checkout created for it, so
- * orders placed as a guest with the same number appear here after
- * registration — nothing is copied or duplicated.
- * Logged IN: profile summary, order history (real DB orders, each
- * linking to /track), saved addresses, logout.
+ * Logged OUT: AuthForms — OTP (phone → code; a first-time phone
+ * creates the account at verify), password login + registration, and
+ * the Google button only when the server reports it configured.
+ * Registering with a phone claims the guest Customer row checkout
+ * created for it, so orders placed as a guest with the same number
+ * appear here after registration — nothing is copied or duplicated.
+ * Logged IN: profile summary + sign-in methods, order history (real
+ * DB orders, each linking to /track), saved addresses, logout.
  *
  * Session: the httpOnly `customer_session` cookie, resolved server-side
  * via src/customer-auth. This page never receives or renders a password
- * or a session token. There is NO password-reset flow yet (no live
- * SMS/email channel to deliver one) and the UI says so honestly.
+ * or a session token.
  */
 import type { Metadata } from "next";
 import {
@@ -25,9 +27,12 @@ import ReturnsSection from "./returns-section";
 import DownloadsSection from "./downloads-section";
 import CustomerTrackingStepper from "./tracking-stepper";
 import AuthForms from "@/customer-auth/components/AuthForms";
+import { isGoogleLoginConfigured } from "@/customer-auth/google";
 import AddressManager from "@/customer-auth/components/AddressManager";
 import LogoutButton from "@/customer-auth/components/LogoutButton";
 import PushSubscribeToggle from "@/pwa/push-subscribe";
+import { isFeatureEnabled } from "@/lib/feature-flags";
+import { getB2bProfileByPhone } from "@/b2b/portal";
 import { Icon } from "@/components/ui/icon";
 import { Money } from "@/components/ui/money";
 import {
@@ -140,18 +145,30 @@ function OrderCard({ order }: { order: AccountOrderSummary }) {
   );
 }
 
-export default async function AccountPage() {
+export default async function AccountPage({
+  searchParams,
+}: {
+  searchParams: { authError?: string };
+}) {
   const customer = await getCurrentCustomer();
 
   if (customer === null) {
+    // Server-driven availability: the Google button exists only when
+    // credentials are configured in Settings (ADV-15).
+    const googleEnabled = await isGoogleLoginConfigured();
     return (
       <main className="mx-auto w-full max-w-md px-4 py-8 sm:py-10">
         <h1 className="font-display text-2xl font-bold text-text-main">আমার অ্যাকাউন্ট</h1>
         <p className="mt-1.5 text-sm leading-6 text-text-muted">
-          মোবাইল নম্বর ও পাসওয়ার্ড দিয়ে লগইন করুন, অথবা নতুন অ্যাকাউন্ট তৈরি করুন।
+          মোবাইল নম্বরে OTP কোড দিয়ে লগইন করুন — পাসওয়ার্ডও ব্যবহার করা যাবে।
         </p>
+        {searchParams.authError ? (
+          <p role="alert" className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
+            Google লগইন সম্পন্ন হয়নি। আবার চেষ্টা করুন, অথবা OTP/পাসওয়ার্ড দিয়ে লগইন করুন।
+          </p>
+        ) : null}
         <div className="mt-5">
-          <AuthForms />
+          <AuthForms googleEnabled={googleEnabled} />
         </div>
         <p className="mt-4 text-sm leading-6 text-text-muted">
           অ্যাকাউন্ট ছাড়াও অর্ডার নম্বর ও ফোন নম্বর দিয়ে{" "}
@@ -166,6 +183,12 @@ export default async function AccountPage() {
     listCustomerOrders(customer.id, 1, 10),
     listCustomerAddresses(customer.id),
   ]);
+
+  // B2B buyer portal entry (ADV-14): shown only when the portal module
+  // is on AND this account's phone carries a B2B company profile.
+  const b2bProfile = isFeatureEnabled("module.b2b_portal")
+    ? await getB2bProfileByPhone(customer.phone)
+    : null;
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10">
@@ -200,6 +223,52 @@ export default async function AccountPage() {
           </div>
         </dl>
       </section>
+
+      <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label="লগইন পদ্ধতি">
+        <h2 className="text-base font-bold text-text-main">লগইন পদ্ধতি</h2>
+        <ul className="mt-3 space-y-3 text-sm">
+          <li className="flex items-baseline justify-between gap-3">
+            <span className="text-text-muted">মোবাইল OTP</span>
+            <span className="font-semibold text-text-main">{customer.phoneMasked} — সবসময় চালু</span>
+          </li>
+          <li className="flex items-baseline justify-between gap-3">
+            <span className="text-text-muted">পাসওয়ার্ড</span>
+            <span className="font-semibold text-text-main">
+              {customer.hasPassword ? "সেট করা আছে" : "সেট করা নেই — OTP দিয়ে লগইন করুন"}
+            </span>
+          </li>
+          <li className="flex items-baseline justify-between gap-3">
+            <span className="text-text-muted">Google</span>
+            <span className="font-semibold text-text-main">
+              {customer.email
+                ? `${customer.email} — এই ইমেইল দিয়ে সাইন-ইন করা যাবে`
+                : "ইমেইল যোগ করা নেই"}
+            </span>
+          </li>
+        </ul>
+      </section>
+
+      {b2bProfile ? (
+        <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label="B2B পোর্টাল">
+          <h2 className="flex items-center gap-2.5 text-base font-bold text-text-main">
+            <span
+              aria-hidden="true"
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white"
+            >
+              <Icon name="store" size={18} />
+            </span>
+            B2B পোর্টাল — {b2bProfile.businessName}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">
+            আপনার কোম্পানির কোটেশন, ক্রেডিট সীমা ও বকেয়ার হিসাব এবং অর্ডারগুলো এক জায়গায় দেখুন।
+          </p>
+          <p className="mt-3">
+            <a href="/account/b2b" className="font-semibold text-brand-700 hover:underline">
+              B2B পোর্টালে যান →
+            </a>
+          </p>
+        </section>
+      ) : null}
 
       <section className="mt-6 rounded-2xl border border-border bg-card shadow-card" aria-label="আমার অর্ডার">
         <div className="flex items-center justify-between px-5 pt-5">
@@ -239,6 +308,20 @@ export default async function AccountPage() {
       />
 
       <DownloadsSection />
+
+      <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label="সাপোর্ট টিকিট">
+        <h2 className="text-base font-bold text-text-main">সাপোর্ট টিকিট</h2>
+        <p className="mt-1.5 text-sm leading-6 text-text-muted">
+          অর্ডার বা কেনাকাটা নিয়ে সমস্যা থাকলে টিকিট খুলুন — আমাদের টিমের উত্তর ও পুরো
+          কথোপকথন এক জায়গায় পাবেন।
+        </p>
+        <a
+          href="/account/tickets"
+          className="mt-3 inline-block rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-text-main transition hover:bg-surface-2"
+        >
+          আমার টিকিট দেখুন / নতুন টিকিট খুলুন
+        </a>
+      </section>
 
       <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label="সংরক্ষিত ঠিকানা">
         <h2 className="text-base font-bold text-text-main">সংরক্ষিত ঠিকানা</h2>

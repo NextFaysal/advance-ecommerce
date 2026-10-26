@@ -342,6 +342,30 @@ export const workerDeps: WorkerRuntimeDeps = {
     const otp = await import("../orders/otp");
     return otp.processOrderOtpSmsJob(job, { smsProvider: resolveSmsProvider });
   },
+  // ADV-15: customer-login OTP SMS jobs (sms queue, jobKind
+  // "auth-otp") delegate here. Lazy import for the same reason as
+  // orderOtpSmsSend above.
+  authOtpSmsSend: async (job) => {
+    const authOtp = await import("../customer-auth/otp");
+    return authOtp.processAuthOtpSmsJob(job, { smsProvider: resolveSmsProvider });
+  },
+  // ADV-13: vendor-login OTP SMS jobs (sms queue, jobKind
+  // "vendor-login-otp") delegate here. Lazy import for the same
+  // reason as orderOtpSmsSend above.
+  vendorLoginOtpSmsSend: async (job) => {
+    const vendorOtp = await import("../vendors/portal-otp");
+    return vendorOtp.processVendorLoginOtpSmsJob(
+      {
+        templateKey: job.templateKey,
+        recipientRef: job.recipientRef,
+        jobKind: "vendor-login-otp",
+        vendorId: job.vendorId ?? "",
+        otpCode: job.otpCode ?? "",
+        idempotencyKey: job.idempotencyKey ?? `vendor-login-otp-${job.vendorId ?? "unknown"}`,
+      },
+      { smsProvider: resolveSmsProvider },
+    );
+  },
   // Doc 21 G3-1: return-update SMS jobs (sms queue, jobKind
   // "return-update") delegate here. Lazy import for the same reason
   // as callCenterSmsSend above: the module pulls in Prisma at module

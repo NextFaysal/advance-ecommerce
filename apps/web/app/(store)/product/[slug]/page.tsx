@@ -23,6 +23,7 @@ import {
 import { BdtAmount, DigitText } from "@/components/ui/numerals";
 import { Reveal } from "@/components/ui/reveal";
 import { ReviewSection } from "@/reviews/components/ReviewSection";
+import { QuestionsSection } from "@/qa/components/QuestionsSection";
 import type { RecentlyViewedEntry } from "@/storefront-ux/types";
 import { Gallery } from "./Gallery";
 import { SpinViewer } from "./SpinViewer";
@@ -640,6 +641,10 @@ export default async function ProductPage({ params }: { params: { slug: string }
       {/* Customer reviews — real APPROVED rows from the Review table
           + the moderated submission form (src/reviews). */}
       <ReviewSection productId={product.id} productSlug={product.slug} />
+
+      {/* Product Q&A — ANSWERED questions only + ask form for
+          signed-in customers (src/qa). */}
+      <QuestionsSection productId={product.id} productSlug={product.slug} />
 
       {/* Related products — manual picks first, same-category fill.
           Wave 17: on phones the rail is a snap-scroll carousel that

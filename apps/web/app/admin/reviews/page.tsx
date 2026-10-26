@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { ReviewsManager } from "./reviews-manager";
+import { QuestionsManager } from "./questions-manager";
 
 // Review moderation — the queue behind the storefront review system.
 // Reviews are born PENDING at POST /api/v1/public/products/[slug]/reviews
@@ -8,6 +9,12 @@ import { ReviewsManager } from "./reviews-manager";
 // table via Prisma); approve/reject PATCHes the admin API, which
 // re-syncs each product's ratingAverage / reviewCount. Guarded by the
 // content.page permission (same as the CMS APIs), enforced in the API.
+//
+// Below it, the product Q&A moderation queue (ADV-16b): customer
+// questions are born PENDING at POST .../products/[slug]/questions
+// and reach the PDP only when answered here (ANSWERED is the only
+// public status). <QuestionsManager> reads GET
+// /api/v1/admin/product-questions; guarded by content.page too.
 export const dynamic = "force-dynamic";
 
 export default function AdminReviewsPage() {
@@ -19,6 +26,15 @@ export default function AdminReviewsPage() {
         breadcrumb="Admin / Catalog"
       />
       <ReviewsManager />
+
+      <div className="mt-12">
+        <PageHeader
+          title="পণ্য প্রশ্নোত্তর মডারেশন"
+          description="গ্রাহকদের পণ্য-সম্পর্কিত প্রশ্ন ProductQuestion টেবিল থেকে আসে। উত্তর দিলেই প্রশ্নোত্তরটি পণ্যের পেজে প্রকাশিত হয়; অনুপযুক্ত প্রশ্ন লুকিয়ে রাখা যায়। (Product Q&A — content.page)"
+          breadcrumb="Admin / Catalog"
+        />
+        <QuestionsManager />
+      </div>
     </main>
   );
 }

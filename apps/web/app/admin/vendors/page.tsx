@@ -8,6 +8,9 @@ import { Icon } from "@/components/ui/icon";
 import { demoVendorFlags } from "@/vendors/flags";
 import { vendorStore } from "@/vendors/db-store";
 import { summarizePayout } from "@/vendors/service";
+import { defaultVendorKyc } from "@/vendors/kyc";
+import { listVendorKyc } from "@/vendors/kyc-store";
+import KycControl from "./kyc-control";
 import type { VendorPayoutSummary } from "@/vendors/types";
 
 // Multi-vendor admin — Step 48 (A12).
@@ -62,6 +65,7 @@ export default async function AdminVendorsPage() {
 
   const vendors = await vendorStore.listVendors();
   const products = await vendorStore.listProducts();
+  const kycDoc = await listVendorKyc();
   const payouts: { vendorId: string; summary: VendorPayoutSummary }[] = await Promise.all(
     vendors.map(async (v) => ({
       vendorId: v.id,
@@ -174,6 +178,33 @@ export default async function AdminVendorsPage() {
           rows={vendorRows}
         />
       )}
+
+      <h2 className="mb-3 mt-8 text-lg font-semibold">KYC যাচাই (ADV-13)</h2>
+      {vendors.length === 0 ? (
+        <p className="rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
+          ভেন্ডর না থাকায় KYC তালিকা নেই।
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {vendors.map((v) => {
+            const record = kycDoc[v.id] ?? defaultVendorKyc(v.id);
+            return (
+              <KycControl
+                key={v.id}
+                vendorId={v.id}
+                shopName={v.shopName}
+                initialStatus={record.status}
+                initialNote={record.note}
+              />
+            );
+          })}
+        </div>
+      )}
+      <p className="mt-2 text-small leading-relaxed text-text-muted">
+        KYC অবস্থা Setting ডকুমেন্টে সংরক্ষিত (Vendor টেবিলে KYC কলাম নেই) — সিদ্ধান্ত অডিট লগে
+        থাকে (vendors.kyc.update) এবং নোটটি ভেন্ডর পোর্টালে দেখা যায়। কাগজপত্র আপলোড এখনো নেই:
+        স্টোরেজ কনফিগার হয়নি এবং Vendor রেকর্ডে ডকুমেন্ট রাখার ক্ষেত্র নেই।
+      </p>
 
       <h2 className="mb-3 mt-8 text-lg font-semibold">পণ্য অনুমোদন</h2>
       {products.length === 0 ? (

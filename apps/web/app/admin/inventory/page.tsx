@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
+import PurchaseOrdersPanel from "./purchase-orders-panel";
 
 // Admin inventory — reads the stock_movements ledger state from the DB
 // (InventoryItem rows, src/inventory/repository.ts). Direct quantity
@@ -249,8 +250,30 @@ export default async function AdminInventoryPage() {
         )}
       </Card>
 
+      <Card className="mt-5 shadow-card">
+        <div className="flex flex-wrap items-center gap-3">
+          <span
+            aria-hidden="true"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-500 ring-1 ring-brand-100"
+          >
+            <Icon name="truck" size={20} />
+          </span>
+          <h2 className="text-h3">ক্রয় আদেশ ও পণ্য গ্রহণ</h2>
+        </div>
+        <p className="mt-2 max-w-3xl text-small leading-relaxed text-text-muted">
+          সাপ্লায়ারের চালান এলে এখান থেকে রিসিভ করুন — প্রতিটি রিসিভ স্টক লেজারে
+          PURCHASE_RECEIVE মুভমেন্ট হিসেবে জমা হয় (অর্ডারের রেফারেন্সসহ), আংশিক রিসিভ
+          বারবার করা যায়, আর অর্ডারের বেশি রিসিভ সিস্টেম নেবে না। অর্ডার সম্পূর্ণ
+          রিসিভ হলে ERP জার্নালে ক্রয়-প্রাপ্তির পোস্টিং হয় (module.erp_lite চালু থাকলে)।
+        </p>
+        <div className="mt-4">
+          <PurchaseOrdersPanel />
+        </div>
+      </Card>
+
       <p className="mt-4 text-caption leading-relaxed text-text-subtle">
-        ডাটাবেস থেকে — API: GET/POST /api/v1/admin/inventory, POST /api/v1/admin/inventory/purchase-orders (RBAC + ledger, Prisma)। Adjustment-এর জন্য কারণ লাগে; স্টক বদলায় শুধু মুভমেন্টে।
+        ডাটাবেস থেকে — API: GET/POST /api/v1/admin/inventory, POST /api/v1/admin/inventory/purchase-orders,
+        GET /api/v1/admin/purchase-orders/[id], POST /api/v1/admin/purchase-orders/[id]/receive (RBAC + ledger, Prisma)। Adjustment-এর জন্য কারণ লাগে; স্টক বদলায় শুধু মুভমেন্টে।
       </p>
     </main>
   );

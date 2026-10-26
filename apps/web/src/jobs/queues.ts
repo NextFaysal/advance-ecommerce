@@ -124,7 +124,11 @@ export interface SmsJob {
    * to HandlerDeps.orderOtpSmsSend (src/orders/otp.ts). Their payload
    * is ids-only EXCEPT otpCode below — see its comment.
    */
-  jobKind?: "callcenter-automation" | "order-otp" | "return-update" | "back-in-stock";
+  jobKind?: "callcenter-automation" | "order-otp" | "return-update" | "back-in-stock" | "auth-otp" | "vendor-login-otp";
+  /** Vendor-login OTP flavour marker (jobKind === "vendor-login-otp",
+   *  ADV-13): the Vendor row id; the phone is resolved from the DB at
+   *  send time (src/vendors/portal-otp.ts). */
+  vendorId?: string;
   /** Order-OTP flavour marker (jobKind === "order-otp"). */
   purpose?: "order_otp";
   /**

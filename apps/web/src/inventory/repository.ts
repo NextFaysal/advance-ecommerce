@@ -246,13 +246,28 @@ type Tx = Omit<
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
 >;
 
-async function resolveActorId(tx: Tx, actorId: string): Promise<string | null> {
+/**
+ * Resolves a caller-supplied actor id to a real User id (or NULL) so
+ * StockMovement.actorId never violates its FK. Exported for
+ * src/inventory/purchase-receive.ts (ADV-11b), which runs the ledger
+ * inside its own purchase-order transaction.
+ */
+export async function resolveActorId(tx: Tx, actorId: string): Promise<string | null> {
   if (!actorId) return null;
   const user = await tx.user.findUnique({ where: { id: actorId }, select: { id: true } });
   return user?.id ?? null;
 }
 
-async function applyMovementInTx(
+/**
+ * The in-transaction ledger writer behind applyMovementDb. Exported
+ * for src/inventory/purchase-receive.ts (ADV-11b) so a PO receive can
+ * update the PO rows AND book its PURCHASE_RECEIVE movements through
+ * this exact seam (row lock + planMovement rules + ProductVariant
+ * cache re-sync) inside ONE transaction. Callers using it directly
+ * own the post-commit side effects applyMovementDb performs
+ * (back-in-stock notify, stock.low automation).
+ */
+export async function applyMovementInTx(
   tx: Tx,
   input: MovementAction,
   actorId: string | null,

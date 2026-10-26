@@ -383,6 +383,21 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: null,
   },
   {
+    id: "support-tickets",
+    path: "/admin/tickets",
+    labelBn: "সাপোর্ট টিকিট",
+    labelEn: "Support Tickets",
+    icon: "Inbox",
+    section: "customers",
+    // ADV-16b: no dedicated support permission exists in PERMISSIONS;
+    // the tickets API guards reads on customers.view and writes
+    // (reply / status) on customers.edit — nav uses the read gate,
+    // like the customers entry itself.
+    permission: "customers.view",
+    featureFlag: null,
+    badge: null,
+  },
+  {
     id: "resellers",
     path: "/admin/resellers",
     labelBn: "রিসেলার",

@@ -1,20 +1,19 @@
 /**
  * Photo reviews — availability probe (ADV-16, doc 22). Server-only.
  *
- * Photo reviews are NOT shippable yet, for two independent reasons,
- * and this module reports which one applies instead of letting the
- * UI guess or fake it:
+ * Photo review UPLOADS are not wired yet. The persistence blocker
+ * cleared in wave 39 (Review.images exists and stored images render
+ * on the PDP since ADV-16b); two gates remain:
  *
  * 1. STORAGE_NOT_CONFIGURED — uploads sign through the catalog media
  *    seam (src/catalog/media-server.ts), which refuses with
  *    STORAGE_NOT_CONFIGURED until R2/S3 credentials exist in Admin
  *    Settings (storage.*). There is no local-disk fallback.
- * 2. PERSISTENCE_NOT_ENABLED — the Review model has NO image field,
- *    so even a successful upload could not be attached to a review.
- *    Clearing this needs a schema follow-up (e.g. `images String[]`
- *    on Review, or a ReviewImage model) owned by a migration wave.
+ * 2. PERSISTENCE_NOT_ENABLED (legacy code name) — even with storage
+ *    configured, no review-upload endpoint returns a URL for the
+ *    form to attach yet; that endpoint is a future slice.
  *
- * Until BOTH clear, the PDP form renders the attach control DISABLED
+ * Until both clear, the PDP form renders the attach control DISABLED
  * with the honest reason below. No upload is attempted and no
  * placeholder image URL is ever rendered for a review.
  */
@@ -42,6 +41,6 @@ export async function getReviewPhotoStatus(): Promise<ReviewPhotoStatus> {
     available: false,
     code: "PERSISTENCE_NOT_ENABLED",
     reasonBn:
-      "ছবিসহ রিভিউ এখনো চালু হয়নি — রিভিউয়ের সঙ্গে ছবি সংরক্ষণের সুবিধা শীঘ্রই আসছে।",
+      "ছবিসহ রিভিউ এখনো চালু হয়নি — রিভিউয়ের ছবি আপলোডের সংযোগ শীঘ্রই আসছে।",
   };
 }

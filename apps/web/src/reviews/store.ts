@@ -38,6 +38,13 @@ export interface PublicReview {
   body: string;
   createdAt: string;
   verifiedPurchase: boolean;
+  /** Denormalized helpful-vote count (Review.helpfulCount, kept in
+   *  sync by src/reviews/votes.ts in the vote transaction). */
+  helpfulCount: number;
+  /** Stored review photo URLs (Review.images). Upload stays gated by
+   *  the photo probe (src/reviews/photo.ts) until storage is
+   *  configured; rows that carry URLs render them on the PDP. */
+  images: string[];
 }
 
 export interface ReviewAggregate {
@@ -91,6 +98,8 @@ function toPublicReview(row: ReviewRow, verifiedPurchase: boolean): PublicReview
     body: row.body,
     createdAt: row.createdAt.toISOString(),
     verifiedPurchase,
+    helpfulCount: row.helpfulCount,
+    images: row.images,
   };
 }
 

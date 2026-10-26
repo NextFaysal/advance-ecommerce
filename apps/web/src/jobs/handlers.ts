@@ -231,6 +231,19 @@ export interface HandlerDeps {
    *  payloads (it would send an empty message to a ref and report a
    *  phantom success for a code nobody received). */
   orderOtpSmsSend?: (job: SmsJob) => Promise<HandlerResult>;
+  /** ADV-15: send path for customer-login OTP SMS jobs (payloads with
+   *  jobKind === "auth-otp" on the SMS queue), wired by the worker
+   *  deps assembly to src/customer-auth/otp.ts. Same discipline as
+   *  order OTP: re-validates the code against the OtpCode row and
+   *  resolves the recipient from the DB — the generic path must never
+   *  process these payloads. */
+  authOtpSmsSend?: (job: SmsJob) => Promise<HandlerResult>;
+  /** ADV-13: send path for vendor-login OTP SMS jobs (payloads with
+   *  jobKind === "vendor-login-otp" on the SMS queue), wired by the
+   *  worker deps assembly to src/vendors/portal-otp.ts. Same
+   *  discipline: re-validates the challenge and resolves the phone
+   *  from the Vendor row. */
+  vendorLoginOtpSmsSend?: (job: SmsJob) => Promise<HandlerResult>;
   /** Doc 21 G3-1: send path for return-update SMS jobs (payloads with
    *  jobKind === "return-update" on the SMS queue), wired by the
    *  worker deps assembly to src/orders/return-notify.ts. The send
@@ -428,6 +441,39 @@ export function createHandlers(
       const sendOtp = deps.orderOtpSmsSend;
       return runIdempotent(store, envelope, envelope.payload.orderId ?? envelope.payload.recipientRef, () =>
         sendOtp(envelope.payload),
+      );
+    }
+    // ADV-15: customer-login OTP jobs delegate to their own send path
+    // (code re-validation against the OtpCode row, DB phone
+    // resolution). Without the dep wired they are SKIPPED — never
+    // fall through to the generic send below.
+    if (envelope.payload.jobKind === "auth-otp") {
+      if (!deps.authOtpSmsSend) {
+        return Promise.resolve({
+          status: "skipped" as const,
+          ref: envelope.payload.recipientRef,
+          detail: "auth OTP send not wired in this deployment",
+        });
+      }
+      const sendAuthOtp = deps.authOtpSmsSend;
+      return runIdempotent(store, envelope, envelope.payload.recipientRef, () =>
+        sendAuthOtp(envelope.payload),
+      );
+    }
+    // ADV-13: vendor-login OTP jobs delegate to their own send path
+    // (challenge re-validation, phone resolved from the Vendor row).
+    // Without the dep wired they are SKIPPED — never fall through.
+    if (envelope.payload.jobKind === "vendor-login-otp") {
+      if (!deps.vendorLoginOtpSmsSend) {
+        return Promise.resolve({
+          status: "skipped" as const,
+          ref: envelope.payload.vendorId ?? envelope.payload.recipientRef,
+          detail: "vendor login OTP send not wired in this deployment",
+        });
+      }
+      const sendVendorOtp = deps.vendorLoginOtpSmsSend;
+      return runIdempotent(store, envelope, envelope.payload.vendorId ?? envelope.payload.recipientRef, () =>
+        sendVendorOtp(envelope.payload),
       );
     }
     // Doc 21 G3-1: return-update jobs delegate to their own send path

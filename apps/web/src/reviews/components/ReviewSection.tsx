@@ -2,14 +2,21 @@
  * PDP review section — server component. Reads APPROVED reviews +
  * the aggregate from the reviews store (Review table) and renders:
  * the aggregate summary, the approved list (author NAME ONLY — the
- * stored phone is verification data and is never rendered), and the
- * submission form (client component, string prop only).
+ * stored phone is verification data and is never rendered), stored
+ * review photos when a row carries them (Review.images), a helpful
+ * vote button per review (src/reviews/votes.ts — the viewer's own
+ * voted state is resolved server-side), and the submission form
+ * (client component, string prop only).
  *
  * Fail-safe like the rest of the PDP's data reads: a store problem
  * degrades to the honest empty state instead of breaking the page.
  */
+import { headers } from "next/headers";
 import { getApprovedReviewAggregate, listApprovedReviews } from "@/reviews/store";
 import { getReviewPhotoStatus } from "@/reviews/photo";
+import { customerVoterKey, guestVoterKey, listVotedReviewIds } from "@/reviews/votes";
+import { getCurrentCustomer } from "@/customer-auth/auth";
+import { HelpfulButton } from "./HelpfulButton";
 import { ReviewForm } from "./ReviewForm";
 import { Stars } from "./Stars";
 
@@ -36,6 +43,25 @@ export async function ReviewSection({
     // see src/reviews/photo.ts); the form shows the honest reason.
     getReviewPhotoStatus().catch(() => null),
   ]);
+
+  // Helpful-vote pressed state for THIS viewer: the voter key mirrors
+  // the vote API exactly (customer id when signed in, hashed ip+ua
+  // for guests) so the button state and the server dedupe agree.
+  const voterKey = await (async () => {
+    const customer = await getCurrentCustomer().catch(() => null);
+    if (customer) return customerVoterKey(customer.id);
+    const hdrs = headers();
+    const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    return guestVoterKey(ip, hdrs.get("user-agent") ?? undefined);
+  })().catch(() => null);
+  const votedIds = new Set(
+    voterKey && reviews.length > 0
+      ? await listVotedReviewIds(
+          voterKey,
+          reviews.map((r) => r.id),
+        ).catch(() => [] as string[])
+      : [],
+  );
 
   return (
     <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8" aria-label="কাস্টমার রিভিউ">
@@ -75,6 +101,29 @@ export async function ReviewSection({
               <p className="mt-1 max-w-3xl break-words text-sm leading-7 text-text-muted [overflow-wrap:anywhere]">
                 {r.body}
               </p>
+              {r.images.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {r.images.map((src) => (
+                    // Stored upload URLs from Review.images — rendered
+                    // only when a row actually carries them.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={src}
+                      src={src}
+                      alt={`${r.authorName}-এর রিভিউ ছবি`}
+                      loading="lazy"
+                      className="h-20 w-20 rounded-xl border border-border object-cover"
+                    />
+                  ))}
+                </div>
+              ) : null}
+              <div className="mt-3">
+                <HelpfulButton
+                  reviewId={r.id}
+                  initialCount={r.helpfulCount}
+                  initialVoted={votedIds.has(r.id)}
+                />
+              </div>
             </li>
           ))}
         </ul>

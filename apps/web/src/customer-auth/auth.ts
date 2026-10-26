@@ -72,22 +72,31 @@ export interface PublicCustomer {
   phone: string;
   phoneMasked: string;
   email: string | null;
+  /** Whether a password credential exists. OTP / Google accounts are
+   *  passwordless (ADV-15) — the account page shows sign-in methods
+   *  from this flag instead of guessing. */
+  hasPassword: boolean;
   createdAt: string;
 }
 
-function toPublicCustomer(c: {
+export function toPublicCustomer(c: {
   id: string;
   name: string;
   phone: string;
   email: string | null;
+  passwordHash: string | null;
   createdAt: Date;
 }): PublicCustomer {
   return {
     id: c.id,
     name: c.name,
     phone: c.phone,
-    phoneMasked: maskPhone(c.phone),
+    // A Google-first row carries a non-dialable placeholder phone key
+    // (ADV-15, src/customer-auth/google.ts) — masking it would print
+    // garbage digits, so it renders as "not added" instead.
+    phoneMasked: normalizeBdPhone(c.phone) !== null ? maskPhone(c.phone) : "—",
     email: c.email,
+    hasPassword: c.passwordHash !== null,
     createdAt: c.createdAt.toISOString(),
   };
 }
@@ -223,7 +232,13 @@ export async function validateCustomerSessionToken(token: string): Promise<Publi
     return null;
   }
   const c = session.customer;
-  if (c.blocked || c.deletedAt !== null || c.passwordHash === null) return null;
+  // NOTE (ADV-15): passwordless customers (phone-OTP / Google
+  // sign-in) legitimately hold sessions — a session row is only ever
+  // minted after a verified sign-in, so the old `passwordHash ===
+  // null` rejection (written when password was the only credential)
+  // would lock every OTP/Google customer out of their own session.
+  // Blocked / soft-deleted rows stay rejected.
+  if (c.blocked || c.deletedAt !== null) return null;
   await prisma.customerSession.update({
     where: { id: session.id },
     data: { lastUsedAt: new Date() },
