@@ -72,6 +72,11 @@ import {
 } from "../catalog/product-types";
 import { computeBundleAvailability } from "../catalog/types";
 import { getSetting } from "../lib/settings";
+import {
+  serviceDateInstant,
+  slotConflicts,
+  type ServiceBookingWriteSpec,
+} from "../services/selection";
 import { advanceConfirmBlock, type AdvanceBlockCode } from "./advance";
 import { discountApprovalConfirmBlock } from "./approvals";
 import { orderSearchOr, type OrderListSort } from "./list-v2";
@@ -768,6 +773,34 @@ export interface CreateOrderRecordInput {
    *  — and a rolled-back create leaves no orphan ticket. Null/omitted
    *  = not a restaurant order. */
   kitchenTicket?: { fulfilmentType: "DINE_IN" | "TAKEAWAY"; tableLabel: string | null } | null;
+  /** Service booking (ADV-23 vertical 2, wave 56): the callers (the
+   *  public orders route and createManualOrder) validated the
+   *  submitted `booking` selection against services.config while
+   *  module.services is ON (src/services/bookings.prepareServiceBooking)
+   *  and pass the validated write spec here; the ServiceBooking row
+   *  is written INSIDE this create transaction, and CAPACITY is
+   *  enforced here — the BOOKED rows conflicting with the slot
+   *  (buffer included) are counted in-transaction and a full slot
+   *  throws ServiceBookingCapacityError, rolling the whole create
+   *  back: an order is never born claiming a booking it did not
+   *  record, and a slot is never oversold by a stale availability
+   *  read. Null/omitted = not a booking order. */
+  serviceBooking?: ServiceBookingWriteSpec | null;
+}
+
+/**
+ * Raised inside the create transaction when a service booking's
+ * slot is full (see CreateOrderRecordInput.serviceBooking). The
+ * create seams translate it to 409 BOOKING_SLOT_FULL — the
+ * GiftCardRedemptionError pattern of a domain error the caller
+ * maps, never a 500.
+ */
+export class ServiceBookingCapacityError extends Error {
+  readonly code = "BOOKING_SLOT_FULL";
+  constructor(message: string) {
+    super(message);
+    this.name = "ServiceBookingCapacityError";
+  }
 }
 
 export type CreateOrderRecordResult =
@@ -1092,6 +1125,41 @@ export async function createOrderRecord(
           },
         });
       }
+      // ADV-23 services (wave 56): the booking joins the same
+      // transaction, and its CAPACITY is counted here — the existing
+      // BOOKED rows for this variant + Dhaka day whose occupied
+      // window (slot + turnaround buffer, both directions) overlaps
+      // the requested slot. A full slot throws and rolls the whole
+      // create back, so the availability the customer saw can never
+      // be oversold by a stale read. (Residual write-skew race
+      // under ReadCommitted is documented in
+      // src/services/bookings.ts — small, not zero.)
+      if (input.serviceBooking) {
+        const spec = input.serviceBooking;
+        const serviceDate = serviceDateInstant(spec.date);
+        const bookedRows = await tx.serviceBooking.findMany({
+          where: { variantId: spec.variantId, serviceDate, status: "BOOKED" },
+          select: { slotStart: true, slotEnd: true },
+        });
+        const conflicts = bookedRows.filter((b) =>
+          slotConflicts(b, spec, spec.bufferMinutes),
+        ).length;
+        if (conflicts >= spec.capacityPerSlot) {
+          throw new ServiceBookingCapacityError(
+            "এই সময়ের স্লটটি ইতিমধ্যে পূর্ণ হয়ে গেছে — অনুগ্রহ করে অন্য সময় বেছে নিন। / This time slot is already fully booked — please choose another time.",
+          );
+        }
+        await tx.serviceBooking.create({
+          data: {
+            orderId: order.id,
+            variantId: spec.variantId,
+            serviceDate,
+            slotStart: spec.slotStart,
+            slotEnd: spec.slotEnd,
+            staffLabel: spec.staffLabel,
+          },
+        });
+      }
       return order;
     });
     // Automation lifecycle (ADV-7): order.created fires post-commit so
@@ -1298,6 +1366,10 @@ export async function applyOrderTransition(
     // dynamic-import discipline as the pickup-OTP seam above.
     const { cancelKitchenTicketForOrder } = await import("../restaurant/tickets");
     await cancelKitchenTicketForOrder(row.id);
+    // ADV-23 services (wave 56): same discipline — a cancelled
+    // order's booking is cancelled with it, freeing the slot.
+    const { cancelServiceBookingForOrder } = await import("../services/bookings");
+    await cancelServiceBookingForOrder(row.id);
   }
   // Wave 18 (plan 17, O0): reversal engine — cancelling restores the
   // coupon usage; RETURNED / REFUNDED claw back the delivered-order
@@ -1386,6 +1458,9 @@ export async function saveOrder(order: Order): Promise<void> {
     // single-order funnel above, on the bulk-actions path.
     const { cancelKitchenTicketForOrder } = await import("../restaurant/tickets");
     await cancelKitchenTicketForOrder(order.id);
+    // ADV-23 services (wave 56): same booking cancel on this path.
+    const { cancelServiceBookingForOrder } = await import("../services/bookings");
+    await cancelServiceBookingForOrder(order.id);
   }
   // Wave 18 (plan 17, O0): same reversal engine on the bulk-actions
   // path — only when THIS save moved the stored status INTO a reversal

@@ -7,6 +7,10 @@ import { isValidQtyNumber } from "../lib/quantity";
 // pure module so the manual-create seam validates the identical
 // shape — one definition, two create paths.
 import { restaurantSelectionSchema } from "../restaurant/selection";
+// ADV-23 vertical 2 (wave 56): same arrangement for the service
+// booking selection — one definition in src/services/selection.ts,
+// shared by checkout and the manual-create seam.
+import { serviceBookingSelectionSchema } from "../services/selection";
 
 export const BD_PHONE_REGEX = /^(?:\+?88)?01[3-9]\d{8}$/;
 
@@ -176,6 +180,22 @@ export const checkoutFormSchema = z.object({
    * 403 FEATURE_LOCKED; without the field nothing changes.
    */
   restaurant: restaurantSelectionSchema.optional(),
+  /**
+   * Optional service booking selection (ADV-23 vertical 2,
+   * wave 56): submitted when the services module is on and the
+   * cart contains a variant from the merchant's bookable list
+   * (services.config serviceVariantIds) — the customer picks a
+   * date + slot on the checkout page from the availability API.
+   * The shape is src/services/selection.ts (pure, shared with the
+   * manual-create seam). The orders route re-validates the choice
+   * against services.config (variant on the list, date window,
+   * slot on the grid) and capacity is counted inside the create
+   * transaction — a full slot refuses the order (409). A payload
+   * carrying this field while module.services is OFF is refused
+   * 403 FEATURE_LOCKED; without the field nothing changes. V1:
+   * one booking per order, for a line of quantity exactly 1.
+   */
+  booking: serviceBookingSelectionSchema.optional(),
 });
 
 export type CheckoutForm = z.infer<typeof checkoutFormSchema>;

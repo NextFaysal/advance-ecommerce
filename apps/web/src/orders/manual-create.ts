@@ -72,6 +72,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import {
+  ServiceBookingCapacityError,
   createOrderRecord,
   findOrderByIdempotencyKey,
   getVariantSnapshots,
@@ -110,6 +111,8 @@ import { validateOrderLineQuantities } from "@/orders/quantity-rules";
 import { lineTotalPoisha } from "@/lib/quantity";
 import { restaurantSelectionSchema } from "@/restaurant/selection";
 import { prepareKitchenTicket } from "@/restaurant/tickets";
+import { serviceBookingSelectionSchema } from "@/services/selection";
+import { prepareServiceBooking } from "@/services/bookings";
 
 export const manualCreateInputSchema = manualOrderSchema.extend({
   /** Client idempotency key (UUID). Absent -> the server mints one;
@@ -150,6 +153,15 @@ export const manualCreateInputSchema = manualOrderSchema.extend({
    *  is written inside the create transaction. This is what lets
    *  POS / phone orders reach the KDS board too. */
   restaurant: restaurantSelectionSchema.optional(),
+  /** Service booking selection (ADV-23 vertical 2, wave 56,
+   *  ADDITIVE): the same shape public checkout accepts
+   *  (src/services/selection). When present it runs through the
+   *  identical gate as checkout — module.services OFF -> 403
+   *  FEATURE_LOCKED; ON -> validated against services.config + the
+   *  order's items, capacity counted inside the create transaction,
+   *  and the ServiceBooking is written in that transaction. This is
+   *  what lets phone/POS bookings land on the bookings board too. */
+  booking: serviceBookingSelectionSchema.optional(),
   /** Order.source label for this channel. Default "manual". */
   source: z.string().min(1).max(32).optional(),
   /** Extra note line prepended to the order note — e.g. the inbox
@@ -272,6 +284,15 @@ export async function createManualOrder(
   const kitchenPrep = await prepareKitchenTicket(data.restaurant);
   if (!kitchenPrep.ok) {
     return fail(kitchenPrep.httpStatus, kitchenPrep.code, kitchenPrep.message);
+  }
+  // Service booking (ADV-23 vertical 2, wave 56): the identical
+  // gate the public checkout runs (shared helper — flag 403,
+  // config/items 400), so every createManualOrder consumer inherits
+  // the same booking behaviour. Runs before the idempotency replay
+  // check, like the gates above.
+  const bookingPrep = await prepareServiceBooking(data.booking, data.items);
+  if (!bookingPrep.ok) {
+    return fail(bookingPrep.httpStatus, bookingPrep.code, bookingPrep.message);
   }
   const idempotencyKey = data.idempotencyKey ?? randomUUID();
 
@@ -526,12 +547,21 @@ export async function createManualOrder(
       // every non-restaurant order) — written in the create
       // transaction, exactly like public checkout.
       kitchenTicket: kitchenPrep.ticket,
+      // ADV-23 vertical 2 (wave 56): the validated booking write
+      // spec (null for every non-booking order) — written in the
+      // create transaction, capacity enforced there.
+      serviceBooking: bookingPrep.booking,
     });
   } catch (e) {
     // Wave 15 product-type failures roll the create back — map them
     // to honest client errors like the public route does, not a 500.
     if (e instanceof BundleStockError) {
       return fail(400, "INSUFFICIENT_STOCK", e.message, e.details);
+    }
+    // ADV-23 services (wave 56): the slot filled between validation
+    // and the create — the transaction rolled back in full.
+    if (e instanceof ServiceBookingCapacityError) {
+      return fail(409, e.code, e.message);
     }
     if (e instanceof PreorderCapError) {
       return fail(409, "PREORDER_CAP_REACHED", e.message, e.details);

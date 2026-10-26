@@ -62,6 +62,7 @@ import OrderOtpPanel from "@/storefront-ux/order-otp-panel";
 import { EmiCheckoutNote } from "@/marketing/components/EmiCheckoutNote";
 import { ExperimentConversionPing } from "@/marketing/components/ExperimentConversionPing";
 import { PAYMENT_NOT_LIVE_MESSAGE_BN } from "../../../src/checkout/payment-methods";
+import { shiftYmd, todayDhakaYmd } from "@/lib/dhaka-date";
 
 // Responsive pass (Design v3 §3): single-column flow at every width,
 // 44px+ touch targets (h-12 fields, 52px payment tiles), numeric keypad
@@ -129,6 +130,10 @@ type PlacedOrder = {
    *  takeaway choice submitted). The ticket starts QUEUED; its live
    *  state is watched on /track. */
   restaurant?: { fulfilmentType: "DINE_IN" | "TAKEAWAY"; tableLabel: string | null; kitchenStatus: string };
+  /** ADV-23 vertical 2: meta.booking — present only when a
+   *  ServiceBooking was created with this order (services module on
+   *  + a date/slot picked at checkout). Starts BOOKED. */
+  booking?: { date: string; slotStart: string; slotEnd: string; status: string };
 };
 
 export default function CheckoutPage() {
@@ -212,6 +217,106 @@ export default function CheckoutPage() {
       cancelled = true;
     };
   }, []);
+  // Service booking (ADV-23 vertical 2, wave 56): from GET
+  // /api/v1/public/services/config — rendered ONLY when the services
+  // module is enabled AND the cart contains a variant from the
+  // merchant's bookable list (serviceVariantIds). The customer picks
+  // a date + slot (from the availability API) and the choice rides
+  // the create payload as `booking`; the server re-validates it
+  // against services.config and enforces capacity inside the create
+  // transaction — this picker is a convenience, never the authority.
+  // A failed fetch hides the section; checkout never blocks on it.
+  const [servicesConfig, setServicesConfig] = useState<{
+    enabled: boolean;
+    serviceVariantIds: string[];
+    advanceDays: number;
+  } | null>(null);
+  const [bookingDate, setBookingDate] = useState("");
+  const [bookingSlotStart, setBookingSlotStart] = useState("");
+  const [bookingSlots, setBookingSlots] = useState<
+    Array<{ start: string; end: string; available: boolean; past: boolean; bookedCount: number; capacity: number }>
+  >([]);
+  const [bookingDayReason, setBookingDayReason] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/public/services/config")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("services config fetch failed"))))
+      .then(
+        (json: {
+          data?: { enabled?: boolean; serviceVariantIds?: string[]; advanceDays?: number };
+        }) => {
+          if (cancelled) return;
+          setServicesConfig({
+            enabled: json.data?.enabled === true,
+            serviceVariantIds: Array.isArray(json.data?.serviceVariantIds)
+              ? json.data.serviceVariantIds
+              : [],
+            advanceDays: typeof json.data?.advanceDays === "number" ? json.data.advanceDays : 14,
+          });
+        },
+      )
+      .catch(() => {
+        // No booking section; the order flow is unaffected.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // The (single, v1) bookable line in this cart: the FIRST cart line
+  // whose variant is on the merchant's list. Quantity must be
+  // exactly 1 to book (the server enforces the same rule).
+  const serviceLine = useMemo(() => {
+    if (!servicesConfig?.enabled || !cart) return null;
+    const ids = new Set(servicesConfig.serviceVariantIds);
+    return cart.items.find((i) => ids.has(i.variantId)) ?? null;
+  }, [servicesConfig, cart]);
+  const serviceVariantId = serviceLine?.variantId ?? "";
+  const serviceQty = serviceLine?.quantity ?? 0;
+  // Default the date to today (Dhaka) when a bookable line appears.
+  useEffect(() => {
+    if (serviceLine && !bookingDate) setBookingDate(todayDhakaYmd());
+  }, [serviceLine, bookingDate]);
+  // Load the day's availability whenever the line/date changes.
+  useEffect(() => {
+    if (!serviceVariantId || serviceQty !== 1 || !bookingDate) {
+      setBookingSlots([]);
+      setBookingDayReason(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(
+      `/api/v1/public/services/availability?variantId=${encodeURIComponent(serviceVariantId)}&date=${encodeURIComponent(bookingDate)}`,
+    )
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("availability fetch failed"))))
+      .then(
+        (json: {
+          data?: {
+            reason?: string | null;
+            slots?: Array<{
+              start: string;
+              end: string;
+              available: boolean;
+              past: boolean;
+              bookedCount: number;
+              capacity: number;
+            }>;
+          };
+        }) => {
+          if (cancelled) return;
+          setBookingSlots(Array.isArray(json.data?.slots) ? json.data.slots : []);
+          setBookingDayReason(json.data?.reason ?? null);
+          setBookingSlotStart("");
+        },
+      )
+      .catch(() => {
+        if (cancelled) return;
+        setBookingSlots([]);
+        setBookingDayReason(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [serviceVariantId, serviceQty, bookingDate]);
   // Gift cards (ADV-18): the code field renders ONLY when the module
   // is on — GET /api/v1/public/gift-cards/status returns {enabled}
   // and nothing else (no code is ever sent there; validation happens
@@ -568,6 +673,14 @@ export default function CheckoutPage() {
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!cart || submitting) return;
+    // Service booking (ADV-23 vertical 2): a bookable service line
+    // (quantity exactly 1) must carry a picked slot — without one
+    // the order would silently be a plain purchase of what the
+    // merchant sells as an appointment.
+    if (serviceLine && serviceQty === 1 && !bookingSlotStart) {
+      setErrors(["সেবাটির জন্য একটি তারিখ ও সময় বেছে নিন। / Please pick a date and time for the service."]);
+      return;
+    }
     const data = new FormData(e.currentTarget);
     const result = validateCheckoutForm({
       customerName: data.get("customerName"),
@@ -644,6 +757,16 @@ export default function CheckoutPage() {
               tableLabel: fulfilmentType === "DINE_IN" ? tableLabel || undefined : undefined,
             }
           : undefined,
+      // Service booking (ADV-23 vertical 2): sent only when the
+      // services module is on, the cart holds a bookable line of
+      // quantity 1, and a slot was picked (enforced above). The
+      // server re-validates it against services.config and counts
+      // capacity inside the create transaction — a slot that filled
+      // in the meantime comes back as a 409 in the error list.
+      booking:
+        servicesConfig?.enabled && serviceLine && serviceQty === 1 && bookingSlotStart
+          ? { variantId: serviceLine.variantId, date: bookingDate, slotStart: bookingSlotStart }
+          : undefined,
     });
     if (!result.ok) {
       setErrors(result.errors);
@@ -679,6 +802,7 @@ export default function CheckoutPage() {
           pharmacyRx?: PlacedOrder["pharmacyRx"];
           warrantyTerms?: PlacedOrder["warrantyTerms"];
           restaurant?: PlacedOrder["restaurant"];
+          booking?: PlacedOrder["booking"];
         };
         error?: { code?: string; message?: string; details?: unknown };
       } | null;
@@ -723,6 +847,7 @@ export default function CheckoutPage() {
           ...(json?.meta?.pharmacyRx ? { pharmacyRx: json.meta.pharmacyRx } : {}),
           ...(json?.meta?.warrantyTerms ? { warrantyTerms: json.meta.warrantyTerms } : {}),
           ...(json?.meta?.restaurant ? { restaurant: json.meta.restaurant } : {}),
+          ...(json?.meta?.booking ? { booking: json.meta.booking } : {}),
           couponStatus: order.couponStatus,
         });
         return;
@@ -792,6 +917,14 @@ export default function CheckoutPage() {
                     ? `ডাইন-ইন${placedOrder.restaurant.tableLabel ? ` • টেবিল: ${placedOrder.restaurant.tableLabel}` : ""}`
                     : "টেকঅওয়ে"}{" "}
                   — অপেক্ষমাণ
+                </dd>
+              </div>
+            ) : null}
+            {placedOrder.booking ? (
+              <div className="flex justify-between gap-3">
+                <dt className="shrink-0 text-text-muted">বুকিং</dt>
+                <dd className="text-right font-semibold">
+                  {placedOrder.booking.date} • {placedOrder.booking.slotStart} – {placedOrder.booking.slotEnd} — বুক করা হয়েছে
                 </dd>
               </div>
             ) : null}
@@ -1354,6 +1487,78 @@ export default function CheckoutPage() {
                   ))}
                 </select>
               </label>
+            )}
+          </fieldset>
+        )}
+        {/* Service booking (ADV-23 vertical 2, wave 56): rendered
+            ONLY when the services module is enabled AND the cart
+            holds a bookable variant (the public config fetch above).
+            Date + slot come from the availability API; the choice
+            rides the create payload as `booking` and is re-validated
+            server-side — this picker is a convenience, never the
+            authority. */}
+        {servicesConfig?.enabled && serviceLine && (
+          <fieldset className="m-0 border-0 p-0">
+            <legend className="mb-2 text-sm font-medium text-text-main">সেবার তারিখ ও সময় (বুকিং আবশ্যক)</legend>
+            {serviceQty !== 1 ? (
+              <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
+                বুকিংয়ের জন্য এই সেবাটির পরিমাণ ঠিক ১ রাখুন — কার্ট থেকে পরিমাণ বদলে আবার চেষ্টা করুন।
+              </p>
+            ) : (
+              <>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-text-main">তারিখ</span>
+                  <input
+                    type="date"
+                    value={bookingDate}
+                    min={todayDhakaYmd()}
+                    max={shiftYmd(todayDhakaYmd(), servicesConfig.advanceDays)}
+                    onChange={(e) => setBookingDate(e.target.value)}
+                    className={INPUT_CLASS}
+                  />
+                </label>
+                {bookingDayReason ? (
+                  <p className="mt-3 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
+                    {bookingDayReason === "CLOSED_WEEKDAY"
+                      ? "এই দিনে সেবা বন্ধ থাকে — অন্য তারিখ বেছে নিন।"
+                      : bookingDayReason === "PAST_DATE"
+                        ? "এই তারিখটি ইতিমধ্যে পার হয়ে গেছে।"
+                        : bookingDayReason === "BEYOND_ADVANCE_WINDOW"
+                          ? `সর্বোচ্চ ${servicesConfig.advanceDays} দিন আগে পর্যন্ত বুকিং করা যায়।`
+                          : "এই তারিখে বুকিং নেওয়া যাচ্ছে না।"}
+                  </p>
+                ) : (
+                  <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {bookingSlots.map((slot) => (
+                      <button
+                        key={slot.start}
+                        type="button"
+                        disabled={!slot.available}
+                        onClick={() => setBookingSlotStart(slot.start)}
+                        className={`rounded-lg border px-2 py-2 text-sm font-semibold transition ${
+                          bookingSlotStart === slot.start
+                            ? "border-brand-600 bg-brand-600 text-white"
+                            : slot.available
+                              ? "border-border bg-card text-text-main hover:bg-surface-2"
+                              : "cursor-not-allowed border-border bg-surface-2 text-text-subtle opacity-60"
+                        }`}
+                      >
+                        {slot.start}
+                        <span className="block text-[11px] font-medium">
+                          {!slot.available
+                            ? slot.past
+                              ? "অতীত"
+                              : "পূর্ণ"
+                            : `${slot.start} – ${slot.end}`}
+                        </span>
+                      </button>
+                    ))}
+                    {bookingSlots.length === 0 && (
+                      <p className="col-span-full text-sm text-text-muted">সময়ের তালিকা লোড হচ্ছে…</p>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </fieldset>
         )}

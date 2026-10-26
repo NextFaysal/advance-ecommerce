@@ -51,6 +51,7 @@ import { enqueueBulkJob, triggerBulkJobProcessing } from "@/jobs/bulk-actions";
 import { manualOrderSchema } from "@/orders/manual-order";
 import { createManualOrder } from "@/orders/manual-create";
 import { restaurantSelectionSchema } from "@/restaurant/selection";
+import { serviceBookingSelectionSchema } from "@/services/selection";
 
 function err(code: string, message: string, status: number, details?: unknown) {
   return NextResponse.json({ error: { code, message, details } }, { status });
@@ -260,6 +261,11 @@ const manualCreateSchema = manualOrderSchema.extend({
   // this line a staff-submitted selection would never reach the
   // service's restaurant gate.
   restaurant: restaurantSelectionSchema.optional(),
+  // ADV-23 vertical 2 (wave 56): same forwarding for the service
+  // booking selection — without this line a staff-submitted booking
+  // would be stripped here and never reach the services gate in
+  // createManualOrder.
+  booking: serviceBookingSelectionSchema.optional(),
   // Wave 21 (doc 17 batch O3): a staff-set advance requirement for
   // this order (poisha). Validated against the computed grand total
   // in the service (0..total); the persisted requirement is the MAX

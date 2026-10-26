@@ -931,6 +931,7 @@ model Order {
   vendorCommissionLines VendorCommissionLine[]
   vendorRefunds    VendorRefund[]
   kitchenTicket    KitchenTicket?
+  serviceBooking   ServiceBooking?
   @@index([customerId])
   @@index([resellerId])
   @@index([status])
@@ -964,6 +965,39 @@ model KitchenTicket {
   readyAt        DateTime?
 
   @@index([status, createdAt])
+}
+
+// Service bookings (ADV-23 vertical 2, doc 23 wave 56): the services
+// module's one row per booked order, created INSIDE the order-create
+// transaction (src/orders/repository.ts — the kitchen-ticket /
+// gift-card in-transaction precedent) when the order carries a
+// validated `booking` selection and module.services is ON. serviceDate
+// is the Asia/Dhaka calendar day stored as that day's Dhaka-midnight
+// instant (yyyy-mm-ddT00:00:00+06:00); slotStart/slotEnd are "HH:MM"
+// strings on the merchant's services.config slot grid, frozen at
+// order time. variantId is a plain string by design (no FK): the
+// booking is a historical record of what was booked and must survive
+// a variant being deleted later; which variants are bookable lives
+// in the services.config `serviceVariantIds` list. status is a plain
+// string (the Subscription/KitchenTicket precedent) — allowed values
+// are owned by src/services/selection.ts: BOOKED -> COMPLETED /
+// NO_SHOW from the admin board; CANCELLED only from the
+// order-cancellation seam. Capacity (services.config capacityPerSlot)
+// is counted against BOOKED rows inside the create transaction.
+model ServiceBooking {
+  id         String    @id @default(cuid())
+  orderId    String    @unique
+  order      Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId  String
+  serviceDate DateTime
+  slotStart  String
+  slotEnd    String
+  staffLabel String?
+  status     String    @default("BOOKED")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([serviceDate, variantId])
 }
 
 // Per-day order-number sequence (wave 20, plan 17 batch O2). The human

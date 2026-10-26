@@ -215,6 +215,17 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: "locked-add-on",
   },
   {
+    id: "bookings",
+    path: "/admin/bookings",
+    labelBn: "বুকিং",
+    labelEn: "Bookings",
+    icon: "ListOrdered",
+    section: "sales",
+    permission: "orders.view",
+    featureFlag: "module.services",
+    badge: "locked-add-on",
+  },
+  {
     id: "pharmacy-rx",
     path: "/admin/pharmacy",
     labelBn: "প্রেসক্রিপশন যাচাই",

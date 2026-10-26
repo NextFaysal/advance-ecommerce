@@ -133,6 +133,7 @@ import {
 import { publishOrderCreated } from "@/orders/event-bus";
 import { resolveResellerAttribution } from "@/reseller/store";
 import {
+  ServiceBookingCapacityError,
   createOrderRecord,
   findOrderByIdempotencyKey,
   getVariantSnapshots,
@@ -172,6 +173,7 @@ import {
 } from "@/marketing/membership-tiers";
 import type { Order } from "@/orders/types";
 import { prepareKitchenTicket } from "@/restaurant/tickets";
+import { prepareServiceBooking } from "@/services/bookings";
 import { validateOrderLineQuantities } from "@/orders/quantity-rules";
 import { lineTotalPoisha, qtyToMilli, roundHalfUpDiv, QTY_MILLI } from "@/lib/quantity";
 
@@ -269,6 +271,18 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
   const kitchenPrep = await prepareKitchenTicket(form.restaurant);
   if (!kitchenPrep.ok) {
     return errorResponse(kitchenPrep.code, kitchenPrep.message, kitchenPrep.httpStatus);
+  }
+  // Service booking (ADV-23 vertical 2, wave 56): a payload carrying
+  // `booking` while module.services is OFF is refused 403
+  // FEATURE_LOCKED; with the flag ON the choice is validated against
+  // services.config + the order's own items BEFORE pricing, and the
+  // validated spec rides into createOrderRecord, which writes the
+  // ServiceBooking inside the create transaction and enforces slot
+  // capacity there. No field -> booking null -> the default path
+  // below is byte-identical.
+  const bookingPrep = await prepareServiceBooking(form.booking, form.items);
+  if (!bookingPrep.ok) {
+    return errorResponse(bookingPrep.code, bookingPrep.message, bookingPrep.httpStatus);
   }
   // Server-side re-validation: price, SKU, name, stock from the DB only.
   const serverPrices = await getVariantSnapshots(form.items.map((i) => i.variantId));
@@ -678,10 +692,21 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     // ADV-23 (wave 56): the validated kitchen-ticket spec (null for
     // every non-restaurant order) — written in the create transaction.
     kitchenTicket: kitchenPrep.ticket,
+    // ADV-23 vertical 2 (wave 56): the validated booking write spec
+    // (null for every non-booking order) — written in the create
+    // transaction, capacity enforced there.
+    serviceBooking: bookingPrep.booking,
     });
   } catch (err) {
     if (err instanceof BundleStockError) {
       return errorResponse("INSUFFICIENT_STOCK", err.message, 400, err.details);
+    }
+    // ADV-23 services (wave 56): the slot filled between the
+    // availability read and this create — the transaction rolled
+    // back in full (no order, no charge), so the customer can pick
+    // another slot and retry.
+    if (err instanceof ServiceBookingCapacityError) {
+      return errorResponse("BOOKING_SLOT_FULL", err.message, 409);
     }
     if (err instanceof PreorderCapError) {
       return errorResponse("PREORDER_CAP_REACHED", err.message, 409, err.details);
@@ -1015,6 +1040,20 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
                 fulfilmentType: kitchenPrep.ticket.fulfilmentType,
                 tableLabel: kitchenPrep.ticket.tableLabel,
                 kitchenStatus: "QUEUED",
+              },
+            }
+          : {}),
+        // ADV-23 vertical 2 (wave 56): booking outcome — present
+        // only when a ServiceBooking was created with this order.
+        ...(bookingPrep.booking
+          ? {
+              booking: {
+                variantId: bookingPrep.booking.variantId,
+                date: bookingPrep.booking.date,
+                slotStart: bookingPrep.booking.slotStart,
+                slotEnd: bookingPrep.booking.slotEnd,
+                staffLabel: bookingPrep.booking.staffLabel,
+                status: "BOOKED",
               },
             }
           : {}),
