@@ -9,6 +9,7 @@
  * degrades to the honest empty state instead of breaking the page.
  */
 import { getApprovedReviewAggregate, listApprovedReviews } from "@/reviews/store";
+import { getReviewPhotoStatus } from "@/reviews/photo";
 import { ReviewForm } from "./ReviewForm";
 import { Stars } from "./Stars";
 
@@ -28,9 +29,12 @@ export async function ReviewSection({
   productId: string;
   productSlug: string;
 }) {
-  const [reviews, aggregate] = await Promise.all([
+  const [reviews, aggregate, photoStatus] = await Promise.all([
     listApprovedReviews(productId).catch(() => []),
     getApprovedReviewAggregate(productId).catch(() => ({ average: null, count: 0 })),
+    // Photo reviews are not live yet (storage and/or persistence —
+    // see src/reviews/photo.ts); the form shows the honest reason.
+    getReviewPhotoStatus().catch(() => null),
   ]);
 
   return (
@@ -85,7 +89,7 @@ export async function ReviewSection({
         <p className="mt-1 text-sm text-text-muted">
           আপনার অভিজ্ঞতা অন্যদের সাহায্য করবে। রিভিউটি মডারেশনের পর প্রকাশিত হবে।
         </p>
-        <ReviewForm productSlug={productSlug} />
+        <ReviewForm productSlug={productSlug} photoUpload={photoStatus ?? undefined} />
       </div>
     </section>
   );

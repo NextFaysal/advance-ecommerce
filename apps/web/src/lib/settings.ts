@@ -57,6 +57,8 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   "general.currency": { category: "general", value: "BDT", isPublic: true },
   "general.timezone": { category: "general", value: "Asia/Dhaka", isPublic: true },
   "general.store_name": { category: "general", value: "", isPublic: true },
+  "general.store_address": { category: "general", value: "", isPublic: false },
+  "general.store_bin": { category: "general", value: "", isPublic: false },
   "storage.provider": { category: "storage", value: "r2", isPublic: false },
   "storage.cdn_url": { category: "storage", value: "", isPublic: true },
   "email.provider": { category: "email", value: "resend", isPublic: false },
@@ -154,6 +156,21 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   // "true" — default OFF, so installing the code changes nothing until
   // an admin deliberately enables the bot.
   "f_commerce.bot_enabled": { category: "general", value: "false", isPublic: false },
+  // Reseller tier engine (ADV-12, src/reseller/tiers.ts). JSON maps keyed
+  // by tier name; invalid/missing fields fall back per-field to the
+  // built-in defaults in DEFAULT_TIER_CONFIG. Rates are basis points;
+  // thresholds are LIFETIME EARNED COMMISSION in poisha needed to reach
+  // the tier (BRONZE is always 0).
+  "reseller.tiers.rates_bps": {
+    category: "general",
+    value: "{\"BRONZE\":500,\"SILVER\":750,\"GOLD\":1000,\"PLATINUM\":1250}",
+    isPublic: false,
+  },
+  "reseller.tiers.thresholds_poisha": {
+    category: "general",
+    value: "{\"BRONZE\":0,\"SILVER\":2500000,\"GOLD\":10000000,\"PLATINUM\":50000000}",
+    isPublic: false,
+  },
   // Order-create rules (wave 20, plan 17 batch O2 —
   // src/checkout/order-rules.ts, enforced in the public create route).
   // Every rule defaults OFF / permissive: an unconfigured shop checks

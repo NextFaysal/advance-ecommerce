@@ -57,8 +57,8 @@ function isUniqueViolation(e: unknown): boolean {
 
 /** Create payload: name + BD phone (normalized to +8801XXXXXXXXX, the
  * same refine/transform pair checkout uses). Tier is NOT accepted —
- * createReseller starts every reseller at BRONZE and tier derives
- * from lifetime sales from there. */
+ * createReseller stores BRONZE as the starting tier and the ADV-12
+ * engine derives the effective tier from lifetime earned commission. */
 const createResellerSchema = z.object({
   name: z.string().trim().min(2, "নাম দিতে হবে").max(80),
   phone: z

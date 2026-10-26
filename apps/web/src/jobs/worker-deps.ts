@@ -40,9 +40,11 @@
  *    labelled sandbox. Pathao / RedX remain sandbox-only for now.
  *    Paperfly / eCourier have no adapter at all yet and throw
  *    NO_ADAPTER:<name>, exactly like the handlers' own default.
- *  - bulkActionsRunner — real: getBulkJob(id) -> processBulkJob(job)
- *    from src/jobs/bulk-actions.ts, the same executor the admin route
- *    triggers in-process today.
+ *  - bulkActionsRunner — real: getBulkJobAsync(id) -> processBulkJob(job)
+ *    from src/jobs/bulk-actions.ts. ADV-10: the lookup reads through
+ *    the Redis-backed registry, so jobs registered by the web process
+ *    are executable here; processBulkJob's claim keeps the route's
+ *    in-process trigger from double-executing the same job.
  *  - The five queue runners from src/jobs/runners.ts — all real
  *    executors over the existing service layer, so no handler reports
  *    "skipped" for them anymore:
@@ -121,7 +123,7 @@ import {
   SANDBOX_COURIER_PROVIDERS,
   type SandboxCourierProvider,
 } from "../integrations/sandbox/courier-provider";
-import { getBulkJob, processBulkJob } from "./bulk-actions";
+import { getBulkJobAsync, processBulkJob } from "./bulk-actions";
 import {
   createAutomationRunner,
   createImportExportRunner,
@@ -374,14 +376,20 @@ export const workerDeps: WorkerRuntimeDeps = {
   },
   courierProvider: resolveCourierProvider,
   bulkActionsRunner: async (job) => {
-    const bulkJob = getBulkJob(job.bulkJobId);
+    // ADV-10: the registry is Redis-backed — getBulkJobAsync reads
+    // through to Redis, so a job registered by the WEB process is
+    // findable here in the worker process (before ADV-10 this lookup
+    // hit only this process's memory and every cross-process job
+    // threw BULK_JOB_NOT_FOUND). The claim inside processBulkJob
+    // arbitrates against the route's in-process trigger.
+    const bulkJob = await getBulkJobAsync(job.bulkJobId);
     if (bulkJob === undefined) {
-      // The registry is in-process; a job id this process has never
-      // seen cannot be executed here. Throw so the failure is visible
-      // (retry / dead-letter), never report a phantom success.
+      // A job id no store has ever seen cannot be executed here.
+      // Throw so the failure is visible (retry / dead-letter), never
+      // report a phantom success.
       throw new Error(`BULK_JOB_NOT_FOUND:${job.bulkJobId}`);
     }
-    const processed = await processBulkJob(bulkJob);
+    const processed = await processBulkJob(bulkJob, { processor: "bullmq-worker" });
     return { ref: processed.id, status: processed.status };
   },
   // The five runners (src/jobs/runners.ts) — see the header.

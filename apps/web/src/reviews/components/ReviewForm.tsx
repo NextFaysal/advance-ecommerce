@@ -8,9 +8,13 @@
  * bots fill it and get a plausible success while nothing is stored —
  * see src/reviews/policy.ts).
  *
- * Serializable props only: the product slug string.
+ * Serializable props only: the product slug string, plus the photo
+ * status (plain data from src/reviews/photo.ts). Photo upload is
+ * DISABLED with its honest reason while photo reviews are not live —
+ * the form never pretends to accept or store a photo.
  */
 import { useState } from "react";
+import type { ReviewPhotoStatus } from "@/reviews/photo";
 
 interface ReviewResponse {
   data?: { review: { status: string } };
@@ -20,7 +24,13 @@ interface ReviewResponse {
 const inputClass =
   "h-12 w-full rounded-xl border border-border bg-surface px-4 text-sm text-text-main shadow-sm outline-none focus:border-brand-500";
 
-export function ReviewForm({ productSlug }: { productSlug: string }) {
+export function ReviewForm({
+  productSlug,
+  photoUpload,
+}: {
+  productSlug: string;
+  photoUpload?: ReviewPhotoStatus;
+}) {
   const [authorName, setAuthorName] = useState("");
   const [phone, setPhone] = useState("");
   const [rating, setRating] = useState(5);
@@ -171,6 +181,40 @@ export function ReviewForm({ productSlug }: { productSlug: string }) {
           className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm leading-6 text-text-main shadow-sm outline-none focus:border-brand-500"
         />
       </div>
+
+      {/* Photo attach — photo reviews are NOT live yet (see
+          src/reviews/photo.ts). The control is disabled and carries
+          the honest reason; nothing is uploaded or stored, and no
+          placeholder image is ever rendered for a review. */}
+      {photoUpload && !photoUpload.available ? (
+        <div>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">
+            ছবি যোগ করুন (ঐচ্ছিক)
+          </span>
+          <button
+            type="button"
+            disabled
+            aria-disabled="true"
+            className="flex h-12 cursor-not-allowed items-center gap-2 rounded-xl border border-dashed border-border bg-surface px-4 text-sm font-medium text-text-subtle opacity-70"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
+              <circle cx="12" cy="13" r="3.2" />
+            </svg>
+            ছবি বেছে নিন
+          </button>
+          <p className="mt-1 text-xs text-text-subtle">{photoUpload.reasonBn}</p>
+        </div>
+      ) : null}
 
       {/* Honeypot — hidden from humans; bots that fill it are dropped
           silently by the API (src/reviews/policy.ts). */}

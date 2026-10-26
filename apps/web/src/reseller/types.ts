@@ -8,21 +8,36 @@
  */
 import { z } from "zod";
 
-/** Tier by lifetime delivered sales (in poisha). Thresholds are inclusive. */
-export type ResellerTier = "BRONZE" | "SILVER" | "GOLD";
+/**
+ * Tiers (ADV-12 engine): BRONZE / SILVER / GOLD / PLATINUM, DERIVED from
+ * lifetime earned COMMISSION (never stored as truth — the Reseller.tier
+ * column is a display cache refreshed at credit time). Rates + thresholds
+ * come from Settings (reseller.tiers.*) via src/reseller/tiers.ts; the
+ * constants below are the built-in defaults the Settings values mirror.
+ */
+export type ResellerTier = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
 
-/** Lifetime sales thresholds for tier upgrade, in poisha (BDT 0 / 1,00,000 / 5,00,000). */
+/** Tier ladder order, lowest first. */
+export const RESELLER_TIERS: readonly ResellerTier[] = ["BRONZE", "SILVER", "GOLD", "PLATINUM"];
+
+/**
+ * LEGACY lifetime-SALES thresholds (poisha) — kept only for the
+ * deprecated sales-based helpers in pricing.ts. The live engine
+ * (tiers.ts) thresholds on lifetime earned commission instead.
+ */
 export const TIER_THRESHOLDS_POISHA: Record<ResellerTier, number> = {
   BRONZE: 0,
-  SILVER: 10_000_000, // ৳1,00,000
-  GOLD: 50_000_000, // ৳5,00,000
+  SILVER: 10_000_000, // ৳1,00,000 sales
+  GOLD: 50_000_000, // ৳5,00,000 sales
+  PLATINUM: 100_000_000, // ৳10,00,000 sales
 };
 
-/** Commission rate per tier, in basis points (100 bps = 1%). Integer only. */
+/** Default commission rate per tier, in basis points (100 bps = 1%). Integer only. */
 export const TIER_COMMISSION_BPS: Record<ResellerTier, number> = {
   BRONZE: 500, // 5%
   SILVER: 750, // 7.5%
   GOLD: 1000, // 10%
+  PLATINUM: 1250, // 12.5%
 };
 
 export type ResellerStatus = "ACTIVE" | "SUSPENDED" | "PENDING_APPROVAL";
@@ -134,6 +149,8 @@ export interface ResellerDashboard {
   toNextTierPoisha: number;
   commissionBps: number;
   lifetimeSalesPoisha: number;
+  /** Lifetime earned COMMISSION (Σ COMMISSION_CREDIT), poisha — the tier basis (ADV-12). */
+  lifetimeCommissionPoisha: number;
   walletBalancePoisha: number;
   pendingWithdrawalPoisha: number;
   priceEntryCount: number;

@@ -13,14 +13,19 @@
  * change, so ProductCard / PDP header / list reads stay correct with
  * zero extra queries. PENDING and REJECTED reviews never count.
  *
- * VERIFIED PURCHASE: at submission time the phone is matched to a
- * Customer; when that customer has a non-CANCELLED order containing
- * this product, the review links customerId + that orderId, and
- * public views flag it as a verified purchase.
+ * VERIFIED PURCHASE: the badge means the reviewer actually
+ * RECEIVED the product — the linked customer has a DELIVERED order
+ * containing it. It is computed from real Order / OrderItem rows at
+ * read time (src/reviews/verified.ts), never from a stored flag, so
+ * it stays correct as order statuses change. At submission time the
+ * phone is matched to a Customer and, when one exists, the most
+ * recent DELIVERED order containing this product is linked
+ * (customerId + orderId) as supporting evidence.
  */
 import { prisma } from "@advance-ecommerce/db";
 import { maskPhone } from "@/checkout/validation";
 import type { CreateReviewInput, ReviewStatus } from "./schema";
+import { computeVerifiedPurchaseKeys, verifiedPurchaseKey } from "./verified";
 
 /* ------------------------------ views ------------------------------ */
 
@@ -77,7 +82,7 @@ function round1(n: number): number {
 
 type ReviewRow = Awaited<ReturnType<typeof prisma.review.findMany>>[number];
 
-function toPublicReview(row: ReviewRow): PublicReview {
+function toPublicReview(row: ReviewRow, verifiedPurchase: boolean): PublicReview {
   return {
     id: row.id,
     authorName: row.authorName,
@@ -85,16 +90,27 @@ function toPublicReview(row: ReviewRow): PublicReview {
     title: row.title,
     body: row.body,
     createdAt: row.createdAt.toISOString(),
-    verifiedPurchase: row.orderId !== null,
+    verifiedPurchase,
   };
+}
+
+function isVerified(
+  verifiedKeys: Set<string>,
+  row: { customerId: string | null; productId: string },
+): boolean {
+  return (
+    row.customerId !== null &&
+    verifiedKeys.has(verifiedPurchaseKey(row.customerId, row.productId))
+  );
 }
 
 /* ------------------------------ writes ----------------------------- */
 
 /**
- * Create a PENDING review. Resolves the verified-purchase link from
- * the (already normalized) phone: Customer by phone, then their most
- * recent non-CANCELLED order containing this product.
+ * Create a PENDING review. Resolves the reviewer from the (already
+ * normalized) phone: Customer by phone, then their most recent
+ * DELIVERED order containing this product — the only order link
+ * that supports a verified-purchase claim (see ./verified.ts).
  */
 export async function createReview(
   productId: string,
@@ -112,7 +128,7 @@ export async function createReview(
     const item = await prisma.orderItem.findFirst({
       where: {
         variant: { productId },
-        order: { customerId: customer.id, status: { not: "CANCELLED" } },
+        order: { customerId: customer.id, status: "DELIVERED" },
       },
       orderBy: { createdAt: "desc" },
       select: { orderId: true },
@@ -175,7 +191,8 @@ export async function listApprovedReviews(productId: string, take = 20): Promise
     orderBy: { createdAt: "desc" },
     take,
   });
-  return rows.map(toPublicReview);
+  const verifiedKeys = await computeVerifiedPurchaseKeys(rows);
+  return rows.map((row) => toPublicReview(row, isVerified(verifiedKeys, row)));
 }
 
 /** Live aggregate over APPROVED, non-deleted reviews. */
@@ -205,6 +222,7 @@ export async function listReviewsForAdmin(status?: ReviewStatus, onlyId?: string
     take: onlyId ? 1 : 100,
     include: { product: { select: { titleBn: true, slug: true } } },
   });
+  const verifiedKeys = await computeVerifiedPurchaseKeys(rows);
   return rows.map((row) => ({
     id: row.id,
     productId: row.productId,
@@ -216,7 +234,7 @@ export async function listReviewsForAdmin(status?: ReviewStatus, onlyId?: string
     title: row.title,
     body: row.body,
     status: row.status as ReviewStatus,
-    verifiedPurchase: row.orderId !== null,
+    verifiedPurchase: isVerified(verifiedKeys, row),
     createdAt: row.createdAt.toISOString(),
   }));
 }

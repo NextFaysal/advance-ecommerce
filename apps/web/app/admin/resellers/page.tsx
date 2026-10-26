@@ -1,8 +1,10 @@
 import { demoResellerFlags, isResellerEnabled } from "@/reseller/flags";
 import { buildDashboardsDb, listPriceEntries, listWithdrawals } from "@/reseller/store";
+import { listPayoutRequestsAdmin } from "@/reseller/payout-store";
 import { computeMargin } from "@/reseller/pricing";
 import { formatBdt } from "@/checkout/pricing";
 import { CreateResellerForm } from "./create-reseller-form";
+import PayoutActions from "./payout-actions";
 
 // Resellers admin — Agent 14, Step 46 (A5).
 // Locked state: while module.reseller is OFF (the seeded default — this is a
@@ -29,10 +31,11 @@ export default async function AdminResellersPage() {
       </main>
     );
   }
-  const [dashboards, priceEntries, withdrawals] = await Promise.all([
+  const [dashboards, priceEntries, withdrawals, payoutRequests] = await Promise.all([
     buildDashboardsDb(),
     listPriceEntries(),
     listWithdrawals(),
+    listPayoutRequestsAdmin(),
   ]);
   // Share-link base: the public storefront origin (NEXT_PUBLIC_APP_URL,
   // same env the bd-tools payment links use). Unset locally -> the
@@ -47,7 +50,7 @@ export default async function AdminResellersPage() {
         <thead>
           <tr>
             <th>Reseller</th><th>Phone</th><th>Tier</th><th>Commission</th>
-            <th>Lifetime Sales</th><th>Wallet Balance</th><th>Pending Withdrawal</th>
+            <th>Lifetime Sales</th><th>Lifetime Commission</th><th>Wallet Balance</th><th>Pending Withdrawal</th>
             <th>Referral Code</th><th>Share Link</th>
           </tr>
         </thead>
@@ -59,6 +62,7 @@ export default async function AdminResellersPage() {
               <td>{d.tier}{d.nextTier ? ` (next: ${d.nextTier} in ${formatBdt(d.toNextTierPoisha)})` : ""}</td>
               <td>{(d.commissionBps / 100).toFixed(1)}%</td>
               <td>{formatBdt(d.lifetimeSalesPoisha)}</td>
+              <td>{formatBdt(d.lifetimeCommissionPoisha)}</td>
               <td>{formatBdt(d.walletBalancePoisha)}</td>
               <td>{formatBdt(d.pendingWithdrawalPoisha)}</td>
               <td>{d.code ? <code>{d.code}</code> : "—"}</td>
@@ -86,6 +90,38 @@ export default async function AdminResellersPage() {
         })}
       </ul>
       <p>Pending withdrawals: {withdrawals.filter((w) => w.status === "PENDING").length}</p>
+      <h2>Payout Requests (portal, ADV-12)</h2>
+      <p>
+        Portal payout requests from resellers. Availability is computed (wallet balance − PAID −
+        pending/approved requests). <strong>Mark PAID only records that staff paid the reseller
+        externally</strong> (bKash/Nagad/bank) — no money moves through this panel.
+      </p>
+      {payoutRequests.length === 0 ? (
+        <p>No payout requests yet.</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Requested</th><th>Reseller</th><th>Amount</th><th>Method</th>
+              <th>Account Note</th><th>Status</th><th>Decided By</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {payoutRequests.map((r) => (
+              <tr key={r.id}>
+                <td>{new Date(r.createdAt).toLocaleDateString("en-GB")}</td>
+                <td>{r.resellerName} ({r.resellerPhoneMasked})</td>
+                <td>{formatBdt(r.amountPoisha)}</td>
+                <td>{r.method}</td>
+                <td>{r.accountNote}</td>
+                <td>{r.status}</td>
+                <td>{r.decidedById ?? "—"}</td>
+                <td><PayoutActions payoutId={r.id} status={r.status} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </main>
   );
 }

@@ -63,14 +63,19 @@ export function buildPriceEntry(
   };
 }
 
-/** Tier for a lifetime DELIVERED sales total. Pure function of the total. */
+/**
+ * @deprecated Sales-based tier derivation (pre-ADV-12). The live engine
+ * is tierForLifetimeCommission in ./tiers — tiers derive from lifetime
+ * earned COMMISSION with Settings-driven rates/thresholds. Kept only
+ * so older imports keep compiling; do not use in new code.
+ */
 export function tierForLifetimeSales(lifetimeSalesPoisha: number): ResellerTier {
   if (lifetimeSalesPoisha >= TIER_THRESHOLDS_POISHA.GOLD) return "GOLD";
   if (lifetimeSalesPoisha >= TIER_THRESHOLDS_POISHA.SILVER) return "SILVER";
   return "BRONZE";
 }
 
-/** Next tier + remaining poisha to reach it. At GOLD, nextTier is null and remaining is 0. */
+/** @deprecated Sales-based progress — see tierForLifetimeSales. Use nextTierProgressForCommission (./tiers). */
 export function nextTierProgress(lifetimeSalesPoisha: number): {
   nextTier: ResellerTier | null;
   toNextTierPoisha: number;
@@ -84,7 +89,11 @@ export function nextTierProgress(lifetimeSalesPoisha: number): {
   };
 }
 
-/** Commission earned on a DELIVERED reseller order, for the seller's tier at sale time. */
+/**
+ * @deprecated Fixed-rate commission on the sales ladder. The live
+ * credit path computes commissionForAmountPoisha(amount, tierRateBps)
+ * from the Settings-loaded TierConfig (./tiers + ./tier-config).
+ */
 export function commissionForSale(saleAmountPoisha: number, tier: ResellerTier): number {
   if (saleAmountPoisha <= 0) return 0;
   return Math.floor((saleAmountPoisha * TIER_COMMISSION_BPS[tier]) / 10_000);

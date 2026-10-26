@@ -719,12 +719,17 @@ export interface NotificationRetryRunnerDeps {
  * BullMQ): each failed re-drive throws, and the final failure
  * dead-letters while the record stays FAILED with errorRef stamped.
  *
- * Truthful end states only: the configured adapters are sandbox
- * adapters whose sends are simulated `queued`, so a successful
- * re-drive returns the record to QUEUED with the provider name
- * stamped — never SENT. (The NotificationLog schema has no attempt
- * counter column, so per-record attempt counting lives in the queue
- * layer, not on the row.)
+ * Truthful end states only (ADV-10 classification fix): the worker's
+ * resolvers may return a REAL provider (sms-resolver) or the sandbox
+ * adapter. A re-drive classifies the provider result honestly —
+ * "sent" marks the record SENT (a real send happened), "queued"
+ * marks it QUEUED (the sandbox simulator accepted it; nothing was
+ * delivered), "failed" throws PROVIDER_FAILED and the record stays
+ * FAILED. Before ADV-10 any status other than "queued" was treated
+ * as a failure, which would have misclassified every real "sent".
+ * (The NotificationLog schema has no attempt counter column, so
+ * per-record attempt counting lives in the queue layer, not on the
+ * row.)
  */
 export function createNotificationRetryRunner(
   deps: NotificationRetryRunnerDeps,
@@ -745,6 +750,7 @@ export function createNotificationRetryRunner(
       return { ref: record.id };
     }
 
+    let endStatus: "QUEUED" | "SENT" = "QUEUED";
     try {
       // The record's channel is authoritative; the job's channel is
       // the routing hint the producer enqueued with.
@@ -759,18 +765,21 @@ export function createNotificationRetryRunner(
           templateKey: record.templateKey,
           orderId: record.orderId,
         });
-        if (result.status !== "queued") {
+        if (result.status === "failed") {
           throw new Error(`PROVIDER_FAILED:sms:${result.status}`);
         }
         await prisma.notificationLog.update({
           where: { id: record.id },
           data: {
-            status: "QUEUED",
+            // "sent" only when the provider really sent; a sandbox
+            // "queued" stays QUEUED — never dressed up as delivered.
+            status: result.status === "sent" ? "SENT" : "QUEUED",
             provider: provider.name,
             segments: String(result.segments),
             errorRef: null,
           },
         });
+        endStatus = result.status === "sent" ? "SENT" : "QUEUED";
       } else if (record.channel === "EMAIL") {
         if (deps.emailProvider === undefined) {
           throw new Error("RETRY_PROVIDER_UNCONFIGURED:email");
@@ -783,13 +792,18 @@ export function createNotificationRetryRunner(
           templateKey: record.templateKey,
           orderId: record.orderId,
         });
-        if (result.status !== "queued") {
+        if (result.status === "failed") {
           throw new Error(`PROVIDER_FAILED:email:${result.status}`);
         }
         await prisma.notificationLog.update({
           where: { id: record.id },
-          data: { status: "QUEUED", provider: provider.name, errorRef: null },
+          data: {
+            status: result.status === "sent" ? "SENT" : "QUEUED",
+            provider: provider.name,
+            errorRef: null,
+          },
         });
+        endStatus = result.status === "sent" ? "SENT" : "QUEUED";
       } else {
         // IN_APP: the record IS the notification (the client reads it
         // from the DB) — re-driving is returning it to QUEUED.
@@ -810,7 +824,7 @@ export function createNotificationRetryRunner(
     deps.logger?.info("notification.retry.redriven", {
       notificationLogId: record.id,
       channel: record.channel,
-      status: "QUEUED",
+      status: endStatus,
     });
     return { ref: record.id };
   };

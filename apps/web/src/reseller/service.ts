@@ -14,9 +14,15 @@
  * returned by this module's public builders.
  */
 import { maskPhone } from "../checkout/validation";
-import { nextTierProgress, tierForLifetimeSales } from "./pricing";
 import {
-  TIER_COMMISSION_BPS,
+  DEFAULT_TIER_CONFIG,
+  lifetimeCommissionPoisha,
+  nextTierProgressForCommission,
+  tierForLifetimeCommission,
+  tierRateBps,
+  type TierConfig,
+} from "./tiers";
+import {
   type Reseller,
   type ResellerDashboard,
   type ResellerPriceEntry,
@@ -92,17 +98,24 @@ export function findDemoReseller(resellerId: string): Reseller | null {
   return DEMO_RESELLERS.find((reseller) => reseller.id === resellerId) ?? null;
 }
 
-/** Build the dashboard shape for one reseller. Tier is re-derived from sales. */
+/**
+ * Build the dashboard shape for one reseller. ADV-12: tier is derived
+ * from lifetime earned COMMISSION (Σ COMMISSION_CREDIT in the ledger)
+ * under the given tier config — never from the stored tier column and
+ * never from sales volume.
+ */
 export function buildDashboard(
   reseller: Reseller,
   entries: readonly WalletEntry[],
   withdrawals: readonly WithdrawalRequest[],
   priceEntries: readonly ResellerPriceEntry[],
+  tierConfig: TierConfig = DEFAULT_TIER_CONFIG,
 ): ResellerDashboard {
   const mine = entries.filter((e) => e.resellerId === reseller.id);
   const myWithdrawals = withdrawals.filter((w) => w.resellerId === reseller.id);
-  const tier = tierForLifetimeSales(reseller.lifetimeSalesPoisha);
-  const progress = nextTierProgress(reseller.lifetimeSalesPoisha);
+  const lifetimeCommission = lifetimeCommissionPoisha(mine);
+  const tier = tierForLifetimeCommission(lifetimeCommission, tierConfig);
+  const progress = nextTierProgressForCommission(lifetimeCommission, tierConfig);
   return {
     resellerId: reseller.id,
     name: reseller.name,
@@ -111,8 +124,9 @@ export function buildDashboard(
     tier,
     nextTier: progress.nextTier,
     toNextTierPoisha: progress.toNextTierPoisha,
-    commissionBps: TIER_COMMISSION_BPS[tier],
+    commissionBps: tierRateBps(tier, tierConfig),
     lifetimeSalesPoisha: reseller.lifetimeSalesPoisha,
+    lifetimeCommissionPoisha: lifetimeCommission,
     walletBalancePoisha: walletBalance(mine),
     pendingWithdrawalPoisha: pendingWithdrawalTotal(myWithdrawals),
     priceEntryCount: priceEntries.length,

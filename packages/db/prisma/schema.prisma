@@ -464,6 +464,7 @@ model Product {
   flashSaleItems   FlashSaleItem[]
   vendorProducts   VendorProduct[]
   reviews          Review[]
+  questions        ProductQuestion[]
   digitalFiles     DigitalFile[]
   licenseKeys      LicenseKey[]
   bundleComponents BundleComponent[] @relation("ProductBundleComponents")
@@ -642,6 +643,9 @@ model Review {
   title      String?
   body       String
   status     String    @default("PENDING")
+  images     String[]  @default([])
+  helpfulCount Int     @default(0)
+  helpfulVotes ReviewHelpfulVote[]
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
@@ -690,6 +694,8 @@ model Customer {
   couponUsages        CouponUsage[]
   sessions            CustomerSession[]
   reviews             Review[]
+  supportTickets      SupportTicket[]
+  productQuestions    ProductQuestion[]
   downloadReissueRequests DownloadReissueRequest[]
   @@index([phone])
   @@index([deletedAt])
@@ -850,6 +856,7 @@ model Order {
   shipments        Shipment[]
   returns          Return[]
   remittanceItems  RemittanceItem[]
+  supportTickets   SupportTicket[]
   couponUsages     CouponUsage[]
   notificationLogs NotificationLog[]
   paymentLinks     PaymentLink[]
@@ -1960,6 +1967,7 @@ model Reseller {
   priceEntries ResellerPriceEntry[]
   walletEntries ResellerWalletEntry[]
   withdrawals ResellerWithdrawal[]
+  payoutRequests ResellerPayoutRequest[]
   orders Order[]
 }
 
@@ -1995,6 +2003,29 @@ model ResellerWithdrawal {
   status           String   @default("PENDING")
   payoutRef        String?
   createdAt        DateTime @default(now())
+  @@index([resellerId, status])
+}
+
+/// Portal payout request (ADV-12) — the reseller-facing payout flow.
+/// Distinct from ResellerWithdrawal (the older admin-initiated flow):
+/// availability is COMPUTED (wallet balance − PAID − PENDING/APPROVED
+/// requests), never hold-ledger entries, so the two flows cannot
+/// double-count. PAID means staff recorded an external payment —
+/// no money moves through this table automatically.
+model ResellerPayoutRequest {
+  id           String    @id @default(cuid())
+  resellerId   String
+  reseller     Reseller  @relation(fields: [resellerId], references: [id])
+  amountPoisha Int
+  /// BKASH | NAGAD | BANK
+  method       String
+  /// Where to pay, as written by the reseller (their own account note).
+  accountNote  String
+  /// PENDING | APPROVED | PAID | REJECTED
+  status       String    @default("PENDING")
+  decidedById  String?
+  decidedAt    DateTime?
+  createdAt    DateTime  @default(now())
   @@index([resellerId, status])
 }
 
@@ -2227,4 +2258,68 @@ model TrackingEvent {
   createdAt  DateTime @default(now())
 
   @@index([eventName, occurredAt])
+}
+
+// ------------------------------------------------------- Support tickets (ADV-16)
+// Customer support tickets, deliberately separate from the contact
+// inbox and src/inbox (Meta channels). Status is an app-level string
+// (OPEN | PENDING | CLOSED), mirroring Review.status / ContactMessage.
+model SupportTicket {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  orderId    String?
+  order      Order?   @relation(fields: [orderId], references: [id])
+  subject    String
+  status     String   @default("OPEN")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  messages   SupportTicketMessage[]
+
+  @@index([customerId, createdAt])
+  @@index([status, updatedAt])
+}
+
+model SupportTicketMessage {
+  id         String        @id @default(cuid())
+  ticketId   String
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id])
+  authorType String
+  authorId   String
+  body       String
+  createdAt  DateTime      @default(now())
+
+  @@index([ticketId, createdAt])
+}
+
+// ------------------------------------------------------- Product Q&A (ADV-16)
+model ProductQuestion {
+  id           String    @id @default(cuid())
+  productId    String
+  product      Product   @relation(fields: [productId], references: [id])
+  customerId   String?
+  customer     Customer? @relation(fields: [customerId], references: [id])
+  authorName   String
+  question     String
+  answer       String?
+  answeredById String?
+  answeredAt   DateTime?
+  status       String    @default("PENDING")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  @@index([productId, status, createdAt])
+}
+
+// ------------------------------------------------------- Review helpful votes (ADV-16)
+model ReviewHelpfulVote {
+  id        String   @id @default(cuid())
+  reviewId  String
+  review    Review   @relation(fields: [reviewId], references: [id])
+  voterKey  String
+  createdAt DateTime @default(now())
+
+  @@unique([reviewId, voterKey])
+  @@index([reviewId])
 }

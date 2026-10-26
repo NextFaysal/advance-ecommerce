@@ -21,9 +21,15 @@
  *  - Failures throw: workers.ts lets BullMQ retry per the queue's policy
  *    (DEFAULT_RETRY / COURIER_RETRY) and records a dead-letter entry
  *    after the final attempt. Handlers must never swallow an error and
- *    report success.
+ *    report success. ADV-10 addition: a DIRECT notification send
+ *    (generic SMS/email paths, the emailSend delegation) that fails on
+ *    its final attempt also records a FAILED NotificationLog row and
+ *    schedules a notification-retry job (notification-failures.ts) —
+ *    that recording is the retry queue's only input, and it never
+ *    replaces the throw.
  */
 import {
+  DEFAULT_RETRY,
   QUEUE_NAMES,
   type CourierBookingJob,
   type EmailJob,
@@ -31,6 +37,7 @@ import {
   type SmsJob,
   type WebhookJob,
 } from "./queues";
+import type { NotificationFailureInput } from "./notification-failures";
 import type { EmailProvider, EmailSendInput } from "../integrations/email";
 import type { SmsProvider, SmsSendInput } from "../integrations/sms";
 import type {
@@ -250,6 +257,16 @@ export interface HandlerDeps {
    *  an empty subject/body and report a phantom success. Deployments
    *  without the dep keep the legacy sandbox fallback. */
   emailSend?: (job: EmailJob) => Promise<HandlerResult>;
+  /** ADV-10 (doc 22 / doc 21 G3-12): notification failure recorder.
+   *  Called ONLY when a direct notification send (generic SMS path,
+   *  generic email path, or the emailSend delegation above) fails on
+   *  its FINAL attempt — it writes the FAILED NotificationLog row and
+   *  schedules the notification-retry re-drive
+   *  (src/jobs/notification-failures.ts). Default: the real recorder,
+   *  lazy-imported so this module stays free of Prisma/BullMQ at load
+   *  time. Tests inject a spy. A recorder failure is swallowed by the
+   *  handler — bookkeeping never masks the send failure itself. */
+  notificationFailureRecorder?: (failure: NotificationFailureInput) => Promise<void>;
   logger?: JobLogger;
 }
 
@@ -337,6 +354,47 @@ export function createHandlers(
 ): Record<QueueName, (envelope: JobEnvelope<never>) => Promise<HandlerResult>> {
   const logger = deps.logger ?? consoleJobLogger;
 
+  /** Error CODE only (first token) — same convention as workers.ts. */
+  const errorCodeOf = (error: unknown): string => {
+    if (error instanceof Error) {
+      const firstToken = error.message.split(":")[0]?.trim();
+      return firstToken !== undefined && firstToken !== "" ? firstToken : error.name;
+    }
+    return "UNKNOWN_ERROR";
+  };
+
+  /**
+   * ADV-10: record a notification send failure for the retry queue —
+   * ONLY on the final attempt (earlier attempts are BullMQ's own
+   * retry story; recording each would flood NotificationLog with one
+   * row per attempt for a single notification). Never throws.
+   */
+  const maybeRecordNotificationFailure = async (
+    failure: NotificationFailureInput,
+    attemptsMade: number,
+  ): Promise<void> => {
+    if (attemptsMade + 1 < DEFAULT_RETRY.attempts) return;
+    try {
+      if (deps.notificationFailureRecorder) {
+        await deps.notificationFailureRecorder(failure);
+      } else {
+        const mod = await import("./notification-failures");
+        const outcome = await mod.recordFailureAndScheduleRetry(failure);
+        logger.warn("notification.failure.recorded", {
+          channel: failure.channel,
+          templateKey: failure.templateKey ?? "none",
+          recipientRef: failure.recipientRef,
+          errorCode: failure.errorCode,
+          recorded: outcome.recorded,
+          notificationLogId: outcome.notificationLogId ?? "none",
+          retryEnqueued: outcome.retryEnqueued,
+        });
+      }
+    } catch {
+      // Bookkeeping must never mask the send failure being reported.
+    }
+  };
+
   const sms: (e: JobEnvelope<SmsJob>) => Promise<HandlerResult> = (envelope) => {
     // C4: call-center automation jobs delegate to their own send path
     // (kill-switch + task-state re-checks, DB phone resolution,
@@ -412,12 +470,45 @@ export function createHandlers(
         : createSandboxSmsProvider();
       // recipientRef is resolved to a real phone inside the provider /
       // settings layer in the worker deployment; it is never logged here.
-      const result = await provider.send({
-        toPhone: envelope.payload.recipientRef,
-        message: "",
-        templateKey: envelope.payload.templateKey,
-        orderId: envelope.payload.orderId ?? null,
-      });
+      let result: Awaited<ReturnType<SmsProvider["send"]>>;
+      try {
+        result = await provider.send({
+          toPhone: envelope.payload.recipientRef,
+          message: "",
+          templateKey: envelope.payload.templateKey,
+          orderId: envelope.payload.orderId ?? null,
+        });
+      } catch (error) {
+        await maybeRecordNotificationFailure(
+          {
+            channel: "SMS",
+            templateKey: envelope.payload.templateKey,
+            recipientRef: envelope.payload.recipientRef,
+            orderId: envelope.payload.orderId ?? null,
+            provider: provider.name,
+            errorCode: errorCodeOf(error),
+          },
+          envelope.attemptsMade,
+        );
+        throw error;
+      }
+      if (result.status === "failed") {
+        // A provider that ANSWERS "failed" is a failed send — before
+        // ADV-10 this path reported success on any resolved result,
+        // which was a phantom success.
+        await maybeRecordNotificationFailure(
+          {
+            channel: "SMS",
+            templateKey: envelope.payload.templateKey,
+            recipientRef: envelope.payload.recipientRef,
+            orderId: envelope.payload.orderId ?? null,
+            provider: provider.name,
+            errorCode: "PROVIDER_FAILED",
+          },
+          envelope.attemptsMade,
+        );
+        throw new Error("PROVIDER_FAILED:sms");
+      }
       logger.info("sms.queued", {
         jobId: envelope.jobId,
         templateKey: envelope.payload.templateKey,
@@ -437,21 +528,70 @@ export function createHandlers(
     // phantom success).
     if (deps.emailSend) {
       const sendEmail = deps.emailSend;
-      return runIdempotent(store, envelope, envelope.payload.recipientRef, () =>
-        sendEmail(envelope.payload),
-      );
+      return runIdempotent(store, envelope, envelope.payload.recipientRef, async () => {
+        try {
+          return await sendEmail(envelope.payload);
+        } catch (error) {
+          // ADV-10: a provider failure in the real lifecycle send
+          // path (processEmailJob throws on failure; honest SKIPs
+          // return a result and never reach this catch) is recorded
+          // for the notification-retry queue on the final attempt.
+          await maybeRecordNotificationFailure(
+            {
+              channel: "EMAIL",
+              templateKey: envelope.payload.templateKey,
+              recipientRef: envelope.payload.recipientRef,
+              orderId: envelope.payload.orderId ?? null,
+              errorCode: errorCodeOf(error),
+            },
+            envelope.attemptsMade,
+          );
+          throw error;
+        }
+      });
     }
     return runIdempotent(store, envelope, envelope.payload.recipientRef, async () => {
       const provider = deps.emailProvider
         ? await deps.emailProvider(null)
         : createSandboxEmailProvider();
-      const result = await provider.send({
-        to: envelope.payload.recipientRef,
-        subject: "",
-        body: "",
-        templateKey: envelope.payload.templateKey,
-        orderId: envelope.payload.orderId ?? null,
-      });
+      let result: Awaited<ReturnType<EmailProvider["send"]>>;
+      try {
+        result = await provider.send({
+          to: envelope.payload.recipientRef,
+          subject: "",
+          body: "",
+          templateKey: envelope.payload.templateKey,
+          orderId: envelope.payload.orderId ?? null,
+        });
+      } catch (error) {
+        await maybeRecordNotificationFailure(
+          {
+            channel: "EMAIL",
+            templateKey: envelope.payload.templateKey,
+            recipientRef: envelope.payload.recipientRef,
+            orderId: envelope.payload.orderId ?? null,
+            provider: provider.name,
+            errorCode: errorCodeOf(error),
+          },
+          envelope.attemptsMade,
+        );
+        throw error;
+      }
+      if (result.status === "failed") {
+        // Same phantom-success fix as the SMS path (ADV-10).
+        await maybeRecordNotificationFailure(
+          {
+            channel: "EMAIL",
+            templateKey: envelope.payload.templateKey,
+            recipientRef: envelope.payload.recipientRef,
+            orderId: envelope.payload.orderId ?? null,
+            provider: provider.name,
+            errorCode: "PROVIDER_FAILED",
+          },
+          envelope.attemptsMade,
+        );
+        throw new Error("PROVIDER_FAILED:email");
+      }
       logger.info("email.queued", {
         jobId: envelope.jobId,
         templateKey: envelope.payload.templateKey,
@@ -470,8 +610,15 @@ export function createHandlers(
       const provider = deps.courierProvider
         ? await deps.courierProvider(providerName)
         : await defaultCourierProvider(providerName);
-      // Shipment address/COD are loaded from the DB by shipmentId in the
-      // worker deployment; the queue payload intentionally carries ids only.
+      // ADV-10 note (see the queues.ts inventory): this handler does
+      // NOT book anything — it never calls provider.createShipment.
+      // Real booking happens synchronously in the admin shipments
+      // route through the same adapters, and no producer enqueues
+      // CourierBookingJobs, so in practice no job reaches this stub.
+      // It is kept (and labelled here) rather than silently deleted
+      // because the queue contract + admin catalogue still list it;
+      // wiring it for real means moving the route's booking flow
+      // behind this handler, a shipments-slice decision.
       logger.info("courier.booking.requested", {
         jobId: envelope.jobId,
         orderId: envelope.payload.orderId,
@@ -543,17 +690,25 @@ export function createHandlers(
     envelope,
   ) =>
     runIdempotent(store, envelope, envelope.payload.cartId, async () => {
-      // Follow-up sends go through the SMS/email queues, never directly.
-      logger.info("abandoned-cart.followup", {
+      // ADV-10 honesty fix: this legacy queue has NO producer and
+      // this handler enqueues NOTHING — abandoned-cart follow-ups
+      // run for real through the automation-run queue (ADV-7:
+      // captureAbandonedCheckout fires checkout.abandoned, rules
+      // execute send_sms / send_email effects there). Before ADV-10
+      // the handler logged and returned "succeeded — follow-up step
+      // queued" without queueing anything: a phantom success. It now
+      // reports skipped, so if a job ever lands here (a stale
+      // enqueue, a manual replay) the result tells the truth.
+      logger.warn("abandoned-cart.legacy-queue", {
         jobId: envelope.jobId,
         cartId: envelope.payload.cartId,
-        customerRef: envelope.payload.customerRef,
         step: envelope.payload.step,
       });
       return {
-        status: "succeeded",
+        status: "skipped",
         ref: envelope.payload.cartId,
-        detail: `follow-up step ${envelope.payload.step} queued`,
+        detail:
+          "legacy queue with no producer — abandoned-cart follow-ups run through automation-run (checkout.abandoned rules); nothing was queued by this handler",
       };
     });
 

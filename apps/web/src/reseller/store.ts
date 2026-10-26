@@ -19,9 +19,11 @@
  *   are DERIVED: the sum of totalPoisha over the DISTINCT orders
  *   referenced by this reseller's credit entries (refId = orderId).
  *   Credits pointing at orders that do not exist contribute 0.
- * - Reseller.tier column stores the tier derived at last write; the
- *   dashboard always re-derives it from lifetime sales (buildDashboard),
- *   so the column's "STANDARD" default never surfaces.
+ * - Reseller.tier column is a CACHE refreshed at credit time
+ *   (creditDeliveredOrderDb). ADV-12: the effective tier is always
+ *   DERIVED from lifetime earned commission (Σ COMMISSION_CREDIT) under
+ *   the Settings tier config (src/reseller/tiers.ts) — on dashboard
+ *   reads (buildDashboard) and on the single-reseller reads here.
  * - ResellerWithdrawal has no method / reviewedBy / reviewedAt /
  *   reviewNote columns. The operation responses return those fields
  *   from the pure-logic result of the action just performed; list reads
@@ -40,13 +42,22 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@advance-ecommerce/db";
 import { buildDashboard } from "./service";
 import { generateResellerCode, normalizeResellerCode } from "./attribution";
-import { computeMargin, tierForLifetimeSales } from "./pricing";
+import { computeMargin } from "./pricing";
 import {
+  DEFAULT_TIER_CONFIG,
+  tierForLifetimeCommission,
+  tierRateBps,
+  type TierConfig,
+} from "./tiers";
+import { loadTierConfig } from "./tier-config";
+import {
+  RESELLER_TIERS,
   type Reseller,
   type ResellerDashboard,
   type ResellerPriceEntry,
   type ResellerPriceInput,
   type ResellerStatus,
+  type ResellerTier,
   type WalletEntry,
   type WalletEntryType,
   type WithdrawalRequest,
@@ -94,13 +105,21 @@ function rowToWithdrawal(row: WithdrawalRow): WithdrawalRequest {
   };
 }
 
-function rowToReseller(row: ResellerRow, lifetimeSalesPoisha: number): Reseller {
+/** The stored tier column is a cache, not truth: anything outside the
+ *  ADV-12 ladder (e.g. the legacy "STANDARD" default on old rows)
+ *  normalises to BRONZE. Effective tier is always re-derived from
+ *  lifetime earned commission on read (see rowToReseller callers). */
+function normalizeStoredTier(raw: string): ResellerTier {
+  return (RESELLER_TIERS as readonly string[]).includes(raw) ? (raw as ResellerTier) : "BRONZE";
+}
+
+function rowToReseller(row: ResellerRow, lifetimeSalesPoisha: number, derivedTier?: ResellerTier): Reseller {
   return {
     id: row.id,
     name: row.name,
     phone: row.phone,
     status: row.status as ResellerStatus,
-    tier: tierForLifetimeSales(lifetimeSalesPoisha),
+    tier: derivedTier ?? normalizeStoredTier(row.tier),
     lifetimeSalesPoisha,
     ...(row.code ? { code: row.code } : {}),
     createdAt: row.createdAt.toISOString(),
@@ -184,6 +203,19 @@ async function lifetimeSalesByReseller(resellerIds: string[]): Promise<Map<strin
   return result;
 }
 
+/** Lifetime earned COMMISSION per reseller: Σ COMMISSION_CREDIT entries (ADV-12 tier basis). */
+async function lifetimeCommissionByReseller(resellerIds: string[]): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (resellerIds.length === 0) return result;
+  const grouped = await prisma.resellerWalletEntry.groupBy({
+    by: ["resellerId"],
+    where: { resellerId: { in: resellerIds }, kind: "COMMISSION_CREDIT" },
+    _sum: { amountPoisha: true },
+  });
+  for (const g of grouped) result.set(g.resellerId, g._sum.amountPoisha ?? 0);
+  return result;
+}
+
 export async function listResellers(): Promise<Reseller[]> {
   const rawRows = await prisma.reseller.findMany({ orderBy: { createdAt: "asc" } });
   // Admin read path: rows created before attribution codes existed get
@@ -191,8 +223,14 @@ export async function listResellers(): Promise<Reseller[]> {
   // carries a stable code for its ?ref= share link.
   const rows: ResellerRow[] = [];
   for (const row of rawRows) rows.push(await ensureCodeForRow(row));
-  const lifetimes = await lifetimeSalesByReseller(rows.map((r) => r.id));
-  return rows.map((r) => rowToReseller(r, lifetimes.get(r.id) ?? 0));
+  const [lifetimes, commissions, config] = await Promise.all([
+    lifetimeSalesByReseller(rows.map((r) => r.id)),
+    lifetimeCommissionByReseller(rows.map((r) => r.id)),
+    loadTierConfig(),
+  ]);
+  return rows.map((r) =>
+    rowToReseller(r, lifetimes.get(r.id) ?? 0, tierForLifetimeCommission(commissions.get(r.id) ?? 0, config)),
+  );
 }
 
 /** Look up a reseller by its public attribution code (any status). */
@@ -201,8 +239,16 @@ export async function getResellerByCode(rawCode: string): Promise<Reseller | nul
   if (!code) return null;
   const row = await prisma.reseller.findUnique({ where: { code } });
   if (!row) return null;
-  const lifetimes = await lifetimeSalesByReseller([row.id]);
-  return rowToReseller(row, lifetimes.get(row.id) ?? 0);
+  const [lifetimes, commissions, config] = await Promise.all([
+    lifetimeSalesByReseller([row.id]),
+    lifetimeCommissionByReseller([row.id]),
+    loadTierConfig(),
+  ]);
+  return rowToReseller(
+    row,
+    lifetimes.get(row.id) ?? 0,
+    tierForLifetimeCommission(commissions.get(row.id) ?? 0, config),
+  );
 }
 
 /**
@@ -240,8 +286,35 @@ export async function resolveResellerAttribution(
 export async function getReseller(resellerId: string): Promise<Reseller | null> {
   const row = await prisma.reseller.findUnique({ where: { id: resellerId } });
   if (!row) return null;
-  const lifetimes = await lifetimeSalesByReseller([row.id]);
-  return rowToReseller(row, lifetimes.get(row.id) ?? 0);
+  const [lifetimes, commissions, config] = await Promise.all([
+    lifetimeSalesByReseller([row.id]),
+    lifetimeCommissionByReseller([row.id]),
+    loadTierConfig(),
+  ]);
+  return rowToReseller(
+    row,
+    lifetimes.get(row.id) ?? 0,
+    tierForLifetimeCommission(commissions.get(row.id) ?? 0, config),
+  );
+}
+
+/**
+ * Tier state for the credit path (ADV-12): the tier a reseller has
+ * earned from PRIOR credits and the rate the NEXT credit must use.
+ * "Tier at credit time" = derived from lifetime commission BEFORE the
+ * new credit lands; creditDeliveredOrderDb refreshes the stored tier
+ * cache after the credit using the same config.
+ */
+export async function getResellerTierState(
+  resellerId: string,
+  config: TierConfig,
+): Promise<{ tier: ResellerTier; rateBps: number; lifetimeCommissionPoisha: number } | null> {
+  const row = await prisma.reseller.findUnique({ where: { id: resellerId }, select: { id: true } });
+  if (!row) return null;
+  const commissions = await lifetimeCommissionByReseller([resellerId]);
+  const lifetime = commissions.get(resellerId) ?? 0;
+  const tier = tierForLifetimeCommission(lifetime, config);
+  return { tier, rateBps: tierRateBps(tier, config), lifetimeCommissionPoisha: lifetime };
 }
 
 export async function listWalletEntries(resellerId: string): Promise<WalletEntry[]> {
@@ -287,7 +360,7 @@ export async function listPriceEntries(resellerId?: string): Promise<ResellerPri
 
 /** Dashboards for every reseller — the resellers page + GET route shape. */
 export async function buildDashboardsDb(): Promise<ResellerDashboard[]> {
-  const resellers = await listResellers();
+  const [resellers, config] = await Promise.all([listResellers(), loadTierConfig()]);
   const dashboards: ResellerDashboard[] = [];
   for (const reseller of resellers) {
     const [entries, withdrawals, priceEntries] = await Promise.all([
@@ -295,7 +368,7 @@ export async function buildDashboardsDb(): Promise<ResellerDashboard[]> {
       listWithdrawals(reseller.id),
       listPriceEntries(reseller.id),
     ]);
-    dashboards.push(buildDashboard(reseller, entries, withdrawals, priceEntries));
+    dashboards.push(buildDashboard(reseller, entries, withdrawals, priceEntries, config));
   }
   return dashboards;
 }
@@ -308,6 +381,12 @@ export async function createReseller(input: { name: string; phone: string }): Pr
   // Every reseller gets its attribution code at create time. A P2002
   // on the code (astronomically unlikely) retries with a fresh code;
   // a P2002 on the unique phone is the caller's error and propagates.
+  // Tier: BRONZE is stored as the STARTING tier only — a fresh reseller
+  // has zero lifetime commission, so BRONZE is also the derived tier.
+  // From the first credit on, the tier engine (tiers.ts) derives the
+  // effective tier from lifetime earned commission and
+  // creditDeliveredOrderDb refreshes this stored cache; readers never
+  // treat the stored value as truth.
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       const row = await prisma.reseller.create({
@@ -336,8 +415,16 @@ export async function setResellerStatus(
   const existing = await prisma.reseller.findUnique({ where: { id: resellerId } });
   if (!existing) return null;
   const row = await prisma.reseller.update({ where: { id: resellerId }, data: { status } });
-  const lifetimes = await lifetimeSalesByReseller([row.id]);
-  return rowToReseller(row, lifetimes.get(row.id) ?? 0);
+  const [lifetimes, commissions, config] = await Promise.all([
+    lifetimeSalesByReseller([row.id]),
+    lifetimeCommissionByReseller([row.id]),
+    loadTierConfig(),
+  ]);
+  return rowToReseller(
+    row,
+    lifetimes.get(row.id) ?? 0,
+    tierForLifetimeCommission(commissions.get(row.id) ?? 0, config),
+  );
 }
 
 /**
@@ -401,6 +488,10 @@ export async function creditDeliveredOrderDb(input: {
   orderId: string;
   commissionPoisha: number;
   marginPoisha: number;
+  /** Tier config the caller priced this credit with (ADV-12); used to
+   *  refresh the stored tier cache post-credit. Defaults apply when a
+   *  caller does not price via Settings (tests, one-off scripts). */
+  tierConfig?: TierConfig;
 }): Promise<
   | { ok: true; entries: WalletEntry[]; duplicate: boolean }
   | { ok: false; error: string }
@@ -442,6 +533,19 @@ export async function creditDeliveredOrderDb(input: {
         },
       });
       saved.push(rowToWalletEntry(row));
+    }
+    // ADV-12: refresh the stored tier CACHE from the post-credit
+    // lifetime commission, in the same transaction. The cache is never
+    // read as truth (reads re-derive), but keeping it fresh means any
+    // surface that does show the column shows the engine's answer.
+    const config = input.tierConfig ?? DEFAULT_TIER_CONFIG;
+    const agg = await tx.resellerWalletEntry.aggregate({
+      where: { resellerId: input.resellerId, kind: "COMMISSION_CREDIT" },
+      _sum: { amountPoisha: true },
+    });
+    const derivedTier = tierForLifetimeCommission(agg._sum.amountPoisha ?? 0, config);
+    if (resellerRow && resellerRow.tier !== derivedTier) {
+      await tx.reseller.update({ where: { id: input.resellerId }, data: { tier: derivedTier } });
     }
     return { ok: true as const, entries: saved, duplicate: false };
   });

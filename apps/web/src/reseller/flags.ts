@@ -49,3 +49,13 @@ export const demoResellerFlags: ResellerFlagStore = new InMemoryResellerFlagStor
 export function isResellerEnabled(store: ResellerFlagStore = demoResellerFlags): boolean {
   return store.isEnabled("module.reseller");
 }
+
+/**
+ * ADV-12 portal gate: the self-service reseller portal is its OWN flag
+ * (module.reseller_portal, seeded OFF) so an install can run the admin
+ * reseller module without exposing reseller logins. Read through the
+ * same unified store.
+ */
+export function isResellerPortalEnabled(): boolean {
+  return featureFlags.isFeatureEnabled("module.reseller_portal");
+}

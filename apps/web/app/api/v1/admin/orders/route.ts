@@ -30,9 +30,11 @@
  * pre-v2 item shape; pre-v2 consumers (command palette etc.) that
  * pass ?search=&pageSize= and read data[] are unaffected.
  * Bulk POST registers a real job in src/jobs/bulk-actions.ts and triggers
- * its in-process processor (BullMQ is not installed yet — processBulkJob is
- * the exact function the future worker will run). It returns 202 with the
- * jobId; per-order results land on GET /api/v1/admin/jobs/{id}. Courier
+ * its processing (ADV-10 dual trigger: a BullMQ dispatch for the worker
+ * process plus the in-process trigger; processBulkJob's claim runs it
+ * exactly once — processBulkJob is the exact function both paths run).
+ * It returns 202 with the jobId; per-order results land on
+ * GET /api/v1/admin/jobs/{id}. Courier
  * booking inside a job is SANDBOX-only and print is payload-only — the job
  * results say so per order, nothing is faked.
  */
@@ -45,7 +47,7 @@ import { writeAudit } from "@/lib/audit";
 import { listOrders } from "@/orders/repository";
 import { countOrdersByStatus } from "@/orders/list-v2";
 import type { Order } from "@/orders/types";
-import { enqueueBulkJob, processBulkJob } from "@/jobs/bulk-actions";
+import { enqueueBulkJob, triggerBulkJobProcessing } from "@/jobs/bulk-actions";
 import { manualOrderSchema } from "@/orders/manual-order";
 import { createManualOrder } from "@/orders/manual-create";
 
@@ -216,22 +218,21 @@ async function handleBulkAction(req: Request, session: AdminSession, body: unkno
       data: { jobId: job.id, action: job.action, orderIds: job.orderIds, status: job.status },
       meta: {
         stub: false,
-        processor: "in-process-demo",
+        processor: job.processor,
         queue: job.queue,
         idempotentReplay: !created,
         note: created
-          ? "Bulk job registered and processing in-process (demo processor — the BullMQ worker will run the same processBulkJob later). Poll GET /api/v1/admin/jobs/<jobId> for per-order results. Courier bookings are SANDBOX-only; print produces a payload only."
+          ? "Bulk job registered (Redis-backed registry) and processing triggered — in-process now, and also dispatched to the bulk-actions BullMQ queue for the worker; exactly one of them executes it (claim). Poll GET /api/v1/admin/jobs/<jobId> for per-order results. Courier bookings are SANDBOX-only; print produces a payload only."
           : "Idempotency key already used — returning the existing job; nothing was re-processed.",
       },
     },
     { status: 202 },
   );
   if (created) {
-    // Trigger processing off the request path. Under BullMQ this enqueue
-    // becomes a queue add and the worker calls processBulkJob(job.id).
-    queueMicrotask(() => {
-      void processBulkJob(job.id).catch(() => undefined);
-    });
+    // Trigger processing off the request path (ADV-10 dual trigger:
+    // BullMQ dispatch + in-process microtask; the claim inside
+    // processBulkJob runs the job exactly once across both).
+    triggerBulkJobProcessing(job.id);
   }
   return response;
 }

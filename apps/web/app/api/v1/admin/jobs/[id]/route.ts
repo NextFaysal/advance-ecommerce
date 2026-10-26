@@ -6,19 +6,21 @@
  * pattern, requires orders.view, fail-closed (401 / 403 / 503
  * PRISMA_PENDING while the Prisma client is ungenerated).
  *
- * The registry is in-memory demo state in this deployment: a job id is
- * only known to the process that enqueued it, and results never contain
- * PII (order ids, status codes, SBX tracking ids and payload refs only).
- * Unknown id -> 404 JOB_NOT_FOUND.
+ * The registry is Redis-backed since ADV-10 (in-memory map as cache /
+ * fallback): this read goes through getBulkJobAsync, so a job another
+ * process registered or ran is visible here whenever the Redis
+ * backend answers — meta.storeBackend says which backend answered.
+ * Results never contain PII (order ids, status codes, SBX tracking
+ * ids and payload refs only). Unknown id -> 404 JOB_NOT_FOUND.
  */
 import { NextResponse } from "next/server";
 import { guardError, requireAdmin } from "@/reports/guard";
-import { getBulkJob } from "@/jobs/bulk-actions";
+import { bulkJobStoreBackend, getBulkJobAsync } from "@/jobs/bulk-actions";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const guard = await requireAdmin("orders.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  const job = getBulkJob(params.id);
+  const job = await getBulkJobAsync(params.id);
   if (!job) {
     return NextResponse.json(
       { error: { code: "JOB_NOT_FOUND", message: "Bulk job not found." } },
@@ -27,6 +29,11 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   }
   return NextResponse.json({
     data: job,
-    meta: { source: "in-memory-demo", processor: job.processor, queue: job.queue },
+    meta: {
+      source: "bulk-job-registry",
+      storeBackend: await bulkJobStoreBackend(),
+      processor: job.processor,
+      queue: job.queue,
+    },
   });
 }

@@ -79,6 +79,7 @@ import { runDeliveredOrderHooks } from "./delivered-hooks";
 import { runReversalHooks } from "./reversal-hooks";
 import { publishPaymentSucceeded } from "./event-bus";
 import { emitAutomationEvent } from "../automation/producers";
+import { postOrderPaidErp } from "../erp/auto-posting";
 import { transitionOrder, type TransitionResult } from "./state-machine";
 import type {
   Customer,
@@ -1453,6 +1454,10 @@ export async function markOrderPayment(
     // PAID only — the same seam as the event-bus publish above.
     // Never throws.
     await emitAutomationEvent("payment.succeeded", order.id);
+    // ERP auto-posting (ADV-11): the revenue + delivery + recorded-VAT
+    // journal entry posts on this same exactly-once transition, gated
+    // on module.erp_lite inside the service. Never throws.
+    await postOrderPaidErp(order.id);
   }
   return {
     orderId: order.id,

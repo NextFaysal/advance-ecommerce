@@ -51,6 +51,7 @@ export interface FeatureFlagRecord extends FeatureFlagDefinition {
 /** Mirrors FEATURE_FLAGS in packages/db/prisma/seed.ts — keep in sync (see header). */
 export const FEATURE_FLAG_DEFINITIONS = [
   { key: "module.reseller", description: "Reseller panel (v2 add-on)" },
+  { key: "module.reseller_portal", description: "Reseller self-service portal (v2 add-on, ADV-12)" },
   { key: "module.call_center", description: "Call center (v2 add-on)" },
   { key: "module.call_center_automation", description: "Call center follow-up automation — auto SMS + retry backoff (v2 add-on)" },
   { key: "module.pos", description: "POS (v2 add-on)" },

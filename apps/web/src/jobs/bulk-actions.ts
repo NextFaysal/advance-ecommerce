@@ -3,16 +3,25 @@
  *
  * Until now POST /api/v1/admin/orders (bulk) only validated + audited and
  * returned 202 QUEUED_FOR_BULK_JOB — nothing ever processed the job. This
- * module is the REAL processor: a typed job model, an in-process registry,
+ * module is the REAL processor: a typed job model, a job registry,
  * and `processBulkJob()`, an executor that runs the action per order
  * against the existing order store + state machine + print helpers +
  * SANDBOX courier adapter.
  *
- * BullMQ is not installed yet, so the admin route enqueues here and
- * triggers processing on a microtask in the SAME process. When BullMQ
- * lands, `processBulkJob` becomes the handler body for the bulk-actions
- * queue verbatim — the worker will load the job by id and call it exactly
- * the way the route and the tests do. Only the trigger changes.
+ * Trigger model (ADV-10, doc 22 / doc 21 G3-12): the admin route
+ * registers the job and calls triggerBulkJobProcessing(), which fires
+ * BOTH a BullMQ dispatch onto the "bulk-actions" queue AND the
+ * in-process microtask trigger. processBulkJob() claims the job
+ * before executing (Redis SET NX when Redis is reachable, an
+ * in-process claim set otherwise), so exactly one trigger executes
+ * it — when a worker host runs, the worker's bulkActionsRunner calls
+ * the same processBulkJob and the claim decides; while no worker
+ * host exists, the in-process trigger does the work and the queued
+ * BullMQ job later finds a terminal job and no-ops. Before ADV-10
+ * the BullMQ path was broken cross-process: the registry lived only
+ * in the web process's memory, so a worker in another process could
+ * never find the job (BULK_JOB_NOT_FOUND). The registry is now
+ * Redis-backed (below) with the in-memory map as cache + fallback.
  *
  * Honesty rules (no fake success anywhere):
  *  - confirm / update_status go through the order state machine. Invalid
@@ -32,15 +41,21 @@
  *  - Partial failure is a first-class outcome: a job with some failed
  *    orders ends COMPLETED_WITH_FAILURES, lists every failure, and never
  *    rolls back the orders that succeeded.
- *  - The job REGISTRY is still in-memory (a jobs table / BullMQ
- *    replaces it later), but ORDER persistence is now the real Prisma
- *    store by default (src/orders/repository): the default
- *    BulkOrderStore reads and writes DB Order rows, and transitions
- *    persisted through it carry their OrderStatusHistory rows. The
- *    demo store remains available for tests via demoBulkOrderStore.
+ *  - The job REGISTRY is Redis-backed since ADV-10 (job JSON +
+ *    idempotency index under `ae:bulk-actions:*`, 7-day TTL) with an
+ *    in-memory map as the same-process cache and the fallback when
+ *    Redis is absent (labelled backend "memory" — cross-process
+ *    reads only work on the Redis backend). ORDER persistence is the
+ *    real Prisma store by default (src/orders/repository): the
+ *    default BulkOrderStore reads and writes DB Order rows, and
+ *    transitions persisted through it carry their OrderStatusHistory
+ *    rows. The demo store remains available for tests via
+ *    demoBulkOrderStore.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { DEFAULT_RETRY, type JobRetryPolicy } from "./queues";
+import { DEFAULT_RETRY, QUEUE_NAMES, type JobRetryPolicy } from "./queues";
+import { bullMqJobOptions } from "./workers";
+import type { BulkActionsJob } from "./handlers";
 import { findMockOrder, MOCK_ORDERS } from "../orders/mock";
 import { getOrderByIdOrNo, saveOrder } from "../orders/repository";
 import { computeOrderParcelWeightGrams } from "../courier/order-sync";
@@ -56,10 +71,9 @@ import {
 } from "../integrations/sandbox/courier-provider";
 
 /**
- * The queue these jobs will ride once BullMQ is wired. It is not in
- * QUEUE_NAMES yet (src/jobs/queues.ts is owned by the jobs-contract
- * slice); when workers land, add `bulkActions: "bulk-actions"` there and
- * register `processBulkJob` as its handler. Retry follows DEFAULT_RETRY.
+ * The queue these jobs ride. It is QUEUE_NAMES.bulkActions in
+ * src/jobs/queues.ts (kept as a local literal export for existing
+ * importers). Retry follows DEFAULT_RETRY.
  */
 export const BULK_ACTIONS_QUEUE_NAME = "bulk-actions" as const;
 
@@ -108,8 +122,11 @@ export interface BulkJob {
   perOrderResults: BulkOrderResult[];
   queue: typeof BULK_ACTIONS_QUEUE_NAME;
   retryPolicy: JobRetryPolicy;
-  /** How this job is being executed in this deployment — never "bullmq" until it is. */
-  processor: "in-process-demo";
+  /** How this job is being executed in this deployment: the route's
+   *  in-process trigger ("in-process-demo") or the BullMQ worker's
+   *  bulkActionsRunner ("bullmq-worker") — stamped by whichever
+   *  trigger actually claims and runs it, never claimed in advance. */
+  processor: "in-process-demo" | "bullmq-worker";
   createdAt: string;
   startedAt?: string;
   finishedAt?: string;
@@ -168,11 +185,22 @@ export interface BulkProcessDeps {
   /** Resolve a courier adapter by sandbox provider key (tests count calls). */
   courierProviderFor?: (name: SandboxCourierProvider) => CourierProvider;
   now?: () => Date;
+  /** Stamps BulkJob.processor when this caller executes the job
+   *  (the worker's bulkActionsRunner passes "bullmq-worker"). */
+  processor?: BulkJob["processor"];
 }
 
 /* ------------------------------------------------------------------ */
-/* In-memory job registry (demo). BullMQ + a jobs table replace this;  */
-/* the route and status endpoint only use the functions below.         */
+/* Job registry — Redis-backed store with in-memory cache/fallback     */
+/* (ADV-10). The sync getters below read the in-memory map (the       */
+/* same-process fast path the routes were built on); every mutation   */
+/* is ALSO persisted to Redis, and the async getters read through to  */
+/* Redis on a memory miss — that read-through is what lets the        */
+/* worker process find a job the web process registered (and the      */
+/* admin status route answer for a job another process ran). When     */
+/* REDIS_URL is unset or Redis errors, the store degrades to the      */
+/* in-memory map alone: backend "memory", same-process only, and      */
+/* labelled as such wherever the backend is reported.                 */
 /* ------------------------------------------------------------------ */
 
 const jobsById = new Map<string, BulkJob>();
@@ -196,10 +224,173 @@ export function listBulkJobs(): BulkJob[] {
   return [...jobsById.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
-/** Test-only reset so smoke runs start from an empty registry. */
+/** Test-only reset so smoke runs start from an empty registry.
+ *  Clears the in-memory maps only — Redis rows expire by TTL. */
 export function clearBulkJobRegistry(): void {
   jobsById.clear();
   jobIdByIdempotencyKey.clear();
+}
+
+/* ------------------------- Redis layer ---------------------------- */
+
+const BULK_JOB_TTL_SECONDS = 7 * 24 * 3600;
+const BULK_CLAIM_TTL_SECONDS = 600;
+const bulkJobKey = (id: string): string => `ae:bulk-actions:job:${id}`;
+const bulkIdemKey = (key: string): string =>
+  `ae:bulk-actions:idem:${createHash("sha256").update(key).digest("hex")}`;
+const bulkClaimKey = (id: string): string => `ae:bulk-actions:claim:${id}`;
+
+interface BulkRedisLike {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string, ...args: (string | number)[]): Promise<string | null>;
+  del(key: string): Promise<number>;
+  on(event: string, listener: (...args: unknown[]) => void): unknown;
+}
+
+interface BulkRedisConstructorLike {
+  new (url: string, options?: Record<string, unknown>): BulkRedisLike;
+}
+
+interface BulkIoRedisShape {
+  default?: BulkRedisConstructorLike;
+  Redis?: BulkRedisConstructorLike;
+}
+
+let bulkRedisPromise: Promise<BulkRedisLike | null> | null = null;
+
+function getBulkRedis(): Promise<BulkRedisLike | null> {
+  if (bulkRedisPromise === null) {
+    bulkRedisPromise = (async () => {
+      const url = process.env.REDIS_URL;
+      if (url === undefined || url === "") return null;
+      // Literal dynamic import, the src/lib/rate-limit.ts pattern.
+      const ioredis = (await import("ioredis")) as unknown as BulkIoRedisShape;
+      const Ctor = ioredis.default ?? ioredis.Redis;
+      if (typeof Ctor !== "function") return null;
+      const client = new Ctor(url, { maxRetriesPerRequest: 2 });
+      client.on("error", () => {});
+      return client;
+    })();
+    bulkRedisPromise.catch(() => {
+      bulkRedisPromise = null;
+    });
+  }
+  return bulkRedisPromise;
+}
+
+function resetBulkRedis(): void {
+  bulkRedisPromise = null;
+}
+
+export type BulkJobStoreBackend = "redis" | "memory";
+
+/** Which store will answer reads/writes right now — reported in the
+ *  admin job-status meta so a memory answer is never dressed up as a
+ *  cross-process one. */
+export async function bulkJobStoreBackend(): Promise<BulkJobStoreBackend> {
+  const redis = await getBulkRedis().catch(() => null);
+  return redis !== null ? "redis" : "memory";
+}
+
+/** Persist a job snapshot (+ its idempotency index) to Redis.
+ *  Best-effort by design: returns false when Redis is absent/down and
+ *  the in-memory map remains this process's truth. Never throws. */
+export async function persistBulkJob(job: BulkJob): Promise<boolean> {
+  const redis = await getBulkRedis().catch(() => null);
+  if (redis === null) return false;
+  try {
+    await redis.set(bulkJobKey(job.id), JSON.stringify(job), "EX", BULK_JOB_TTL_SECONDS);
+    if (job.idempotencyKey) {
+      await redis.set(bulkIdemKey(job.idempotencyKey), job.id, "EX", BULK_JOB_TTL_SECONDS);
+    }
+    return true;
+  } catch {
+    resetBulkRedis();
+    return false;
+  }
+}
+
+async function loadBulkJobFromRedis(id: string): Promise<BulkJob | undefined> {
+  const redis = await getBulkRedis().catch(() => null);
+  if (redis === null) return undefined;
+  try {
+    const raw = await redis.get(bulkJobKey(id));
+    if (raw === null) return undefined;
+    const job = JSON.parse(raw) as BulkJob;
+    jobsById.set(job.id, job);
+    if (job.idempotencyKey) jobIdByIdempotencyKey.set(job.idempotencyKey, job.id);
+    return job;
+  } catch {
+    resetBulkRedis();
+    return undefined;
+  }
+}
+
+/** Cross-process read: memory first, Redis on a miss. This is the
+ *  getter the worker's bulkActionsRunner and the admin status route
+ *  use — the sync getBulkJob() above cannot see another process's
+ *  registrations. */
+export async function getBulkJobAsync(id: string): Promise<BulkJob | undefined> {
+  return jobsById.get(id) ?? (await loadBulkJobFromRedis(id));
+}
+
+export async function findBulkJobByIdempotencyKeyAsync(
+  key: string,
+): Promise<BulkJob | undefined> {
+  const inMemory = findBulkJobByIdempotencyKey(key);
+  if (inMemory !== undefined) return inMemory;
+  const redis = await getBulkRedis().catch(() => null);
+  if (redis === null) return undefined;
+  try {
+    const id = await redis.get(bulkIdemKey(key));
+    return id === null ? undefined : await getBulkJobAsync(id);
+  } catch {
+    resetBulkRedis();
+    return undefined;
+  }
+}
+
+/* ------------------------- Execution claim ------------------------ */
+
+/**
+ * Exactly-once execution claim. Two triggers can race for one job
+ * (the route's in-process microtask and the BullMQ worker); the
+ * claim decides. Redis SET NX when Redis is reachable — that claim
+ * holds ACROSS processes. Without Redis the claim is a process-local
+ * set: it still dedupes this process's own triggers, and it honestly
+ * cannot exclude another process (which, without Redis, also cannot
+ * receive the BullMQ dispatch — the two degradations coincide).
+ */
+const localClaims = new Set<string>();
+
+async function claimBulkJob(id: string, token: string): Promise<boolean> {
+  const redis = await getBulkRedis().catch(() => null);
+  if (redis !== null) {
+    try {
+      const res = await redis.set(bulkClaimKey(id), token, "EX", BULK_CLAIM_TTL_SECONDS, "NX");
+      return res === "OK";
+    } catch {
+      resetBulkRedis();
+    }
+  }
+  if (localClaims.has(id)) return false;
+  localClaims.add(id);
+  return true;
+}
+
+async function releaseBulkJobClaim(id: string, token: string): Promise<void> {
+  localClaims.delete(id);
+  const redis = await getBulkRedis().catch(() => null);
+  if (redis === null) return;
+  try {
+    // Delete only our own claim (a slow run's claim may have expired
+    // and been re-taken — deleting blindly would free another
+    // processor's claim).
+    const current = await redis.get(bulkClaimKey(id));
+    if (current === token) await redis.del(bulkClaimKey(id));
+  } catch {
+    resetBulkRedis();
+  }
 }
 
 /**
@@ -232,6 +423,13 @@ export function enqueueBulkJob(input: EnqueueBulkJobInput): { job: BulkJob; crea
   };
   jobsById.set(job.id, job);
   if (key) jobIdByIdempotencyKey.set(key, job.id);
+  // ADV-10: persist to the Redis-backed store so other processes
+  // (the worker, another web instance) can find this job. Fire-and-
+  // forget: registration in this process never waits on Redis, and a
+  // Redis outage degrades to the memory backend, not a failed bulk
+  // request. Callers that need the write landed (tests, the worker
+  // path) can await persistBulkJob(job) themselves.
+  void persistBulkJob(job);
   return { job, created: true };
 }
 
@@ -402,7 +600,8 @@ async function runForOrder(
  *
  * Callable three ways, all equivalent:
  *  - by the admin route right after enqueue (microtask trigger),
- *  - by the future BullMQ worker for the "bulk-actions" queue,
+ *  - by the BullMQ worker for the "bulk-actions" queue (its
+ *    bulkActionsRunner loads the job through getBulkJobAsync),
  *  - directly from tests with injected deps.
  *
  * Re-entry is safe: a job already RUNNING or in a terminal state is
@@ -414,30 +613,148 @@ export async function processBulkJob(
   jobOrId: BulkJob | string,
   deps: BulkProcessDeps = {},
 ): Promise<BulkJob> {
-  const job = typeof jobOrId === "string" ? jobsById.get(jobOrId) : jobOrId;
+  const job =
+    typeof jobOrId === "string"
+      ? (jobsById.get(jobOrId) ?? (await loadBulkJobFromRedis(jobOrId)))
+      : jobOrId;
   if (!job) throw new Error(`Bulk job not found: ${String(jobOrId)}`);
   if (job.status !== "QUEUED") return job;
+
+  // ADV-10 exactly-once claim: the route's in-process trigger and a
+  // BullMQ worker can both arrive here for the same job; only the
+  // claim holder executes. A caller that loses the claim returns the
+  // freshest stored copy unchanged (the winner persists RUNNING /
+  // terminal snapshots as it goes).
+  const claimToken = randomUUID();
+  if (!(await claimBulkJob(job.id, claimToken))) {
+    return (await loadBulkJobFromRedis(job.id)) ?? job;
+  }
 
   const resolved: Required<BulkProcessDeps> = {
     orders: deps.orders ?? prismaBulkOrderStore,
     courierProviderFor: deps.courierProviderFor ?? ((name) => createSandboxCourierProvider(name)),
     now: deps.now ?? (() => new Date()),
+    processor: deps.processor ?? "in-process-demo",
   };
 
-  job.status = "RUNNING";
-  job.startedAt = resolved.now().toISOString();
   try {
-    const results: BulkOrderResult[] = [];
-    for (const orderId of job.orderIds) {
-      results.push(await runForOrder(job, orderId, resolved));
+    job.processor = resolved.processor;
+    job.status = "RUNNING";
+    job.startedAt = resolved.now().toISOString();
+    await persistBulkJob(job);
+    try {
+      const results: BulkOrderResult[] = [];
+      for (const orderId of job.orderIds) {
+        results.push(await runForOrder(job, orderId, resolved));
+      }
+      job.perOrderResults = results;
+      const failedCount = results.filter((r) => !r.ok).length;
+      job.status = failedCount === 0 ? "COMPLETED" : "COMPLETED_WITH_FAILURES";
+    } catch (e) {
+      job.status = "FAILED";
+      job.lastError = e instanceof Error ? e.message : "Bulk executor failed.";
     }
-    job.perOrderResults = results;
-    const failedCount = results.filter((r) => !r.ok).length;
-    job.status = failedCount === 0 ? "COMPLETED" : "COMPLETED_WITH_FAILURES";
-  } catch (e) {
-    job.status = "FAILED";
-    job.lastError = e instanceof Error ? e.message : "Bulk executor failed.";
+    job.finishedAt = resolved.now().toISOString();
+    await persistBulkJob(job);
+    return job;
+  } finally {
+    await releaseBulkJobClaim(job.id, claimToken);
   }
-  job.finishedAt = resolved.now().toISOString();
-  return job;
+}
+
+/* ------------------------------------------------------------------ */
+/* BullMQ dispatch + the route's dual trigger (ADV-10)                 */
+/* ------------------------------------------------------------------ */
+
+interface BulkQueueLike {
+  add(
+    name: string,
+    data: BulkActionsJob,
+    opts?: Record<string, unknown>,
+  ): Promise<{ id?: string }>;
+}
+
+interface BulkBullMqShape {
+  Queue: new (name: string, opts: { connection: unknown }) => BulkQueueLike;
+}
+
+interface BulkIoRedisCtorShape {
+  default?: new (url: string, options: { maxRetriesPerRequest: null }) => unknown;
+  Redis?: new (url: string, options: { maxRetriesPerRequest: null }) => unknown;
+}
+
+let bulkQueuePromise: Promise<BulkQueueLike> | null = null;
+
+function getBulkActionsQueue(): Promise<BulkQueueLike> {
+  if (bulkQueuePromise === null) {
+    bulkQueuePromise = (async () => {
+      const redisUrl = process.env.REDIS_URL;
+      if (redisUrl === undefined || redisUrl === "") {
+        throw new Error("REDIS_URL not set");
+      }
+      // Literal dynamic imports — never a variable specifier.
+      const bullmq = (await import("bullmq")) as unknown as BulkBullMqShape;
+      const ioredis = (await import("ioredis")) as unknown as BulkIoRedisCtorShape;
+      const RedisCtor = ioredis.default ?? ioredis.Redis;
+      if (typeof RedisCtor !== "function") throw new Error("ioredis constructor missing");
+      const connection = new RedisCtor(redisUrl, { maxRetriesPerRequest: null });
+      return new bullmq.Queue(QUEUE_NAMES.bulkActions, { connection });
+    })();
+    bulkQueuePromise.catch(() => {
+      bulkQueuePromise = null;
+    });
+  }
+  return bulkQueuePromise;
+}
+
+export type DispatchBulkJobResult =
+  | { queued: true; jobId: string }
+  | { queued: false; reason: string };
+
+/**
+ * Enqueue the BullMQ half of the dual trigger: a { bulkJobId } job on
+ * the "bulk-actions" queue for the worker's bulkActionsRunner. The
+ * BullMQ jobId derives from the bulk job id, so re-dispatching the
+ * same job returns the existing queue job. Honest result: queued ===
+ * true means the job sits in Redis — with no worker host running it
+ * waits there, and the in-process trigger (below) is what executes
+ * the job in that deployment.
+ */
+export async function dispatchBulkJobToQueue(
+  bulkJobId: string,
+  injectedQueue?: BulkQueueLike,
+): Promise<DispatchBulkJobResult> {
+  if (injectedQueue === undefined && (process.env.REDIS_URL === undefined || process.env.REDIS_URL === "")) {
+    return { queued: false, reason: "queue-unavailable: REDIS_URL not set" };
+  }
+  const queueJobId = `bulk-actions-${bulkJobId}`;
+  try {
+    const queue = injectedQueue ?? (await getBulkActionsQueue());
+    const added = await queue.add(
+      "bulk-actions-job",
+      { bulkJobId },
+      { ...bullMqJobOptions(QUEUE_NAMES.bulkActions), jobId: queueJobId },
+    );
+    return { queued: true, jobId: added.id ?? queueJobId };
+  } catch (error) {
+    return {
+      queued: false,
+      reason: `queue-unavailable: ${error instanceof Error ? error.name : "unknown-error"}`,
+    };
+  }
+}
+
+/**
+ * The admin route's trigger (ADV-10): fire BOTH execution paths —
+ * the BullMQ dispatch (for the worker process, whenever a host runs
+ * it) and the in-process microtask (today's executor). The claim
+ * inside processBulkJob guarantees exactly one of them runs the job;
+ * the loser returns the stored job unchanged. Fire-and-forget and
+ * never throws: a Redis outage degrades to the in-process path alone.
+ */
+export function triggerBulkJobProcessing(bulkJobId: string): void {
+  void dispatchBulkJobToQueue(bulkJobId).catch(() => undefined);
+  queueMicrotask(() => {
+    void processBulkJob(bulkJobId).catch(() => undefined);
+  });
 }

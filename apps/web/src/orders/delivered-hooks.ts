@@ -35,8 +35,9 @@
  *    there is nothing truthful to record yet.
  */
 import { prisma } from "@advance-ecommerce/db";
-import { commissionForSale, tierForLifetimeSales } from "../reseller/pricing";
-import { creditDeliveredOrderDb, getReseller } from "../reseller/store";
+import { loadTierConfig } from "../reseller/tier-config";
+import { commissionForAmountPoisha } from "../reseller/tiers";
+import { creditDeliveredOrderDb, getReseller, getResellerTierState } from "../reseller/store";
 import { vendorStore } from "../vendors/db-store";
 import { demoVendorFlags } from "../vendors/flags";
 import { computeCommission } from "../vendors/service";
@@ -86,11 +87,15 @@ async function creditReseller(order: {
 }): Promise<void> {
   const reseller = await getReseller(order.resellerId);
   if (!reseller) return;
-  // Tier "at sale time": lifetime sales are derived from PRIOR credit
-  // entries, and this order has none yet, so the reseller's current
-  // tier is the tier its earlier delivered sales earned.
-  const tier = tierForLifetimeSales(reseller.lifetimeSalesPoisha);
-  const commissionPoisha = commissionForSale(order.totalPoisha, tier);
+  // Tier at credit time (ADV-12): the tier engine derives the tier from
+  // lifetime earned COMMISSION before this credit (this order has no
+  // credit entries yet), with rates/thresholds from Settings
+  // (reseller.tiers.*). The new credit is priced at THAT tier's rate;
+  // creditDeliveredOrderDb refreshes the stored tier cache afterwards.
+  const tierConfig = await loadTierConfig();
+  const tierState = await getResellerTierState(order.resellerId, tierConfig);
+  if (!tierState) return;
+  const commissionPoisha = commissionForAmountPoisha(order.totalPoisha, tierState.rateBps);
   // Margin: only for items the reseller has a price entry for.
   // basePricePoisha resolves exactly like reseller/store's
   // listPriceEntries: variant cost, falling back to the catalog price.
@@ -117,6 +122,7 @@ async function creditReseller(order: {
     orderId: order.id,
     commissionPoisha,
     marginPoisha,
+    tierConfig,
   });
 }
 

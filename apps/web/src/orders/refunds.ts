@@ -39,6 +39,7 @@ import { prisma } from "@advance-ecommerce/db";
  *  codebase pattern — apps/web has no direct @prisma/client dependency). */
 type PaymentMethod = NonNullable<Parameters<typeof prisma.refund.create>[0]["data"]["method"]>;
 import { writeAudit } from "@/lib/audit";
+import { postRefundConfirmedErp } from "@/erp/auto-posting";
 import { markOrderPayment } from "./repository";
 
 /* ------------------------------------------------------------------ */
@@ -445,6 +446,13 @@ export async function updateRefundStatus(
       reference: refundId,
     });
     paymentStatus = result?.paymentStatus ?? null;
+  }
+
+  // ERP auto-posting (ADV-11): a CONFIRMED refund posts its sales/VAT
+  // reversal journal entry (module.erp_lite; the service dedupes on
+  // the refund id and never throws).
+  if (input.to === "CONFIRMED") {
+    await postRefundConfirmedErp(refundId);
   }
 
   await writeAudit({

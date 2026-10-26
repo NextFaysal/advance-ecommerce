@@ -5,6 +5,85 @@
 // the jobs worker process ( separate deployment ), using the adapters in
 // src/integrations. Payloads must never contain a secret or a full phone
 // number in plain text in logs — use masked refs / ids only.
+//
+// =====================================================================
+// QUEUE INVENTORY — ADV-10 audit (doc 22 §ADV-10, doc 21 G3-12)
+// Status of every queue as of the ADV-10 wave. "Producer" = code that
+// enqueues real jobs today; "consumer" = the handler/runner wired in
+// src/jobs/worker-deps.ts. A queue can be fully wired and still wait
+// unconsumed in production: no worker host runs yet (doc 21 G2 — the
+// VPS lands after development completes), so "live" below means the
+// code path is real end to end, not that a daemon is running.
+//
+//  queue                  producer(s)                              consumer                                   status
+//  ---------------------  ---------------------------------------  -----------------------------------------  ------------------
+//  sms-send               src/orders/otp.ts (order-otp),           handlers.ts sms + worker-deps delegated    LIVE
+//                         src/orders/return-notify.ts              send paths (otp / callcenter / return /
+//                         (return-update), src/callcenter/         back-in-stock); generic jobKind-less
+//                         automation.ts (callcenter-automation),   branch = handlers.ts generic path
+//                         src/storefront-ux/back-in-stock-
+//                         notify.ts (back-in-stock)
+//  email-send             src/email/send.ts enqueueEmailJob        handlers.ts email -> worker-deps           LIVE
+//                         (checkout confirmation, staff invite,    emailSend -> src/email/send.ts
+//                         scheduled report delivery; automation    processEmailJob (real Resend transport
+//                         send_email effects reuse it)             from Settings, honest skip unconfigured)
+//  courier-booking        NONE — booking happens synchronously     handlers.ts courierBooking — STUB:       CONSUMER-STUB,
+//                         in the admin shipments route via the     resolves the provider, logs, returns       NO PRODUCER
+//                         same adapters (staff waits for the       "succeeded" WITHOUT calling
+//                         tracking id)                             createShipment (noted at the handler)
+//  courier-status-sync    NONE — statuses arrive via provider      handlers.ts courierSync (real              CONSUMER-ONLY
+//                         webhooks (Steadfast webhook ->           provider.getStatus call)
+//                         src/courier/order-sync.ts) directly;
+//                         a future worker-host poller/cron is
+//                         the producer that will feed this queue
+//  webhook-delivery       NONE — buildWebhookJob() exists in       runners.ts createWebhookFanout (real:      CONSUMER-ONLY
+//                         src/extensibility/webhooks.ts but no     DB subscriptions, HMAC signing,
+//                         code enqueues it; domain events ride     classified retries; delivery logs
+//                         the in-process event bus                 in-memory — no DB table yet)
+//                         (src/orders/event-bus.ts, SSE) — the
+//                         producer lands when that publisher
+//                         becomes Redis-backed (its own header
+//                         already plans exactly that change)
+//  import-export          NONE — admin catalog import/export       runners.ts createImportExportRunner        CONSUMER-ONLY
+//                         routes run the same catalog services     (real for products; orders/customers
+//                         synchronously (preview -> confirm,       throw UNSUPPORTED_ENTITY)
+//                         streamed CSV export); this queue is
+//                         the async path for future large files
+//  report-generation      NONE — the report builder + exports      runners.ts createReportRunner (real:       CONSUMER-ONLY
+//                         run synchronously in the admin routes;   computed-summary ref over DB rows;
+//                         scheduled reports ride email-send        no result/file store exists)
+//                         (src/reports/schedule-delivery.ts
+//                         builds the CSV at send time)
+//  notification-retry     src/jobs/notification-failures.ts        runners.ts createNotificationRetryRunner   LIVE (ADV-10)
+//                         (ADV-10: the worker handlers record a    (re-drives FAILED rows; "sent" ->
+//                         FAILED NotificationLog row + enqueue     SENT, sandbox "queued" -> QUEUED)
+//                         this job when a direct notification
+//                         send exhausts its origin queue)
+//  abandoned-cart-        NONE — follow-ups run through            handlers.ts abandonedCart — since          DORMANT-DUPLICATE
+//  followup               automation-run (ADV-7 checkout.          ADV-10 returns "skipped" and queues        (no producer;
+//                         abandoned producers + rules execute      nothing (it previously claimed a           handler honest)
+//                         the real SMS/email effects there)        follow-up was queued — phantom success)
+//  automation-run         src/automation/producers.ts              runners.ts createAutomationRunner          LIVE
+//                         emitAutomationEvent from the order /     (rule eval + ADV-7 real send_sms /
+//                         checkout / inventory funnels             send_email effects + run logs)
+//  bulk-actions           app/api/v1/admin/orders bulk POST via    handlers.ts bulkActions -> worker-deps     LIVE (ADV-10:
+//                         src/jobs/bulk-actions.ts                 bulkActionsRunner -> processBulkJob        dual trigger +
+//                         triggerBulkJobProcessing (BullMQ         (registry read via getBulkJobAsync)        Redis registry)
+//                         dispatch + in-process trigger; the
+//                         claim in processBulkJob runs it once)
+//
+// Cross-cutting honesty notes:
+//  - Notification failure recording (notification-retry's input)
+//    covers the DIRECT send seams in handlers.ts only. The delegated
+//    SMS flavours keep their own failure records (call-center
+//    dead-letter timeline rows, BullMQ dead-letter entries) and are
+//    not re-driven by the generic retry runner — their recipientRef
+//    is an entity id, not a sendable ref.
+//  - Idempotency + dead-letter stores default to in-memory
+//    implementations in the worker assembly (worker-deps.ts header);
+//    a multi-process worker deployment still needs the Redis/DB
+//    versions of those two stores.
+// =====================================================================
 
 export const QUEUE_NAMES = {
   sms: "sms-send",
