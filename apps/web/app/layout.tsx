@@ -1,8 +1,11 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
+import { cookies } from "next/headers";
 import RegisterSW from "./register-sw";
 import TrackingShell from "./tracking-shell";
 import StorefrontShell from "./storefront-shell";
+import { getThemeCatalog } from "@/lib/theme-repository";
+import { THEME_COOKIE, themeToFullStyleString } from "@/lib/theme-engine";
 
 export const metadata: Metadata = {
   title: "Advance Ecommerce — Storefront",
@@ -20,7 +23,22 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Resolve selected theme from cookie; fall back gracefully if DB is not ready.
+  let themeStyleBlock: string | null = null;
+  try {
+    const themeId = cookies().get(THEME_COOKIE)?.value;
+    if (themeId) {
+      const catalog = await getThemeCatalog();
+      const theme = catalog.find((t) => t.id === themeId) ?? null;
+      if (theme) {
+        themeStyleBlock = themeToFullStyleString(theme);
+      }
+    }
+  } catch {
+    // DB not ready or cookie missing — fall back to globals.css defaults silently.
+  }
+
   return (
     <html lang="bn" suppressHydrationWarning>
       {/* Theme bootstrap (Design v3): apply the stored/system dark-mode
@@ -33,6 +51,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             '(function(){try{var t=localStorage.getItem("theme");if(t==="dark"||(!t&&window.matchMedia("(prefers-color-scheme: dark)").matches)){document.documentElement.classList.add("dark")}}catch(e){}})();',
         }}
       />
+      {/* Custom theme CSS variables — injected after globals.css so they
+          override default tokens without !important. Only present when the
+          visitor has a selected_theme cookie pointing at a valid catalog entry. */}
+      {themeStyleBlock ? (
+        <style
+          data-theme-override="true"
+          dangerouslySetInnerHTML={{ __html: themeStyleBlock }}
+        />
+      ) : null}
       {/* Brand fonts via Google Fonts CDN. The self-hosted woff2 files
           exist locally (public/fonts/) but are NOT in the deployed repo
           (binary files could not be pushed), so production rendered in
