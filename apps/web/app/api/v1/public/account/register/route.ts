@@ -16,10 +16,8 @@ import {
   customerLoginRateKey,
   customerRegisterSchema,
   registerCustomer,
-  checkLoginRateLimit,
-  recordLoginAttempt,
-  resetLoginRateLimit,
 } from "@/customer-auth/auth";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { errorResponse, methodNotAllowed, requestMeta, withSessionCookie } from "@/customer-auth/http";
 
 export async function POST(req: Request) {
@@ -35,21 +33,28 @@ export async function POST(req: Request) {
   }
   const { ip, userAgent } = requestMeta(req);
   const rateKey = customerLoginRateKey(ip, parsed.data.phone);
-  const rate = checkLoginRateLimit(rateKey);
+  // Same shared Redis-backed budget as the login route (same
+  // `cust-login:` key, 5 attempts / 15 minutes per IP+phone), so
+  // login and register attempts count against ONE budget again.
+  // Semantics delta vs the old in-memory peek/record/reset trio
+  // (wave 54): checkRateLimit counts EVERY register attempt —
+  // successes included — and offers no reset-on-success, where the
+  // trio counted failures only and cleared the count on success.
+  // Stricter, never weaker. registerCustomer's own DB-side
+  // protections are untouched.
+  const rate = await checkRateLimit(rateKey, 5, 900_000);
   if (!rate.allowed) {
     return errorResponse("RATE_LIMITED", "অনেকবার চেষ্টা করা হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।", 429);
   }
 
   const result = await registerCustomer(parsed.data);
   if (result.status === "failed") {
-    recordLoginAttempt(rateKey);
     return errorResponse(
       "REGISTRATION_FAILED",
       "অ্যাকাউন্ট তৈরি করা যায়নি। তথ্য যাচাই করে আবার চেষ্টা করুন।",
       400,
     );
   }
-  resetLoginRateLimit(rateKey);
 
   const { token } = await createCustomerSession({ customerId: result.customer.id, ip, userAgent });
   const res = NextResponse.json(

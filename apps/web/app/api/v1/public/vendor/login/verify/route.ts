@@ -88,7 +88,7 @@ export async function POST(req: Request) {
       { status: 403 },
     );
   }
-  const token = createVendorSessionToken(vendor.id);
+  const token = await createVendorSessionToken(vendor.id);
   if (!token) {
     return NextResponse.json(
       { error: { code: "PORTAL_NOT_CONFIGURED", message: "Portal login is not configured on this install." } },

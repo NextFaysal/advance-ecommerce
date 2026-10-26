@@ -34,16 +34,6 @@ const QUEUE_PRESENTATION: Record<QueueName, QueuePresentation> = {
     purposeBn: "ইমেইল পাঠানো",
     purposeEn: "Send email via the admin-configured provider (sandbox fallback locally)",
   },
-  [QUEUE_NAMES.courierBooking]: {
-    // Honest state (ADV-10): this handler is a labelled stub — it
-    // never calls provider.createShipment and no producer enqueues
-    // these jobs. Real booking happens synchronously in the admin
-    // shipments route through the same adapters. (Full alignment is
-    // doc 23 wave 54-6.)
-    handlerName: "courierBooking",
-    purposeBn: "কুরিয়ার বুকিং (স্টাব — আসল বুকিং শিপমেন্ট পেজ থেকে সরাসরি হয়)",
-    purposeEn: "Courier booking queue — stub handler; real booking is synchronous in the admin shipments route",
-  },
   [QUEUE_NAMES.courierSync]: {
     handlerName: "courierSync",
     purposeBn: "কুরিয়ার স্ট্যাটাস সিঙ্ক",
@@ -97,6 +87,11 @@ const QUEUE_PRESENTATION: Record<QueueName, QueuePresentation> = {
     handlerName: "reportSchedules",
     purposeBn: "নির্ধারিত রিপোর্ট ডেলিভারি",
     purposeEn: "Deliver due scheduled reports by email (sweep; awaits the worker scheduler; admin run-due route is the manual trigger)",
+  },
+  [QUEUE_NAMES.webhookSweep]: {
+    handlerName: "webhookSweep",
+    purposeBn: "আটকে থাকা ওয়েবহুক ডেলিভারি পুনরায় পাঠানো",
+    purposeEn: "Re-enqueue stale FAILED webhook deliveries whose retry time has passed (sweep; DEAD rows are never resurrected; awaits the worker scheduler)",
   },
   [QUEUE_NAMES.bulkActions]: {
     // createHandlers() in src/jobs/handlers.ts DOES have a bulkActions

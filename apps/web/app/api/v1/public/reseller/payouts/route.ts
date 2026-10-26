@@ -22,7 +22,7 @@ function locked() {
 
 async function sessionResellerId(): Promise<string | null> {
   const store = await cookies();
-  return verifyResellerSessionToken(store.get(RESELLER_SESSION_COOKIE)?.value);
+  return await verifyResellerSessionToken(store.get(RESELLER_SESSION_COOKIE)?.value);
 }
 
 export async function GET() {

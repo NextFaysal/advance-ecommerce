@@ -25,7 +25,6 @@
  */
 import { z } from "zod";
 import { prisma } from "@advance-ecommerce/db";
-import { ContactRateLimiter } from "../contact/policy";
 import { priorityForSource } from "../callcenter/queue";
 import {
   BundleStockError,
@@ -106,13 +105,13 @@ const CAPTURE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /* ------------------------------------------------------------------ */
 
 /**
- * Capture is debounced client-side, so a real shopper produces a
- * handful of calls; 30 per 10 minutes per (phone + IP) is generous
- * headroom while still stopping scripted cart-spam. Same limiter
- * class the public contact endpoint uses.
+ * The check itself lives in src/checkout/rate-limit.ts
+ * (checkAbandonedCaptureRateLimit — 30 captures / 10 minutes per
+ * phone + IP, counted in the shared Redis-backed limiter under an
+ * `abandoned-capture:` prefix; it used to be an in-memory
+ * ContactRateLimiter instance exported from here, removed in
+ * wave 54). Only the key builder stays in this module.
  */
-export const abandonedCaptureLimiter = new ContactRateLimiter(30, 10 * 60 * 1000);
-
 export function abandonedCaptureRateKey(rawPhone: string, ip: string): string {
   return `${rawPhone}|${ip}`;
 }

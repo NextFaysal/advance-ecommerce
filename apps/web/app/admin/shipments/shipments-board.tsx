@@ -200,15 +200,22 @@ export function ShipmentsBoard({
 
   const tableRows = filtered.map((s) => ({
     order: (
-      <Link
-        href={`/admin/orders/${s.orderId}`}
-        className="font-mono tabular-nums text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
-      >
-        #{s.orderNo}
-        {isProblemStatus(s.status) ? (
-          <span className="ml-1 text-rose-600" aria-hidden="true">⚠</span>
+      <span className="inline-flex flex-wrap items-center gap-2">
+        <Link
+          href={`/admin/orders/${s.orderId}`}
+          className="font-mono tabular-nums text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+        >
+          #{s.orderNo}
+          {isProblemStatus(s.status) ? (
+            <span className="ml-1 text-rose-600" aria-hidden="true">⚠</span>
+          ) : null}
+        </Link>
+        {s.packed ? (
+          <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
+            প্যাক হয়েছে (Packed)
+          </span>
         ) : null}
-      </Link>
+      </span>
     ),
     courier: courierLabel(s.provider),
     tracking: <span className="font-mono text-xs tabular-nums">{s.trackingId ?? "—"}</span>,
@@ -395,6 +402,12 @@ export function ShipmentsBoard({
                   </Link>{" "}
                   · {courierLabel(selected.provider)}
                 </span>
+                {selected.packed ? (
+                  <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
+                    প্যাক হয়েছে (Packed)
+                    {selected.packedPickListId ? ` · পিক লিস্ট ${selected.packedPickListId.slice(0, 8)}` : ""}
+                  </span>
+                ) : null}
               </div>
               <ParcelStepper status={selected.status} />
               <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">

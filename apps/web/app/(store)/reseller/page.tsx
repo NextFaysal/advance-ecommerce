@@ -64,7 +64,7 @@ export default async function ResellerPortalPage() {
     );
   }
   const store = await cookies();
-  const resellerId = verifyResellerSessionToken(store.get(RESELLER_SESSION_COOKIE)?.value);
+  const resellerId = await verifyResellerSessionToken(store.get(RESELLER_SESSION_COOKIE)?.value);
   if (!resellerId) redirect("/reseller/login");
   const d = await buildPortalDashboard(resellerId);
   if (!d) redirect("/reseller/login");

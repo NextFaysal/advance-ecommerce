@@ -25,7 +25,7 @@
  * Retry / dead-letter policy:
  *  - Job options use the policies in queues.ts: DEFAULT_RETRY
  *    (3 attempts, 30s exponential-style backoff) for most queues,
- *    COURIER_RETRY (5 attempts, 60s) for courier booking/sync.
+ *    COURIER_RETRY (5 attempts, 60s) for courier status sync.
  *  - When attemptsMade reaches the policy maximum and the handler still
  *    throws, the processor records a DeadLetterEntry (ids/refs only)
  *    via the injected DeadLetterSink and rethrows, so BullMQ marks the
@@ -57,7 +57,6 @@ import {
 export const RETRY_POLICY_BY_QUEUE: Record<QueueName, JobRetryPolicy> = {
   [QUEUE_NAMES.sms]: DEFAULT_RETRY,
   [QUEUE_NAMES.email]: DEFAULT_RETRY,
-  [QUEUE_NAMES.courierBooking]: COURIER_RETRY,
   [QUEUE_NAMES.courierSync]: COURIER_RETRY,
   [QUEUE_NAMES.webhook]: DEFAULT_RETRY,
   [QUEUE_NAMES.importExport]: DEFAULT_RETRY,
@@ -69,12 +68,12 @@ export const RETRY_POLICY_BY_QUEUE: Record<QueueName, JobRetryPolicy> = {
   [QUEUE_NAMES.subscriptions]: DEFAULT_RETRY,
   [QUEUE_NAMES.orderAutoCancel]: DEFAULT_RETRY,
   [QUEUE_NAMES.reportSchedules]: DEFAULT_RETRY,
+  [QUEUE_NAMES.webhookSweep]: DEFAULT_RETRY,
 };
 
 export const CONCURRENCY_BY_QUEUE: Record<QueueName, number> = {
   [QUEUE_NAMES.sms]: 5,
   [QUEUE_NAMES.email]: 5,
-  [QUEUE_NAMES.courierBooking]: 3,
   [QUEUE_NAMES.courierSync]: 3,
   [QUEUE_NAMES.webhook]: 5,
   [QUEUE_NAMES.importExport]: 1,
@@ -86,6 +85,7 @@ export const CONCURRENCY_BY_QUEUE: Record<QueueName, number> = {
   [QUEUE_NAMES.subscriptions]: 1,
   [QUEUE_NAMES.orderAutoCancel]: 1,
   [QUEUE_NAMES.reportSchedules]: 1,
+  [QUEUE_NAMES.webhookSweep]: 1,
 };
 
 /** BullMQ-shaped job options derived from the retry policy. */

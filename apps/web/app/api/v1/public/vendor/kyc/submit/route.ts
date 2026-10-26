@@ -20,7 +20,7 @@ export async function POST() {
     );
   }
   const store = await cookies();
-  const vendorId = verifyVendorSessionToken(store.get(VENDOR_SESSION_COOKIE)?.value);
+  const vendorId = await verifyVendorSessionToken(store.get(VENDOR_SESSION_COOKIE)?.value);
   if (!vendorId) {
     return NextResponse.json(
       { error: { code: "UNAUTHORIZED", message: "আগে লগইন করুন।" } },

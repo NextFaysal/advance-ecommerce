@@ -5,7 +5,10 @@
  *
  * Scanner-first UI: three big tabs (পিক লিস্ট / প্যাক / শিপ স্ক্যান),
  * 56px+ touch targets, monospace code inputs with autofocus and
- * Enter-to-submit. All state lives server-side (orders, shipments,
+ * Enter-to-submit. Camera scanning (wave 54-1, BarcodeScanner —
+ * BarcodeDetector where the browser offers it, typed code
+ * everywhere) ticks pack items by SKU/barcode and resolves ship
+ * codes through the same endpoints the typed inputs use. All state lives server-side (orders, shipments,
  * the pick-list Setting doc, order timeline notes) — this component
  * only renders and calls /api/v1/admin/warehouse/*; it keeps no
  * fulfilment state of its own, so a reload never loses a packer's
@@ -17,6 +20,7 @@
  * writes a timeline note.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { BarcodeScanner } from "@/components/admin/barcode-scanner";
 import { formatBdt } from "@/checkout/pricing";
 import type { PickList } from "@/warehouse/pick-lists";
 import type { ConfirmedQueue } from "@/warehouse/queue";
@@ -153,6 +157,37 @@ export function WarehouseClient({
         return "এই অর্ডারের প্যাক সম্পন্ন — টাইমলাইনে নোট লেখা হয়েছে।";
       }
     });
+
+  /** Scan-to-tick (wave 54-1): a scanned/typed code matches a pack
+   *  item by SKU or by the barcode stamped on the item at list
+   *  creation. Each scan ticks ONE matching unpacked item (the same
+   *  variant can sit in several orders — the physical piece in hand
+   *  belongs to the first unticked one). Manual checkbox ticking
+   *  stays fully available alongside. */
+  const scanTick = (code: string) => {
+    const list = activePackList;
+    if (!list || list.status !== "OPEN") return;
+    const needle = code.trim();
+    let alreadyPacked = false;
+    for (const order of list.orders) {
+      if (order.packCompletedAt) continue;
+      for (const item of order.items) {
+        if (item.sku !== needle && item.barcode !== needle) continue;
+        if (item.packed) {
+          alreadyPacked = true;
+          continue;
+        }
+        void tick(list, order.orderId, item.orderItemId, true);
+        return;
+      }
+    }
+    setNotice({
+      text: alreadyPacked
+        ? `“${needle}” ইতিমধ্যে টিক দেওয়া হয়েছে।`
+        : `“${needle}” এই পিক লিস্টে পাওয়া যায়নি — SKU/বারকোড মিলিয়ে দেখুন।`,
+      tone: "error",
+    });
+  };
 
   return (
     <div className="space-y-5">
@@ -301,6 +336,17 @@ export function WarehouseClient({
             ) : null}
           </div>
 
+          {activePackList && activePackList.status === "OPEN" ? (
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <h3 className="mb-3 text-lg font-bold">স্ক্যান করে টিক দিন</h3>
+              <BarcodeScanner onScan={scanTick} disabled={busy} />
+              <p className="mt-2 text-sm text-text-muted">
+                পণ্যের SKU বা বারকোড স্ক্যান করলেই মিলে যাওয়া প্রথম আনটিক আইটেমে টিক পড়বে —
+                চেকবক্স দিয়েও আগের মতো টিক দেওয়া যায়।
+              </p>
+            </div>
+          ) : null}
+
           {activePackList && activePackList.status === "OPEN"
             ? activePackList.orders.map((order) => {
                 const doneCount = order.items.filter((i) => i.packed).length;
@@ -330,7 +376,10 @@ export function WarehouseClient({
                               onChange={(e) => tick(activePackList, order.orderId, item.orderItemId, e.target.checked)}
                             />
                             <span className="flex-1 text-base font-medium">{item.productName}</span>
-                            <span className="font-mono text-sm text-text-muted">{item.sku}</span>
+                            <span className="font-mono text-sm text-text-muted">
+                              {item.sku}
+                              {item.barcode ? ` · ${item.barcode}` : ""}
+                            </span>
                             <span className="text-lg font-bold">× {item.quantity}</span>
                           </label>
                         </li>
@@ -408,6 +457,14 @@ function ShipScan() {
 
   return (
     <section className="space-y-5">
+      <BarcodeScanner
+        typedFallback={false}
+        disabled={busy}
+        onScan={(scanned) => {
+          setCode(scanned);
+          void resolve(scanned);
+        }}
+      />
       <form
         className="flex flex-wrap gap-2"
         onSubmit={(e) => {

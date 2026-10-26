@@ -27,10 +27,14 @@
 //                         (checkout confirmation, staff invite,    emailSend -> src/email/send.ts
 //                         scheduled report delivery; automation    processEmailJob (real Resend transport
 //                         send_email effects reuse it)             from Settings, honest skip unconfigured)
-//  courier-booking        NONE — booking happens synchronously     handlers.ts courierBooking — STUB:       CONSUMER-STUB,
-//                         in the admin shipments route via the     resolves the provider, logs, returns       NO PRODUCER
-//                         same adapters (staff waits for the       "succeeded" WITHOUT calling
-//                         tracking id)                             createShipment (noted at the handler)
+//  courier-booking        RETIRED (doc 23 wave 54-6): the queue     —                                        RETIRED
+//                         never had a producer in its entire life —
+//                         booking is synchronous in the admin
+//                         shipments route via the same adapters and
+//                         the stub handler only resolved a provider
+//                         and logged. Queue name, handler, worker
+//                         records and catalogue entry removed;
+//                         booking itself is unchanged.
 //  courier-status-sync    NONE — statuses arrive via provider      handlers.ts courierSync (real              CONSUMER-ONLY
 //                         webhooks (Steadfast webhook ->           provider.getStatus call)
 //                         src/courier/order-sync.ts) directly;
@@ -97,7 +101,6 @@
 export const QUEUE_NAMES = {
   sms: "sms-send",
   email: "email-send",
-  courierBooking: "courier-booking",
   courierSync: "courier-status-sync",
   webhook: "webhook-delivery",
   importExport: "import-export",
@@ -109,6 +112,7 @@ export const QUEUE_NAMES = {
   subscriptions: "subscription-generation",
   orderAutoCancel: "order-auto-cancel",
   reportSchedules: "report-schedules",
+  webhookSweep: "webhook-delivery-sweep",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -236,7 +240,6 @@ export interface EmailJob {
   reportPeriodFrom?: string;
   reportPeriodTo?: string;
 }
-export interface CourierBookingJob { orderId: string; shipmentId: string; provider: string; }
 export interface WebhookJob { event: string; payloadId: string; }
 
 /**
@@ -271,3 +274,13 @@ export interface OrderAutoCancelJob { sweepKey: string; }
  * `sweepKey` is the job idempotency ref, same convention as above.
  */
 export interface ReportScheduleJob { sweepKey: string; }
+
+/**
+ * Webhook delivery recovery sweep (doc 23 wave 54-4): ONE job asks
+ * the worker to re-enqueue FAILED webhook deliveries whose stored
+ * nextRetryAt has passed (src/webhooks/sweep.ts
+ * sweepStaleWebhookDeliveries). DEAD deliveries are never swept —
+ * they need a staff redeliver. `sweepKey` is the job idempotency
+ * ref, same convention as the other sweeps.
+ */
+export interface WebhookSweepJob { sweepKey: string; }

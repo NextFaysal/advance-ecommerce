@@ -28,7 +28,7 @@ function locked() {
 
 async function sessionVendorId(): Promise<string | null> {
   const store = await cookies();
-  return verifyVendorSessionToken(store.get(VENDOR_SESSION_COOKIE)?.value);
+  return await verifyVendorSessionToken(store.get(VENDOR_SESSION_COOKIE)?.value);
 }
 
 export async function GET() {

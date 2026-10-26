@@ -17,7 +17,7 @@ export async function GET() {
     );
   }
   const store = await cookies();
-  const resellerId = verifyResellerSessionToken(store.get(RESELLER_SESSION_COOKIE)?.value);
+  const resellerId = await verifyResellerSessionToken(store.get(RESELLER_SESSION_COOKIE)?.value);
   if (!resellerId) {
     return NextResponse.json(
       { error: { code: "UNAUTHORIZED", message: "আগে লগইন করুন।" } },

@@ -31,7 +31,6 @@
 import {
   DEFAULT_RETRY,
   QUEUE_NAMES,
-  type CourierBookingJob,
   type EmailJob,
   type QueueName,
   type SmsJob,
@@ -39,6 +38,7 @@ import {
   type OrderAutoCancelJob,
   type ReportScheduleJob,
   type WebhookJob,
+  type WebhookSweepJob,
 } from "./queues";
 import type { NotificationFailureInput } from "./notification-failures";
 import type { EmailProvider, EmailSendInput } from "../integrations/email";
@@ -238,6 +238,12 @@ export interface HandlerDeps {
    *  (processDueReportSchedules). Unwired deployments skip honestly. */
   reportScheduleRunner?: (
     job: ReportScheduleJob,
+  ) => Promise<{ processedRef: string; detail?: string }>;
+  /** Doc 23 wave 54-4: webhook delivery recovery sweep — wired by
+   *  the worker deps assembly to src/webhooks/sweep.ts
+   *  (sweepStaleWebhookDeliveries). Unwired deployments skip honestly. */
+  webhookSweepRunner?: (
+    job: WebhookSweepJob,
   ) => Promise<{ processedRef: string; detail?: string }>;
   /** C4: send path for call-center automation SMS jobs (payloads with
    *  jobKind === "callcenter-automation" on the SMS queue), wired by
@@ -717,36 +723,6 @@ export function createHandlers(
     });
   };
 
-  const courierBooking: (e: JobEnvelope<CourierBookingJob>) => Promise<HandlerResult> = (
-    envelope,
-  ) =>
-    runIdempotent(store, envelope, envelope.payload.shipmentId, async () => {
-      const providerName = envelope.payload.provider as CourierProviderName;
-      const provider = deps.courierProvider
-        ? await deps.courierProvider(providerName)
-        : await defaultCourierProvider(providerName);
-      // ADV-10 note (see the queues.ts inventory): this handler does
-      // NOT book anything — it never calls provider.createShipment.
-      // Real booking happens synchronously in the admin shipments
-      // route through the same adapters, and no producer enqueues
-      // CourierBookingJobs, so in practice no job reaches this stub.
-      // It is kept (and labelled here) rather than silently deleted
-      // because the queue contract + admin catalogue still list it;
-      // wiring it for real means moving the route's booking flow
-      // behind this handler, a shipments-slice decision.
-      logger.info("courier.booking.requested", {
-        jobId: envelope.jobId,
-        orderId: envelope.payload.orderId,
-        shipmentId: envelope.payload.shipmentId,
-        provider: provider.name,
-      });
-      return {
-        status: "succeeded",
-        ref: envelope.payload.shipmentId,
-        detail: "courier booking handed to adapter (address resolved by shipmentId)",
-      };
-    });
-
   const courierSync: (e: JobEnvelope<CourierSyncJob>) => Promise<HandlerResult> = (
     envelope,
   ) =>
@@ -971,14 +947,34 @@ export function createHandlers(
       return { status: "succeeded", ref: out.processedRef, detail: out.detail ?? "sweep complete" };
     });
 
+  const webhookSweep: (e: JobEnvelope<WebhookSweepJob>) => Promise<HandlerResult> = (
+    envelope,
+  ) =>
+    runIdempotent(store, envelope, envelope.payload.sweepKey, async () => {
+      if (!deps.webhookSweepRunner) {
+        return {
+          status: "skipped",
+          ref: envelope.payload.sweepKey,
+          detail: "webhook sweep runner not configured in this deployment",
+        };
+      }
+      const out = await deps.webhookSweepRunner(envelope.payload);
+      logger.info("webhooks.delivery_sweep", {
+        jobId: envelope.jobId,
+        sweepKey: envelope.payload.sweepKey,
+        processedRef: out.processedRef,
+      });
+      return { status: "succeeded", ref: out.processedRef, detail: out.detail ?? "sweep complete" };
+    });
+
   return {
     [QUEUE_NAMES.bulkActions]: bulkActions as (e: JobEnvelope<never>) => Promise<HandlerResult>,
     [QUEUE_NAMES.subscriptions]: subscriptions as (e: JobEnvelope<never>) => Promise<HandlerResult>,
     [QUEUE_NAMES.orderAutoCancel]: orderAutoCancel as (e: JobEnvelope<never>) => Promise<HandlerResult>,
     [QUEUE_NAMES.reportSchedules]: reportSchedules as (e: JobEnvelope<never>) => Promise<HandlerResult>,
+    [QUEUE_NAMES.webhookSweep]: webhookSweep as (e: JobEnvelope<never>) => Promise<HandlerResult>,
     [QUEUE_NAMES.sms]: sms as (e: JobEnvelope<never>) => Promise<HandlerResult>,
     [QUEUE_NAMES.email]: email as (e: JobEnvelope<never>) => Promise<HandlerResult>,
-    [QUEUE_NAMES.courierBooking]: courierBooking as (e: JobEnvelope<never>) => Promise<HandlerResult>,
     [QUEUE_NAMES.courierSync]: courierSync as (e: JobEnvelope<never>) => Promise<HandlerResult>,
     [QUEUE_NAMES.webhook]: webhook as (e: JobEnvelope<never>) => Promise<HandlerResult>,
     [QUEUE_NAMES.report]: report as (e: JobEnvelope<never>) => Promise<HandlerResult>,

@@ -97,7 +97,7 @@ export default async function VendorPortalPage() {
     );
   }
   const store = await cookies();
-  const vendorId = verifyVendorSessionToken(store.get(VENDOR_SESSION_COOKIE)?.value);
+  const vendorId = await verifyVendorSessionToken(store.get(VENDOR_SESSION_COOKIE)?.value);
   if (!vendorId) redirect("/vendor/login");
   const d = await buildVendorPortalDashboard(vendorId);
   if (!d) redirect("/vendor/login");

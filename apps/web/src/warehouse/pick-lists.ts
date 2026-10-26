@@ -48,6 +48,12 @@ const pickListItemSchema = z.object({
   orderItemId: z.string().min(1),
   variantId: z.string().min(1),
   sku: z.string(),
+  /** Variant barcode (EAN/UPC) stamped at list creation from the
+   *  catalog row, so the pack scanner can match a scanned code
+   *  against barcode as well as SKU. Null = variant carries no
+   *  barcode (or the list predates stamping) — SKU matching still
+   *  works; nothing here is ever guessed. */
+  barcode: z.string().nullable().default(null),
   productName: z.string(),
   quantity: z.number().int().positive(),
   packed: z.boolean().default(false),
@@ -215,6 +221,28 @@ function binFromRow(row: unknown): string | null {
   return null;
 }
 
+/** variantId -> barcode (or null), read from the catalog variant
+ *  rows. Never throws: any read failure simply leaves barcodes null
+ *  and pack scanning falls back to SKU matching. */
+export async function loadVariantBarcodes(variantIds: string[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  for (const id of variantIds) out.set(id, null);
+  if (variantIds.length === 0) return out;
+  try {
+    const { prisma } = await import("@advance-ecommerce/db");
+    const rows = await prisma.productVariant.findMany({
+      where: { id: { in: variantIds } },
+      select: { id: true, barcode: true },
+    });
+    for (const row of rows) {
+      if (row.barcode) out.set(row.id, row.barcode);
+    }
+  } catch {
+    // Catalog read unavailable — barcodes stay null.
+  }
+  return out;
+}
+
 /** variantId -> bin location (or null). Prefers the row holding the
  *  most stock. Never throws: a missing column/table state simply
  *  means "no location recorded". */
@@ -322,7 +350,10 @@ export async function createPickList(
   // Keep staff selection order for the per-order sections.
   const orderedRows = uniqueIds.map((id) => byId.get(id) as OrderSnapshotRow);
   const variantIds = [...new Set(orderedRows.flatMap((r) => r.items.map((i) => i.variantId)))];
-  const bins = await loadBinLocations(variantIds);
+  const [bins, barcodes] = await Promise.all([
+    loadBinLocations(variantIds),
+    loadVariantBarcodes(variantIds),
+  ]);
 
   const orders: PickListOrder[] = orderedRows.map((r) => ({
     orderId: r.id,
@@ -333,6 +364,7 @@ export async function createPickList(
       orderItemId: i.id,
       variantId: i.variantId,
       sku: i.sku,
+      barcode: barcodes.get(i.variantId) ?? null,
       productName: i.productName,
       quantity: i.quantity,
       packed: false,

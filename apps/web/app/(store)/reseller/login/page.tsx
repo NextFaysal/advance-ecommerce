@@ -33,7 +33,7 @@ export default async function ResellerLoginPage() {
     );
   }
   const store = await cookies();
-  if (verifyResellerSessionToken(store.get(RESELLER_SESSION_COOKIE)?.value)) {
+  if (await verifyResellerSessionToken(store.get(RESELLER_SESSION_COOKIE)?.value)) {
     redirect("/reseller");
   }
   return (

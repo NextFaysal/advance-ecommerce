@@ -27,9 +27,6 @@ import { normalizeBdPhone } from "@advance-ecommerce/validators";
 import {
   hashPassword,
   verifyPassword,
-  checkLoginRateLimit,
-  recordLoginAttempt,
-  resetLoginRateLimit,
   MAX_FAILED_LOGINS,
   ACCOUNT_LOCK_MINUTES,
   LAST_USED_WRITE_THROTTLE_MS,
@@ -326,14 +323,18 @@ export function customerSessionCookieOptions(maxAgeSeconds: number) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Rate limiting — the staff limiter, namespaced for customers.       */
+/* Rate limiting — one shared key for the customer auth routes. The   */
+/* checks themselves run through the shared Redis-backed limiter      */
+/* (src/lib/rate-limit.ts) in the login + register routes, both       */
+/* counting against this key's single budget. (The in-memory trio     */
+/* from src/lib/auth used to be re-exported here for the register     */
+/* route; it was dropped in wave 54 when register migrated too —      */
+/* the trio remains only for the staff-side routes.)                 */
 /* ------------------------------------------------------------------ */
 
 export function customerLoginRateKey(ip: string, phone: string): string {
   return `cust-login:${ip}:${phone}`;
 }
-
-export { checkLoginRateLimit, recordLoginAttempt, resetLoginRateLimit };
 
 /* ------------------------------------------------------------------ */
 /* Account data — used by the account API routes and the /account     */

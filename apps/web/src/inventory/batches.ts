@@ -25,13 +25,19 @@
  * line). Batch depletion is FEFO: earliest expiryDate first (nulls
  * last), then oldest received (createdAt) — with equal/absent expiry
  * dates that is exactly FIFO, and it satisfies doc 22's acceptance
- * ("an expiring batch is allocated first"). Known limitation, stated
- * plainly: batch depletion is not per-order idempotent — a delivery
- * replay after a full return + re-delivery can deplete twice,
- * because batch rows deliberately carry no order link (returns
- * restock the variant cache + serial statuses only; returned units
- * re-enter the UNTRACKED pool, since stamping them back into a lot
- * would fabricate lot/expiry provenance).
+ * ("an expiring batch is allocated first"). Depletion is
+ * read-before-write idempotent per (order, batch) — the serial
+ * discipline applied to lots (wave 54-5): every take is recorded in
+ * a `[batch-depletion]` OrderNote marker written in the SAME
+ * transaction as the lot decrements, and a replay counts the
+ * recorded takes toward the line before depleting any remainder, so
+ * replaying the delivered transition (hook retry, full return +
+ * re-delivery) leaves batch quantities unchanged the second time.
+ * Batch rows themselves still carry no order link, and returns still
+ * do NOT re-credit batches (returned units re-enter the UNTRACKED
+ * pool — stamping them back into a lot would fabricate lot/expiry
+ * provenance); the marker is what makes "this order already drew
+ * from this lot" durable without changing either of those rules.
  *
  * RETURN RECEIVE (restoreSerialsForReturnDepth) mirrors the RMA
  * rules: RESTOCKABLE units flip SOLD → IN_STOCK (orderId cleared);
@@ -208,6 +214,65 @@ export interface DeliveryDepthSummary {
   skippedFlagOff: boolean;
 }
 
+/* ------------------------------------------------------------------ */
+/* Batch-depletion idempotency marker (wave 54-5)                     */
+/*                                                                    */
+/* Batch rows carry no order link by design, so the per-(order,       */
+/* batch) depletion record lives in an OrderNote marker — the same    */
+/* seam as the pickup / Rx / packed markers: text starts with         */
+/* `[batch-depletion]` followed by JSON                            */
+/* { "v": 1, "takes": [{ variantId, batchId, quantity }] }. One note  */
+/* per depletion run that actually took units; replays read all of   */
+/* an order's marker notes and count the recorded takes toward each   */
+/* line before depleting any remainder (the serial read-before-write  */
+/* pattern). The note is written inside the depletion transaction,    */
+/* so a crash can never deplete without recording — or record         */
+/* without depleting.                                                 */
+/* ------------------------------------------------------------------ */
+
+export const BATCH_DEPLETION_MARKER = "[batch-depletion]";
+
+interface BatchTake {
+  variantId: string;
+  batchId: string;
+  quantity: number;
+}
+
+async function loadRecordedBatchTakes(
+  tx: Tx,
+  orderId: string,
+): Promise<{ byVariant: Map<string, number> }> {
+  const byVariant = new Map<string, number>();
+  const notes = await tx.orderNote.findMany({
+    where: { orderId, text: { startsWith: BATCH_DEPLETION_MARKER } },
+    select: { text: true },
+  });
+  for (const note of notes) {
+    try {
+      const parsed: unknown = JSON.parse(note.text.slice(BATCH_DEPLETION_MARKER.length).trim());
+      const takes = (parsed as { takes?: unknown })?.takes;
+      if (!Array.isArray(takes)) continue;
+      for (const entry of takes as Partial<BatchTake>[]) {
+        if (
+          typeof entry?.variantId === "string" &&
+          typeof entry?.batchId === "string" &&
+          typeof entry?.quantity === "number" &&
+          Number.isInteger(entry.quantity) &&
+          entry.quantity > 0
+        ) {
+          byVariant.set(entry.variantId, (byVariant.get(entry.variantId) ?? 0) + entry.quantity);
+        }
+      }
+    } catch {
+      // A malformed marker must not block delivery depth — it is
+      // ignored (that note's takes count as unrecorded), matching
+      // the best-effort contract of the delivered hooks.
+      console.warn(`[inventory-depth] unparseable batch-depletion marker on order ${orderId}`);
+    }
+  }
+  return { byVariant };
+}
+
 /**
  * Marks recorded serials SOLD (with the order ref) and depletes
  * batches FEFO for one DELIVERED order. Best-effort by contract: the
@@ -225,6 +290,12 @@ export async function applyDeliveryDepth(order: {
   let serialsMarkedSold = 0;
   let batchUnitsDepleted = 0;
   await prisma.$transaction(async (tx) => {
+    // Batch idempotency (wave 54-5): takes this order already
+    // recorded in earlier runs count toward each line, exactly like
+    // already-SOLD serials below. New takes fold into the same map
+    // as the loop progresses, so a repeated variant line converges.
+    const recorded = await loadRecordedBatchTakes(tx, order.id);
+    const newTakes: BatchTake[] = [];
     for (const item of order.items) {
       if (item.quantity <= 0) continue;
       // --- serials: count what this order already holds (replay-safe)
@@ -249,22 +320,40 @@ export async function applyDeliveryDepth(order: {
       }
       // --- batches: FEFO depletion across warehouses (orders carry
       // no warehouse; the batch sub-ledger is variant-level here).
-      let remaining = item.quantity;
-      const batches = await tx.inventoryBatch.findMany({
-        where: { variantId: item.variantId, quantityOnHand: { gt: 0 } },
-        orderBy: [{ expiryDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
-        select: { id: true, quantityOnHand: true },
-      });
-      for (const batch of batches) {
-        if (remaining <= 0) break;
-        const take = Math.min(batch.quantityOnHand, remaining);
-        await tx.inventoryBatch.update({
-          where: { id: batch.id },
-          data: { quantityOnHand: { decrement: take } },
+      // Units already depleted for THIS order (recorded in the
+      // marker) count toward the line, so a replay depletes nothing
+      // a second time; a partially-covered first run converges by
+      // depleting only the remainder.
+      let remaining = item.quantity - (recorded.byVariant.get(item.variantId) ?? 0);
+      if (remaining > 0) {
+        const batches = await tx.inventoryBatch.findMany({
+          where: { variantId: item.variantId, quantityOnHand: { gt: 0 } },
+          orderBy: [{ expiryDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
+          select: { id: true, quantityOnHand: true },
         });
-        batchUnitsDepleted += take;
-        remaining -= take;
+        for (const batch of batches) {
+          if (remaining <= 0) break;
+          const take = Math.min(batch.quantityOnHand, remaining);
+          await tx.inventoryBatch.update({
+            where: { id: batch.id },
+            data: { quantityOnHand: { decrement: take } },
+          });
+          batchUnitsDepleted += take;
+          remaining -= take;
+          recorded.byVariant.set(item.variantId, (recorded.byVariant.get(item.variantId) ?? 0) + take);
+          newTakes.push({ variantId: item.variantId, batchId: batch.id, quantity: take });
+        }
       }
+    }
+    // Record this run's takes in the SAME transaction as the
+    // decrements above — the marker is the replay guard's memory.
+    if (newTakes.length > 0) {
+      await tx.orderNote.create({
+        data: {
+          orderId: order.id,
+          text: `${BATCH_DEPLETION_MARKER} ${JSON.stringify({ v: 1, takes: newTakes })}`,
+        },
+      });
     }
   });
   return { serialsMarkedSold, batchUnitsDepleted, skippedFlagOff: false };

@@ -9,17 +9,17 @@
  *
  * Privacy by design: the response carries only the capture id + its
  * status (never the phone, never item prices), and there is NO public
- * GET for captures. Rate-limited per (phone + IP) in-process, like
- * the public contact endpoint.
+ * GET for captures. Rate-limited per (phone + IP) through the shared
+ * Redis-backed limiter (src/checkout/rate-limit.ts).
  */
 import { NextResponse } from "next/server";
 import {
   AbandonedError,
-  abandonedCaptureLimiter,
   abandonedCaptureRateKey,
   captureAbandonedCheckout,
   captureAbandonedSchema,
 } from "@/checkout/abandoned";
+import { checkAbandonedCaptureRateLimit } from "@/checkout/rate-limit";
 
 function err(code: string, message: string, status: number, details?: unknown) {
   return NextResponse.json({ error: { code, message, details } }, { status });
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
       ? ((body as { phone: string }).phone)
       : "";
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  const limit = abandonedCaptureLimiter.check(abandonedCaptureRateKey(rawPhone, ip));
+  const limit = await checkAbandonedCaptureRateLimit(abandonedCaptureRateKey(rawPhone, ip));
   if (!limit.allowed) {
     return err(
       "RATE_LIMITED",

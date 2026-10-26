@@ -440,6 +440,18 @@ export const workerDeps: WorkerRuntimeDeps = {
       detail: "report schedule sweep complete",
     };
   },
+  // Doc 23 wave 54-4: webhook delivery recovery sweep — re-enqueues
+  // FAILED deliveries whose stored retry time has passed (the retry
+  // schedule lives on the delivery row; DEAD is never resurrected).
+  // Lazy import as above.
+  webhookSweepRunner: async () => {
+    const { sweepStaleWebhookDeliveries } = await import("../webhooks/sweep");
+    const out = await sweepStaleWebhookDeliveries(new Date());
+    return {
+      processedRef: `scanned:${out.scanned} requeued:${out.requeued} skipped:${out.skipped}`,
+      detail: "webhook sweep complete",
+    };
+  },
   // ADV-15: customer-login OTP SMS jobs (sms queue, jobKind
   // "auth-otp") delegate here. Lazy import for the same reason as
   // orderOtpSmsSend above.

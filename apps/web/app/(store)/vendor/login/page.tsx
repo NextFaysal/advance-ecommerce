@@ -34,7 +34,7 @@ export default async function VendorLoginPage() {
     );
   }
   const store = await cookies();
-  if (verifyVendorSessionToken(store.get(VENDOR_SESSION_COOKIE)?.value)) {
+  if (await verifyVendorSessionToken(store.get(VENDOR_SESSION_COOKIE)?.value)) {
     redirect("/vendor");
   }
   return (
