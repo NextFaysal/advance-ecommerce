@@ -147,10 +147,29 @@ export function publishOrderEvent(event: DomainEvent): void {
         listeners.delete(listener);
       }
     }
+
+    // Forward to domain publisher (automations, plugin hooks, outbound webhooks)
+    if (typeof window === "undefined") {
+      import("../events/publisher").then(({ publishDomainEvent }) => {
+        publishDomainEvent({
+          event: event.type as any,
+          entityType: "order",
+          entityId: event.orderId,
+          data: {
+            orderNo: event.orderNo,
+            ...(event.type === "order.created" ? { totalPoisha: event.totalPoisha, district: event.district } : {}),
+            ...(event.type === "payment.succeeded" ? { paidPoisha: event.paidPoisha, totalPoisha: event.totalPoisha } : {}),
+            ...(event.type === "order.status_changed" ? { from: event.from, to: event.to } : {}),
+          },
+          occurredAt: event.at,
+        }).catch(() => {});
+      }).catch(() => {});
+    }
   } catch {
     // Publishing must never throw into the order mutation path.
   }
 }
+
 
 /* ------------------------------------------------------------------ */
 /* Typed publish helpers — the only calls publishers should make       */
