@@ -40,6 +40,11 @@ interface MethodState {
   maxPoisha: string;
   feePoisha: string;
   status: string;
+  /** Rocket only: the merchant number customers send money to
+   *  (payment.rocket.merchant_number) + the account holder name
+   *  shown next to it at checkout (payment.rocket.account_name). */
+  merchantNumber: string;
+  accountName: string;
 }
 
 const initialState = (): MethodState => ({
@@ -50,6 +55,8 @@ const initialState = (): MethodState => ({
   maxPoisha: "",
   feePoisha: "0",
   status: "Not connected",
+  merchantNumber: "",
+  accountName: "",
 });
 
 async function postJson(url: string, body: Record<string, string>): Promise<{ ok: boolean; message: string }> {
@@ -106,6 +113,13 @@ function MethodSection({ methodKey, label }: { methodKey: MethodKey; label: stri
       [`payment.${methodKey}.max_poisha`, state.maxPoisha],
       [`payment.${methodKey}.fee_poisha`, state.feePoisha],
     ];
+    if (methodKey === "rocket") {
+      // Rocket is a MANUAL method (no gateway): checkout shows it
+      // only when enabled AND this number is set — see
+      // src/payments/rocket-manual.ts.
+      entries.push([`payment.rocket.merchant_number`, state.merchantNumber]);
+      entries.push([`payment.rocket.account_name`, state.accountName]);
+    }
     for (const [key, value] of entries) {
       if (value === "" && !key.endsWith(".enabled") && !key.endsWith(".mode")) continue;
       const result = await postJson("/api/v1/admin/settings", {
@@ -187,6 +201,46 @@ function MethodSection({ methodKey, label }: { methodKey: MethodKey; label: stri
           />
         </label>
       </div>
+      {methodKey === "rocket" ? (
+        <div>
+          <p style={{ fontSize: 13, margin: "6px 0" }}>
+            Rocket একটি ম্যানুয়াল পদ্ধতি — কোনো গেটওয়ে নেই। Checkout-এ Rocket তখনই
+            দেখানো হয় যখন Enabled চালু এবং নিচের মার্চেন্ট নম্বরটি দেওয়া আছে।
+            গ্রাহক এই নম্বরে টাকা পাঠিয়ে TrxID জমা দেন; স্টাফ Admin &gt; Payments-এর
+            রিভিউ কিউতে যাচাই করে অনুমোদন দিলে তবেই পেমেন্ট ধরা হয় (স্বয়ংক্রিয়
+            নিশ্চিতকরণ নেই)।
+          </p>
+          <label>
+            Merchant Rocket number (customers send money here){" "}
+            <input
+              type="tel"
+              placeholder="01XXXXXXXXX"
+              value={state.merchantNumber}
+              onChange={(e) => set({ merchantNumber: e.target.value })}
+              autoComplete="off"
+            />
+          </label>{" "}
+          <label>
+            Account holder name (shown at checkout){" "}
+            <input
+              type="text"
+              placeholder="e.g. Store Name"
+              value={state.accountName}
+              onChange={(e) => set({ accountName: e.target.value })}
+              autoComplete="off"
+            />
+          </label>
+        </div>
+      ) : null}
+      {methodKey === "upay" ? (
+        <p style={{ fontSize: 13, margin: "6px 0" }}>
+          Upay credentials (merchant_id / merchant_key / merchant_code) are saved as
+          encrypted Settings keys payment.upay.* from Admin &gt; Settings &gt;
+          Integrations. Note: the Upay wire format is not yet verified against
+          Upay&apos;s official merchant API document — treat live mode as untested
+          until a real merchant account confirms it.
+        </p>
+      ) : null}
       <div>
         <label>
           Min amount (poisha){" "}
@@ -222,7 +276,8 @@ export default function PaymentsSettingsPage() {
       </p>
       <p>
         Checkout-এ শুধু সেই পদ্ধতিগুলোই দেখানো হয় যেগুলো এখানে Enabled এবং যাদের
-        সক্রিয় অ্যাডাপ্টার আছে (বর্তমানে bKash, Nagad, SSLCommerz + COD)।{" "}
+        সক্রিয় অ্যাডাপ্টার আছে (বর্তমানে bKash, Nagad, SSLCommerz, Upay গেটওয়ে +
+        Rocket ম্যানুয়াল পদ্ধতি + COD)।{" "}
         {ADAPTER_NOT_BUILT_BN} ব্যাজওয়ালা পদ্ধতি চালু করা যায় না — অ্যাডাপ্টার তৈরি
         না হওয়া পর্যন্ত সেগুলো customers-এর কাছ থেকে লুকানো থাকে।
       </p>

@@ -17,14 +17,22 @@
 // — trxIds are stored normalised (trim + uppercase), so the DB
 // constraint is exactly the duplicate rule; the checks below remain as
 // the friendly first pass and defence in depth.
+// Rocket extension (ADV-4 remainder): submissions created by
+// src/payments/rocket-manual.ts carry paymentId (a linked
+// PaymentAttempt). Reviewing one flips that attempt through
+// applyAttemptStatus — approval only at the exact claimed amount,
+// rejection closes the attempt FAILED — so the pair never disagrees
+// and the money is counted exactly once (on the Payment).
 import { z } from "zod";
 import type { DuplicateTrxCheck, ManualTrxSubmission } from "../payment";
 import { markOrderPayment } from "../../orders/repository";
 import { normalizeTrxId } from "./store";
 import {
   SandboxOrderNotFoundError,
+  applyAttemptStatus,
   createManualTrxRow,
   findApprovedManualTrx,
+  findAttemptByPaymentId,
   findManualTrxByMethodAndTrxDb,
   getManualTrxById,
   listManualTrxDb,
@@ -127,12 +135,50 @@ export async function reviewManualTrx(
   if (submission.status !== "pending") {
     return { ok: false, error: `Submission already ${submission.status}; it cannot be reviewed again.` };
   }
+  // Rocket (ADV-4 remainder): a submission created by
+  // src/payments/rocket-manual.ts is LINKED to a PaymentAttempt
+  // (submission.paymentId set). Approving it must flip that attempt
+  // through the shared funnel — and ONLY at the exact claimed
+  // amount. The pair is created with identical amounts; a mismatch
+  // means the rows drifted (manual DB edit, partial legacy data) and
+  // approval is refused rather than confirming a different amount
+  // than the one staff are looking at. Unlinked submissions (the
+  // classic bKash/Nagad manual flow, or a Rocket submission created
+  // before the link existed) keep the original behaviour exactly:
+  // the APPROVED row itself is the money fact.
+  const linkedAttempt =
+    submission.method === "rocket" && submission.paymentId
+      ? await findAttemptByPaymentId(submission.paymentId)
+      : null;
   if (input.action === "approve") {
     const approvedElsewhere = await findApprovedManualTrx(submission.method, submission.trxId, submission.id);
     if (approvedElsewhere) {
       return { ok: false, error: "This TrxID has already been approved for another submission." };
     }
+    if (submission.method === "rocket" && submission.paymentId) {
+      if (!linkedAttempt) {
+        return {
+          ok: false,
+          error: "Rocket submission is linked to a payment that has no attempt — cannot confirm. Investigate before approving.",
+        };
+      }
+      if (linkedAttempt.amountPoisha !== submission.amountPoisha) {
+        return {
+          ok: false,
+          error:
+            `Rocket attempt amount (${linkedAttempt.amountPoisha} poisha) does not equal the claimed amount ` +
+            `(${submission.amountPoisha} poisha) — refusing to confirm a different amount than claimed.`,
+        };
+      }
+    }
     const updated = await updateManualTrxReview(submission.id, "approved", reviewerId, input.reason);
+    if (linkedAttempt) {
+      // The confirmation write: the shared funnel, exact amount.
+      // markOrderPayment below re-derives the order status from
+      // persisted rows; the money is counted once, on the Payment
+      // (money-math aggregates skip payment-linked submissions).
+      await applyAttemptStatus(linkedAttempt.attemptId, "PAID", submission.amountPoisha);
+    }
     // Order-paid funnel: the APPROVED submission row above is the
     // persisted payment fact; the funnel recomputes the linked
     // Order's payment status from persisted rows (an approved amount
@@ -149,6 +195,11 @@ export async function reviewManualTrx(
     return { ok: true, submission: updated, paymentStatus: "PAID" };
   }
   const updated = await updateManualTrxReview(submission.id, "rejected", reviewerId, input.reason);
+  if (linkedAttempt && linkedAttempt.status === "UNPAID") {
+    // Rejecting the claim closes its attempt too, so the pair never
+    // disagrees (submission rejected / attempt dangling UNPAID).
+    await applyAttemptStatus(linkedAttempt.attemptId, "FAILED");
+  }
   return { ok: true, submission: updated, paymentStatus: "FAILED" };
 }
 

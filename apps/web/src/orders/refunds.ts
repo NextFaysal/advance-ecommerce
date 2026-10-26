@@ -230,7 +230,9 @@ async function moneyFacts(
       _sum: { paidPoisha: true },
     }),
     db.manualTrxSubmission.aggregate({
-      where: { orderId, status: "APPROVED" },
+      // paymentId: null — payment-linked submissions (Rocket) carry
+      // their money on the Payment; see orders/repository.ts.
+      where: { orderId, status: "APPROVED", paymentId: null },
       _sum: { amountPoisha: true },
     }),
     db.refund.aggregate({

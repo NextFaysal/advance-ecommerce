@@ -7,7 +7,9 @@ import { Phone } from "@/components/ui/phone";
 import { Icon } from "@/components/ui/icon";
 import { demoB2bFlags, isB2bEnabled } from "@/b2b/flags";
 import { ConvertQuotationButton } from "./convert-button";
+import { B2bGroupsCard } from "./groups-card";
 import { b2bStore } from "@/b2b/db-store";
+import { readB2bRequestMetaMap } from "@/b2b/requests";
 import { checkCredit, effectiveQuotationStatus } from "@/b2b/service";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 
@@ -45,9 +47,10 @@ export default async function AdminB2bPage() {
   }
 
   const todayIso = new Date().toISOString().slice(0, 10);
-  const [customers, quotations] = await Promise.all([
+  const [customers, quotations, requestMeta] = await Promise.all([
     b2bStore.listCustomers(),
     b2bStore.listQuotations(),
+    readB2bRequestMetaMap(),
   ]);
   const approvalQueue = customers.filter((c) => c.approvalStatus === "PENDING");
   const totalOutstanding = customers.reduce((s, c) => s + c.outstandingPoisha, 0);
@@ -97,9 +100,28 @@ export default async function AdminB2bPage() {
   });
 
   const quotationRows = quotations.map((q) => {
-    const status = effectiveQuotationStatus(q, todayIso);
+    const request = requestMeta[q.id] ?? null;
+    // Buyer RFQs (ADV-14 remainder) are marked distinctly; a DRAFT
+    // RFQ is a request, not an offer, so its placeholder validUntil
+    // never makes it read EXPIRED here (src/b2b/requests.ts).
+    const status =
+      request !== null && q.status === "DRAFT" ? "DRAFT" : effectiveQuotationStatus(q, todayIso);
     return {
       id: <span className="font-mono">{q.id}</span>,
+      source:
+        request !== null ? (
+          <span>
+            <Badge tone="info">ক্রেতার RFQ</Badge>
+            <span className="mt-1 block text-xs text-text-muted">
+              {request.channel === "BULK_CSV" ? "বাল্ক CSV" : "পোর্টাল ফর্ম"} ·{" "}
+              {request.submittedAt.slice(0, 10)}
+              {request.desiredDate ? ` · কাঙ্ক্ষিত তারিখ: ${request.desiredDate}` : ""}
+              {request.note ? ` · নোট: ${request.note}` : ""}
+            </span>
+          </span>
+        ) : (
+          <Badge>স্টাফ তৈরি</Badge>
+        ),
       business: businessName(q.b2bCustomerId),
       lines: q.lines.reduce((s, l) => s + l.quantity, 0),
       total: <Money poisha={q.totalPoisha} />,
@@ -201,11 +223,17 @@ export default async function AdminB2bPage() {
         <p className="text-sm text-text-muted">কোনো আবেদন অপেক্ষমাণ নেই।</p>
       )}
 
+      <h2 className="mb-3 mt-8 text-lg font-semibold">গ্রুপ প্রাইসিং</h2>
+      <div className="mb-8">
+        <B2bGroupsCard />
+      </div>
+
       <h2 className="mb-3 mt-8 text-lg font-semibold">কোটেশনসমূহ</h2>
       <DataTable
         caption="কোটেশন — মেয়াদ পেরিয়ে যাওয়া DRAFT/SENT কার্যত EXPIRED হিসেবে দেখানো হয় (effectiveQuotationStatus)"
         columns={[
           { key: "id", header: "কোটেশন" },
+          { key: "source", header: "উৎস" },
           { key: "business", header: "প্রতিষ্ঠান" },
           { key: "lines", header: "মোট পরিমাণ (পিস)" },
           { key: "total", header: "মোট" },

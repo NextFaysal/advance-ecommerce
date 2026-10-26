@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { TicketsManager } from "./tickets-manager";
+import { CannedRepliesEditor, KbArticlesEditor } from "./support-tools";
 
 // Support ticket queue (ADV-16b) — real SupportTicket rows written
 // by signed-in customers from /account/tickets. Staff reply moves a
@@ -20,6 +21,11 @@ export default function AdminTicketsPage() {
         breadcrumb="Admin / Customers"
       />
       <TicketsManager />
+      <section className="mt-8 space-y-5" aria-label="সাপোর্ট টুলস">
+        <h2 className="text-base font-bold text-text-main">সাপোর্ট টুলস</h2>
+        <CannedRepliesEditor />
+        <KbArticlesEditor />
+      </section>
     </main>
   );
 }

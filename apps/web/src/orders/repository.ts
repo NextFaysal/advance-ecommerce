@@ -1397,7 +1397,12 @@ export interface MarkOrderPaymentResult {
  * (The two paid sources are disjoint by construction: gateway money
  * lands in Payment.paidPoisha via applyAttemptStatus, manual-TrxID
  * money exists only as APPROVED submission rows — the review never
- * copies it into a Payment row. The Refund sum matches how the
+ * copies it into a Payment row. ONE deliberate exception: a Rocket
+ * submission is created LINKED to a PaymentAttempt (paymentId set),
+ * and its approval flips that attempt via applyAttemptStatus — so
+ * the submission aggregate above excludes payment-linked rows
+ * (paymentId: null) and the money is counted exactly once, on the
+ * Payment. The Refund sum matches how the
  * payments module itself derives refunded totals in db-store.ts.)
  *
  * Derivation (existing PaymentStatus semantics):
@@ -1451,7 +1456,10 @@ export async function markOrderPayment(
         _sum: { paidPoisha: true },
       }),
       tx.manualTrxSubmission.aggregate({
-        where: { orderId: order.id, status: "APPROVED" },
+        // paymentId: null — a submission LINKED to a Payment (Rocket)
+        // carries its money on that Payment's paidPoisha; counting it
+        // here as well would double-count the same money.
+        where: { orderId: order.id, status: "APPROVED", paymentId: null },
         _sum: { amountPoisha: true },
       }),
       tx.refund.aggregate({

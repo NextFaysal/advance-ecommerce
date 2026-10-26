@@ -69,6 +69,33 @@ const INTEGRATIONS: IntegrationCard[] = [
     ],
   },
   {
+    id: "upay",
+    titleBn: "উপায় পেমেন্ট গেটওয়ে (Upay)",
+    titleEn: "Upay Payment Gateway",
+    description:
+      "Upay মার্চেন্ট ক্রেডেনশিয়াল — payment.upay.* Settings কী হিসেবে সংরক্ষিত হয় (merchant_key এনক্রিপ্টেড)। সতর্কতা: Upay-এর অফিসিয়াল মার্চেন্ট API ডকুমেন্ট দিয়ে ওয়্যার ফরম্যাট এখনো যাচাই হয়নি — লাইভ মোড চালুর আগে একটি আসল মার্চেন্ট অ্যাকাউন্টে পরীক্ষা করুন।",
+    category: "payment",
+    fields: [
+      { key: "payment.upay.merchant_id", label: "Merchant ID", placeholder: "Upay-issued merchant id" },
+      { key: "payment.upay.merchant_key", label: "Merchant Key", placeholder: "Write-only — stored encrypted", secret: true },
+      { key: "payment.upay.merchant_code", label: "Merchant Code", placeholder: "Upay-issued merchant code" },
+      { key: "payment.upay.merchant_category_code", label: "Merchant Category Code (ঐচ্ছিক)", placeholder: "e.g. 5411" },
+      { key: "payment.upay.api_base_url", label: "API Base URL Override (ঐচ্ছিক)", placeholder: "Only when Upay's document says otherwise" },
+    ],
+  },
+  {
+    id: "rocket",
+    titleBn: "রকেট ম্যানুয়াল পেমেন্ট (Rocket)",
+    titleEn: "Rocket Manual Payment",
+    description:
+      "Rocket-এর কোনো হোস্টেড গেটওয়ে নেই — এটি ম্যানুয়াল পদ্ধতি: গ্রাহক এই মার্চেন্ট নম্বরে টাকা পাঠিয়ে TrxID জমা দেন, স্টাফ Admin > Payments-এর রিভিউ কিউতে যাচাই করেন। Checkout-এ দেখাতে payment.rocket.enabled চালু থাকতে হবে (Settings > Payments)।",
+    category: "payment",
+    fields: [
+      { key: "payment.rocket.merchant_number", label: "Merchant Rocket Number", placeholder: "01XXXXXXXXX" },
+      { key: "payment.rocket.account_name", label: "Account Holder Name (ঐচ্ছিক)", placeholder: "Shown at checkout next to the number" },
+    ],
+  },
+  {
     id: "redis",
     titleBn: "রেডিস ক্যাশ ও লাইভ পাব/সাব",
     titleEn: "Redis Cache & Live Event Bus",

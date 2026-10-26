@@ -14,6 +14,11 @@
  *   · kind "gateway" — offerable ONLY when the method is enabled in
  *     Admin > Settings > Payments AND this map says a working
  *     initiation path exists for the configured mode.
+ *   · kind "manual" (rocket) — a manual mobile-banking method with
+ *     staff verification (src/payments/rocket-manual.ts): offerable
+ *     ONLY when configured — enabled AND the merchant number set.
+ *     The public route computes that verdict server-side and passes
+ *     it in the `enabled` slot of the visibility check below.
  *
  * WHO READS THIS MAP:
  *   · GET /api/v1/public/payment-methods computes the customer-visible
@@ -47,8 +52,14 @@ export interface PaymentMethodCapability {
    *             the customer's TrxID submission flow).
    * "gateway" — the customer is handed to a hosted gateway; the
    *             method may be offered only per adapterModes + enabled.
+   * "manual"  — a named manual mobile-banking method (Rocket): the
+   *             customer sends money to the merchant's number and
+   *             submits a TrxID; staff verify it in the review queue.
+   *             Offerable only when fully configured — the caller
+   *             (the public payment-methods route) passes the
+   *             configured verdict in the `enabled` slot.
    */
-  kind: "always" | "gateway";
+  kind: "always" | "gateway" | "manual";
   /**
    * Gateway methods only: in which modes a working initiation path
    * exists. bkash/nagad/sslcommerz have the sandbox adapters today
@@ -65,8 +76,13 @@ export const PAYMENT_METHOD_CAPABILITIES: readonly PaymentMethodCapability[] = [
   { method: "bkash", label: "bKash", kind: "gateway", adapterModes: { sandbox: true, live: true } },
   { method: "nagad", label: "Nagad", kind: "gateway", adapterModes: { sandbox: true, live: true } },
   { method: "sslcommerz", label: "SSLCommerz", kind: "gateway", adapterModes: { sandbox: true, live: true } },
-  { method: "rocket", label: "Rocket", kind: "gateway", adapterModes: { sandbox: false, live: false } },
-  { method: "upay", label: "Upay", kind: "gateway", adapterModes: { sandbox: false, live: false } },
+  { method: "rocket", label: "Rocket", kind: "manual", adapterModes: null },
+  // Upay has NO app-simulated sandbox adapter: both modes dispatch
+  // to the REAL adapter (src/integrations/upay.ts) pointed at
+  // Upay's own sandbox / live environment, exactly like the other
+  // gateways' live branch. adapterModes true = an initiation path
+  // exists in that mode (credentials still gate it at initiation).
+  { method: "upay", label: "Upay", kind: "gateway", adapterModes: { sandbox: true, live: true } },
   { method: "aamarpay", label: "AamarPay", kind: "gateway", adapterModes: { sandbox: false, live: false } },
   { method: "shurjopay", label: "ShurjoPay", kind: "gateway", adapterModes: { sandbox: false, live: false } },
   { method: "stripe", label: "Stripe", kind: "gateway", adapterModes: { sandbox: false, live: false } },
@@ -102,6 +118,10 @@ export function isAdapterlessGatewayMethod(method: string): boolean {
  * The checkout visibility rule (method × enabled × mode → visible):
  *   · unknown method        → hidden
  *   · kind "always"         → visible (enabled/mode irrelevant)
+ *   · kind "manual"         → visible only when configured; the
+ *                             caller passes the CONFIGURED verdict
+ *                             (enabled AND merchant number present,
+ *                             computed server-side) as `enabled`.
  *   · gateway, disabled     → hidden
  *   · gateway, enabled      → visible only in a mode with an adapter
  */
@@ -112,6 +132,7 @@ export function isPaymentMethodVisibleAtCheckout(
   const cap = capabilityOf(method);
   if (!cap) return false;
   if (cap.kind === "always") return true;
+  if (cap.kind === "manual") return config.enabled;
   if (!config.enabled) return false;
   return cap.adapterModes?.[config.mode] === true;
 }

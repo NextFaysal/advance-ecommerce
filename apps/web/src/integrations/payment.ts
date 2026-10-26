@@ -87,6 +87,15 @@ export interface ManualTrxSubmission {
   reviewedById: string | null;
   reviewNote: string | null;
   submittedAt: string;
+  /**
+   * Linked Payment parent when this submission's money is carried by
+   * a PaymentAttempt (Rocket — src/payments/rocket-manual.ts creates
+   * the pair). Null for the classic submission-only flow (bKash /
+   * Nagad manual): there the APPROVED submission row itself is the
+   * money fact. Money-math aggregates count a LINKED submission via
+   * its Payment only, never both (see orders/repository.ts).
+   */
+  paymentId: string | null;
 }
 
 /** Duplicate TrxID detection rule: same (method, trxId) must never approve twice. */

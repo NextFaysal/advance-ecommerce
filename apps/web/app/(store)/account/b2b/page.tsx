@@ -33,9 +33,11 @@ import {
   type B2bPortalOrder,
   type B2bPortalQuotation,
 } from "@/b2b/portal";
+import { listB2bPortalPriceList } from "@/b2b/group-pricing";
 import { Money } from "@/components/ui/money";
 import { Icon } from "@/components/ui/icon";
 import QuotationActions from "./quotation-actions";
+import B2bRequestTools from "./request-tools";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +86,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 
 function QuotationBlock({ quotation }: { quotation: B2bPortalQuotation }) {
   const status = quotation.effectiveStatus;
+  const isRfqDraft = quotation.request !== null && quotation.status === "DRAFT";
   return (
     <li className="py-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -91,16 +94,28 @@ function QuotationBlock({ quotation }: { quotation: B2bPortalQuotation }) {
           কোটেশন <span className="text-text-muted">#{quotation.id.slice(-8)}</span>
         </p>
         <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
-          {QUOTATION_STATUS_BN[status] ?? status}
+          {isRfqDraft
+            ? "RFQ — স্টাফের যাচাইয়ের অপেক্ষায়"
+            : (QUOTATION_STATUS_BN[status] ?? status)}
         </span>
       </div>
       <p className="mt-1 text-xs leading-5 text-text-muted">
         {formatDate(quotation.createdAt)}
-        {quotation.validUntil ? ` · মেয়াদ: ${formatDate(quotation.validUntil)}` : ""}
+        {quotation.request
+          ? ` · আপনার জমা দেওয়া RFQ (${quotation.request.channel === "BULK_CSV" ? "বাল্ক CSV" : "পোর্টাল ফর্ম"})` +
+            (quotation.request.desiredDate
+              ? ` · কাঙ্ক্ষিত তারিখ: ${formatDate(quotation.request.desiredDate)}`
+              : "")
+          : quotation.validUntil
+            ? ` · মেয়াদ: ${formatDate(quotation.validUntil)}`
+            : ""}
         {status === "CONVERTED" && quotation.convertedOrderId
           ? " · নিচের অর্ডার তালিকায় অর্ডারটি দেখুন"
           : ""}
       </p>
+      {quotation.request?.note ? (
+        <p className="mt-1 text-xs leading-5 text-text-muted">আপনার নোট: {quotation.request.note}</p>
+      ) : null}
       <div className="mt-2 overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>
@@ -215,7 +230,10 @@ export default async function B2bPortalPage() {
     );
   }
 
-  const dashboard = await buildB2bPortalDashboard(customer, profile);
+  const [dashboard, priceList] = await Promise.all([
+    buildB2bPortalDashboard(customer, profile),
+    listB2bPortalPriceList(profile.id),
+  ]);
   const { company } = dashboard;
 
   return (
@@ -284,10 +302,76 @@ export default async function B2bPortalPage() {
         ) : null}
       </Card>
 
+      <Card title="পাইকারি মূল্য তালিকা">
+        <p className="mt-2 text-sm leading-6 text-text-muted">
+          {priceList.group
+            ? `আপনার গ্রুপ: ${priceList.group.name} — গ্রুপ ছাড় ${priceList.group.discountBps / 100}% (ওভাররাইড থাকলে সেই মূল্যই প্রযোজ্য)।`
+            : "আপনি কোনো মূল্য গ্রুপে নেই — ক্যাটালগ মূল্যই আপনার মূল্য।"}{" "}
+          RFQ জমার সময় এই মূল্যই কোটেশনে স্ন্যাপশট হয়।
+        </p>
+        {priceList.products.length === 0 ? (
+          <p className="mt-3 text-sm leading-6 text-text-muted">এই মুহূর্তে কোনো সক্রিয় পণ্য নেই।</p>
+        ) : (
+          <div className="mt-3 max-h-96 overflow-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="text-text-muted">
+                  <th className="py-1 pr-3 font-medium">পণ্য / SKU</th>
+                  <th className="py-1 pr-3 font-medium">স্টক</th>
+                  <th className="py-1 pr-3 font-medium">ক্যাটালগ মূল্য</th>
+                  <th className="py-1 font-medium">আপনার মূল্য</th>
+                </tr>
+              </thead>
+              <tbody>
+                {priceList.products.map((product) => (
+                  <tr key={product.variantId} className="border-t border-border">
+                    <td className="py-1.5 pr-3 text-text-main">
+                      {product.productNameBn}{" "}
+                      <span className="text-text-muted">
+                        ({product.sku}
+                        {product.attributesLabel ? ` · ${product.attributesLabel}` : ""})
+                      </span>
+                      {product.priceOnRequest ? (
+                        <span className="block text-xs text-text-muted">
+                          খুচরা পেজে মূল্য অনুরোধে — এখানে আপনার B2B মূল্য দেখানো হয়েছে
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="py-1.5 pr-3 text-text-main">{product.stock}</td>
+                    <td className="py-1.5 pr-3 text-text-main">
+                      <Money poisha={product.cataloguePricePoisha} />
+                    </td>
+                    <td className="py-1.5 text-text-main">
+                      <Money poisha={product.effectivePricePoisha} />
+                      <span className="block text-xs text-text-muted">
+                        {product.pricingSource === "override"
+                          ? "গ্রুপ ওভাররাইড"
+                          : product.pricingSource === "group_discount"
+                            ? "গ্রুপ ছাড়"
+                            : "ক্যাটালগ মূল্য"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card title="RFQ ও বাল্ক অর্ডার">
+        <p className="mt-2 text-sm leading-6 text-text-muted">
+          পণ্য বেছে RFQ দিন, অথবা একসঙ্গে অনেক পণ্যের জন্য CSV (sku,quantity) জমা দিন। জমা
+          দেওয়া প্রতিটি সারি যাচাই করে ফলাফল দেখানো হয়; বৈধ সারিগুলো আপনার গ্রুপ মূল্যে
+          একটি খসড়া কোটেশন (RFQ) হিসেবে স্টোরের কাছে যায়।
+        </p>
+        <B2bRequestTools products={priceList.products} />
+      </Card>
+
       <Card title="আমার কোটেশন">
         {dashboard.quotations.length === 0 ? (
           <p className="mt-3 text-sm leading-6 text-text-muted">
-            এখনো কোনো কোটেশন নেই। পাইকারি দামের জন্য স্টোরে যোগাযোগ করলে কোটেশন এখানে দেখা যাবে।
+            এখনো কোনো কোটেশন নেই। উপরের ফর্ম বা বাল্ক CSV দিয়ে RFQ জমা দিলে তা এখানে দেখা যাবে।
           </p>
         ) : (
           <ul className="divide-y divide-border">

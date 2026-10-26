@@ -140,7 +140,9 @@ async function recordCourierCodCollection(
       _sum: { paidPoisha: true },
     }),
     prisma.manualTrxSubmission.aggregate({
-      where: { orderId: order.id, status: "APPROVED" },
+      // paymentId: null — payment-linked submissions (Rocket) carry
+      // their money on the Payment; see orders/repository.ts.
+      where: { orderId: order.id, status: "APPROVED", paymentId: null },
       _sum: { amountPoisha: true },
     }),
   ]);

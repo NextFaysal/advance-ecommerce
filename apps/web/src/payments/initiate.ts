@@ -24,8 +24,8 @@
  *     · cod — nothing to initiate (collect on delivery);
  *     · manual_mobile_banking — the customer submits a TrxID instead
  *       (the manual-Trx funnel owns that flow);
- *     · aamarpay / shurjopay / rocket / upay / stripe / paypal — no
- *       adapter of any kind exists for them yet.
+ *     · aamarpay / shurjopay / stripe / paypal — no adapter of any
+ *       kind exists for them yet.
  *
  * LIVE ADAPTERS EXIST (ADV-4) for bkash (src/integrations/bkash/),
  * sslcommerz and nagad (src/payments/live-gateways.ts). When
@@ -37,6 +37,22 @@
  * "not_configured" naming the missing credential fields — never a
  * silent fallback to the sandbox theatre: a customer must never be
  * sent to a simulated checkout believing it is real.
+ *
+ * UPAY + ROCKET (ADV-4 remainder):
+ *   · upay — the real adapter (src/integrations/upay.ts) exists for
+ *     BOTH provider environments, so upay dispatches to it in
+ *     sandbox mode too (mode selects Upay's own test environment —
+ *     there is NO app-simulated Upay theatre). Incomplete
+ *     credentials → "not_configured" naming the missing fields.
+ *     ⚠️ The Upay wire format is unverified against Upay's official
+ *     merchant document — see src/integrations/upay/provider-http.ts.
+ *   · rocket — a MANUAL method (src/payments/rocket-manual.ts):
+ *     Rocket has no hosted checkout, so "initiation" here means the
+ *     result carries the merchant Rocket number + instructions and
+ *     status "manual_verification"; the customer sends money and
+ *     submits a TrxID, and staff verify it in the review queue.
+ *     Unconfigured (disabled or no merchant number) → the honest
+ *     "not_configured" naming what is missing.
  *
  * Idempotency: the initiation key is stable per order + method
  * (`prepaid-<orderId>`), and the stores replay the persisted
@@ -73,13 +89,22 @@ export interface PrepaidOrderRef {
 }
 
 export type InitiatePrepaidResult = {
-  status: "initiated" | "not_configured" | "failed";
+  status: "initiated" | "not_configured" | "failed" | "manual_verification";
   url?: string;
   provider?: string;
   message?: string;
+  /** Manual methods (Rocket): what the customer must do next. The
+   *  merchant number is a receive-only number shown at checkout —
+   *  never a credential. Present only with "manual_verification". */
+  manual?: {
+    method: string;
+    merchantNumber: string;
+    accountName: string | null;
+    verification: "manual";
+  };
 };
 
-const NO_ADAPTER_METHODS = new Set(["aamarpay", "shurjopay", "rocket", "upay", "stripe", "paypal"]);
+const NO_ADAPTER_METHODS = new Set(["aamarpay", "shurjopay", "stripe", "paypal"]);
 
 function appBaseUrl(): string {
   return (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -107,6 +132,98 @@ export async function initiatePrepaidPayment(order: PrepaidOrderRef): Promise<In
         status: "not_configured",
         provider: method,
         message: `No payment gateway adapter exists for ${method} yet — the order stands, payment must be collected manually.`,
+      };
+    }
+    if (method === "rocket") {
+      // ADV-4 remainder: Rocket is a MANUAL method — no hosted
+      // initiation exists. "Initiating" a Rocket order means handing
+      // the customer the merchant number + the TrxID submission step;
+      // the payment counts only after staff verify the TrxID in the
+      // review queue (src/payments/rocket-manual.ts).
+      const { getRocketManualConfig } = await import("./rocket-manual");
+      const rocketConfig = await getRocketManualConfig();
+      if (!rocketConfig.configured || rocketConfig.merchantNumber === null) {
+        return {
+          status: "not_configured",
+          provider: method,
+          message:
+            "Rocket manual payment is not configured in Admin > Settings > Payments (missing: " +
+            rocketConfig.missingFields.join(", ") +
+            ") — the order stands, payment must be collected manually.",
+        };
+      }
+      return {
+        status: "manual_verification",
+        provider: method,
+        manual: {
+          method: "rocket",
+          merchantNumber: rocketConfig.merchantNumber,
+          accountName: rocketConfig.accountName,
+          verification: "manual",
+        },
+        message:
+          "Rocket is a manual-verification method: the customer sends money to the merchant Rocket number and submits the TrxID; the payment counts only after staff verify it — nothing is auto-confirmed.",
+      };
+    }
+    if (method === "upay") {
+      // ADV-4 remainder: the REAL Upay adapter serves both provider
+      // environments (there is no app-simulated Upay gateway), so
+      // this branch runs before the sandbox-membership gate below.
+      // Same live-guard semantics as the other live adapters:
+      // disabled or incomplete credentials → not_configured naming
+      // the missing fields, never a fake checkout.
+      const upayEnabled = (await getSetting("payment.upay.enabled")) === "true";
+      if (!upayEnabled) {
+        return {
+          status: "not_configured",
+          provider: method,
+          message:
+            "upay is not enabled in Admin > Settings > Payments — the order stands, payment must be collected manually.",
+        };
+      }
+      const { buildConfiguredPaymentGatewayFromSettings, diagnosePaymentProviderFromSettings } =
+        await import("./live-gateways");
+      const upayGateway = await buildConfiguredPaymentGatewayFromSettings("upay");
+      if (upayGateway === null) {
+        const diagnosis = await diagnosePaymentProviderFromSettings("upay");
+        const missing = (diagnosis.missingFields ?? [])
+          .map((f) => `payment.upay.${f}`)
+          .join(", ");
+        return {
+          status: "not_configured",
+          provider: method,
+          message:
+            "upay's merchant credentials are incomplete in Admin > Settings > Payments" +
+            (missing ? ` (missing: ${missing})` : "") +
+            " — initiation refused. The order stands; collect manually or complete the credentials.",
+        };
+      }
+      const upayMode = (await getSetting("payment.upay.mode")) ?? "sandbox";
+      const upayBase = appBaseUrl();
+      const upayResult = await upayGateway.initiate({
+        orderId: order.id,
+        amountPoisha: order.totalPoisha,
+        customerPhone: order.customerPhone,
+        returnUrl: `${upayBase}/api/v1/public/payments/upay/callback`,
+        cancelUrl: `${upayBase}/track`,
+        idempotencyKey: `prepaid-${order.id}`,
+      });
+      if (upayResult.status === "FAILED" || !upayResult.redirectUrl) {
+        return {
+          status: "failed",
+          provider: method,
+          message:
+            `Upay initiation for order ${order.orderNo} did not produce a checkout URL (attempt status ${upayResult.status}) — the order stands; collect manually or retry initiation.`,
+        };
+      }
+      return {
+        status: "initiated",
+        url: upayResult.redirectUrl,
+        provider: method,
+        message:
+          upayMode === "live"
+            ? `LIVE Upay initiation for order ${order.orderNo}: real Upay hosted checkout — money moves when the customer completes payment.`
+            : `Upay SANDBOX initiation for order ${order.orderNo}: Upay's own test environment (test money, no real funds move) — this is not the app-simulated sandbox.`,
       };
     }
     if (!(SANDBOX_PAYMENT_METHODS as readonly string[]).includes(method)) {

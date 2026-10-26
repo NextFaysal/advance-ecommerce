@@ -1,8 +1,9 @@
 /**
  * Settings-driven LIVE payment gateway resolution — ADV-4 (doc 22).
  *
- * ONE resolver for the live adapters (SSLCommerz + Nagad; bKash has
- * its own slice). Nobody constructs a live gateway anywhere else.
+ * ONE resolver for the live adapters (SSLCommerz + Nagad + Upay;
+ * bKash has its own slice). Nobody constructs a live gateway
+ * anywhere else.
  *
  * A method counts as CONFIGURED only when BOTH hold:
  *   - `payment.<method>.enabled` is "true" (the admin's on/off
@@ -18,6 +19,16 @@
  *                   merchant_private_key, nagad_public_key
  *                   (PEM strings; merchant_private_key is encrypted
  *                   at rest by the settings store's secret rule)
+ *       upay:       merchant_id, merchant_key, merchant_code
+ *                   (merchant_key is encrypted at rest via
+ *                   EXACT_SECRET_KEYS in src/lib/settings.ts — its
+ *                   name carries no secret suffix. Optional profile
+ *                   fields merchant_name / merchant_mobile /
+ *                   merchant_city / merchant_category_code /
+ *                   server_ip and an api_base_url override ride
+ *                   along when present. ⚠️ The Upay wire format is
+ *                   UNVERIFIED — see src/integrations/upay/
+ *                   provider-http.ts before enabling live mode.)
  *
  * `payment.<method>.mode` selects the provider environment the
  * adapter points at ("sandbox" = the provider's own test
@@ -42,10 +53,11 @@ import {
   type SslCommerzAdapterOptions,
 } from "../integrations/sslcommerz";
 import { createNagadGateway, type NagadAdapterOptions } from "../integrations/nagad";
+import { createUpayGateway, type UpayAdapterOptions } from "../integrations/upay";
 
-export type LivePaymentMethod = "sslcommerz" | "nagad";
+export type LivePaymentMethod = "sslcommerz" | "nagad" | "upay";
 
-export const LIVE_PAYMENT_METHODS: readonly LivePaymentMethod[] = ["sslcommerz", "nagad"];
+export const LIVE_PAYMENT_METHODS: readonly LivePaymentMethod[] = ["sslcommerz", "nagad", "upay"];
 
 export interface PaymentSettingsReader {
   /** Effective setting value (DB -> env -> default), or null. */
@@ -73,6 +85,7 @@ export interface PaymentProviderDiagnosis {
 export const LIVE_PAYMENT_REQUIRED_FIELDS: Record<LivePaymentMethod, readonly string[]> = {
   sslcommerz: ["store_id", "store_password"],
   nagad: ["merchant_id", "account_number", "merchant_private_key", "nagad_public_key"],
+  upay: ["merchant_id", "merchant_key", "merchant_code"],
 };
 
 /** Field lookup accepting the alternate spelling other admin tools
@@ -127,7 +140,11 @@ export async function diagnosePaymentProvider(
 export async function buildConfiguredPaymentGateway(
   reader: PaymentSettingsReader,
   method: LivePaymentMethod,
-  opts: { sslcommerz?: SslCommerzAdapterOptions; nagad?: NagadAdapterOptions } = {},
+  opts: {
+    sslcommerz?: SslCommerzAdapterOptions;
+    nagad?: NagadAdapterOptions;
+    upay?: UpayAdapterOptions;
+  } = {},
 ): Promise<PaymentGateway | null> {
   const diagnosis = await diagnosePaymentProvider(reader, method);
   if (!diagnosis.configured) return null;
@@ -139,6 +156,29 @@ export async function buildConfiguredPaymentGateway(
         storePassword: fieldValue(fields, "store_password"),
       },
       { mode: diagnosis.mode, ...(opts.sslcommerz ?? {}) },
+    );
+  }
+  if (method === "upay") {
+    const optional = (field: string): string | undefined => {
+      const value = fieldValue(fields, field);
+      return value === "" ? undefined : value;
+    };
+    return createUpayGateway(
+      {
+        merchantId: fieldValue(fields, "merchant_id"),
+        merchantKey: fieldValue(fields, "merchant_key"),
+        merchantCode: fieldValue(fields, "merchant_code"),
+        merchantName: optional("merchant_name"),
+        merchantMobile: optional("merchant_mobile"),
+        merchantCity: optional("merchant_city"),
+        merchantCategoryCode: optional("merchant_category_code"),
+        serverIp: optional("server_ip"),
+      },
+      {
+        mode: diagnosis.mode,
+        baseUrl: optional("api_base_url"),
+        ...(opts.upay ?? {}),
+      },
     );
   }
   return createNagadGateway(

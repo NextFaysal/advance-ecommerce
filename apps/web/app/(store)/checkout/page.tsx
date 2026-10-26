@@ -55,7 +55,8 @@ import {
 import { parseAddress } from "../../../src/bd/address-parser";
 import { useDigitText } from "@/components/ui/numerals";
 import { newIdempotencyKey, normalizeBdPhone, validateCheckoutForm } from "../../../src/checkout";
-import { BkashMark, CodMark, NagadMark, SslCommerzMark } from "@/components/brand-marks";
+import { BkashMark, CodMark, NagadMark, RocketMark, SslCommerzMark, UpayMark } from "@/components/brand-marks";
+import RocketPaymentPanel from "./RocketPaymentPanel";
 import { Icon } from "@/components/ui/icon";
 import OrderOtpPanel from "@/storefront-ux/order-otp-panel";
 import { EmiCheckoutNote } from "@/marketing/components/EmiCheckoutNote";
@@ -752,7 +753,17 @@ export default function CheckoutPage() {
               নম্বরসহ ওয়ারেন্টি কার্ড আপনার অ্যাকাউন্টে দেখা যাবে।
             </p>
           ) : null}
-          {placedOrder.paymentMethod === "cod" ? (
+          {placedOrder.paymentMethod === "rocket" ? (
+            // Rocket is a MANUAL method (ADV-4 remainder): no hosted
+            // step exists — the panel shows the merchant number and
+            // takes the customer's TrxID submission; staff verify it
+            // in the review queue before the payment counts.
+            <RocketPaymentPanel
+              orderId={placedOrder.id}
+              totalPoisha={placedOrder.totalPoisha}
+              customerPhone={placedOrder.phone}
+            />
+          ) : placedOrder.paymentMethod === "cod" ? (
             <p className="mt-4 text-sm leading-6 text-text-muted">
               পণ্য হাতে পেয়ে ডেলিভারি ম্যানকে <strong>{digits(formatBdt(placedOrder.totalPoisha))}</strong> পরিশোধ করুন।
             </p>
@@ -1305,6 +1316,13 @@ export default function CheckoutPage() {
                   <BkashMark />
                 ) : m.method === "nagad" ? (
                   <NagadMark />
+                ) : m.method === "rocket" ? (
+                  <span className="flex items-center gap-2">
+                    <RocketMark />
+                    <span className="text-xs font-medium text-text-muted">ম্যানুয়াল যাচাই</span>
+                  </span>
+                ) : m.method === "upay" ? (
+                  <UpayMark />
                 ) : m.method === "sslcommerz" ? (
                   <SslCommerzMark />
                 ) : (

@@ -1,14 +1,14 @@
-// Admin shipment booking — Agent 9, Step 22; ADV-5 part 1 resolver.
+// Admin shipment booking — Agent 9, Step 22; ADV-5 resolver.
 // POST /api/v1/admin/shipments (shipments.book)
 // Body follows CreateShipmentInput (../courier.ts): orderId, provider
 // (steadfast|pathao|redx), address, codAmountPoisha (integer
 // poisha), weightGrams, itemCount, note, idempotencyKey.
-// Steadfast resolves through src/integrations/steadfast-resolver.ts:
-// when courier.steadfast is enabled AND carries api_key + secret_key
-// in encrypted Settings, the booking is REAL (live Steadfast API) and
-// the response says so (meta.live: true, meta.sandbox: false). In
-// every other case — and for pathao/redx, which have no live adapter
-// yet — the booking is the sandbox provider's: the tracking id is
+// Each provider resolves through its own Settings-driven resolver
+// (src/integrations/<provider>-resolver.ts): when courier.<provider>
+// is enabled AND carries its full credential set in encrypted
+// Settings, the booking is REAL (live provider API) and the response
+// says so (meta.live: true, meta.sandbox: false). In every other case
+// the booking is the sandbox provider's: the tracking id is
 // SBX-prefixed, no real courier is contacted, and meta.sandbox stays
 // true. Replaying the same idempotencyKey returns the original
 // shipment instead of booking twice.
@@ -18,9 +18,12 @@ import { requireAdminPermission } from "@/integrations/sandbox/admin-auth";
 import {
   createSandboxCourierProvider,
   SANDBOX_COURIER_PROVIDERS,
+  type SandboxCourierProvider,
 } from "@/integrations/sandbox/courier-provider";
 import type { CourierProvider } from "@/integrations/courier";
 import { resolveSteadfastCourier } from "@/integrations/steadfast-resolver";
+import { resolvePathaoCourier } from "@/integrations/pathao-resolver";
+import { resolveRedxCourier } from "@/integrations/redx-resolver";
 import { getIntegrationConfigWithSecrets, getSetting } from "@/lib/settings";
 
 const bodySchema = z.object({
@@ -61,23 +64,27 @@ export async function POST(req: Request) {
   try {
     let provider: CourierProvider = createSandboxCourierProvider(parsed.data.provider);
     let live = false;
-    if (parsed.data.provider === "steadfast") {
-      // ADV-5 part 1: configured live Steadfast wins; anything else
-      // (not enabled, credentials missing, settings unreadable) keeps
-      // the sandbox provider — and the response keeps saying so.
-      const resolved = await resolveSteadfastCourier({
-        getSetting: (key) => getSetting(key),
-        getProviderSecrets: (name) => getIntegrationConfigWithSecrets("courier", name),
-      }).catch(() => null);
-      if (resolved !== null) {
-        provider = resolved.provider;
-        live = true;
-      }
+    // ADV-5: a configured live adapter wins; anything else (not
+    // enabled, credentials missing, settings unreadable) keeps the
+    // sandbox provider — and the response keeps saying so.
+    const reader = {
+      getSetting: (key: string) => getSetting(key),
+      getProviderSecrets: (name: string) => getIntegrationConfigWithSecrets("courier", name),
+    };
+    const liveResolvers: Record<SandboxCourierProvider, () => Promise<{ provider: CourierProvider } | null>> = {
+      steadfast: () => resolveSteadfastCourier(reader),
+      pathao: () => resolvePathaoCourier(reader),
+      redx: () => resolveRedxCourier(reader),
+    };
+    const resolved = await liveResolvers[parsed.data.provider]().catch(() => null);
+    if (resolved !== null) {
+      provider = resolved.provider;
+      live = true;
     }
     const result = await provider.createShipment(parsed.data);
     return NextResponse.json({
       data: result,
-      meta: live ? { sandbox: false, live: true, provider: "steadfast" } : { sandbox: true },
+      meta: live ? { sandbox: false, live: true, provider: parsed.data.provider } : { sandbox: true },
     });
   } catch (error) {
     return NextResponse.json(

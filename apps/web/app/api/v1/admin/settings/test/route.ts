@@ -16,6 +16,11 @@ import {
   probeSteadfastConnection,
   type SteadfastSettingsReader,
 } from "@/integrations/steadfast-resolver";
+import {
+  probePathaoConnection,
+  type PathaoSettingsReader,
+} from "@/integrations/pathao-resolver";
+import { probeRedxConnection, type RedxSettingsReader } from "@/integrations/redx-resolver";
 
 // POST /api/v1/admin/settings/test — contract in src/integrations/sandbox/SETTINGS-API-CONTRACT.md
 // Sandbox: succeeds without any credential, reported as sandbox (simulated, no real provider call).
@@ -29,6 +34,10 @@ import {
 // Steadfast (ADV-5): the real adapter EXISTS, so the courier/steadfast branch is a
 // REAL balance probe against the live API: unconfigured -> 422 naming the missing
 // courier.steadfast.* fields, provider rejection -> 502 with the provider's code.
+// Pathao / RedX (ADV-5 remainder): the real adapters EXIST too, so their
+// courier branches are REAL probes (Pathao: OAuth token grant + stores list;
+// RedX: delivery-area list): unconfigured -> 422 naming the missing
+// courier.<provider>.* fields, provider rejection -> 502 with the provider's code.
 // No credential value is ever returned or logged.
 const bodySchema = z.object({
   category: z.enum(["payment", "courier", "sms"]),
@@ -124,6 +133,68 @@ async function testSteadfastCourier() {
   });
 }
 
+/** ADV-5 real token + stores probe for Pathao (see header pattern). */
+async function testPathaoCourier() {
+  const reader: PathaoSettingsReader = {
+    getSetting: (key) => getSetting(key),
+    getProviderSecrets: (name) => getIntegrationConfigWithSecrets("courier", name),
+  };
+  const probe = await probePathaoConnection(reader);
+  if (!probe.ok) {
+    const status = probe.code === "PATHAO_NOT_CONFIGURED" ? 422 : 502;
+    return NextResponse.json(
+      {
+        error: {
+          code: probe.code,
+          message: probe.message,
+          details: { missingFields: probe.missingFields },
+        },
+      },
+      { status },
+    );
+  }
+  return NextResponse.json({
+    data: {
+      ok: true,
+      status: "connected",
+      provider: "pathao",
+      storeCount: probe.storeCount,
+      message: probe.message,
+    },
+  });
+}
+
+/** ADV-5 real delivery-area probe for RedX (see header pattern). */
+async function testRedxCourier() {
+  const reader: RedxSettingsReader = {
+    getSetting: (key) => getSetting(key),
+    getProviderSecrets: (name) => getIntegrationConfigWithSecrets("courier", name),
+  };
+  const probe = await probeRedxConnection(reader);
+  if (!probe.ok) {
+    const status = probe.code === "REDX_NOT_CONFIGURED" ? 422 : 502;
+    return NextResponse.json(
+      {
+        error: {
+          code: probe.code,
+          message: probe.message,
+          details: { missingFields: probe.missingFields },
+        },
+      },
+      { status },
+    );
+  }
+  return NextResponse.json({
+    data: {
+      ok: true,
+      status: "connected",
+      provider: "redx",
+      areaCount: probe.areaCount,
+      message: probe.message,
+    },
+  });
+}
+
 export async function POST(req: Request) {
   const token = cookies().get("admin_session")?.value;
   if (!token) {
@@ -201,6 +272,34 @@ export async function POST(req: Request) {
     } catch {
       return NextResponse.json(
         { error: { code: "DB_NOT_READY", message: "Steadfast settings could not be read (Settings store unavailable)." } },
+        { status: 503 },
+      );
+    }
+  }
+  if (category === "courier" && provider === "pathao") {
+    // ADV-5 remainder: the real Pathao adapter EXISTS, so this is a
+    // REAL token-grant + stores probe — never the generic sandbox
+    // pass below. Unconfigured -> 422 naming the missing Settings
+    // fields (names only); provider rejection -> 502 with its code.
+    try {
+      return await testPathaoCourier();
+    } catch {
+      return NextResponse.json(
+        { error: { code: "DB_NOT_READY", message: "Pathao settings could not be read (Settings store unavailable)." } },
+        { status: 503 },
+      );
+    }
+  }
+  if (category === "courier" && provider === "redx") {
+    // ADV-5 remainder: the real RedX adapter EXISTS, so this is a
+    // REAL delivery-area probe — never the generic sandbox pass below.
+    // Unconfigured -> 422 naming the missing Settings fields (names
+    // only); provider rejection -> 502 with its code.
+    try {
+      return await testRedxCourier();
+    } catch {
+      return NextResponse.json(
+        { error: { code: "DB_NOT_READY", message: "RedX settings could not be read (Settings store unavailable)." } },
         { status: 503 },
       );
     }

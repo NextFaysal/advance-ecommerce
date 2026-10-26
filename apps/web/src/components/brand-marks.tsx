@@ -112,6 +112,17 @@ export function RocketMark(props: MarkProps) {
   );
 }
 
+export function UpayMark(props: MarkProps) {
+  return (
+    <Chip
+      name="Upay"
+      color="#00875A"
+      glyph={["M12 3l6 7h-4v11h-4V10H6l6-7z"]}
+      {...props}
+    />
+  );
+}
+
 export function SslCommerzMark(props: MarkProps) {
   return (
     <Chip

@@ -1,10 +1,18 @@
 /**
- * Live Courier Adapters for Bangladesh — Steadfast, Pathao, RedX.
+ * ⚠️ DO NOT WIRE — ORPHANED v2-release leftover (kept for reference only).
  *
- * Implements direct HTTP dispatching to carrier APIs with:
- * - Real credential resolution from environment or admin settings
- * - Full CourierProvider interface compliance
- * - BDT/Poisha conversions (carrier APIs expect integer Taka, we store Poisha)
+ * This file is NOT a live adapter: it contains fabricated success
+ * rates (93–95%), fake fallback bookings and other dishonest stubs,
+ * and it has NO consumers. The real live adapters are
+ * src/integrations/steadfast.ts, pathao.ts and redx.ts (with their
+ * *-resolver.ts companions). Never import this file from production
+ * code — see the wave-44 merge accounting and the wave-49 courier
+ * report.
+ *
+ * (Original header: "Live Courier Adapters for Bangladesh —
+ * Steadfast, Pathao, RedX. Implements direct HTTP dispatching to
+ * carrier APIs with real credential resolution..." — inaccurate,
+ * retained only as provenance.)
  */
 import type {
   CourierProvider,

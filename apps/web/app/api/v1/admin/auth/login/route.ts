@@ -9,6 +9,9 @@ import {
   signPending2fa,
   staffLoginSchema,
 } from "@/lib/auth";
+import { writeAudit } from "@/lib/audit";
+import { getSetting } from "@/lib/settings";
+import { isIpAllowed, loadIpRules } from "@/security/ip-rules";
 
 // POST /api/v1/admin/auth/login — contract used by app/admin/login/page.tsx
 // Returns { data: { status: "ok" | "needs_2fa" } } on success,
@@ -30,6 +33,33 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { error: { code: "RATE_LIMITED", message: "Too many attempts. Please try again later." } },
       { status: 429 },
+    );
+  }
+  // ADV-28: staff-login IP rules (Setting doc `security.ip_rules`,
+  // managed at /admin/security) are enforced BEFORE credential
+  // verification. The refusal is the same generic shape as every other
+  // login failure — it never reveals that an IP rule stopped the
+  // attempt. loadIpRules fails open (empty rules) when the settings
+  // read breaks, so a broken store can never lock every staff member
+  // out; the blocked attempt still counts against the rate limit above
+  // (so a flood of blocked tries degrades to 429s, not audit writes)
+  // and is audited under a system actor (actorId null).
+  const ipRules = await loadIpRules(getSetting);
+  if (!isIpAllowed(ip, ipRules)) {
+    recordLoginAttempt(rateKey);
+    await writeAudit({
+      actorId: null,
+      action: "auth.login_blocked",
+      entityType: "StaffLogin",
+      entityId: parsed.data.identifier,
+      afterJson: { ip },
+      reason: "ip_blocked",
+      ip,
+      userAgent: req.headers.get("user-agent") ?? undefined,
+    });
+    return NextResponse.json(
+      { error: { code: "FORBIDDEN", message: "Login failed. Please try again." } },
+      { status: 403 },
     );
   }
   const result = await authenticateStaff(parsed.data, {

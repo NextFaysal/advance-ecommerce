@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { b2bGuardError, requireB2bAdmin } from "@/b2b/guard";
 import { b2bStore } from "@/b2b/db-store";
+import { readB2bRequestMetaMap } from "@/b2b/requests";
 import { createQuotationSchema, type Quotation } from "@/b2b/types";
 import { effectiveQuotationStatus, quotationTotalPoisha, quotationTransition } from "@/b2b/service";
 
@@ -13,9 +14,28 @@ export async function GET() {
   const guard = await requireB2bAdmin("b2b.view");
   if (!guard.ok) return NextResponse.json(b2bGuardError(guard), { status: guard.status });
   const today = new Date().toISOString().slice(0, 10);
-  const quotations = (await b2bStore.listQuotations()).map((q) => ({
-    ...q, effectiveStatus: effectiveQuotationStatus(q, today),
-  }));
+  const [stored, requestMeta] = await Promise.all([
+    b2bStore.listQuotations(),
+    readB2bRequestMetaMap(),
+  ]);
+  const quotations = stored.map((q) => {
+    const request = requestMeta[q.id] ?? null;
+    return {
+      ...q,
+      // Buyer RFQs are distinctly marked: `source` + the request
+      // marker (note / desired date / channel). Staff-created
+      // quotations read STAFF_CREATED with request: null.
+      source: request !== null ? "BUYER_RFQ" : "STAFF_CREATED",
+      request,
+      // A DRAFT buyer RFQ is a request, not an offer — its stored
+      // validUntil is a placeholder, so it never reads EXPIRED
+      // while waiting for staff pricing (src/b2b/requests.ts).
+      effectiveStatus:
+        request !== null && q.status === "DRAFT"
+          ? "DRAFT"
+          : effectiveQuotationStatus(q, today),
+    };
+  });
   return NextResponse.json({ data: { quotations }, meta: { persistence: "database" } });
 }
 

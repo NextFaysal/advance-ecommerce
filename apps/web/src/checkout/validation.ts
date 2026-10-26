@@ -59,7 +59,7 @@ export const checkoutFormSchema = z.object({
   address: bdAddressSchema,
   note: z.string().max(500).optional(),
   shippingMethod: z.enum(["inside_dhaka", "outside_dhaka", "pickup"]),
-  paymentMethod: z.enum(["cod", "bkash", "nagad", "sslcommerz", "aamarpay", "shurjopay"]),
+  paymentMethod: z.enum(["cod", "bkash", "nagad", "rocket", "upay", "sslcommerz", "aamarpay", "shurjopay"]),
   items: z.array(checkoutItemSchema).min(1, "Cart khali — age product add korun"),
   /** Idempotency key: a UUID v4 generated once per checkout attempt. */
   idempotencyKey: z.string().uuid("Idempotency key UUID hote hobe"),

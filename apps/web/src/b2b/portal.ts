@@ -31,8 +31,15 @@ import { prisma } from "@advance-ecommerce/db";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import type { PublicCustomer } from "@/customer-auth/auth";
 import { b2bStore } from "./db-store";
+import { readB2bRequestMetaMap } from "./requests";
 import { checkCredit, effectiveQuotationStatus, quotationTransition } from "./service";
-import type { B2bCustomer, Quotation, QuotationLine, QuotationStatus } from "./types";
+import type {
+  B2bCustomer,
+  B2bQuotationRequestMeta,
+  Quotation,
+  QuotationLine,
+  QuotationStatus,
+} from "./types";
 import { convertQuotation, type ConvertOptions } from "@/orders/convert";
 
 export const B2B_PORTAL_FLAG = "module.b2b_portal";
@@ -95,6 +102,9 @@ export interface B2bPortalQuotation {
   convertedOrderId: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Buyer-RFQ marker from the `b2b.rfq_requests` Setting doc
+   *  (src/b2b/requests.ts); null for staff-created quotations. */
+  request: B2bQuotationRequestMeta | null;
 }
 
 export interface B2bPortalOrder {
@@ -134,7 +144,7 @@ function toPortalQuotation(row: {
   convertedOrderId: string | null;
   createdAt: Date;
   updatedAt: Date;
-}, todayIso: string): B2bPortalQuotation {
+}, todayIso: string, request: B2bQuotationRequestMeta | null = null): B2bPortalQuotation {
   const lines = Array.isArray(row.itemsJson) ? (row.itemsJson as unknown as QuotationLine[]) : [];
   const status = QUOTATION_STATUSES.includes(row.status as QuotationStatus)
     ? (row.status as QuotationStatus)
@@ -155,22 +165,32 @@ function toPortalQuotation(row: {
     lines: base.lines,
     totalPoisha: base.totalPoisha,
     status: base.status,
-    effectiveStatus: effectiveQuotationStatus(base, todayIso),
+    // A buyer RFQ in DRAFT is a REQUEST, not an offer — its stored
+    // validUntil is a placeholder (src/b2b/requests.ts), so it never
+    // reads as EXPIRED while it waits for staff pricing.
+    effectiveStatus:
+      request !== null && base.status === "DRAFT"
+        ? "DRAFT"
+        : effectiveQuotationStatus(base, todayIso),
     validUntil: base.validUntil,
     convertedOrderId: base.convertedOrderId ?? null,
     createdAt: base.createdAt,
     updatedAt: base.updatedAt,
+    request,
   };
 }
 
 export async function listB2bPortalQuotations(profile: B2bCustomer): Promise<B2bPortalQuotation[]> {
   const todayIso = new Date().toISOString().slice(0, 10);
-  const rows = await prisma.quotation.findMany({
-    where: { b2bCustomerId: profile.id, deletedAt: null },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
-  return rows.map((r) => toPortalQuotation(r, todayIso));
+  const [rows, requestMeta] = await Promise.all([
+    prisma.quotation.findMany({
+      where: { b2bCustomerId: profile.id, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
+    readB2bRequestMetaMap(),
+  ]);
+  return rows.map((r) => toPortalQuotation(r, todayIso, requestMeta[r.id] ?? null));
 }
 
 /** One quotation, ownership-checked: another account's id reads as null. */
@@ -182,7 +202,8 @@ export async function getB2bPortalQuotation(
     where: { id: quotationId, b2bCustomerId: profile.id, deletedAt: null },
   });
   if (!row) return null;
-  return toPortalQuotation(row, new Date().toISOString().slice(0, 10));
+  const requestMeta = await readB2bRequestMetaMap();
+  return toPortalQuotation(row, new Date().toISOString().slice(0, 10), requestMeta[row.id] ?? null);
 }
 
 export async function listB2bPortalOrders(customerId: string): Promise<B2bPortalOrder[]> {

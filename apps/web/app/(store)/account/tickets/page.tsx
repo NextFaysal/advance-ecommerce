@@ -42,7 +42,11 @@ export default async function AccountTicketsPage() {
       <h1 className="mt-2 font-display text-2xl font-bold text-text-main">সাপোর্ট টিকিট</h1>
       <p className="mt-1.5 text-sm leading-6 text-text-muted">
         অর্ডার বা কেনাকাটা নিয়ে কোনো সমস্যা থাকলে টিকিট খুলুন — আমাদের টিম এখানেই উত্তর দেবে।
-        প্রতিটি টিকিটের সব বার্তা এক জায়গায় থাকে।
+        প্রতিটি টিকিটের সব বার্তা এক জায়গায় থাকে। টিকিট খোলার আগে{" "}
+        <a href="/kb" className="font-semibold text-brand-700 hover:underline">
+          সাহায্য কেন্দ্র / Knowledge base
+        </a>
+        -এ সাধারণ প্রশ্নের উত্তর খুঁজে দেখতে পারেন।
       </p>
 
       <section
@@ -93,6 +97,13 @@ export default async function AccountTicketsPage() {
         aria-label="নতুন টিকিট"
       >
         <h2 className="text-base font-bold text-text-main">নতুন টিকিট খুলুন</h2>
+        <p className="mt-1.5 text-xs leading-5 text-text-muted">
+          হয়তো আপনার প্রশ্নের উত্তর{" "}
+          <a href="/kb" className="font-semibold text-brand-700 hover:underline">
+            সাহায্য কেন্দ্রে
+          </a>{" "}
+          আগেই আছে — একবার দেখে নিন।
+        </p>
         <div className="mt-4">
           <CreateTicketForm orders={orders.map((o) => ({ id: o.id, orderNo: o.orderNo }))} />
         </div>

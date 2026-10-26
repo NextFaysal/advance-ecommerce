@@ -14,6 +14,9 @@
  *  - Google renders ONLY when the server says it is configured
  *    (googleEnabled prop from the /account server page) — an
  *    unconfigured install shows no dead button.
+ *  - Facebook likewise (facebookEnabled prop) — it needs its own
+ *    Meta app credentials (auth.facebook.* in Settings), separate
+ *    from any Page/WhatsApp configuration.
  * Errors shown are the API's generic messages — the API never
  * reveals whether a phone number is registered.
  */
@@ -60,7 +63,13 @@ async function postJson(path: string, payload: unknown): Promise<{ ok: boolean; 
   return { ok: r.ok, message: r.message };
 }
 
-export default function AuthForms({ googleEnabled = false }: { googleEnabled?: boolean }) {
+export default function AuthForms({
+  googleEnabled = false,
+  facebookEnabled = false,
+}: {
+  googleEnabled?: boolean;
+  facebookEnabled?: boolean;
+}) {
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [method, setMethod] = useState<"otp" | "password">("otp");
@@ -295,20 +304,33 @@ export default function AuthForms({ googleEnabled = false }: { googleEnabled?: b
             </form>
           )}
 
-          {googleEnabled ? (
+          {googleEnabled || facebookEnabled ? (
             <>
               <div className="my-5 flex items-center gap-3 text-xs font-medium text-text-muted">
                 <span className="h-px flex-1 bg-border" />
                 অথবা
                 <span className="h-px flex-1 bg-border" />
               </div>
-              <a
-                href="/api/v1/public/account/auth/google/start"
-                className="flex h-12 w-full items-center justify-center gap-2.5 rounded-xl border border-border bg-card text-sm font-semibold text-text-main shadow-sm transition hover:bg-surface-2"
-              >
-                <span aria-hidden="true" className="text-base font-bold text-brand-700">G</span>
-                Google দিয়ে লগইন করুন
-              </a>
+              <div className="space-y-3">
+                {googleEnabled ? (
+                  <a
+                    href="/api/v1/public/account/auth/google/start"
+                    className="flex h-12 w-full items-center justify-center gap-2.5 rounded-xl border border-border bg-card text-sm font-semibold text-text-main shadow-sm transition hover:bg-surface-2"
+                  >
+                    <span aria-hidden="true" className="text-base font-bold text-brand-700">G</span>
+                    Google দিয়ে লগইন করুন
+                  </a>
+                ) : null}
+                {facebookEnabled ? (
+                  <a
+                    href="/api/v1/public/account/auth/facebook/start"
+                    className="flex h-12 w-full items-center justify-center gap-2.5 rounded-xl border border-border bg-card text-sm font-semibold text-text-main shadow-sm transition hover:bg-surface-2"
+                  >
+                    <span aria-hidden="true" className="text-base font-bold" style={{ color: "#1877F2" }}>f</span>
+                    Facebook দিয়ে লগইন করুন
+                  </a>
+                ) : null}
+              </div>
             </>
           ) : null}
         </>

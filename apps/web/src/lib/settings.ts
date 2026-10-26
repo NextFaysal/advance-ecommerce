@@ -109,12 +109,30 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   // the login page does not render the Google button at all.
   "auth.google.client_id": { category: "general", value: "", isPublic: false },
   "auth.google.client_secret": { category: "general", value: "", isPublic: false },
+  // Facebook customer sign-in (ADV-15 remainder —
+  // src/customer-auth/facebook.ts). app_secret is a secret by the
+  // suffix rule in isSecretSettingKey() ("secret" is a listed
+  // suffix) and is stored encrypted; the app id is plain config.
+  // BOTH default empty = NOT configured: the Facebook start route
+  // answers 503 and the login page does not render the button.
+  // NOTE: these are the *consumer Facebook Login* credentials of a
+  // Meta app — separate from the meta.* Page/WhatsApp keys above.
+  "auth.facebook.app_id": { category: "general", value: "", isPublic: false },
+  "auth.facebook.app_secret": { category: "general", value: "", isPublic: false },
   // VAT rate in basis points (1500 = 15%). EMPTY default = NOT
   // configured — there is deliberately no built-in rate: order creation
   // records a VAT split (Order.vatPoisha / vatRateBps) only while this
   // key holds a valid rate in the DB; the ERP sales-VAT report reads
   // only orders that carry a recorded split.
   "accounting.vat_rate_bps": { category: "accounting", value: "", isPublic: false },
+  // Support ticket SLA targets, in HOURS (ADV-16 remainder —
+  // src/support/sla.ts). First-response = creation → first STAFF
+  // message; resolution = creation → CLOSED. Computed at READ time
+  // from the ticket row + message thread (no background job, no
+  // stored timer), so these values apply retroactively to every
+  // open ticket the moment they change.
+  "support.sla_first_response_hours": { category: "general", value: "4", isPublic: false },
+  "support.sla_resolution_hours": { category: "general", value: "48", isPublic: false },
   // Call-center SLA thresholds, in minutes (C2 supervisor console). A
   // PENDING_ORDER confirmation task still unattempted this long after
   // creation is an SLA breach on the supervisor board; same for a
@@ -371,6 +389,9 @@ const SECRET_KEY_SUFFIXES = ["api_key", "secret", "password", "token", "private_
 const EXACT_SECRET_KEYS = new Set([
   "connectors.slack.webhook_url",
   "connectors.sheets.service_account_json",
+  // Upay merchant key (ADV-4): a gateway credential whose field
+  // name carries no secret suffix — encrypt it like one anyway.
+  "payment.upay.merchant_key",
 ]);
 
 export function isSecretSettingKey(key: string): boolean {

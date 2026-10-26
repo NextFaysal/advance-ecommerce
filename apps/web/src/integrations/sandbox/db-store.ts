@@ -336,6 +336,12 @@ interface ManualRowShape {
   reviewedById: string | null;
   reviewNote: string | null;
   submittedAt: Date;
+  /** Linked Payment parent when the submission's money is carried
+   *  by a PaymentAttempt (Rocket — src/payments/rocket-manual.ts);
+   *  null for the classic submission-only flow. Optional in the shape
+   *  so test fixtures that predate the link keep compiling; Prisma
+   *  rows always carry the column. */
+  paymentId?: string | null;
 }
 
 export function manualRowToSubmission(row: ManualRowShape): ManualTrxSubmission {
@@ -350,6 +356,7 @@ export function manualRowToSubmission(row: ManualRowShape): ManualTrxSubmission 
     reviewedById: row.reviewedById,
     reviewNote: row.reviewNote,
     submittedAt: row.submittedAt.toISOString(),
+    paymentId: row.paymentId ?? null,
   };
 }
 
@@ -370,6 +377,12 @@ export async function createManualTrxRow(input: {
   trxId: string;
   senderPhone: string;
   amountPoisha: number;
+  /** Link to the Payment parent whose PaymentAttempt carries this
+   *  submission's money (Rocket). Money-math aggregates count a
+   *  linked submission's amount via the Payment ONLY — see the
+   *  `paymentId: null` guards in orders/repository.ts, orders/
+   *  advance.ts, orders/refunds.ts and courier/order-sync.ts. */
+  paymentId?: string | null;
 }): Promise<ManualTrxSubmission> {
   const order = await requireOrderRef(input.orderRef);
   const row = await prisma.manualTrxSubmission.create({
@@ -381,9 +394,25 @@ export async function createManualTrxRow(input: {
       senderPhone: input.senderPhone,
       amountPoisha: input.amountPoisha,
       status: "PENDING" as PrismaManualStatus,
+      paymentId: input.paymentId ?? null,
     },
   });
   return manualRowToSubmission(row);
+}
+
+/** The PaymentAttempt that carries a Payment's money, if any. Used
+ *  by the Rocket review path to flip the attempt when its linked
+ *  manual-Trx submission is decided. */
+export async function findAttemptByPaymentId(
+  paymentId: string,
+): Promise<SandboxPaymentAttempt | null> {
+  const row = await prisma.paymentAttempt.findFirst({
+    where: { paymentId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  if (!row) return null;
+  return loadAttempt(row.id);
 }
 
 export async function getManualTrxById(id: string): Promise<ManualTrxSubmission | null> {

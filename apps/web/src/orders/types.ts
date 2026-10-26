@@ -34,7 +34,12 @@ export type PaymentMethod =
   | "card"
   | "sslcommerz"
   | "aamarpay"
-  | "shurjopay";
+  | "shurjopay"
+  // Wave 49 (ADV-4 remainder): Rocket (manual TrxID verification) and
+  // Upay (gateway) joined the checkout enum; the Prisma PaymentMethod
+  // enum already carries ROCKET/UPAY.
+  | "rocket"
+  | "upay";
 
 export type OrderItem = {
   variantId: string;

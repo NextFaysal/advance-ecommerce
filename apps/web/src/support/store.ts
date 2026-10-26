@@ -21,6 +21,7 @@ import { prisma } from "@advance-ecommerce/db";
 import { maskPhone } from "@/checkout/validation";
 import type { CreateTicketInput, TicketStatus } from "./schema";
 import { TICKET_STATUSES } from "./schema";
+import { computeTicketSla, loadSlaConfig, type TicketSla } from "./sla";
 
 /* ------------------------------ errors ------------------------------ */
 
@@ -61,6 +62,8 @@ export interface CustomerTicketDetail extends CustomerTicketSummary {
 export interface AdminTicketSummary extends CustomerTicketSummary {
   customerName: string;
   customerPhoneMasked: string;
+  /** Read-time SLA state (src/support/sla.ts) — admin surfaces only. */
+  sla: TicketSla;
 }
 
 export interface AdminTicketDetail extends AdminTicketSummary {
@@ -226,19 +229,55 @@ export async function getTicketForCustomer(
 
 /* ---------------------------- admin side ---------------------------- */
 
-/** Queue for staff. Optional status filter; newest activity first. */
-export async function listTicketsForAdmin(status?: TicketStatus): Promise<AdminTicketSummary[]> {
+/**
+ * Queue for staff. Optional status filter; newest activity first.
+ * Each row carries its read-time SLA state: the first staff reply is
+ * the earliest STAFF message per ticket (one groupBy over the page's
+ * ids), and `breachedOnly` filters on the computed state — note it
+ * filters within the newest-100 window this queue already loads, the
+ * same window the status tabs show.
+ */
+export async function listTicketsForAdmin(
+  status?: TicketStatus,
+  opts?: { breachedOnly?: boolean },
+): Promise<AdminTicketSummary[]> {
   const rows = await prisma.supportTicket.findMany({
     where: status ? { status } : {},
     orderBy: { updatedAt: "desc" },
     take: 100,
     include: { ...previewInclude, customer: { select: { name: true, phone: true } } },
   });
-  return rows.map((row) => ({
+  if (rows.length === 0) return [];
+
+  const [config, firstReplies] = await Promise.all([
+    loadSlaConfig(),
+    prisma.supportTicketMessage.groupBy({
+      by: ["ticketId"],
+      where: { ticketId: { in: rows.map((r) => r.id) }, authorType: "STAFF" },
+      _min: { createdAt: true },
+    }),
+  ]);
+  const firstReplyByTicket = new Map(
+    firstReplies.map((g) => [g.ticketId, g._min.createdAt ?? null]),
+  );
+  const now = new Date();
+
+  const summaries = rows.map((row) => ({
     ...summaryFromPreview(row),
     customerName: row.customer.name,
     customerPhoneMasked: maskPhone(row.customer.phone),
+    sla: computeTicketSla({
+      createdAt: row.createdAt,
+      status: asStatus(row.status),
+      firstStaffReplyAt: firstReplyByTicket.get(row.id) ?? null,
+      updatedAt: row.updatedAt,
+      config,
+      now,
+    }),
   }));
+  return opts?.breachedOnly
+    ? summaries.filter((s) => s.sla.state === "BREACHED")
+    : summaries;
 }
 
 /** Full thread for staff, or null when the ticket does not exist. */
@@ -254,10 +293,20 @@ export async function getTicketForAdmin(ticketId: string): Promise<AdminTicketDe
   });
   if (!row) return null;
   const messages = toMessages(row.messages);
+  // The thread is loaded in full here, so the first staff reply is
+  // read straight from it (messages are createdAt-ascending).
+  const config = await loadSlaConfig();
   return {
     ...toSummary(row, messages[messages.length - 1]?.body ?? null),
     customerName: row.customer.name,
     customerPhoneMasked: maskPhone(row.customer.phone),
+    sla: computeTicketSla({
+      createdAt: row.createdAt,
+      status: asStatus(row.status),
+      firstStaffReplyAt: row.messages.find((m) => m.authorType === "STAFF")?.createdAt ?? null,
+      updatedAt: row.updatedAt,
+      config,
+    }),
     messages,
   };
 }

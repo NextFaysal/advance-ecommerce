@@ -689,6 +689,12 @@ model Customer {
   // claim in src/customer-auth/google.ts) and looked up FIRST on
   // later sign-ins, so a changed Google email still finds the row.
   googleId            String?   @unique
+  // Facebook sign-in binding (ADV-15 remainder, 2026-10-26): the
+  // Facebook user id, with the SAME claim rules as googleId —
+  // stamped on the first verified-email match (one-time claim in
+  // src/customer-auth/facebook.ts) and looked up FIRST on later
+  // sign-ins. A row bound to a different facebookId is never re-bound.
+  facebookId          String?   @unique
   // Date of birth (schema wave 2): date-only semantics — the TS
   // layer stores UTC midnight and reads back the YYYY-MM-DD part.
   // Feeds the birthday-offer job (src/marketing/birthday.ts).

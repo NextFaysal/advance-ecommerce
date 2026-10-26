@@ -297,6 +297,32 @@ async function resolveCourierProvider(provider: CourierProviderName): Promise<Co
     }
     return createSandboxCourierProvider("steadfast");
   }
+  if (provider === "pathao" || provider === "redx") {
+    // ADV-5 remainder (wave 49): live Pathao/RedX adapters, same
+    // contract as steadfast — configured live adapter wins, any
+    // failure degrades to the labelled sandbox adapter.
+    try {
+      const resolver =
+        provider === "pathao"
+          ? await import("../integrations/pathao-resolver")
+          : await import("../integrations/redx-resolver");
+      const resolveFn =
+        provider === "pathao"
+          ? (resolver as typeof import("../integrations/pathao-resolver")).resolvePathaoCourier
+          : (resolver as typeof import("../integrations/redx-resolver")).resolveRedxCourier;
+      const resolved = await resolveFn({
+        getSetting: (key) => readSetting(key),
+        getProviderSecrets: async () => {
+          const settings = await import("../lib/settings");
+          return settings.getIntegrationConfigWithSecrets("courier", provider);
+        },
+      });
+      if (resolved !== null) return resolved.provider;
+    } catch {
+      // fall through to the sandbox adapter
+    }
+    return createSandboxCourierProvider(provider);
+  }
   if ((SANDBOX_COURIER_PROVIDERS as readonly string[]).includes(provider)) {
     return createSandboxCourierProvider(provider as SandboxCourierProvider);
   }

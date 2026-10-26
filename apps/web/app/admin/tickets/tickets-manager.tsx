@@ -14,8 +14,26 @@
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { CannedReplyPicker } from "./support-tools";
 
 type TicketStatus = "OPEN" | "PENDING" | "CLOSED";
+
+type TicketSlaState = "OK" | "AT_RISK" | "BREACHED";
+
+interface TicketSla {
+  firstResponseDueAt: string;
+  firstResponseAt: string | null;
+  firstResponseBreached: boolean;
+  resolutionDueAt: string;
+  resolutionBreached: boolean;
+  state: TicketSlaState;
+}
+
+const SLA_BADGE: Record<TicketSlaState, { label: string; tone: "success" | "warning" | "danger" }> = {
+  OK: { label: "SLA ঠিক আছে", tone: "success" },
+  AT_RISK: { label: "SLA ঝুঁকিতে", tone: "warning" },
+  BREACHED: { label: "SLA ভেঙেছে", tone: "danger" },
+};
 
 interface TicketMessage {
   id: string;
@@ -36,6 +54,7 @@ interface AdminTicket {
   updatedAt: string;
   customerName: string;
   customerPhoneMasked: string;
+  sla?: TicketSla;
   messages?: TicketMessage[];
 }
 
@@ -81,6 +100,7 @@ const inputClass =
 
 export function TicketsManager() {
   const [tab, setTab] = useState<TabKey>("OPEN");
+  const [slaOnly, setSlaOnly] = useState(false);
   const [tickets, setTickets] = useState<AdminTicket[]>([]);
   const [counts, setCounts] = useState<Record<TicketStatus, number>>({ OPEN: 0, PENDING: 0, CLOSED: 0 });
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -91,11 +111,14 @@ export function TicketsManager() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const load = useCallback(async (forTab: TabKey) => {
+  const load = useCallback(async (forTab: TabKey, breachedOnly: boolean) => {
     setLoadState("loading");
     try {
-      const qs = forTab === "ALL" ? "" : `?status=${forTab}`;
-      const res = await fetch(`/api/v1/admin/tickets${qs}`);
+      const search = new URLSearchParams();
+      if (forTab !== "ALL") search.set("status", forTab);
+      if (breachedOnly) search.set("sla", "breached");
+      const qs = search.toString();
+      const res = await fetch(`/api/v1/admin/tickets${qs ? `?${qs}` : ""}`);
       const json = (await res.json().catch(() => null)) as ListResponse | null;
       if (!res.ok || !json?.data) {
         setLoadState("error");
@@ -112,8 +135,8 @@ export function TicketsManager() {
   }, []);
 
   useEffect(() => {
-    void load(tab);
-  }, [load, tab]);
+    void load(tab, slaOnly);
+  }, [load, tab, slaOnly]);
 
   const openTicket = useCallback(async (id: string) => {
     setDetailLoading(true);
@@ -151,7 +174,7 @@ export function TicketsManager() {
       }
       setSelected(json.data.ticket);
       setReplyBody("");
-      void load(tab);
+      void load(tab, slaOnly);
     } catch {
       setActionError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
     } finally {
@@ -175,7 +198,7 @@ export function TicketsManager() {
         return;
       }
       setSelected(json.data.ticket);
-      void load(tab);
+      void load(tab, slaOnly);
     } catch {
       setActionError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
     } finally {
@@ -202,6 +225,19 @@ export function TicketsManager() {
             {t.key !== "ALL" ? ` (${counts[t.key]})` : ""}
           </button>
         ))}
+        <button
+          type="button"
+          aria-pressed={slaOnly}
+          onClick={() => setSlaOnly((v) => !v)}
+          className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+            slaOnly
+              ? "bg-rose-600 text-white shadow"
+              : "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+          }`}
+          title="শুধু যেসব টিকিটের SLA সময়সীমা পেরিয়ে গেছে"
+        >
+          শুধু SLA-ভাঙা টিকিট
+        </button>
       </div>
 
       {actionError ? (
@@ -232,6 +268,9 @@ export function TicketsManager() {
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-bold text-text-main">{t.subject}</span>
                       <Badge tone={STATUS_BADGE[t.status].tone}>{STATUS_BADGE[t.status].label}</Badge>
+                      {t.sla ? (
+                        <Badge tone={SLA_BADGE[t.sla.state].tone}>{SLA_BADGE[t.sla.state].label}</Badge>
+                      ) : null}
                     </span>
                     <span className="mt-1 block text-xs text-text-muted">
                       {t.customerName} · {t.customerPhoneMasked}
@@ -265,12 +304,29 @@ export function TicketsManager() {
                 <Badge tone={STATUS_BADGE[selected.status].tone}>
                   {STATUS_BADGE[selected.status].label}
                 </Badge>
+                {selected.sla ? (
+                  <Badge tone={SLA_BADGE[selected.sla.state].tone}>
+                    {SLA_BADGE[selected.sla.state].label}
+                  </Badge>
+                ) : null}
               </div>
               <p className="mt-1 text-xs text-text-muted">
                 গ্রাহক: {selected.customerName} · {selected.customerPhoneMasked}
                 {selected.orderNo ? ` · অর্ডার: ${selected.orderNo}` : ""} · খোলা{" "}
                 {bnDateTime(selected.createdAt)}
               </p>
+              {selected.sla ? (
+                <div className="mt-3 rounded-xl bg-surface-2 px-3.5 py-2.5 text-xs leading-5 text-text-muted">
+                  <span className="font-bold text-text-main">SLA সময়সীমা</span> (খোলার সময় থেকে
+                  হিসাব করা): প্রথম উত্তরের শেষ সময় {bnDateTime(selected.sla.firstResponseDueAt)}
+                  {selected.sla.firstResponseAt
+                    ? ` — উত্তর দেওয়া হয়েছে ${bnDateTime(selected.sla.firstResponseAt)}`
+                    : " — এখনো স্টাফের উত্তর হয়নি"}
+                  {selected.sla.firstResponseBreached ? " (সময়সীমা পেরিয়েছিল)" : ""} · সমাধানের শেষ
+                  সময় {bnDateTime(selected.sla.resolutionDueAt)}
+                  {selected.sla.resolutionBreached ? " (সময়সীমা পেরিয়েছে)" : ""}
+                </div>
+              ) : null}
 
               <ul className="mt-4 space-y-3">
                 {(selected.messages ?? []).map((m) => (
@@ -295,6 +351,14 @@ export function TicketsManager() {
                 <label className="mb-1.5 block text-sm font-medium text-text-main" htmlFor="admin-ticket-reply">
                   উত্তর লিখুন (পাঠালে স্ট্যাটাস PENDING হবে)
                 </label>
+                <CannedReplyPicker
+                  onInsert={(body) =>
+                    setReplyBody((prev) => {
+                      const joined = prev.trim() ? `${prev.replace(/\s+$/, "")}\n${body}` : body;
+                      return joined.slice(0, 5000);
+                    })
+                  }
+                />
                 <textarea
                   id="admin-ticket-reply"
                   value={replyBody}

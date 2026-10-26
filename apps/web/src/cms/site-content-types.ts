@@ -109,6 +109,7 @@ export const DEFAULT_FOOTER_MENU: FooterMenuGroup[] = [
     links: [
       { id: "fm-help-track", labelBn: "অর্ডার ট্র্যাক করুন", labelEn: "Track Your Order", href: "/track", visible: true },
       { id: "fm-help-faq", labelBn: "সাধারণ জিজ্ঞাসা", labelEn: "FAQ", href: "/faq", visible: true },
+      { id: "fm-help-kb", labelBn: "সাহায্য কেন্দ্র", labelEn: "Knowledge Base", href: "/kb", visible: true },
       { id: "fm-help-contact", labelBn: "যোগাযোগ", labelEn: "Contact", href: "/contact", visible: true },
       { id: "fm-help-shipping", labelBn: "ডেলিভারি নীতিমালা", labelEn: "Shipping Policy", href: "/shipping-policy", visible: true },
       { id: "fm-help-refund", labelBn: "রিটার্ন ও রিফান্ড", labelEn: "Returns & Refunds", href: "/refund-policy", visible: true },

@@ -14,6 +14,11 @@ import { randomBytes, scryptSync, timingSafeEqual, createHash, createHmac, creat
 import { z } from "zod";
 import { prisma } from "@advance-ecommerce/db";
 import { normalizeBdPhone } from "@advance-ecommerce/validators";
+import {
+  recordFailedAttempt,
+  recordLoginAlert,
+  recordNewIpSuccessIfUnseen,
+} from "@/security/login-alerts";
 
 /* ------------------------------------------------------------------ */
 /* Input validation (Zod) — every auth input goes through these.      */
@@ -231,6 +236,11 @@ export async function authenticateStaff(
 
   // Generic failure everywhere: never reveal whether the identifier exists.
   const normalizedPhone = normalizeBdPhone(identifier);
+  // Canonical identifier for security-alert records (ADV-28) — the
+  // same form the lookup below uses: normalised phone, else
+  // lowercased email, so attempts typed with different casing share
+  // one failure-burst bucket.
+  const alertIdentifier = normalizedPhone ?? identifier.toLowerCase();
   const user = await prisma.user.findFirst({
     where: {
       deletedAt: null,
@@ -273,6 +283,18 @@ export async function authenticateStaff(
       },
     });
     await logAttempt(false, "wrong_password");
+    // ADV-28 heuristic alerts — fire-and-forget: recording must never
+    // change, delay, or fail the login outcome (the helpers also
+    // swallow their own errors; the .catch here is belt-and-braces).
+    void recordFailedAttempt(alertIdentifier, meta.ip ?? null).catch(() => {});
+    if (failed >= MAX_FAILED_LOGINS) {
+      void recordLoginAlert({
+        kind: "lockout",
+        identifier: alertIdentifier,
+        ip: meta.ip ?? null,
+        detail: `Account locked for ${ACCOUNT_LOCK_MINUTES} minutes after ${failed} consecutive failed password attempts.`,
+      }).catch(() => {});
+    }
     return { status: "failed" };
   }
 
@@ -281,6 +303,16 @@ export async function authenticateStaff(
     data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
   });
   await logAttempt(true);
+  // ADV-28: a verified password from an IP this account has never
+  // held a session on raises a "new_ip_success" alert for admin
+  // review. Fire-and-forget; the check reads prior Session rows only
+  // (the session for THIS login is created by the route handler
+  // after authenticateStaff returns).
+  void recordNewIpSuccessIfUnseen({
+    userId: user.id,
+    identifier: alertIdentifier,
+    ip: meta.ip ?? null,
+  }).catch(() => {});
   // Gate on a USABLE second factor, not the bare flag: a legacy row can
   // carry twoFactorEnabled = true with twoFactorSecret = null, and
   // verifyTotp can never pass without a secret — demanding the TOTP

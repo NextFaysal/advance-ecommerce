@@ -27,6 +27,7 @@ import ReturnsSection from "./returns-section";
 import DownloadsSection from "./downloads-section";
 import CustomerTrackingStepper from "./tracking-stepper";
 import AuthForms from "@/customer-auth/components/AuthForms";
+import { isFacebookLoginConfigured } from "@/customer-auth/facebook";
 import { isGoogleLoginConfigured } from "@/customer-auth/google";
 import AddressManager from "@/customer-auth/components/AddressManager";
 import LogoutButton from "@/customer-auth/components/LogoutButton";
@@ -203,22 +204,32 @@ export default async function AccountPage({
   const customer = await getCurrentCustomer();
 
   if (customer === null) {
-    // Server-driven availability: the Google button exists only when
-    // credentials are configured in Settings (ADV-15).
-    const googleEnabled = await isGoogleLoginConfigured();
+    // Server-driven availability: the Google/Facebook buttons exist
+    // only when their credentials are configured in Settings
+    // (ADV-15) — an unconfigured install shows no dead buttons.
+    const [googleEnabled, facebookEnabled] = await Promise.all([
+      isGoogleLoginConfigured(),
+      isFacebookLoginConfigured(),
+    ]);
     return (
       <main className="mx-auto w-full max-w-md px-4 py-8 sm:py-10">
         <h1 className="font-display text-2xl font-bold text-text-main">আমার অ্যাকাউন্ট</h1>
         <p className="mt-1.5 text-sm leading-6 text-text-muted">
           মোবাইল নম্বরে OTP কোড দিয়ে লগইন করুন — পাসওয়ার্ডও ব্যবহার করা যাবে।
         </p>
-        {searchParams.authError ? (
+        {searchParams.authError === "facebook_no_email" ? (
           <p role="alert" className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
-            Google লগইন সম্পন্ন হয়নি। আবার চেষ্টা করুন, অথবা OTP/পাসওয়ার্ড দিয়ে লগইন করুন।
+            Facebook আপনার ইমেইল শেয়ার করেনি — তাই Facebook দিয়ে অ্যাকাউন্ট তৈরি বা লগইন করা যায়নি। অনুগ্রহ করে মোবাইল নম্বরে OTP অথবা পাসওয়ার্ড দিয়ে লগইন করুন।
+          </p>
+        ) : searchParams.authError ? (
+          <p role="alert" className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
+            {searchParams.authError === "facebook"
+              ? "Facebook লগইন সম্পন্ন হয়নি। আবার চেষ্টা করুন, অথবা OTP/পাসওয়ার্ড দিয়ে লগইন করুন।"
+              : "Google লগইন সম্পন্ন হয়নি। আবার চেষ্টা করুন, অথবা OTP/পাসওয়ার্ড দিয়ে লগইন করুন।"}
           </p>
         ) : null}
         <div className="mt-5">
-          <AuthForms googleEnabled={googleEnabled} />
+          <AuthForms googleEnabled={googleEnabled} facebookEnabled={facebookEnabled} />
         </div>
         <p className="mt-4 text-sm leading-6 text-text-muted">
           অ্যাকাউন্ট ছাড়াও অর্ডার নম্বর ও ফোন নম্বর দিয়ে{" "}

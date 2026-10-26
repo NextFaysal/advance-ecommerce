@@ -5,6 +5,7 @@
 // Every API behind it re-checks marketing.campaign + the flag.
 import { marketingMechanicsEnabled } from "@/marketing/docs";
 import { MechanicsManager } from "./mechanics-manager";
+import { CampaignsCard } from "./campaigns-card";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,10 @@ export default function MarketingMechanicsPage() {
         স্পিন হুইল, A/B এক্সপেরিমেন্ট, EMI ডিসপ্লে ও WhatsApp ব্রডকাস্ট — সব সেটিংস ডাটাবেসে থাকে, কোডে নয়।
       </p>
       {enabled ? (
-        <MechanicsManager />
+        <>
+          <MechanicsManager />
+          <CampaignsCard />
+        </>
       ) : (
         <div className="mt-6 rounded-2xl bg-white p-8 text-center ring-1 ring-slate-200">
           <p className="text-4xl" aria-hidden>

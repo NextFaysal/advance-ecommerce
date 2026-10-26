@@ -12,6 +12,7 @@ import type {
 } from "@/cms/site-content-types";
 import InstallPrompt from "@/pwa/install-prompt";
 import ResellerRefCapture from "@/reseller/RefCapture";
+import { ExitIntentPopup } from "@/marketing/components/ExitIntentPopup";
 
 // Storefront shell mount (integration for Agent 31): header + footer on
 // storefront routes only — never on /admin or /offline. Later, brandName
@@ -103,6 +104,10 @@ export default function StorefrontShell({ children }: { children: ReactNode }) {
           localStorage on any storefront page; renders nothing. Only
           mounted in this storefront branch — never on /admin. */}
       <ResellerRefCapture />
+      {/* Exit-intent popup (ADV-18 remainder): self-gating — renders
+          nothing unless the public config endpoint returns an
+          enabled config; suppression + page exclusions live inside. */}
+      <ExitIntentPopup />
     </div>
   );
 }
