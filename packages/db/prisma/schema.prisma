@@ -743,6 +743,7 @@ model Customer {
   orders              Order[]
   couponUsages        CouponUsage[]
   sessions            CustomerSession[]
+  apiTokens           CustomerApiToken[]
   reviews             Review[]
   supportTickets      SupportTicket[]
   productQuestions    ProductQuestion[]
@@ -769,6 +770,29 @@ model CustomerSession {
   createdAt  DateTime  @default(now())
   @@index([customerId])
   @@index([expiresAt])
+}
+
+// Customer API tokens — the bearer-token auth seam for the public
+// account API (the prerequisite for any native customer app; see
+// apps/customer-app/README.md). A REAL table, not a Setting doc, by
+// the CustomerSession / partner-ApiKey precedent: tokens are
+// per-customer (unbounded across customers), multiple per customer,
+// individually revocable, and carry lastUsedAt bookkeeping. Only the
+// SHA-256 hash of the token is stored (same discipline as
+// CustomerSession.tokenHash and ApiKey.keyHash); the plaintext
+// `ae_cust_…` is shown exactly once, at creation. Tokens do NOT
+// expire on a schedule — revocation is the off-switch, mirroring the
+// partner API keys. Owned by src/customer-auth/api-tokens.ts.
+model CustomerApiToken {
+  id         String    @id @default(cuid())
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  label      String
+  tokenHash  String    @unique
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  @@index([customerId])
 }
 
 model Address {

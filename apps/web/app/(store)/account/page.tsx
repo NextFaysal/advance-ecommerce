@@ -42,6 +42,7 @@ import {
   type OrderWarrantyItem,
 } from "@/business-modules/electronics-warranty";
 import PrivacySection from "./privacy-section";
+import ApiTokensSection from "./api-tokens-section";
 import { normalizeBdPhone } from "@advance-ecommerce/validators";
 import BirthDateField from "./birth-date-field";
 import { Icon } from "@/components/ui/icon";
@@ -441,6 +442,8 @@ export default async function AccountPage({
         phoneMasked={customer.phoneMasked}
         email={customer.email}
       />
+
+      <ApiTokensSection />
 
       <section className="mt-6" aria-label="পুশ নোটিফিকেশন">
         <PushSubscribeToggle />

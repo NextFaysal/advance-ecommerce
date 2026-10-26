@@ -6,7 +6,10 @@ storefront PWA is the customer app for every install of this platform.**
 
 This file is the record of that decision and its evidence, so a future
 reader does not have to re-litigate it — and so the one real blocker
-for a native app is written down where the next attempt will find it.
+for a native app (customer token auth) is written down where the
+next attempt will find it. That blocker has since been built out —
+see "The customer token-auth contract" below; the PWA decision
+itself stands.
 
 ## Why the PWA covers the customer job (evidence, not assertion)
 
@@ -51,26 +54,66 @@ And the PWA machinery around them is complete, not a stub:
    keys, review cycles and binary releases for zero additional
    customer capability over the PWA — and every storefront fix would
    have to ship twice. The PWA updates when the install updates.
-2. **An honest blocker, not a preference: there is no token auth for
-   customers.** Customer identity on the public API is the
-   `customer_session` **HttpOnly cookie** only
-   (`apps/web/src/customer-auth/auth.ts` — DB-backed session, 7-day
-   TTL; login/register/Google/Facebook all set that cookie). No
-   `/api/v1/public/*` route accepts a bearer token for customer
-   identity. A React Native app cannot use an HttpOnly web cookie as
-   its session, so a real RN app first needs a server project:
-   bearer-token (or OAuth-style) customer auth on the public API —
-   token issuance at login, refresh/revocation, and a per-route
-   acceptance alongside the cookie. Until that exists, an RN scaffold
-   here would be screens wired to an auth model that does not exist:
-   an empty shell that looks like progress. This project does not
-   ship those.
-3. **App-store presence is a business decision, not a code gap.** If a
-   client ever needs store listing for discovery/marketing, the right
-   order is: (1) build the token-auth seam above as its own wave,
-   (2) then scaffold the RN/Expo app against the real
-   `/api/v1/public/*` contracts (products, categories, products
-   search; orders; account) — in that order, never scaffold-first.
+2. **The token-auth blocker is now CLOSED — the seam exists.**
+   When this decision was first recorded, customer identity on the
+   public API was the `customer_session` **HttpOnly cookie** only,
+   and a React Native app cannot use an HttpOnly web cookie as its
+   session — scaffolding screens then would have meant wiring them
+   to an auth model that did not exist. The follow-up wave built
+   the seam first, as this document prescribed (contract below).
+   What remains unbuilt is the RN app itself — see point 3.
+3. **App-store presence is a business decision, not a code gap.** If
+   a client ever needs store listing for discovery/marketing, step
+   (1) — the token-auth seam — is DONE. The remaining step is
+   per-client: scaffold the RN/Expo app against the real
+   `/api/v1/public/*` contracts (products, categories, search;
+   orders; account) and the token contract below. That scaffold is
+   deliberately **unblocked-but-not-built**: it ships when a client
+   chooses store presence, with their store accounts and signing
+   keys — building it speculatively for every install would repeat
+   the multiplication problem in point 1.
+
+## The customer token-auth contract (built — wave 58 follow-up)
+
+Customer API tokens, owned by `apps/web/src/customer-auth/api-tokens.ts`,
+accepted by the shared `requireCustomer()` seam in
+`apps/web/src/customer-auth/http.ts` — so every
+`/api/v1/public/account/*` route (orders, addresses, returns,
+subscriptions, tickets, downloads, data export, delete, the B2B
+portal guard, …) accepts a token anywhere the cookie works, with
+zero per-route code.
+
+- **Format**: `ae_cust_` + 256 bits of entropy, base64url (43 chars).
+- **At rest**: only the SHA-256 hex (`CustomerApiToken.tokenHash`,
+  a real table — the CustomerSession / partner-ApiKey precedent).
+  The plaintext is shown exactly **once**, in the create response.
+- **Use**: `Authorization: Bearer ae_cust_…` on any account route.
+- **A presented header decides alone**: an invalid, revoked or
+  malformed bearer gets 401 and NEVER falls back to the cookie
+  (the SMS device-token precedent) — revocation cannot be bypassed
+  by a stray browser cookie. No header → the cookie path, unchanged.
+- **No scheduled expiry**: revocation is the off-switch (partner
+  API-key discipline). `lastUsedAt` is stamped at most once/hour.
+- **Management is cookie-session ONLY** — a bearer token can never
+  mint or revoke tokens, so a leaked token cannot extend itself or
+  lock the customer out of recovery:
+  - `GET /api/v1/public/account/api-tokens` — own tokens, hash-free
+    views, newest first.
+  - `POST /api/v1/public/account/api-tokens` `{ label }` → 201
+    `{ apiToken, token }` (the one-time plaintext). Cap: **10 active**
+    per customer → 409 `API_TOKEN_LIMIT` beyond.
+  - `POST /api/v1/public/account/api-tokens/[id]/revoke` → 200;
+    unknown **or another customer's** id → 404; already revoked →
+    409.
+  - Customers manage tokens from the **API টোকেন** card on
+    `/account` (create with show-once box, list, revoke).
+- **How a native app bootstraps**: sign in once via the existing
+  web/OTP flow (which sets the cookie in a webview or browser), open
+  `/account`, mint a token, hand it to the app, and the app uses the
+  bearer from then on. Token issuance at the login endpoints
+  themselves is intentionally NOT built — minting is a deliberate,
+  labelled, revocable act in the account, not a side effect of every
+  sign-in.
 
 ## What "customer app" means operationally for an install
 
@@ -94,3 +137,10 @@ And the PWA machinery around them is complete, not a stub:
 - The iOS meta additions in `app/layout.tsx` are part of this change;
   like all web changes here they are verified by the parent build +
   deployment pipeline, not from this document.
+- The token-auth seam (contract above) is built code in this
+  repository — `src/customer-auth/api-tokens.ts`, the
+  `CustomerApiToken` table (migration
+  `20261026028000_customer_api_tokens`), the `requireCustomer()`
+  bearer branch, the management routes and the `/account` card —
+  verified through the same parent build + smoke pipeline. The RN
+  scaffold it unblocks remains, deliberately, unbuilt.

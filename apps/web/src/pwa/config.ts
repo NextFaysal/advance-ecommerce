@@ -26,6 +26,7 @@ export const PWA_DISPLAY = "standalone" as const;
  * both, so there is deliberately no second worker. Keep in sync with:
  *  - apps/web/public/manifest-rider.webmanifest  (app/rider/layout.tsx)
  *  - apps/web/public/manifest-owner.webmanifest  (app/owner/layout.tsx)
+ *  - apps/web/public/manifest-warehouse.webmanifest  (app/warehouse/layout.tsx)
  */
 export const RIDER_MANIFEST_PATH = "/manifest-rider.webmanifest";
 export const RIDER_PWA_NAME = "Rider — Advance Ecommerce";
@@ -36,6 +37,11 @@ export const OWNER_MANIFEST_PATH = "/manifest-owner.webmanifest";
 export const OWNER_PWA_NAME = "Owner — Advance Ecommerce";
 export const OWNER_PWA_START_URL = "/owner";
 export const OWNER_PWA_SCOPE = "/owner/";
+
+export const WAREHOUSE_MANIFEST_PATH = "/manifest-warehouse.webmanifest";
+export const WAREHOUSE_PWA_NAME = "Warehouse — Advance Ecommerce";
+export const WAREHOUSE_PWA_START_URL = "/warehouse";
+export const WAREHOUSE_PWA_SCOPE = "/warehouse/";
 
 export const SERVICE_WORKER_PATH = "/sw.js";
 export const OFFLINE_URL = "/offline";
