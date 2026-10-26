@@ -80,7 +80,9 @@ import { markOrderPayment } from "./repository";
 import { loadReturnLines, returnedGoodsPoisha } from "./return-lines";
 import { addOrderTimelineNote } from "@/shipments/split-shipments";
 
-export type ExchangeActor = ManualOrderActor;
+/** Exchanges are staff-only: the actor must be a real user (see
+ *  DraftActor in drafts.ts for the null-id system-actor rationale). */
+export type ExchangeActor = ManualOrderActor & { id: string };
 
 const ACCEPTED_STATUSES: ReadonlySet<string> = new Set(["APPROVED", "RECEIVED", "RETURNED"]);
 

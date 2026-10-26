@@ -7,6 +7,8 @@ import { Money } from "@/components/ui/money";
 import { Icon } from "@/components/ui/icon";
 import { DeliveryCostsPanel } from "./delivery-costs-panel";
 import { PurchaseLedgerPanel } from "./purchase-ledger-panel";
+import { PayrollPanel } from "./payroll-panel";
+import { ErpExportsPanel } from "./exports-panel";
 import { accountByCode } from "@/erp/accounts";
 import { erpStore, listSalesVatRows } from "@/erp/db-store";
 import { accountBalances } from "@/erp/ledger";
@@ -275,6 +277,10 @@ export default async function AdminErpPage() {
       <DeliveryCostsPanel />
 
       <PurchaseLedgerPanel />
+
+      <PayrollPanel />
+
+      <ErpExportsPanel />
     </main>
   );
 }

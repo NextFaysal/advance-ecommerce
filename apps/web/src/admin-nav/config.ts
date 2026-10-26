@@ -98,6 +98,17 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: null,
   },
   {
+    id: "subscriptions",
+    path: "/admin/subscriptions",
+    labelBn: "সাবস্ক্রিপশন",
+    labelEn: "Subscriptions",
+    icon: "Package",
+    section: "sales",
+    permission: "orders.view",
+    featureFlag: "module.subscriptions",
+    badge: null,
+  },
+  {
     id: "abandoned",
     path: "/admin/abandoned",
     labelBn: "পরিত্যক্ত চেকআউট",

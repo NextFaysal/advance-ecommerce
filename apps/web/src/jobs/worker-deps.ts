@@ -323,12 +323,40 @@ async function resolveCourierProvider(provider: CourierProviderName): Promise<Co
     }
     return createSandboxCourierProvider(provider);
   }
+  if (provider === "paperfly" || provider === "ecourier") {
+    // ADV-5 completion (wave 51): live Paperfly/eCourier adapters,
+    // same contract as pathao/redx — a configured live adapter wins.
+    // Unlike pathao/redx there is NO sandbox adapter for these two,
+    // so an unconfigured resolution falls through to the NO_ADAPTER
+    // throw below (honest job failure) — never a simulated booking.
+    try {
+      const resolver =
+        provider === "paperfly"
+          ? await import("../integrations/paperfly-resolver")
+          : await import("../integrations/ecourier-resolver");
+      const resolveFn =
+        provider === "paperfly"
+          ? (resolver as typeof import("../integrations/paperfly-resolver")).resolvePaperflyCourier
+          : (resolver as typeof import("../integrations/ecourier-resolver")).resolveEcourierCourier;
+      const resolved = await resolveFn({
+        getSetting: (key) => readSetting(key),
+        getProviderSecrets: async () => {
+          const settings = await import("../lib/settings");
+          return settings.getIntegrationConfigWithSecrets("courier", provider);
+        },
+      });
+      if (resolved !== null) return resolved.provider;
+    } catch {
+      // fall through to the NO_ADAPTER throw below
+    }
+  }
   if ((SANDBOX_COURIER_PROVIDERS as readonly string[]).includes(provider)) {
     return createSandboxCourierProvider(provider as SandboxCourierProvider);
   }
-  // No adapter of any kind exists for this provider yet (paperfly /
-  // ecourier). Throwing fails the job honestly so BullMQ retries and
-  // dead-letters it — never fake a booking.
+  // No adapter of any kind exists for this provider (or its live
+  // adapter is unconfigured — paperfly/ecourier have no sandbox
+  // fallback by design). Throwing fails the job honestly so BullMQ
+  // retries and dead-letters it — never fake a booking.
   throw new Error(`NO_ADAPTER:${provider}`);
 }
 
@@ -369,6 +397,25 @@ export const workerDeps: WorkerRuntimeDeps = {
   orderOtpSmsSend: async (job) => {
     const otp = await import("../orders/otp");
     return otp.processOrderOtpSmsJob(job, { smsProvider: resolveSmsProvider });
+  },
+  // ADV-19 remainder (wave 51): pickup-OTP SMS jobs (sms queue,
+  // jobKind "pickup-otp") delegate here. Lazy import for the same
+  // reason as orderOtpSmsSend above.
+  pickupOtpSmsSend: async (job) => {
+    const pickupOtp = await import("../orders/pickup-otp");
+    return pickupOtp.processPickupOtpSmsJob(job, { smsProvider: resolveSmsProvider });
+  },
+  // ADV-18 remainder (wave 51): the subscription-generation queue's
+  // sweep delegate — creates real orders for due subscriptions via
+  // processDueSubscriptions (idempotent per scheduled run). Lazy
+  // import for the same reason as the SMS send paths above.
+  subscriptionRunner: async () => {
+    const { processDueSubscriptions } = await import("../subscriptions/generate");
+    const out = await processDueSubscriptions(new Date());
+    return {
+      processedRef: `due:${out.due} created:${out.created} failed:${out.failed}`,
+      detail: out.ran ? "sweep complete" : out.reason,
+    };
   },
   // ADV-15: customer-login OTP SMS jobs (sms queue, jobKind
   // "auth-otp") delegate here. Lazy import for the same reason as

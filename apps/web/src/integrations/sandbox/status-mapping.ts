@@ -43,10 +43,32 @@ const REDX_MAP: Record<string, ShipmentStatus> = {
   returned: "RETURNED",
 };
 
+// Wave 51: paperfly/ecourier have live adapters but no sandbox
+// provider — these maps exist so a sandbox-branch webhook for them
+// resolves statuses honestly instead of silently no-oping; booking a
+// paperfly/ecourier parcel still requires the live adapter (the
+// shipments route returns 422 when unconfigured).
+const PAPERFLY_MAP: Record<string, ShipmentStatus> = {
+  pending: "CREATED", order_placed: "CREATED", picked_up: "PICKED_UP",
+  in_transit: "IN_TRANSIT", hold: "IN_TRANSIT", out_for_delivery: "OUT_FOR_DELIVERY",
+  delivered: "DELIVERED", partial_delivered: "DELIVERED", delivery_failed: "FAILED",
+  cancelled: "FAILED", returning: "RETURNING", returned: "RETURNED",
+};
+
+const ECOURIER_MAP: Record<string, ShipmentStatus> = {
+  pending: "CREATED", order_placed: "CREATED", picked_up: "PICKED_UP",
+  in_transit: "IN_TRANSIT", in_progress: "IN_TRANSIT", hold: "IN_TRANSIT",
+  out_for_delivery: "OUT_FOR_DELIVERY", delivered: "DELIVERED",
+  partial_delivered: "DELIVERED", delivery_failed: "FAILED",
+  cancelled: "FAILED", returning: "RETURNING", returned: "RETURNED",
+};
+
 const COURIER_MAPS: Record<string, Record<string, ShipmentStatus>> = {
   steadfast: STEADFAST_MAP,
   pathao: PATHAO_MAP,
   redx: REDX_MAP,
+  paperfly: PAPERFLY_MAP,
+  ecourier: ECOURIER_MAP,
 };
 
 export function mapCourierRawStatus(provider: string, rawStatus: string): ShipmentStatus | null {

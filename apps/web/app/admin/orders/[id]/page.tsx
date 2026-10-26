@@ -54,6 +54,7 @@ import { buildWorkspaceTimelineEntries } from "./workspace-timeline";
 import { RailAdvanceSummary } from "./rail-advance-summary";
 import { ApprovalBanner } from "./approval-banner";
 import { RailManagementSummary } from "./rail-management-summary";
+import { PickupOtpPanel } from "./pickup-otp-panel";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -565,6 +566,12 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
           {/* Management summary — assignee / priority / hold at a
               glance (read-only; editing lives in the পরিচালনা tab). */}
           <RailManagementSummary orderId={order.id} />
+
+          {/* Pickup OTP (ADV-19 remainder) — self-fetching; renders
+              nothing for non-pickup orders. For pickup orders it is
+              the verify/resend surface that unlocks the DELIVERED
+              transition (blocked server-side until verified). */}
+          <PickupOtpPanel orderId={order.id} />
         </div>
 
         {/* Main column — tabbed work areas. Panels keep their

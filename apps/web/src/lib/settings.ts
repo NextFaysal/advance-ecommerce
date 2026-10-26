@@ -273,6 +273,12 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   // approved. Records persist as a JSON doc under the exact key
   // "orders.approvals" (written directly via the doc store, not via
   // setSetting — same pattern as warehouse.pick_lists).
+  // Subscriptions (ADV-18 remainder): the "Subscribe & save" discount
+  // applied to subscription-generated orders, in basis points of the
+  // item subtotal. Default 0 = NO discount — the storefront must never
+  // advertise a saving that is not configured here (the discount is
+  // computed server-side in createManualOrder from this value).
+  "subscriptions.discount_bps": { category: "general", value: "0", isPublic: false },
   "orders.approvals.enabled": { category: "general", value: "false", isPublic: false },
   "orders.approvals.discount_threshold_bps": { category: "general", value: "3000", isPublic: false },
   "orders.approvals.refund_threshold_poisha": { category: "general", value: "100000", isPublic: false },

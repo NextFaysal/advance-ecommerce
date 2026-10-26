@@ -130,6 +130,14 @@ export const manualCreateInputSchema = manualOrderSchema.extend({
    *  let the customer pay that deposit a second time). Suppression
    *  is recorded on the order note + audit, never silent. */
   advanceLinkPolicy: z.enum(["issue", "suppress"]).optional(),
+  /** Subscription "Subscribe & save" discount (ADV-18 remainder,
+   *  ADDITIVE): basis points of the item subtotal, read by the caller
+   *  from Settings subscriptions.discount_bps. The discount amount is
+   *  computed HERE (server-side, integer math) and folded into the
+   *  order's discount stage alongside any coupon, with its own note
+   *  line — callers never pass a pre-computed amount, so a stale or
+   *  tampered figure cannot reach the persisted pricing. */
+  subscriptionDiscountBps: z.number().int().min(0).max(10000).optional(),
   /** Order.source label for this channel. Default "manual". */
   source: z.string().min(1).max(32).optional(),
   /** Extra note line prepended to the order note — e.g. the inbox
@@ -141,7 +149,11 @@ export const manualCreateInputSchema = manualOrderSchema.extend({
 export type ManualCreateInput = z.infer<typeof manualCreateInputSchema>;
 
 export interface ManualOrderActor {
-  id: string;
+  /** Staff user id, or null for system actors (e.g. the subscription
+   *  generator running in the worker): writeAudit records a null
+   *  actorId for those, and the order's source label + internal note
+   *  carry the channel's identity instead. */
+  id: string | null;
   permissions: readonly string[];
   ip?: string;
   userAgent?: string;
@@ -324,9 +336,19 @@ export async function createManualOrder(
     isFirstOrder: priorOrders.length === 0,
   });
 
+  // Subscription discount (ADV-18 remainder): computed from the bps
+  // the caller read from Settings, integer math, folded into the same
+  // discount stage as the coupon so the persisted discountPoisha and
+  // grand total stay consistent (computePricing clamps the taxable
+  // base at zero).
+  const subscriptionDiscountPoisha =
+    data.subscriptionDiscountBps !== undefined && data.subscriptionDiscountBps > 0
+      ? Math.floor((subtotalPoisha * data.subscriptionDiscountBps) / 10000)
+      : 0;
+
   const pricing = computePricing({
     itemsSubtotalPoisha: subtotalPoisha,
-    couponDiscountPoisha: coupon.discountPoisha,
+    couponDiscountPoisha: coupon.discountPoisha + subscriptionDiscountPoisha,
     shippingPoisha: coupon.shippingPoisha,
     codFeePoisha: 0,
     taxBps: 0,
@@ -414,6 +436,9 @@ export async function createManualOrder(
     data.note?.trim() ? data.note.trim() : null,
     priceOverrides.length > 0
       ? `ম্যানুয়াল অর্ডার — কর্মীর নির্ধারিত দাম: ${priceOverrides.join("; ")}`
+      : null,
+    subscriptionDiscountPoisha > 0
+      ? `সাবস্ক্রিপশন ছাড় (Subscribe & Save, ${(data.subscriptionDiscountBps ?? 0) / 100}%): ${subscriptionDiscountPoisha} পয়সা / Subscription discount: ${subscriptionDiscountPoisha} poisha`
       : null,
     data.shippingOverridePoisha !== undefined &&
     data.shippingOverridePoisha !== rateShippingPoisha
@@ -543,6 +568,8 @@ export async function createManualOrder(
       shippingOverridden: data.shippingOverridePoisha !== undefined,
       couponCode: coupon.code,
       couponStatus: coupon.status,
+      subscriptionDiscountBps: data.subscriptionDiscountBps ?? null,
+      subscriptionDiscountPoisha,
       customerId: data.customerId ?? null,
       advanceRequiredPoisha: advanceRequirement.advanceRequiredPoisha,
       advanceReason: advanceRequirement.advanceReason,

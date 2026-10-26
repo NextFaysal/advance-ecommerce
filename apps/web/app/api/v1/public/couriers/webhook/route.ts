@@ -62,7 +62,6 @@ import {
   findShipmentByTracking,
   findShipmentEventByIdempotencyKey,
 } from "@/integrations/sandbox/db-store";
-import { SANDBOX_COURIER_PROVIDERS } from "@/integrations/sandbox/courier-provider";
 import type { ShipmentStatus } from "@/integrations/courier";
 import {
   mapSteadfastDeliveryStatus,
@@ -73,6 +72,11 @@ import { mapPathaoDeliveryStatus, parsePathaoWebhookBody } from "@/integrations/
 import { diagnosePathaoCourier } from "@/integrations/pathao-resolver";
 import { mapRedxDeliveryStatus, parseRedxWebhookBody } from "@/integrations/redx";
 import { diagnoseRedxCourier } from "@/integrations/redx-resolver";
+import { mapPaperflyDeliveryStatus, parsePaperflyWebhookBody } from "@/integrations/paperfly";
+import { diagnosePaperflyCourier } from "@/integrations/paperfly-resolver";
+import { mapEcourierDeliveryStatus, parseEcourierWebhookBody } from "@/integrations/ecourier";
+import { diagnoseEcourierCourier } from "@/integrations/ecourier-resolver";
+import { COURIER_PROVIDERS } from "@/integrations/courier";
 import { getIntegrationConfigWithSecrets, getSetting } from "@/lib/settings";
 
 const bodySchema = z.object({
@@ -124,6 +128,10 @@ async function liveConfigured(provider: string): Promise<boolean> {
         return (await diagnosePathaoCourier(reader)).configured;
       case "redx":
         return (await diagnoseRedxCourier(reader)).configured;
+      case "paperfly":
+        return (await diagnosePaperflyCourier(reader)).configured;
+      case "ecourier":
+        return (await diagnoseEcourierCourier(reader)).configured;
       default:
         return false;
     }
@@ -161,6 +169,16 @@ const LIVE_WEBHOOK_SPECS: Record<string, LiveWebhookSpec> = {
     parse: parseRedxWebhookBody,
     mapRawStatus: mapRedxDeliveryStatus,
     invalidBodyMessage: "Invalid RedX webhook body.",
+  },
+  paperfly: {
+    parse: parsePaperflyWebhookBody,
+    mapRawStatus: mapPaperflyDeliveryStatus,
+    invalidBodyMessage: "Invalid Paperfly webhook body.",
+  },
+  ecourier: {
+    parse: parseEcourierWebhookBody,
+    mapRawStatus: mapEcourierDeliveryStatus,
+    invalidBodyMessage: "Invalid eCourier webhook body.",
   },
 };
 
@@ -239,9 +257,13 @@ async function applyCourierEvent(
 
 export async function POST(req: Request) {
   const provider = new URL(req.url).searchParams.get("provider") ?? "";
-  if (!(SANDBOX_COURIER_PROVIDERS as readonly string[]).includes(provider)) {
+  // Gate widened (wave 51) from SANDBOX_COURIER_PROVIDERS to all known
+  // providers: paperfly/ecourier have live adapters but NO sandbox
+  // provider — on the sandbox branch their raw statuses simply map to
+  // null (unknown_raw_status no-op) rather than a simulated booking.
+  if (!(COURIER_PROVIDERS as readonly string[]).includes(provider)) {
     return NextResponse.json(
-      { error: { code: "INVALID_INPUT", message: "Unknown or non-sandbox courier provider." } },
+      { error: { code: "INVALID_INPUT", message: "Unknown courier provider." } },
       { status: 400 },
     );
   }

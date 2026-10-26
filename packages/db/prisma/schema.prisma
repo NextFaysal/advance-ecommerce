@@ -505,6 +505,7 @@ model ProductVariant {
   purchaseOrderItems PurchaseOrderItem[]
   vendorProducts  VendorProduct[]
   bundleComponentOf BundleComponent[] @relation("BundleComponentVariant")
+  subscriptions   Subscription[]
   @@index([productId])
 }
 
@@ -720,6 +721,7 @@ model Customer {
   supportTickets      SupportTicket[]
   productQuestions    ProductQuestion[]
   downloadReissueRequests DownloadReissueRequest[]
+  subscriptions       Subscription[]
   @@index([phone])
   @@index([deletedAt])
 }
@@ -837,6 +839,19 @@ model Order {
   otpExpiresAt          DateTime?
   otpAttempts           Int      @default(0)
   otpVerifiedAt         DateTime?
+  // Pickup OTP (ADV-19 remainder): click & collect orders carrying a
+  // [pickup:<id>] note marker get a SEPARATE one-time code, issued at
+  // CONFIRMED by src/orders/pickup-otp.ts and required before the
+  // DELIVERED transition completes the handover. Kept apart from the
+  // otp* columns above (those gate CONFIRMED for fraud/advance) so the
+  // two lifecycles can never clobber each other. Hash-only storage,
+  // same discipline as otpCodeHash. NULL on every non-pickup order and
+  // on pickup orders confirmed before this feature existed (the
+  // DELIVERED gate fails open for those — see pickup-otp.ts).
+  pickupOtpCodeHash     String?
+  pickupOtpExpiresAt    DateTime?
+  pickupOtpAttempts     Int      @default(0)
+  pickupOtpVerifiedAt   DateTime?
   totalPoisha      Int
   courier          String?
   trackingId       String?
@@ -2583,4 +2598,55 @@ model GiftCardTransaction {
 
   @@index([giftCardId, createdAt])
   @@index([orderId])
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions / auto-replenish (ADV-18 remainder) — gated by the
+// module.subscriptions feature flag (OFF by default).
+// ---------------------------------------------------------------------------
+
+// A customer's standing repeat order: one variant, a quantity, an
+// interval, and a frozen delivery-address snapshot. The worker-side
+// generator (src/subscriptions/generate.ts) turns each due row into a
+// REAL order through the shared createManualOrder seam — this table
+// never fabricates orders itself. Address + name + phone are snapshots
+// (the Address row may later be edited or deleted; a subscription must
+// keep delivering to the address it was created with until the customer
+// changes it here). status / interval / paymentMethod are plain
+// strings (the GiftCard.status precedent): ACTIVE | PAUSED |
+// CANCELLED; WEEKLY | BIWEEKLY | MONTHLY; "cod" only in v1 — prepaid
+// methods would need a stored payment instrument, which does not exist.
+// lastError is the honest failure surface: a skipped/failed generation
+// cycle records WHY here and in the admin list instead of vanishing.
+model Subscription {
+  id              String         @id @default(cuid())
+  customerId      String
+  customer        Customer       @relation(fields: [customerId], references: [id])
+  customerName    String
+  customerPhone   String
+  variantId       String
+  variant         ProductVariant @relation(fields: [variantId], references: [id])
+  quantity        Int            @default(1)
+  interval        String         @default("MONTHLY")
+  status          String         @default("ACTIVE")
+  paymentMethod   String         @default("cod")
+  // Address snapshot (bdAddressSchema shape at create time).
+  division        String
+  district        String
+  upazila         String
+  union           String?
+  addressLine     String
+  nextRunAt       DateTime
+  lastRunAt       DateTime?
+  // Plain reference (no FK, the GiftCardTransaction.orderId precedent):
+  // the most recent order this subscription generated.
+  lastOrderId     String?
+  lastError       String?
+  runCount        Int            @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([customerId, status])
+  @@index([status, nextRunAt])
+  @@index([variantId])
 }

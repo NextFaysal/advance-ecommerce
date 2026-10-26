@@ -35,6 +35,7 @@ import {
   type EmailJob,
   type QueueName,
   type SmsJob,
+  type SubscriptionJob,
   type WebhookJob,
 } from "./queues";
 import type { NotificationFailureInput } from "./notification-failures";
@@ -217,6 +218,13 @@ export interface HandlerDeps {
   bulkActionsRunner?: (
     job: BulkActionsJob,
   ) => Promise<{ ref: string; status: string }>;
+  /** ADV-18 remainder: subscription generation sweep — wired by the
+   *  worker deps assembly to src/subscriptions/generate.ts
+   *  (processDueSubscriptions). Unwired deployments skip honestly;
+   *  subscriptions then simply never generate (the admin list says so). */
+  subscriptionRunner?: (
+    job: SubscriptionJob,
+  ) => Promise<{ processedRef: string; detail?: string }>;
   /** C4: send path for call-center automation SMS jobs (payloads with
    *  jobKind === "callcenter-automation" on the SMS queue), wired by
    *  the worker deps assembly to src/callcenter/automation.ts. The
@@ -233,6 +241,13 @@ export interface HandlerDeps {
    *  payloads (it would send an empty message to a ref and report a
    *  phantom success for a code nobody received). */
   orderOtpSmsSend?: (job: SmsJob) => Promise<HandlerResult>;
+  /** ADV-19 remainder: send path for pickup-OTP SMS jobs (payloads
+   *  with jobKind === "pickup-otp" on the SMS queue), wired by the
+   *  worker deps assembly to src/orders/pickup-otp.ts. Same discipline
+   *  as order OTP: the send re-validates the code against the Order
+   *  row's pickupOtp* columns and resolves the recipient from the DB —
+   *  the generic SMS path below must never process these payloads. */
+  pickupOtpSmsSend?: (job: SmsJob) => Promise<HandlerResult>;
   /** ADV-15: send path for customer-login OTP SMS jobs (payloads with
    *  jobKind === "auth-otp" on the SMS queue), wired by the worker
    *  deps assembly to src/customer-auth/otp.ts. Same discipline as
@@ -443,6 +458,23 @@ export function createHandlers(
       const sendOtp = deps.orderOtpSmsSend;
       return runIdempotent(store, envelope, envelope.payload.orderId ?? envelope.payload.recipientRef, () =>
         sendOtp(envelope.payload),
+      );
+    }
+    // ADV-19 remainder: pickup-OTP jobs delegate to their own send
+    // path (code re-validation against the Order row's pickupOtp*
+    // columns, DB phone resolution). Without the dep wired they are
+    // SKIPPED — never fall through to the generic send below.
+    if (envelope.payload.jobKind === "pickup-otp") {
+      if (!deps.pickupOtpSmsSend) {
+        return Promise.resolve({
+          status: "skipped" as const,
+          ref: envelope.payload.orderId ?? envelope.payload.recipientRef,
+          detail: "pickup OTP send not wired in this deployment",
+        });
+      }
+      const sendPickupOtp = deps.pickupOtpSmsSend;
+      return runIdempotent(store, envelope, envelope.payload.orderId ?? envelope.payload.recipientRef, () =>
+        sendPickupOtp(envelope.payload),
       );
     }
     // ADV-15: customer-login OTP jobs delegate to their own send path
@@ -865,8 +897,29 @@ export function createHandlers(
       return { status: "succeeded", ref: out.ref, detail: out.status };
     });
 
+  const subscriptions: (e: JobEnvelope<SubscriptionJob>) => Promise<HandlerResult> = (
+    envelope,
+  ) =>
+    runIdempotent(store, envelope, envelope.payload.sweepKey, async () => {
+      if (!deps.subscriptionRunner) {
+        return {
+          status: "skipped",
+          ref: envelope.payload.sweepKey,
+          detail: "subscription runner not configured in this deployment",
+        };
+      }
+      const out = await deps.subscriptionRunner(envelope.payload);
+      logger.info("subscriptions.sweep", {
+        jobId: envelope.jobId,
+        sweepKey: envelope.payload.sweepKey,
+        processedRef: out.processedRef,
+      });
+      return { status: "succeeded", ref: out.processedRef, detail: out.detail ?? "sweep complete" };
+    });
+
   return {
     [QUEUE_NAMES.bulkActions]: bulkActions as (e: JobEnvelope<never>) => Promise<HandlerResult>,
+    [QUEUE_NAMES.subscriptions]: subscriptions as (e: JobEnvelope<never>) => Promise<HandlerResult>,
     [QUEUE_NAMES.sms]: sms as (e: JobEnvelope<never>) => Promise<HandlerResult>,
     [QUEUE_NAMES.email]: email as (e: JobEnvelope<never>) => Promise<HandlerResult>,
     [QUEUE_NAMES.courierBooking]: courierBooking as (e: JobEnvelope<never>) => Promise<HandlerResult>,

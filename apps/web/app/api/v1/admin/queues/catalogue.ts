@@ -74,6 +74,11 @@ const QUEUE_PRESENTATION: Record<QueueName, QueuePresentation> = {
     purposeBn: "অটোমেশন রুল চালানো",
     purposeEn: "Run automation rules for a trigger event",
   },
+  [QUEUE_NAMES.subscriptions]: {
+    handlerName: "subscriptions",
+    purposeBn: "সাবস্ক্রিপশনের নির্ধারিত অর্ডার তৈরি",
+    purposeEn: "Generate due subscription orders (sweep; orders are created through the shared order pipeline)",
+  },
   [QUEUE_NAMES.bulkActions]: {
     // createHandlers() in src/jobs/handlers.ts DOES have a bulkActions
     // entry: it runs the job through the injected bulkActionsRunner,

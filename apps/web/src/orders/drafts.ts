@@ -40,7 +40,10 @@ import {
 import { manualShippingPoisha, type ManualShippingMethod } from "@/orders/manual-order";
 import type { Order } from "@/orders/types";
 
-export type DraftActor = ManualOrderActor;
+/** Drafts are staff-only: the actor must be a real user (the widened
+ *  ManualOrderActor also admits the null-id system actor used by the
+ *  subscription generator, which never creates drafts). */
+export type DraftActor = ManualOrderActor & { id: string };
 
 export interface DraftOrderView {
   id: string;

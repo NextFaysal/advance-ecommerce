@@ -68,6 +68,12 @@
 //                         triggerBulkJobProcessing (BullMQ         (registry read via getBulkJobAsync)        Redis registry)
 //                         dispatch + in-process trigger; the
 //                         claim in processBulkJob runs it once)
+//  subscription-          NONE yet — the worker entrypoint is to     handlers.ts subscriptions -> worker-deps  WIRED, AWAITS
+//  generation             enqueue a repeatable sweep job (see       subscriptionRunner -> src/subscriptions/  SCHEDULER
+//                         src/subscriptions/generate.ts header)      generate.ts processDueSubscriptions
+//                         Pickup OTP SMS rides sms-send with jobKind "pickup-otp"
+//                         (producer + send path: src/orders/pickup-otp.ts,
+//                         delegated in handlers.ts like order-otp).
 //
 // Cross-cutting honesty notes:
 //  - Notification failure recording (notification-retry's input)
@@ -94,6 +100,7 @@ export const QUEUE_NAMES = {
   abandonedCart: "abandoned-cart-followup",
   automation: "automation-run",
   bulkActions: "bulk-actions",
+  subscriptions: "subscription-generation",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -121,13 +128,13 @@ export interface SmsJob {
    * to HandlerDeps.orderOtpSmsSend (src/orders/otp.ts). Their payload
    * is ids-only EXCEPT otpCode below — see its comment.
    */
-  jobKind?: "callcenter-automation" | "order-otp" | "return-update" | "back-in-stock" | "auth-otp" | "vendor-login-otp";
+  jobKind?: "callcenter-automation" | "order-otp" | "return-update" | "back-in-stock" | "auth-otp" | "vendor-login-otp" | "pickup-otp";
   /** Vendor-login OTP flavour marker (jobKind === "vendor-login-otp",
    *  ADV-13): the Vendor row id; the phone is resolved from the DB at
    *  send time (src/vendors/portal-otp.ts). */
   vendorId?: string;
   /** Order-OTP flavour marker (jobKind === "order-otp"). */
-  purpose?: "order_otp";
+  purpose?: "order_otp" | "pickup_otp";
   /**
    * Return-update flavour (jobKind === "return-update", doc 17 O7-2):
    * produced by src/orders/return-notify.ts whenever a return changes
@@ -223,3 +230,16 @@ export interface EmailJob {
 }
 export interface CourierBookingJob { orderId: string; shipmentId: string; provider: string; }
 export interface WebhookJob { event: string; payloadId: string; }
+
+/**
+ * Subscription generation sweep (ADV-18 remainder): ONE job asks the
+ * worker to generate orders for every subscription whose nextRunAt is
+ * due (src/subscriptions/generate.ts processDueSubscriptions). The
+ * payload carries no subscription ids — the sweep reads the due set
+ * from the DB, so a delayed or repeated sweep can never double-create
+ * (each cycle's order carries a deterministic idempotency key derived
+ * from the subscription + the scheduled run instant).
+ * `sweepKey` is the idempotency ref for the job itself (e.g. the
+ * scheduled tick's ISO timestamp or a repeatable-job id).
+ */
+export interface SubscriptionJob { sweepKey: string; }

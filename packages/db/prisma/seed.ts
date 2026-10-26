@@ -149,6 +149,7 @@ const FEATURE_FLAGS: Array<{ key: string; description: string }> = [
   { key: "module.b2b", description: "B2B / wholesale (v2 add-on)" },
   { key: "module.b2b_portal", description: "B2B buyer portal (v2 add-on, ADV-14)" },
   { key: "module.marketing_mechanics", description: "Marketing mechanics: gift cards, membership tiers, spin wheel, A/B tests, bundle builder, EMI display, WhatsApp broadcast (v2 add-on, ADV-18)" },
+  { key: "module.subscriptions", description: "Customer subscriptions / auto-replenish (v2 add-on, ADV-18)" },
   { key: "module.fashion", description: "Fashion pack (v2 add-on)" },
   { key: "module.electronics", description: "Electronics pack (v2 add-on)" },
   { key: "module.grocery", description: "Grocery pack (v2 add-on)" },

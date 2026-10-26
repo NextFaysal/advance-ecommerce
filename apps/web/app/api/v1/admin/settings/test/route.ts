@@ -21,6 +21,14 @@ import {
   type PathaoSettingsReader,
 } from "@/integrations/pathao-resolver";
 import { probeRedxConnection, type RedxSettingsReader } from "@/integrations/redx-resolver";
+import {
+  probePaperflyConnection,
+  type PaperflySettingsReader,
+} from "@/integrations/paperfly-resolver";
+import {
+  probeEcourierConnection,
+  type EcourierSettingsReader,
+} from "@/integrations/ecourier-resolver";
 
 // POST /api/v1/admin/settings/test — contract in src/integrations/sandbox/SETTINGS-API-CONTRACT.md
 // Sandbox: succeeds without any credential, reported as sandbox (simulated, no real provider call).
@@ -38,6 +46,12 @@ import { probeRedxConnection, type RedxSettingsReader } from "@/integrations/red
 // courier branches are REAL probes (Pathao: OAuth token grant + stores list;
 // RedX: delivery-area list): unconfigured -> 422 naming the missing
 // courier.<provider>.* fields, provider rejection -> 502 with the provider's code.
+// Paperfly / eCourier (ADV-5 completion): the real adapters EXIST too, so
+// their courier branches are REAL probes (Paperfly: credential-header
+// tracking probe for a non-existent reference — reachability + header
+// acceptance only, placement NOT tested; eCourier: assigned-package list):
+// unconfigured -> 422 naming the missing courier.<provider>.* fields,
+// provider rejection -> 502 with the provider's code.
 // No credential value is ever returned or logged.
 const bodySchema = z.object({
   category: z.enum(["payment", "courier", "sms"]),
@@ -195,6 +209,68 @@ async function testRedxCourier() {
   });
 }
 
+/** ADV-5 completion: Paperfly credential-header probe (see header). */
+async function testPaperflyCourier() {
+  const reader: PaperflySettingsReader = {
+    getSetting: (key) => getSetting(key),
+    getProviderSecrets: (name) => getIntegrationConfigWithSecrets("courier", name),
+  };
+  const probe = await probePaperflyConnection(reader);
+  if (!probe.ok) {
+    const status = probe.code === "PAPERFLY_NOT_CONFIGURED" ? 422 : 502;
+    return NextResponse.json(
+      {
+        error: {
+          code: probe.code,
+          message: probe.message,
+          details: { missingFields: probe.missingFields },
+        },
+      },
+      { status },
+    );
+  }
+  return NextResponse.json({
+    data: {
+      ok: true,
+      status: "connected",
+      provider: "paperfly",
+      referenceChecked: probe.referenceChecked,
+      message: probe.message,
+    },
+  });
+}
+
+/** ADV-5 completion: real assigned-package probe for eCourier. */
+async function testEcourierCourier() {
+  const reader: EcourierSettingsReader = {
+    getSetting: (key) => getSetting(key),
+    getProviderSecrets: (name) => getIntegrationConfigWithSecrets("courier", name),
+  };
+  const probe = await probeEcourierConnection(reader);
+  if (!probe.ok) {
+    const status = probe.code === "ECOURIER_NOT_CONFIGURED" ? 422 : 502;
+    return NextResponse.json(
+      {
+        error: {
+          code: probe.code,
+          message: probe.message,
+          details: { missingFields: probe.missingFields },
+        },
+      },
+      { status },
+    );
+  }
+  return NextResponse.json({
+    data: {
+      ok: true,
+      status: "connected",
+      provider: "ecourier",
+      packageCount: probe.packageCount,
+      message: probe.message,
+    },
+  });
+}
+
 export async function POST(req: Request) {
   const token = cookies().get("admin_session")?.value;
   if (!token) {
@@ -300,6 +376,35 @@ export async function POST(req: Request) {
     } catch {
       return NextResponse.json(
         { error: { code: "DB_NOT_READY", message: "RedX settings could not be read (Settings store unavailable)." } },
+        { status: 503 },
+      );
+    }
+  }
+  if (category === "courier" && provider === "paperfly") {
+    // ADV-5 completion: the real Paperfly adapter EXISTS, so this is
+    // a REAL credential-header probe (tracking read for a reference
+    // that cannot exist) — never the generic sandbox pass below.
+    // Unconfigured -> 422 naming the missing Settings fields (names
+    // only); provider rejection -> 502 with its code.
+    try {
+      return await testPaperflyCourier();
+    } catch {
+      return NextResponse.json(
+        { error: { code: "DB_NOT_READY", message: "Paperfly settings could not be read (Settings store unavailable)." } },
+        { status: 503 },
+      );
+    }
+  }
+  if (category === "courier" && provider === "ecourier") {
+    // ADV-5 completion: the real eCourier adapter EXISTS, so this is
+    // a REAL assigned-package probe — never the generic sandbox pass
+    // below. Unconfigured -> 422 naming the missing Settings fields
+    // (names only); provider rejection -> 502 with its code.
+    try {
+      return await testEcourierCourier();
+    } catch {
+      return NextResponse.json(
+        { error: { code: "DB_NOT_READY", message: "eCourier settings could not be read (Settings store unavailable)." } },
         { status: 503 },
       );
     }

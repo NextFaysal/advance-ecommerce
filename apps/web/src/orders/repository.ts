@@ -1096,7 +1096,7 @@ export type ApplyTransitionResult =
   | { kind: "ok"; order: Order; from: OrderStatus }
   | { kind: "not_found" }
   | { kind: "invalid"; error: string }
-  | { kind: "blocked"; code: AdvanceBlockCode | "APPROVAL_REQUIRED" | "RX_NOT_APPROVED"; error: string };
+  | { kind: "blocked"; code: AdvanceBlockCode | "APPROVAL_REQUIRED" | "RX_NOT_APPROVED" | "PICKUP_OTP_INVALID"; error: string };
 
 export interface ApplyTransitionOptions {
   /**
@@ -1189,6 +1189,17 @@ export async function applyOrderTransition(
     const rxBlock = await rxConfirmBlock(row.id);
     if (rxBlock) return { kind: "blocked", code: rxBlock.code, error: rxBlock.message };
   }
+  // Pickup gate (ADV-19 remainder): a click & collect order with an
+  // issued-but-unverified pickup OTP cannot be marked DELIVERED —
+  // the handover completes only after staff verify the customer's
+  // code (src/orders/pickup-otp.ts). Same funnel, same blocked
+  // contract, code PICKUP_OTP_INVALID. Orders with no code ever
+  // issued (non-pickup orders, pre-feature pickup orders) pass.
+  if (to === "DELIVERED") {
+    const { pickupDeliveryBlock } = await import("./pickup-otp");
+    const pickupBlock = await pickupDeliveryBlock(row.id);
+    if (pickupBlock) return { kind: "blocked", code: pickupBlock.code, error: pickupBlock.message };
+  }
   const result: TransitionResult = transitionOrder(order, to, changedBy, reason);
   if (!result.ok) return { kind: "invalid", error: result.error };
   const changedById = await resolveUserId(changedBy);
@@ -1224,6 +1235,14 @@ export async function applyOrderTransition(
   // is idempotent per order (see src/orders/delivered-hooks.ts).
   if (to === "DELIVERED") {
     await runDeliveredOrderHooks(row.id);
+  }
+  // Pickup OTP issue (ADV-19 remainder): after a CONFIRMED commit, a
+  // pickup order gets its handover code issued + SMS queued. The
+  // helper never throws and no-ops for non-pickup orders, so the
+  // confirm path is unaffected when the feature is idle.
+  if (to === "CONFIRMED") {
+    const { ensurePickupOtpForConfirmedOrder } = await import("./pickup-otp");
+    await ensurePickupOtpForConfirmedOrder(row.id);
   }
   // Wave 15: cancelling releases any bundle component reserves this
   // order holds (ledger-idempotent, never throws — see product-types).

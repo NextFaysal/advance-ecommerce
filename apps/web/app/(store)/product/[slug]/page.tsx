@@ -5,6 +5,7 @@ import { fromPoisha } from "@advance-ecommerce/validators";
 import { getLivePublicProductBySlug, tryCatalogRepository } from "@/catalog/server-read";
 import { maxVariantPricePoisha, minVariantPricePoisha, toPublicProduct } from "@/catalog/types";
 import { EmiNote } from "@/marketing/components/EmiNote";
+import { SubscribeSaveSection } from "@/subscriptions/subscribe-save-section";
 import { RecordRecentlyViewed } from "@/storefront-ux/components/RecordRecentlyViewed";
 import { RecentlyViewedRail } from "@/storefront-ux/components/RecentlyViewedRail";
 import { StickyBuyBar } from "@/storefront-ux/components/StickyBuyBar";
@@ -567,6 +568,21 @@ export default async function ProductPage({ params }: { params: { slug: string }
                 at the product's lowest variant price; self-gating.
                 Hidden for price-on-request products (no price shown). */}
             {priceOnRequest ? null : <EmiNote totalPoisha={minPrice} />}
+
+            {/* Subscribe & save (ADV-18 remainder) — self-gating
+                server section: renders nothing while the
+                module.subscriptions flag is OFF. Hidden for
+                price-on-request products like the EMI note. */}
+            {priceOnRequest ? null : (
+              <SubscribeSaveSection
+                variants={product.variants.map((v) => ({
+                  id: v.id,
+                  label: Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড",
+                  pricePoisha: v.pricePoisha,
+                  stock: v.stock,
+                }))}
+              />
+            )}
 
             {/* ADV-22 (grocery pack): weighted products sell as fixed
                 weight packs priced from a per-kg rate. The annotation
