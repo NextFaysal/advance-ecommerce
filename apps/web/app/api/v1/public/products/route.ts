@@ -16,6 +16,13 @@ export async function GET(req: Request) {
     const min = url.searchParams.get("minPricePoisha");
     const max = url.searchParams.get("maxPricePoisha");
     const sortParam = url.searchParams.get("sort");
+    // Rating floor (wave 47): only the two thresholds the shop UI
+    // offers are honoured — anything else means no rating filter,
+    // mirroring the shop page's parseRating contract. ratingMin is
+    // enforced in SQL on the Postgres path and re-checked during
+    // Meilisearch hydration (see search-service).
+    const ratingParam = url.searchParams.get("rating");
+    const ratingMin = ratingParam === "4" ? 4 : ratingParam === "3" ? 3 : undefined;
     // Wave 14: repeated `attr=key:value` params (split on the FIRST
     // colon — values may themselves contain colons). Malformed pairs
     // (no colon, empty key or value) are ignored, never fatal.
@@ -34,6 +41,7 @@ export async function GET(req: Request) {
       minPricePoisha: min !== null ? Number(min) : undefined,
       maxPricePoisha: max !== null ? Number(max) : undefined,
       inStockOnly: url.searchParams.get("inStock") === "true",
+      ratingMin,
       sort:
         sortParam === "price-asc" || sortParam === "price-desc" || sortParam === "rating" || sortParam === "newest"
           ? sortParam

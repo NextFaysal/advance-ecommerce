@@ -83,6 +83,21 @@ export async function searchPublicProducts(
           ) {
             continue;
           }
+          // ratingMin alignment (wave 47): the engine never filters
+          // by rating (its ratingAverage only feeds the rating sort),
+          // and the indexed value is reindex-time besides, while
+          // hydration carries the LIVE maintained column from
+          // Postgres — re-check the floor here so a Meilisearch
+          // answer cannot surface products the Postgres path's SQL
+          // `gte` would have excluded. (The engine `total` still
+          // counts every matched document, so a page can come back
+          // short — same caveat the inStock re-check above carries.)
+          if (
+            filter.ratingMin !== undefined &&
+            (product.ratingAverage ?? 0) < filter.ratingMin
+          ) {
+            continue;
+          }
           hydrated.push(toPublicProduct(product));
         }
       }
