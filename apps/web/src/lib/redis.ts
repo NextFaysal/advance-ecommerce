@@ -8,7 +8,10 @@
  * - Pub/Sub: channel messaging for order SSE feed and rider assignment board
  * - Settings Cache: distributed key-value cache with TTL
  */
-import Redis from "ioredis";
+import type Redis from "ioredis";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+declare const __non_webpack_require__: any;
 
 let redisClient: Redis | null = null;
 let redisPubClient: Redis | null = null;
@@ -20,15 +23,20 @@ const memoryCache = new Map<string, { value: string; expiresAt: number }>();
 const memoryRateLimits = new Map<string, { count: number; resetAt: number }>();
 
 function createClient(): Redis | null {
+  if (typeof window !== "undefined" || process.env.NEXT_RUNTIME === "edge") return null;
   const url = process.env.REDIS_URL;
   if (!url) return null;
 
   try {
-    const client = new Redis(url, {
+    // Dynamically require to ensure ioredis is never pulled into client or edge bundles
+    const nodeRequire = typeof __non_webpack_require__ !== "undefined" ? __non_webpack_require__ : eval("require");
+    const RedisConstructor = nodeRequire("ioredis");
+    const RedisClass = RedisConstructor.default || RedisConstructor;
+    const client = new RedisClass(url, {
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
       lazyConnect: true,
-      retryStrategy(times) {
+      retryStrategy(times: number) {
         if (times > 3) return null; // Stop reconnecting after 3 attempts in local dev
         return Math.min(times * 200, 1000);
       },

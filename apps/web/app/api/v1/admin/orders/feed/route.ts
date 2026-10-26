@@ -95,14 +95,17 @@ export async function GET(req: Request) {
       });
 
       try {
+        const isCluster = Boolean(process.env.REDIS_URL);
         controller.enqueue(
           encoder.encode(
             `event: feed.connected\ndata: ${JSON.stringify({
               type: "feed.connected",
               live: true,
-              transport: "in-process",
-              scope: "single-node",
-              note: "Live within this server process via the in-process event bus. Events do not cross processes; Redis pub/sub replaces the transport after DB wiring.",
+              transport: isCluster ? "redis-pubsub" : "in-process",
+              scope: isCluster ? "cluster" : "single-node",
+              note: isCluster
+                ? "Live across cluster nodes via Redis pub/sub bridge."
+                : "Live within this server process via the in-process event bus. Events do not cross processes; Redis pub/sub activates when REDIS_URL is configured.",
               at: new Date().toISOString(),
             })}\n\n`,
           ),

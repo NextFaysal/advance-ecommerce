@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { formatBdt } from "@advance-ecommerce/validators";
+import { subscribeOrderFeed } from "@/orders/realtime";
 
 export interface RiderDeliveryView {
   id: string;
@@ -61,6 +62,20 @@ export function RiderAssignmentBoard({ initialDeliveries, riders }: Props) {
     }
   }
 
+  const [liveConnected, setLiveConnected] = useState(false);
+
+  useEffect(() => {
+    const unsub = subscribeOrderFeed(
+      (_event) => {
+        setLiveConnected(true);
+        router.refresh();
+      },
+      () => setLiveConnected(false),
+    );
+    setLiveConnected(true);
+    return unsub;
+  }, [router]);
+
   const activeRiders = riders.filter((r) => r.status === "ACTIVE" || r.status === "ON_DELIVERY");
 
   return (
@@ -71,6 +86,14 @@ export function RiderAssignmentBoard({ initialDeliveries, riders }: Props) {
           <p className="text-xs text-text-muted">
             পার্সেল রি-অ্যাসাইনমেন্ট এবং ইন-ফ্লাইট ডেলিভারির রিয়েল-টাইম নিয়ন্ত্রণ।
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
+            liveConnected ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-text-muted"
+          }`}>
+            <span className={`h-2 w-2 rounded-full ${liveConnected ? "animate-pulse bg-emerald-500" : "bg-muted-foreground"}`} />
+            {liveConnected ? "রিয়েলটাইম লাইভ" : "ফিড অফলাইন"}
+          </span>
         </div>
       </div>
 

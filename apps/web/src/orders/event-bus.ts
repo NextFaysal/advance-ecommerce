@@ -116,10 +116,45 @@ export type OrderEventListener = (event: DomainEvent) => void;
 
 const listeners = new Set<OrderEventListener>();
 
+const INSTANCE_ID = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+  ? crypto.randomUUID()
+  : Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+let redisSubActive = false;
+
+function initRedisSubIfNeeded() {
+  if (redisSubActive || typeof window !== "undefined" || !process.env.REDIS_URL) return;
+  redisSubActive = true;
+  import("../lib/redis")
+    .then(({ redisSubscribe }) => {
+      redisSubscribe("orders.events", (msgStr) => {
+        try {
+          const payload = JSON.parse(msgStr);
+          if (payload && payload._origin === INSTANCE_ID) {
+            // Already delivered locally in this process
+            return;
+          }
+          const { _origin, ...domainEvent } = payload;
+          for (const listener of [...listeners]) {
+            try {
+              listener(domainEvent as DomainEvent);
+            } catch {
+              listeners.delete(listener);
+            }
+          }
+        } catch {
+          // Swallowed
+        }
+      }).catch(() => {});
+    })
+    .catch(() => {});
+}
+
 /** Subscribe to domain events. Returns the unsubscribe function;
  *  callers MUST unsubscribe on teardown (the SSE route does so on
  *  client disconnect) or the listener leaks for the process lifetime. */
 export function subscribeOrderEvents(listener: OrderEventListener): () => void {
+  initRedisSubIfNeeded();
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
@@ -150,7 +185,7 @@ export function publishOrderEvent(event: DomainEvent): void {
 
     // Forward to domain publisher and Redis Pub/Sub
     if (typeof window === "undefined") {
-      import("../lib/redis").then(({ redisPublish }) => redisPublish("orders.events", event)).catch(() => {});
+      import("../lib/redis").then(({ redisPublish }) => redisPublish("orders.events", { ...event, _origin: INSTANCE_ID })).catch(() => {});
       import("../events/publisher").then(({ publishDomainEvent }) => {
         publishDomainEvent({
           event: event.type as any,

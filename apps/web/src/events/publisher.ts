@@ -8,8 +8,14 @@
  * - Non-blocking: failures in rules/hooks/webhooks are logged and never block
  *   the calling domain transaction.
  */
-import { randomUUID } from "node:crypto";
 import type { DomainEvent, HookEventPayload } from "../extensibility/types";
+
+function generateUUID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
 import { demoHookRegistry } from "../extensibility/registry";
 import { webhookSubscriptionStore } from "../extensibility/db-store";
 import { signWebhookPayload, webhookHeaders, subscriptionsForEvent } from "../extensibility/webhooks";
@@ -96,7 +102,7 @@ export async function publishDomainEvent(input: PublishDomainEventInput): Promis
 
         const logs = processEvent(matchingRules, autoEvent, {
           dryRun: false,
-          runIdFor: () => randomUUID(),
+          runIdFor: () => generateUUID(),
         });
 
         for (const log of logs) {
