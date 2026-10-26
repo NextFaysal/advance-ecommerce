@@ -148,8 +148,9 @@ export function publishOrderEvent(event: DomainEvent): void {
       }
     }
 
-    // Forward to domain publisher (automations, plugin hooks, outbound webhooks)
+    // Forward to domain publisher and Redis Pub/Sub
     if (typeof window === "undefined") {
+      import("../lib/redis").then(({ redisPublish }) => redisPublish("orders.events", event)).catch(() => {});
       import("../events/publisher").then(({ publishDomainEvent }) => {
         publishDomainEvent({
           event: event.type as any,
