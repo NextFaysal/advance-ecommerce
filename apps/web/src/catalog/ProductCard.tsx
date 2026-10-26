@@ -1,8 +1,7 @@
 // Shared storefront product card — mobile-first, Bangla long text safe.
 // Uses min-w-0 + break-words so long Bangla titles never break the grid.
-// Design refresh (Direction A — Premium): 4:5 imagery, discount badge,
-// wishlist heart overlay, star rating, strike-through compare price,
-// soft elevation with hover lift.
+// Modern creative redesign: dynamic 4:5 image ratio, glassmorphic wishlist badge,
+// floating gradient discount pills, clean star ratings, and tactile buttons.
 "use client";
 
 import Link from "next/link";
@@ -69,24 +68,16 @@ function BagIcon() {
   );
 }
 
-// Public card — typed on PublicProduct (no costPoisha anywhere in the
-// shape), so a full admin Product cannot be passed here by accident:
-// cost prices can never ride this component's serialized props.
 export function ProductCard({ product }: { product: PublicProduct }) {
   const digits = useDigitText();
   const [wishlisted, setWishlisted] = useState(false);
   const [showQuickView, setShowQuickView] = useState(false);
   const price = minVariantPricePoisha(product);
   const inStock = product.variants.some((v) => v.isActive && v.stock > 0);
-  // Default variant for the card's add-to-cart: first active in-stock
-  // variant, falling back to the first active variant (button disables
-  // itself when that variant is out of stock).
   const defaultVariant =
     product.variants.find((v) => v.isActive && v.stock > 0) ??
     product.variants.find((v) => v.isActive) ??
     null;
-  // Discount is computed off the default variant's compare-at price —
-  // the same variant the price + add-to-cart refer to.
   const compareAt = defaultVariant?.compareAtPoisha ?? null;
   const discountPct =
     compareAt !== null && compareAt > price && price > 0
@@ -97,24 +88,25 @@ export function ProductCard({ product }: { product: PublicProduct }) {
   const imageUrl = product.images[0]?.url ?? defaultVariant?.imageUrl ?? null;
 
   return (
-    <article className="group relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-lg">
-      {/* Wishlist — overlay, outside the product link so it stays clickable */}
+    <article className="group relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-xl">
+      {/* Wishlist button */}
       <button
         type="button"
         aria-label={wishlisted ? "উইশলিস্ট থেকে সরান" : "উইশলিস্টে যোগ করুন"}
         aria-pressed={wishlisted}
-        onClick={() => {
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
           toggleWishlistId(product.id);
           setWishlisted((w) => !w);
         }}
-        className="absolute right-2.5 top-2.5 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-text-muted shadow-sm transition hover:text-rose-600"
+        className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 backdrop-blur-md text-text-muted shadow-md transition-all duration-200 hover:scale-110 hover:text-rose-600 hover:bg-white"
       >
         <HeartIcon filled={wishlisted} />
       </button>
 
       <Link href={`/product/${product.slug}`} className="block min-w-0">
-        {/* Image — 4:5. Real product photo when the catalog has one;
-            otherwise a designed tinted placeholder (never a broken img). */}
+        {/* Product Image */}
         <div className="relative aspect-[4/5] overflow-hidden bg-surface-2">
           {imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -122,60 +114,80 @@ export function ProductCard({ product }: { product: PublicProduct }) {
               src={imageUrl}
               alt={product.images[0]?.altBn ?? product.title.bn}
               loading="lazy"
-              className={`h-full w-full object-cover transition duration-300 group-hover:scale-105 ${inStock ? "" : "opacity-60 grayscale"}`}
+              className={`h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-108 ${
+                inStock ? "" : "opacity-60 grayscale"
+              }`}
             />
           ) : (
             <div
-              className={`flex h-full w-full items-center justify-center bg-gradient-to-br from-brand-50 via-surface-2 to-violet-500/10 text-brand-300 ${inStock ? "" : "opacity-60 grayscale"}`}
+              className={`flex h-full w-full items-center justify-center bg-gradient-to-br from-brand-50 via-surface-2 to-violet-500/10 text-brand-300 ${
+                inStock ? "" : "opacity-60 grayscale"
+              }`}
             >
               <BagIcon />
             </div>
           )}
+
+          {/* Floating Discount Badge */}
           {discountPct > 0 ? (
-            <span className="absolute left-2.5 top-2.5 rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
-              {digits(`-${discountPct}%`)}
+            <span className="absolute left-3 top-3 inline-flex items-center rounded-full bg-gradient-to-r from-rose-500 to-pink-500 px-2.5 py-0.5 text-[11px] font-bold text-white shadow-md">
+              {digits(`-${discountPct}%`)} ছাড়
             </span>
           ) : null}
+
+          {/* Out of stock overlay badge */}
           {!inStock ? (
-            <span className="absolute bottom-2.5 left-2.5 rounded-full bg-text-main/85 px-2.5 py-1 text-[11px] font-semibold text-white">
+            <span className="absolute bottom-3 left-3 rounded-full bg-black/80 backdrop-blur-sm px-3 py-1 text-[11px] font-semibold text-white">
               স্টক শেষ
             </span>
           ) : null}
         </div>
 
-        <div className="px-3.5 pt-3">
+        {/* Content Body */}
+        <div className="px-4 pt-3.5">
           {product.brandName ? (
-            <p className="truncate text-[11px] font-semibold tracking-wide text-text-subtle">
+            <p className="truncate text-[11px] font-bold uppercase tracking-wider text-primary/80">
               {product.brandName}
             </p>
           ) : null}
-          <h3 className="mt-0.5 line-clamp-2 min-h-[2.6em] break-words text-sm font-semibold leading-snug text-text-main [overflow-wrap:anywhere]">
+          <h3 className="mt-1 line-clamp-2 min-h-[2.6em] break-words text-sm font-semibold leading-snug text-text-main transition-colors duration-200 group-hover:text-primary [overflow-wrap:anywhere]">
             {product.title.bn}
           </h3>
-          <p className="mt-1.5 flex items-center gap-1" aria-label={`রেটিং ${rating} / ৫`}>
-            {[1, 2, 3, 4, 5].map((i) => (
-              <StarIcon key={i} filled={i <= fullStars} />
-            ))}
-            <span className="ml-1 text-xs text-text-subtle">
-              {product.ratingAverage ?? "—"} ({product.reviewCount})
+
+          <div className="mt-2 flex items-center justify-between">
+            <div className="flex items-center gap-1" aria-label={`রেটিং ${rating} / ৫`}>
+              {[1, 2, 3, 4, 5].map((i) => (
+                <StarIcon key={i} filled={i <= fullStars} />
+              ))}
+              <span className="ml-1 text-[11px] text-text-subtle font-medium">
+                {product.ratingAverage ?? "—"} ({product.reviewCount})
+              </span>
+            </div>
+
+            <span className={`inline-flex items-center gap-1 text-[11px] font-semibold ${inStock ? "text-emerald-600" : "text-rose-600"}`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${inStock ? "bg-emerald-500" : "bg-rose-500"}`} />
+              {inStock ? "স্টকে আছে" : "স্টক শেষ"}
             </span>
-          </p>
-          <p className="mt-1.5 flex flex-wrap items-baseline gap-x-2">
-            <span className="text-[15px] font-bold tabular-nums text-brand-700">{digits(formatBdt(price))}</span>
+          </div>
+
+          <div className="mt-2.5 flex flex-wrap items-baseline gap-x-2">
+            <span className="text-base font-extrabold tabular-nums text-primary">
+              {digits(formatBdt(price))}
+            </span>
             {compareAt !== null && compareAt > price ? (
-              <span className="text-xs tabular-nums text-text-subtle line-through">{digits(formatBdt(compareAt))}</span>
+              <span className="text-xs tabular-nums text-text-subtle line-through opacity-70">
+                {digits(formatBdt(compareAt))}
+              </span>
             ) : null}
-          </p>
-          <p className={`mt-1 text-xs font-medium ${inStock ? "text-emerald-600" : "text-rose-600"}`}>
-            {inStock ? "স্টকে আছে" : "স্টক শেষ"}
-          </p>
+          </div>
         </div>
       </Link>
 
-      <div className="mt-auto flex gap-2 px-3.5 pb-3.5 pt-3">
+      {/* Action Footer */}
+      <div className="mt-auto flex items-center gap-2 px-4 pb-4 pt-3.5">
         {defaultVariant ? (
           <AddToCartButton
-            className="flex-1"
+            className="flex-1 rounded-xl shadow-sm hover:shadow transition-all"
             productId={product.id}
             productTitleBn={product.title.bn}
             variant={{
@@ -192,14 +204,12 @@ export function ProductCard({ product }: { product: PublicProduct }) {
           type="button"
           onClick={() => setShowQuickView(true)}
           aria-haspopup="dialog"
-          className="min-h-[44px] rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-muted transition hover:bg-surface-2 hover:text-text-main"
+          className="min-h-[42px] rounded-xl border border-border/80 px-3 py-2 text-xs font-semibold text-text-muted transition-all duration-200 hover:border-primary/50 hover:bg-primary/5 hover:text-primary active:scale-95"
         >
           ঝটপট দেখুন
         </button>
       </div>
 
-      {/* Quick view (Design v3) — real modal with variant picker +
-          add-to-cart; replaces the old inline expand panel. */}
       <QuickView product={product} open={showQuickView} onClose={() => setShowQuickView(false)} />
     </article>
   );
