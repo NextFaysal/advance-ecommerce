@@ -55,6 +55,8 @@ import { RailAdvanceSummary } from "./rail-advance-summary";
 import { ApprovalBanner } from "./approval-banner";
 import { RailManagementSummary } from "./rail-management-summary";
 import { PickupOtpPanel } from "./pickup-otp-panel";
+import { CustomFieldsPanel } from "@/components/admin/custom-fields-panel";
+import { PresenceHeartbeat } from "./presence-heartbeat";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -572,6 +574,17 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
               the verify/resend surface that unlocks the DELIVERED
               transition (blocked server-side until verified). */}
           <PickupOtpPanel orderId={order.id} />
+
+          {/* Merchant custom fields (ADV-26, wave 53) — self-fetching;
+              renders nothing until order fields are defined in
+              /admin/webhooks, so the rail is unchanged by default. */}
+          <CustomFieldsPanel entity="order" entityId={order.id} />
+
+          {/* Presence + edit-conflict warning (ADV-27 remainder) —
+              heartbeats this order's path and shows an amber warning
+              naming any OTHER staff currently viewing the order.
+              Warning only; renders nothing when nobody else is here. */}
+          <PresenceHeartbeat orderId={order.id} />
         </div>
 
         {/* Main column — tabbed work areas. Panels keep their

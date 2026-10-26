@@ -33,6 +33,7 @@ import { prisma } from "@advance-ecommerce/db";
 import { getOrderByIdOrNo } from "@/orders/repository";
 import { getOrderAdvanceView } from "@/orders/advance";
 import { getSetting } from "@/lib/settings";
+import { resolveInvoiceTexts } from "@/templates/overrides";
 import { formatBdt } from "@/checkout/pricing";
 
 export interface InvoiceMoneyRow {
@@ -68,6 +69,13 @@ export interface InvoiceData {
   }[];
   moneyRows: InvoiceMoneyRow[];
   totalPoisha: number;
+  /** Merchant template copy (ADV-29 — src/templates/overrides.ts),
+   *  resolved at build time. Null = the slot is unset: headerNote
+   *  and termsLine print nothing; footerNote falls back to the
+   *  built-in default in the renderers. */
+  headerNote: string | null;
+  footerNote: string | null;
+  termsLine: string | null;
 }
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -185,12 +193,13 @@ export async function buildInvoiceData(
 ): Promise<InvoiceData | null> {
   const order = await getOrderByIdOrNo(idOrNo);
   if (!order) return null;
-  const [advance, giftCard, storeName, storeAddress, storeBin] = await Promise.all([
+  const [advance, giftCard, storeName, storeAddress, storeBin, templateTexts] = await Promise.all([
     getOrderAdvanceView(order.id),
     getOrderGiftCardCoverage(order.id),
     getSetting("general.store_name"),
     getSetting("general.store_address"),
     getSetting("general.store_bin"),
+    resolveInvoiceTexts(),
   ]);
   const subtotalPoisha = order.items.reduce((sum, i) => sum + i.unitPricePoisha * i.quantity, 0);
   const a = order.address;
@@ -225,6 +234,9 @@ export async function buildInvoiceData(
       paidPoisha: advance?.paidPoisha ?? 0,
     }),
     totalPoisha: order.totalPoisha,
+    headerNote: templateTexts.headerNote,
+    footerNote: templateTexts.footerNote,
+    termsLine: templateTexts.termsLine,
   };
 }
 

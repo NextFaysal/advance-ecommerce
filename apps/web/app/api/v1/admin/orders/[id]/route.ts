@@ -35,6 +35,7 @@ import { applyOrderTransition, getOrderByIdOrNo } from "@/orders/repository";
 import { getOrderAdvanceView } from "@/orders/advance";
 import { getOrderApprovalState } from "@/orders/approvals";
 import { getOrderGiftCardCoverage } from "@/pdf/invoice-data";
+import { getEntityCustomFieldValues } from "@/extensibility/custom-fields-store";
 import type { OrderStatus } from "@/orders/types";
 
 function err(code: string, message: string, status: number, details?: unknown) {
@@ -75,8 +76,11 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   // when no card touched the order) — the same helper the PDF
   // invoice read model uses, so screen, print and PDF agree.
   const giftCard = await getOrderGiftCardCoverage(order.id);
+  // ADV-26 (wave 53): merchant custom-field values ride along
+  // additively — the key appears ONLY when this order has values.
+  const customFields = await getEntityCustomFieldValues("order", order.id);
   return NextResponse.json({
-    data: { ...view, ...(advance ? { advance } : {}), approval, giftCard },
+    data: { ...view, ...(advance ? { advance } : {}), approval, giftCard, ...(customFields ? { customFields } : {}) },
     meta: { db: "PRISMA", source: "DATABASE" },
   });
 }

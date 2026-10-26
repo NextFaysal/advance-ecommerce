@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { WebhooksPanel } from "./webhooks-panel";
+import { CustomFieldsManager } from "./custom-fields-manager";
 
 // Webhooks + API keys admin (ADV-26) — developer platform core.
 // Thin shell; the panel is a self-fetching client component over
@@ -17,6 +18,11 @@ export default function AdminWebhooksPage() {
         description="আউটবাউন্ড ওয়েবহুক এন্ডপয়েন্ট, ডেলিভারি লগ ও পার্টনার API কী পরিচালনা করুন। সাইনিং সিক্রেট এনক্রিপ্ট করে রাখা হয় এবং তৈরির সময় একবারই দেখা যায়; ডেলিভারি SENT মানেই টার্গেট সত্যিকারে 2xx উত্তর দিয়েছে।"
       />
       <WebhooksPanel />
+      {/* Custom-field definitions (ADV-26, wave 53) — same developer-
+          platform surface: values surface through the partner API. */}
+      <div className="mt-8">
+        <CustomFieldsManager />
+      </div>
     </main>
   );
 }

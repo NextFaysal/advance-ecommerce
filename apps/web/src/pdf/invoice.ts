@@ -13,6 +13,7 @@ import { PDFDocument } from "pdf-lib";
 import { embedPdfFonts } from "./fonts";
 import { A4_PORTRAIT, BORDER, BRAND, INK, MUTED, PdfWriter } from "./text";
 import { formatBdt, type InvoiceData } from "./invoice-data";
+import { DEFAULT_INVOICE_FOOTER, invoiceSlotText } from "@/templates/overrides";
 
 const MARGIN = 48;
 // Item table columns (content width = 499.28pt).
@@ -52,6 +53,13 @@ export async function renderInvoicePdf(data: InvoiceData, generatedAt: Date): Pr
   }
   w.gap(2);
   w.hline(BRAND, 1.4);
+
+  // Merchant header note (ADV-29 template override) — unset prints
+  // nothing, exactly as before overrides existed.
+  if (data.headerNote !== null && data.headerNote !== "") {
+    w.gap(2);
+    w.block(data.headerNote, 0, w.contentWidth, { size: 9, color: MUTED });
+  }
 
   // Meta: order no + date left; status + payment right.
   w.text(`অর্ডার / Order: ${data.orderNo}`, 0, 300, { size: 12, bold: true, advance: false });
@@ -129,8 +137,18 @@ export async function renderInvoicePdf(data: InvoiceData, generatedAt: Date): Pr
   }
 
   w.gap(14);
+  // Merchant terms line (ADV-29 template override) — unset prints
+  // nothing.
+  if (data.termsLine !== null && data.termsLine !== "") {
+    w.block(data.termsLine, 0, w.contentWidth, { size: 8.5, color: MUTED });
+    w.gap(2);
+  }
+  // Footer note: the merchant override when set, otherwise the
+  // built-in copy this renderer always printed (DEFAULT_INVOICE_FOOTER
+  // in src/templates/overrides.ts — the same text, so an unconfigured
+  // shop's invoice is unchanged).
   w.block(
-    "ধন্যবাদ! এটি একটি কম্পিউটার-তৈরি ইনভয়েস — স্বাক্ষরের প্রয়োজন নেই। / Thank you! This is a computer-generated invoice — no signature required.",
+    data.footerNote ?? invoiceSlotText(DEFAULT_INVOICE_FOOTER) ?? "",
     0,
     w.contentWidth,
     { size: 8.5, color: MUTED },

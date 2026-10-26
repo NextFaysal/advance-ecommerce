@@ -57,6 +57,14 @@
  * The customer phone prints exactly as the detail API returned it:
  * full for viewers holding customers.view_full_phone, masked
  * otherwise — the API's own policy, not re-decided here.
+ *
+ * Template copy (ADV-29): the invoice sheet also prints the
+ * merchant's header note / terms line / footer note from
+ * src/templates/overrides.ts, fetched resolved from the
+ * templates admin API — the same slots the PDF invoice renders.
+ * Unset slots print nothing here (this surface never had a
+ * built-in footer; the PDF's built-in footer default stays the
+ * PDF's own business).
  */
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -194,14 +202,27 @@ function addressText(order: InvoiceOrder): string {
 type PrintVariant = "invoice" | "slip";
 type PrintFormat = "a4" | "thermal";
 
+/** Merchant template copy (ADV-29 — src/templates/overrides.ts),
+ *  fetched resolved from the templates admin API. Nulls = unset:
+ *  nothing extra prints, exactly as before overrides existed. */
+interface InvoiceTemplateTexts {
+  headerNote: string | null;
+  footerNote: string | null;
+  termsLine: string | null;
+}
+
+const NO_TEMPLATE_TEXTS: InvoiceTemplateTexts = { headerNote: null, footerNote: null, termsLine: null };
+
 function InvoiceSheet({
   invoice,
   storeName,
   format,
+  template = NO_TEMPLATE_TEXTS,
 }: {
   invoice: LoadedInvoice;
   storeName: string;
   format: PrintFormat;
+  template?: InvoiceTemplateTexts;
 }) {
   const { order, subtotalPoisha, shippingPoisha, discountPoisha, otherPoisha, netAdjustmentPoisha, giftCardNetPoisha, giftCardLast4, grossTotalPoisha, paidPoisha, duePoisha } = invoice;
   return (
@@ -225,6 +246,10 @@ function InvoiceSheet({
           <p className="text-small text-text-muted">{formatDate(order.createdAt)}</p>
         </div>
       </header>
+
+      {template.headerNote && (
+        <p className="mt-3 text-small text-text-muted">{template.headerNote}</p>
+      )}
 
       <div className="mt-4 text-small leading-relaxed">
         <p className="font-semibold">{order.customerName}</p>
@@ -337,6 +362,13 @@ function InvoiceSheet({
           সম্পূর্ণ পরিশোধিত / Paid in full
         </p>
       )}
+
+      {(template.termsLine || template.footerNote) && (
+        <div className="mt-5 space-y-1 text-caption text-text-muted">
+          {template.termsLine && <p>{template.termsLine}</p>}
+          {template.footerNote && <p>{template.footerNote}</p>}
+        </div>
+      )}
     </section>
   );
 }
@@ -423,6 +455,7 @@ function PrintCentreInner() {
   const [invoices, setInvoices] = useState<LoadedInvoice[] | null>(null);
   const [failedIds, setFailedIds] = useState<string[]>([]);
   const [storeName, setStoreName] = useState("");
+  const [templateTexts, setTemplateTexts] = useState<InvoiceTemplateTexts>(NO_TEMPLATE_TEXTS);
   const [variant, setVariant] = useState<PrintVariant>("invoice");
   const [format, setFormat] = useState<PrintFormat>("a4");
   const printedRef = useRef(false);
@@ -445,6 +478,29 @@ function PrintCentreInner() {
         }
       } catch {
         /* no store line */
+      }
+
+      // Merchant invoice template copy (ADV-29): resolved slot
+      // texts from the templates API. Same nicety rule as the store
+      // name — any failure or a missing settings.view permission
+      // just leaves every slot unset and the sheet prints as before.
+      try {
+        const res = await fetch("/api/v1/admin/settings/templates");
+        if (res.ok) {
+          const body = (await res.json().catch(() => null)) as
+            | { data?: { invoice?: { effective?: Partial<InvoiceTemplateTexts> } } }
+            | null;
+          const eff = body?.data?.invoice?.effective;
+          if (!cancelled && eff) {
+            setTemplateTexts({
+              headerNote: typeof eff.headerNote === "string" ? eff.headerNote : null,
+              footerNote: typeof eff.footerNote === "string" ? eff.footerNote : null,
+              termsLine: typeof eff.termsLine === "string" ? eff.termsLine : null,
+            });
+          }
+        }
+      } catch {
+        /* no template copy */
       }
 
       const results = await Promise.all(
@@ -561,7 +617,7 @@ function PrintCentreInner() {
       <div id="order-invoice-print">
         {(invoices ?? []).map((invoice) =>
           variant === "invoice" ? (
-            <InvoiceSheet key={invoice.order.id} invoice={invoice} storeName={storeName} format={format} />
+            <InvoiceSheet key={invoice.order.id} invoice={invoice} storeName={storeName} format={format} template={templateTexts} />
           ) : (
             <PackingSlipSheet key={invoice.order.id} invoice={invoice} storeName={storeName} format={format} />
           ),

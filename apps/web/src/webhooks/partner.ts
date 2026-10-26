@@ -15,12 +15,20 @@
  *    by field, so a future cost column can't leak by accident);
  *  - orders: phone only as maskPhone() output; no customer name, no
  *    address fields, no email.
+ *  - customers: phone only as maskPhone() output; no credential or
+ *    social-binding fields (passwordHash / googleId / facebookId are
+ *    never selected).
+ *
+ * Merchant custom-field values (ADV-26, wave 53) ride additively on
+ * all three serialisers as `customFields` — the key appears ONLY on
+ * rows that actually have values stored.
  */
 import { NextResponse } from "next/server";
 import { prisma } from "@advance-ecommerce/db";
 import { maskPhone } from "@advance-ecommerce/validators";
 import { checkRateLimit } from "../lib/rate-limit";
 import { authenticatePartnerKey, type AuthenticatedPartnerKey, type PartnerScope } from "./api-keys";
+import { getCustomFieldValuesForIds } from "../extensibility/custom-fields-store";
 
 /** Per-key partner rate limit: 120 requests / minute. */
 export const PARTNER_RATE_LIMIT = { max: 120, windowMs: 60_000 } as const;
@@ -96,7 +104,18 @@ export async function listPartnerProducts(limit: number) {
       },
     },
   });
-  return products.map((p) => ({ ...p, updatedAt: p.updatedAt.toISOString() }));
+  const customFieldsById = await getCustomFieldValuesForIds(
+    "product",
+    products.map((p) => p.id),
+  );
+  return products.map((p) => {
+    const customFields = customFieldsById.get(p.id);
+    return {
+      ...p,
+      updatedAt: p.updatedAt.toISOString(),
+      ...(customFields ? { customFields } : {}),
+    };
+  });
 }
 
 export async function listPartnerOrders(limit: number) {
@@ -120,19 +139,77 @@ export async function listPartnerOrders(limit: number) {
       },
     },
   });
-  return orders.map((o) => ({
-    id: o.id,
-    orderNo: o.orderNo,
-    status: o.status,
-    paymentStatus: o.paymentStatus,
-    paymentMethod: o.paymentMethod,
-    subtotalPoisha: o.subtotalPoisha,
-    discountPoisha: o.discountPoisha,
-    shippingPoisha: o.shippingPoisha,
-    totalPoisha: o.totalPoisha,
-    customerPhoneMasked: maskPhone(o.customerPhone),
-    itemCount: o.items.reduce((sum, i) => sum + i.quantity, 0),
-    items: o.items,
-    createdAt: o.createdAt.toISOString(),
-  }));
+  const customFieldsById = await getCustomFieldValuesForIds(
+    "order",
+    orders.map((o) => o.id),
+  );
+  return orders.map((o) => {
+    const customFields = customFieldsById.get(o.id);
+    return {
+      id: o.id,
+      orderNo: o.orderNo,
+      status: o.status,
+      paymentStatus: o.paymentStatus,
+      paymentMethod: o.paymentMethod,
+      subtotalPoisha: o.subtotalPoisha,
+      discountPoisha: o.discountPoisha,
+      shippingPoisha: o.shippingPoisha,
+      totalPoisha: o.totalPoisha,
+      customerPhoneMasked: maskPhone(o.customerPhone),
+      itemCount: o.items.reduce((sum, i) => sum + i.quantity, 0),
+      items: o.items,
+      createdAt: o.createdAt.toISOString(),
+      ...(customFields ? { customFields } : {}),
+    };
+  });
+}
+
+export async function listPartnerCustomers(limit: number) {
+  const customers = await prisma.customer.findMany({
+    where: { deletedAt: null },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      email: true,
+      createdAt: true,
+      // passwordHash / googleId / facebookId deliberately NOT
+      // selected — credentials and social bindings never leave the DB.
+    },
+  });
+  // Lifetime stats from the orders table itself (Order.customerId is
+  // a required FK — every order, guest or registered, belongs to a
+  // Customer row). One groupBy for the whole page, not per-row
+  // queries. Counts every recorded order regardless of status.
+  const stats = customers.length
+    ? await prisma.order.groupBy({
+        by: ["customerId"],
+        where: { customerId: { in: customers.map((c) => c.id) } },
+        _count: { _all: true },
+        _sum: { totalPoisha: true },
+      })
+    : [];
+  const statsById = new Map(
+    stats.map((s) => [s.customerId, { count: s._count._all, totalPoisha: s._sum.totalPoisha ?? 0 }]),
+  );
+  const customFieldsById = await getCustomFieldValuesForIds(
+    "customer",
+    customers.map((c) => c.id),
+  );
+  return customers.map((c) => {
+    const customFields = customFieldsById.get(c.id);
+    const lifetime = statsById.get(c.id) ?? { count: 0, totalPoisha: 0 };
+    return {
+      id: c.id,
+      name: c.name,
+      phoneMasked: maskPhone(c.phone),
+      email: c.email,
+      createdAt: c.createdAt.toISOString(),
+      lifetimeOrderCount: lifetime.count,
+      lifetimeTotalPoisha: lifetime.totalPoisha,
+      ...(customFields ? { customFields } : {}),
+    };
+  });
 }

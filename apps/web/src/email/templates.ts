@@ -32,6 +32,26 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/** Merchant copy override for one email, resolved for the send
+ *  locale at send time (src/templates/overrides.ts via
+ *  src/email/send.ts). `intro` replaces the renderer's intro line
+ *  (the sentence after the greeting that says what happened);
+ *  every other line stays code-rendered — an override can never
+ *  change a stated total, link or expiry. Both fields accept the
+ *  key's documented placeholder tokens ({orderNo}, {store}, …),
+ *  substituted from the values the renderer already holds; an
+ *  unknown token is left as typed. */
+export interface EmailCopyOverride {
+  subject?: string;
+  intro?: string;
+}
+
+function applyTokens(text: string, values: Record<string, string>): string {
+  return text.replace(/\{([a-zA-Z]+)\}/g, (match, name: string) =>
+    Object.prototype.hasOwnProperty.call(values, name) ? (values[name] as string) : match,
+  );
+}
+
 function storeLabel(storeName: string, locale: EmailLocale): string {
   const trimmed = storeName.trim();
   if (trimmed !== "") return trimmed;
@@ -80,6 +100,8 @@ export interface OrderConfirmationEmailInput {
   totalPoisha: number;
   /** Raw checkout payment method code (cod / bkash / …). */
   paymentMethod: string;
+  /** Merchant subject/intro override (ADV-29) — see EmailCopyOverride. */
+  copyOverride?: EmailCopyOverride;
 }
 
 export function renderOrderConfirmationEmail(
@@ -88,12 +110,27 @@ export function renderOrderConfirmationEmail(
   const store = storeLabel(input.storeName, input.locale);
   const total = formatBdt(input.totalPoisha);
   const method = paymentMethodLabel(input.paymentMethod, input.locale);
+  const tokens: Record<string, string> = {
+    orderNo: input.orderNo,
+    store,
+    total,
+    customerName: input.customerName,
+    paymentMethod: method,
+  };
+  const overrideSubject =
+    input.copyOverride?.subject !== undefined && input.copyOverride.subject.trim() !== ""
+      ? applyTokens(input.copyOverride.subject.trim(), tokens)
+      : null;
+  const overrideIntro =
+    input.copyOverride?.intro !== undefined && input.copyOverride.intro.trim() !== ""
+      ? applyTokens(input.copyOverride.intro.trim(), tokens)
+      : null;
 
   if (input.locale === "bn") {
-    const subject = `অর্ডার নিশ্চিতকরণ — ${input.orderNo} · ${store}`;
+    const subject = overrideSubject ?? `অর্ডার নিশ্চিতকরণ — ${input.orderNo} · ${store}`;
     const lines = [
       `আসসালামু আলাইকুম ${input.customerName},`,
-      `${store}-এ আপনার অর্ডারটি সফলভাবে গৃহীত হয়েছে।`,
+      overrideIntro ?? `${store}-এ আপনার অর্ডারটি সফলভাবে গৃহীত হয়েছে।`,
       `অর্ডার নম্বর: ${input.orderNo}`,
       `মোট: ${total}`,
       `পেমেন্ট পদ্ধতি: ${method}`,
@@ -107,10 +144,10 @@ export function renderOrderConfirmationEmail(
     };
   }
 
-  const subject = `Order confirmation — ${input.orderNo} · ${store}`;
+  const subject = overrideSubject ?? `Order confirmation — ${input.orderNo} · ${store}`;
   const lines = [
     `Hello ${input.customerName},`,
-    `Your order at ${store} has been received successfully.`,
+    overrideIntro ?? `Your order at ${store} has been received successfully.`,
     `Order number: ${input.orderNo}`,
     `Total: ${total}`,
     `Payment method: ${method}`,
@@ -138,17 +175,34 @@ export interface StaffInviteEmailInput {
   inviteLink: string;
   /** ISO expiry of the invite (72h from issue). */
   expiresAtIso: string;
+  /** Merchant subject/intro override (ADV-29) — see EmailCopyOverride.
+   *  The link, validity and safety lines are NEVER overridable. */
+  copyOverride?: EmailCopyOverride;
 }
 
 export function renderStaffInviteEmail(input: StaffInviteEmailInput): RenderedEmail {
   const store = storeLabel(input.storeName, input.locale);
   const expiry = formatExpiry(input.expiresAtIso, input.locale);
+  const tokens: Record<string, string> = {
+    store,
+    role: input.roleName,
+    inviteeName: input.inviteeName,
+    expiry,
+  };
+  const overrideSubject =
+    input.copyOverride?.subject !== undefined && input.copyOverride.subject.trim() !== ""
+      ? applyTokens(input.copyOverride.subject.trim(), tokens)
+      : null;
+  const overrideIntro =
+    input.copyOverride?.intro !== undefined && input.copyOverride.intro.trim() !== ""
+      ? applyTokens(input.copyOverride.intro.trim(), tokens)
+      : null;
 
   if (input.locale === "bn") {
-    const subject = `${store} — টিমে যোগ দেওয়ার আমন্ত্রণ`;
+    const subject = overrideSubject ?? `${store} — টিমে যোগ দেওয়ার আমন্ত্রণ`;
     const lines = [
       `আসসালামু আলাইকুম ${input.inviteeName},`,
-      `আপনাকে ${store}-এর অ্যাডমিন টিমে "${input.roleName}" ভূমিকায় যোগ দেওয়ার জন্য আমন্ত্রণ জানানো হয়েছে।`,
+      overrideIntro ?? `আপনাকে ${store}-এর অ্যাডমিন টিমে "${input.roleName}" ভূমিকায় যোগ দেওয়ার জন্য আমন্ত্রণ জানানো হয়েছে।`,
       `আমন্ত্রণ গ্রহণ করে নিজের পাসওয়ার্ড সেট করতে এই লিংকে যান:\n${input.inviteLink}`,
       `লিংকটি ${expiry} পর্যন্ত বৈধ থাকবে। লিংকটি কারো সাথে শেয়ার করবেন না — এটি একবারই ব্যবহার করা যাবে।`,
       `আপনি এই আমন্ত্রণ আশা না করলে ইমেইলটি উপেক্ষা করুন।`,
@@ -163,10 +217,10 @@ export function renderStaffInviteEmail(input: StaffInviteEmailInput): RenderedEm
     return { subject, text: lines.join("\n\n"), html: wrapHtml("bn", htmlLines) };
   }
 
-  const subject = `${store} — you're invited to join the team`;
+  const subject = overrideSubject ?? `${store} — you're invited to join the team`;
   const lines = [
     `Hello ${input.inviteeName},`,
-    `You have been invited to join the ${store} admin team in the "${input.roleName}" role.`,
+    overrideIntro ?? `You have been invited to join the ${store} admin team in the "${input.roleName}" role.`,
     `Accept the invite and set your own password here:\n${input.inviteLink}`,
     `The link stays valid until ${expiry}. Do not share it — it can be used only once.`,
     `If you were not expecting this invitation, you can ignore this email.`,
@@ -196,22 +250,39 @@ export interface ReportDeliveryEmailInput {
   periodTo: string;
   /** Data rows in the attached CSV (excluding the watermark). */
   rowCount: number;
+  /** Merchant subject/intro override (ADV-29) — see EmailCopyOverride. */
+  copyOverride?: EmailCopyOverride;
 }
 
 export function renderReportDeliveryEmail(input: ReportDeliveryEmailInput): RenderedEmail {
   const store = storeLabel(input.storeName, input.locale);
+  const tokens: Record<string, string> = {
+    store,
+    reportName: input.reportName,
+    periodFrom: input.periodFrom,
+    periodTo: input.periodTo,
+    rowCount: String(input.rowCount),
+  };
+  const overrideSubject =
+    input.copyOverride?.subject !== undefined && input.copyOverride.subject.trim() !== ""
+      ? applyTokens(input.copyOverride.subject.trim(), tokens)
+      : null;
+  const overrideIntro =
+    input.copyOverride?.intro !== undefined && input.copyOverride.intro.trim() !== ""
+      ? applyTokens(input.copyOverride.intro.trim(), tokens)
+      : null;
   if (input.locale === "bn") {
-    const subject = `${store} — নির্ধারিত রিপোর্ট: ${input.reportName} (${input.periodFrom} → ${input.periodTo})`;
+    const subject = overrideSubject ?? `${store} — নির্ধারিত রিপোর্ট: ${input.reportName} (${input.periodFrom} → ${input.periodTo})`;
     const lines = [
-      `আপনার নির্ধারিত রিপোর্ট "${input.reportName}" তৈরি হয়ে গেছে।`,
+      overrideIntro ?? `আপনার নির্ধারিত রিপোর্ট "${input.reportName}" তৈরি হয়ে গেছে।`,
       `সময়কাল: ${input.periodFrom} → ${input.periodTo} (Asia/Dhaka)। সংযুক্ত CSV ফাইলে ${input.rowCount}টি সারি আছে।`,
       `এই ইমেইলটি স্বয়ংক্রিয়ভাবে পাঠানো হয়েছে — রিপোর্টের সময়সূচি বদলাতে Admin > Reports > Report Builder-এ যান।`,
     ];
     return { subject, text: lines.join("\n\n"), html: wrapHtml("bn", lines.map(escapeHtml)) };
   }
-  const subject = `${store} — scheduled report: ${input.reportName} (${input.periodFrom} → ${input.periodTo})`;
+  const subject = overrideSubject ?? `${store} — scheduled report: ${input.reportName} (${input.periodFrom} → ${input.periodTo})`;
   const lines = [
-    `Your scheduled report "${input.reportName}" is ready.`,
+    overrideIntro ?? `Your scheduled report "${input.reportName}" is ready.`,
     `Period: ${input.periodFrom} → ${input.periodTo} (Asia/Dhaka). The attached CSV contains ${input.rowCount} rows.`,
     `This email was sent automatically — manage report schedules in Admin > Reports > Report Builder.`,
   ];

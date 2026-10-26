@@ -234,6 +234,23 @@ async function defaultStoreIdentity(): Promise<{ storeName: string; locale: Emai
   }
 }
 
+/** Merchant template override for one job, resolved for the send
+ *  locale at SEND time (ADV-29 — src/templates/overrides.ts), so
+ *  worker-sent mail carries the same copy as anything rendered in
+ *  the web process. Any failure resolves to "no override": a broken
+ *  override document must never block an email. */
+async function emailCopyOverride(
+  key: "order_confirmation" | "staff_invite" | "report_delivery",
+  locale: EmailLocale,
+) {
+  try {
+    const { resolveEmailCopy } = await import("../templates/overrides");
+    return (await resolveEmailCopy(key, locale)) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Fire one queued lifecycle email (ADV-3). See the header for the
  * honesty contract; in short: unconfigured transport / vanished
@@ -288,6 +305,7 @@ export async function processEmailJob(
       orderNo: order.orderNo,
       totalPoisha: order.totalPoisha,
       paymentMethod: String(order.paymentMethod),
+      copyOverride: await emailCopyOverride("order_confirmation", identity.locale),
     });
     const result = await provider.send({
       to: toEmail,
@@ -314,6 +332,7 @@ export async function processEmailJob(
       roleName: job.roleName ?? "",
       inviteLink,
       expiresAtIso: job.expiresAt ?? "",
+      copyOverride: await emailCopyOverride("staff_invite", identity.locale),
     });
     const result = await provider.send({
       to: toEmail,
@@ -367,6 +386,7 @@ export async function processEmailJob(
       periodFrom: from,
       periodTo: to,
       rowCount: built.rows.length,
+      copyOverride: await emailCopyOverride("report_delivery", identity.locale),
     });
     const result = await provider.send({
       to: toEmail,

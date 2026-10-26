@@ -10,6 +10,7 @@ import { validateSessionToken } from "@/lib/auth";
 import { hasPermission, phoneForViewer, requirePermission, RbacError } from "@/lib/rbac";
 import { logPhoneAccess } from "@/lib/audit";
 import { getCustomerWithOrders } from "@/orders/repository";
+import { getEntityCustomFieldValues } from "@/extensibility/custom-fields-store";
 
 function err(code: string, message: string, status: number, details?: unknown) {
   return NextResponse.json({ error: { code, message, details } }, { status });
@@ -50,9 +51,16 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     ...o,
     customerPhone: phoneForViewer(o.customerPhone, session.user.permissions) ?? "",
   }));
+  // ADV-26 (wave 53): merchant custom-field values ride along
+  // additively on the customer object — only when values exist.
+  const customFields = await getEntityCustomFieldValues("customer", customer.id);
   return NextResponse.json({
     data: {
-      customer: { ...customer, phone: phoneForViewer(customer.phone, session.user.permissions) ?? "" },
+      customer: {
+        ...customer,
+        phone: phoneForViewer(customer.phone, session.user.permissions) ?? "",
+        ...(customFields ? { customFields } : {}),
+      },
       orders,
     },
     meta: { db: "PRISMA", source: "DATABASE", phonesMasked: !canSeeFullPhone },

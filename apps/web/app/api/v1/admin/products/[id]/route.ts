@@ -11,6 +11,7 @@ import { canSeeCostPrices, maskCatalogProduct } from "@/lib/cost-masking";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { productUpdateSchema } from "@/catalog/service";
 import { productTypePayloadLocked } from "@/catalog/product-types";
+import { getEntityCustomFieldValues } from "@/extensibility/custom-fields-store";
 
 // GET /api/v1/admin/products/[id]
 // Cost masking (ADV-27): variant costs are returned only to holders
@@ -28,8 +29,14 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     const product = await repo.getProductById(params.id);
     if (!product) return apiError("NOT_FOUND", "Product not found.", 404);
     const canSeeCost = canSeeCostPrices(session.permissions);
+    // ADV-26 (wave 53): merchant custom-field values ride along
+    // additively — the key appears ONLY when this product has values.
+    const customFields = await getEntityCustomFieldValues("product", params.id);
     return NextResponse.json({
-      data: maskCatalogProduct(product, session.permissions),
+      data: {
+        ...maskCatalogProduct(product, session.permissions),
+        ...(customFields ? { customFields } : {}),
+      },
       meta: { costMasked: !canSeeCost },
     });
   } catch (error) {

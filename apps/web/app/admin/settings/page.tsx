@@ -18,6 +18,11 @@ import {
   type IntegrationStatus,
 } from "@/lib/settings";
 import { TRACKING_SETTING_KEYS } from "@/tracking/settings";
+import {
+  OVERRIDABLE_EMAIL_KEYS,
+  loadEmailOverrides,
+  loadInvoiceOverrides,
+} from "@/templates/overrides";
 import { loadOrderRules } from "@/checkout/order-rules";
 import { loadDeliverySlots } from "@/checkout/delivery-slots";
 import { getEmailTransportStatus } from "@/email/config";
@@ -335,6 +340,25 @@ export default async function AdminSettingsPage() {
     } satisfies CardStatus;
   });
 
+  // Template designer (ADV-29): how many of the four override
+  // documents (invoice + 3 email keys) actually carry merchant
+  // copy — read through the same loaders the renderers resolve.
+  const templates = await probe(async () => {
+    const invoice = await loadInvoiceOverrides();
+    let emailCount = 0;
+    for (const key of OVERRIDABLE_EMAIL_KEYS) {
+      if ((await loadEmailOverrides(key)) !== null) emailCount += 1;
+    }
+    const custom = (invoice !== null ? 1 : 0) + emailCount;
+    return {
+      tone: custom > 0 ? "success" : "neutral",
+      label: custom > 0 ? `${custom}টি টেমপ্লেটে কাস্টম লেখা` : "সব বিল্ট-ইন লেখা",
+      detail:
+        `ইনভয়েস (শিরোনাম নোট/শর্ত/পাদটীকা): ${invoice !== null ? "কাস্টম" : "বিল্ট-ইন"} · ` +
+        `ইমেইল বিষয়/ভূমিকা: ৩টির মধ্যে ${emailCount}টিতে কাস্টম। খালি স্লট মানেই বিল্ট-ইন লেখা ছাপা/পাঠানো হয়।`,
+    } satisfies CardStatus;
+  });
+
   const cards: SettingsCardInfo[] = [
     {
       href: "/admin/settings/payments",
@@ -415,6 +439,14 @@ export default async function AdminSettingsPage() {
       titleEn: "Privacy & Maintenance",
       description: "কাস্টমার ডেটা এক্সপোর্ট/মুছে ফেলার লেজার, মার্কেটিং সম্মতির লগ এবং স্টোরফ্রন্ট মেইনটেন্যান্স মোড (site.maintenance)।",
       status: privacy,
+    },
+    {
+      href: "/admin/settings/templates",
+      icon: <Icon name="tag" size={22} />,
+      titleBn: "টেমপ্লেট ডিজাইনার",
+      titleEn: "Template Designer",
+      description: "ইনভয়েসের শিরোনাম নোট/শর্ত/পাদটীকা এবং অর্ডার নিশ্চিতকরণ, স্টাফ আমন্ত্রণ ও নির্ধারিত রিপোর্ট ইমেইলের বিষয়/ভূমিকা (templates.*)। লেআউট বা হিসাব বদলায় না।",
+      status: templates,
     },
   ];
 

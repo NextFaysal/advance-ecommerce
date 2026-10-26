@@ -14,6 +14,7 @@ import { isFeatureEnabled } from "@/lib/feature-flags";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProductEditor, type AttributeSetOption, type CategoryOption } from "../product-editor";
 import { RelatedPicker, type RelatedPick } from "./related-picker";
+import { CustomFieldsPanel } from "@/components/admin/custom-fields-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -108,6 +109,12 @@ export default async function EditProductPage({
         productTypesEnabled={isFeatureEnabled("module.product_types")}
       />
       <RelatedPicker productId={product.id} initialPicks={relatedPicks} />
+      {/* Merchant custom fields (ADV-26, wave 53) — self-fetching;
+          renders nothing until product fields are defined in
+          /admin/webhooks, so the editor is unchanged by default. */}
+      <div className="mt-5">
+        <CustomFieldsPanel entity="product" entityId={product.id} />
+      </div>
     </main>
   );
 }

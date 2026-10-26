@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { TeamClient } from "./team-client";
 import { TargetsPanel } from "./targets-panel";
 import { DigestPanel } from "./digest-panel";
+import { ChatPanel } from "./chat-panel";
 
 // Team ops (ADV-27 remainder) — attendance grid, shifts, staff
 // targets and the daily digest. Thin shell; the panels are
@@ -19,6 +20,7 @@ export default function AdminTeamPage() {
       <TeamClient />
       <TargetsPanel />
       <DigestPanel />
+      <ChatPanel />
     </main>
   );
 }

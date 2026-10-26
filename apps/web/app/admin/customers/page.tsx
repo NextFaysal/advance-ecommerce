@@ -14,6 +14,7 @@ import { customerAovPoisha, customerSuccessRate, displayPhone } from "../../../s
 import { formatBdt } from "../../../src/checkout/pricing";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
+import { CustomFieldsPanel } from "@/components/admin/custom-fields-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -431,6 +432,15 @@ export default function AdminCustomersPage() {
             </p>
           </div>
         </Card>
+      )}
+
+      {/* Merchant custom fields (ADV-26, wave 53) — self-fetching;
+          renders nothing until customer fields are defined in
+          /admin/webhooks, so this page is unchanged by default. */}
+      {loadState === "ready" && selected && (
+        <div className="mt-5">
+          <CustomFieldsPanel entity="customer" entityId={selected.id} />
+        </div>
       )}
     </main>
   );
