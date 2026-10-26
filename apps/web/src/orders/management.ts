@@ -27,6 +27,7 @@
  */
 import { prisma } from "@advance-ecommerce/db";
 import { writeAudit } from "../lib/audit";
+import { STAGE_TAG_PREFIX } from "./stages";
 
 export type OrderManagementErrorCode =
   | "ORDER_NOT_FOUND"
@@ -112,7 +113,11 @@ async function loadManagementView(orderId: string): Promise<OrderManagementView 
     assignedToId: row.assigneeId,
     assigneeName: row.assignee?.name ?? null,
     priority: row.priority,
-    tags: row.tags.map((t) => t.tag),
+    // ADV-26 (BUILD-LITE): `stage:` tags are system state owned by
+    // src/orders/stages.ts (the order's workflow stage) — hidden from
+    // the staff tag view here and preserved by the replace below, so
+    // the tag editor can neither show nor clobber them.
+    tags: row.tags.map((t) => t.tag).filter((tag) => !tag.startsWith(STAGE_TAG_PREFIX)),
     held: row.heldAt !== null,
     heldAt: row.heldAt ? row.heldAt.toISOString() : null,
     heldReason: row.heldReason,
@@ -138,13 +143,16 @@ export async function getOrderManagement(
   return { ok: true, value: view };
 }
 
-/** Trim, drop empties, dedupe (case-sensitive, staff-typed), cap. */
+/** Trim, drop empties, dedupe (case-sensitive, staff-typed), cap.
+ *  Tags in the reserved `stage:` namespace are dropped: workflow
+ *  stage state may only be written through src/orders/stages.ts,
+ *  never by typing a look-alike tag into this editor. */
 function normalizeTags(tags: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of tags) {
     const t = raw.trim();
-    if (!t || seen.has(t)) continue;
+    if (!t || t.startsWith(STAGE_TAG_PREFIX) || seen.has(t)) continue;
     seen.add(t);
     out.push(t);
     if (out.length >= 10) break;
@@ -228,7 +236,12 @@ export async function updateOrderManagement(
       await tx.order.update({ where: { id: orderId }, data });
     }
     if (tags !== undefined) {
-      await tx.orderTag.deleteMany({ where: { orderId } });
+      // Replace STAFF tags only — the order's `stage:` tag (ADV-26
+      // workflow stage, owned by src/orders/stages.ts) survives a
+      // tag save untouched.
+      await tx.orderTag.deleteMany({
+        where: { orderId, NOT: { tag: { startsWith: STAGE_TAG_PREFIX } } },
+      });
       if (tags.length > 0) {
         await tx.orderTag.createMany({ data: tags.map((tag) => ({ orderId, tag })) });
       }

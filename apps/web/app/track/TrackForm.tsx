@@ -243,6 +243,17 @@ export default function TrackForm() {
           </div>
           <p className="mt-1 text-sm text-text-muted">ফোন: {state.view.maskedPhone}</p>
 
+          {/* Merchant workflow stage (ADV-26, BUILD-LITE): present
+              only when staff set a stage on this order — a friendly
+              step label under the canonical status above, which
+              remains the status of record. */}
+          {state.view.workflowStage && (
+            <p className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-brand-50 px-4 py-3 text-sm text-text-main">
+              <span className="font-semibold">বর্তমান ধাপ:</span>
+              <span>{state.view.workflowStage.labelBn}</span>
+            </p>
+          )}
+
           {/* Restaurant kitchen state (ADV-23, wave 56): present only
               when the order has a kitchen ticket — the real ticket
               status from the KDS queue, projected server-side. */}

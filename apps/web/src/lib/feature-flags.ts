@@ -88,6 +88,7 @@ export const FEATURE_FLAG_DEFINITIONS = [
   { key: "module.print_on_demand", description: "Print-on-demand: custom print text + colour on listed variants, per-item print fee, admin print queue (v2 add-on, ADV-23)" },
   { key: "module.courses", description: "Courses / LMS-lite: sell DIGITAL course variants, buyers get order-derived access to module/lesson content (v2 add-on, ADV-23)" },
   { key: "module.ai_content", description: "AI content: provider-backed bilingual product description + SEO drafts for the product editor (v2 add-on, ADV-24)" },
+  { key: "module.workflow_stages", description: "Custom order workflow stages: merchant labels anchored to canonical order statuses, shown as chips + tracking step (v2 add-on, ADV-26)" },
 ] as const satisfies readonly FeatureFlagDefinition[];
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_DEFINITIONS)[number]["key"];

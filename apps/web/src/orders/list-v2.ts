@@ -18,6 +18,7 @@
  */
 import { prisma } from "@advance-ecommerce/db";
 import { maskPhone } from "@advance-ecommerce/validators";
+import { stageTagWhere } from "./stages";
 import type { OrderStatus } from "./types";
 
 export const ORDER_STATUSES: readonly OrderStatus[] = [
@@ -85,6 +86,10 @@ export interface OrderListFilterInput {
   paymentMethod?: string;
   courier?: string;
   search?: string;
+  /** ADV-26 (BUILD-LITE): workflow-stage filter (`stage:<id>` tag) —
+   *  the counts honour it like every other non-status filter, so the
+   *  chips keep describing the stage-filtered set. */
+  stageId?: string;
 }
 
 export type OrderStatusCounts = Record<OrderStatus, number> & { ALL: number };
@@ -113,6 +118,7 @@ export async function countOrdersByStatus(
     where.paymentMethod = dbMethod;
   }
   if (filters.courier) where.courier = filters.courier;
+  if (filters.stageId) Object.assign(where, stageTagWhere(filters.stageId));
   if (filters.search) where.OR = orderSearchOr(filters.search);
 
   const grouped = await prisma.order.groupBy({

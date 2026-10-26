@@ -178,6 +178,17 @@ export interface TrackingView {
     fulfilmentType: "DINE_IN" | "TAKEAWAY";
     tableLabel: string | null;
   } | null;
+  /** Merchant workflow stage (ADV-26, BUILD-LITE): a friendly step
+   *  label the merchant anchored at the order's CURRENT canonical
+   *  status ("quality check"), shown under the canonical status —
+   *  the canonical status above it is unchanged and stays the truth
+   *  for every money/stock decision. Present only when a stage is
+   *  set and the module is ON (resolved server-side, past the phone
+   *  check, same no-leak discipline as the kitchen projection). */
+  workflowStage: {
+    labelBn: string;
+    labelEn: string;
+  } | null;
   timeline: TrackingTimelineStep[];
   createdAt: string;
 }
@@ -238,6 +249,10 @@ export function lookupTracking(
     fulfilmentType: "DINE_IN" | "TAKEAWAY";
     tableLabel: string | null;
   } | null = null,
+  workflowStage: {
+    labelBn: string;
+    labelEn: string;
+  } | null = null,
 ): TrackingLookupResult {
   const fail: TrackingLookupResult = { ok: false, error: "not_found", messageBn: GENERIC_NOT_FOUND };
   const normalized = normalizeBdPhone(phoneInput);
@@ -283,6 +298,7 @@ export function lookupTracking(
         parcels,
         shipmentSource: "shipments",
         kitchen: kitchenView,
+        workflowStage,
         timeline: buildTimeline(order),
         createdAt: order.createdAt,
       },
@@ -307,6 +323,7 @@ export function lookupTracking(
       parcels,
       shipmentSource: "order-status",
       kitchen: kitchenView,
+      workflowStage,
       timeline: buildTimeline(order),
       createdAt: order.createdAt,
     },

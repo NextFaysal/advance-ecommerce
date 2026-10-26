@@ -36,6 +36,8 @@ import { ShipmentsPanel } from "./shipments-panel";
 import { PhoneReveal } from "./phone-reveal";
 import { EditPanel } from "./edit-panel";
 import { ManagementPanel } from "./management-panel";
+import { WorkflowStagePanel } from "./workflow-stage-panel";
+import { WorkflowStageChip } from "../../../../src/orders/components/WorkflowStageChip";
 import { ReturnsPanel } from "./returns-panel";
 import { AdvancePanel } from "./advance-panel";
 import type { OrderAdvanceView } from "../../../../src/orders/advance";
@@ -90,6 +92,17 @@ type DetailOrder = Order & {
     quantity: number;
     feePoisha: number;
     printed: boolean;
+  } | null;
+  /** ADV-26 (BUILD-LITE): the detail API's data.workflowStage —
+   *  present ONLY when a merchant stage is set on this order and
+   *  module.workflow_stages is ON (src/orders/stages.ts). A label
+   *  anchored at the canonical status; never a status itself. */
+  workflowStage?: {
+    stageId: string;
+    labelBn: string;
+    labelEn: string;
+    tone: "brand" | "success" | "warning" | "danger" | "info" | "neutral";
+    anchorStatus: string | null;
   } | null;
   approval?: {
     discount: {
@@ -393,6 +406,9 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
             <h1 className="truncate font-mono text-h2 font-bold">{order.orderNo}</h1>
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
               <OrderStatusBadge status={order.status} />
+              {order.workflowStage ? (
+                <WorkflowStageChip label={order.workflowStage.labelBn} tone={order.workflowStage.tone} />
+              ) : null}
               {paymentKnown ? (
                 <OrderPaymentBadge status={order.paymentStatus} />
               ) : (
@@ -774,6 +790,12 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
                         priority / tags / hold / internal notes;
                         self-fetches by order id. */}
                     <ManagementPanel orderId={order.id} />
+                    {/* Workflow stage (ADV-26, BUILD-LITE) — the
+                        merchant stage picker; self-fetches by order
+                        id, renders nothing while the add-on is OFF,
+                        and reloads the workspace after a change so
+                        the header chip stays truthful. */}
+                    <WorkflowStagePanel orderId={order.id} onChanged={() => void load()} />
                     {/* Order editing (doc 17, O6) — line edits with
                         transactional stock deltas; self-fetches by
                         order id. */}

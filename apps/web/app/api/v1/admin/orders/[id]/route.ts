@@ -40,6 +40,7 @@ import { getOrderApprovalState } from "@/orders/approvals";
 import { getOrderGiftCardCoverage, getOrderRentalView } from "@/pdf/invoice-data";
 import { getOrderPodView } from "@/pod/customisation";
 import { getEntityCustomFieldValues } from "@/extensibility/custom-fields-store";
+import { getOrderWorkflowStageView } from "@/orders/stages";
 import type { OrderStatus } from "@/orders/types";
 
 function err(code: string, message: string, status: number, details?: unknown) {
@@ -97,8 +98,14 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   // ADV-26 (wave 53): merchant custom-field values ride along
   // additively — the key appears ONLY when this order has values.
   const customFields = await getEntityCustomFieldValues("order", order.id);
+  // ADV-26 (BUILD-LITE): the order's workflow stage (merchant label
+  // anchored at the canonical status — src/orders/stages.ts) rides
+  // as data.workflowStage, ONLY when one is set and the add-on is ON
+  // (the helper returns null in both other cases — same additive
+  // discipline as pod/customFields). Order.status is untouched.
+  const workflowStage = await getOrderWorkflowStageView(order.id);
   return NextResponse.json({
-    data: { ...view, ...(advance ? { advance } : {}), approval, giftCard, rental, ...(pod ? { pod } : {}), ...(customFields ? { customFields } : {}) },
+    data: { ...view, ...(advance ? { advance } : {}), approval, giftCard, rental, ...(pod ? { pod } : {}), ...(customFields ? { customFields } : {}), ...(workflowStage ? { workflowStage } : {}) },
     meta: { db: "PRISMA", source: "DATABASE" },
   });
 }

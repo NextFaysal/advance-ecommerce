@@ -78,6 +78,7 @@ import {
   type ServiceBookingWriteSpec,
 } from "../services/selection";
 import { rentalDateInstant, type RentalWriteSpec } from "../rental/selection";
+import { stageTagWhere } from "./stages";
 import { advanceConfirmBlock, type AdvanceBlockCode } from "./advance";
 import { discountApprovalConfirmBlock } from "./approvals";
 import { orderSearchOr, type OrderListSort } from "./list-v2";
@@ -298,6 +299,10 @@ export interface OrderListFilters {
   paymentMethod?: string;
   courier?: string;
   search?: string;
+  /** ADV-26 (BUILD-LITE): workflow-stage filter — orders carrying the
+   *  `stage:<stageId>` tag (src/orders/stages.ts). A SQL tag condition,
+   *  never a post-filter, so totals/counts stay truthful. */
+  stageId?: string;
   /** List v2 (doc 17 O6-2): sort key from src/orders/list-v2. Absent =
    *  the historical createdAt-desc order every existing consumer sees. */
   sort?: OrderListSort;
@@ -328,6 +333,7 @@ export async function listOrders(
     where.paymentMethod = dbMethod;
   }
   if (filters.courier) where.courier = filters.courier;
+  if (filters.stageId) Object.assign(where, stageTagWhere(filters.stageId));
   if (filters.search) {
     // List v2 (O6-2): the shared search OR (adds district +
     // phone-suffix matching) lives in src/orders/list-v2 so the rows
@@ -1480,6 +1486,15 @@ export async function applyOrderTransition(
   if (to === "CANCELLED" || to === "RETURNED" || to === "REFUNDED") {
     await runReversalHooks(row.id);
   }
+  // ADV-26 (BUILD-LITE): workflow-stage reconcile — if this order
+  // carries a merchant stage whose anchor no longer matches the new
+  // canonical status, the stage clears. Same dynamic-import /
+  // never-throws discipline as the vertical hooks above; the helper
+  // itself no-ops while module.workflow_stages is OFF.
+  {
+    const { reconcileOrderStageAfterTransition } = await import("./stages");
+    await reconcileOrderStageAfterTransition(row.id, to);
+  }
   // Automation lifecycle (ADV-7): every committed transition emits
   // order.status_changed; DELIVERED / CANCELLED automations match on
   // this event's orderStatus condition (the engine has no separate
@@ -1575,6 +1590,14 @@ export async function saveOrder(order: Order): Promise<void> {
     (order.status === "CANCELLED" || order.status === "RETURNED" || order.status === "REFUNDED")
   ) {
     await runReversalHooks(order.id);
+  }
+  // ADV-26 (BUILD-LITE): same workflow-stage reconcile as the
+  // single-order funnel — only when THIS save actually moved the
+  // stored status (the guard keeps unrelated saves from touching
+  // stage state). Never throws.
+  if (row.status !== order.status) {
+    const { reconcileOrderStageAfterTransition } = await import("./stages");
+    await reconcileOrderStageAfterTransition(order.id, order.status);
   }
 }
 

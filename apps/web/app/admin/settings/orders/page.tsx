@@ -14,6 +14,8 @@ import { loadPickupPoints, loadRetailLocations, type PickupPoint } from "@/check
 import { OrderRulesCard, type CategoryOption, type DistrictGroup } from "./order-rules-card";
 import { DeliverySlotsCard } from "./delivery-slots-card";
 import { PickupPointsCard } from "./pickup-points-card";
+import { WorkflowStagesCard } from "./workflow-stages-card";
+import { isWorkflowStagesEnabled, loadWorkflowStagesConfig } from "@/orders/stages";
 
 // Admin > Settings > Orders — order rules + delivery slots (doc 18,
 // F2-1). Until now the `orders.rules.*` keys (wave 20) and
@@ -43,6 +45,11 @@ function buildDistrictGroups(): DistrictGroup[] {
 
 export default async function OrderSettingsPage() {
   let dbReady = true;
+  let workflowStages: Awaited<ReturnType<typeof loadWorkflowStagesConfig>> = {
+    config: { stages: [] },
+    source: "default",
+  };
+  let workflowStagesEnabled = false;
   let rules = PERMISSIVE_ORDER_RULES;
   let slots = DEFAULT_DELIVERY_SLOTS;
   let slotsCustomized = false;
@@ -63,6 +70,11 @@ export default async function OrderSettingsPage() {
       getSetting("stores.retail_locations"),
     ]);
     rules = loadedRules;
+    // ADV-26 (BUILD-LITE): workflow-stages document + flag state for
+    // the editor card below (fail-soft loader — defaults on error,
+    // and the surrounding catch still owns dbReady).
+    workflowStages = await loadWorkflowStagesConfig();
+    workflowStagesEnabled = isWorkflowStagesEnabled();
     slots = loadedSlots;
     pickupPoints = loadedPickup;
     // Display copy only: a stored non-empty document is unmistakably
@@ -192,6 +204,18 @@ export default async function OrderSettingsPage() {
         />
       </div>
 
+      {/* ADV-26 (BUILD-LITE): merchant workflow stages — labels
+          anchored at canonical statuses (orders.workflow_stages
+          document; src/orders/stages.ts). */}
+      <div className="mt-4">
+        <WorkflowStagesCard
+          initialStages={workflowStages.config.stages}
+          storedConfigured={workflowStages.source === "saved"}
+          moduleEnabled={workflowStagesEnabled}
+          dbReady={dbReady}
+        />
+      </div>
+
       <div className="mt-4">
         <PickupPointsCard
           settingKey="stores.retail_locations"
@@ -209,6 +233,7 @@ export default async function OrderSettingsPage() {
         <code className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs ring-1 ring-inset ring-black/5">orders.delivery_slots</code>
         <code className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs ring-1 ring-inset ring-black/5">stores.pickup_points</code>
         <code className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs ring-1 ring-inset ring-black/5">stores.retail_locations</code>
+        <code className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs ring-1 ring-inset ring-black/5">orders.workflow_stages</code>
         — টাকার মান পয়সায় (integer), জেলা/ক্যাটাগরি তালিকা কমা দিয়ে আলাদা করে, স্লট JSON আকারে সংরক্ষিত হয়।
         প্রতিটি পরিবর্তন কারণসহ অডিট লগে (<span className="font-mono text-xs">settings.update</span>) লেখা থাকে।
       </p>

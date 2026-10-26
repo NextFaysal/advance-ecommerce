@@ -50,6 +50,7 @@ import type { Order } from "@/orders/types";
 import { enqueueBulkJob, triggerBulkJobProcessing } from "@/jobs/bulk-actions";
 import { manualOrderSchema } from "@/orders/manual-order";
 import { createManualOrder } from "@/orders/manual-create";
+import { isWorkflowStagesEnabled, loadWorkflowStagesConfig } from "@/orders/stages";
 import { restaurantSelectionSchema } from "@/restaurant/selection";
 import { serviceBookingSelectionSchema } from "@/services/selection";
 import { rentalSelectionSchema } from "@/rental/selection";
@@ -93,6 +94,10 @@ async function requireAdmin(permission: PermissionKey) {
 
 const listQuerySchema = z.object({
   status: z.string().optional(),
+  // ADV-26 (BUILD-LITE): workflow-stage filter — a stage slug from
+  // the orders.workflow_stages document; matches the `stage:<slug>`
+  // order tag in SQL (src/orders/stages.ts).
+  stage: z.string().optional(),
   paymentStatus: z.string().optional(),
   paymentMethod: z.string().optional(),
   courier: z.string().optional(),
@@ -128,6 +133,7 @@ export async function GET(req: Request) {
       paymentMethod: q.paymentMethod,
       courier: q.courier,
       search,
+      stageId: q.stage,
       sort: q.sort,
       page: q.page,
       pageSize: q.pageSize,
@@ -136,17 +142,36 @@ export async function GET(req: Request) {
     // status param on purpose — the chips must show what switching
     // status would yield under the CURRENT search/other filters.
     // meta.total above is the pager's number: status filter applied.
+    // The stage filter is NOT one of the ignored ones: counts
+    // describe the stage-filtered set, like search/payment do.
     countOrdersByStatus({
       paymentStatus: q.paymentStatus,
       paymentMethod: q.paymentMethod,
       courier: q.courier,
       search,
+      stageId: q.stage,
     }),
   ]);
   const pageRows = rows.map((o) => publicOrder(o, auth.session.user.permissions));
+  // ADV-26 (BUILD-LITE): when the workflow-stages add-on is ON, the
+  // stage definitions ride in meta so the list page can resolve row
+  // tags (`stage:<id>` — rows already carry tags) to chips and offer
+  // the stage filter without a second request. Absent when OFF:
+  // the layer is inert and the list renders exactly as before.
+  const workflowStages = isWorkflowStagesEnabled()
+    ? (await loadWorkflowStagesConfig()).config.stages
+    : null;
   return NextResponse.json({
     data: pageRows,
-    meta: { total, page: q.page, pageSize: q.pageSize, counts, db: "PRISMA", source: "DATABASE" },
+    meta: {
+      total,
+      page: q.page,
+      pageSize: q.pageSize,
+      counts,
+      ...(workflowStages ? { workflowStages } : {}),
+      db: "PRISMA",
+      source: "DATABASE",
+    },
   });
 }
 

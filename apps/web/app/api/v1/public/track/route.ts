@@ -25,6 +25,7 @@ import { z } from "zod";
 import { getOrderByOrderNo } from "@/orders/repository";
 import { getTrackingShipmentsForOrder } from "@/shipments/tracking";
 import { getKitchenTicketView } from "@/restaurant/tickets";
+import { getOrderWorkflowStageView } from "@/orders/stages";
 import { lookupTracking } from "@/storefront-ux/order-tracking";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -55,7 +56,13 @@ export async function POST(req: Request) {
   // fetched server-side only and attached by lookupTracking solely
   // on a phone match (same no-leak discipline as the shipments).
   const kitchen = order ? await getKitchenTicketView(order.id) : null;
-  const result = lookupTracking(order ? [order] : [], parsed.data.orderNo, parsed.data.phone, shipments, kitchen);
+  // ADV-26 (BUILD-LITE): the order's merchant workflow stage, when
+  // set and the module is ON (the helper is flag-gated + fail-soft)
+  // — attached by lookupTracking solely on a phone match, same
+  // no-leak discipline as the kitchen ticket above.
+  const stageView = order ? await getOrderWorkflowStageView(order.id) : null;
+  const workflowStage = stageView ? { labelBn: stageView.labelBn, labelEn: stageView.labelEn } : null;
+  const result = lookupTracking(order ? [order] : [], parsed.data.orderNo, parsed.data.phone, shipments, kitchen, workflowStage);
   if (!result.ok) {
     return NextResponse.json(
       { error: { code: "NOT_FOUND", message: result.messageBn } },

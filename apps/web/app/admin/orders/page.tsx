@@ -36,6 +36,8 @@ import { displayPhone, riskLevel } from "../../../src/orders/customer";
 import { formatBdt } from "../../../src/checkout/pricing";
 import { BulkActionBar } from "../../../src/orders/components/BulkActionBar";
 import { OrderStatusBadge } from "../../../src/orders/components/OrderStatusBadge";
+import { WorkflowStageChip } from "../../../src/orders/components/WorkflowStageChip";
+import type { WorkflowStageTone } from "../../../src/orders/stages";
 import { ORDER_STATUS_VISUAL } from "../../../src/orders/components/labels";
 import { ORDER_DENSITY } from "../../../src/orders/components/density";
 import { OrderPreviewDrawer } from "./order-preview";
@@ -167,6 +169,32 @@ function isPlainRowClick(e: { target: EventTarget | null }): boolean {
   return !t?.closest("a, input, button, select, textarea, label");
 }
 
+/* ADV-26 (BUILD-LITE): workflow stages. Definitions arrive in the
+ * list response meta (only while module.workflow_stages is ON); a
+ * row's stage rides its tags as `stage:<id>` — the prefix mirrors
+ * STAGE_TAG_PREFIX in src/orders/stages.ts (that module is
+ * server-only, so the constant is restated here, not imported). */
+interface WorkflowStageDef {
+  id: string;
+  labelBn: string;
+  labelEn: string;
+  anchorStatus: OrderStatus;
+  color?: WorkflowStageTone;
+  sortOrder: number;
+}
+
+function stageChipOf(
+  order: Order,
+  defs: readonly WorkflowStageDef[],
+): { label: string; tone: WorkflowStageTone } | null {
+  if (defs.length === 0) return null;
+  const tag = order.tags.find((t) => t.startsWith("stage:"));
+  if (!tag) return null;
+  const id = tag.slice("stage:".length);
+  const def = defs.find((d) => d.id === id);
+  return { label: def?.labelBn ?? id, tone: def?.color ?? "neutral" };
+}
+
 /** Map the table's sort state to the list API's `sort` param
  *  (src/orders/list-v2 ORDER_LIST_SORTS). null = the API default,
  *  newest first. */
@@ -187,6 +215,11 @@ export default function AdminOrdersPage() {
   const [loadError, setLoadError] = useState("");
   const [fetching, setFetching] = useState(false);
   const [filter, setFilter] = useState<"ALL" | OrderStatus>("ALL");
+  /* ADV-26 (BUILD-LITE): workflow-stage filter + definitions. The
+   * defs arrive in the list response meta (present only while
+   * module.workflow_stages is ON); "" = no stage filter. */
+  const [stageFilter, setStageFilter] = useState("");
+  const [stageDefs, setStageDefs] = useState<WorkflowStageDef[]>([]);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [view, setView] = useState<"table" | "kanban">("table");
@@ -212,8 +245,8 @@ export default function AdminOrdersPage() {
   /* The server query, mirrored into a ref so `load` stays a stable
    * () => Promise<void> for the refresh button / bulk bar / builders
    * while the effect below refetches whenever any part changes. */
-  const queryRef = useRef({ filter, search: "", sort, page: 1, pageSize: 25 });
-  queryRef.current = { filter, search: debouncedSearch, sort, page, pageSize };
+  const queryRef = useRef({ filter, search: "", sort, page: 1, pageSize: 25, stage: "" });
+  queryRef.current = { filter, search: debouncedSearch, sort, page, pageSize, stage: stageFilter };
   const requestSeq = useRef(0);
   const readyRef = useRef(false);
 
@@ -232,16 +265,18 @@ export default function AdminOrdersPage() {
         sort: apiSortParam(q.sort),
       });
       if (q.filter !== "ALL") params.set("status", q.filter);
+      if (q.stage) params.set("stage", q.stage);
       if (q.search.trim()) params.set("q", q.search.trim());
       const res = await fetch(`/api/v1/admin/orders?${params.toString()}`);
       const body = (await res.json().catch(() => null)) as
-        | { data?: Order[]; meta?: { total?: number; counts?: Record<string, number> }; error?: { code: string; message: string } }
+        | { data?: Order[]; meta?: { total?: number; counts?: Record<string, number>; workflowStages?: WorkflowStageDef[] }; error?: { code: string; message: string } }
         | null;
       if (seq !== requestSeq.current) return; // a newer fetch owns the screen
       if (res.ok && body && "data" in body && body.data) {
         setPageOrders(body.data);
         setTotal(body.meta?.total ?? body.data.length);
         if (body.meta?.counts) setCounts(body.meta.counts);
+        setStageDefs(body.meta?.workflowStages ?? []);
         readyRef.current = true;
         setLoadState("ready");
         setLoadError("");
@@ -274,7 +309,7 @@ export default function AdminOrdersPage() {
   /* Refetch whenever the server query changes. */
   useEffect(() => {
     void load();
-  }, [load, filter, debouncedSearch, sort, page, pageSize]);
+  }, [load, filter, debouncedSearch, sort, page, pageSize, stageFilter]);
 
   /* If the result set shrank under the current page (e.g. after bulk
    * actions), step back to the last page that exists. */
@@ -498,6 +533,40 @@ export default function AdminOrdersPage() {
                 );
               })}
             </div>
+            {/* ADV-26 (BUILD-LITE): workflow-stage filter — rendered
+             *  only while the add-on is ON and stages are defined
+             *  (defs arrive in the list meta). Server-side filter:
+             *  the `stage` param matches the `stage:<id>` order tag
+             *  in SQL, and the counts above honour it too. */}
+            {stageDefs.length > 0 ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <label htmlFor="orders-stage-filter" className="text-caption font-semibold text-text-muted">
+                  ওয়ার্কফ্লো ধাপ
+                </label>
+                <select
+                  id="orders-stage-filter"
+                  value={stageFilter}
+                  onChange={(e) => { setStageFilter(e.target.value); setPage(1); }}
+                  className="min-h-[36px] rounded-[9px] border border-border bg-card px-2.5 text-small font-medium text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                >
+                  <option value="">সব ধাপ</option>
+                  {stageDefs.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.labelBn} ({ORDER_STATUS_VISUAL[s.anchorStatus].labelBn})
+                    </option>
+                  ))}
+                </select>
+                {stageFilter ? (
+                  <button
+                    type="button"
+                    onClick={() => { setStageFilter(""); setPage(1); }}
+                    className="text-caption font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                  >
+                    ফিল্টার সরান
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             {/* Table v2: saved views + column visibility (table view only
              *  for columns; views also make sense from kanban, so the bar
              *  itself is always shown). */}
@@ -649,6 +718,7 @@ export default function AdminOrdersPage() {
                 <tbody>
                   {orders.map((o) => {
                     const level = riskLevel(o.riskScore);
+                    const stageChip = stageChipOf(o, stageDefs);
                     return (
                       <tr
                         key={o.id}
@@ -700,7 +770,10 @@ export default function AdminOrdersPage() {
                         ) : null}
                         {orderCols.isVisible("status") ? (
                           <td className={ORDER_DENSITY[density].cell}>
-                            <OrderStatusBadge status={o.status} />
+                            <span className="flex flex-wrap items-center gap-1.5">
+                              <OrderStatusBadge status={o.status} />
+                              {stageChip ? <WorkflowStageChip label={stageChip.label} tone={stageChip.tone} /> : null}
+                            </span>
                           </td>
                         ) : null}
                         {orderCols.isVisible("risk") ? (
@@ -728,6 +801,7 @@ export default function AdminOrdersPage() {
             <div className="space-y-3 md:hidden">
               {orders.map((o) => {
                 const level = riskLevel(o.riskScore);
+                const stageChip = stageChipOf(o, stageDefs);
                 return (
                   <article
                     key={o.id}
@@ -749,6 +823,7 @@ export default function AdminOrdersPage() {
                           </a>
                           <span className="flex items-center gap-1.5">
                             {o.notes.some((n) => n.text.includes("[pickup:")) ? <Badge tone="info">পিকআপ</Badge> : null}
+                            {stageChip ? <WorkflowStageChip label={stageChip.label} tone={stageChip.tone} /> : null}
                             <OrderStatusBadge status={o.status} />
                           </span>
                         </div>
@@ -821,6 +896,14 @@ export default function AdminOrdersPage() {
                             <span className="font-mono font-semibold tabular-nums text-text-main">{formatBdt(o.totalPoisha)}</span>
                             <span className="text-text-muted">{PAYMENT_METHOD_LABEL[o.paymentMethod] ?? o.paymentMethod}</span>
                           </p>
+                          {(() => {
+                            const chip = stageChipOf(o, stageDefs);
+                            return chip ? (
+                              <p className="mt-2">
+                                <WorkflowStageChip label={chip.label} tone={chip.tone} />
+                              </p>
+                            ) : null;
+                          })()}
                         </article>
                       ))}
                     </div>

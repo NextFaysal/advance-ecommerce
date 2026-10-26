@@ -1,0 +1,1 @@
+{"description":"Typed TypeScript client for the Advance Ecommerce partner API (products / orders / customers) plus the webhook signature-verification helper. Zero runtime dependencies.","devDependencies":{"typescript":"^5.6.0"},"main":"./src/index.ts","name":"@advance-ecommerce/partner-sdk","scripts":{"typecheck":"tsc --noEmit"},"types":"./src/index.ts","version":"0.1.0"}
