@@ -1,5 +1,6 @@
 /**
  * ⚠️ DO NOT WIRE — ORPHANED v2-release leftover (kept for reference only).
+ * (Deploy-probe touch 2026-10-26: waves 48–50 build failure isolation.)
  *
  * This file is NOT a live adapter: it contains fabricated success
  * rates (93–95%), fake fallback bookings and other dishonest stubs,
