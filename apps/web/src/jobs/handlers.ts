@@ -36,6 +36,8 @@ import {
   type QueueName,
   type SmsJob,
   type SubscriptionJob,
+  type OrderAutoCancelJob,
+  type ReportScheduleJob,
   type WebhookJob,
 } from "./queues";
 import type { NotificationFailureInput } from "./notification-failures";
@@ -224,6 +226,18 @@ export interface HandlerDeps {
    *  subscriptions then simply never generate (the admin list says so). */
   subscriptionRunner?: (
     job: SubscriptionJob,
+  ) => Promise<{ processedRef: string; detail?: string }>;
+  /** ADV-1 remainder (wave 52): stale-unpaid auto-cancel sweep — wired
+   *  by the worker deps assembly to src/orders/auto-cancel.ts
+   *  (processStaleUnpaidOrders). Unwired deployments skip honestly. */
+  orderAutoCancelRunner?: (
+    job: OrderAutoCancelJob,
+  ) => Promise<{ processedRef: string; detail?: string }>;
+  /** ADV-8 remainder (wave 52): scheduled report delivery sweep —
+   *  wired by the worker deps assembly to src/reports/schedules.ts
+   *  (processDueReportSchedules). Unwired deployments skip honestly. */
+  reportScheduleRunner?: (
+    job: ReportScheduleJob,
   ) => Promise<{ processedRef: string; detail?: string }>;
   /** C4: send path for call-center automation SMS jobs (payloads with
    *  jobKind === "callcenter-automation" on the SMS queue), wired by
@@ -917,9 +931,51 @@ export function createHandlers(
       return { status: "succeeded", ref: out.processedRef, detail: out.detail ?? "sweep complete" };
     });
 
+  const orderAutoCancel: (e: JobEnvelope<OrderAutoCancelJob>) => Promise<HandlerResult> = (
+    envelope,
+  ) =>
+    runIdempotent(store, envelope, envelope.payload.sweepKey, async () => {
+      if (!deps.orderAutoCancelRunner) {
+        return {
+          status: "skipped",
+          ref: envelope.payload.sweepKey,
+          detail: "order auto-cancel runner not configured in this deployment",
+        };
+      }
+      const out = await deps.orderAutoCancelRunner(envelope.payload);
+      logger.info("orders.auto_cancel_sweep", {
+        jobId: envelope.jobId,
+        sweepKey: envelope.payload.sweepKey,
+        processedRef: out.processedRef,
+      });
+      return { status: "succeeded", ref: out.processedRef, detail: out.detail ?? "sweep complete" };
+    });
+
+  const reportSchedules: (e: JobEnvelope<ReportScheduleJob>) => Promise<HandlerResult> = (
+    envelope,
+  ) =>
+    runIdempotent(store, envelope, envelope.payload.sweepKey, async () => {
+      if (!deps.reportScheduleRunner) {
+        return {
+          status: "skipped",
+          ref: envelope.payload.sweepKey,
+          detail: "report schedule runner not configured in this deployment",
+        };
+      }
+      const out = await deps.reportScheduleRunner(envelope.payload);
+      logger.info("reports.schedule_sweep", {
+        jobId: envelope.jobId,
+        sweepKey: envelope.payload.sweepKey,
+        processedRef: out.processedRef,
+      });
+      return { status: "succeeded", ref: out.processedRef, detail: out.detail ?? "sweep complete" };
+    });
+
   return {
     [QUEUE_NAMES.bulkActions]: bulkActions as (e: JobEnvelope<never>) => Promise<HandlerResult>,
     [QUEUE_NAMES.subscriptions]: subscriptions as (e: JobEnvelope<never>) => Promise<HandlerResult>,
+    [QUEUE_NAMES.orderAutoCancel]: orderAutoCancel as (e: JobEnvelope<never>) => Promise<HandlerResult>,
+    [QUEUE_NAMES.reportSchedules]: reportSchedules as (e: JobEnvelope<never>) => Promise<HandlerResult>,
     [QUEUE_NAMES.sms]: sms as (e: JobEnvelope<never>) => Promise<HandlerResult>,
     [QUEUE_NAMES.email]: email as (e: JobEnvelope<never>) => Promise<HandlerResult>,
     [QUEUE_NAMES.courierBooking]: courierBooking as (e: JobEnvelope<never>) => Promise<HandlerResult>,

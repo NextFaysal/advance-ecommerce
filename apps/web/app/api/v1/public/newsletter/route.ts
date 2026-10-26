@@ -3,10 +3,10 @@ import { prisma } from "@advance-ecommerce/db";
 import { newsletterSubscribeSchema, DEFAULT_NEWSLETTER_SOURCE } from "@/newsletter/schema";
 import {
   isNewsletterHoneypotTripped,
-  newsletterRateLimiter,
   newsletterRateLimitKey,
   noteNewsletterHoneypotDrop,
 } from "@/newsletter/policy";
+import { checkNewsletterRateLimit } from "@/newsletter/rate-limit";
 import { newsletterStore, unsubscribeNewsletter } from "@/newsletter/store-db";
 import { NewsletterStoreUnavailableError } from "@/newsletter/store";
 import { recordMarketingConsent } from "@/privacy/ledger";
@@ -88,7 +88,7 @@ export async function POST(req: Request) {
   // IP placeholder: first x-forwarded-for hop until trusted-proxy setup
   // (same convention as the contact endpoint).
   const ip = (req.headers.get("x-forwarded-for") ?? "unknown").split(",")[0]?.trim() || "unknown";
-  const limit = newsletterRateLimiter.check(newsletterRateLimitKey(parsed.data.email, ip));
+  const limit = await checkNewsletterRateLimit(newsletterRateLimitKey(parsed.data.email, ip));
   if (!limit.allowed) {
     return NextResponse.json(
       {
@@ -169,7 +169,7 @@ export async function DELETE(req: Request) {
   }
 
   const ip = (req.headers.get("x-forwarded-for") ?? "unknown").split(",")[0]?.trim() || "unknown";
-  const limit = newsletterRateLimiter.check(newsletterRateLimitKey(parsed.data, ip));
+  const limit = await checkNewsletterRateLimit(newsletterRateLimitKey(parsed.data, ip));
   if (!limit.allowed) {
     return NextResponse.json(
       {

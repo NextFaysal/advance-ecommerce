@@ -35,9 +35,14 @@ const QUEUE_PRESENTATION: Record<QueueName, QueuePresentation> = {
     purposeEn: "Send email via the admin-configured provider (sandbox fallback locally)",
   },
   [QUEUE_NAMES.courierBooking]: {
+    // Honest state (ADV-10): this handler is a labelled stub — it
+    // never calls provider.createShipment and no producer enqueues
+    // these jobs. Real booking happens synchronously in the admin
+    // shipments route through the same adapters. (Full alignment is
+    // doc 23 wave 54-6.)
     handlerName: "courierBooking",
-    purposeBn: "কুরিয়ার বুকিং",
-    purposeEn: "Book a courier shipment through the provider adapter (payload carries ids only)",
+    purposeBn: "কুরিয়ার বুকিং (স্টাব — আসল বুকিং শিপমেন্ট পেজ থেকে সরাসরি হয়)",
+    purposeEn: "Courier booking queue — stub handler; real booking is synchronous in the admin shipments route",
   },
   [QUEUE_NAMES.courierSync]: {
     handlerName: "courierSync",
@@ -65,9 +70,13 @@ const QUEUE_PRESENTATION: Record<QueueName, QueuePresentation> = {
     purposeEn: "Retry a failed notification log entry",
   },
   [QUEUE_NAMES.abandonedCart]: {
+    // Honest state (ADV-10): dormant duplicate — this handler returns
+    // "skipped" and queues nothing. Real abandoned-cart follow-ups run
+    // through the automation-run queue (checkout.abandoned producers +
+    // rules execute the SMS/email effects there).
     handlerName: "abandonedCart",
-    purposeBn: "ঝুলে থাকা কার্টের ফলো-আপ",
-    purposeEn: "Abandoned-cart follow-up steps 1-3 (sends go through the SMS/email queues)",
+    purposeBn: "ঝুলে থাকা কার্টের ফলো-আপ (নিষ্ক্রিয় — আসল ফলো-আপ অটোমেশন queue দিয়ে চলে)",
+    purposeEn: "Abandoned-cart follow-up — dormant; real follow-ups run through the automation queue",
   },
   [QUEUE_NAMES.automation]: {
     handlerName: "automation",
@@ -78,6 +87,16 @@ const QUEUE_PRESENTATION: Record<QueueName, QueuePresentation> = {
     handlerName: "subscriptions",
     purposeBn: "সাবস্ক্রিপশনের নির্ধারিত অর্ডার তৈরি",
     purposeEn: "Generate due subscription orders (sweep; orders are created through the shared order pipeline)",
+  },
+  [QUEUE_NAMES.orderAutoCancel]: {
+    handlerName: "orderAutoCancel",
+    purposeBn: "মেয়াদোত্তীর্ণ অবৈতনিক অর্ডার স্বয়ংক্রিয় বাতিল",
+    purposeEn: "Auto-cancel stale PENDING + unpaid orders (sweep; opt-in via orders.auto_cancel settings; awaits the worker scheduler)",
+  },
+  [QUEUE_NAMES.reportSchedules]: {
+    handlerName: "reportSchedules",
+    purposeBn: "নির্ধারিত রিপোর্ট ডেলিভারি",
+    purposeEn: "Deliver due scheduled reports by email (sweep; awaits the worker scheduler; admin run-due route is the manual trigger)",
   },
   [QUEUE_NAMES.bulkActions]: {
     // createHandlers() in src/jobs/handlers.ts DOES have a bulkActions

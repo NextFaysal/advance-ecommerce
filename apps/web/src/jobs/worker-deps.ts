@@ -417,6 +417,29 @@ export const workerDeps: WorkerRuntimeDeps = {
       detail: out.ran ? "sweep complete" : out.reason,
     };
   },
+  // ADV-1 remainder (wave 52): stale-unpaid auto-cancel sweep —
+  // cancels PENDING + unpaid orders past orders.auto_cancel.hours,
+  // only when orders.auto_cancel.enabled is on (opt-in). Lazy import
+  // for the same reason as the SMS send paths above.
+  orderAutoCancelRunner: async () => {
+    const { processStaleUnpaidOrders } = await import("../orders/auto-cancel");
+    const out = await processStaleUnpaidOrders(new Date());
+    return {
+      processedRef: `scanned:${out.scanned} cancelled:${out.cancelled} skipped:${out.skipped} failed:${out.failed}`,
+      detail: out.ran ? "sweep complete" : out.reason,
+    };
+  },
+  // ADV-8 remainder (wave 52): scheduled report delivery sweep —
+  // delivers every due schedule in the reports.schedules doc by
+  // enqueueing report_delivery email jobs. Lazy import as above.
+  reportScheduleRunner: async () => {
+    const { processDueReportSchedules } = await import("../reports/schedules");
+    const out = await processDueReportSchedules(new Date());
+    return {
+      processedRef: `queued:${out.summary.queued} notQueued:${out.summary.notQueued} skipped:${out.summary.skipped}`,
+      detail: "report schedule sweep complete",
+    };
+  },
   // ADV-15: customer-login OTP SMS jobs (sms queue, jobKind
   // "auth-otp") delegate here. Lazy import for the same reason as
   // orderOtpSmsSend above.

@@ -1,6 +1,7 @@
 import { formatBdt } from "@advance-ecommerce/validators";
 import { aggregateSales } from "@/reports/service";
 import { daysAgoInDhaka, fetchSalesRows, todayInDhaka, withComparisonWindow } from "@/reports/db-rows";
+import { ReportSchedulesPanel } from "./schedules-panel";
 
 // Admin reports — Step 28. Real DB rows (Prisma orders/order items,
 // Asia/Dhaka dates), aggregated with the pure reports service (integer
@@ -44,6 +45,7 @@ export default async function AdminReportsPage() {
         <a href="/admin/reports/builder" className="font-medium underline">কাস্টম রিপোর্ট বিল্ডার →</a>
         <span className="text-slate-500"> — ডেটাসেট/কলাম/ফিল্টার বেছে নিজের রিপোর্ট, সংরক্ষণ ও ইমেইল সময়সূচি (ADV-8)।</span>
       </p>
+      <ReportSchedulesPanel />
     </main>
   );
 }

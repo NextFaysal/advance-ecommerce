@@ -10,18 +10,20 @@
  *    The response never reveals that a honeypot exists.
  *
  * 2. RATE LIMIT — max 3 submissions per hour per (normalized phone +
- *    IP) pair. Fixed-window, in-memory. The IP is a PLACEHOLDER: the
- *    route passes the first x-forwarded-for hop (or "unknown") until a
- *    trusted-proxy setup exists.
+ *    IP) pair. The public endpoint checks through the shared
+ *    Redis-backed limiter (src/lib/rate-limit.ts) via
+ *    checkContactRateLimit below — counts hold across instances.
+ *    The IP is a PLACEHOLDER: the route passes the first
+ *    x-forwarded-for hop (or "unknown") until a trusted-proxy setup
+ *    exists. The honeypot check is stateless.
  *
- * PRODUCTION SWAP (Redis): replace the Map below with Redis commands
- * behind this same class shape — key
- *   contact:rl:{sha256(normalizedPhone)}:{ip}
- * (hash the phone so the raw number never appears in Redis keys), INCR
- * on each attempt, EXPIRE to the window on first hit, blocked while the
- * count exceeds CONTACT_RATE_LIMIT.maxSubmissions. The honeypot check
- * is stateless and does not change.
+ * The ContactRateLimiter class below is NO LONGER used by the contact
+ * endpoint; it remains only because src/checkout/abandoned.ts builds
+ * its abandoned-capture limiter (30 / 10 min) from the same class.
  */
+// This policy module must stay free of server-only dependencies
+// (client forms import its constants). The Redis-backed rate check
+// lives in src/contact/rate-limit.ts.
 import { CONTACT_HONEYPOT_FIELD } from "./schema";
 
 export const CONTACT_RATE_LIMIT = {
@@ -81,5 +83,6 @@ export class ContactRateLimiter {
   }
 }
 
-/** Shared limiter for the public contact endpoint: 3 submissions / hour / (phone + IP). */
-export const contactRateLimiter = new ContactRateLimiter();
+/* The rate check itself lives in src/contact/rate-limit.ts
+ * (server-only — it loads the Redis limiter; this policy module is
+ * imported by client code and must stay dependency-free). */

@@ -67,6 +67,8 @@ export const RETRY_POLICY_BY_QUEUE: Record<QueueName, JobRetryPolicy> = {
   [QUEUE_NAMES.automation]: DEFAULT_RETRY,
   [QUEUE_NAMES.bulkActions]: DEFAULT_RETRY,
   [QUEUE_NAMES.subscriptions]: DEFAULT_RETRY,
+  [QUEUE_NAMES.orderAutoCancel]: DEFAULT_RETRY,
+  [QUEUE_NAMES.reportSchedules]: DEFAULT_RETRY,
 };
 
 export const CONCURRENCY_BY_QUEUE: Record<QueueName, number> = {
@@ -82,6 +84,8 @@ export const CONCURRENCY_BY_QUEUE: Record<QueueName, number> = {
   [QUEUE_NAMES.automation]: 2,
   [QUEUE_NAMES.bulkActions]: 1,
   [QUEUE_NAMES.subscriptions]: 1,
+  [QUEUE_NAMES.orderAutoCancel]: 1,
+  [QUEUE_NAMES.reportSchedules]: 1,
 };
 
 /** BullMQ-shaped job options derived from the retry policy. */

@@ -13,7 +13,11 @@
  *   an unverified OTP returns 409 OTP_NOT_VERIFIED; the advance block
  *   (never the OTP block) can be overridden with
  *   advanceOverride { reason } by a holder of orders.override_advance
- * - GET carries the advance read model as data.advance
+ * - GET carries the advance read model as data.advance, and the
+ *   order's gift-card coverage (from the GiftCardTransaction ledger,
+ *   the PDF invoice's own helper) as data.giftCard, so the print
+ *   centre can decompose the gift-card tender out of its residual
+ *   line exactly like the PDF does
  * - the transition is audited (writeAudit, best-effort)
  *
  * DB-BACKED: the order is loaded from and persisted to Prisma via
@@ -30,6 +34,7 @@ import { writeAudit } from "@/lib/audit";
 import { applyOrderTransition, getOrderByIdOrNo } from "@/orders/repository";
 import { getOrderAdvanceView } from "@/orders/advance";
 import { getOrderApprovalState } from "@/orders/approvals";
+import { getOrderGiftCardCoverage } from "@/pdf/invoice-data";
 import type { OrderStatus } from "@/orders/types";
 
 function err(code: string, message: string, status: number, details?: unknown) {
@@ -65,8 +70,13 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   // the workspace can show "অনুমোদনের অপেক্ষায়" instead of the block
   // being visible only as a failed confirm attempt.
   const approval = await getOrderApprovalState(order.id);
+  // Gift-card coverage from the recorded ledger (REDEEM −
+  // REFUND_RESTORE for this order; { netPoisha: 0, codeLast4: null }
+  // when no card touched the order) — the same helper the PDF
+  // invoice read model uses, so screen, print and PDF agree.
+  const giftCard = await getOrderGiftCardCoverage(order.id);
   return NextResponse.json({
-    data: { ...view, ...(advance ? { advance } : {}), approval },
+    data: { ...view, ...(advance ? { advance } : {}), approval, giftCard },
     meta: { db: "PRISMA", source: "DATABASE" },
   });
 }

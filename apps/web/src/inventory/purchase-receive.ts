@@ -7,8 +7,8 @@
  * PurchaseOrder.receivedAt, or the PARTIALLY_RECEIVED / RECEIVED
  * statuses, purchase_receive stock movements carried no PO reference,
  * and the ERP purchase posting (src/erp/auto-posting.ts
- * postPurchaseReceivedErp) had no live caller. This module is that
- * caller-side funnel.
+ * postPurchaseReceiveDeltaErp) had no live caller. This module is
+ * that caller-side funnel.
  *
  * receivePurchaseOrder() runs in ONE prisma.$transaction:
  *   1. the PurchaseOrder row is locked (SELECT ... FOR UPDATE) so two
@@ -51,21 +51,28 @@
  * WILL book again (up to the ordered cap) — the admin UI therefore
  * generates one key per receive intent and disables double-submit.
  *
- * ERP POSTING — CONVENTION MISMATCH (reported, not papered over):
- * postPurchaseReceivedErp posts the PO's CUMULATIVE recorded received
- * value (Σ quantityReceived × costPoisha) exactly once per PO —
- * appendOnce on (sourceKind "purchase_received", sourceId = poId) —
- * and its signature accepts no receive-event identity, so per-receive
- * DELTA posting is impossible without changing that module (out of
- * scope here). Calling it after a partial receive would freeze a
- * partial total as the PO's only journal entry and silently drop
- * every later delta. It is therefore called ONLY when a receive
- * completes the PO (transition INTO RECEIVED): the single entry then
- * equals the full recorded received value. Consequences, stated
- * plainly: a PO that is never fully received gets NO journal entry
- * (the ERP purchase-ledger read model still reports its received
- * value from the PO rows), and if module.erp_lite is OFF at the
- * completing receive, no entry is posted later either.
+ * ERP POSTING — PER-RECEIPT DELTA (wave 52; replaces the original
+ * cumulative convention, under which only the completing receive
+ * posted the PO's whole recorded value and a never-completed PO got
+ * NO journal entry): EVERY receive posts its own journal entry for
+ * the delta IT booked (Σ quantity × costPoisha of this call's lines)
+ * via postPurchaseReceiveDeltaErp — Dr 1200 Inventory / Cr 2000
+ * Accounts payable, sourceKind "purchase_receive_delta", sourceId
+ * "<poId>:<anchor movement id>", where the anchor is the
+ * lexicographically smallest StockMovement id this receive created.
+ * A movement belongs to exactly one receive call, so the entry is
+ * exactly-once per receive event (appendOnce + the
+ * ErpJournalEntry @@unique([sourceKind, sourceId])), and the entries
+ * of a fully received PO sum exactly to its recorded received
+ * value — no total is ever posted twice. A keyed idempotent replay
+ * re-attempts the ORIGINAL receive's posting (delta recomputed from
+ * its recorded movements): if the first attempt posted, the answer
+ * is already_posted; if it was skipped (e.g. period locked, flag
+ * off), the retry can still land it. Consequences, stated plainly:
+ * a keyless receive whose posting is skipped at receive time is not
+ * retried later (a keyless repeat is a new receive, by the
+ * idempotency contract above), and a zero-value receipt (all lines
+ * costPoisha 0) posts nothing (skipped: zero_delta).
  *
  * Post-commit side effects mirror applyMovementDb's discipline:
  * back-in-stock notification fires for variants whose canonical stock
@@ -76,7 +83,7 @@
  * explicit receive lines.
  */
 import { prisma } from "@advance-ecommerce/db";
-import { postPurchaseReceivedErp, type AutoPostResult } from "../erp/auto-posting";
+import { postPurchaseReceiveDeltaErp, type AutoPostResult } from "../erp/auto-posting";
 import { notifyBackInStockForVariant } from "../storefront-ux/back-in-stock-notify";
 import { DepthError, isInventoryDepthEnabled, recordReceiveDepthInTx } from "./batches";
 import { applyMovementInTx, resolveActorId } from "./repository";
@@ -170,8 +177,10 @@ export interface ReceivePurchaseOrderResult {
   receivedValueDeltaPoisha: number;
   lines: ReceivedLineResult[];
   idempotentReplay: boolean;
-  /** ERP posting outcome; only attempted when this call completed
-   *  the PO (see header). null = not attempted. */
+  /** ERP per-receipt delta posting outcome for THIS receive event
+   *  (see header). Attempted on every fresh receive and re-attempted
+   *  idempotently on a keyed replay (already_posted when the
+   *  original attempt landed). null = not attempted. */
   erpPosting: AutoPostResult | null;
 }
 
@@ -195,6 +204,15 @@ interface TxOutcome {
   lines: ReceivedLineResult[];
   idempotentReplay: boolean;
   variantIds: string[];
+  /** ERP delta-posting identity for this receive event:
+   *  "<poId>:<anchor movement id>" (null = nothing to post), and the
+   *  delta it must post. On a fresh receive both describe the
+   *  movements this call created; on a keyed replay they describe
+   *  the ORIGINAL receive's movements (recomputed from the recorded
+   *  movements), so the post-commit step can (re-)attempt that
+   *  event's posting exactly once. */
+  erpSourceId: string | null;
+  erpDeltaPoisha: number;
 }
 
 export async function receivePurchaseOrder(
@@ -303,6 +321,21 @@ export async function receivePurchaseOrder(
         select: { id: true },
       });
       if (existing) {
+        // Recompute the ORIGINAL receive's ERP delta identity from
+        // its recorded movements, so the post-commit step can
+        // (re-)attempt that event's delta posting: appendOnce makes
+        // it already_posted when the first attempt landed, posted
+        // when it was skipped (see header). No stock is re-booked.
+        const originalMovements = await tx.stockMovement.findMany({
+          where: { referenceType: "purchase", referenceId, type: "PURCHASE_RECEIVE" },
+          select: { id: true, variantId: true, quantityDelta: true },
+        });
+        const costByVariant = new Map(po.items.map((i) => [i.variantId, i.costPoisha]));
+        const erpDeltaPoisha = originalMovements.reduce(
+          (s, m) => s + m.quantityDelta * (costByVariant.get(m.variantId) ?? 0),
+          0,
+        );
+        const anchor = originalMovements.map((m) => m.id).sort()[0] ?? null;
         return {
           status: STATUS_FROM_DB[po.status] ?? "draft",
           warehouseId: po.warehouseId ?? "",
@@ -321,6 +354,8 @@ export async function receivePurchaseOrder(
           }),
           idempotentReplay: true,
           variantIds: [],
+          erpSourceId: anchor ? `${poId}:${anchor}` : null,
+          erpDeltaPoisha,
         };
       }
     }
@@ -368,6 +403,7 @@ export async function receivePurchaseOrder(
     const actorId = await resolveActorId(tx, input.actorId);
     const lineResults: ReceivedLineResult[] = [];
     let receivedValueDeltaPoisha = 0;
+    const movementIds: string[] = [];
     const newReceivedByItem = new Map<string, number>();
     for (const line of input.lines) {
       const item = itemsById.get(line.itemId)!;
@@ -377,7 +413,7 @@ export async function receivePurchaseOrder(
         where: { id: item.id },
         data: { quantityReceived: newTotal },
       });
-      await applyMovementInTx(
+      const { movement } = await applyMovementInTx(
         tx,
         {
           variantId: item.variantId,
@@ -391,6 +427,7 @@ export async function receivePurchaseOrder(
         },
         actorId,
       );
+      movementIds.push(movement.id);
       // ADV-20 depth capture for this line, INSIDE the same
       // transaction: a serial/batch problem rolls the whole receive
       // back (no half-booked stock without its lot data).
@@ -450,6 +487,12 @@ export async function receivePurchaseOrder(
       lines: lineResults,
       idempotentReplay: false,
       variantIds,
+      // Anchor = smallest movement id this receive created — the
+      // same value the keyed-replay path recomputes from the
+      // recorded movements, so both paths name the same journal
+      // entry (see header).
+      erpSourceId: movementIds.length > 0 ? `${poId}:${[...movementIds].sort()[0]}` : null,
+      erpDeltaPoisha: receivedValueDeltaPoisha,
     };
   });
 
@@ -467,15 +510,19 @@ export async function receivePurchaseOrder(
     }
   }
 
-  // ERP: per-PO-total posting convention — only the receive that
-  // COMPLETES the PO triggers it (see header for the mismatch this
-  // avoids). postPurchaseReceivedErp never throws; its skipped /
+  // ERP: per-receipt delta posting (see header). Attempted for
+  // every receive event — a fresh receive posts its own delta; a
+  // keyed replay re-attempts the original event's posting, which
+  // appendOnce resolves to already_posted when it already landed.
+  // postPurchaseReceiveDeltaErp never throws; its skipped /
   // already_posted outcomes are surfaced, not hidden.
   let erpPosting: AutoPostResult | null = null;
-  if (!outcome.idempotentReplay && outcome.status === "received") {
-    erpPosting = await postPurchaseReceivedErp(poId).catch(
-      (): AutoPostResult => ({ status: "skipped", reason: "posting_call_failed" }),
-    );
+  if (outcome.erpSourceId !== null) {
+    erpPosting = await postPurchaseReceiveDeltaErp({
+      purchaseOrderId: poId,
+      receiveSourceId: outcome.erpSourceId,
+      deltaPoisha: outcome.erpDeltaPoisha,
+    }).catch((): AutoPostResult => ({ status: "skipped", reason: "posting_call_failed" }));
   }
 
   return {

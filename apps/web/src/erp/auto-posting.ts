@@ -20,12 +20,19 @@
  *   refund CONFIRMED (refund workbench terminal state):
  *         Dr 4000 Sales (contra) + Dr 2100 VAT (pro-rata share of the
  *         order's recorded VAT) / Cr payout asset (by payout channel).
- *   purchase received: Dr 1200 Inventory / Cr 2000 Accounts payable —
- *     SERVICE ONLY, NO LIVE CALLER: the audit for this wave found no
- *     purchase-receive funnel anywhere in the codebase (nothing ever
- *     writes PurchaseOrderItem.quantityReceived / receivedAt / status
- *     RECEIVED), so there is no event to hook. The function posts the
- *     CURRENT recorded received value if one ever appears.
+ *   purchase received (per-receipt DELTA, posted by the ADV-11b
+ *     receive funnel in src/inventory/purchase-receive.ts):
+ *       Dr 1200 Inventory / Cr 2000 Accounts payable for the value
+ *       booked by THAT receive event only (Σ quantity × costPoisha
+ *       of the lines in that one receive call). sourceKind
+ *       "purchase_receive_delta", sourceId "<poId>:<anchor
+ *       StockMovement id>" — one entry per receive event, so the
+ *       entries of a fully received PO sum exactly to its recorded
+ *       received value, and a partially received PO is posted for
+ *       what actually arrived. (This replaces the original
+ *       cumulative one-entry-per-PO poster: it froze the first
+ *       completed total as the PO's only entry and left
+ *       never-completed POs with no entry at all.)
  *
  * EXACTLY-ONCE (updated schema wave 2, 2026-10-26): ErpJournalEntry
  * now carries @@unique([sourceKind, sourceId]) — dedupe is DB-enforced
@@ -276,29 +283,46 @@ export async function postRefundConfirmedErp(refundId: string): Promise<AutoPost
 }
 
 /* ------------------------------------------------------------------ */
-/* Purchase received (service only — no live receive funnel exists)    */
+/* Purchase received — per-receipt delta (ADV-11b receive funnel)      */
 /* ------------------------------------------------------------------ */
 
-export async function postPurchaseReceivedErp(purchaseOrderId: string): Promise<AutoPostResult> {
+/**
+ * Post ONE receive event's delta: Dr 1200 Inventory / Cr 2000
+ * Accounts payable for the value that receive call booked.
+ *
+ * Exactly-once per receive event: the caller (purchase-receive.ts)
+ * derives receiveSourceId as "<poId>:<anchor StockMovement id>" —
+ * the lexicographically smallest movement id the receive created.
+ * A movement belongs to exactly one receive call, so the pair
+ * (sourceKind "purchase_receive_delta", receiveSourceId) names one
+ * event; appendOnce + the @@unique([sourceKind, sourceId])
+ * constraint make a re-attempt return already_posted instead of a
+ * second entry. The caller computes deltaPoisha from the same lines
+ * / movements, so the entries of a PO always sum to its recorded
+ * received value — never the cumulative total posted twice.
+ */
+export async function postPurchaseReceiveDeltaErp(input: {
+  purchaseOrderId: string;
+  receiveSourceId: string;
+  deltaPoisha: number;
+}): Promise<AutoPostResult> {
   try {
     if (!isFeatureEnabled(ERP_AUTO_POST_FLAG)) return skipped("flag_off");
+    if (!Number.isInteger(input.deltaPoisha) || input.deltaPoisha <= 0) {
+      return skipped("zero_delta");
+    }
     const po = await prisma.purchaseOrder.findUnique({
-      where: { id: purchaseOrderId },
-      include: {
-        items: { select: { quantityReceived: true, costPoisha: true } },
-        supplier: { select: { name: true } },
-      },
+      where: { id: input.purchaseOrderId },
+      select: { supplier: { select: { name: true } } },
     });
     if (!po) return skipped("purchase_order_not_found");
-    const receivedPoisha = po.items.reduce((s, i) => s + i.quantityReceived * i.costPoisha, 0);
-    if (receivedPoisha <= 0) return skipped("nothing_received_recorded");
     return await appendOnce({
-      sourceKind: "purchase_received",
-      sourceId: purchaseOrderId,
-      description: `Auto-posting: purchase received from ${po.supplier.name} — inventory / payable`,
+      sourceKind: "purchase_receive_delta",
+      sourceId: input.receiveSourceId,
+      description: `Auto-posting: purchase receipt from ${po.supplier.name} — inventory / payable (per-receipt delta)`,
       lines: [
-        { accountCode: "1200", debitPoisha: receivedPoisha, creditPoisha: 0 },
-        { accountCode: "2000", debitPoisha: 0, creditPoisha: receivedPoisha },
+        { accountCode: "1200", debitPoisha: input.deltaPoisha, creditPoisha: 0 },
+        { accountCode: "2000", debitPoisha: 0, creditPoisha: input.deltaPoisha },
       ],
     });
   } catch (err) {

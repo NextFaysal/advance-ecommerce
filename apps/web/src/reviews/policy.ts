@@ -10,11 +10,15 @@
  *    normal 201 shape, stores NOTHING, and silently counts the drop.
  *    The response never reveals that a honeypot exists.
  *
- * 2. RATE LIMIT — max 5 attempts per hour per (phone + IP) pair.
- *    Fixed-window, in-memory. The IP is a PLACEHOLDER: the route passes
- *    the first x-forwarded-for hop (or "unknown") until a trusted-proxy
- *    setup exists.
+ * 2. RATE LIMIT — max 5 attempts per hour per (phone + IP) pair,
+ *    counted through the shared Redis-backed limiter
+ *    (src/lib/rate-limit.ts) via checkReviewRateLimit below. The IP
+ *    is a PLACEHOLDER: the route passes the first x-forwarded-for hop
+ *    (or "unknown") until a trusted-proxy setup exists.
  */
+// This policy module must stay free of server-only dependencies
+// (client forms import its constants). The Redis-backed rate check
+// lives in src/reviews/rate-limit.ts.
 
 export const REVIEW_HONEYPOT_FIELD = "website";
 
@@ -35,48 +39,9 @@ export function reviewRateLimitKey(normalizedPhone: string, ip: string): string 
   return `${normalizedPhone}|${ip}`;
 }
 
-export interface ReviewRateLimitDecision {
-  allowed: boolean;
-  /** Attempts still allowed in the current window (0 when blocked). */
-  remaining: number;
-  /** Seconds to wait before retrying (0 when allowed). */
-  retryAfterSeconds: number;
-}
-
-export class ReviewRateLimiter {
-  private readonly hits = new Map<string, { count: number; windowStart: number }>();
-
-  constructor(
-    private readonly maxAttempts: number = REVIEW_RATE_LIMIT.maxAttempts,
-    private readonly windowMs: number = REVIEW_RATE_LIMIT.windowMs,
-  ) {}
-
-  check(key: string, now: Date = new Date()): ReviewRateLimitDecision {
-    const t = now.getTime();
-    const entry = this.hits.get(key);
-    if (!entry || t - entry.windowStart >= this.windowMs) {
-      this.hits.set(key, { count: 1, windowStart: t });
-      return { allowed: true, remaining: this.maxAttempts - 1, retryAfterSeconds: 0 };
-    }
-    entry.count += 1;
-    if (entry.count > this.maxAttempts) {
-      return {
-        allowed: false,
-        remaining: 0,
-        retryAfterSeconds: Math.ceil((entry.windowStart + this.windowMs - t) / 1000),
-      };
-    }
-    return { allowed: true, remaining: this.maxAttempts - entry.count, retryAfterSeconds: 0 };
-  }
-
-  /** Test/support helper — clears one key's window. */
-  reset(key: string): void {
-    this.hits.delete(key);
-  }
-}
-
-/** Shared limiter for the public review endpoint. */
-export const reviewRateLimiter = new ReviewRateLimiter();
+/* The rate check itself lives in src/reviews/rate-limit.ts
+ * (server-only — it loads the Redis limiter; this policy module is
+ * imported by client code and must stay dependency-free). */
 
 let honeypotDrops = 0;
 

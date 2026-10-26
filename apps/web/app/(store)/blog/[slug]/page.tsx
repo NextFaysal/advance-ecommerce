@@ -15,7 +15,33 @@ import { getPublishedPostBySlug, getRelatedPosts } from "@/cms/blog";
 import { cmsStore } from "@/reports/cms";
 import { BlogBody } from "./BlogBody";
 
-export const dynamic = "force-dynamic";
+// Wave 52 (ISR conversion): a post page reads only the CMS row for
+// its slug — no cookies, no searchParams, no per-visitor state — so
+// it renders statically like the PDP: published slugs are pre-built
+// by generateStaticParams below, new slugs render on demand
+// (dynamicParams) and are then cached, and everything revalidates
+// on a 300s window. A renamed slug still follows its SeoRedirect row
+// and a missing/draft slug still 404s — both now resolve at render /
+// revalidation time instead of on every request, so a rename or a
+// fresh publish can take up to one window to show up here.
+export const revalidate = 300;
+
+export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
+  try {
+    const { prisma } = await import("@advance-ecommerce/db");
+    const rows = await prisma.cmsPost.findMany({
+      // The visibility contract from src/cms/blog.ts, mirrored:
+      // public iff PUBLISHED and not soft-deleted.
+      where: { status: "PUBLISHED", deletedAt: null },
+      select: { slug: true },
+      orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+      take: 500,
+    });
+    return rows.map((r) => ({ slug: r.slug }));
+  } catch {
+    return [];
+  }
+}
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const post = await getPublishedPostBySlug(params.slug);

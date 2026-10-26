@@ -29,6 +29,12 @@
  *                           persist; fires once per successful
  *                           registration — fresh create OR guest-row
  *                           claim — never on a failed attempt)
+ *                           + customer-auth/otp findOrCreateCustomer-
+ *                           ForPhone (wave 52: an OTP-first signup is
+ *                           a registration too — fires on the CREATE
+ *                           branch only, through the same
+ *                           fireCustomerRegistered seam; an OTP login
+ *                           of an existing row never fires)
  *
  * Contract (mirrors the delivered-hooks / return-notify producers):
  *  - NEVER throws into the caller. A funnel that already committed

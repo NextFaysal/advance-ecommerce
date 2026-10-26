@@ -5,9 +5,9 @@ import { createReviewSchema } from "@/reviews/schema";
 import {
   isReviewHoneypotTripped,
   noteReviewHoneypotDrop,
-  reviewRateLimiter,
   reviewRateLimitKey,
 } from "@/reviews/policy";
+import { checkReviewRateLimit } from "@/reviews/rate-limit";
 import { createReview, getApprovedReviewAggregate, listApprovedReviews } from "@/reviews/store";
 
 // Live data only: never prerender/cache these handlers at build time.
@@ -67,7 +67,7 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
   // IP placeholder: first x-forwarded-for hop until trusted-proxy setup
   // (same convention as the newsletter/contact endpoints).
   const ip = (req.headers.get("x-forwarded-for") ?? "unknown").split(",")[0]?.trim() || "unknown";
-  const limit = reviewRateLimiter.check(reviewRateLimitKey(parsed.data.phone, ip));
+  const limit = await checkReviewRateLimit(reviewRateLimitKey(parsed.data.phone, ip));
   if (!limit.allowed) {
     return NextResponse.json(
       {

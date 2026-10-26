@@ -282,6 +282,14 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   "orders.approvals.enabled": { category: "general", value: "false", isPublic: false },
   "orders.approvals.discount_threshold_bps": { category: "general", value: "3000", isPublic: false },
   "orders.approvals.refund_threshold_poisha": { category: "general", value: "100000", isPublic: false },
+  // Stale-unpaid auto-cancel (ADV-1 remainder — src/orders/auto-cancel.ts).
+  // Master toggle defaults OFF: auto-cancel is opt-in; an unconfigured
+  // shop NEVER auto-cancels. When ON, the worker sweep cancels orders
+  // still PENDING + unpaid after orders.auto_cancel.hours.
+  "orders.auto_cancel.enabled": { category: "general", value: "false", isPublic: false },
+  // Age threshold in hours before a stale PENDING order is eligible
+  // (loader clamps 1..2160; invalid stored values fall back to 72).
+  "orders.auto_cancel.hours": { category: "general", value: "72", isPublic: false },
   // Delivery slots offered at checkout (doc 17 batch O9-2 —
   // src/checkout/delivery-slots.ts): a JSON array of
   // { id, labelBn, labelEn }. The value below MUST stay in sync with

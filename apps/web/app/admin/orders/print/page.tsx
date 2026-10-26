@@ -41,6 +41,19 @@
  * payload (advance.paidPoisha); the due amount is highlighted
  * whenever the order is not fully PAID.
  *
+ * Gift card (wave 52, mirroring the PDF invoice read model in
+ * src/pdf/invoice-data.ts): Order.totalPoisha is the amount due
+ * AFTER gift-card coverage, so a redeemed card used to hide inside
+ * the residual above (as a smaller — sometimes negative — "COD fee
+ * & other charges" line). The detail payload now carries the
+ * ledger-derived coverage as giftCard { netPoisha, codeLast4 }; the
+ * residual is computed against the GROSS total (total + gift card),
+ * and when a card covered part of the order the sheet prints the
+ * PDF's own rows — "মোট (গিফট কার্ডের আগে)" then the gift-card
+ * tender as a negative line — before the সর্বমোট total, so gross −
+ * gift card = total exactly. Payloads predating the giftCard field
+ * read as zero coverage (the old arithmetic, unchanged).
+ *
  * The customer phone prints exactly as the detail API returned it:
  * full for viewers holding customers.view_full_phone, masked
  * otherwise — the API's own policy, not re-decided here.
@@ -93,6 +106,10 @@ interface InvoiceOrder {
   status: string;
   createdAt: string;
   advance?: { paidPoisha: number } | null;
+  /** Gift-card coverage from the GiftCardTransaction ledger
+   *  (detail API's data.giftCard). Optional: payloads predating the
+   *  field read as zero coverage. */
+  giftCard?: { netPoisha: number; codeLast4: string | null } | null;
 }
 
 interface LoadedInvoice {
@@ -102,12 +119,20 @@ interface LoadedInvoice {
    *  render the fallback net line instead of the real lines. */
   shippingPoisha: number | null;
   discountPoisha: number | null;
-  /** Residual charges inside the total that are neither shipping nor
-   *  discount (COD fee / tax): total − (subtotal − discount +
-   *  shipping). Shown only in split mode and only when non-zero, so
-   *  the printed lines always reconcile to the total. */
+  /** Residual charges inside the GROSS total that are neither
+   *  shipping nor discount (COD fee / tax): gross − (subtotal −
+   *  discount + shipping), where gross = totalPoisha + gift-card
+   *  coverage. The gift-card tender is NOT in here any more — it
+   *  prints as its own line. Shown only in split mode and only when
+   *  non-zero, so the printed lines always reconcile to the total. */
   otherPoisha: number;
   netAdjustmentPoisha: number;
+  /** Net gift-card coverage (>= 0) and the card's last-4, from the
+   *  ledger via the detail payload; 0 / null when no card was used. */
+  giftCardNetPoisha: number;
+  giftCardLast4: string | null;
+  /** Total before the gift-card tender: totalPoisha + coverage. */
+  grossTotalPoisha: number;
   paidPoisha: number;
   duePoisha: number;
 }
@@ -124,6 +149,11 @@ function toInvoice(order: InvoiceOrder): LoadedInvoice {
     typeof order.shippingPoisha === "number" && typeof order.discountPoisha === "number";
   const shippingPoisha = hasSplit ? (order.shippingPoisha as number) : null;
   const discountPoisha = hasSplit ? (order.discountPoisha as number) : null;
+  // Gift-card decomposition, mirroring src/pdf/invoice-data.ts:
+  // totalPoisha is post-coverage, so the money lines are built
+  // against the gross total and the card prints as its own tender.
+  const giftCardNetPoisha = Math.max(0, order.giftCard?.netPoisha ?? 0);
+  const grossTotalPoisha = order.totalPoisha + giftCardNetPoisha;
   return {
     order,
     subtotalPoisha,
@@ -131,9 +161,12 @@ function toInvoice(order: InvoiceOrder): LoadedInvoice {
     discountPoisha,
     otherPoisha:
       shippingPoisha !== null && discountPoisha !== null
-        ? order.totalPoisha - (subtotalPoisha - discountPoisha + shippingPoisha)
+        ? grossTotalPoisha - (subtotalPoisha - discountPoisha + shippingPoisha)
         : 0,
-    netAdjustmentPoisha: order.totalPoisha - subtotalPoisha,
+    netAdjustmentPoisha: grossTotalPoisha - subtotalPoisha,
+    giftCardNetPoisha,
+    giftCardLast4: order.giftCard?.codeLast4 ?? null,
+    grossTotalPoisha,
     paidPoisha,
     duePoisha: Math.max(0, order.totalPoisha - paidPoisha),
   };
@@ -170,7 +203,7 @@ function InvoiceSheet({
   storeName: string;
   format: PrintFormat;
 }) {
-  const { order, subtotalPoisha, shippingPoisha, discountPoisha, otherPoisha, netAdjustmentPoisha, paidPoisha, duePoisha } = invoice;
+  const { order, subtotalPoisha, shippingPoisha, discountPoisha, otherPoisha, netAdjustmentPoisha, giftCardNetPoisha, giftCardLast4, grossTotalPoisha, paidPoisha, duePoisha } = invoice;
   return (
     <section
       className={`invoice-sheet mb-8 rounded-lg border border-border bg-white p-6 text-text-main shadow-card print:mb-0 print:rounded-none print:border-0 print:shadow-none ${
@@ -260,6 +293,18 @@ function InvoiceSheet({
                 <dd className="tabular-nums">{formatBdt(netAdjustmentPoisha)}</dd>
               </div>
             )
+          )}
+          {giftCardNetPoisha > 0 && (
+            <>
+              <div className="flex justify-between border-t border-border pt-2 font-semibold">
+                <dt>মোট (গিফট কার্ডের আগে)</dt>
+                <dd className="tabular-nums">{formatBdt(grossTotalPoisha)}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-text-muted">গিফট কার্ড (…{giftCardLast4 ?? "????"})</dt>
+                <dd className="tabular-nums">−{formatBdt(giftCardNetPoisha)}</dd>
+              </div>
+            </>
           )}
           <div className="flex justify-between border-t border-border pt-2 text-body font-bold">
             <dt>সর্বমোট</dt>

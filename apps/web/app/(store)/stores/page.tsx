@@ -12,7 +12,13 @@ import type { Metadata } from "next";
 import { Icon } from "@/components/ui/icon";
 import { loadPickupPoints, loadRetailLocations, type PickupPoint } from "@/checkout/pickup-points";
 
-export const dynamic = "force-dynamic";
+// Wave 52 (ISR conversion): this page reads only merchant Settings
+// documents (stores.pickup_points / stores.retail_locations) — no
+// cookies, no searchParams, no per-visitor state — so it no longer
+// needs per-request rendering. ISR with a 300s window: Settings edits
+// appear within five minutes, and the edge serves the page in the
+// meantime (same window as /shop and /blog).
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "আমাদের স্টোর — Advance Ecommerce",

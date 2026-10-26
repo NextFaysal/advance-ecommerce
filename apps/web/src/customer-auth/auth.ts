@@ -159,8 +159,15 @@ export async function registerCustomer(input: CustomerRegisterInput): Promise<Re
  * keeps a future regression there from ever failing a registration.
  * Awaited (it is one flag read + rule list + queue adds) so a
  * short-lived request process cannot drop the dispatch on exit.
+ *
+ * EXPORTED for the OTP path (src/customer-auth/otp.ts
+ * findOrCreateCustomerForPhone), which calls it on account CREATION
+ * only — an OTP login of an existing row is a login, not a
+ * registration, and never fires it. One shared seam means both
+ * registration paths fan out identically (automation rules +
+ * ADV-26 webhooks + connectors via emitAutomationEvent).
  */
-async function fireCustomerRegistered(customerId: string): Promise<void> {
+export async function fireCustomerRegistered(customerId: string): Promise<void> {
   try {
     await emitAutomationEvent("customer.registered", customerId);
   } catch {

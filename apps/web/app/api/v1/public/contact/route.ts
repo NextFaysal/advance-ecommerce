@@ -2,8 +2,8 @@
  * POST /api/v1/public/contact — contact form submission. Agent 47.
  *
  * Flow: honeypot pre-check (raw body) -> Zod validate -> rate limit
- * (3/hour per normalized phone + IP, in-memory) -> store in the
- * support inbox -> 201 { data: { id, status: "received" } }.
+ * (3/hour per normalized phone + IP, shared Redis-backed limiter) ->
+ * store in the support inbox -> 201 { data: { id, status: "received" } }.
  *
  * HONESTY RULE: status "received" means the message was stored in the
  * support inbox — NO email or SMS is sent by this endpoint, and the
@@ -22,7 +22,8 @@
  */
 import { NextResponse } from "next/server";
 import { contactSubmissionSchema } from "@/contact/schema";
-import { contactRateLimiter, contactRateLimitKey, isHoneypotTripped } from "@/contact/policy";
+import { contactRateLimitKey, isHoneypotTripped } from "@/contact/policy";
+import { checkContactRateLimit } from "@/contact/rate-limit";
 import { noteHoneypotDrop, unstoredReferenceId } from "@/contact/store";
 import {
   ContactStoreUnavailableError,
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
 
   // IP placeholder: first x-forwarded-for hop until trusted-proxy setup.
   const ip = (req.headers.get("x-forwarded-for") ?? "unknown").split(",")[0]?.trim() || "unknown";
-  const limit = contactRateLimiter.check(contactRateLimitKey(body.phone, ip));
+  const limit = await checkContactRateLimit(contactRateLimitKey(body.phone, ip));
   if (!limit.allowed) {
     return NextResponse.json(
       {

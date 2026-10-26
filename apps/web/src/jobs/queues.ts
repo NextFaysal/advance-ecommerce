@@ -74,6 +74,12 @@
 //                         Pickup OTP SMS rides sms-send with jobKind "pickup-otp"
 //                         (producer + send path: src/orders/pickup-otp.ts,
 //                         delegated in handlers.ts like order-otp).
+//  order-auto-cancel      NONE yet — same entrypoint-scheduler     handlers.ts orderAutoCancel -> worker-deps  WIRED, AWAITS
+//                         gap as subscription-generation          orderAutoCancelRunner -> src/orders/       SCHEDULER
+//                                                                   auto-cancel.ts processStaleUnpaidOrders
+//  report-schedules       NONE yet — same entrypoint-scheduler     handlers.ts reportSchedules -> worker-deps  WIRED, AWAITS
+//                         gap; admin run-due route is the manual   reportScheduleRunner -> src/reports/        SCHEDULER
+//                         trigger until the scheduler lands        schedules.ts processDueReportSchedules
 //
 // Cross-cutting honesty notes:
 //  - Notification failure recording (notification-retry's input)
@@ -101,6 +107,8 @@ export const QUEUE_NAMES = {
   automation: "automation-run",
   bulkActions: "bulk-actions",
   subscriptions: "subscription-generation",
+  orderAutoCancel: "order-auto-cancel",
+  reportSchedules: "report-schedules",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -243,3 +251,23 @@ export interface WebhookJob { event: string; payloadId: string; }
  * scheduled tick's ISO timestamp or a repeatable-job id).
  */
 export interface SubscriptionJob { sweepKey: string; }
+
+/**
+ * Stale-unpaid auto-cancel sweep (ADV-1 remainder, wave 52): ONE job
+ * asks the worker to cancel PENDING + unpaid orders older than
+ * orders.auto_cancel.hours (src/orders/auto-cancel.ts
+ * processStaleUnpaidOrders). Opt-in via orders.auto_cancel.enabled —
+ * the sweep is a no-op unless staff turned it on. `sweepKey` is the
+ * job idempotency ref, same convention as SubscriptionJob.
+ */
+export interface OrderAutoCancelJob { sweepKey: string; }
+
+/**
+ * Scheduled report delivery sweep (ADV-8 remainder, wave 52): ONE job
+ * asks the worker to deliver every due report schedule
+ * (src/reports/schedules.ts processDueReportSchedules — schedules live
+ * in the reports.schedules Setting doc and point at saved report
+ * definitions; delivery enqueues report_delivery email jobs).
+ * `sweepKey` is the job idempotency ref, same convention as above.
+ */
+export interface ReportScheduleJob { sweepKey: string; }

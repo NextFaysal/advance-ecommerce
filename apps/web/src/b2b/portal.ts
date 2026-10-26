@@ -26,6 +26,15 @@
  * credit rules (409 CREDIT_LIMIT_EXCEEDED / CREDIT_OVERDUE /
  * CUSTOMER_NOT_APPROVED, ACCEPTED-only) live there and are never
  * re-implemented here.
+ *
+ * AUDIT (wave 52): the conversion is called with actorKind
+ * "customer" — the buyer's id is a Customer row id, which cannot key
+ * AuditLog.actorId (a staff User FK). convertQuotation therefore
+ * writes its b2b.quotation_convert row (and, via the null-id actor
+ * shape, the orders.create row) with actorId: null and the buyer
+ * identity in the payload, and names the buyer on the order's
+ * timeline note — a buyer conversion is traceable to the specific
+ * B2B account afterwards.
  */
 import { prisma } from "@advance-ecommerce/db";
 import { isFeatureEnabled } from "@/lib/feature-flags";
@@ -352,7 +361,18 @@ export async function acceptB2bQuotation(
 
   const result = await convertQuotation(
     quotationId,
-    { id: customer.id, permissions: [], ip: reqMeta.ip, userAgent: reqMeta.userAgent },
+    // actorKind "customer": this id is the buyer's CUSTOMER row id,
+    // not a staff User id — convertQuotation's audit writes key
+    // actorId null and carry the buyer identity in the payload
+    // (passing the Customer id as actorId made the AuditLog FK
+    // reject the row and buyer conversions went unaudited).
+    {
+      id: customer.id,
+      actorKind: "customer",
+      permissions: [],
+      ip: reqMeta.ip,
+      userAgent: reqMeta.userAgent,
+    },
     opts,
   );
   if (!result.ok) {

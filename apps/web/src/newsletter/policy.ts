@@ -8,12 +8,17 @@
  *    the normal 201 shape, stores NOTHING, and silently counts the
  *    drop. The response never reveals that a honeypot exists.
  *
- * 2. RATE LIMIT — max 5 attempts per hour per (email + IP) pair.
- *    Fixed-window, in-memory. The IP is a PLACEHOLDER: the route passes
- *    the first x-forwarded-for hop (or "unknown") until a trusted-proxy
- *    setup exists. Production swap (Redis) keeps this class shape —
- *    see contact/policy.ts for the key design.
+ * 2. RATE LIMIT — max 5 attempts per hour per (email + IP) pair,
+ *    counted through the shared Redis-backed limiter
+ *    (src/lib/rate-limit.ts) via checkNewsletterRateLimit below — one
+ *    bucket shared by the subscribe (POST) and unsubscribe (DELETE)
+ *    handlers, as before. The IP is a PLACEHOLDER: the route passes
+ *    the first x-forwarded-for hop (or "unknown") until a trusted-
+ *    proxy setup exists.
  */
+// This module is imported by the client NewsletterForm (honeypot
+// constant), so it must stay free of server-only dependencies. The
+// Redis-backed rate check lives in src/newsletter/rate-limit.ts.
 
 export const NEWSLETTER_HONEYPOT_FIELD = "website";
 
@@ -34,48 +39,9 @@ export function newsletterRateLimitKey(normalizedEmail: string, ip: string): str
   return `${normalizedEmail}|${ip}`;
 }
 
-export interface NewsletterRateLimitDecision {
-  allowed: boolean;
-  /** Attempts still allowed in the current window (0 when blocked). */
-  remaining: number;
-  /** Seconds to wait before retrying (0 when allowed). */
-  retryAfterSeconds: number;
-}
-
-export class NewsletterRateLimiter {
-  private readonly hits = new Map<string, { count: number; windowStart: number }>();
-
-  constructor(
-    private readonly maxAttempts: number = NEWSLETTER_RATE_LIMIT.maxAttempts,
-    private readonly windowMs: number = NEWSLETTER_RATE_LIMIT.windowMs,
-  ) {}
-
-  check(key: string, now: Date = new Date()): NewsletterRateLimitDecision {
-    const t = now.getTime();
-    const entry = this.hits.get(key);
-    if (!entry || t - entry.windowStart >= this.windowMs) {
-      this.hits.set(key, { count: 1, windowStart: t });
-      return { allowed: true, remaining: this.maxAttempts - 1, retryAfterSeconds: 0 };
-    }
-    entry.count += 1;
-    if (entry.count > this.maxAttempts) {
-      return {
-        allowed: false,
-        remaining: 0,
-        retryAfterSeconds: Math.ceil((entry.windowStart + this.windowMs - t) / 1000),
-      };
-    }
-    return { allowed: true, remaining: this.maxAttempts - entry.count, retryAfterSeconds: 0 };
-  }
-
-  /** Test/support helper — clears one key's window. */
-  reset(key: string): void {
-    this.hits.delete(key);
-  }
-}
-
-/** Shared limiter for the public newsletter endpoint. */
-export const newsletterRateLimiter = new NewsletterRateLimiter();
+/* The rate check itself lives in src/newsletter/rate-limit.ts
+ * (server-only — it loads the Redis limiter; this policy module is
+ * imported by a client form and must stay dependency-free). */
 
 let honeypotDrops = 0;
 

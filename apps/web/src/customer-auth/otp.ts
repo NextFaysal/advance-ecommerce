@@ -66,7 +66,7 @@ import {
   OTP_RESEND_COOLDOWN_MS,
   OTP_TTL_MS,
 } from "@/orders/otp";
-import { toPublicCustomer, type PublicCustomer } from "./auth";
+import { fireCustomerRegistered, toPublicCustomer, type PublicCustomer } from "./auth";
 
 export const AUTH_OTP_PURPOSE = "customer_login";
 const AUTH_OTP_RESEND_PER_HOUR = 5;
@@ -196,6 +196,12 @@ export async function checkAuthOtpResend(
 /* from past checkouts is thereby claimed — its orders attach via    */
 /* customerId, nothing is copied), a new phone creates the account   */
 /* with NO password. Blocked / soft-deleted rows fail generically.   */
+/*                                                                    */
+/* PRODUCER: the create branch is a REGISTRATION and fires            */
+/* CUSTOMER_REGISTERED exactly once via auth.ts's                     */
+/* fireCustomerRegistered (the password path's seam — automation      */
+/* event + webhook dispatch, which also fans out to connectors).      */
+/* The existing-row branch is a LOGIN and never fires it.             */
 /* ------------------------------------------------------------------ */
 
 export async function findOrCreateCustomerForPhone(
@@ -215,6 +221,13 @@ export async function findOrCreateCustomerForPhone(
   const created = await prisma.customer.create({
     data: { name: "গ্রাহক", phone: normalizedPhone, email: null, passwordHash: null, tags: [] },
   });
+  // Registration producer (wave 52): a brand-new account created by
+  // OTP fires CUSTOMER_REGISTERED exactly once, through the same seam
+  // the password path uses. This line is reachable ONLY on creation —
+  // the existing-row branch above returns earlier (login), and this
+  // function itself is called only after verifyAuthOtp succeeded, so
+  // a failed verification can never reach it.
+  await fireCustomerRegistered(created.id);
   return toPublicCustomer(created);
 }
 

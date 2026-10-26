@@ -85,7 +85,30 @@ import {
 } from "./manual-create";
 import { markOrderPayment } from "./repository";
 
-export type ConvertActor = ManualOrderActor;
+/**
+ * Who is performing a conversion.
+ *
+ * "staff" (the default when actorKind is absent): actor.id is a staff
+ * User id and keys the audit rows' actorId (AuditLog.actor -> User).
+ *
+ * "customer": actor.id is a CUSTOMER row id — the B2B portal buyer
+ * (src/b2b/portal.ts acceptB2bQuotation). A Customer id can NEVER key
+ * AuditLog.actorId (the FK points at User), so for customer actors:
+ *  - audit rows are written with actorId: null and the buyer identity
+ *    (actorKind + b2bCustomerId + convertedByCustomerId) in the
+ *    payload — the wave-42 convention for customer actors, see
+ *    src/b2b/requests.ts; AuditLog.actorId is nullable in the schema
+ *    precisely so this loses no FK safety for staff rows;
+ *  - the actor handed to createManualOrder carries id: null (the
+ *    documented system-actor shape on ManualOrderActor), so the
+ *    orders.create audit inside manual-create lands the same way
+ *    instead of dying on the FK;
+ *  - the order's timeline note names the buyer, so the conversion is
+ *    traceable to the specific B2B account from the order itself.
+ */
+export interface ConvertActor extends ManualOrderActor {
+  actorKind?: "staff" | "customer";
+}
 
 export interface ConvertOptions {
   address?: BdAddress;
@@ -312,6 +335,13 @@ export async function convertQuotation(
     return fail(422, "ADDRESS_REQUIRED", ADDRESS_REQUIRED_MESSAGE);
   }
 
+  // ---- Actor shape for the create funnel + audit (see ConvertActor):
+  // a customer actor's id is a Customer row id, never a User id, so
+  // the funnel receives the null-id system shape and the audit rows
+  // below key actorId null with the buyer identity in the payload.
+  const isCustomerActor = actor.actorKind === "customer";
+  const orderActor: ManualOrderActor = isCustomerActor ? { ...actor, id: null } : actor;
+
   // ---- Create the real order at the quotation's contract prices
   const created = await createManualOrder(
     {
@@ -329,7 +359,7 @@ export async function convertQuotation(
       internalNote: `B2B কোটেশন ${quotation.id} থেকে রূপান্তরিত — কোটেশনের সম্মত দামই চূড়ান্ত (ক্যাটালগে পুনঃমূল্যায়ন হয়নি)। ক্রেডিট অর্ডার: পেমেন্ট B2B অ্যাকাউন্টের শর্ত অনুযায়ী বকেয়া। / Converted from B2B quotation ${quotation.id} at the quotation's agreed contract prices (not re-priced from the catalog). Credit order: payable on the B2B account's terms.`,
       idempotencyKey: conversionIdempotencyKey("b2b-quotation", quotation.id),
     },
-    actor,
+    orderActor,
   );
   if (!created.ok) {
     return fail(created.httpStatus, created.code, created.message, created.details);
@@ -356,16 +386,37 @@ export async function convertQuotation(
 
   await addOrderTimelineNote(
     created.orderId,
-    `B2B কোটেশন ${quotation.id} থেকে তৈরি ক্রেডিট অর্ডার — কোটেশন মূল্য ${quotationTotalPoisha} পয়সা, অর্ডারের মোট ${orderTotalPoisha} পয়সা অ্যাকাউন্টের বকেয়ায় যোগ হয়েছে। / Credit order created from B2B quotation ${quotation.id} — quotation value ${quotationTotalPoisha} poisha; order total ${orderTotalPoisha} poisha added to the account's outstanding dues.`,
+    `B2B কোটেশন ${quotation.id} থেকে তৈরি ক্রেডিট অর্ডার — কোটেশন মূল্য ${quotationTotalPoisha} পয়সা, অর্ডারের মোট ${orderTotalPoisha} পয়সা অ্যাকাউন্টের বকেয়ায় যোগ হয়েছে। / Credit order created from B2B quotation ${quotation.id} — quotation value ${quotationTotalPoisha} poisha; order total ${orderTotalPoisha} poisha added to the account's outstanding dues.` +
+      (isCustomerActor
+        ? ` ক্রেতা নিজে B2B পোর্টাল থেকে গ্রহণ ও রূপান্তর করেছেন (B2B অ্যাকাউন্ট ${quotation.b2bCustomerId} — ${customer.businessName})। / Accepted and converted by the buyer in the B2B portal (B2B account ${quotation.b2bCustomerId} — ${customer.businessName}).`
+        : ""),
   );
-  await writeAudit({
-    actorId: actor.id,
+  // Audit (wave 52 fix): a staff actor keys actorId to their User id
+  // as before. A CUSTOMER actor (portal buyer) has no User row — the
+  // old code passed the Customer id as actorId, the AuditLog.actor FK
+  // rejected the insert, writeAudit swallowed it (console.error +
+  // null return, ignored here) and buyer conversions left NO audit
+  // row at all. Now the row is written with actorId: null and the
+  // buyer identity in afterJson (the wave-42 customer-actor
+  // convention, src/b2b/requests.ts), and a null return is logged
+  // with conversion context instead of passing silently — the
+  // timeline note above remains the on-order fallback record.
+  const auditId = await writeAudit({
+    actorId: isCustomerActor ? null : actor.id,
     action: "b2b.quotation_convert",
     entityType: "Quotation",
     entityId: quotation.id,
     beforeJson: { status: "ACCEPTED" },
     afterJson: {
       status: "CONVERTED",
+      actorKind: isCustomerActor ? "customer" : "staff",
+      ...(isCustomerActor
+        ? {
+            b2bCustomerId: quotation.b2bCustomerId,
+            convertedByCustomerId: actor.id,
+            businessName: customer.businessName,
+          }
+        : {}),
       orderId: created.orderId,
       orderNo: created.orderNo,
       quotationTotalPoisha,
@@ -374,7 +425,17 @@ export async function convertQuotation(
       creditLimitPoisha: customer.creditLimitPoisha,
       replayed: created.replayed,
     },
+    ip: actor.ip,
+    userAgent: actor.userAgent,
   });
+  if (auditId === null) {
+    console.error(
+      "b2b.quotation_convert audit not recorded:",
+      quotation.id,
+      created.orderId,
+      isCustomerActor ? "customer" : "staff",
+    );
+  }
 
   return {
     ok: true,
