@@ -83,6 +83,10 @@ function pct(bps: number): string {
 
 export default function InventoryDepthPanel() {
   const [report, setReport] = useState<DepthReport | null>(null);
+  // ADV-27: cost fields arrive null + meta.costMasked when the
+  // viewer lacks products.edit_cost_price — render "—" (hidden),
+  // never "কস্ট নেই" (which would falsely claim no cost is recorded).
+  const [costMasked, setCostMasked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState(90);
   const [reordering, setReordering] = useState(false);
@@ -95,6 +99,7 @@ export default function InventoryDepthPanel() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error?.message ?? "রিপোর্ট লোড করা যায়নি");
       setReport(json.data as DepthReport);
+      setCostMasked(json?.meta?.costMasked === true);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "রিপোর্ট লোড করা যায়নি");
@@ -226,6 +231,11 @@ export default function InventoryDepthPanel() {
         <h3 className="text-small font-semibold text-text-main">
           ডেড স্টক ({report.deadStock.thresholdDays} দিনে বিক্রি হয়নি, তবু স্টক আছে)
         </h3>
+        {costMasked && (
+          <p className="mt-1 text-small text-text-muted">
+            কস্ট প্রাইস আপনার অনুমতিতে নেই (products.edit_cost_price লাগে) — তাই আটকে থাকা মূল্য "—" দেখাচ্ছে।
+          </p>
+        )}
         {report.deadStock.rows.length === 0 ? (
           <p className="mt-1 text-small text-text-muted">ডেড স্টক নেই — স্টক থাকা সব ভ্যারিয়েন্টের সাম্প্রতিক বিক্রি আছে।</p>
         ) : (
@@ -247,7 +257,11 @@ export default function InventoryDepthPanel() {
                     </td>
                     <td className="px-3 py-2 font-mono tabular-nums">{r.stockOnHand}</td>
                     <td className="px-3 py-2 font-mono tabular-nums">
-                      {r.stockValuePoisha !== null ? formatBdt(r.stockValuePoisha) : "কস্ট নেই"}
+                      {costMasked
+                        ? "—"
+                        : r.stockValuePoisha !== null
+                          ? formatBdt(r.stockValuePoisha)
+                          : "কস্ট নেই"}
                     </td>
                     <td className="px-3 py-2 text-text-muted">
                       {r.lastSaleAt ? new Date(r.lastSaleAt).toLocaleDateString("bn-BD") : "কখনো বিক্রি হয়নি"}

@@ -191,6 +191,35 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: "locked-add-on",
   },
   {
+    id: "pharmacy-rx",
+    path: "/admin/pharmacy",
+    labelBn: "প্রেসক্রিপশন যাচাই",
+    labelEn: "Prescription Review",
+    icon: "ScrollText",
+    section: "sales",
+    // ADV-22: pharmacist verification queue for Rx orders. The queue
+    // APIs guard reads on orders.view and decisions on orders.edit
+    // (order-based work queue — the call-center/warehouse precedent);
+    // the pharmacy pack flag is the paid add-on gate.
+    permission: "orders.view",
+    featureFlag: "module.pharmacy",
+    badge: "locked-add-on",
+  },
+  {
+    id: "approvals",
+    path: "/admin/approvals",
+    labelBn: "অনুমোদন",
+    labelEn: "Approvals",
+    icon: "ShieldAlert",
+    section: "sales",
+    // ADV-27: approval workflows queue. Read guard on the API is
+    // orders.view; decisions require orders.edit (Owner/Manager) —
+    // the nav entry follows the section's shared read permission.
+    permission: "orders.view",
+    featureFlag: null,
+    badge: null,
+  },
+  {
     id: "call-center",
     path: "/admin/call-center",
     labelBn: "কল সেন্টার",
@@ -720,6 +749,19 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     labelBn: "কল সেন্টার সেটিংস",
     labelEn: "Call Center Settings",
     icon: "PhoneCall",
+    section: "system",
+    permission: "settings.view",
+    featureFlag: null,
+    badge: null,
+  },
+  {
+    // ADV-29: privacy ledgers (consent log, data exports, account
+    // anonymisations) + the maintenance-mode editor (site.maintenance).
+    id: "settings-privacy",
+    path: "/admin/settings/privacy",
+    labelBn: "গোপনীয়তা ও মেইনটেন্যান্স",
+    labelEn: "Privacy & Maintenance",
+    icon: "Lock",
     section: "system",
     permission: "settings.view",
     featureFlag: null,

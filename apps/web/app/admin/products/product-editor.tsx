@@ -591,6 +591,7 @@ export function ProductEditor({
   const [lowStockThreshold, setLowStockThreshold] = useState(
     initial?.lowStockThreshold != null ? String(initial.lowStockThreshold) : "",
   );
+  const [priceOnRequest, setPriceOnRequest] = useState(initial?.priceOnRequest ?? false);
   // Scheduling — datetime-local strings in state, ISO on the wire.
   const [publishAt, setPublishAt] = useState(isoToLocalInput(initial?.publishAt ?? null));
   const [saleStartsAt, setSaleStartsAt] = useState(isoToLocalInput(initial?.saleStartsAt ?? null));
@@ -1092,6 +1093,7 @@ export function ProductEditor({
       widthMm: widthMmValue,
       heightMm: heightMmValue,
       lowStockThreshold: lowStockThresholdValue,
+      priceOnRequest,
       images,
       variants,
     };
@@ -1852,6 +1854,21 @@ export function ProductEditor({
           <label className={labelCls}>
             লো-স্টক সতর্কতার সীমা (খালি = গ্লোবাল ডিফল্ট)
             <input value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)} inputMode="numeric" className={inputCls} placeholder="যেমন: 5" />
+          </label>
+          <label className="flex items-start gap-2.5 self-center rounded-lg border border-border/70 bg-surface-2/60 p-3.5 text-sm text-text-main md:col-span-2">
+            <input
+              type="checkbox"
+              checked={priceOnRequest}
+              onChange={(e) => setPriceOnRequest(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+            />
+            <span>
+              <span className="font-medium">দাম অনুরোধে (Price on Request)</span>
+              <span className="block text-xs leading-5 text-text-muted">
+                চালু থাকলে স্টোরফ্রন্টে এই পণ্যের দাম ও কার্ট বোতাম লুকানো থাকবে — ক্রেতা
+                "দামের জন্য যোগাযোগ করুন" দেখে যোগাযোগের পেজ থেকে বার্তা পাঠাবেন।
+              </span>
+            </span>
           </label>
           <div className="rounded-lg border border-border/70 bg-surface-2/60 p-3.5 md:col-span-2">
             <span className="text-sm font-medium text-text-main">প্যাকেজের মাপ (মিলিমিটার)</span>

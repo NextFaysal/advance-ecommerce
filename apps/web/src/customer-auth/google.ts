@@ -17,19 +17,27 @@
  * not render the button (the account page passes the availability
  * flag down, the payment-methods capability pattern).
  *
- * ACCOUNT BINDING (no migration in this wave): there is no googleId
- * column on Customer, so binding is by the VERIFIED email — an
- * existing Customer with that email is the account, whatever sign-in
- * method created it. GAP, reported: without googleId, a customer who
- * changes their Google email address would bind to a different (or
- * new) account; a future schema wave should add Customer.googleId
- * and bind on it.
+ * ACCOUNT BINDING (schema wave 2, 2026-10-26): Customer.googleId
+ * now exists (@unique), and binding is googleId-FIRST:
+ *   1. a row whose googleId equals the token's `sub` IS the account
+ *      (its stored email follows the token's newly verified email —
+ *      a Google-side email change no longer strands the customer);
+ *   2. otherwise a row matched by the VERIFIED email is claimed:
+ *      googleId is stamped onto it — a ONE-TIME claim, performed
+ *      only while the row's googleId is still null. If that row is
+ *      already bound to a DIFFERENT googleId, sign-in still proceeds
+ *      (the email is verified) but the binding is left untouched:
+ *      one customer row never silently changes Google accounts;
+ *   3. legacy rows from before googleId existed are also found by
+ *      their placeholder phone key `g:<sub>` and claimed the same
+ *      way (stamp + follow the verified email);
+ *   4. otherwise a fresh row is created with googleId set.
  *
- * PHONE GAP (same wave constraint): Customer.phone is NOT NULL +
- * unique (it is the account key), and a Google-first customer has no
- * phone. Such rows are created with a non-dialable placeholder phone
- * key `g:<google sub>` — never a real-looking number, never accepted
- * by BD phone validation, so it can never receive an OTP or collide
+ * PHONE GAP (unchanged): Customer.phone is NOT NULL + unique (it is
+ * the account key), and a Google-first customer has no phone. Such
+ * rows are created with a non-dialable placeholder phone key
+ * `g:<google sub>` — never a real-looking number, never accepted by
+ * BD phone validation, so it can never receive an OTP or collide
  * with a real customer's number. toPublicCustomer renders its masked
  * form as "—". The customer gains full phone-keyed behaviour once a
  * real phone is attached (no self-serve UI for that yet).
@@ -195,7 +203,7 @@ export async function fetchGoogleIdTokenProfile(input: {
 }
 
 /* ------------------------------------------------------------------ */
-/* Account binding — by verified email (see the header for the gap).  */
+/* Account binding — googleId first, one-time email claim (header).   */
 /* ------------------------------------------------------------------ */
 
 /** Placeholder phone key for a Google-first row (see header). */
@@ -206,31 +214,60 @@ export function googlePlaceholderPhone(sub: string): string {
 export async function findOrCreateCustomerForGoogle(
   profile: GoogleProfile,
 ): Promise<PublicCustomer | null> {
-  const byEmail = await prisma.customer.findFirst({ where: { email: profile.email } });
-  const placeholder = googlePlaceholderPhone(profile.sub);
-  const existing =
-    byEmail ??
-    (await prisma.customer.findUnique({ where: { phone: placeholder } }));
-  if (existing !== null) {
-    if (existing.blocked || existing.deletedAt !== null) return null;
+  // 1) Bound row: googleId is the durable identity.
+  const byGoogleId = await prisma.customer.findUnique({
+    where: { googleId: profile.sub },
+  });
+  if (byGoogleId !== null) {
+    if (byGoogleId.blocked || byGoogleId.deletedAt !== null) return null;
     const updated = await prisma.customer.update({
-      where: { id: existing.id },
+      where: { id: byGoogleId.id },
       data: {
         failedLoginAttempts: 0,
         lockedUntil: null,
         lastLoginAt: new Date(),
-        // A row found by its placeholder key whose email changed on
-        // Google's side follows the newly verified email.
-        ...(byEmail === null ? { email: profile.email } : {}),
+        // The verified email is Google's current truth for this
+        // subject — follow it (this is the fix for the pre-googleId
+        // "changed email binds to a different account" gap).
+        email: profile.email,
       },
     });
     return toPublicCustomer(updated);
   }
+
+  // 2) + 3) Unbound row found by verified email, or a legacy
+  // pre-googleId row found by its placeholder phone key: claim it.
+  const byEmail = await prisma.customer.findFirst({ where: { email: profile.email } });
+  const placeholder = googlePlaceholderPhone(profile.sub);
+  const candidate =
+    byEmail ??
+    (await prisma.customer.findUnique({ where: { phone: placeholder } }));
+  if (candidate !== null) {
+    if (candidate.blocked || candidate.deletedAt !== null) return null;
+    const updated = await prisma.customer.update({
+      where: { id: candidate.id },
+      data: {
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        lastLoginAt: new Date(),
+        // A legacy row found by its placeholder key follows the
+        // newly verified email; an email-matched row already has it.
+        ...(byEmail === null ? { email: profile.email } : {}),
+        // ONE-TIME CLAIM: stamp only while unbound. A row already
+        // bound to a different googleId keeps that binding (header).
+        ...(candidate.googleId === null ? { googleId: profile.sub } : {}),
+      },
+    });
+    return toPublicCustomer(updated);
+  }
+
+  // 4) Brand-new Google-first customer.
   const created = await prisma.customer.create({
     data: {
       name: profile.name !== "" ? profile.name : profile.email.split("@")[0] ?? "গ্রাহক",
       phone: placeholder,
       email: profile.email,
+      googleId: profile.sub,
       passwordHash: null,
       tags: [],
     },

@@ -111,7 +111,10 @@ function toRow(p: CatalogProduct): ProductRow {
 /** Full variant payload for PATCH — update semantics replace the
  *  variant set by SKU, so every stored field is carried through and
  *  only the quick-edited field differs. Input comes from the by-id
- *  GET (which does not strip cost), never from the list rows. */
+ *  GET (costs masked to null for viewers without
+ *  products.edit_cost_price — the PATCH route substitutes the
+ *  existing costs server-side for those callers, ADV-27), never
+ *  from the list rows. */
 function toVariantInputs(product: CatalogProduct) {
   return product.variants.map((v) => ({
     attributes: v.attributes,

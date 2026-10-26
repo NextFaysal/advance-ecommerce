@@ -137,13 +137,17 @@ export function QuickView({
           </span>
         </p>
 
-        {/* Price */}
+        {/* Price — or the price-on-request label (schema wave 2) */}
+        {product.priceOnRequest ? (
+          <p className="mt-3 text-2xl font-extrabold text-brand-700">দামের জন্য যোগাযোগ করুন</p>
+        ) : (
         <p className="mt-3 flex flex-wrap items-baseline gap-x-2.5">
           <span className="text-2xl font-extrabold tabular-nums text-brand-700">{digits(formatBdt(price))}</span>
           {compareAt !== null && compareAt > price ? (
             <span className="text-sm tabular-nums text-text-subtle line-through">{digits(formatBdt(compareAt))}</span>
           ) : null}
         </p>
+        )}
         <p className={`mt-1 text-sm font-medium ${inStock ? "text-emerald-600" : "text-rose-600"}`}>
           {inStock ? "স্টকে আছে" : "স্টক শেষ"}
         </p>
@@ -171,7 +175,10 @@ export function QuickView({
                           : "border-border bg-surface text-text-main hover:border-brand-300"
                     }`}
                   >
-                    {variantLabel(v)} — <span className="tabular-nums">{digits(formatBdt(v.pricePoisha))}</span>
+                    {variantLabel(v)}
+                    {product.priceOnRequest ? null : (
+                      <> — <span className="tabular-nums">{digits(formatBdt(v.pricePoisha))}</span></>
+                    )}
                     {soldOut ? " (স্টক শেষ)" : ""}
                   </button>
                 );
@@ -187,9 +194,10 @@ export function QuickView({
           </p>
         ) : null}
 
-        {/* Actions — same AddToCartButton contract as the card */}
+        {/* Actions — same AddToCartButton contract as the card;
+            no add-to-cart for price-on-request products. */}
         <div className="mt-5 flex flex-wrap items-center gap-3">
-          {selected ? (
+          {selected && !product.priceOnRequest ? (
             <AddToCartButton
               key={selected.id}
               className="flex-1"

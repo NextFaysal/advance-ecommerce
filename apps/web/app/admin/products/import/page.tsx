@@ -15,6 +15,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import type { ImportMoneyUnits, ImportRow } from "@/catalog/import";
+import ExternalImports from "./external-imports";
 
 interface InvalidRow {
   row: number;
@@ -592,6 +593,9 @@ export default function ProductImportPage() {
           </div>
         </section>
       )}
+
+      {/* ADV-25: external-source importers (Woo/Shopify/Daraz) + feeds. */}
+      <ExternalImports />
     </main>
   );
 }

@@ -122,6 +122,34 @@ export class PrismaNewsletterStore implements NewsletterStore {
 /** The store the public route uses. */
 export const newsletterStore: NewsletterStore = new PrismaNewsletterStore();
 
+/**
+ * Unsubscribe (ADV-29): flips a subscribed row to "unsubscribed"
+ * with the timestamp. Idempotent and non-enumerating at the route
+ * layer: an unknown or already-unsubscribed address reports
+ * `changed: false` and the route answers the same generic success,
+ * so the endpoint cannot be used to probe who is subscribed. Only a
+ * real subscribed → unsubscribed flip returns `changed: true` (the
+ * route records exactly those in the marketing consent log).
+ */
+export async function unsubscribeNewsletter(
+  emailRaw: string,
+): Promise<{ ok: true; changed: boolean } | { ok: false; error: string }> {
+  const email = emailRaw.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: "সঠিক ইমেইল ঠিকানা দিন।" };
+  }
+  const store = delegate();
+  const existing = await store.findUnique({ where: { email } });
+  if (existing === null || existing.status === "unsubscribed") {
+    return { ok: true, changed: false };
+  }
+  await prisma.newsletterSubscriber.update({
+    where: { email },
+    data: { status: "unsubscribed", unsubscribedAt: new Date() },
+  });
+  return { ok: true, changed: true };
+}
+
 export interface NewsletterSubscriberList {
   subscribers: NewsletterSubscriber[];
   /** Every subscriber row, regardless of the page size below. */

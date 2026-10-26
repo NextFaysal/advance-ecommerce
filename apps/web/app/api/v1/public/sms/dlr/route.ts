@@ -7,20 +7,20 @@
 // normalised to { providerMessageId, status } where status is one of
 // delivered | failed | pending | unknown.
 //
-// DURABLE-STORE LIMIT — read before "fixing": there is currently NO
-// table that can record a DLR. NotificationLog (the notification
-// delivery log) has no provider-message-id column, and job results
-// live only in BullMQ + handler logs, so a callback's message id
-// cannot be joined to a send record. Per the ADV-2 brief this route
-// therefore does the honest minimum: it parses + normalises the
-// callback, logs ids/status ONLY (never a phone number or message
-// body), and answers 200 with recorded:false and the reason in meta —
-// it never claims persistence it did not perform. Recording DLRs
-// durably needs a schema addition (a providerMessageId column +
-// index on NotificationLog, or an SmsDeliveryReport table); that is
-// a deliberate follow-up, not an oversight.
+// DURABLE STORE (schema wave 2, 2026-10-26 — supersedes the ADV-2
+// recorded:false behaviour): NotificationLog now carries
+// providerMessageId and the send paths record accepted real-provider
+// sends with it, so callbacks are applied to the matching row via
+// src/jobs/delivery-reports.ts (applySmsDeliveryReport). "recorded"
+// in the response now means a matching send row was found (and, for
+// a failed report, flipped to FAILED) — see that module for the exact
+// semantics, including why delivered/pending do not mutate the row
+// (NotificationStatus has no DELIVERED value). Callbacks with no
+// matching recorded send still answer recorded:false with the reason
+// — this route never claims persistence it did not perform.
 import { NextResponse } from "next/server";
 import { SMS_PROVIDERS, type SmsProviderName } from "@/integrations/sms";
+import { applySmsDeliveryReport } from "@/jobs/delivery-reports";
 
 export const dynamic = "force-dynamic";
 
@@ -122,11 +122,39 @@ export async function POST(req: Request) {
   // Ids + status only — never a phone, never a message body.
   console.log("[sms-dlr]", { provider: name, providerMessageId, status });
 
+  const applied = await applySmsDeliveryReport({
+    provider: name,
+    providerMessageId,
+    status,
+  });
+
+  if (!applied.recorded) {
+    return NextResponse.json({
+      data: { received: true, recorded: false, providerMessageId, status },
+      meta: {
+        durableStore: "NotificationLog.providerMessageId",
+        reason: applied.reason,
+        note:
+          applied.reason === "PROVIDER_MISMATCH"
+            ? "A send row carries this message id under a different provider; message ids are only unique per provider, so the report was not applied."
+            : "No recorded send carries this provider message id (the send predates durable DLR recording, or was made outside this system); the callback was acknowledged and logged only.",
+      },
+    });
+  }
+
   return NextResponse.json({
-    data: { received: true, recorded: false, providerMessageId, status },
+    data: {
+      received: true,
+      recorded: true,
+      providerMessageId,
+      status,
+      notificationLogId: applied.notificationLogId,
+      rowStatus: applied.rowStatus,
+      mutated: applied.mutated,
+    },
     meta: {
-      durableStore: "NONE",
-      note: "No DLR store exists yet (NotificationLog has no provider message id column); this callback was acknowledged and logged only, not persisted.",
+      durableStore: "NotificationLog.providerMessageId",
+      note: "Matched to the recorded send row. A failed report flips the row to FAILED (errorRef DLR_DELIVERY_FAILED); delivered/pending leave the row's SENT as its terminal recorded state — NotificationStatus has no DELIVERED value.",
     },
   });
 }

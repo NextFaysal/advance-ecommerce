@@ -117,6 +117,7 @@ const TRIGGER_TO_DB: Record<AutomationTrigger, string> = {
   "payment.succeeded": "PAYMENT_SUCCEEDED",
   "stock.low": "STOCK_LOW",
   "checkout.abandoned": "CHECKOUT_ABANDONED",
+  "customer.registered": "CUSTOMER_REGISTERED",
 };
 
 const TRIGGER_FROM_DB: Record<string, AutomationTrigger> = {
@@ -125,6 +126,7 @@ const TRIGGER_FROM_DB: Record<string, AutomationTrigger> = {
   PAYMENT_SUCCEEDED: "payment.succeeded",
   STOCK_LOW: "stock.low",
   CHECKOUT_ABANDONED: "checkout.abandoned",
+  CUSTOMER_REGISTERED: "customer.registered",
 };
 
 interface AutomationRuleRowShape {

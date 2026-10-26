@@ -188,6 +188,7 @@ export const productInputSchema = z.object({
   widthMm: nonNegativeIntOrNull,
   heightMm: nonNegativeIntOrNull,
   lowStockThreshold: nonNegativeIntOrNull,
+  priceOnRequest: z.boolean().optional(),
   // --- Wave 15 (doc 16 P7): product types ---
   type: z.enum(PRODUCT_TYPES).default("SIMPLE"),
   digitalFiles: z.array(digitalFileInputSchema).max(50).default([]),
@@ -245,6 +246,7 @@ export interface ProductRow {
   widthMm: number | null;
   heightMm: number | null;
   lowStockThreshold: number | null;
+  priceOnRequest: boolean;
   type: ProductType;
   digitalFiles: DigitalFileMeta[];
   bundleComponents: BundleComponentView[];
@@ -329,6 +331,7 @@ export function mapRowToProduct(row: ProductRow): Product {
     widthMm: row.widthMm,
     heightMm: row.heightMm,
     lowStockThreshold: row.lowStockThreshold,
+    priceOnRequest: row.priceOnRequest,
     type: row.type,
     digitalFiles: row.digitalFiles,
     bundleComponents: row.bundleComponents,
@@ -546,6 +549,7 @@ export interface PrismaProductRow {
   widthMm: number | null;
   heightMm: number | null;
   lowStockThreshold: number | null;
+  priceOnRequest: boolean;
   type: string;
   preorderDepositPercent: number | null;
   preorderExpectedDate: Date | null;
@@ -670,6 +674,7 @@ export function mapPrismaRowToProductRow(row: PrismaProductRow): ProductRow {
     widthMm: row.widthMm,
     heightMm: row.heightMm,
     lowStockThreshold: row.lowStockThreshold,
+    priceOnRequest: row.priceOnRequest,
     type: PRODUCT_TYPES.includes(row.type as ProductType) ? (row.type as ProductType) : "SIMPLE",
     digitalFiles: (row.digitalFiles ?? []).map((f) => ({
       id: f.id,
@@ -1153,6 +1158,7 @@ export class PrismaCatalogRepository implements CatalogRepository {
           widthMm: input.widthMm ?? null,
           heightMm: input.heightMm ?? null,
           lowStockThreshold: input.lowStockThreshold ?? null,
+          priceOnRequest: input.priceOnRequest ?? false,
           type: input.type,
           preorderDepositPercent: input.preorder?.depositPercent ?? null,
           preorderExpectedDate: input.preorder?.expectedDate
@@ -1420,6 +1426,7 @@ export class PrismaCatalogRepository implements CatalogRepository {
       if (input.widthMm !== undefined) data.widthMm = input.widthMm;
       if (input.heightMm !== undefined) data.heightMm = input.heightMm;
       if (input.lowStockThreshold !== undefined) data.lowStockThreshold = input.lowStockThreshold;
+      if (input.priceOnRequest !== undefined) data.priceOnRequest = input.priceOnRequest;
       if (input.categorySlug !== undefined) {
         data.categoryId = await this.resolveCategoryId(tx, input.categorySlug);
       }

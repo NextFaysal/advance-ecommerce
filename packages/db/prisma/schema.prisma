@@ -444,6 +444,12 @@ model Product {
   heightMm         Int?
   // Per-product low-stock threshold override (null = global default).
   lowStockThreshold Int?
+  // Price on request (schema wave 2, 2026-10-26): when true the
+  // storefront hides the price + add-to-cart on the PDP and product
+  // cards and shows "দামের জন্য যোগাযোগ করুন" with the contact/inbox
+  // path instead. Prices still exist on variants (staff quote from
+  // them); this is a display policy, not a data change.
+  priceOnRequest Boolean @default(false)
   // Wave 15 (doc 16 P7): product types — SIMPLE | DIGITAL | BUNDLE |
   // PREORDER, validated in the catalog service zod (house style: a
   // free String column, not a DB enum). Everything below is inert for
@@ -678,6 +684,15 @@ model Customer {
   name                String
   phone               String    @unique
   email               String?
+  // Google sign-in binding (schema wave 2, 2026-10-26): the Google
+  // subject id, stamped on the first verified-email match (one-time
+  // claim in src/customer-auth/google.ts) and looked up FIRST on
+  // later sign-ins, so a changed Google email still finds the row.
+  googleId            String?   @unique
+  // Date of birth (schema wave 2): date-only semantics — the TS
+  // layer stores UTC midnight and reads back the YYYY-MM-DD part.
+  // Feeds the birthday-offer job (src/marketing/birthday.ts).
+  birthDate           DateTime?
   tags                String[]
   blocked             Boolean   @default(false)
   blacklistReason     String?
@@ -1432,11 +1447,17 @@ model NotificationLog {
   order        Order?             @relation(fields: [orderId], references: [id])
   status       NotificationStatus @default(QUEUED)
   provider     String?
+  // Durable SMS DLR (schema wave 2): the provider's message id for an
+  // accepted send, written by the send paths that create rows here
+  // (src/jobs/notification-failures.ts recordSmsSendAccepted). The DLR
+  // webhook (app/api/v1/public/sms/dlr) joins callbacks on it.
+  providerMessageId String?
   segments     String?
   errorRef     String?
   createdAt    DateTime           @default(now())
   @@index([orderId])
   @@index([status, createdAt])
+  @@index([providerMessageId])
 }
 
 // ---- CMS + Supplier/PurchaseOrder (added by integration, gaps noted by Agent 6/10) ----
@@ -1589,6 +1610,9 @@ enum AutomationTrigger {
   PAYMENT_SUCCEEDED
   STOCK_LOW
   CHECKOUT_ABANDONED
+  // Schema wave 2: registerCustomer (src/customer-auth/auth.ts) fires
+  // this through emitAutomationEvent after a successful registration.
+  CUSTOMER_REGISTERED
 }
 
 model AutomationRule {
@@ -1690,6 +1714,8 @@ model Vendor {
   products         VendorProduct[]
   commissionLines  VendorCommissionLine[]
   refunds          VendorRefund[]
+  payoutRequests   VendorPayoutRequest[]
+  documents        VendorDocument[]
 }
 
 model B2bCustomer {
@@ -1808,7 +1834,12 @@ model ErpJournalEntry {
   createdAt   DateTime  @default(now())
   lines       ErpJournalLine[]
   @@index([periodCode, status])
-  @@index([sourceKind, sourceId])
+  // Schema wave 2 (2026-10-26): DB-enforced exactly-once for
+  // auto-posting. Local audit before adding: 0 duplicate
+  // (sourceKind, sourceId) pairs (the table was empty locally).
+  // NULL pairs stay exempt (Postgres treats NULLs as distinct),
+  // which is what the DRAFT/manual entries rely on.
+  @@unique([sourceKind, sourceId])
 }
 
 model ErpJournalLine {
@@ -2095,6 +2126,55 @@ model ResellerPayoutRequest {
   decidedAt    DateTime?
   createdAt    DateTime  @default(now())
   @@index([resellerId, status])
+}
+
+// Vendor payout requests (schema wave 2, 2026-10-26) — mirrors
+// ResellerPayoutRequest, plus paidAt + a decision note. Before this
+// model existed the vendor portal could only show a net payable and
+// state that payouts settle outside the system with no record; now
+// PAID is a first-class record — and it still means "a staff member
+// recorded an external payment", never an automatic transfer
+// (src/vendors/payout-store.ts).
+model VendorPayoutRequest {
+  id           String    @id @default(cuid())
+  vendorId     String
+  vendor       Vendor    @relation(fields: [vendorId], references: [id])
+  amountPoisha Int
+  /// BKASH | NAGAD | BANK
+  method       String
+  /// Where to pay, as written by the vendor (their own account note).
+  accountNote  String
+  /// PENDING | APPROVED | PAID | REJECTED
+  status       String    @default("PENDING")
+  decidedById  String?
+  decidedAt    DateTime?
+  /// When the PAID decision was recorded (external payment made).
+  paidAt       DateTime?
+  /// Staff decision note (shown to the vendor in the portal).
+  note         String?
+  createdAt    DateTime  @default(now())
+  @@index([vendorId, status])
+}
+
+// Vendor KYC documents (schema wave 2) — METADATA ONLY: kind +
+// fileName (+ storageKey once an upload path exists). No file bytes
+// ever land here, and the portal upload control stays disabled until
+// storage (R2/S3) is configured AND an upload endpoint is built;
+// staff record documents received out-of-band (in person / email)
+// and verify them here (src/vendors/documents.ts).
+model VendorDocument {
+  id         String   @id @default(cuid())
+  vendorId   String
+  vendor     Vendor   @relation(fields: [vendorId], references: [id])
+  /// TRADE_LICENSE | NID | TIN | OTHER
+  kind       String
+  fileName   String
+  storageKey String?
+  /// PENDING | VERIFIED | REJECTED
+  status     String   @default("PENDING")
+  note       String?
+  createdAt  DateTime @default(now())
+  @@index([vendorId, status])
 }
 
 model CallTask {

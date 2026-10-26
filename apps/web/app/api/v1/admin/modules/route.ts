@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { demoAdapterRegistry } from "@/extensibility/registry";
 import { ALL_PACKS, validatePackConfig } from "@/business-modules/packs";
+import { getSavedPackConfig, savePackConfig } from "@/business-modules/config-store";
 import { demoPackFlags } from "@/business-modules/types";
 import { DEFAULT_CHART_OF_ACCOUNTS } from "@/erp/accounts";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
@@ -19,9 +20,13 @@ export async function GET() {
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   await ensureDbFeatureFlags();
   const flags = demoPackFlags.list();
-  return NextResponse.json({
-    data: {
-      packs: ALL_PACKS.map((pack) => ({
+  // ADV-22: each pack now carries its EFFECTIVE config — the saved
+  // business_modules.<id> doc when one exists (validated), else the
+  // code defaults; configSource says which, honestly.
+  const packs = await Promise.all(
+    ALL_PACKS.map(async (pack) => {
+      const saved = await getSavedPackConfig(pack.id);
+      return {
         id: pack.id,
         flagKey: pack.flagKey,
         nameEn: pack.nameEn,
@@ -29,7 +34,14 @@ export async function GET() {
         description: pack.description,
         enabled: flags[pack.flagKey],
         defaultConfig: pack.defaultConfig,
-      })),
+        config: saved.config,
+        configSource: saved.source,
+      };
+    }),
+  );
+  return NextResponse.json({
+    data: {
+      packs,
       adapters: demoAdapterRegistry.list(),
       chartOfAccounts: DEFAULT_CHART_OF_ACCOUNTS,
     },
@@ -46,9 +58,12 @@ const validateConfigSchema = z.object({
   config: z.unknown(),
 });
 
-// Validate a pack config against its schema. Validation is allowed while a
-// pack is locked (staff prepare config before purchase); ACTIVATION is the
-// flag-gated step and happens via feature_flags, not here.
+// Validate a pack config against its schema AND persist it as the
+// pack's saved config doc (ADV-22 — before this, validation threw the
+// config away and packs could only ever run on code defaults).
+// Validation/persistence are allowed while a pack is locked (staff
+// prepare config before purchase); ACTIVATION is the flag-gated step
+// and happens via feature_flags, not here.
 export async function POST(req: Request) {
   const guard = await requireAdmin("settings.integrations");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
@@ -67,8 +82,9 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+  await savePackConfig(parsed.data.packId, result.config, guard.userId);
   return NextResponse.json({
     data: { packId: parsed.data.packId, config: result.config },
-    meta: { persistence: "none-pure-validation" },
+    meta: { persistence: "database" },
   });
 }

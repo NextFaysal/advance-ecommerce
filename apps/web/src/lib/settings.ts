@@ -217,6 +217,13 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
     value: "{\"tiers\":[{\"key\":\"REGULAR\",\"labelBn\":\"সাধারণ\",\"labelEn\":\"Regular\",\"thresholdPoisha\":0,\"discountBps\":0,\"freeShipping\":false},{\"key\":\"SILVER\",\"labelBn\":\"সিলভার\",\"labelEn\":\"Silver\",\"thresholdPoisha\":5000000,\"discountBps\":200,\"freeShipping\":false},{\"key\":\"GOLD\",\"labelBn\":\"গোল্ড\",\"labelEn\":\"Gold\",\"thresholdPoisha\":20000000,\"discountBps\":500,\"freeShipping\":true},{\"key\":\"PLATINUM\",\"labelBn\":\"প্লাটিনাম\",\"labelEn\":\"Platinum\",\"thresholdPoisha\":50000000,\"discountBps\":1000,\"freeShipping\":true}]}",
     isPublic: false,
   },
+  // Birthday offers (schema wave 2, src/marketing/birthday.ts): a
+  // customer whose birthday (MM-DD, Asia/Dhaka) falls within the next
+  // window_days days gets a deterministic per-year coupon
+  // BDAY-<customerId>-<year> at discount_bps percent off. The unique
+  // code IS the dedupe — re-runs never double-issue.
+  "loyalty.birthday.window_days": { category: "general", value: "3", isPublic: false },
+  "loyalty.birthday.discount_bps": { category: "general", value: "1000", isPublic: false },
   // Order-create rules (wave 20, plan 17 batch O2 —
   // src/checkout/order-rules.ts, enforced in the public create route).
   // Every rule defaults OFF / permissive: an unconfigured shop checks
@@ -238,6 +245,19 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   // Percent of the grand total asked as advance when the rule above
   // fires (integer 1-100; invalid stored values fall back to 20).
   "orders.rules.advance_percent": { category: "general", value: "20", isPublic: false },
+  // Approval workflows (ADV-27, doc 22 — src/orders/approvals.ts).
+  // Master toggle defaults OFF: an unconfigured shop confirms and
+  // refunds exactly as before (fail-open by design). When ON, an
+  // order whose recorded discount share reaches
+  // discount_threshold_bps of its subtotal cannot be confirmed until
+  // a manager (orders.edit) approves at /admin/approvals, and a
+  // refund above refund_threshold_poisha cannot be SENT until
+  // approved. Records persist as a JSON doc under the exact key
+  // "orders.approvals" (written directly via the doc store, not via
+  // setSetting — same pattern as warehouse.pick_lists).
+  "orders.approvals.enabled": { category: "general", value: "false", isPublic: false },
+  "orders.approvals.discount_threshold_bps": { category: "general", value: "3000", isPublic: false },
+  "orders.approvals.refund_threshold_poisha": { category: "general", value: "100000", isPublic: false },
   // Delivery slots offered at checkout (doc 17 batch O9-2 —
   // src/checkout/delivery-slots.ts): a JSON array of
   // { id, labelBn, labelEn }. The value below MUST stay in sync with
@@ -269,6 +289,18 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   "stores.retail_locations": {
     category: "general",
     value: "[]",
+    isPublic: false,
+  },
+  // Maintenance mode (ADV-29 — src/privacy/maintenance.ts): ONE JSON
+  // document { enabled, message_bn, message_en }. The storefront gate
+  // (middleware -> GET /api/v1/public/site-status) reads it through
+  // getSetting(); the parser fails SAFE — a corrupt value means
+  // maintenance OFF, never a taken-down store. Edited from
+  // Admin > Settings > Privacy. Default: disabled.
+  "site.maintenance": {
+    category: "general",
+    value:
+      '{"enabled":false,"message_bn":"সাইটটি এখন রক্ষণাবেক্ষণের জন্য সাময়িকভাবে বন্ধ আছে। অনুগ্রহ করে কিছুক্ষণ পরে আবার চেষ্টা করুন।","message_en":"The store is temporarily closed for maintenance. Please check back shortly."}',
     isPublic: false,
   },
 };

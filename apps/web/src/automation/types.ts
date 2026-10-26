@@ -22,6 +22,9 @@ export const AUTOMATION_TRIGGERS = [
   "payment.succeeded",
   "stock.low",
   "checkout.abandoned",
+  // Schema wave 2: the DB enum gained CUSTOMER_REGISTERED and
+  // registerCustomer now dispatches through the producer seam.
+  "customer.registered",
 ] as const;
 
 export type AutomationTrigger = (typeof AUTOMATION_TRIGGERS)[number];
@@ -139,9 +142,14 @@ export function or(...nodes: ConditionNode[]): ConditionGroup {
 /* Actions — described as effects by the engine. For matched          */
 /* immediate runs the automation worker executes send_sms (through    */
 /* the SMS send path: configured gateway, or the sandbox simulator     */
-/* labelled simulated) and send_email (queued through the ADV-3 email  */
-/* producer) and rewrites the effect descriptions with the real        */
-/* outcomes; dry-run / scheduled effects stay "planned" descriptions.  */
+/* labelled simulated), send_email (queued through the ADV-3 email     */
+/* producer), confirm_order (through the order funnel, gates intact), */
+/* add_tag / remove_tag (the OrderTag store / Customer.tags) and       */
+/* assign_courier (createSplitShipment, the staff booking seam) and    */
+/* rewrites the effect descriptions with the real outcomes;            */
+/* notify_staff has no delivery channel and stays plan-only,          */
+/* re-labelled as such at execution. Dry-run / scheduled effects stay  */
+/* "planned" descriptions.                                             */
 /* ------------------------------------------------------------------ */
 
 export type AutomationAction =
@@ -200,6 +208,11 @@ export interface AutomationEvent {
   stock?: { variantId: string; sku: string; available: number };
   checkout?: { id: string; totalPoisha: number; abandonedMinutes: number };
   payment?: { amountPoisha: number; method: string };
+  /** customer.registered (schema wave 2). Built from the Customer
+   *  row at execution time like every other branch; the phone rides
+   *  the event only so SMS effects + log masking behave exactly as
+   *  they do for orders — run logs store it masked, never raw. */
+  customer?: { id: string; tags: string[]; customerPhone: string };
 }
 
 /* ------------------------------------------------------------------ */
@@ -356,6 +369,13 @@ export const automationEventSchema: z.ZodType<AutomationEvent> = z.lazy(() =>
       .object({
         amountPoisha: z.number().int().nonnegative(),
         method: z.string().min(1),
+      })
+      .optional(),
+    customer: z
+      .object({
+        id: z.string().min(1),
+        tags: z.array(z.string()),
+        customerPhone: z.string().min(1),
       })
       .optional(),
   }),

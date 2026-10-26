@@ -27,17 +27,17 @@
  *     RECEIVED), so there is no event to hook. The function posts the
  *     CURRENT recorded received value if one ever appears.
  *
- * EXACTLY-ONCE: ErpJournalEntry has NO unique constraint on
- * (sourceKind, sourceId) — only an index — and this wave may not add
- * a migration. Dedupe is therefore application-level: a findFirst on
- * (sourceKind, sourceId) before append, behind funnels that already
- * fire once per state transition. Replays are safe (proven by the
- * wave smoke); the residual risk is two CONCURRENT duplicate
- * transitions racing the check, which the transition guards in the
- * funnels already prevent in practice. A future schema wave should
- * add @@unique([sourceKind, sourceId]) for sourceKinds that are
- * one-per-source (order_paid, refund_confirmed) to make this
- * DB-enforced.
+ * EXACTLY-ONCE (updated schema wave 2, 2026-10-26): ErpJournalEntry
+ * now carries @@unique([sourceKind, sourceId]) — dedupe is DB-enforced
+ * for non-null pairs. appendOnce still does its findFirst first (a
+ * friendly already_posted answer instead of a unique-violation), but
+ * two CONCURRENT duplicate transitions can no longer both append:
+ * the loser gets a unique violation, which the never-throw wrappers
+ * below return as { status: "skipped" }. Migration audit trail: the
+ * local DB held 0 journal entries (0 duplicate pairs) when the
+ * constraint was added; PRODUCTION (Neon) was NOT audited from here —
+ * if it ever held duplicate pairs the migration's CREATE UNIQUE
+ * INDEX would fail loudly at deploy rather than silently dedupe.
  *
  * VAT: only the RECORDED split (Order.vatPoisha, written at create
  * time when accounting.vat_rate_bps was configured) is posted. When

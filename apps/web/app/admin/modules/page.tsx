@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ALL_PACKS } from "@/business-modules/packs";
+import { WeightedSyncPanel } from "./weighted-sync-panel";
 import { demoPackFlags } from "@/business-modules/types";
 import { DOMAIN_EVENTS } from "@/extensibility/types";
 import { demoAdapterRegistry } from "@/extensibility/registry";
@@ -90,6 +91,15 @@ export default async function AdminModulesPage() {
         ]}
         rows={packRows}
       />
+
+      {flags["module.grocery"] ? (
+        <>
+          <h2 className="mb-3 mt-8 text-lg font-semibold">গ্রোসারি — ওজন প্যাকের দাম</h2>
+          <Card>
+            <WeightedSyncPanel />
+          </Card>
+        </>
+      ) : null}
 
       <h2 className="mb-3 mt-8 text-lg font-semibold">ERP-lite হিসাবরক্ষণ</h2>
       <Card>

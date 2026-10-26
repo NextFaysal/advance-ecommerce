@@ -9,8 +9,8 @@
  * it was when the event was emitted.
  *
  * entityId is an order id or orderNo for order/payment triggers, a
- * variant id for stock.low, and an AbandonedCheckout id for
- * checkout.abandoned.
+ * variant id for stock.low, an AbandonedCheckout id for
+ * checkout.abandoned, and a Customer id for customer.registered.
  *
  * checkout.abandoned history: this branch used to read prisma.cart —
  * but the storefront cart is browser-local (localStorage) and nothing
@@ -109,6 +109,24 @@ export async function buildAutomationEvent(
             0,
             Math.floor((Date.now() - capture.lastSeenAt.getTime()) / 60_000),
           ),
+        },
+      };
+    }
+    case "customer.registered": {
+      const customer = await prisma.customer.findFirst({
+        where: { id: entityId, deletedAt: null },
+        select: { id: true, phone: true, tags: true },
+      });
+      if (customer === null) {
+        throw new Error(`ENTITY_NOT_FOUND:customer:${entityId}`);
+      }
+      return {
+        type: trigger,
+        occurredAt,
+        customer: {
+          id: customer.id,
+          tags: customer.tags,
+          customerPhone: customer.phone,
         },
       };
     }

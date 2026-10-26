@@ -21,6 +21,7 @@ import { TRACKING_SETTING_KEYS } from "@/tracking/settings";
 import { loadOrderRules } from "@/checkout/order-rules";
 import { loadDeliverySlots } from "@/checkout/delivery-slots";
 import { getEmailTransportStatus } from "@/email/config";
+import { getMaintenanceConfig } from "@/privacy/maintenance";
 import { StoreNameCard } from "./store-name-card";
 
 // Settings index — landing page for Admin > Settings.
@@ -279,6 +280,23 @@ export default async function AdminSettingsPage() {
     } satisfies CardStatus;
   });
 
+  // Privacy & maintenance (ADV-29): the effective maintenance state
+  // through the same reader the storefront gate resolves with.
+  const privacy = await probe(async () => {
+    const cfg = await getMaintenanceConfig();
+    return cfg.enabled
+      ? {
+          tone: "warning",
+          label: "মেইনটেন্যান্স চালু",
+          detail: "স্টোরফ্রন্টে 503 পেজ দেখাচ্ছে; অ্যাডমিন প্যানেল চালু আছে। বন্ধ করতে কার্ডটি খুলুন।",
+        } satisfies CardStatus
+      : {
+          tone: "success",
+          label: "মেইনটেন্যান্স বন্ধ",
+          detail: "স্টোরফ্রন্ট সবার জন্য খোলা। সম্মতি লগ, ডেটা এক্সপোর্ট ও অ্যাকাউন্ট মুছে ফেলার লেজার কার্ডের ভেতরে।",
+        } satisfies CardStatus;
+  });
+
   const cards: SettingsCardInfo[] = [
     {
       href: "/admin/settings/payments",
@@ -343,6 +361,14 @@ export default async function AdminSettingsPage() {
       titleEn: "Call Center",
       description: "সুপারভাইজার SLA সীমা, ফলো-আপ অটোমেশন SMS-এর সময়, কলিং উইন্ডো ও কল-লগ সংরক্ষণের মেয়াদ (call_center.*)।",
       status: callCenter,
+    },
+    {
+      href: "/admin/settings/privacy",
+      icon: <Icon name="shield" size={22} />,
+      titleBn: "গোপনীয়তা ও মেইনটেন্যান্স",
+      titleEn: "Privacy & Maintenance",
+      description: "কাস্টমার ডেটা এক্সপোর্ট/মুছে ফেলার লেজার, মার্কেটিং সম্মতির লগ এবং স্টোরফ্রন্ট মেইনটেন্যান্স মোড (site.maintenance)।",
+      status: privacy,
     },
   ];
 

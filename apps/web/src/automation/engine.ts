@@ -67,6 +67,13 @@ export function buildRuleContext(event: AutomationEvent): RuleContext {
     ctx.paymentMethod = ctx.paymentMethod ?? event.payment.method;
     ctx.totalPoisha = ctx.totalPoisha ?? event.payment.amountPoisha;
   }
+  if (event.customer) {
+    // Registration context: tags are the customer's own tag list
+    // (Customer.tags) and the phone feeds masking/SMS exactly like
+    // an order's phone does. No order fields exist for this event.
+    ctx.tags = event.customer.tags;
+    ctx.customerPhone = event.customer.customerPhone;
+  }
   return ctx;
 }
 

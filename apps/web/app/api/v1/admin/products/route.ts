@@ -6,13 +6,16 @@ import {
   requireAdminSession,
   writeCatalogAudit,
 } from "@/catalog/api";
-import { stripCostPrice, hasPermission } from "@/lib/rbac";
+import { hasPermission } from "@/lib/rbac";
+import { canSeeCostPrices, maskCatalogProduct } from "@/lib/cost-masking";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { productInputSchema, validateCreateInput } from "@/catalog/service";
 import { productTypePayloadLocked } from "@/catalog/product-types";
 
 // GET /api/v1/admin/products — admin list. Cost price returned ONLY
-// when the caller has products.edit_cost_price; otherwise stripped.
+// when the caller has products.edit_cost_price; otherwise variant
+// costs are nulled server-side + meta.costMasked (ADV-27 masking —
+// explicit nulls, never a value the browser could read).
 // Status: ?status=DRAFT|ACTIVE|ARCHIVED filters; ?status=ALL — and no
 // status param at all — returns every status, because an admin list
 // that hides drafts by default makes them unmanageable. (The public
@@ -33,14 +36,11 @@ export async function GET(req: Request) {
       page: Number(url.searchParams.get("page") ?? "1") || 1,
       pageSize: Number(url.searchParams.get("pageSize") ?? "20") || 20,
     });
-    const canSeeCost = hasPermission(session.permissions, "products.edit_cost_price");
-    const products = result.products.map((p) => ({
-      ...p,
-      variants: canSeeCost ? p.variants : p.variants.map((v) => stripCostPrice(v, session.permissions)),
-    }));
+    const canSeeCost = canSeeCostPrices(session.permissions);
+    const products = result.products.map((p) => maskCatalogProduct(p, session.permissions));
     return NextResponse.json({
       data: products,
-      meta: { total: result.total, page: result.page, pageSize: result.pageSize },
+      meta: { total: result.total, page: result.page, pageSize: result.pageSize, costMasked: !canSeeCost },
     });
   } catch (error) {
     return handleServiceError(error);

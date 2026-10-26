@@ -561,6 +561,27 @@ export function createHandlers(
         recipientRef: envelope.payload.recipientRef,
         messageId: result.messageId,
       });
+      // Durable DLR (schema wave 2): a REAL provider's accepted send
+      // leaves a NotificationLog row carrying the message id, so the
+      // provider's delivery callback can be matched later. Sandbox
+      // sends are skipped — their ids are simulated and no DLR will
+      // ever arrive. Bookkeeping only: never fails the send.
+      if (provider.config.mode !== "sandbox") {
+        try {
+          const failures = await import("./notification-failures");
+          await failures.recordSmsSendAccepted({
+            templateKey: envelope.payload.templateKey,
+            recipientRef: envelope.payload.recipientRef,
+            orderId: envelope.payload.orderId ?? null,
+            provider: provider.name,
+            providerMessageId: result.messageId,
+            segments: result.segments,
+          });
+        } catch {
+          // The send already happened; a lost row loses only the
+          // future DLR match, never the message.
+        }
+      }
       return { status: "succeeded", ref: result.messageId, detail: "sms via adapter" };
     });
   };

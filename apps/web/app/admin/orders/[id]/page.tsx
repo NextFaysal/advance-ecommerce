@@ -52,6 +52,7 @@ import { ORDER_DENSITY } from "../../../../src/orders/components/density";
 import { orderAgeLabel, previewMoneyProps } from "../list-helpers";
 import { buildWorkspaceTimelineEntries } from "./workspace-timeline";
 import { RailAdvanceSummary } from "./rail-advance-summary";
+import { ApprovalBanner } from "./approval-banner";
 import { RailManagementSummary } from "./rail-management-summary";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -59,7 +60,28 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Tabs } from "@/components/ui/tabs";
 
-type DetailOrder = Order & { advance?: OrderAdvanceView };
+type DetailOrder = Order & {
+  advance?: OrderAdvanceView;
+  approval?: {
+    discount: {
+      id: string;
+      status: "PENDING" | "APPROVED" | "REJECTED";
+      discountBps: number | null;
+      thresholdBps: number | null;
+      amountPoisha: number | null;
+      decisionReason: string | null;
+    } | null;
+    pendingDiscount: boolean;
+    refunds: {
+      id: string;
+      status: "PENDING" | "APPROVED" | "REJECTED";
+      discountBps: number | null;
+      thresholdBps: number | null;
+      amountPoisha: number | null;
+      decisionReason: string | null;
+    }[];
+  };
+};
 
 /**
  * Delivery-slot label (doc 17 batch O9-2): Order.deliverySlot stores
@@ -245,7 +267,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
       if (res.ok && body && "data" in body) {
         // The PATCH payload is the plain order (no advance read
         // model) — keep the loaded advance block across the change.
-        setOrder({ ...body.data, advance: order.advance });
+        setOrder({ ...body.data, advance: order.advance, approval: order.approval });
         setMessage(`স্ট্যাটাস বদল হয়েছে (ডাটাবেসে সেভ হয়েছে): ${order.status} → ${to}`);
       } else if (body && "error" in body) {
         setMessage(`বাতিল হয়েছে (${res.status}): ${body.error.code}: ${body.error.message} — কিছু সেভ হয়নি।`);
@@ -484,6 +506,11 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
             advance={order.advance}
             onShowPayments={() => setTabSeed((s) => ({ id: "payment", n: s.n + 1 }))}
           />
+
+          {/* Approval state (ADV-27) — renders nothing unless a
+              discount/refund approval record exists for this order;
+              a pending one names the block before staff hit it. */}
+          <ApprovalBanner approval={order.approval} />
 
           {/* Delivery — courier / tracking / slot + gift chips. */}
           {showDeliveryCard ? (

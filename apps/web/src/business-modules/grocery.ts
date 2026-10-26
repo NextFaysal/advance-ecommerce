@@ -27,6 +27,41 @@ export const groceryConfigSchema = z.object({
   weightStepGrams: z.number().int().positive().default(250),
   maxWeightGramsPerItem: z.number().int().positive().default(25_000),
   slots: z.array(deliverySlotSchema).max(12).default([]),
+  /**
+   * ADV-22 wiring: category slugs this pack's weighted pricing applies
+   * to (display annotation scope). Matching rule lives in packs.ts
+   * (packCategoryMatches): exact slug, or a slug ending in "-<entry>"
+   * (so the seeded demo-grocery category resolves to this pack).
+   */
+  categorySlugs: z.array(z.string().min(1)).max(20).default(["grocery"]),
+  /**
+   * ADV-22 weighted (per-kg) pricing — the honest fixed-pack model.
+   *
+   * TRUE fractional quantities cannot flow through the order seam:
+   * OrderItem.quantity, CartItem.quantity, the checkout zod schema and
+   * the stock ledger are ALL integer units (audited 2026-10-26), and a
+   * schema change is out of this slice's ownership. So a weighted
+   * product is sold as FIXED WEIGHT PACKS: each entry names one variant
+   * (one pack), its per-kg rate and the pack's weight in grams. The
+   * pack's price is DERIVED — priceForWeight(rate, packGrams) — and an
+   * admin sync action (POST /api/v1/admin/grocery/weighted-prices/sync)
+   * writes the derived price onto the variant's recorded pricePoisha,
+   * which is what checkout actually charges (checkout always re-reads
+   * the recorded price server-side). PDP/cart annotate rate + pack
+   * weight; the derived pack price is only DISPLAYED when it equals
+   * the recorded price, so a stale (unsynced) price is never presented
+   * as the rate-derived one.
+   */
+  weightedVariants: z
+    .array(
+      z.object({
+        variantId: z.string().min(1),
+        pricePerKgPoisha: z.number().int().positive(),
+        packGrams: z.number().int().positive(),
+      }),
+    )
+    .max(500)
+    .default([]),
 });
 
 export type GroceryConfig = z.infer<typeof groceryConfigSchema>;
@@ -40,6 +75,8 @@ export const groceryPack: BusinessModulePack<GroceryConfig> = {
   defaultConfig: {
     weightStepGrams: 250,
     maxWeightGramsPerItem: 25_000,
+    categorySlugs: ["grocery"],
+    weightedVariants: [],
     slots: [
       { id: "morning", labelBn: "সকাল", labelEn: "Morning", startsAt: "08:00", endsAt: "12:00", capacity: 40, cutoffMinutes: 60 },
       { id: "afternoon", labelBn: "বিকাল", labelEn: "Afternoon", startsAt: "12:00", endsAt: "17:00", capacity: 40, cutoffMinutes: 60 },
@@ -55,6 +92,14 @@ export function priceForWeight(pricePerKgPoisha: number, grams: number): number 
     throw new Error("Weight pricing needs integer poisha-per-kg and integer grams.");
   }
   return Math.floor((pricePerKgPoisha * grams) / 1000);
+}
+
+/** The weighted-pack config entry for one variant, or null. */
+export function weightedVariantFor(
+  config: GroceryConfig,
+  variantId: string,
+): { variantId: string; pricePerKgPoisha: number; packGrams: number } | null {
+  return config.weightedVariants.find((w) => w.variantId === variantId) ?? null;
 }
 
 export function validateGrocerySelection(

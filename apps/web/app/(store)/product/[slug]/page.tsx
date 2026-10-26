@@ -33,6 +33,8 @@ import { isFeatureEnabled } from "@/lib/feature-flags";
 import { DescriptionSection } from "./DescriptionSection";
 import { ProductVideo } from "./ProductVideo";
 import { SizeChartButton, SizeChartSection } from "./SizeChart";
+import { resolvePdpPackSizeChart } from "@/business-modules/fashion-wiring";
+import { getWeightedInfosForProduct } from "@/business-modules/grocery-pricing";
 
 // Data: real catalog DB via the repository PUBLIC read path
 // (ACTIVE-only) — a DRAFT/ARCHIVED slug 404s exactly like a missing one.
@@ -155,6 +157,10 @@ export default async function ProductPage({ params }: { params: { slug: string }
   // Public view: costPoisha stripped — never render cost to customers.
   const product = toPublicProduct(raw);
   const minPrice = minVariantPricePoisha(raw);
+  // Price-on-request (schema wave 2): the price, variant prices,
+  // buy box, EMI note, sticky bar and JSON-LD offers are ALL hidden
+  // below — the customer asks via the contact/inbox path instead.
+  const priceOnRequest = product.priceOnRequest;
   const maxPrice = maxVariantPricePoisha(raw);
   const hasPriceRange = maxPrice > minPrice;
   // Best available discount across active variants (display only).
@@ -220,6 +226,18 @@ export default async function ProductPage({ params }: { params: { slug: string }
     product.sizeChart && product.sizeChart.headers.length > 0 && product.sizeChart.rows.length > 0
       ? product.sizeChart
       : null;
+  // ADV-22 (fashion pack): when the product has NO chart of its own,
+  // the pack chart for its category is the fallback (per-category
+  // override, else the pack default) — resolved from the saved pack
+  // config, only while module.fashion is on. The product's own chart
+  // always wins. The pack chart also carries the category fit note.
+  const packSizeChart = !sizeChart ? await resolvePdpPackSizeChart(product.categorySlug) : null;
+  const displaySizeChart = sizeChart ?? packSizeChart?.table ?? null;
+  // ADV-22 (grocery pack): weighted (per-kg) pack annotations for this
+  // product's configured pack variants — rate + pack weight from the
+  // saved grocery config; empty unless module.grocery is on and this
+  // product has configured weighted variants.
+  const weightedInfos = await getWeightedInfosForProduct(product.id);
   const faqItems = (product.faqItems ?? []).filter((f) => f.q.trim() !== "" && f.a.trim() !== "");
   // Specification table: union of variant attributes, key → distinct
   // values in first-seen order (active variants preferred).
@@ -274,14 +292,20 @@ export default async function ProductPage({ params }: { params: { slug: string }
         }
       : {}),
     brand: product.brandName ? { "@type": "Brand", name: product.brandName } : undefined,
-    offers: {
-      "@type": "Offer",
-      priceCurrency: "BDT",
-      price: fromPoisha(minPrice).toFixed(2),
-      availability: product.variants.some((v) => v.stock > 0)
-        ? "https://schema.org/InStock"
-        : "https://schema.org/OutOfStock",
-    },
+    // No offers block for price-on-request products: publishing a
+    // price in structured data would defeat the point of hiding it.
+    ...(priceOnRequest
+      ? {}
+      : {
+          offers: {
+            "@type": "Offer",
+            priceCurrency: "BDT",
+            price: fromPoisha(minPrice).toFixed(2),
+            availability: product.variants.some((v) => v.stock > 0)
+              ? "https://schema.org/InStock"
+              : "https://schema.org/OutOfStock",
+          },
+        }),
   };
 
   return (
@@ -352,7 +376,12 @@ export default async function ProductPage({ params }: { params: { slug: string }
           <div className="relative mt-5 overflow-hidden rounded-3xl border border-border bg-card p-5 shadow-card sm:p-6">
             {/* Aurora accent hairline — decorative top edge of the buy card */}
             <div aria-hidden="true" className="brand-gradient absolute inset-x-0 top-0 h-1" />
-            {/* Price */}
+            {/* Price — or the price-on-request label (schema wave 2) */}
+            {priceOnRequest ? (
+              <p className="pt-1 font-display text-3xl font-extrabold text-brand-700 dark:text-brand-300">
+                দামের জন্য যোগাযোগ করুন
+              </p>
+            ) : (
             <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5 pt-1">
               <span className="font-display text-4xl font-extrabold tabular-nums text-brand-700 dark:text-brand-300">
                 <BdtAmount poisha={minPrice} />
@@ -375,9 +404,13 @@ export default async function ProductPage({ params }: { params: { slug: string }
                 </>
               ) : null}
             </p>
+            )}
 
-            {/* Variant price list (info) — the buy box below owns selection */}
-            <h2 className="mt-6 text-sm font-bold text-text-main">ভেরিয়েন্ট ও দাম</h2>
+            {/* Variant list (info) — the buy box below owns selection.
+                Prices are omitted for price-on-request products. */}
+            <h2 className="mt-6 text-sm font-bold text-text-main">
+              {priceOnRequest ? "ভেরিয়েন্ট" : "ভেরিয়েন্ট ও দাম"}
+            </h2>
             <div className="mt-2.5 flex flex-wrap gap-2">
               {product.variants.map((v) => {
                 const soldOut = v.stock <= 0;
@@ -390,8 +423,13 @@ export default async function ProductPage({ params }: { params: { slug: string }
                         : "border-border bg-surface text-text-main hover:border-brand-300"
                     }`}
                   >
-                    {Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড"} —{" "}
-                    <BdtAmount poisha={v.pricePoisha} className="font-semibold tabular-nums" />
+                    {Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড"}
+                    {priceOnRequest ? null : (
+                      <>
+                        {" "}—{" "}
+                        <BdtAmount poisha={v.pricePoisha} className="font-semibold tabular-nums" />
+                      </>
+                    )}
                     {soldOut ? " (স্টক শেষ)" : ""}
                   </span>
                 );
@@ -457,6 +495,27 @@ export default async function ProductPage({ params }: { params: { slug: string }
             ) : null}
 
             <div id="buy-box" className="mt-6 scroll-mt-32">
+              {priceOnRequest ? (
+                /* Price-on-request (schema wave 2): no cart, no
+                   buy-now — the customer asks through the contact /
+                   inbox path and staff quote a price there. */
+                <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-400/25 dark:bg-brand-500/10">
+                  <p className="text-sm font-bold text-brand-900 dark:text-brand-100">
+                    এই পণ্যের দাম অনুরোধে জানানো হয়
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed text-brand-800 dark:text-brand-200">
+                    দাম জানতে আমাদের বার্তা পাঠান — পণ্যের নামটি উল্লেখ করলেই স্টাফ দাম ও
+                    অর্ডারের ব্যবস্থা করে দেবেন।
+                  </p>
+                  <Link
+                    href="/contact"
+                    className="mt-3 inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700"
+                  >
+                    দামের জন্য যোগাযোগ করুন
+                  </Link>
+                </div>
+              ) : (
+              <>
               {/* Add-to-cart + buy-now (Agent 35): client variant picker +
                   quantity + guest-cart write via src/cart contracts. */}
               <BuyBoxActions
@@ -475,16 +534,56 @@ export default async function ProductPage({ params }: { params: { slug: string }
                   ? { forceUnavailable: true, unavailableLabel: "বান্ডল স্টকে নেই" }
                   : {})}
               />
+              </>
+              )}
             </div>
 
             {/* EMI breakdown (ADV-18B) — display-only bank-card terms
-                at the product's lowest variant price; self-gating. */}
-            <EmiNote totalPoisha={minPrice} />
+                at the product's lowest variant price; self-gating.
+                Hidden for price-on-request products (no price shown). */}
+            {priceOnRequest ? null : <EmiNote totalPoisha={minPrice} />}
+
+            {/* ADV-22 (grocery pack): weighted products sell as fixed
+                weight packs priced from a per-kg rate. The annotation
+                states the rate + pack weight; the derived pack price
+                is quoted ONLY when it equals the recorded variant
+                price (inSync) — a rate edited since the last admin
+                price sync is never presented as the current price.
+                Hidden entirely for price-on-request products. */}
+            {weightedInfos.length > 0 && !priceOnRequest ? (
+              <div className="mt-4 rounded-2xl border border-border bg-surface-2/60 p-4 text-sm leading-6">
+                <p className="font-semibold text-text-main">⚖️ ওজন অনুযায়ী দাম — নির্ধারিত ওজনের প্যাকে বিক্রি হয়</p>
+                <ul className="mt-2 space-y-1.5 text-text-muted">
+                  {weightedInfos.map((info) => {
+                    const variant = product.variants.find((v) => v.id === info.variantId);
+                    const label = variant
+                      ? Object.values(variant.attributes).join(" / ") || info.sku
+                      : info.sku;
+                    return (
+                      <li key={info.variantId}>
+                        <span className="font-medium text-text-main">{label}</span>
+                        {" — "}প্যাক: <DigitText text={`${info.packGrams}`} /> গ্রাম · প্রতি কেজি{" "}
+                        <BdtAmount poisha={info.pricePerKgPoisha} />
+                        {info.inSync ? (
+                          <>
+                            {" "}· প্যাকের দাম <BdtAmount poisha={info.derivedPricePoisha} />
+                          </>
+                        ) : (
+                          <span className="text-text-subtle">
+                            {" "}· (হার অনুযায়ী দাম হালনাগাদ বাকি — উপরে দেখানো দামই প্রযোজ্য)
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <WishlistToggleButton productId={product.id} />
               <CompareToggleButton productId={product.id} />
-              {sizeChart ? <SizeChartButton chart={sizeChart} /> : null}
+              {displaySizeChart ? <SizeChartButton chart={displaySizeChart} /> : null}
             </div>
 
             <BackInStockForm productId={product.id} variants={outOfStockVariants} />
@@ -535,10 +634,20 @@ export default async function ProductPage({ params }: { params: { slug: string }
         </Reveal>
       ) : null}
 
-      {/* Size chart — this product's own chart, when it has one */}
-      {sizeChart ? (
+      {/* Size chart — the product's own chart, or the fashion pack's
+          chart for its category (ADV-22) when it has none. */}
+      {displaySizeChart ? (
         <Reveal>
-          <SizeChartSection chart={sizeChart} />
+          <SizeChartSection chart={displaySizeChart} />
+          {packSizeChart && (packSizeChart.fitNoteBn || packSizeChart.fitNoteEn) ? (
+            <p className="mt-3 text-sm text-text-muted">
+              <span className="font-semibold text-text-main">ফিট নোট: </span>
+              {packSizeChart.fitNoteBn ?? packSizeChart.fitNoteEn}
+              {packSizeChart.fitNoteEn && packSizeChart.fitNoteBn ? (
+                <span className="text-text-subtle"> · {packSizeChart.fitNoteEn}</span>
+              ) : null}
+            </p>
+          ) : null}
         </Reveal>
       ) : null}
 
@@ -603,7 +712,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
                   </span>
                   <span className="shrink-0 text-text-muted">
                     × <DigitText text={`${c.quantity}`} />
-                    {linePrice !== null ? (
+                    {linePrice !== null && !priceOnRequest ? (
                       <>
                         {" "}
                         —{" "}
@@ -615,7 +724,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
               );
             })}
           </ul>
-          {bundleComponentsTotal !== null ? (
+          {bundleComponentsTotal !== null && !priceOnRequest ? (
             <p className="mt-4 max-w-3xl rounded-2xl bg-surface-2/60 px-4 py-3 text-sm leading-relaxed text-text-muted">
               আলাদা করে কিনলে মোট:{" "}
               <BdtAmount poisha={bundleComponentsTotal} className="font-semibold tabular-nums" /> — বান্ডল
@@ -676,7 +785,10 @@ export default async function ProductPage({ params }: { params: { slug: string }
       ) : null}
 
       <RecentlyViewedRail excludeProductId={product.id} />
-      <StickyBuyBar titleBn={product.title.bn} pricePoisha={minPrice} inStock={displayInStock} buyBoxId="buy-box" />
+      {/* Sticky bar hidden for price-on-request products (it shows a price). */}
+      {priceOnRequest ? null : (
+        <StickyBuyBar titleBn={product.title.bn} pricePoisha={minPrice} inStock={displayInStock} buyBoxId="buy-box" />
+      )}
       <CompareTray />
     </main>
   );

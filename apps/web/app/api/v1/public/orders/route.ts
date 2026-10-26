@@ -134,6 +134,16 @@ import {
 } from "@/orders/repository";
 import { findDeliverySlot, loadDeliverySlots } from "@/checkout/delivery-slots";
 import { findPickupPoint, loadPickupPoints, pickupChoiceNoteText } from "@/checkout/pickup-points";
+import { isPackEnabled } from "@/business-modules/packs";
+import {
+  checkPrescriptionGate,
+  getVariantRxMap,
+  loadPharmacyConfig,
+  orderHasRxItems,
+  prescriptionNoteText,
+  tagOrderRxPending,
+} from "@/business-modules/pharmacy-orders";
+import { getWarrantyTermsForCategories } from "@/business-modules/electronics-warranty";
 import { BundleStockError, PreorderCapError, productTypesEnabledInDb } from "@/catalog/product-types";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -266,6 +276,43 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     subtotalPoisha += server.unitPricePoisha * item.quantity;
     totalWeightGrams += server.weightGrams * item.quantity;
     categorySlugs.add(server.categorySlug);
+  }
+
+  // Pharmacy gate (ADV-22): when the pharmacy pack is on, the
+  // requirement is re-derived from DB product tags (never the
+  // client): an order containing a prescription-required item is
+  // REFUSED without a prescription record — the pack's own
+  // validatePharmacyCheckout, no bypass. The record itself rides the
+  // create-time note (below) and, when the pack requires pharmacist
+  // review, the order enters the verification queue post-commit and
+  // cannot be CONFIRMED until approved (the gate lives in
+  // applyOrderTransition). The record is a customer attestation, NOT
+  // a verified prescription — the note text says so verbatim.
+  let rxOrder: { reviewRequired: boolean } | null = null;
+  if (isPackEnabled("pharmacy")) {
+    const pharmacyConfig = await loadPharmacyConfig();
+    const rxMap = await getVariantRxMap(
+      form.items.map((i) => i.variantId),
+      pharmacyConfig,
+    );
+    if (orderHasRxItems(rxMap, form.items.map((i) => i.variantId))) {
+      const gate = checkPrescriptionGate(
+        form.items.map((i) => ({
+          variantId: i.variantId,
+          requiresPrescription: rxMap.get(i.variantId) === true,
+        })),
+        form.prescription ?? null,
+      );
+      if (!gate.ok) {
+        return errorResponse(
+          "PRESCRIPTION_REQUIRED",
+          "এই অর্ডারে প্রেসক্রিপশন-আবশ্যক পণ্য আছে — অর্ডার করতে প্রেসক্রিপশনের তথ্য (চিকিৎসকের নাম ও রেজিস্ট্রেশন নম্বর) দিন। / This order contains a prescription-required item — please provide the prescription record (prescriber name and registration number) to place the order.",
+          400,
+          gate.errors,
+        );
+      }
+      rxOrder = { reviewRequired: pharmacyConfig.pharmacistReviewRequired };
+    }
   }
 
   // Shop rules (wave 20, src/checkout/order-rules): Settings-driven
@@ -500,7 +547,15 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
       ? findPickupPoint(await loadPickupPoints(), form.pickupPointId)
       : null;
   const createNote =
-    [form.note, pickupPoint ? pickupChoiceNoteText(pickupPoint) : null]
+    [
+      form.note,
+      pickupPoint ? pickupChoiceNoteText(pickupPoint) : null,
+      // ADV-22: the prescription record rides the same create-time
+      // note seam (human lines + the [rx-record] machine line the
+      // pharmacist queue parses back). Present only when the order
+      // actually contains Rx items and the gate accepted the record.
+      rxOrder && form.prescription ? prescriptionNoteText(form.prescription) : null,
+    ]
       .filter((part): part is string => typeof part === "string" && part.trim() !== "")
       .join("\n") || undefined;
 
@@ -685,6 +740,44 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     }
   }
 
+  // Pharmacy verification queue (ADV-22): an Rx order whose pack
+  // config requires pharmacist review is stamped rx:pending — the
+  // stamp is what the admin queue lists and what the CONFIRMED gate
+  // blocks on. Guarded like the seams around it: the create already
+  // committed; a failed stamp leaves the prescription record on the
+  // order note (staff can still see it) and is retried by no one —
+  // the order simply is not queue-blocked, which the meta does not
+  // claim otherwise (reviewStatus below reports the stamp outcome).
+  let rxStamped = false;
+  if (rxOrder?.reviewRequired) {
+    try {
+      await tagOrderRxPending(created.orderId);
+      rxStamped = true;
+    } catch {
+      rxStamped = false;
+    }
+  }
+  const rxMeta = rxOrder
+    ? {
+        hasRxItems: true,
+        reviewRequired: rxOrder.reviewRequired,
+        reviewStatus: rxOrder.reviewRequired
+          ? rxStamped
+            ? "PENDING_REVIEW"
+            : "RECORD_ONLY"
+          : "NOT_REQUIRED",
+      }
+    : null;
+
+  // Electronics warranty terms (ADV-22): the confirmation shows the
+  // warranty period per electronics-pack category in this order —
+  // terms only (serials are allocated at delivery and appear on the
+  // account warranty card then). Starts-at-delivery is stated on the
+  // confirmation surface itself.
+  const warrantyTerms = isPackEnabled("electronics")
+    ? await getWarrantyTermsForCategories([...categorySlugs])
+    : [];
+
   // Order-confirmation email (ADV-3): when the customer gave an email,
   // a confirmation job is enqueued on the email-send queue — same
   // guarded seam discipline as the blocks around it. meta.email is
@@ -837,6 +930,10 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
             }
           : {}),
         ...(giftCardMeta ? { giftCard: giftCardMeta } : {}),
+        // ADV-22: pharmacy outcome (present only for Rx orders) +
+        // electronics warranty terms for the confirmation screen.
+        ...(rxMeta ? { pharmacyRx: rxMeta } : {}),
+        ...(warrantyTerms.length > 0 ? { warrantyTerms } : {}),
         note: "Order persisted to the database (Prisma). Coupon records + fraud lists are DB-backed (marketing/fraud modules); checkout assembles fraud input from DB lists and the coupon lookup from a DB snapshot.",
       },
     },

@@ -15,6 +15,20 @@ export const pharmacyConfigSchema = z.object({
   expiryBlockDays: z.number().int().min(0).max(90).default(0),
   /** Pharmacist must approve every Rx order before confirmation. */
   pharmacistReviewRequired: z.boolean().default(true),
+  /**
+   * ADV-22 wiring: category slugs this pack applies to (scope for the
+   * pharmacy surfaces; matching rule in packs.ts packCategoryMatches).
+   */
+  categorySlugs: z.array(z.string().min(1)).max(20).default(["pharmacy"]),
+  /**
+   * ADV-22 wiring: the product TAG that marks a product as
+   * prescription-required. Products are flagged by carrying this tag
+   * (Product.tags) — the config names the tag so a merchant can rename
+   * it without a code change. An Rx product can never be checked out
+   * without a prescription RECORD (see pharmacy-orders.ts); there is
+   * no bypass.
+   */
+  prescriptionTag: z.string().min(1).max(64).default("rx-required"),
 });
 
 export type PharmacyConfig = z.infer<typeof pharmacyConfigSchema>;
@@ -25,9 +39,20 @@ export const pharmacyPack: BusinessModulePack<PharmacyConfig> = {
   nameEn: "Pharmacy",
   nameBn: "ফার্মেসি",
   description: "Prescription-required rules and batch expiry warnings for pharmacies.",
-  defaultConfig: { expiryWarningDays: 90, expiryBlockDays: 0, pharmacistReviewRequired: true },
+  defaultConfig: {
+    expiryWarningDays: 90,
+    expiryBlockDays: 0,
+    pharmacistReviewRequired: true,
+    categorySlugs: ["pharmacy"],
+    prescriptionTag: "rx-required",
+  },
   configSchema: pharmacyConfigSchema,
 };
+
+/** True when a product's tags mark it prescription-required under this config. */
+export function productRequiresPrescription(config: PharmacyConfig, productTags: readonly string[]): boolean {
+  return productTags.includes(config.prescriptionTag);
+}
 
 export interface PharmacyProductFlags {
   requiresPrescription: boolean;

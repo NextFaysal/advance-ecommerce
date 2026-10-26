@@ -51,4 +51,17 @@ export function flagKeyForPack(id: BusinessPackId): BusinessPackFlagKey {
   return PACK_FLAG_KEYS[id];
 }
 
+/**
+ * ADV-22 category matching rule (one rule for every pack): a product
+ * category belongs to a pack when its slug EQUALS a configured slug,
+ * or ENDS WITH "-<configured>" — the second clause exists so the
+ * seeded demo categories (demo-grocery, demo-fashion, demo-electronics,
+ * demo-pharmacy) resolve to their packs out of the box, while a real
+ * merchant category only matches when the merchant lists its slug (or
+ * a slug it is a "-"-suffixed child of) in the pack config.
+ */
+export function packCategoryMatches(configuredSlugs: readonly string[], categorySlug: string): boolean {
+  return configuredSlugs.some((s) => categorySlug === s || categorySlug.endsWith(`-${s}`));
+}
+
 export type { PackValidation };

@@ -11,6 +11,8 @@ import { summarizePayout } from "@/vendors/service";
 import { defaultVendorKyc } from "@/vendors/kyc";
 import { listVendorKyc } from "@/vendors/kyc-store";
 import KycControl from "./kyc-control";
+import VendorDocumentsControl from "./documents-control";
+import VendorPayoutActions from "./payout-actions";
 import type { VendorPayoutSummary } from "@/vendors/types";
 
 // Multi-vendor admin — Step 48 (A12).
@@ -189,21 +191,27 @@ export default async function AdminVendorsPage() {
           {vendors.map((v) => {
             const record = kycDoc[v.id] ?? defaultVendorKyc(v.id);
             return (
-              <KycControl
-                key={v.id}
-                vendorId={v.id}
-                shopName={v.shopName}
-                initialStatus={record.status}
-                initialNote={record.note}
-              />
+              <div key={v.id}>
+                <KycControl
+                  vendorId={v.id}
+                  shopName={v.shopName}
+                  initialStatus={record.status}
+                  initialNote={record.note}
+                />
+                <div className="mt-2 rounded-lg border border-border bg-card px-4 py-3 shadow-card">
+                  <VendorDocumentsControl vendorId={v.id} />
+                </div>
+              </div>
             );
           })}
         </div>
       )}
       <p className="mt-2 text-small leading-relaxed text-text-muted">
         KYC অবস্থা Setting ডকুমেন্টে সংরক্ষিত (Vendor টেবিলে KYC কলাম নেই) — সিদ্ধান্ত অডিট লগে
-        থাকে (vendors.kyc.update) এবং নোটটি ভেন্ডর পোর্টালে দেখা যায়। কাগজপত্র আপলোড এখনো নেই:
-        স্টোরেজ কনফিগার হয়নি এবং Vendor রেকর্ডে ডকুমেন্ট রাখার ক্ষেত্র নেই।
+        থাকে (vendors.kyc.update) এবং নোটটি ভেন্ডর পোর্টালে দেখা যায়। কাগজপত্র এখন
+        VendorDocument টেবিলে মেটাডেটা হিসেবে রেকর্ড হয় (স্কিমা ওয়েভ ২) এবং ভেন্ডর পোর্টালে
+        তালিকাভুক্ত থাকে; ফাইল আপলোড নিজে এখনো নেই — স্টোরেজ কনফিগার হয়নি, আপলোডের পথও
+        তৈরি হয়নি।
       </p>
 
       <h2 className="mb-3 mt-8 text-lg font-semibold">পণ্য অনুমোদন</h2>
@@ -245,6 +253,8 @@ export default async function AdminVendorsPage() {
           rows={payoutRows}
         />
       )}
+
+      <VendorPayoutActions />
     </main>
   );
 }

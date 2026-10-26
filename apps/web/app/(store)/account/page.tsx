@@ -34,6 +34,13 @@ import PushSubscribeToggle from "@/pwa/push-subscribe";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getB2bProfileByPhone } from "@/b2b/portal";
 import MembershipTierCard from "./membership-tier-card";
+import {
+  getOrderWarrantyCards,
+  type OrderWarrantyItem,
+} from "@/business-modules/electronics-warranty";
+import PrivacySection from "./privacy-section";
+import { normalizeBdPhone } from "@advance-ecommerce/validators";
+import BirthDateField from "./birth-date-field";
 import { Icon } from "@/components/ui/icon";
 import { Money } from "@/components/ui/money";
 import {
@@ -76,7 +83,16 @@ function isPaymentStatus(status: string): status is PaymentStatus {
  * `deliverySlotLabel`, which listCustomerOrders resolves from the
  * order's persisted slot id (doc 21 G3-19).
  */
-function OrderCard({ order }: { order: AccountOrderSummary }) {
+function OrderCard({
+  order,
+  warrantyItems = [],
+}: {
+  order: AccountOrderSummary;
+  /** ADV-22 (electronics pack): recorded serials + warranty window
+   *  per electronics item of this order; empty unless the pack is on
+   *  and the order has electronics items. */
+  warrantyItems?: OrderWarrantyItem[];
+}) {
   const firstInitial = order.firstItemName ? [...order.firstItemName][0] : null;
   const codDuePoisha =
     order.paymentMethod === "cod" && order.paymentStatus === "UNPAID"
@@ -127,6 +143,39 @@ function OrderCard({ order }: { order: AccountOrderSummary }) {
       </div>
 
       <CustomerTrackingStepper status={order.status} />
+
+      {warrantyItems.length > 0 ? (
+        <div className="mt-3 rounded-lg bg-surface-2 px-3 py-2.5 text-sm leading-6">
+          <p className="font-semibold text-text-main">🛡️ ওয়ারেন্টি কার্ড</p>
+          <ul className="mt-1 space-y-2">
+            {warrantyItems.map((item, i) => (
+              <li key={i} className="text-text-muted">
+                <span className="font-medium text-text-main">{item.productName}</span>
+                {" — "}ওয়ারেন্টি: {item.warrantyMonths} মাস
+                {item.warranty ? (
+                  <>
+                    {" "}· মেয়াদ শেষ: {formatDate(item.warranty.expiresOn)}
+                    {item.warranty.isActive ? " (সক্রিয়)" : " (মেয়াদ শেষ)"}
+                  </>
+                ) : (
+                  <> · ডেলিভারির দিন থেকে শুরু হবে</>
+                )}
+                {item.serials.length > 0 ? (
+                  <>
+                    <br />
+                    <span className="text-xs">
+                      সিরিয়াল / IMEI:{" "}
+                      <span className="font-mono font-medium text-text-main">
+                        {item.serials.join(", ")}
+                      </span>
+                    </span>
+                  </>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {codDuePoisha !== null ? (
         <div className="mt-3 flex items-baseline justify-between rounded-lg bg-amber-50 px-3 py-2 text-sm">
@@ -185,6 +234,11 @@ export default async function AccountPage({
     listCustomerAddresses(customer.id),
   ]);
 
+  // ADV-22 (electronics pack): warranty cards for the listed orders —
+  // recorded serials + warranty window per electronics item. The
+  // service self-gates on module.electronics; empty map when off.
+  const warrantyByOrder = await getOrderWarrantyCards(orders.map((o) => o.id));
+
   // B2B buyer portal entry (ADV-14): shown only when the portal module
   // is on AND this account's phone carries a B2B company profile.
   const b2bProfile = isFeatureEnabled("module.b2b_portal")
@@ -222,6 +276,7 @@ export default async function AccountPage({
             <dt className="text-text-muted">সদস্য হয়েছেন</dt>
             <dd className="mt-0.5 font-semibold text-text-main">{formatDate(customer.createdAt)}</dd>
           </div>
+          <BirthDateField />
         </dl>
       </section>
 
@@ -296,7 +351,7 @@ export default async function AccountPage({
         ) : (
           <ul className="mt-2 divide-y divide-border pb-2">
             {orders.map((o) => (
-              <OrderCard key={o.id} order={o} />
+              <OrderCard key={o.id} order={o} warrantyItems={warrantyByOrder.get(o.id) ?? []} />
             ))}
           </ul>
         )}
@@ -334,6 +389,18 @@ export default async function AccountPage({
           <AddressManager addresses={addresses} />
         </div>
       </section>
+
+      <PrivacySection
+        proofKind={
+          customer.hasPassword
+            ? "password"
+            : normalizeBdPhone(customer.phone) !== null
+              ? "otp"
+              : "email"
+        }
+        phoneMasked={customer.phoneMasked}
+        email={customer.email}
+      />
 
       <section className="mt-6" aria-label="পুশ নোটিফিকেশন">
         <PushSubscribeToggle />

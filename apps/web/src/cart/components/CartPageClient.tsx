@@ -39,7 +39,22 @@ import {
   type CartShippingZone,
 } from "./resolve";
 
-export default function CartPageClient({ catalogProducts }: { catalogProducts: PublicProduct[] }) {
+export interface WeightedVariantAnnotation {
+  packGrams: number;
+  pricePerKgPoisha: number;
+  derivedPricePoisha: number;
+  inSync: boolean;
+}
+
+export default function CartPageClient({
+  catalogProducts,
+  weightedVariants,
+}: {
+  catalogProducts: PublicProduct[];
+  /** ADV-22 (grocery pack): per-kg pack annotations by variantId, fed
+   *  by the server shell; absent/empty unless the pack is on. */
+  weightedVariants?: Record<string, WeightedVariantAnnotation>;
+}) {
   const bengaliDigits = useBengaliNumerals();
   const [cart, setCart] = useState<Cart | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -235,6 +250,27 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
                     <p className="text-sm text-text-muted">{line.variantLabel}</p>
                   ) : null}
                   <p className="text-xs text-text-subtle">SKU: {line.item.sku}</p>
+                  {weightedVariants?.[line.item.variantId] ? (
+                    <p className="mt-1 text-xs leading-5 text-text-muted">
+                      ⚖️ ওজন প্যাক: {weightedVariants[line.item.variantId]!.packGrams} গ্রাম · প্রতি
+                      কেজি{" "}
+                      <Money
+                        bengaliDigits={bengaliDigits}
+                        poisha={weightedVariants[line.item.variantId]!.pricePerKgPoisha}
+                      />
+                      {weightedVariants[line.item.variantId]!.inSync ? (
+                        <>
+                          {" "}· প্যাকের দাম{" "}
+                          <Money
+                            bengaliDigits={bengaliDigits}
+                            poisha={weightedVariants[line.item.variantId]!.derivedPricePoisha}
+                          />
+                        </>
+                      ) : (
+                        <span className="text-text-subtle"> · (হার অনুযায়ী দাম হালনাগাদ বাকি)</span>
+                      )}
+                    </p>
+                  ) : null}
                   <p className="mt-1 text-sm">
                     <Money bengaliDigits={bengaliDigits} poisha={line.item.unitPricePoisha} />
                     {line.discountPoishaPerUnit > 0 && line.variant?.compareAtPoisha ? (

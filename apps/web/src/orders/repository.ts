@@ -73,6 +73,7 @@ import {
 import { computeBundleAvailability } from "../catalog/types";
 import { getSetting } from "../lib/settings";
 import { advanceConfirmBlock, type AdvanceBlockCode } from "./advance";
+import { discountApprovalConfirmBlock } from "./approvals";
 import { orderSearchOr, type OrderListSort } from "./list-v2";
 import { riskLevel } from "./customer";
 import { runDeliveredOrderHooks } from "./delivered-hooks";
@@ -1091,7 +1092,7 @@ export type ApplyTransitionResult =
   | { kind: "ok"; order: Order; from: OrderStatus }
   | { kind: "not_found" }
   | { kind: "invalid"; error: string }
-  | { kind: "blocked"; code: AdvanceBlockCode; error: string };
+  | { kind: "blocked"; code: AdvanceBlockCode | "APPROVAL_REQUIRED" | "RX_NOT_APPROVED"; error: string };
 
 export interface ApplyTransitionOptions {
   /**
@@ -1119,6 +1120,15 @@ export interface ApplyTransitionOptions {
  * unverified — src/orders/advance.advanceConfirmBlock decides, this
  * funnel enforces it for every caller (admin PATCH, call-center
  * outcomes, ...). Cancellation is never gated.
+ *
+ * APPROVAL GATE (ADV-27, doc 22): the same PENDING -> CONFIRMED move
+ * is refused with code APPROVAL_REQUIRED when approval workflows are
+ * enabled (Settings orders.approvals.enabled) and the order's
+ * recorded discount share reaches the configured threshold without a
+ * covering manager approval — src/orders/approvals decides and
+ * records the request; this funnel (and the bulk-actions runner)
+ * enforce it. Disabled = fail-open, exactly like the module's other
+ * gates. Cancellation is never gated.
  */
 export async function applyOrderTransition(
   idOrNo: string,
@@ -1149,6 +1159,31 @@ export async function applyOrderTransition(
       if (!permitted) return { kind: "blocked", code: block.code, error: block.message };
       advanceOverridden = true;
     }
+    // Approval gate (ADV-27): runs after the advance gate (an
+    // overridden advance does NOT waive the approval — different
+    // concern, different approver). The guard records the approval
+    // request itself when it blocks.
+    const approvalBlock = await discountApprovalConfirmBlock(
+      {
+        id: row.id,
+        orderNo: row.orderNo,
+        subtotalPoisha: row.subtotalPoisha,
+        discountPoisha: row.discountPoisha,
+      },
+      changedBy,
+    );
+    if (approvalBlock) {
+      return { kind: "blocked", code: approvalBlock.code, error: approvalBlock.message };
+    }
+    // Pharmacy gate (ADV-22): an order carrying prescription-required
+    // items whose pharmacist review is still PENDING (or was REJECTED)
+    // cannot be confirmed — same funnel, same { kind: "blocked" }
+    // contract, code RX_NOT_APPROVED. Neither the advance override nor
+    // a discount approval bypasses it. rxConfirmBlock exits cheaply
+    // when the pharmacy pack is off or review is not required.
+    const { rxConfirmBlock } = await import("../business-modules/pharmacy-orders");
+    const rxBlock = await rxConfirmBlock(row.id);
+    if (rxBlock) return { kind: "blocked", code: rxBlock.code, error: rxBlock.message };
   }
   const result: TransitionResult = transitionOrder(order, to, changedBy, reason);
   if (!result.ok) return { kind: "invalid", error: result.error };

@@ -100,6 +100,10 @@ export function ProductCard({ product }: { product: PublicProduct }) {
     compareAt !== null && compareAt > price && price > 0
       ? Math.round(((compareAt - price) / compareAt) * 100)
       : 0;
+  // Price-on-request (schema wave 2): the card shows the label
+  // instead of any price and no add-to-cart (quick view stays —
+  // it gates its own price/ATC the same way).
+  const priceOnRequest = product.priceOnRequest;
   const rating = product.ratingAverage ?? 0;
   const fullStars = Math.round(rating);
   const imageUrl = product.images[0]?.url ?? defaultVariant?.imageUrl ?? null;
@@ -157,7 +161,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
                   {typeBadgeLabel}
                 </span>
               ) : null}
-              {discountPct > 0 ? (
+              {discountPct > 0 && !priceOnRequest ? (
                 <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
                   {digits(`-${discountPct}%`)}
                 </span>
@@ -188,12 +192,18 @@ export function ProductCard({ product }: { product: PublicProduct }) {
               {product.ratingAverage ?? "—"} ({product.reviewCount})
             </span>
           </p>
+          {priceOnRequest ? (
+            <p className="mt-2 text-base font-extrabold text-brand-700 dark:text-brand-300">
+              দামের জন্য যোগাযোগ করুন
+            </p>
+          ) : (
           <p className="mt-2 flex flex-wrap items-baseline gap-x-2">
             <span className="text-base font-extrabold tabular-nums text-brand-700 dark:text-brand-300">{digits(formatBdt(price))}</span>
             {compareAt !== null && compareAt > price ? (
               <span className="text-[13px] tabular-nums text-text-subtle line-through">{digits(formatBdt(compareAt))}</span>
             ) : null}
           </p>
+          )}
           <p className={`mt-1 text-xs font-medium ${inStock ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
             {inStock ? "স্টকে আছে" : "স্টক শেষ"}
           </p>
@@ -201,7 +211,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
       </Link>
 
       <div className="mt-auto flex gap-2 px-4 pb-4 pt-3">
-        {defaultVariant ? (
+        {defaultVariant && !priceOnRequest ? (
           <AddToCartButton
             className="flex-1"
             productId={product.id}

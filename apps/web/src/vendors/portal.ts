@@ -17,17 +17,26 @@
  *     function asserts the module.multi_vendor flag, while this
  *     portal is gated by its own module.vendor_portal flag.
  *
- * PAYOUT RECORDS: there is NO vendor payout model in the schema
- * (audit 2026-10-26: Vendor / VendorProduct / VendorCommissionLine /
- * VendorRefund are all that exist). So "paid out so far" cannot be
- * shown — the summary reports the outstanding net payable and says
- * plainly that payouts are settled by staff outside this system
- * with no in-system record. Nothing is invented to fill the gap.
+ * PAYOUT RECORDS (schema wave 2): VendorPayoutRequest now exists.
+ * The summary reports the outstanding net payable MINUS what payout
+ * requests have already settled (PAID) or hold (PENDING + APPROVED)
+ * — see payouts.ts for the model. PAID still means "a staff member
+ * recorded an external payment"; no money moves through the system.
+ *
+ * DOCUMENTS (schema wave 2): VendorDocument rows (staff-recorded
+ * metadata) are listed for the KYC card. Self-upload remains off:
+ * storage is unconfigured and no upload endpoint exists yet.
  */
 import { prisma } from "@advance-ecommerce/db";
 import { maskPhone } from "../checkout/validation";
 import { getVendorKyc } from "./kyc-store";
 import type { VendorKycRecord } from "./kyc";
+import {
+  computeVendorPayoutBalances,
+  type VendorPayoutRequest,
+} from "./payouts";
+import { listVendorPayoutRequests } from "./payout-store";
+import { listVendorDocuments, type VendorDocumentView } from "./documents";
 
 export interface VendorPortalProduct {
   id: string;
@@ -93,13 +102,19 @@ export interface VendorPortalPayoutSummary {
   refundsPoisha: number;
   /** Outstanding payable to the vendor (never below zero). */
   netPayablePoisha: number;
-  /** Always false today: no vendor payout record model exists. */
-  hasPayoutRecords: false;
+  /** Payout requests exist as records (schema wave 2). */
+  hasPayoutRecords: boolean;
+  /** Σ PAID requests — staff-recorded external payments. */
+  paidOutPoisha: number;
+  /** Σ PENDING + APPROVED requests — committed, not yet paid. */
+  heldPoisha: number;
+  /** netPayable − paidOut − held: what a new request may draw on. */
+  availablePoisha: number;
 }
 
 export interface VendorDocumentStatus {
   available: boolean;
-  code: "STORAGE_NOT_CONFIGURED" | "PERSISTENCE_NOT_ENABLED";
+  code: "STORAGE_NOT_CONFIGURED" | "UPLOAD_ENDPOINT_PENDING";
   reasonBn: string;
 }
 
@@ -119,13 +134,16 @@ export interface VendorPortalDashboard {
   ledger: VendorPortalLedgerLine[];
   refunds: VendorPortalRefund[];
   payout: VendorPortalPayoutSummary;
+  payoutRequests: VendorPayoutRequest[];
+  documents: VendorDocumentView[];
 }
 
 /**
  * KYC document upload availability — the reviews/photo.ts probe
- * pattern. Two independent blockers, reported distinctly:
- * storage credentials first; even with storage, the Vendor record
- * has no document field to attach a URL to (schema gap).
+ * pattern. Self-upload stays disabled for two distinct reasons,
+ * reported distinctly: storage credentials first; even with storage,
+ * no upload ENDPOINT exists yet — documents are recorded by staff
+ * (VendorDocument rows, schema wave 2) and shown on the KYC card.
  */
 export async function getVendorDocumentStatus(): Promise<VendorDocumentStatus> {
   const { isStorageConfigured } = await import("../catalog/media-server");
@@ -135,14 +153,14 @@ export async function getVendorDocumentStatus(): Promise<VendorDocumentStatus> {
       available: false,
       code: "STORAGE_NOT_CONFIGURED",
       reasonBn:
-        "কাগজপত্র আপলোড এখনো চালু হয়নি — ফাইল রাখার স্টোরেজ (R2/S3) এখনো কনফিগার করা হয়নি। কাগজপত্র স্টোরে জমা দিন; স্টাফ যাচাই করে স্ট্যাটাস আপডেট করে দেবেন।",
+        "কাগজপত্র নিজে আপলোড করার ব্যবস্থা এখনো চালু হয়নি — ফাইল রাখার স্টোরেজ (R2/S3) এখনো কনফিগার করা হয়নি। কাগজপত্র স্টোরে জমা দিন; স্টাফ রেকর্ড করে নিচে তালিকায় দেখিয়ে দেবেন।",
     };
   }
   return {
     available: false,
-    code: "PERSISTENCE_NOT_ENABLED",
+    code: "UPLOAD_ENDPOINT_PENDING",
     reasonBn:
-      "কাগজপত্র আপলোড এখনো চালু হয়নি — ভেন্ডর রেকর্ডে কাগজপত্র সংরক্ষণের জায়গা এখনো তৈরি হয়নি। কাগজপত্র স্টোরে জমা দিন; স্টাফ যাচাই করে স্ট্যাটাস আপডেট করে দেবেন।",
+      "কাগজপত্র নিজে আপলোড করার ব্যবস্থা এখনো তৈরি হয়নি — স্টোরেজ থাকলেও আপলোডের পথ এখনো বানানো হয়নি। কাগজপত্র স্টোরে জমা দিন; স্টাফ রেকর্ড করে নিচে তালিকায় দেখিয়ে দেবেন।",
   };
 }
 
@@ -279,10 +297,15 @@ export async function buildVendorPortalDashboard(
   const commissionPoisha = lineRows.reduce((s, l) => s + l.commissionPoisha, 0);
   const refundsPoisha = refundRows.reduce((s, r) => s + r.amountPoisha, 0);
 
-  const [kyc, documentUpload] = await Promise.all([
+  const [kyc, documentUpload, payoutRequests, documents] = await Promise.all([
     getVendorKyc(vendorId),
     getVendorDocumentStatus(),
+    listVendorPayoutRequests(vendorId),
+    listVendorDocuments(vendorId),
   ]);
+
+  const netPayablePoisha = Math.max(0, grossPoisha - commissionPoisha - refundsPoisha);
+  const balances = computeVendorPayoutBalances(netPayablePoisha, payoutRequests);
 
   return {
     vendorId: vendor.id,
@@ -304,8 +327,13 @@ export async function buildVendorPortalDashboard(
       grossPoisha,
       commissionPoisha,
       refundsPoisha,
-      netPayablePoisha: Math.max(0, grossPoisha - commissionPoisha - refundsPoisha),
-      hasPayoutRecords: false,
+      netPayablePoisha,
+      hasPayoutRecords: true,
+      paidOutPoisha: balances.paidOutPoisha,
+      heldPoisha: balances.heldPoisha,
+      availablePoisha: balances.availablePoisha,
     },
+    payoutRequests,
+    documents,
   };
 }

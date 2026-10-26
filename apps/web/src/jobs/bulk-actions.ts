@@ -60,6 +60,7 @@ import { findMockOrder, MOCK_ORDERS } from "../orders/mock";
 import { getOrderByIdOrNo, saveOrder } from "../orders/repository";
 import { computeOrderParcelWeightGrams } from "../courier/order-sync";
 import { advanceConfirmBlock } from "../orders/advance";
+import { discountApprovalConfirmBlockByOrderId } from "../orders/approvals";
 import { buildPrintData } from "../orders/print";
 import { transitionOrder } from "../orders/state-machine";
 import type { Order, OrderStatus } from "../orders/types";
@@ -485,6 +486,15 @@ async function runForOrder(
           otpVerifiedAt: order.otpVerifiedAt ?? null,
         });
         if (block) return fail(orderId, block.code, block.message);
+        // Approval gate (ADV-27, doc 22): same rule as the
+        // single-order funnel — a confirm whose discount share
+        // reaches the configured threshold needs a manager approval
+        // recorded at /admin/approvals. The guard reads the order's
+        // persisted money snapshot itself and records the request
+        // (requestedBy = the bulk job's requester) when it blocks.
+        // Disabled in Settings = fail-open.
+        const approvalBlock = await discountApprovalConfirmBlockByOrderId(orderId, job.requestedBy);
+        if (approvalBlock) return fail(orderId, approvalBlock.code, approvalBlock.message);
       }
       const result = transitionOrder(order, to, job.requestedBy, job.reason);
       if (!result.ok) return fail(orderId, "INVALID_TRANSITION", result.error);

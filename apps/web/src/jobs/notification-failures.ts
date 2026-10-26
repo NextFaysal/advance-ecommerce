@@ -29,6 +29,15 @@
  * supports all of this today (channel / templateKey / recipientRef /
  * orderId / status FAILED / provider / errorRef) — no migration.
  *
+ * ACCEPTED SENDS + DLR (schema wave 2, 2026-10-26): NotificationLog
+ * gained providerMessageId, and recordSmsSendAccepted() below now
+ * writes a SENT row for every accepted REAL-provider SMS send on the
+ * paths that opt in (the generic SMS handler + the automation SMS
+ * effect). The DLR webhook joins provider callbacks to those rows
+ * through src/jobs/delivery-reports.ts. Sandbox/simulated sends are
+ * deliberately NOT recorded: their ids are invented locally, no DLR
+ * will ever arrive for them, and a row would invite a false match.
+ *
  * Delegated SMS flavours (order-otp / callcenter-automation /
  * return-update / back-in-stock) are deliberately NOT recorded here:
  * they keep their own failure records (the call-center dead-letter
@@ -204,4 +213,52 @@ export async function recordFailureAndScheduleRetry(
   if (row === null) return { recorded: false, notificationLogId: null, retryEnqueued: false };
   const retry = await enqueueNotificationRetry(row.id, CHANNEL_TO_JOB_CHANNEL[input.channel]);
   return { recorded: true, notificationLogId: row.id, retryEnqueued: retry.enqueued };
+}
+
+/* ------------------------------------------------------------------ */
+/* Accepted SMS sends — the DLR join target (schema wave 2)            */
+/* ------------------------------------------------------------------ */
+
+export interface SmsSendAcceptedInput {
+  templateKey?: string | null;
+  /** The send payload's recipient ref — as logged (payload-carried). */
+  recipientRef: string;
+  orderId?: string | null;
+  /** Provider name (never a credential). */
+  provider: string;
+  /** The provider's message id — the DLR join key. */
+  providerMessageId: string;
+  segments?: number | null;
+}
+
+/**
+ * Write the SENT NotificationLog row for one accepted SMS send,
+ * carrying the provider message id the DLR webhook will match on.
+ * Called ONLY for real-provider sends (callers gate on the provider
+ * not being the sandbox simulator). Returns the row id, or null when
+ * the write failed — NEVER throws: a lost bookkeeping row must not
+ * fail a send that already happened.
+ */
+export async function recordSmsSendAccepted(
+  input: SmsSendAcceptedInput,
+): Promise<{ id: string } | null> {
+  if (input.providerMessageId === "") return null;
+  try {
+    const row = await prisma.notificationLog.create({
+      data: {
+        channel: "SMS",
+        templateKey: input.templateKey ?? null,
+        recipientRef: input.recipientRef,
+        orderId: input.orderId ?? null,
+        status: "SENT",
+        provider: input.provider,
+        providerMessageId: input.providerMessageId,
+        segments: input.segments != null ? String(input.segments) : null,
+      },
+      select: { id: true },
+    });
+    return row;
+  } catch {
+    return null;
+  }
 }

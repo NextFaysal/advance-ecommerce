@@ -1,4 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  MAINTENANCE_PREVIEW_COOKIE,
+  decideMaintenanceGate,
+  parseMaintenanceConfig,
+  renderMaintenanceHtml,
+  type MaintenanceConfig,
+} from "./src/privacy/maintenance-core";
 
 // Admin protection (edge, cookie-presence only):
 // - /dashboard -> /admin redirect
@@ -13,7 +20,56 @@ import { NextResponse, type NextRequest } from "next/server";
 // credential, validated server-side by the accept API.
 const PUBLIC_ADMIN_PATHS = ["/admin/login", "/admin/accept-invite"];
 
-export function middleware(req: NextRequest) {
+/* ------------------------------------------------------------------ */
+/* Maintenance mode (ADV-29 — src/privacy/maintenance*.ts)             */
+/*                                                                     */
+/* Middleware runs on the edge and CANNOT read the DB Settings       */
+/* store, and this codebase has no settings-in-middleware pattern    */
+/* (feature flags resolve server-side). So the gate polls the        */
+/* app's own public GET /api/v1/public/site-status (which reads the  */
+/* `site.maintenance` Setting server-side) with a short in-isolate   */
+/* TTL cache, and FAILS OPEN: any fetch/parse problem means "not in  */
+/* maintenance" — a broken probe must never take the store down.     */
+/* Toggling in Admin > Settings > Privacy takes effect within the   */
+/* TTL (20s) plus the settings cache. The block/pass policy itself   */
+/* is the pure decideMaintenanceGate() from maintenance-core.         */
+/* ------------------------------------------------------------------ */
+
+const MAINTENANCE_CACHE_TTL_MS = 20_000;
+let maintenanceCache: { at: number; config: MaintenanceConfig } | null = null;
+
+async function fetchMaintenanceConfig(origin: string): Promise<MaintenanceConfig | null> {
+  const now = Date.now();
+  if (maintenanceCache !== null && now - maintenanceCache.at < MAINTENANCE_CACHE_TTL_MS) {
+    return maintenanceCache.config;
+  }
+  try {
+    const res = await fetch(`${origin}/api/v1/public/site-status`, {
+      headers: { "x-maintenance-probe": "1" },
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as {
+      data?: { maintenance?: { enabled?: unknown; messageBn?: unknown; messageEn?: unknown } };
+    };
+    const m = body.data?.maintenance;
+    if (!m) return null;
+    // Rebuild the stored-doc shape and reuse the one parser, so the
+    // middleware can never drift from the server-side semantics.
+    const config = parseMaintenanceConfig(
+      JSON.stringify({
+        enabled: m.enabled === true,
+        message_bn: typeof m.messageBn === "string" ? m.messageBn : "",
+        message_en: typeof m.messageEn === "string" ? m.messageEn : "",
+      }),
+    );
+    maintenanceCache = { at: now, config };
+    return config;
+  } catch {
+    return null;
+  }
+}
+
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
     const target = pathname.replace(/^\/dashboard/, "/admin");
@@ -27,13 +83,65 @@ export function middleware(req: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
   }
+
+  // Maintenance gate — storefront PAGE paths only. The matcher
+  // already excludes /api/*, _next and dotted asset paths; /admin and
+  // /dashboard returned or passed above and are never gated (admin
+  // keeps full access, including the login). A signed-in admin can
+  // preview the live storefront via ?preview=1, which sets a
+  // short-lived preview cookie (cookie-presence only — the same
+  // documented edge limit as the admin gate above).
+  let setPreviewCookie = false;
+  if (!pathname.startsWith("/admin")) {
+    const config = await fetchMaintenanceConfig(req.nextUrl.origin);
+    if (config !== null && config.enabled) {
+      const decision = decideMaintenanceGate({
+        config,
+        pathname,
+        hasAdminSessionCookie: req.cookies.has("admin_session"),
+        hasPreviewCookie: req.cookies.get(MAINTENANCE_PREVIEW_COOKIE)?.value === "1",
+        previewParam: req.nextUrl.searchParams.get("preview") === "1",
+      });
+      if (decision.action === "block") {
+        return new NextResponse(renderMaintenanceHtml(config), {
+          status: 503,
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Retry-After": "3600",
+            "X-Robots-Tag": "noindex",
+            "Cache-Control": "no-store",
+          },
+        });
+      }
+      if (decision.action === "pass_set_preview") setPreviewCookie = true;
+    }
+  }
+
   // Expose the pathname so layouts can adapt (the admin layout renders
   // a bare auth screen for /admin/login instead of the full shell).
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-pathname", pathname);
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
+  if (setPreviewCookie) {
+    res.cookies.set(MAINTENANCE_PREVIEW_COOKIE, "1", {
+      httpOnly: true,
+      path: "/",
+      sameSite: "lax",
+      maxAge: 2 * 60 * 60,
+    });
+  }
+  return res;
 }
 
 export const config = {
-  matcher: ["/dashboard", "/dashboard/:path*", "/admin", "/admin/:path*"],
+  matcher: [
+    "/dashboard",
+    "/dashboard/:path*",
+    "/admin",
+    "/admin/:path*",
+    // Storefront pages for the maintenance gate: everything except
+    // API routes, Next internals/static assets and dotted file paths
+    // (feed.xml, sitemap.xml, robots.txt, images… stay reachable).
+    "/((?!api/|_next/|favicon.ico|.*\\..*).*)",
+  ],
 };

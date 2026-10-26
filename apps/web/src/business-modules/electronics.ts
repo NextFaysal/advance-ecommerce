@@ -17,6 +17,25 @@ export const electronicsConfigSchema = z.object({
   emiMinTotalPoisha: z.number().int().min(0).default(500_000), // ৳5,000
   /** Flat EMI surcharge in basis points (100 bps = 1%). 0 = 0% EMI. */
   emiSurchargeBps: z.number().int().min(0).max(5000).default(0),
+  /**
+   * ADV-22 wiring: category slugs this pack's warranty terms apply to
+   * (matching rule in packs.ts packCategoryMatches).
+   */
+  categorySlugs: z.array(z.string().min(1)).max(20).default(["electronics"]),
+  /**
+   * ADV-22 wiring: warranty length per category; categories without an
+   * entry fall back to defaultWarrantyMonths. Warranty STARTS at
+   * delivery (see electronics-warranty.ts) — never at order time.
+   */
+  warrantyMonthsByCategory: z
+    .array(
+      z.object({
+        categorySlug: z.string().min(1),
+        months: z.number().int().min(0).max(120),
+      }),
+    )
+    .max(20)
+    .default([]),
 });
 
 export type ElectronicsConfig = z.infer<typeof electronicsConfigSchema>;
@@ -32,9 +51,26 @@ export const electronicsPack: BusinessModulePack<ElectronicsConfig> = {
     emiTenuresMonths: [3, 6, 12],
     emiMinTotalPoisha: 500_000,
     emiSurchargeBps: 0,
+    categorySlugs: ["electronics"],
+    warrantyMonthsByCategory: [],
   },
   configSchema: electronicsConfigSchema,
 };
+
+/**
+ * ADV-22: warranty months for a category — the per-category entry when
+ * one matches (packs.ts matching rule), else the pack default. Null
+ * when the category is not an electronics-pack category at all.
+ */
+export function warrantyMonthsForCategory(
+  config: ElectronicsConfig,
+  categorySlug: string,
+  matches: (configured: readonly string[], slug: string) => boolean,
+): number | null {
+  if (!matches(config.categorySlugs, categorySlug)) return null;
+  const entry = config.warrantyMonthsByCategory.find((w) => matches([w.categorySlug], categorySlug));
+  return entry ? entry.months : config.defaultWarrantyMonths;
+}
 
 export interface WarrantyInfo {
   months: number;

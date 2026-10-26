@@ -6,3 +6,9 @@ export * from "./electronics";
 export * from "./grocery";
 export * from "./pharmacy";
 export * from "./digital";
+/** ADV-22 wiring: persisted pack configs + the behaviour surfaces. */
+export * from "./config-store";
+export * from "./grocery-pricing";
+export * from "./pharmacy-orders";
+export * from "./electronics-warranty";
+export * from "./fashion-wiring";

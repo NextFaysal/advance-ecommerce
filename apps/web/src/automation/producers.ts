@@ -21,14 +21,14 @@
  *   stock.low            <- inventory/repository applyMovementDb
  *                           (a movement that DECREASES availability to
  *                           at/below the variant's low-stock threshold)
- *
- * customer.registered is deliberately NOT dispatched: the engine's
- * trigger vocabulary is the DB AutomationTrigger enum (ORDER_CREATED /
- * ORDER_STATUS_CHANGED / PAYMENT_SUCCEEDED / STOCK_LOW /
- * CHECKOUT_ABANDONED) and it has no customer value — rules could not
- * be created for it and run logs could not persist its evaluations.
- * Adding it needs a Prisma enum migration, which is a schema wave's
- * call, not this module's.
+ *   customer.registered  <- customer-auth/auth registerCustomer
+ *                           (schema wave 2: the DB enum gained
+ *                           CUSTOMER_REGISTERED and the domain trigger
+ *                           list this "customer.registered" value, so
+ *                           rules can be created for it and run logs
+ *                           persist; fires once per successful
+ *                           registration — fresh create OR guest-row
+ *                           claim — never on a failed attempt)
  *
  * Contract (mirrors the delivered-hooks / return-notify producers):
  *  - NEVER throws into the caller. A funnel that already committed

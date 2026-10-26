@@ -34,6 +34,7 @@ import {
 } from "@/lib/auth";
 import { maskPhone } from "@/checkout/validation";
 import { findDeliverySlot, loadDeliverySlots } from "@/checkout/delivery-slots";
+import { emitAutomationEvent } from "@/automation/producers";
 
 export const CUSTOMER_SESSION_COOKIE = "customer_session";
 export const CUSTOMER_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -135,13 +136,33 @@ export async function registerCustomer(input: CustomerRegisterInput): Promise<Re
         lockedUntil: null,
       },
     });
+    await fireCustomerRegistered(claimed.id);
     return { status: "ok", customer: toPublicCustomer(claimed) };
   }
 
   const created = await prisma.customer.create({
     data: { name, phone, email, passwordHash: hashPassword(password), tags: [] },
   });
+  await fireCustomerRegistered(created.id);
   return { status: "ok", customer: toPublicCustomer(created) };
+}
+
+/**
+ * Automation producer (schema wave 2): CUSTOMER_REGISTERED fires
+ * exactly once per successful registration — the claim path and the
+ * fresh-create path each call this once, after their write commits;
+ * failed registrations return earlier and never reach it.
+ * emitAutomationEvent never throws by contract; the extra guard
+ * keeps a future regression there from ever failing a registration.
+ * Awaited (it is one flag read + rule list + queue adds) so a
+ * short-lived request process cannot drop the dispatch on exit.
+ */
+async function fireCustomerRegistered(customerId: string): Promise<void> {
+  try {
+    await emitAutomationEvent("customer.registered", customerId);
+  } catch {
+    // Registration already succeeded — automation is downstream.
+  }
 }
 
 /* ------------------------------------------------------------------ */

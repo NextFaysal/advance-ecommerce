@@ -44,6 +44,7 @@ const TRIGGER_TEXT: Record<string, string> = {
   "payment.succeeded": "পেমেন্ট সফল হলে (payment.succeeded)",
   "stock.low": "মজুদ কমে গেলে (stock.low)",
   "checkout.abandoned": "চেকআউট পরিত্যক্ত হলে (checkout.abandoned)",
+  "customer.registered": "নতুন গ্রাহক নিবন্ধন হলে (customer.registered)",
 };
 
 const FIELD_TEXT: Record<ConditionField, string> = {
@@ -741,7 +742,7 @@ export function AutomationClient() {
         <EmptyState title="কোনো রান লগ নেই" description="এখনো কোনো ইভেন্ট রান সংরক্ষণ হয়নি। ইভেন্ট ডিসপ্যাচ (POST /runs) হলে লগ এখানে ডাটাবেস থেকে দেখা যাবে।" />
       ) : (
         <DataTable
-          caption="ডাটাবেসে সংরক্ষিত রান লগ — ফোন সবসময় মাস্ক করা। ইফেক্ট worker (automation-run) দিয়ে কার্যকর হয় — API meta: execution automation-run-worker।"
+          caption="ডাটাবেসে সংরক্ষিত রান লগ — ফোন সবসময় মাস্ক করা। ইফেক্ট worker (automation-run) দিয়ে কার্যকর হয় — SMS, ইমেইল, অর্ডার নিশ্চিতকরণ, কুরিয়ার বুকিং ও ট্যাগ আসলেই কার্যকর হয়; 'স্টাফকে জানান' শুধু পরিকল্পনা (plan-only) — স্টাফদের কাছে পৌঁছানোর কোনো চ্যানেল সিস্টেমে নেই, তাই রান লগই এর একমাত্র রেকর্ড। API meta: execution automation-run-worker।"
           columns={[
             { key: "rule", header: "নিয়ম" },
             { key: "trigger", header: "ট্রিগার" },

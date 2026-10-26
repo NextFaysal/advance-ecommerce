@@ -7,11 +7,16 @@ import {
   writeCatalogAudit,
 } from "@/catalog/api";
 import { hasPermission } from "@/lib/rbac";
+import { canSeeCostPrices, maskCatalogProduct } from "@/lib/cost-masking";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { productUpdateSchema } from "@/catalog/service";
 import { productTypePayloadLocked } from "@/catalog/product-types";
 
 // GET /api/v1/admin/products/[id]
+// Cost masking (ADV-27): variant costs are returned only to holders
+// of products.edit_cost_price; everyone else gets costPoisha: null
+// (server-side — the value never leaves in the payload) plus
+// meta.costMasked so the UI can render "—" and say why.
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const session = await requireAdminSession();
   if (session instanceof NextResponse) return session;
@@ -22,7 +27,11 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     const repo = await getCatalogRepository();
     const product = await repo.getProductById(params.id);
     if (!product) return apiError("NOT_FOUND", "Product not found.", 404);
-    return NextResponse.json({ data: product });
+    const canSeeCost = canSeeCostPrices(session.permissions);
+    return NextResponse.json({
+      data: maskCatalogProduct(product, session.permissions),
+      meta: { costMasked: !canSeeCost },
+    });
   } catch (error) {
     return handleServiceError(error);
   }
@@ -63,6 +72,23 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const repo = await getCatalogRepository();
     const before = await repo.getProductById(params.id);
     if (!before) return apiError("NOT_FOUND", "Product not found.", 404);
+    // Cost preservation (ADV-27): updateProduct replaces the variant
+    // set, writing costPoisha verbatim (null = no cost). A caller
+    // WITHOUT products.edit_cost_price reads costs masked (null) —
+    // if their payload were written back as-is, every edit would
+    // wipe the recorded costs. So for those callers the EXISTING
+    // cost (matched by SKU; new variants have none) is substituted
+    // here, server-side, before the update runs.
+    if (!canSeeCostPrices(session.permissions) && parsed.data.variants !== undefined) {
+      const existingCostBySku = new Map(before.variants.map((v) => [v.sku, v.costPoisha ?? null]));
+      parsed.data = {
+        ...parsed.data,
+        variants: parsed.data.variants.map((v) => ({
+          ...v,
+          costPoisha: existingCostBySku.get(v.sku) ?? null,
+        })),
+      };
+    }
     if (parsed.data.slug && parsed.data.slug !== before.slug && (await repo.slugExists(parsed.data.slug, params.id))) {
       return apiError("SLUG_TAKEN", `Slug already in use: ${parsed.data.slug}`, 409);
     }
@@ -84,7 +110,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     });
     // Search-index sync is owned by the repository layer
     // (PrismaCatalogRepository.updateProduct, fire-and-forget).
-    return NextResponse.json({ data: product });
+    // Response masked like the GET (ADV-27).
+    return NextResponse.json({
+      data: maskCatalogProduct(product, session.permissions),
+      meta: { costMasked: !canSeeCostPrices(session.permissions) },
+    });
   } catch (error) {
     return handleServiceError(error);
   }

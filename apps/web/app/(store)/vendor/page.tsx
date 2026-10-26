@@ -9,25 +9,29 @@
  * containing their products (customer phone MASKED), the commission
  * ledger and the payout summary.
  *
- * Payout honesty: no vendor payout record model exists, so this
- * page shows the outstanding net payable and states plainly that
- * payouts are settled by staff outside the system — it never shows
- * an invented "paid" figure.
+ * Payout (schema wave 2): VendorPayoutRequest records now exist.
+ * The card shows the net payable, what PAID requests have settled
+ * (staff-recorded external payments), what PENDING/APPROVED
+ * requests hold, and the available remainder the request form can
+ * draw on. PAID never means the system sent money.
  *
- * Document upload honesty: the upload control is DISABLED with the
+ * Documents (schema wave 2): staff-recorded VendorDocument rows are
+ * listed on the KYC card. Self-upload stays DISABLED with the
  * reason from getVendorDocumentStatus (storage unconfigured and/or
- * no document field on the Vendor record) — no upload is attempted.
+ * no upload endpoint yet) — no upload is attempted.
  */
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { formatBdt } from "@/checkout/pricing";
 import { canVendorSubmitKyc, VENDOR_KYC_STATUS_BN } from "@/vendors/kyc";
+import { VENDOR_DOCUMENT_KIND_BN, VENDOR_DOCUMENT_STATUS_BN } from "@/vendors/documents";
 import { isVendorPortalEnabled, VENDOR_SESSION_COOKIE, verifyVendorSessionToken } from "@/vendors/portal-auth";
 import { buildVendorPortalDashboard } from "@/vendors/portal";
 import KycSubmitButton from "./kyc-submit-button";
 import VendorLogoutButton from "./logout-button";
 import VendorProductForm from "./product-form";
+import VendorPayoutRequestForm from "./payout-form";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +58,13 @@ const COMMISSION_STATUS_BN: Record<string, string> = {
   CREDITED: "আয় জমা হয়েছে",
   AWAITING_DELIVERY: "ডেলিভারির অপেক্ষায়",
   NOT_CREDITED: "আয় জমা হয়নি",
+};
+
+const PAYOUT_STATUS_BN: Record<string, string> = {
+  PENDING: "অপেক্ষমাণ",
+  APPROVED: "অনুমোদিত",
+  PAID: "পরিশোধিত (স্টাফ বাইরে পেমেন্ট রেকর্ড করেছেন)",
+  REJECTED: "প্রত্যাখ্যাত",
 };
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
@@ -133,6 +144,31 @@ export default async function VendorPortalPage() {
             কাগজপত্র আপলোডের ব্যবস্থা এখনো তৈরি হয়নি — কাগজপত্র স্টোরে জমা দিয়ে নিচের বাটনে জমা
             নিশ্চিত করুন; স্টাফ যাচাই করে অবস্থা আপডেট করে দেবেন।
           </p>
+          {d.documents.length > 0 ? (
+            <div className="mt-3 border-t border-border pt-3">
+              <p className="text-sm font-medium text-text-main">রেকর্ডকৃত কাগজপত্র</p>
+              <ul className="mt-2 space-y-1.5 text-sm">
+                {d.documents.map((doc) => (
+                  <li key={doc.id} className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="min-w-0 text-text-main">
+                      {VENDOR_DOCUMENT_KIND_BN[doc.kind] ?? doc.kind}
+                      <span className="block text-xs text-text-muted">
+                        {doc.fileName} · {fmtDate(doc.createdAt)}
+                        {doc.note ? ` · ${doc.note}` : ""}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-xs font-medium text-text-main">
+                      {VENDOR_DOCUMENT_STATUS_BN[doc.status] ?? doc.status}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="mt-3 text-xs leading-6 text-text-muted">
+              এখনো কোনো কাগজপত্র রেকর্ড করা হয়নি — জমা দিলে স্টাফ এখানে তালিকাভুক্ত করবেন।
+            </p>
+          )}
           <div className="mt-3">
             <label className="block">
               <span className="text-sm text-text-muted">কাগজপত্র আপলোড</span>
@@ -158,16 +194,54 @@ export default async function VendorPortalPage() {
               <dd className="mt-0.5 font-semibold text-text-main">− {formatBdt(d.payout.refundsPoisha)}</dd>
             </div>
             <div>
-              <dt className="text-text-muted">নিট পাওনা (বকেয়া)</dt>
+              <dt className="text-text-muted">নিট পাওনা (মোট বকেয়া)</dt>
               <dd className="mt-0.5 font-semibold text-text-main">{formatBdt(d.payout.netPayablePoisha)}</dd>
+            </div>
+            <div>
+              <dt className="text-text-muted">পরিশোধিত (রেকর্ডকৃত)</dt>
+              <dd className="mt-0.5 font-semibold text-text-main">{formatBdt(d.payout.paidOutPoisha)}</dd>
+            </div>
+            <div>
+              <dt className="text-text-muted">অনুরোধে আটকে আছে</dt>
+              <dd className="mt-0.5 font-semibold text-text-main">{formatBdt(d.payout.heldPoisha)}</dd>
+            </div>
+            <div>
+              <dt className="text-text-muted">উত্তোলনযোগ্য</dt>
+              <dd className="mt-0.5 font-semibold text-text-main">{formatBdt(d.payout.availablePoisha)}</dd>
             </div>
           </dl>
           <p className="mt-3 text-xs leading-6 text-text-muted">
-            পে-আউটের আলাদা কোনো রেকর্ড এই সিস্টেমে রাখা হয় না — পে-আউট স্টাফরা সিস্টেমের বাইরে
-            নিষ্পত্তি করেন। উপরের "নিট পাওনা" হলো ডেলিভার্ড অর্ডারের আসল কমিশন লাইন থেকে হিসাব
-            করা মোট বকেয়া ({d.payout.orderCount}টি অর্ডার); কোনো পে-আউট হয়ে থাকলে তা এখানে
-            বাদ দেওয়া হয়নি, কারণ সেরকম রেকর্ড সিস্টেমে নেই।
+            "নিট পাওনা" ডেলিভার্ড অর্ডারের আসল কমিশন লাইন থেকে হিসাব করা ({d.payout.orderCount}টি
+            অর্ডার)। পে-আউট এই সিস্টেম থেকে সরাসরি পাঠানো হয় না — নিচে অনুরোধ পাঠালে স্টাফ
+            যাচাই করে সিস্টেমের বাইরে (বিকাশ/নগদ/ব্যাংক) পেমেন্ট করেন এবং এখানে "পরিশোধিত"
+            রেকর্ড করেন; সেই রেকর্ডই উপরের "পরিশোধিত" অঙ্ক।
           </p>
+          {d.status === "ACTIVE" ? (
+            <VendorPayoutRequestForm availablePoisha={d.payout.availablePoisha} />
+          ) : (
+            <p className="mt-3 text-xs leading-6 text-text-muted">
+              পে-আউট অনুরোধ শুধু সক্রিয় (ACTIVE) ভেন্ডররা পাঠাতে পারেন — আপনার বর্তমান অবস্থা:{" "}
+              {ACCOUNT_STATUS_BN[d.status] ?? d.status}।
+            </p>
+          )}
+          {d.payoutRequests.length > 0 ? (
+            <div className="mt-4 border-t border-border pt-3">
+              <p className="text-sm font-medium text-text-main">আমার পে-আউট অনুরোধ</p>
+              <ul className="mt-2 space-y-1.5 text-sm">
+                {d.payoutRequests.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="text-text-main">
+                      {fmtDate(r.createdAt)} · {formatBdt(r.amountPoisha)} · {r.method}
+                      {r.note ? <span className="block text-xs text-text-muted">স্টাফের নোট: {r.note}</span> : null}
+                    </span>
+                    <span className="shrink-0 text-xs font-medium text-text-main">
+                      {PAYOUT_STATUS_BN[r.status] ?? r.status}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </Card>
       </div>
 

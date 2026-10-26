@@ -115,6 +115,14 @@ type PlacedOrder = {
   /** ADV-18: meta.membershipTier — the tier benefit applied to this
    *  order (discount and/or free shipping), when the module is on. */
   membershipTier?: { tier: string | null; discountPoisha: number; freeShippingApplied: boolean };
+  /** ADV-22: meta.pharmacyRx — present only when the order contains
+   *  a prescription-required item. PENDING_REVIEW means a pharmacist
+   *  must approve before the order can be confirmed. */
+  pharmacyRx?: { reviewRequired: boolean; reviewStatus: string };
+  /** ADV-22: meta.warrantyTerms — electronics warranty periods in
+   *  this order (terms only; serials arrive at delivery and show on
+   *  the account warranty card). Warranty starts at delivery. */
+  warrantyTerms?: Array<{ categorySlug: string; months: number }>;
 };
 
 export default function CheckoutPage() {
@@ -410,6 +418,34 @@ export default function CheckoutPage() {
   })();
 
   const items = useMemo(() => cart?.items ?? [], [cart]);
+  // Prescription (ADV-22, pharmacy pack): when the cart contains an
+  // Rx-required item, the prescription record fields render and are
+  // submitted with the order. The check endpoint only drives the
+  // form — the server re-derives the requirement from DB product
+  // tags at submit and refuses an Rx order without a valid record.
+  const [rxRequired, setRxRequired] = useState(false);
+  useEffect(() => {
+    if (items.length === 0) {
+      setRxRequired(false);
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/v1/public/pharmacy/rx-check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ variantIds: items.map((i) => i.variantId) }),
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("rx check failed"))))
+      .then((json: { data?: { required?: boolean } }) => {
+        if (!cancelled) setRxRequired(json.data?.required === true);
+      })
+      .catch(() => {
+        // Display helper only; the server gate still applies.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
   const stockProblems = useMemo(() => findStockProblems(items), [items]);
   const totalQuantity = useMemo(
     () => items.reduce((sum, item) => sum + item.quantity, 0),
@@ -467,6 +503,18 @@ export default function CheckoutPage() {
       // inside the order attempt — a rejected code never fails the
       // order; the outcome comes back in meta.giftCard.
       giftCardCode: giftCardsEnabled ? data.get("giftCardCode") || undefined : undefined,
+      // Prescription record (ADV-22): submitted only when the cart
+      // contains an Rx item (rxRequired). The attestation checkbox
+      // maps to the schema's literal true — unticked fails client
+      // validation with an error, and the server gate refuses anyway.
+      prescription: rxRequired
+        ? {
+            prescriberName: String(data.get("rxPrescriberName") ?? ""),
+            registrationNo: String(data.get("rxRegistrationNo") ?? ""),
+            imageUrl: data.get("rxImageUrl") || undefined,
+            attested: data.get("rxAttested") === "on",
+          }
+        : undefined,
       // Reseller attribution (wave 6): the ?ref= code the storefront
       // shell captured into localStorage, while it is inside the
       // 30-day window. The server resolves it (ACTIVE resellers
@@ -518,6 +566,8 @@ export default function CheckoutPage() {
           pickupPoint?: { id: string; name: string; address: string; hours: string };
           giftCard?: PlacedOrder["giftCard"];
           membershipTier?: PlacedOrder["membershipTier"];
+          pharmacyRx?: PlacedOrder["pharmacyRx"];
+          warrantyTerms?: PlacedOrder["warrantyTerms"];
         };
         error?: { code?: string; message?: string; details?: unknown };
       } | null;
@@ -559,6 +609,8 @@ export default function CheckoutPage() {
             : {}),
           ...(json?.meta?.giftCard ? { giftCard: json.meta.giftCard } : {}),
           ...(json?.meta?.membershipTier ? { membershipTier: json.meta.membershipTier } : {}),
+          ...(json?.meta?.pharmacyRx ? { pharmacyRx: json.meta.pharmacyRx } : {}),
+          ...(json?.meta?.warrantyTerms ? { warrantyTerms: json.meta.warrantyTerms } : {}),
           couponStatus: order.couponStatus,
         });
         return;
@@ -639,6 +691,20 @@ export default function CheckoutPage() {
               </>
             ) : null}
           </dl>
+          {placedOrder.pharmacyRx?.reviewStatus === "PENDING_REVIEW" ? (
+            <p className="mx-auto mt-4 max-w-sm rounded-xl bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800 dark:bg-amber-500/10 dark:text-amber-200" role="status">
+              💊 আপনার প্রেসক্রিপশনের তথ্য গৃহীত হয়েছে — ফার্মাসিস্ট যাচাই করে অনুমোদন দিলে
+              অর্ডারটি নিশ্চিত হবে। যাচাই শেষ হলে আমরা ফোনে জানিয়ে দেব।
+            </p>
+          ) : null}
+          {placedOrder.warrantyTerms && placedOrder.warrantyTerms.length > 0 ? (
+            <p className="mx-auto mt-4 max-w-sm rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
+              🛡️ ওয়ারেন্টি:{" "}
+              {placedOrder.warrantyTerms.map((t) => `${digits(String(t.months))} মাস`).join(", ")}{" "}
+              — ওয়ারেন্টির মেয়াদ ডেলিভারির দিন থেকে শুরু হবে; পণ্য ডেলিভারির পর সিরিয়াল
+              নম্বরসহ ওয়ারেন্টি কার্ড আপনার অ্যাকাউন্টে দেখা যাবে।
+            </p>
+          ) : null}
           {placedOrder.paymentMethod === "cod" ? (
             <p className="mt-4 text-sm leading-6 text-text-muted">
               পণ্য হাতে পেয়ে ডেলিভারি ম্যানকে <strong>{digits(formatBdt(placedOrder.totalPoisha))}</strong> পরিশোধ করুন।
@@ -1229,6 +1295,36 @@ export default function CheckoutPage() {
               অবশিষ্ট ব্যালেন্স কার্ডেই থেকে যাবে।
             </span>
           </label>
+        ) : null}
+        {rxRequired ? (
+          <fieldset className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-400/30 dark:bg-amber-500/10">
+            <legend className="px-1 text-sm font-semibold text-text-main">
+              💊 প্রেসক্রিপশনের তথ্য আবশ্যক
+            </legend>
+            <p className="text-sm leading-6 text-text-muted">
+              আপনার কার্টে প্রেসক্রিপশন-আবশ্যক ওষুধ আছে। অর্ডার করতে প্রেসক্রিপশনের তথ্য দিন —
+              ফার্মাসিস্ট যাচাই করার পর অর্ডার নিশ্চিত হবে। এই তথ্য রেকর্ড হিসেবে থাকবে; এটি
+              যাচাইকৃত প্রেসক্রিপশন নয়।
+            </p>
+            <label className="mt-3 block">
+              <span className="mb-1.5 block text-sm font-medium text-text-main">চিকিৎসকের নাম</span>
+              <input name="rxPrescriberName" autoComplete="off" className={INPUT_CLASS} />
+            </label>
+            <label className="mt-3 block">
+              <span className="mb-1.5 block text-sm font-medium text-text-main">চিকিৎসকের রেজিস্ট্রেশন নম্বর</span>
+              <input name="rxRegistrationNo" autoComplete="off" className={INPUT_CLASS} />
+            </label>
+            <label className="mt-3 block">
+              <span className="mb-1.5 block text-sm font-medium text-text-main">
+                প্রেসক্রিপশনের ছবির লিংক (যদি আগে থেকে অনলাইনে থাকে — ঐচ্ছিক)
+              </span>
+              <input name="rxImageUrl" autoComplete="off" placeholder="https://…" className={INPUT_CLASS} />
+            </label>
+            <label className="mt-3 flex items-start gap-2.5 text-sm leading-6 text-text-main">
+              <input type="checkbox" name="rxAttested" className="mt-1 h-4 w-4 shrink-0" />
+              <span>আমি নিশ্চিত করছি যে আমার কাছে এই প্রেসক্রিপশনটি আছে এবং তথ্যগুলো সঠিক।</span>
+            </label>
+          </fieldset>
         ) : null}
         <button
           id="checkout-submit"

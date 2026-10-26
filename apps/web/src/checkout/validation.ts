@@ -114,6 +114,28 @@ export const checkoutFormSchema = z.object({
    * Persisted verbatim on Order.giftMessage. No gift-wrap fee exists.
    */
   giftMessage: z.string().max(500).optional(),
+  /**
+   * Optional prescription RECORD (ADV-22, pharmacy pack): submitted
+   * when the cart contains a prescription-required product (the
+   * product carries the pack config's prescriptionTag). This is a
+   * RECORD, not a verified prescription: the customer attests they
+   * hold the prescription (attested must be literally true) and
+   * records the prescriber's name + registration number; an image URL
+   * is accepted when the customer already has one hosted (uploads are
+   * storage-gated). The orders route re-derives the requirement from
+   * DB product tags and refuses an Rx order without a valid record —
+   * there is no bypass. The record rides the order's create-time note
+   * and, when the pack requires it, the order enters the pharmacist
+   * verification queue (src/business-modules/pharmacy-orders.ts).
+   */
+  prescription: z
+    .object({
+      prescriberName: z.string().trim().min(2).max(120),
+      registrationNo: z.string().trim().min(2).max(64),
+      imageUrl: z.string().url().max(500).optional(),
+      attested: z.literal(true),
+    })
+    .optional(),
 });
 
 export type CheckoutForm = z.infer<typeof checkoutFormSchema>;

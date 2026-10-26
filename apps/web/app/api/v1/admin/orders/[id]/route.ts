@@ -29,6 +29,7 @@ import { phoneForViewer, requirePermission, RbacError, type PermissionKey } from
 import { writeAudit } from "@/lib/audit";
 import { applyOrderTransition, getOrderByIdOrNo } from "@/orders/repository";
 import { getOrderAdvanceView } from "@/orders/advance";
+import { getOrderApprovalState } from "@/orders/approvals";
 import type { OrderStatus } from "@/orders/types";
 
 function err(code: string, message: string, status: number, details?: unknown) {
@@ -59,8 +60,13 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   // remaining / satisfied / OTP state / active link) rides on the
   // detail payload as `advance` — the detail page's panel renders it.
   const advance = await getOrderAdvanceView(params.id);
+  // ADV-27: the approval state (pending discount approval + refund
+  // approvals, from src/orders/approvals) rides as data.approval so
+  // the workspace can show "অনুমোদনের অপেক্ষায়" instead of the block
+  // being visible only as a failed confirm attempt.
+  const approval = await getOrderApprovalState(order.id);
   return NextResponse.json({
-    data: { ...view, ...(advance ? { advance } : {}) },
+    data: { ...view, ...(advance ? { advance } : {}), approval },
     meta: { db: "PRISMA", source: "DATABASE" },
   });
 }

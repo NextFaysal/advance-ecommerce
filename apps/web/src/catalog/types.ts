@@ -143,6 +143,12 @@ export interface Product {
   heightMm: number | null;
   /** Per-product low-stock threshold override; null = global default. */
   lowStockThreshold: number | null;
+  /**
+   * Price on request (schema wave 2): when true the storefront
+   * hides the price + add-to-cart and shows "দামের জন্য যোগাযোগ
+   * করুন" with a contact path instead. Defaults false.
+   */
+  priceOnRequest: boolean;
   /** Product type (wave 15); SIMPLE for everything pre-existing. */
   type: ProductType;
   /** DIGITAL files (staff view — carries storageKey). */

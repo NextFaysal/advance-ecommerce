@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPurchaseReceiveDetailDb } from "@/inventory/purchase-receive";
 import { guardError, requireAdmin } from "@/reports/guard";
+import { canSeeCostPrices, maskPurchaseOrder } from "@/lib/cost-masking";
 
 // Purchase order receive detail — ADV-11b (doc 22): per-line
 // ordered / received / remaining, the warehouse the next receive
@@ -19,7 +20,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         { status: 404 },
       );
     }
-    return NextResponse.json({ data: { purchaseOrder: detail }, meta: { persistence: "database" } });
+    return NextResponse.json({
+      data: { purchaseOrder: maskPurchaseOrder(detail, guard.permissions) },
+      meta: { persistence: "database", costMasked: !canSeeCostPrices(guard.permissions) },
+    });
   } catch {
     return NextResponse.json(
       { error: { code: "DB_NOT_READY", message: "Purchase orders need a working database." } },

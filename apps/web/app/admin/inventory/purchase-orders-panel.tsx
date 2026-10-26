@@ -27,7 +27,9 @@ interface PoListRow {
   id: string;
   supplierName: string;
   status: "draft" | "ordered" | "partially_received" | "received" | "cancelled";
-  totalPoisha: number;
+  // ADV-27: null when cost-masked for this viewer (no
+  // products.edit_cost_price) — render "—", never a number.
+  totalPoisha: number | null;
   createdAt: string;
 }
 
@@ -39,7 +41,7 @@ interface DetailLine {
   quantityOrdered: number;
   quantityReceived: number;
   remaining: number;
-  costPoisha: number;
+  costPoisha: number | null;
 }
 
 interface HistoryEntry {
@@ -66,8 +68,8 @@ interface PoDetail {
   status: PoListRow["status"];
   effectiveWarehouseId: string | null;
   warehouseIsDefault: boolean;
-  receivedValuePoisha: number;
-  totalPoisha: number;
+  receivedValuePoisha: number | null;
+  totalPoisha: number | null;
   lines: DetailLine[];
   history: HistoryEntry[];
   batches: DetailBatch[];
@@ -108,6 +110,8 @@ export default function PurchaseOrdersPanel() {
   const [orders, setOrders] = useState<PoListRow[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  // ADV-27: true when the API masked cost fields for this viewer.
+  const [costMasked, setCostMasked] = useState(false);
   const [detail, setDetail] = useState<PoDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [quantities, setQuantities] = useState<Record<string, string>>({});
@@ -124,6 +128,7 @@ export default function PurchaseOrdersPanel() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error?.message ?? "তালিকা লোড করা যায়নি");
       setOrders(json.data.purchaseOrders as PoListRow[]);
+      setCostMasked(json?.meta?.costMasked === true);
       setListError(null);
     } catch (e) {
       setListError(e instanceof Error ? e.message : "তালিকা লোড করা যায়নি");
@@ -137,6 +142,7 @@ export default function PurchaseOrdersPanel() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error?.message ?? "বিস্তারিত লোড করা যায়নি");
       setDetail(json.data.purchaseOrder as PoDetail);
+      setCostMasked(json?.meta?.costMasked === true);
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "বিস্তারিত লোড করা যায়নি");
       setDetail(null);
@@ -271,7 +277,8 @@ export default function PurchaseOrdersPanel() {
               <span className="min-w-0">
                 <span className="block truncate text-small font-semibold text-text-main">{po.supplierName}</span>
                 <span className="mt-0.5 block text-caption text-text-subtle">
-                  {new Date(po.createdAt).toLocaleString("bn-BD")} · মোট {formatBdt(po.totalPoisha)} ·{" "}
+                  {new Date(po.createdAt).toLocaleString("bn-BD")} · মোট{" "}
+                  {po.totalPoisha !== null ? formatBdt(po.totalPoisha) : "—"} ·{" "}
                   <span className="font-mono">{po.id}</span>
                 </span>
               </span>
@@ -295,7 +302,9 @@ export default function PurchaseOrdersPanel() {
                       গুদাম:{" "}
                       <span className="font-mono">{detail.effectiveWarehouseId ?? "—"}</span>
                       {detail.warehouseIsDefault ? " (ডিফল্ট গুদাম — এই অর্ডারে গুদাম নির্দিষ্ট করা নেই)" : ""}
-                      {" · "}এখন পর্যন্ত গৃহীত মূল্য: {formatBdt(detail.receivedValuePoisha)}
+                      {" · "}এখন পর্যন্ত গৃহীত মূল্য:{" "}
+                      {detail.receivedValuePoisha !== null ? formatBdt(detail.receivedValuePoisha) : "—"}
+                      {costMasked && " (কস্ট প্রাইস আপনার অনুমতিতে নেই — products.edit_cost_price লাগে)"}
                     </p>
 
                     <div className="mt-2 overflow-x-auto">
@@ -317,7 +326,8 @@ export default function PurchaseOrdersPanel() {
                                   {l.productTitleBn ?? l.variantId}
                                 </span>
                                 <span className="block text-caption text-text-subtle">
-                                  {l.sku ? `SKU: ${l.sku} · ` : ""}কস্ট {formatBdt(l.costPoisha)}
+                                  {l.sku ? `SKU: ${l.sku} · ` : ""}কস্ট{" "}
+                                  {l.costPoisha !== null ? formatBdt(l.costPoisha) : "—"}
                                 </span>
                               </td>
                               <td className="px-2 py-2 font-mono tabular-nums">{l.quantityOrdered}</td>

@@ -41,6 +41,7 @@ type PaymentMethod = NonNullable<Parameters<typeof prisma.refund.create>[0]["dat
 import { writeAudit } from "@/lib/audit";
 import { postRefundConfirmedErp } from "@/erp/auto-posting";
 import { markOrderPayment } from "./repository";
+import { noteRefundCreated, refundApprovalBlock } from "./approvals";
 
 /* ------------------------------------------------------------------ */
 /* Vocabulary                                                          */
@@ -104,7 +105,10 @@ export type RefundErrorCode =
   | "REASON_REQUIRED"
   | "OVER_REFUND"
   | "REFERENCE_REQUIRED"
-  | "INVALID_TRANSITION";
+  | "INVALID_TRANSITION"
+  // ADV-27: a refund above the approvals threshold cannot be SENT
+  // until a manager approves it (src/orders/approvals).
+  | "APPROVAL_REQUIRED";
 
 export type RefundResult<T> =
   | { ok: true; value: T }
@@ -392,6 +396,16 @@ export async function createRefund(
     reason,
   });
 
+  // Approval workflow (ADV-27): a refund created above the
+  // configured threshold records its manager-approval request NOW,
+  // so the /admin/approvals queue shows it before anyone tries to
+  // send. Best-effort by design (the SENT guard re-checks and
+  // records if this was missed); a no-op while approvals are off.
+  await noteRefundCreated(
+    { id: created.row.id, orderId: order.id, amountPoisha: created.row.amountPoisha },
+    actorId,
+  );
+
   const names = await actorNameMap([created.row.createdById]);
   return { ok: true, value: { refund: toView(created.row, names), summary: created.summary } };
 }
@@ -430,6 +444,18 @@ export async function updateRefundStatus(
       "REFERENCE_REQUIRED",
       "A payout reference (e.g. bKash TrxID) is required before marking a refund SENT. / পাঠানো হয়েছে করতে পেআউট রেফারেন্স (TrxID) আবশ্যক।",
     );
+  }
+
+  // Approval gate (ADV-27): SENT is where money actually leaves, so
+  // a refund above the configured threshold stops here until a
+  // manager approves it at /admin/approvals (orders.edit). The guard
+  // records the request when it blocks; disabled = fail-open.
+  if (input.to === "SENT") {
+    const approvalBlock = await refundApprovalBlock(
+      { id: row.id, orderId: row.orderId, amountPoisha: row.amountPoisha },
+      actorId,
+    );
+    if (approvalBlock) return fail(approvalBlock.code, approvalBlock.message);
   }
 
   const updated = await prisma.refund.update({

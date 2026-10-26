@@ -22,6 +22,24 @@
  *    email worker's step (configured transport sends, unconfigured
  *    transport SKIPs there) — the run log says "queued", never
  *    "sent".
+ *  - confirm_order (schema wave 2) executes through the order
+ *    funnel's applyOrderTransition — the advance/OTP confirm gate
+ *    applies exactly as it does to a staff confirm, and a blocked
+ *    gate is the recorded outcome, never bypassed.
+ *  - add_tag / remove_tag (schema wave 2) write the real tag stores:
+ *    OrderTag rows for order events, the Customer.tags array for
+ *    customer.registered events.
+ *  - assign_courier (schema wave 2) books the order's remaining
+ *    lines through createSplitShipment — the SAME function the
+ *    staff shipments route books with — carrying the assignment
+ *    engine's recommendation as the decision record (the rule's
+ *    courier wins; a divergence is recorded as an override with the
+ *    rule as its reason). Only CONFIRMED / PROCESSING / PACKED
+ *    orders are booked; anything else is a recorded skip.
+ *  - notify_staff remains PLAN-ONLY: there is no staff notification
+ *    channel in the system (no inbox, no staff push) — the run log
+ *    entry itself is the only record, and the effect text says so
+ *    instead of pretending a notification was delivered.
  *
  * Failure discipline: a failing effect NEVER throws out of here and
  * never blocks its sibling effects. It is recorded on its own effect
@@ -95,6 +113,9 @@ const ORDER_STATUS_BN: Record<string, string> = {
 };
 
 export function renderAutomationSms(templateKey: string, event: AutomationEvent): string {
+  if (event.customer) {
+    return "স্বাগতম! আপনার অ্যাকাউন্ট সফলভাবে তৈরি হয়েছে। কেনাকাটা শুরু করতে আমাদের ওয়েবসাইটে যান — ধন্যবাদ!";
+  }
   if (event.order) {
     const orderNo = event.order.orderNo;
     if (templateKey === "order_confirmation") {
@@ -116,6 +137,7 @@ export function renderAutomationSms(templateKey: string, event: AutomationEvent)
 
 async function resolveSmsRecipient(event: AutomationEvent): Promise<string | null> {
   if (event.order) return event.order.customerPhone;
+  if (event.customer) return event.customer.customerPhone;
   if (event.checkout) {
     const capture = await prisma.abandonedCheckout.findUnique({
       where: { id: event.checkout.id },
@@ -169,6 +191,28 @@ async function executeSmsEffect(
       };
     }
     const simulated = provider.config.mode === "sandbox";
+    if (!simulated) {
+      // Durable DLR (schema wave 2): an accepted send from a REAL
+      // provider leaves a NotificationLog row carrying the provider
+      // message id, so the provider's delivery callback can be
+      // matched to this send later. Sandbox ids are simulated and
+      // are deliberately NOT recorded — no DLR will ever arrive
+      // for them, and a row would invite a false match. The
+      // recorder never throws; its failure changes nothing here.
+      try {
+        const failures = await import("../jobs/notification-failures");
+        await failures.recordSmsSendAccepted({
+          templateKey,
+          recipientRef: phone,
+          orderId: event.order?.id ?? null,
+          provider: provider.name,
+          providerMessageId: result.messageId,
+          segments: result.segments,
+        });
+      } catch {
+        // Bookkeeping only — the send already happened.
+      }
+    }
     return {
       ...effect,
       status: "applied",
@@ -248,6 +292,323 @@ async function executeEmailEffect(
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* confirm_order — through the order funnel (schema wave 2). The      */
+/* funnel's advance/OTP gate applies verbatim: a blocked confirm is  */
+/* the recorded outcome. The funnel also emits order.status_changed  */
+/* itself, so downstream rules see the confirm like any other.        */
+/* ------------------------------------------------------------------ */
+
+async function executeConfirmOrderEffect(
+  effect: ActionEffect,
+  event: AutomationEvent,
+): Promise<ActionEffect> {
+  if (effect.action.type !== "confirm_order") return effect;
+  if (!event.order) {
+    return {
+      ...effect,
+      status: "skipped",
+      description: "Confirm order — skipped, this event carries no order.",
+      reason: "no_order_context",
+    };
+  }
+  const orderId = event.order.id;
+  try {
+    const current = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true },
+    });
+    if (current === null) {
+      return {
+        ...effect,
+        status: "skipped",
+        description: "Confirm order — skipped, the order no longer exists.",
+        reason: "order_not_found",
+      };
+    }
+    if (current.status === "CONFIRMED") {
+      return {
+        ...effect,
+        status: "skipped",
+        description: "Confirm order — the order is already CONFIRMED; nothing was changed.",
+        reason: "already_confirmed",
+      };
+    }
+    const repository = await import("../orders/repository");
+    const result = await repository.applyOrderTransition(
+      orderId,
+      "CONFIRMED",
+      "automation",
+      "Automation rule confirm_order",
+    );
+    if (result.kind === "ok") {
+      return {
+        ...effect,
+        status: "applied",
+        description: `Order confirmed by automation (${result.from} -> CONFIRMED) through the order funnel.`,
+      };
+    }
+    if (result.kind === "blocked") {
+      return {
+        ...effect,
+        status: "skipped",
+        description:
+          `Confirm order — the confirm gate refused (${result.code}): ${result.error} ` +
+          "Automation never overrides the advance/OTP gate.",
+        reason: result.code,
+      };
+    }
+    return {
+      ...effect,
+      status: "skipped",
+      description: `Confirm order — the state machine refused the transition (${result.kind === "invalid" ? result.error : "order not found"}).`,
+      reason: result.kind === "invalid" ? "invalid_transition" : "order_not_found",
+    };
+  } catch (error) {
+    const code = errorCodeOf(error);
+    return {
+      ...effect,
+      status: "skipped",
+      description: `Confirm order — execution failed (${code}); the order was not confirmed by this effect.`,
+      reason: code,
+    };
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* add_tag / remove_tag — the real tag stores (schema wave 2):        */
+/* OrderTag rows for order events, Customer.tags for                  */
+/* customer.registered events. Idempotent: adding a present tag or    */
+/* removing an absent one is an applied no-op, described as such.     */
+/* ------------------------------------------------------------------ */
+
+async function executeTagEffect(
+  effect: ActionEffect,
+  event: AutomationEvent,
+): Promise<ActionEffect> {
+  if (effect.action.type !== "add_tag" && effect.action.type !== "remove_tag") return effect;
+  const tag = effect.action.tag;
+  const adding = effect.action.type === "add_tag";
+  try {
+    if (event.order) {
+      const orderId = event.order.id;
+      const existing = await prisma.orderTag.findFirst({
+        where: { orderId, tag },
+        select: { id: true },
+      });
+      if (adding) {
+        if (existing !== null) {
+          return {
+            ...effect,
+            status: "applied",
+            description: `Tag "${tag}" was already on order ${event.order.orderNo} — no change needed.`,
+          };
+        }
+        await prisma.orderTag.create({ data: { orderId, tag } });
+        return {
+          ...effect,
+          status: "applied",
+          description: `Tag "${tag}" added to order ${event.order.orderNo}.`,
+        };
+      }
+      if (existing === null) {
+        return {
+          ...effect,
+          status: "applied",
+          description: `Tag "${tag}" was not on order ${event.order.orderNo} — nothing to remove.`,
+        };
+      }
+      await prisma.orderTag.delete({ where: { id: existing.id } });
+      return {
+        ...effect,
+        status: "applied",
+        description: `Tag "${tag}" removed from order ${event.order.orderNo}.`,
+      };
+    }
+    if (event.customer) {
+      const customer = await prisma.customer.findUnique({
+        where: { id: event.customer.id },
+        select: { tags: true },
+      });
+      if (customer === null) {
+        return {
+          ...effect,
+          status: "skipped",
+          description: `Tag "${tag}" — skipped, the customer no longer exists.`,
+          reason: "customer_not_found",
+        };
+      }
+      const has = customer.tags.includes(tag);
+      if (adding === has) {
+        return {
+          ...effect,
+          status: "applied",
+          description: adding
+            ? `Tag "${tag}" was already on the customer — no change needed.`
+            : `Tag "${tag}" was not on the customer — nothing to remove.`,
+        };
+      }
+      await prisma.customer.update({
+        where: { id: event.customer.id },
+        data: {
+          tags: adding
+            ? { set: [...customer.tags, tag] }
+            : { set: customer.tags.filter((t) => t !== tag) },
+        },
+      });
+      return {
+        ...effect,
+        status: "applied",
+        description: adding
+          ? `Tag "${tag}" added to the customer.`
+          : `Tag "${tag}" removed from the customer.`,
+      };
+    }
+    return {
+      ...effect,
+      status: "skipped",
+      description: `Tag "${tag}" — skipped, this event carries neither an order nor a customer.`,
+      reason: "no_tag_context",
+    };
+  } catch (error) {
+    const code = errorCodeOf(error);
+    return {
+      ...effect,
+      status: "skipped",
+      description: `Tag "${tag}" — execution failed (${code}); tags were not changed by this effect.`,
+      reason: code,
+    };
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* assign_courier — books the remaining lines (schema wave 2) via     */
+/* createSplitShipment, the same function the staff shipments route   */
+/* books with. The assignment engine's live recommendation is loaded  */
+/* and recorded as the decision context: when the rule's courier      */
+/* differs from the recommendation it is an OVERRIDE whose reason     */
+/* names the automation rule; when no recommendation exists          */
+/* (insufficient history) the booking still proceeds on the rule's    */
+/* explicit instruction and says so.                                  */
+/* ------------------------------------------------------------------ */
+
+const BOOKABLE_FOR_COURIER = ["CONFIRMED", "PROCESSING", "PACKED"] as const;
+
+async function executeAssignCourierEffect(
+  effect: ActionEffect,
+  event: AutomationEvent,
+): Promise<ActionEffect> {
+  if (effect.action.type !== "assign_courier") return effect;
+  const courier = effect.action.courier;
+  if (!event.order) {
+    return {
+      ...effect,
+      status: "skipped",
+      description: `Assign courier ${courier} — skipped, this event carries no order.`,
+      reason: "no_order_context",
+    };
+  }
+  const orderId = event.order.id;
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true, orderNo: true },
+    });
+    if (order === null) {
+      return {
+        ...effect,
+        status: "skipped",
+        description: `Assign courier ${courier} — skipped, the order no longer exists.`,
+        reason: "order_not_found",
+      };
+    }
+    if (!(BOOKABLE_FOR_COURIER as readonly string[]).includes(order.status)) {
+      return {
+        ...effect,
+        status: "skipped",
+        description:
+          `Assign courier ${courier} — skipped, order ${order.orderNo} is ${order.status}; ` +
+          "automation books only CONFIRMED / PROCESSING / PACKED orders.",
+        reason: "order_not_bookable",
+      };
+    }
+    const shipments = await import("../shipments/split-shipments");
+    const coverage = await shipments.getOrderShipmentCoverage(orderId);
+    if (coverage === null) {
+      return {
+        ...effect,
+        status: "skipped",
+        description: `Assign courier ${courier} — skipped, shipment coverage could not be loaded.`,
+        reason: "coverage_unavailable",
+      };
+    }
+    const remaining = coverage.lines
+      .filter((l) => l.remainingQuantity > 0)
+      .map((l) => ({ orderItemId: l.orderItemId, quantity: l.remainingQuantity }));
+    if (remaining.length === 0) {
+      return {
+        ...effect,
+        status: "skipped",
+        description: `Assign courier ${courier} — every line of order ${order.orderNo} is already booked; nothing was created.`,
+        reason: "already_booked",
+      };
+    }
+    let recommendedProvider: string | null = null;
+    let recommendationStatus = "unavailable";
+    try {
+      const recommendation = await import("../shipments/assignment-recommendation");
+      const rec = await recommendation.getBookingRecommendation(orderId);
+      if (rec.ok) {
+        recommendationStatus = rec.value.status;
+        recommendedProvider = rec.value.recommended?.provider ?? null;
+      }
+    } catch {
+      // The recommendation is decision CONTEXT, not a gate: its
+      // failure never blocks the rule's explicit instruction.
+    }
+    const provider = courier.trim().toLowerCase();
+    const isOverride = recommendedProvider !== null && recommendedProvider !== provider;
+    const booked = await shipments.createSplitShipment(orderId, {
+      items: remaining,
+      provider,
+      note: "Automation rule assign_courier",
+      assignment: {
+        recommendedProvider,
+        ...(isOverride
+          ? { overrideReason: `Automation rule assigned ${provider} over the engine recommendation (${recommendedProvider}).` }
+          : {}),
+      },
+      decidedBy: "automation",
+    });
+    if (!booked.ok) {
+      return {
+        ...effect,
+        status: "skipped",
+        description: `Assign courier ${courier} — booking refused (${booked.code}): ${booked.error}`,
+        reason: booked.code,
+      };
+    }
+    return {
+      ...effect,
+      status: "applied",
+      description:
+        `Booked shipment ${booked.value.id} with ${booked.value.provider} for order ${order.orderNo} ` +
+        `(tracking ${booked.value.trackingId ?? "—"}). Assignment engine: ${recommendationStatus}` +
+        (recommendedProvider !== null
+          ? `, recommended ${recommendedProvider}${isOverride ? " — rule's courier recorded as an override" : " — matches the rule's courier"}.`
+          : " — no recommendation existed; booked on the rule's explicit instruction."),
+    };
+  } catch (error) {
+    const code = errorCodeOf(error);
+    return {
+      ...effect,
+      status: "skipped",
+      description: `Assign courier ${courier} — execution failed (${code}); no booking was created by this effect.`,
+      reason: code,
+    };
+  }
+}
+
 /**
  * Execute the send effects of ONE matched, immediate, real (non-dry)
  * run and return the run log with outcomes written back. Every other
@@ -268,11 +629,25 @@ export async function executeAutomationEffects(
       effects.push(await executeSmsEffect(effect, event, deps));
     } else if (effect.action.type === "send_email") {
       effects.push(await executeEmailEffect(effect, log, event, index, deps));
+    } else if (effect.action.type === "confirm_order") {
+      effects.push(await executeConfirmOrderEffect(effect, event));
+    } else if (effect.action.type === "add_tag" || effect.action.type === "remove_tag") {
+      effects.push(await executeTagEffect(effect, event));
+    } else if (effect.action.type === "assign_courier") {
+      effects.push(await executeAssignCourierEffect(effect, event));
     } else {
-      // confirm_order / assign_courier / tags / notify_staff remain
-      // engine-described plan entries — no executor exists for them
-      // yet, and this module does not pretend otherwise.
-      effects.push(effect);
+      // notify_staff remains plan-only (see the header): there is
+      // no staff notification channel to deliver through, so the
+      // effect is re-labelled honestly instead of left "applied".
+      effects.push({
+        ...effect,
+        status: "skipped",
+        description:
+          `Notify staff: ${effect.action.type === "notify_staff" ? effect.action.message : ""} — ` +
+          "plan-only: no staff notification channel exists in this system, so nothing was delivered; " +
+          "this run log entry is the only record.",
+        reason: "plan_only_no_staff_channel",
+      });
     }
   }
   return { ...log, effects };
