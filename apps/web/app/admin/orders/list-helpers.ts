@@ -107,6 +107,12 @@ export function timelineHead(
  *  view plus the advance read model the GET route attaches. */
 export type PreviewOrder = Order & {
   advance?: { paidPoisha: number; requiredPoisha: number } | null;
+  /** ADV-23 rental (wave 56): the detail payload's data.rental —
+   *  only the frozen deposit is needed for the money split. */
+  rental?: { depositPoisha: number } | null;
+  /** ADV-23 vertical 5 (wave 56): the detail payload's data.pod —
+   *  only the frozen print fee is needed for the money split. */
+  pod?: { feePoisha: number } | null;
 };
 
 /** Props for OD0's MoneyBreakdown, shaped from the detail payload.
@@ -121,6 +127,8 @@ export function previewMoneyProps(order: PreviewOrder): {
   shippingPoisha?: number;
   totalPoisha: number;
   paidPoisha: number;
+  rentalDepositPoisha?: number;
+  printFeePoisha?: number;
 } {
   return {
     subtotalPoisha: subtotalPoishaOf(order),
@@ -128,5 +136,12 @@ export function previewMoneyProps(order: PreviewOrder): {
     shippingPoisha: order.shippingPoisha,
     totalPoisha: order.totalPoisha,
     paidPoisha: order.advance?.paidPoisha ?? 0,
+    // ADV-23 rental (wave 56): the frozen deposit inside the total,
+    // so MoneyBreakdown prints it as its own line instead of
+    // folding it into the COD-fee residual.
+    rentalDepositPoisha: order.rental?.depositPoisha ?? 0,
+    // ADV-23 vertical 5 (wave 56): the frozen print fee inside the
+    // total, decomposed the same way.
+    printFeePoisha: order.pod?.feePoisha ?? 0,
   };
 }

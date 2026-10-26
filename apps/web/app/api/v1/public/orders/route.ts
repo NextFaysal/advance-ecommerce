@@ -94,6 +94,35 @@
  *   restaurant.config (src/restaurant/tickets.prepareKitchenTicket)
  *   and the KitchenTicket row is written inside the create
  *   transaction. No money is affected: no service charge exists.
+ * - Rental (ADV-23 vertical 3, wave 56): an optional `rental`
+ *   selection (variant + start/end dates) is gated by
+ *   module.rental — field present + flag OFF -> 403
+ *   FEATURE_LOCKED; flag ON -> the range is validated against the
+ *   effective Setting doc rental.config
+ *   (src/rental/bookings.prepareRentalBooking, run after the price
+ *   snapshots because a percent deposit derives from the SERVER
+ *   price) and the RentalBooking row is written inside the create
+ *   transaction, which also counts overlapping live rentals
+ *   against the variant's stock. The ONE money touch: when
+ *   rental.config sets a deposit, it enters the pricing pipeline
+ *   as the rentalDepositPoisha line (src/checkout/pricing) —
+ *   its own visible breakdown line, included in the grand total,
+ *   frozen on the RentalBooking row; the refund on return is a
+ *   manual admin action in v1.
+ * - Print-on-demand (ADV-23 vertical 5, wave 56): an optional
+ *   `pod` customisation (variant + print text + optional palette
+ *   colour) is gated by module.print_on_demand — field present +
+ *   flag OFF -> 403 FEATURE_LOCKED; flag ON -> validated against
+ *   the effective Setting doc pod.config
+ *   (src/pod/customisation.preparePodCustomisation: variant on
+ *   the printable list, text sanitised + within the config cap,
+ *   colour on the palette) and frozen onto the order's create-time
+ *   note (human line + `[pod:{...}]` machine line — no POD table
+ *   exists). The ONE money touch mirrors the rental deposit: the
+ *   config's per-item print fee × the line quantity enters the
+ *   pricing pipeline as the printFeePoisha line — its own visible
+ *   breakdown line, included in the grand total. No image upload
+ *   exists in v1 (storage-gated).
  *
  * STILL DEMO / NOT THIS SLICE:
  * - The coupon RECORDS evaluated by evaluateOrderCoupon still come from
@@ -133,6 +162,7 @@ import {
 import { publishOrderCreated } from "@/orders/event-bus";
 import { resolveResellerAttribution } from "@/reseller/store";
 import {
+  RentalCapacityError,
   ServiceBookingCapacityError,
   createOrderRecord,
   findOrderByIdempotencyKey,
@@ -174,6 +204,9 @@ import {
 import type { Order } from "@/orders/types";
 import { prepareKitchenTicket } from "@/restaurant/tickets";
 import { prepareServiceBooking } from "@/services/bookings";
+import { prepareRentalBooking, rentalOrderNoteText } from "@/rental/bookings";
+import { preparePodCustomisation } from "@/pod/customisation";
+import { podOrderNoteText } from "@/pod/selection";
 import { validateOrderLineQuantities } from "@/orders/quantity-rules";
 import { lineTotalPoisha, qtyToMilli, roundHalfUpDiv, QTY_MILLI } from "@/lib/quantity";
 
@@ -326,6 +359,36 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     subtotalPoisha += lineTotalPoisha(server.unitPricePoisha, item.quantity);
     totalWeightGrams += roundHalfUpDiv(server.weightGrams * qtyToMilli(item.quantity), QTY_MILLI);
     categorySlugs.add(server.categorySlug);
+  }
+
+  // Rental (ADV-23 vertical 3, wave 56): a payload carrying
+  // `rental` while module.rental is OFF is refused 403
+  // FEATURE_LOCKED; with the flag ON the range is validated against
+  // rental.config + the order's own items, and the validated spec
+  // rides into createOrderRecord, which writes the RentalBooking
+  // inside the create transaction and enforces window availability
+  // there. This gate runs AFTER the snapshots — unlike the kitchen
+  // / booking gates above — because a percent deposit derives from
+  // the rental line's SERVER price (snapshotItems), never from the
+  // client. The frozen deposit joins the pricing pipeline below
+  // (pricingInput.rentalDepositPoisha). No field -> rental null ->
+  // the default path below is byte-identical.
+  const rentalPrep = await prepareRentalBooking(form.rental, snapshotItems);
+  if (!rentalPrep.ok) {
+    return errorResponse(rentalPrep.code, rentalPrep.message, rentalPrep.httpStatus);
+  }
+
+  // Print-on-demand (ADV-23 vertical 5, wave 56): a payload
+  // carrying `pod` while module.print_on_demand is OFF is refused
+  // 403 FEATURE_LOCKED; with the flag ON the customisation is
+  // validated against pod.config + the order's own items (the
+  // snapshot lines — the fee is per item on the line's quantity),
+  // frozen onto the create-time note below, and its fee total
+  // joins the pricing pipeline (pricingInput.printFeePoisha). No
+  // field -> pod null -> the default path below is byte-identical.
+  const podPrep = await preparePodCustomisation(form.pod, snapshotItems);
+  if (!podPrep.ok) {
+    return errorResponse(podPrep.code, podPrep.message, podPrep.httpStatus);
   }
 
   // Age gate (ADV-29): re-derived from the SAME server snapshots'
@@ -486,6 +549,15 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     shippingPoisha: effectiveShippingPoisha,
     codFeePoisha: form.paymentMethod === "cod" ? shipping.codFeePoisha : 0,
     taxBps: 0,
+    // ADV-23 rental (wave 56): the frozen deposit for this order's
+    // rental (0 for every non-rental order) — computePricing adds
+    // it as its own breakdown line after the gift-card stage and
+    // includes it in the grand total.
+    rentalDepositPoisha: rentalPrep.rental?.depositPoisha ?? 0,
+    // ADV-23 vertical 5 (wave 56): the frozen print fee for this
+    // order's custom print (0 for every non-POD order) — its own
+    // breakdown line at the same stage as the deposit.
+    printFeePoisha: podPrep.pod?.feePoisha ?? 0,
   };
   const preGiftPricing = computePricing(pricingInput);
   let giftCardValidation: GiftCardValidation | null = null;
@@ -631,6 +703,24 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
       // seam — present only when the cart was age-restricted and the
       // gate accepted the customer's self-declaration.
       ageGate.required && ageGate.minAge !== null ? ageAttestationNoteText(ageGate.minAge) : null,
+      // ADV-23 rental (wave 56): the rental window + deposit truth
+      // rides the same create-time note seam, so the order timeline
+      // in admin shows what was rented and what deposit the total
+      // contains (the Order row has no deposit column — the frozen
+      // figure lives on the RentalBooking row).
+      rentalPrep.rental ? rentalOrderNoteText(rentalPrep.rental) : null,
+      // ADV-23 vertical 5 (wave 56): the custom print rides the
+      // same create-time note seam — a human line the print shop
+      // works from + the `[pod:{...}]` machine line the admin
+      // projection and print queue parse back. There is no POD
+      // table; this note IS the record. Kept LAST so the machine
+      // line ends the note.
+      podPrep.pod
+        ? podOrderNoteText(
+            podPrep.pod,
+            snapshotItems.find((i) => i.variantId === podPrep.pod?.variantId)?.productName ?? "",
+          )
+        : null,
     ]
       .filter((part): part is string => typeof part === "string" && part.trim() !== "")
       .join("\n") || undefined;
@@ -696,6 +786,11 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     // (null for every non-booking order) — written in the create
     // transaction, capacity enforced there.
     serviceBooking: bookingPrep.booking,
+    // ADV-23 vertical 3 (wave 56): the validated rental write spec
+    // (null for every non-rental order) — written in the create
+    // transaction, window availability enforced there; its line is
+    // excluded from the generic stock reservation.
+    rentalBooking: rentalPrep.rental,
     });
   } catch (err) {
     if (err instanceof BundleStockError) {
@@ -707,6 +802,13 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     // another slot and retry.
     if (err instanceof ServiceBookingCapacityError) {
       return errorResponse("BOOKING_SLOT_FULL", err.message, 409);
+    }
+    // ADV-23 rental (wave 56): every unit for the requested window
+    // went out between the availability read and this create — the
+    // transaction rolled back in full (no order, no charge), so the
+    // customer can pick other dates and retry.
+    if (err instanceof RentalCapacityError) {
+      return errorResponse("RENTAL_NOT_AVAILABLE", err.message, 409);
     }
     if (err instanceof PreorderCapError) {
       return errorResponse("PREORDER_CAP_REACHED", err.message, 409, err.details);
@@ -1054,6 +1156,41 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
                 slotEnd: bookingPrep.booking.slotEnd,
                 staffLabel: bookingPrep.booking.staffLabel,
                 status: "BOOKED",
+              },
+            }
+          : {}),
+        // ADV-23 vertical 3 (wave 56): rental outcome — present
+        // only when a RentalBooking was created with this order.
+        // depositPoisha is the frozen deposit already included in
+        // the order total (see the pricing breakdown's
+        // rentalDepositPoisha line); its refund on return is a
+        // manual admin action in v1.
+        ...(rentalPrep.rental
+          ? {
+              rental: {
+                variantId: rentalPrep.rental.variantId,
+                startDate: rentalPrep.rental.startDate,
+                endDate: rentalPrep.rental.endDate,
+                days: rentalPrep.rental.days,
+                depositPoisha: rentalPrep.rental.depositPoisha,
+                depositLabelBn: "ভাড়ার জামানত (ফেরতযোগ্য)",
+                status: "ACTIVE",
+              },
+            }
+          : {}),
+        // ADV-23 vertical 5 (wave 56): print-on-demand outcome —
+        // present only when a custom print was frozen with this
+        // order. feePoisha is the total print fee already included
+        // in the order total (see the pricing breakdown's
+        // printFeePoisha line); the confirmation screen shows the
+        // customer exactly what will be printed.
+        ...(podPrep.pod
+          ? {
+              pod: {
+                variantId: podPrep.pod.variantId,
+                printText: podPrep.pod.printText,
+                printColor: podPrep.pod.printColor,
+                feePoisha: podPrep.pod.feePoisha,
               },
             }
           : {}),

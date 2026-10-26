@@ -77,6 +77,7 @@ import {
   slotConflicts,
   type ServiceBookingWriteSpec,
 } from "../services/selection";
+import { rentalDateInstant, type RentalWriteSpec } from "../rental/selection";
 import { advanceConfirmBlock, type AdvanceBlockCode } from "./advance";
 import { discountApprovalConfirmBlock } from "./approvals";
 import { orderSearchOr, type OrderListSort } from "./list-v2";
@@ -786,6 +787,30 @@ export interface CreateOrderRecordInput {
    *  record, and a slot is never oversold by a stale availability
    *  read. Null/omitted = not a booking order. */
   serviceBooking?: ServiceBookingWriteSpec | null;
+  /** Rental booking (ADV-23 vertical 3, wave 56): the callers (the
+   *  public orders route and createManualOrder) validated the
+   *  submitted `rental` selection against rental.config while
+   *  module.rental is ON (src/rental/bookings.prepareRentalBooking)
+   *  and pass the validated spec here — dates, inclusive day count
+   *  and the deposit frozen from the config + the line's price. The
+   *  RentalBooking row is written INSIDE this create transaction,
+   *  and AVAILABILITY is enforced here: the live rentals (stored
+   *  ACTIVE or OVERDUE — an overdue unit is still physically out)
+   *  overlapping the requested window are counted in-transaction
+   *  against the variant's ProductVariant.stock, and a fully
+   *  booked window throws RentalCapacityError, rolling the whole
+   *  create back. The rental line is also EXCLUDED from the
+   *  generic SALE_RESERVE stock claim below (see
+   *  reserveOrderLineItems call): the variant's stock is the
+   *  physical fleet size and the overlap count is the rental
+   *  line's stock control — claiming the unit through the sale
+   *  ledger too would double-count it and never return it
+   *  (SALE_RESERVE is terminal at delivery). The deposit money
+   *  itself never passes through here: the callers already folded
+   *  spec.depositPoisha into pricing.totalPoisha via the pricing
+   *  pipeline's rentalDepositPoisha line. Null/omitted = not a
+   *  rental order. */
+  rentalBooking?: RentalWriteSpec | null;
 }
 
 /**
@@ -800,6 +825,20 @@ export class ServiceBookingCapacityError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ServiceBookingCapacityError";
+  }
+}
+
+/**
+ * Raised inside the create transaction when a rental window is
+ * fully booked (see CreateOrderRecordInput.rentalBooking). The
+ * create seams translate it to 409 RENTAL_NOT_AVAILABLE — the same
+ * domain-error pattern as ServiceBookingCapacityError above.
+ */
+export class RentalCapacityError extends Error {
+  readonly code = "RENTAL_NOT_AVAILABLE";
+  constructor(message: string) {
+    super(message);
+    this.name = "RentalCapacityError";
   }
 }
 
@@ -1043,7 +1082,17 @@ export async function createOrderRecord(
       // Wave 19 (plan 17, O1): reserve every ordinary line the same
       // way — guarded claim inside this transaction, so the order and
       // its reservations commit or roll back together.
-      await reserveOrderLineItems(tx, input.items, bundleVariantIds, order.id, orderNo);
+      // ADV-23 rental (wave 56): the rental line's variant joins the
+      // skip set — its stock is controlled by the RentalBooking
+      // overlap count in this same transaction (see
+      // CreateOrderRecordInput.rentalBooking), not by the sale
+      // ledger. prepareRentalBooking guaranteed the variant's total
+      // quantity in this order is exactly 1, so skipping every line
+      // of that variant skips exactly the rental unit.
+      const reserveSkipVariantIds = input.rentalBooking
+        ? new Set<string>([...bundleVariantIds, input.rentalBooking.variantId])
+        : bundleVariantIds;
+      await reserveOrderLineItems(tx, input.items, reserveSkipVariantIds, order.id, orderNo);
       await tx.orderStatusHistory.create({
         data: { orderId: order.id, from: null, to: "PENDING", changedById: null },
       });
@@ -1157,6 +1206,52 @@ export async function createOrderRecord(
             slotStart: spec.slotStart,
             slotEnd: spec.slotEnd,
             staffLabel: spec.staffLabel,
+          },
+        });
+      }
+      // ADV-23 rental (wave 56): the rental joins the same
+      // transaction, and its AVAILABILITY is counted here — the
+      // live rentals (stored ACTIVE or OVERDUE; an overdue unit is
+      // still physically out) whose [startDate, endDate] window
+      // overlaps the requested one, against the variant's stock
+      // read in-transaction (the fleet size at commit time). A
+      // fully booked window throws and rolls the whole create
+      // back, so the availability the customer saw can never be
+      // oversold by a stale read. (Residual write-skew race under
+      // ReadCommitted is documented in src/rental/bookings.ts —
+      // small, not zero.) The deposit was already folded into the
+      // order total by the caller's pricing; only the frozen
+      // figure is recorded here.
+      if (input.rentalBooking) {
+        const spec = input.rentalBooking;
+        const startDate = rentalDateInstant(spec.startDate);
+        const endDate = rentalDateInstant(spec.endDate);
+        const variant = await tx.productVariant.findUnique({
+          where: { id: spec.variantId },
+          select: { stock: true },
+        });
+        const totalUnits = variant?.stock ?? 0;
+        const overlapping = await tx.rentalBooking.count({
+          where: {
+            variantId: spec.variantId,
+            status: { in: ["ACTIVE", "OVERDUE"] },
+            startDate: { lte: endDate },
+            endDate: { gte: startDate },
+          },
+        });
+        if (overlapping >= totalUnits) {
+          throw new RentalCapacityError(
+            "এই তারিখের জন্য সব ইউনিট ইতিমধ্যে ভাড়া হয়ে গেছে — অনুগ্রহ করে অন্য তারিখ বেছে নিন। / All units are already rented for these dates — please choose other dates.",
+          );
+        }
+        await tx.rentalBooking.create({
+          data: {
+            orderId: order.id,
+            variantId: spec.variantId,
+            startDate,
+            endDate,
+            days: spec.days,
+            depositPoisha: spec.depositPoisha,
           },
         });
       }
@@ -1370,6 +1465,12 @@ export async function applyOrderTransition(
     // order's booking is cancelled with it, freeing the slot.
     const { cancelServiceBookingForOrder } = await import("../services/bookings");
     await cancelServiceBookingForOrder(row.id);
+    // ADV-23 rental (wave 56): same discipline — a cancelled
+    // order's live rental is cancelled with it, freeing the unit
+    // for its window. The deposit settles manually (v1); this
+    // seam never moves money.
+    const { cancelRentalBookingForOrder } = await import("../rental/bookings");
+    await cancelRentalBookingForOrder(row.id);
   }
   // Wave 18 (plan 17, O0): reversal engine — cancelling restores the
   // coupon usage; RETURNED / REFUNDED claw back the delivered-order
@@ -1461,6 +1562,9 @@ export async function saveOrder(order: Order): Promise<void> {
     // ADV-23 services (wave 56): same booking cancel on this path.
     const { cancelServiceBookingForOrder } = await import("../services/bookings");
     await cancelServiceBookingForOrder(order.id);
+    // ADV-23 rental (wave 56): same rental cancel on this path.
+    const { cancelRentalBookingForOrder } = await import("../rental/bookings");
+    await cancelRentalBookingForOrder(order.id);
   }
   // Wave 18 (plan 17, O0): same reversal engine on the bulk-actions
   // path — only when THIS save moved the stored status INTO a reversal

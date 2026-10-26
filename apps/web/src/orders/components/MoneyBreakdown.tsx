@@ -15,12 +15,25 @@ export interface MoneyBreakdownInput {
    *  when provided, the পরিশোধিত row shows and বকেয়া appears while
    *  total − paid > 0. */
   paidPoisha?: number;
+  /** Rental security deposit (ADV-23 vertical 3) already inside
+   *  totalPoisha, from the detail payload's data.rental — rendered
+   *  as its own row and taken out of the residual, exactly like
+   *  the PDF invoice (src/pdf/invoice-data). Omit / 0 for
+   *  non-rental orders. */
+  rentalDepositPoisha?: number;
+  /** Print-on-demand print fee (ADV-23 vertical 5) already inside
+   *  totalPoisha, from the detail payload's data.pod — rendered
+   *  as its own row and taken out of the residual, exactly like
+   *  the deposit. Omit / 0 for non-POD orders. */
+  printFeePoisha?: number;
 }
 
 export type MoneyBreakdownRowKey =
   | "subtotal"
   | "discount"
   | "shipping"
+  | "deposit"
+  | "printFee"
   | "residual"
   | "total"
   | "paid"
@@ -44,7 +57,10 @@ export interface MoneyBreakdownRow {
 export function buildMoneyBreakdownRows(input: MoneyBreakdownInput): MoneyBreakdownRow[] {
   const discount = input.discountPoisha ?? 0;
   const shipping = input.shippingPoisha ?? 0;
-  const residual = input.totalPoisha - (input.subtotalPoisha - discount + shipping);
+  const deposit = input.rentalDepositPoisha ?? 0;
+  const printFee = input.printFeePoisha ?? 0;
+  const residual =
+    input.totalPoisha - (input.subtotalPoisha - discount + shipping + deposit + printFee);
   const rows: MoneyBreakdownRow[] = [
     { key: "subtotal", labelBn: "সাবটোটাল (পণ্য)", labelEn: "Subtotal", poisha: input.subtotalPoisha },
   ];
@@ -52,6 +68,12 @@ export function buildMoneyBreakdownRows(input: MoneyBreakdownInput): MoneyBreakd
     rows.push({ key: "discount", labelBn: "ছাড়", labelEn: "Discount", poisha: -discount });
   }
   rows.push({ key: "shipping", labelBn: "ডেলিভারি চার্জ", labelEn: "Delivery charge", poisha: shipping });
+  if (deposit > 0) {
+    rows.push({ key: "deposit", labelBn: "ভাড়ার জামানত (ফেরতযোগ্য)", labelEn: "Rental deposit (refundable)", poisha: deposit });
+  }
+  if (printFee > 0) {
+    rows.push({ key: "printFee", labelBn: "প্রিন্ট ফি", labelEn: "Print fee", poisha: printFee });
+  }
   if (residual !== 0) {
     rows.push({ key: "residual", labelBn: "সিওডি ফি ও অন্যান্য চার্জ", labelEn: "COD fee & other charges", poisha: residual });
   }

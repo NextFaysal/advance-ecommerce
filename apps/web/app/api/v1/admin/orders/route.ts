@@ -52,6 +52,8 @@ import { manualOrderSchema } from "@/orders/manual-order";
 import { createManualOrder } from "@/orders/manual-create";
 import { restaurantSelectionSchema } from "@/restaurant/selection";
 import { serviceBookingSelectionSchema } from "@/services/selection";
+import { rentalSelectionSchema } from "@/rental/selection";
+import { podSelectionSchema } from "@/pod/selection";
 
 function err(code: string, message: string, status: number, details?: unknown) {
   return NextResponse.json({ error: { code, message, details } }, { status });
@@ -266,6 +268,16 @@ const manualCreateSchema = manualOrderSchema.extend({
   // would be stripped here and never reach the services gate in
   // createManualOrder.
   booking: serviceBookingSelectionSchema.optional(),
+  // ADV-23 vertical 3 (wave 56): same forwarding for the rental
+  // selection — without this line a staff-submitted rental would
+  // be stripped here and never reach the rental gate in
+  // createManualOrder.
+  rental: rentalSelectionSchema.optional(),
+  // ADV-23 vertical 5 (wave 56): same forwarding for the
+  // print-on-demand customisation — without this line a
+  // staff-submitted print text would be stripped here and never
+  // reach the POD gate in createManualOrder.
+  pod: podSelectionSchema.optional(),
   // Wave 21 (doc 17 batch O3): a staff-set advance requirement for
   // this order (poisha). Validated against the computed grand total
   // in the service (0..total); the persisted requirement is the MAX

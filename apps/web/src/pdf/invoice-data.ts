@@ -36,6 +36,10 @@ import { getSetting } from "@/lib/settings";
 import { resolveInvoiceTexts } from "@/templates/overrides";
 import { formatBdt } from "@/checkout/pricing";
 import { lineTotalPoisha, qtyNumber } from "@/lib/quantity";
+import { dhakaYmdOf } from "@/lib/dhaka-date";
+import { RENTAL_DEPOSIT_LABEL_BN, RENTAL_DEPOSIT_LABEL_EN } from "@/rental/selection";
+import { POD_PRINT_FEE_LABEL_BN, POD_PRINT_FEE_LABEL_EN } from "@/pod/selection";
+import { getOrderPodView } from "@/pod/customisation";
 
 export interface InvoiceMoneyRow {
   labelBn: string;
@@ -115,6 +119,16 @@ export interface InvoiceMoneyInput {
   giftCardNetPoisha: number;
   giftCardLast4: string | null;
   paidPoisha: number;
+  /** Rental security deposit frozen on the order's RentalBooking
+   *  (ADV-23 vertical 3) — already inside totalPoisha; rendered as
+   *  its own row so it never hides inside the "COD fee & other
+   *  charges" residual. 0 / omitted for non-rental orders. */
+  rentalDepositPoisha?: number;
+  /** Print-on-demand print fee frozen on the order's create-time
+   *  note (ADV-23 vertical 5) — already inside totalPoisha;
+   *  rendered as its own row like the deposit. 0 / omitted for
+   *  non-POD orders. */
+  printFeePoisha?: number;
 }
 
 /** Pure row builder — the print centre's arithmetic, with the
@@ -134,7 +148,31 @@ export function computeInvoiceMoneyRows(input: InvoiceMoneyInput): InvoiceMoneyR
       rows.push({ labelBn: "ছাড়", labelEn: "Discount", poisha: -input.discountPoisha });
     }
     rows.push({ labelBn: "ডেলিভারি চার্জ", labelEn: "Delivery charge", poisha: input.shippingPoisha });
-    const residual = grossPoisha - (input.subtotalPoisha - input.discountPoisha + input.shippingPoisha);
+    // ADV-23 rental deposit: its own row (the figure frozen on the
+    // RentalBooking), taken OUT of the residual below so a
+    // refundable deposit is never mislabelled as a fee.
+    const rentalDepositPoisha = input.rentalDepositPoisha ?? 0;
+    if (rentalDepositPoisha > 0) {
+      rows.push({
+        labelBn: RENTAL_DEPOSIT_LABEL_BN,
+        labelEn: RENTAL_DEPOSIT_LABEL_EN,
+        poisha: rentalDepositPoisha,
+      });
+    }
+    // ADV-23 vertical 5 print fee: its own row (the figure frozen
+    // on the order note), taken OUT of the residual below so a
+    // print charge is never mislabelled as a fee either.
+    const printFeePoisha = input.printFeePoisha ?? 0;
+    if (printFeePoisha > 0) {
+      rows.push({
+        labelBn: POD_PRINT_FEE_LABEL_BN,
+        labelEn: POD_PRINT_FEE_LABEL_EN,
+        poisha: printFeePoisha,
+      });
+    }
+    const residual =
+      grossPoisha -
+      (input.subtotalPoisha - input.discountPoisha + input.shippingPoisha + rentalDepositPoisha + printFeePoisha);
     if (residual !== 0) {
       rows.push({ labelBn: "সিওডি ফি ও অন্যান্য চার্জ", labelEn: "COD fee & other charges", poisha: residual });
     }
@@ -181,6 +219,34 @@ export async function getOrderGiftCardCoverage(
   return { netPoisha: Math.max(0, net), codeLast4: last4 };
 }
 
+/** The order's rental view (ADV-23 vertical 3): the RentalBooking
+ *  row's frozen facts, or null when the order is not a rental. The
+ *  admin order GET attaches this as data.rental (the giftCard
+ *  precedent) so the detail screen + print centre decompose the
+ *  deposit out of their residuals exactly like this module does. */
+export async function getOrderRentalView(
+  orderId: string,
+): Promise<{
+  depositPoisha: number;
+  startDate: string;
+  endDate: string;
+  days: number;
+  status: string;
+} | null> {
+  const row = await prisma.rentalBooking.findUnique({
+    where: { orderId },
+    select: { depositPoisha: true, startDate: true, endDate: true, days: true, status: true },
+  });
+  if (!row) return null;
+  return {
+    depositPoisha: row.depositPoisha,
+    startDate: dhakaYmdOf(row.startDate),
+    endDate: dhakaYmdOf(row.endDate),
+    days: row.days,
+    status: row.status,
+  };
+}
+
 /**
  * Build the invoice data for one order. `customerPhoneDisplay` is
  * the phone string the CALLER's policy allows on paper (admin route:
@@ -194,14 +260,17 @@ export async function buildInvoiceData(
 ): Promise<InvoiceData | null> {
   const order = await getOrderByIdOrNo(idOrNo);
   if (!order) return null;
-  const [advance, giftCard, storeName, storeAddress, storeBin, templateTexts] = await Promise.all([
-    getOrderAdvanceView(order.id),
-    getOrderGiftCardCoverage(order.id),
-    getSetting("general.store_name"),
-    getSetting("general.store_address"),
-    getSetting("general.store_bin"),
-    resolveInvoiceTexts(),
-  ]);
+  const [advance, giftCard, rental, pod, storeName, storeAddress, storeBin, templateTexts] =
+    await Promise.all([
+      getOrderAdvanceView(order.id),
+      getOrderGiftCardCoverage(order.id),
+      getOrderRentalView(order.id),
+      getOrderPodView(order.id),
+      getSetting("general.store_name"),
+      getSetting("general.store_address"),
+      getSetting("general.store_bin"),
+      resolveInvoiceTexts(),
+    ]);
   const subtotalPoisha = order.items.reduce((sum, i) => sum + lineTotalPoisha(i.unitPricePoisha, i.quantity), 0);
   const a = order.address;
   return {
@@ -233,6 +302,8 @@ export async function buildInvoiceData(
       giftCardNetPoisha: giftCard.netPoisha,
       giftCardLast4: giftCard.codeLast4,
       paidPoisha: advance?.paidPoisha ?? 0,
+      rentalDepositPoisha: rental?.depositPoisha ?? 0,
+      printFeePoisha: pod?.feePoisha ?? 0,
     }),
     totalPoisha: order.totalPoisha,
     headerNote: templateTexts.headerNote,

@@ -11,6 +11,15 @@ import { restaurantSelectionSchema } from "../restaurant/selection";
 // booking selection — one definition in src/services/selection.ts,
 // shared by checkout and the manual-create seam.
 import { serviceBookingSelectionSchema } from "../services/selection";
+// ADV-23 vertical 3 (wave 56): same arrangement for the rental
+// selection — one definition in src/rental/selection.ts, shared by
+// checkout and the manual-create seam.
+import { rentalSelectionSchema } from "../rental/selection";
+// ADV-23 vertical 5 (wave 56): same arrangement for the
+// print-on-demand customisation — one definition in
+// src/pod/selection.ts, shared by checkout and the manual-create
+// seam.
+import { podSelectionSchema } from "../pod/selection";
 
 export const BD_PHONE_REGEX = /^(?:\+?88)?01[3-9]\d{8}$/;
 
@@ -196,6 +205,45 @@ export const checkoutFormSchema = z.object({
    * one booking per order, for a line of quantity exactly 1.
    */
   booking: serviceBookingSelectionSchema.optional(),
+  /**
+   * Optional rental selection (ADV-23 vertical 3, wave 56):
+   * submitted when the rental module is on and the cart contains a
+   * variant from the merchant's rental list (rental.config
+   * rentalVariantIds) — the customer picks a start/end date range
+   * on the checkout page, checked against the availability API.
+   * The shape is src/rental/selection.ts (pure, shared with the
+   * manual-create seam). The orders route re-validates the range
+   * against rental.config (variant on the list, dates valid, start
+   * not past, length within maxRentalDays) and counts overlapping
+   * live rentals against the variant's stock inside the create
+   * transaction — a fully booked window refuses the order (409).
+   * When rental.config sets a deposit, the deposit joins the order
+   * total as its own pricing line (rentalDepositPoisha). A payload
+   * carrying this field while module.rental is OFF is refused 403
+   * FEATURE_LOCKED; without the field nothing changes. V1: one
+   * rental per order, for a line of quantity exactly 1.
+   */
+  rental: rentalSelectionSchema.optional(),
+  /**
+   * Optional print-on-demand customisation (ADV-23 vertical 5,
+   * wave 56): submitted when the print-on-demand module is on and
+   * the cart contains a variant from the merchant's printable list
+   * (pod.config podVariantIds) — the customer types the print text
+   * (and optionally picks a palette colour) on the checkout page.
+   * The shape is src/pod/selection.ts (pure, shared with the
+   * manual-create seam). The orders route re-validates it against
+   * pod.config (variant listed, text sanitised + within the
+   * config cap, colour on the palette) and freezes it onto the
+   * order's create-time note; the configured per-item print fee
+   * joins the order total as its own pricing line
+   * (printFeePoisha). A payload carrying this field while
+   * module.print_on_demand is OFF is refused 403 FEATURE_LOCKED;
+   * without the field nothing changes. V1: one customised line
+   * per order (its quantity may exceed 1 — the fee is per item).
+   * No image upload exists in v1 (storage-gated) — text + colour
+   * is the whole customisation.
+   */
+  pod: podSelectionSchema.optional(),
 });
 
 export type CheckoutForm = z.infer<typeof checkoutFormSchema>;

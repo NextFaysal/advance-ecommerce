@@ -932,6 +932,7 @@ model Order {
   vendorRefunds    VendorRefund[]
   kitchenTicket    KitchenTicket?
   serviceBooking   ServiceBooking?
+  rentalBooking    RentalBooking?
   @@index([customerId])
   @@index([resellerId])
   @@index([status])
@@ -998,6 +999,51 @@ model ServiceBooking {
   updatedAt  DateTime  @updatedAt
 
   @@index([serviceDate, variantId])
+}
+
+// Rental bookings (ADV-23 vertical 3, doc 23 wave 56): the rental
+// module's one row per rental order, created INSIDE the order-create
+// transaction (src/orders/repository.ts) when the order carries a
+// validated `rental` selection and module.rental is ON.
+// startDate/endDate are Asia/Dhaka calendar days stored as those
+// days' Dhaka-midnight instants (yyyy-mm-ddT00:00:00+06:00) — the
+// ServiceBooking convention; `days` is the INCLUSIVE day count
+// frozen at order time. depositPoisha is the security deposit that
+// was charged inside the order total (a rentalDepositPoisha line in
+// the checkout pricing pipeline), frozen here so later config edits
+// never rewrite what a live rental actually collected; the refund
+// on return is a MANUAL admin action in v1 (no auto-refund flow).
+// variantId is a plain string by design (no FK): the booking is a
+// historical record and must survive a variant being deleted later;
+// which variants are rentable lives in the rental.config
+// `rentalVariantIds` list. status is a plain string (the
+// Subscription/KitchenTicket precedent) — allowed values are owned
+// by src/rental/selection.ts: ACTIVE -> RETURNED / OVERDUE from
+// the admin rentals board (OVERDUE is also computed at read for an
+// ACTIVE row past endDate); CANCELLED only from the
+// order-cancellation seam. Availability: a variant's physical unit
+// count is its ProductVariant.stock; overlapping ACTIVE rows for
+// the variant are counted inside the create transaction and must
+// stay below stock. The rental line is EXCLUDED from the generic
+// SALE_RESERVE stock claim in the create transaction — the overlap
+// count is the rental line's stock control, and claiming the unit
+// through the sale ledger too would double-count it (and never
+// give it back: SALE_RESERVE is terminal at delivery).
+model RentalBooking {
+  id            String    @id @default(cuid())
+  orderId       String    @unique
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId     String
+  startDate     DateTime
+  endDate       DateTime
+  days          Int
+  depositPoisha Int       @default(0)
+  status        String    @default("ACTIVE")
+  returnedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([variantId, startDate, endDate])
 }
 
 // Per-day order-number sequence (wave 20, plan 17 batch O2). The human

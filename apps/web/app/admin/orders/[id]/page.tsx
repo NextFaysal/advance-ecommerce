@@ -66,6 +66,31 @@ import { Tabs } from "@/components/ui/tabs";
 
 type DetailOrder = Order & {
   advance?: OrderAdvanceView;
+  /** ADV-23 rental (wave 56): the detail API's data.rental — the
+   *  money card reads the frozen deposit from it (via
+   *  previewMoneyProps) so the deposit prints as its own line. */
+  rental?: {
+    depositPoisha: number;
+    startDate: string;
+    endDate: string;
+    days: number;
+    status: string;
+  } | null;
+  /** ADV-23 vertical 5 (wave 56): the detail API's data.pod —
+   *  present ONLY when the order carries a custom print (parsed
+   *  from the create-time order note). The rail card below shows
+   *  the print shop exactly what to print; the money card reads
+   *  the frozen fee from it (via previewMoneyProps). */
+  pod?: {
+    variantId: string;
+    productName: string | null;
+    printText: string;
+    printColor: string | null;
+    feePerItemPoisha: number;
+    quantity: number;
+    feePoisha: number;
+    printed: boolean;
+  } | null;
   approval?: {
     discount: {
       id: string;
@@ -503,6 +528,45 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
             <h2 className="mb-3 text-base font-semibold">টাকার হিসাব</h2>
             <MoneyBreakdown {...previewMoneyProps(order)} />
           </Card>
+
+          {/* Custom print (ADV-23 vertical 5) — renders only when
+              the order carries a POD customisation (data.pod): the
+              exact text + colour the print shop must print, frozen
+              at order time on the order note. The printed state is
+              the staff attestation from the print queue. */}
+          {order.pod ? (
+            <Card className="shadow-card">
+              <h2 className="mb-3 text-base font-semibold">কাস্টম প্রিন্ট</h2>
+              <dl className="space-y-2 text-sm">
+                <div>
+                  <dt className="text-text-muted">ছাপানোর লেখা</dt>
+                  <dd className="mt-0.5 text-base font-bold leading-relaxed">
+                    «{order.pod.printText}»
+                  </dd>
+                </div>
+                {order.pod.printColor ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-text-muted">রঙ</dt>
+                    <dd className="font-medium">{order.pod.printColor}</dd>
+                  </div>
+                ) : null}
+                {order.pod.productName ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-text-muted">পণ্য</dt>
+                    <dd className="font-medium">
+                      {order.pod.productName} × {order.pod.quantity}
+                    </dd>
+                  </div>
+                ) : null}
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-text-muted">অবস্থা</dt>
+                  <dd className="font-medium">
+                    {order.pod.printed ? "ছাপানো হয়েছে ✓" : "ছাপানো বাকি — প্রিন্ট কিউতে আছে"}
+                  </dd>
+                </div>
+              </dl>
+            </Card>
+          ) : null}
 
           {/* Advance state summary — renders nothing for ordinary
               orders (same condition as AdvancePanel). */}

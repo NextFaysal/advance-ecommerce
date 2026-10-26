@@ -119,6 +119,15 @@ interface InvoiceOrder {
    *  (detail API's data.giftCard). Optional: payloads predating the
    *  field read as zero coverage. */
   giftCard?: { netPoisha: number; codeLast4: string | null } | null;
+  /** Rental view from the RentalBooking row (detail API's
+   *  data.rental, ADV-23 vertical 3). Optional: payloads predating
+   *  the field / non-rental orders read as no deposit. */
+  rental?: { depositPoisha: number } | null;
+  /** POD view parsed from the order note (detail API's data.pod,
+   *  ADV-23 vertical 5). Optional: payloads predating the field /
+   *  non-POD orders read as no print fee. feePoisha only — the
+   *  money split needs nothing else. */
+  pod?: { feePoisha: number } | null;
 }
 
 interface LoadedInvoice {
@@ -140,6 +149,14 @@ interface LoadedInvoice {
    *  ledger via the detail payload; 0 / null when no card was used. */
   giftCardNetPoisha: number;
   giftCardLast4: string | null;
+  /** Rental security deposit frozen on the RentalBooking (ADV-23),
+   *  already inside the total — printed as its own line and taken
+   *  out of otherPoisha; 0 for non-rental orders. */
+  rentalDepositPoisha: number;
+  /** Print-on-demand print fee frozen on the order note (ADV-23
+   *  vertical 5), already inside the total — printed as its own
+   *  line and taken out of otherPoisha; 0 for non-POD orders. */
+  printFeePoisha: number;
   /** Total before the gift-card tender: totalPoisha + coverage. */
   grossTotalPoisha: number;
   paidPoisha: number;
@@ -163,6 +180,12 @@ function toInvoice(order: InvoiceOrder): LoadedInvoice {
   // against the gross total and the card prints as its own tender.
   const giftCardNetPoisha = Math.max(0, order.giftCard?.netPoisha ?? 0);
   const grossTotalPoisha = order.totalPoisha + giftCardNetPoisha;
+  // ADV-23 rental deposit: inside the total already; decomposed
+  // out of the residual so it prints as its own line (the PDF
+  // invoice's discipline in src/pdf/invoice-data).
+  const rentalDepositPoisha = Math.max(0, order.rental?.depositPoisha ?? 0);
+  // ADV-23 vertical 5 print fee: same decomposition discipline.
+  const printFeePoisha = Math.max(0, order.pod?.feePoisha ?? 0);
   return {
     order,
     subtotalPoisha,
@@ -170,11 +193,14 @@ function toInvoice(order: InvoiceOrder): LoadedInvoice {
     discountPoisha,
     otherPoisha:
       shippingPoisha !== null && discountPoisha !== null
-        ? grossTotalPoisha - (subtotalPoisha - discountPoisha + shippingPoisha)
+        ? grossTotalPoisha -
+          (subtotalPoisha - discountPoisha + shippingPoisha + rentalDepositPoisha + printFeePoisha)
         : 0,
     netAdjustmentPoisha: grossTotalPoisha - subtotalPoisha,
     giftCardNetPoisha,
     giftCardLast4: order.giftCard?.codeLast4 ?? null,
+    rentalDepositPoisha,
+    printFeePoisha,
     grossTotalPoisha,
     paidPoisha,
     duePoisha: Math.max(0, order.totalPoisha - paidPoisha),
@@ -225,7 +251,7 @@ function InvoiceSheet({
   format: PrintFormat;
   template?: InvoiceTemplateTexts;
 }) {
-  const { order, subtotalPoisha, shippingPoisha, discountPoisha, otherPoisha, netAdjustmentPoisha, giftCardNetPoisha, giftCardLast4, grossTotalPoisha, paidPoisha, duePoisha } = invoice;
+  const { order, subtotalPoisha, shippingPoisha, discountPoisha, otherPoisha, netAdjustmentPoisha, giftCardNetPoisha, giftCardLast4, grossTotalPoisha, paidPoisha, duePoisha, rentalDepositPoisha, printFeePoisha } = invoice;
   return (
     <section
       className={`invoice-sheet mb-8 rounded-lg border border-border bg-white p-6 text-text-main shadow-card print:mb-0 print:rounded-none print:border-0 print:shadow-none ${
@@ -303,6 +329,18 @@ function InvoiceSheet({
                 <div className="flex justify-between">
                   <dt className="text-text-muted">ছাড়</dt>
                   <dd className="tabular-nums">−{formatBdt(discountPoisha)}</dd>
+                </div>
+              )}
+              {rentalDepositPoisha > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-text-muted">ভাড়ার জামানত (ফেরতযোগ্য)</dt>
+                  <dd className="tabular-nums">{formatBdt(rentalDepositPoisha)}</dd>
+                </div>
+              )}
+              {printFeePoisha > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-text-muted">প্রিন্ট ফি</dt>
+                  <dd className="tabular-nums">{formatBdt(printFeePoisha)}</dd>
                 </div>
               )}
               {otherPoisha !== 0 && (

@@ -134,6 +134,12 @@ type PlacedOrder = {
    *  ServiceBooking was created with this order (services module on
    *  + a date/slot picked at checkout). Starts BOOKED. */
   booking?: { date: string; slotStart: string; slotEnd: string; status: string };
+  /** ADV-23 vertical 3: meta.rental — present only when a
+   *  RentalBooking was created with this order (rental module on +
+   *  a date range picked at checkout). Starts ACTIVE;
+   *  depositPoisha is the frozen deposit already included in the
+   *  order total, refunded manually on return. */
+  rental?: { startDate: string; endDate: string; days: number; depositPoisha: number; status: string };
 };
 
 export default function CheckoutPage() {
@@ -317,6 +323,129 @@ export default function CheckoutPage() {
       cancelled = true;
     };
   }, [serviceVariantId, serviceQty, bookingDate]);
+  // Rental (ADV-23 vertical 3, wave 56): from GET
+  // /api/v1/public/rental/config — rendered ONLY when the rental
+  // module is enabled AND the cart contains a variant from the
+  // merchant's rental list (rentalVariantIds). The customer picks a
+  // start/end date range; availability comes from the availability
+  // API and the deposit (when configured) is previewed from the
+  // config + the cart line's price. The choice rides the create
+  // payload as `rental`; the server re-validates it against
+  // rental.config, recomputes the deposit from the SERVER price and
+  // counts overlapping rentals inside the create transaction —
+  // this picker is a convenience, never the authority. A failed
+  // fetch hides the section; checkout never blocks on it.
+  const [rentalConfig, setRentalConfig] = useState<{
+    enabled: boolean;
+    rentalVariantIds: string[];
+    maxRentalDays: number;
+    depositMode: "none" | "fixed" | "percent";
+    depositFixedPoisha: number;
+    depositPercentBps: number;
+  } | null>(null);
+  const [rentalStart, setRentalStart] = useState("");
+  const [rentalEnd, setRentalEnd] = useState("");
+  const [rentalAvailability, setRentalAvailability] = useState<{
+    availableUnits: number;
+    totalUnits: number | null;
+    reason: string | null;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/public/rental/config")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("rental config fetch failed"))))
+      .then(
+        (json: {
+          data?: {
+            enabled?: boolean;
+            rentalVariantIds?: string[];
+            maxRentalDays?: number;
+            depositMode?: "none" | "fixed" | "percent";
+            depositFixedPoisha?: number;
+            depositPercentBps?: number;
+          };
+        }) => {
+          if (cancelled) return;
+          setRentalConfig({
+            enabled: json.data?.enabled === true,
+            rentalVariantIds: Array.isArray(json.data?.rentalVariantIds)
+              ? json.data.rentalVariantIds
+              : [],
+            maxRentalDays: typeof json.data?.maxRentalDays === "number" ? json.data.maxRentalDays : 30,
+            depositMode: json.data?.depositMode ?? "none",
+            depositFixedPoisha:
+              typeof json.data?.depositFixedPoisha === "number" ? json.data.depositFixedPoisha : 0,
+            depositPercentBps:
+              typeof json.data?.depositPercentBps === "number" ? json.data.depositPercentBps : 0,
+          });
+        },
+      )
+      .catch(() => {
+        // No rental section; the order flow is unaffected.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // The (single, v1) rental line in this cart: the FIRST cart line
+  // whose variant is on the merchant's rental list. Quantity must
+  // be exactly 1 to rent (the server enforces the same rule).
+  const rentalLine = useMemo(() => {
+    if (!rentalConfig?.enabled || !cart) return null;
+    const ids = new Set(rentalConfig.rentalVariantIds);
+    return cart.items.find((i) => ids.has(i.variantId)) ?? null;
+  }, [rentalConfig, cart]);
+  const rentalQty = rentalLine?.quantity ?? 0;
+  // The deposit this cart would carry, previewed from the config +
+  // the cart line's price (display only — the server recomputes it
+  // from the DB price and freezes it on the RentalBooking).
+  const rentalDepositPreview = useMemo(() => {
+    if (!rentalConfig?.enabled || !rentalLine) return 0;
+    if (rentalConfig.depositMode === "fixed") return rentalConfig.depositFixedPoisha;
+    if (rentalConfig.depositMode === "percent") {
+      return Math.round((rentalLine.unitPricePoisha * rentalConfig.depositPercentBps) / 10000);
+    }
+    return 0;
+  }, [rentalConfig, rentalLine]);
+  // Default the range to today → today when a rental line appears.
+  useEffect(() => {
+    if (rentalLine && !rentalStart) {
+      const today = todayDhakaYmd();
+      setRentalStart(today);
+      setRentalEnd(today);
+    }
+  }, [rentalLine, rentalStart]);
+  // Load availability whenever the line/range changes.
+  useEffect(() => {
+    if (!rentalLine || rentalQty !== 1 || !rentalStart || !rentalEnd || rentalEnd < rentalStart) {
+      setRentalAvailability(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(
+      `/api/v1/public/rental/availability?variantId=${encodeURIComponent(rentalLine.variantId)}&start=${encodeURIComponent(rentalStart)}&end=${encodeURIComponent(rentalEnd)}`,
+    )
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("rental availability fetch failed"))))
+      .then(
+        (json: {
+          data?: { availableUnits?: number; totalUnits?: number | null; reason?: string | null };
+        }) => {
+          if (cancelled) return;
+          setRentalAvailability({
+            availableUnits: typeof json.data?.availableUnits === "number" ? json.data.availableUnits : 0,
+            totalUnits: typeof json.data?.totalUnits === "number" ? json.data.totalUnits : null,
+            reason: json.data?.reason ?? null,
+          });
+        },
+      )
+      .catch(() => {
+        if (cancelled) return;
+        setRentalAvailability(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rentalLine, rentalQty, rentalStart, rentalEnd]);
   // Gift cards (ADV-18): the code field renders ONLY when the module
   // is on — GET /api/v1/public/gift-cards/status returns {enabled}
   // and nothing else (no code is ever sent there; validation happens
@@ -666,8 +795,12 @@ export default function CheckoutPage() {
         shippingPoisha: shippingPreview.shippingPoisha,
         codFeePoisha: 0,
         taxBps: 0,
+        // ADV-23 rental (wave 56): the deposit preview joins the
+        // summary total so the page never shows a smaller total
+        // than the order will carry (server recomputes it exactly).
+        rentalDepositPoisha: rentalLine && rentalQty === 1 ? rentalDepositPreview : 0,
       }),
-    [cart, shippingPreview],
+    [cart, shippingPreview, rentalLine, rentalQty, rentalDepositPreview],
   );
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -680,6 +813,23 @@ export default function CheckoutPage() {
     if (serviceLine && serviceQty === 1 && !bookingSlotStart) {
       setErrors(["সেবাটির জন্য একটি তারিখ ও সময় বেছে নিন। / Please pick a date and time for the service."]);
       return;
+    }
+    // Rental (ADV-23 vertical 3): a rental line (quantity exactly
+    // 1) must carry a valid date range — without one the order
+    // would silently be a plain purchase of what the merchant
+    // rents out. A range the availability API already reported as
+    // fully booked is stopped here with the picker's own message;
+    // the server recounts inside the create transaction either
+    // way (a race still lands as a 409 in the error list).
+    if (rentalLine && rentalQty === 1) {
+      if (!rentalStart || !rentalEnd || rentalEnd < rentalStart) {
+        setErrors(["ভাড়ার জন্য শুরুর ও ফেরতের তারিখ বেছে নিন। / Please pick the rental start and return dates."]);
+        return;
+      }
+      if (rentalAvailability && rentalAvailability.availableUnits <= 0) {
+        setErrors(["এই তারিখের জন্য সব ইউনিট ইতিমধ্যে ভাড়া হয়ে গেছে — অন্য তারিখ বেছে নিন। / All units are already rented for these dates — please choose other dates."]);
+        return;
+      }
     }
     const data = new FormData(e.currentTarget);
     const result = validateCheckoutForm({
@@ -767,6 +917,18 @@ export default function CheckoutPage() {
         servicesConfig?.enabled && serviceLine && serviceQty === 1 && bookingSlotStart
           ? { variantId: serviceLine.variantId, date: bookingDate, slotStart: bookingSlotStart }
           : undefined,
+      // Rental (ADV-23 vertical 3): sent only when the rental
+      // module is on, the cart holds a rental line of quantity 1,
+      // and a valid range was picked (enforced above). The server
+      // re-validates it against rental.config, recomputes the
+      // deposit from the server price and counts overlapping
+      // rentals inside the create transaction — a window that
+      // filled in the meantime comes back as a 409 in the error
+      // list.
+      rental:
+        rentalConfig?.enabled && rentalLine && rentalQty === 1 && rentalStart && rentalEnd
+          ? { variantId: rentalLine.variantId, startDate: rentalStart, endDate: rentalEnd }
+          : undefined,
     });
     if (!result.ok) {
       setErrors(result.errors);
@@ -803,6 +965,7 @@ export default function CheckoutPage() {
           warrantyTerms?: PlacedOrder["warrantyTerms"];
           restaurant?: PlacedOrder["restaurant"];
           booking?: PlacedOrder["booking"];
+          rental?: PlacedOrder["rental"];
         };
         error?: { code?: string; message?: string; details?: unknown };
       } | null;
@@ -848,6 +1011,7 @@ export default function CheckoutPage() {
           ...(json?.meta?.warrantyTerms ? { warrantyTerms: json.meta.warrantyTerms } : {}),
           ...(json?.meta?.restaurant ? { restaurant: json.meta.restaurant } : {}),
           ...(json?.meta?.booking ? { booking: json.meta.booking } : {}),
+          ...(json?.meta?.rental ? { rental: json.meta.rental } : {}),
           couponStatus: order.couponStatus,
         });
         return;
@@ -925,6 +1089,17 @@ export default function CheckoutPage() {
                 <dt className="shrink-0 text-text-muted">বুকিং</dt>
                 <dd className="text-right font-semibold">
                   {placedOrder.booking.date} • {placedOrder.booking.slotStart} – {placedOrder.booking.slotEnd} — বুক করা হয়েছে
+                </dd>
+              </div>
+            ) : null}
+            {placedOrder.rental ? (
+              <div className="flex justify-between gap-3">
+                <dt className="shrink-0 text-text-muted">ভাড়া</dt>
+                <dd className="text-right font-semibold">
+                  {placedOrder.rental.startDate} → {placedOrder.rental.endDate} ({placedOrder.rental.days} দিন)
+                  {placedOrder.rental.depositPoisha > 0
+                    ? ` — জামানত ${digits(formatBdt(placedOrder.rental.depositPoisha))} মোটে অন্তর্ভুক্ত (ফেরতে ফেরতযোগ্য)`
+                    : ""}
                 </dd>
               </div>
             ) : null}
@@ -1191,6 +1366,12 @@ export default function CheckoutPage() {
             </dt>
             <dd className="tabular-nums">{digits(formatBdt(pricing.shippingPoisha))}</dd>
           </div>
+          {pricing.rentalDepositPoisha > 0 && (
+            <div className="flex justify-between">
+              <dt className="text-text-muted">ভাড়ার জামানত (ফেরতযোগ্য)</dt>
+              <dd className="tabular-nums">{digits(formatBdt(pricing.rentalDepositPoisha))}</dd>
+            </div>
+          )}
           <div className="flex justify-between pt-1 text-base font-bold text-text-main">
             <dt>সর্বমোট</dt>
             <dd className="tabular-nums">{digits(formatBdt(pricing.grandTotalPoisha))}</dd>
@@ -1557,6 +1738,86 @@ export default function CheckoutPage() {
                       <p className="col-span-full text-sm text-text-muted">সময়ের তালিকা লোড হচ্ছে…</p>
                     )}
                   </div>
+                )}
+              </>
+            )}
+          </fieldset>
+        )}
+        {/* Rental (ADV-23 vertical 3, wave 56): rendered ONLY when
+            the rental module is enabled AND the cart holds a
+            rentable variant (the public config fetch above).
+            Start/end dates are checked against the availability
+            API; the choice rides the create payload as `rental`
+            and is re-validated server-side — this picker is a
+            convenience, never the authority. The deposit preview
+            (when configured) names the exact line the order total
+            will carry. */}
+        {rentalConfig?.enabled && rentalLine && (
+          <fieldset className="m-0 border-0 p-0">
+            <legend className="mb-2 text-sm font-medium text-text-main">ভাড়ার তারিখ (আবশ্যক)</legend>
+            {rentalQty !== 1 ? (
+              <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
+                ভাড়ার জন্য এই আইটেমটির পরিমাণ ঠিক ১ রাখুন — কার্ট থেকে পরিমাণ বদলে আবার চেষ্টা করুন।
+              </p>
+            ) : (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-text-main">শুরুর তারিখ</span>
+                    <input
+                      type="date"
+                      value={rentalStart}
+                      min={todayDhakaYmd()}
+                      max={shiftYmd(todayDhakaYmd(), rentalConfig.maxRentalDays)}
+                      onChange={(e) => {
+                        setRentalStart(e.target.value);
+                        if (rentalEnd && e.target.value && rentalEnd < e.target.value) {
+                          setRentalEnd(e.target.value);
+                        }
+                      }}
+                      className={INPUT_CLASS}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-text-main">ফেরতের তারিখ</span>
+                    <input
+                      type="date"
+                      value={rentalEnd}
+                      min={rentalStart || todayDhakaYmd()}
+                      max={
+                        rentalStart
+                          ? shiftYmd(rentalStart, rentalConfig.maxRentalDays - 1)
+                          : shiftYmd(todayDhakaYmd(), rentalConfig.maxRentalDays)
+                      }
+                      onChange={(e) => setRentalEnd(e.target.value)}
+                      className={INPUT_CLASS}
+                    />
+                  </label>
+                </div>
+                {rentalStart && rentalEnd && rentalEnd >= rentalStart ? (
+                  <p className="mt-3 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
+                    {rentalAvailability === null
+                      ? "প্রাপ্যতা যাচাই হচ্ছে…"
+                      : rentalAvailability.reason === "TOO_LONG"
+                        ? `একবারে সর্বোচ্চ ${rentalConfig.maxRentalDays} দিনের জন্য ভাড়া নেওয়া যায়।`
+                        : rentalAvailability.reason
+                          ? "এই তারিখের জন্য ভাড়া নেওয়া যাচ্ছে না।"
+                          : rentalAvailability.availableUnits > 0
+                            ? `এই সময়ের জন্য ${rentalAvailability.availableUnits}টি ইউনিট পাওয়া যাচ্ছে।`
+                            : "এই তারিখের জন্য সব ইউনিট ইতিমধ্যে ভাড়া হয়ে গেছে — অন্য তারিখ বেছে নিন।"}
+                    {rentalDepositPreview > 0 && (
+                      <>
+                        {" "}
+                        ভাড়ার জামানত (ফেরতযোগ্য):{" "}
+                        <strong className="text-text-main">{digits(formatBdt(rentalDepositPreview))}</strong>{" "}
+                        — অর্ডারের মোট মূল্যে যোগ হবে এবং ফেরতের সময় ফেরত দেওয়া হবে।
+                      </>
+                    )}
+                  </p>
+                ) : (
+                  <p className="mt-3 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
+                    শুরুর ও ফেরতের তারিখ বেছে নিন — সর্বোচ্চ {rentalConfig.maxRentalDays} দিন।
+                  </p>
                 )}
               </>
             )}

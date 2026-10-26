@@ -72,6 +72,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import {
+  RentalCapacityError,
   ServiceBookingCapacityError,
   createOrderRecord,
   findOrderByIdempotencyKey,
@@ -113,6 +114,10 @@ import { restaurantSelectionSchema } from "@/restaurant/selection";
 import { prepareKitchenTicket } from "@/restaurant/tickets";
 import { serviceBookingSelectionSchema } from "@/services/selection";
 import { prepareServiceBooking } from "@/services/bookings";
+import { rentalSelectionSchema } from "@/rental/selection";
+import { prepareRentalBooking, rentalOrderNoteText } from "@/rental/bookings";
+import { podSelectionSchema, podOrderNoteText } from "@/pod/selection";
+import { preparePodCustomisation } from "@/pod/customisation";
 
 export const manualCreateInputSchema = manualOrderSchema.extend({
   /** Client idempotency key (UUID). Absent -> the server mints one;
@@ -162,6 +167,28 @@ export const manualCreateInputSchema = manualOrderSchema.extend({
    *  and the ServiceBooking is written in that transaction. This is
    *  what lets phone/POS bookings land on the bookings board too. */
   booking: serviceBookingSelectionSchema.optional(),
+  /** Rental selection (ADV-23 vertical 3, wave 56, ADDITIVE): the
+   *  same shape public checkout accepts (src/rental/selection).
+   *  When present it runs through the identical gate as checkout —
+   *  module.rental OFF -> 403 FEATURE_LOCKED; ON -> validated
+   *  against rental.config + the order's items, window
+   *  availability counted inside the create transaction, and the
+   *  RentalBooking is written in that transaction. A configured
+   *  deposit is computed from the staff-entered line price (the
+   *  price this seam actually charges) and joins the order total
+   *  through the pricing pipeline's rentalDepositPoisha line. This
+   *  is what lets phone/POS rentals land on the rentals board too. */
+  rental: rentalSelectionSchema.optional(),
+  /** Print-on-demand customisation (ADV-23 vertical 5, wave 56,
+   *  ADDITIVE): the same shape public checkout accepts
+   *  (src/pod/selection). When present it runs through the
+   *  identical gate as checkout — module.print_on_demand OFF ->
+   *  403 FEATURE_LOCKED; ON -> validated against pod.config + the
+   *  order's items, frozen onto the order's create-time note, and
+   *  the per-item print fee joins the order total through the
+   *  pricing pipeline's printFeePoisha line. This is what lets
+   *  phone orders land on the print queue too. */
+  pod: podSelectionSchema.optional(),
   /** Order.source label for this channel. Default "manual". */
   source: z.string().min(1).max(32).optional(),
   /** Extra note line prepended to the order note — e.g. the inbox
@@ -189,6 +216,12 @@ export interface ManualCreatePricing {
   shippingPoisha: number;
   codFeePoisha: number;
   taxPoisha: number;
+  /** Rental security deposit included in totalPoisha (ADV-23
+   *  vertical 3) — 0 for every non-rental order. */
+  depositPoisha: number;
+  /** Print-on-demand print fee included in totalPoisha (ADV-23
+   *  vertical 5) — 0 for every non-POD order. */
+  printFeePoisha: number;
   totalPoisha: number;
 }
 
@@ -293,6 +326,25 @@ export async function createManualOrder(
   const bookingPrep = await prepareServiceBooking(data.booking, data.items);
   if (!bookingPrep.ok) {
     return fail(bookingPrep.httpStatus, bookingPrep.code, bookingPrep.message);
+  }
+  // Rental (ADV-23 vertical 3, wave 56): the identical gate the
+  // public checkout runs (shared helper — flag 403, config/items
+  // 400), so every createManualOrder consumer inherits the same
+  // rental behaviour. The deposit derives from the staff-entered
+  // line price in data.items — the price this seam charges.
+  const rentalPrep = await prepareRentalBooking(data.rental, data.items);
+  if (!rentalPrep.ok) {
+    return fail(rentalPrep.httpStatus, rentalPrep.code, rentalPrep.message);
+  }
+  // Print-on-demand (ADV-23 vertical 5, wave 56): the identical
+  // gate the public checkout runs (shared helper — flag 403,
+  // config/items 400), so every createManualOrder consumer
+  // inherits the same POD behaviour. The fee is per item on the
+  // line quantity — it never derives from a price, so it can run
+  // here with the other gates, before the replay check.
+  const podPrep = await preparePodCustomisation(data.pod, data.items);
+  if (!podPrep.ok) {
+    return fail(podPrep.httpStatus, podPrep.code, podPrep.message);
   }
   const idempotencyKey = data.idempotencyKey ?? randomUUID();
 
@@ -404,6 +456,14 @@ export async function createManualOrder(
     shippingPoisha: coupon.shippingPoisha,
     codFeePoisha: 0,
     taxBps: 0,
+    // ADV-23 rental (wave 56): the frozen deposit (0 for every
+    // non-rental order) — its own breakdown line, included in the
+    // grand total exactly like public checkout.
+    rentalDepositPoisha: rentalPrep.rental?.depositPoisha ?? 0,
+    // ADV-23 vertical 5 (wave 56): the frozen print fee (0 for
+    // every non-POD order) — its own breakdown line, included in
+    // the grand total exactly like public checkout.
+    printFeePoisha: podPrep.pod?.feePoisha ?? 0,
   });
 
   // Same fraud scoring + enforcement as public checkout. Signal details
@@ -496,6 +556,18 @@ export async function createManualOrder(
     data.shippingOverridePoisha !== rateShippingPoisha
       ? `ম্যানুয়াল অর্ডার — ডেলিভারি চার্জ কর্মীর নির্ধারিত ${data.shippingOverridePoisha} পয়সা (${shippingMethod} অনুযায়ী ${rateShippingPoisha} পয়সা)`
       : null,
+    // ADV-23 rental (wave 56): the rental window + deposit truth on
+    // the order timeline, same line public checkout records.
+    rentalPrep.rental ? rentalOrderNoteText(rentalPrep.rental) : null,
+    // ADV-23 vertical 5 (wave 56): the custom print on the order
+    // timeline, same note public checkout records (kept last so
+    // the `[pod:{...}]` machine line ends the note).
+    podPrep.pod
+      ? podOrderNoteText(
+          podPrep.pod,
+          items.find((i) => i.variantId === podPrep.pod?.variantId)?.productName ?? "",
+        )
+      : null,
     // Doc 18 F3: a suppressed advance link is stated on the order's
     // own timeline, so staff never wonder where the link went.
     data.advanceLinkPolicy === "suppress" && advanceRequirement.advanceRequiredPoisha > 0
@@ -551,6 +623,10 @@ export async function createManualOrder(
       // spec (null for every non-booking order) — written in the
       // create transaction, capacity enforced there.
       serviceBooking: bookingPrep.booking,
+      // ADV-23 vertical 3 (wave 56): the validated rental write
+      // spec (null for every non-rental order) — written in the
+      // create transaction, window availability enforced there.
+      rentalBooking: rentalPrep.rental,
     });
   } catch (e) {
     // Wave 15 product-type failures roll the create back — map them
@@ -561,6 +637,11 @@ export async function createManualOrder(
     // ADV-23 services (wave 56): the slot filled between validation
     // and the create — the transaction rolled back in full.
     if (e instanceof ServiceBookingCapacityError) {
+      return fail(409, e.code, e.message);
+    }
+    // ADV-23 rental (wave 56): every unit for the window went out
+    // between validation and the create — rolled back in full.
+    if (e instanceof RentalCapacityError) {
       return fail(409, e.code, e.message);
     }
     if (e instanceof PreorderCapError) {
@@ -661,6 +742,8 @@ export async function createManualOrder(
       shippingPoisha: pricing.shippingPoisha,
       codFeePoisha: pricing.codFeePoisha,
       taxPoisha: pricing.taxPoisha,
+      depositPoisha: pricing.rentalDepositPoisha,
+      printFeePoisha: pricing.printFeePoisha,
       totalPoisha: pricing.grandTotalPoisha,
     },
     shippingMethod,

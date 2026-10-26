@@ -30,6 +30,31 @@ export type PricingInput = {
    * 0. Defaults to 0.
    */
   giftCardAppliedPoisha?: number;
+  /**
+   * Rental security deposit (ADV-23 vertical 3): a REFUNDABLE
+   * charge added to the amount due when the order carries a rental
+   * (src/rental — the amount is computed by prepareRentalBooking
+   * from rental.config + the rental line's price and frozen on the
+   * RentalBooking row). It is added AFTER the gift-card stage on
+   * purpose: a gift card is store credit for purchases and can
+   * never cover a deposit the merchant must be able to hand back
+   * in cash. The breakdown reports it as its own line
+   * (ভাড়ার জামানত / Rental deposit). Defaults to 0 — every
+   * non-rental caller is unaffected.
+   */
+  rentalDepositPoisha?: number;
+  /**
+   * Print-on-demand print fee (ADV-23 vertical 5): the per-item
+   * fee from pod.config × the POD line's quantity, computed by
+   * preparePodCustomisation (src/pod) and frozen on the order's
+   * create-time note. It joins the pipeline at the SAME stage as
+   * the rental deposit — after the gift-card stage, as its own
+   * breakdown line (প্রিন্ট ফি / Print fee), included in the grand
+   * total — so every surface decomposes the two add-on charges
+   * identically. Defaults to 0 — every non-POD caller is
+   * unaffected.
+   */
+  printFeePoisha?: number;
 };
 
 export type PricingBreakdown = {
@@ -40,6 +65,12 @@ export type PricingBreakdown = {
   codFeePoisha: number;
   taxPoisha: number;
   giftCardAppliedPoisha: number;
+  /** Rental security deposit line (ADV-23) — 0 for non-rental
+   *  orders; see PricingInput.rentalDepositPoisha. */
+  rentalDepositPoisha: number;
+  /** Print-on-demand print fee line (ADV-23 vertical 5) — 0 for
+   *  non-POD orders; see PricingInput.printFeePoisha. */
+  printFeePoisha: number;
   grandTotalPoisha: number;
 };
 
@@ -60,7 +91,17 @@ export function computePricing(input: PricingInput): PricingBreakdown {
     preGiftCardTotalPoisha,
     Math.max(0, input.giftCardAppliedPoisha ?? 0),
   );
-  const grandTotalPoisha = preGiftCardTotalPoisha - giftCardAppliedPoisha;
+  // ADV-23 rental deposit: added after the gift-card stage (the
+  // gift-card cap above is computed WITHOUT it, so store credit can
+  // never absorb the refundable deposit) and included in the grand
+  // total the customer actually pays.
+  const rentalDepositPoisha = Math.max(0, input.rentalDepositPoisha ?? 0);
+  // ADV-23 vertical 5 print fee: same stage as the deposit (after
+  // the gift-card cap, which is computed without it) and included
+  // in the grand total the customer actually pays.
+  const printFeePoisha = Math.max(0, input.printFeePoisha ?? 0);
+  const grandTotalPoisha =
+    preGiftCardTotalPoisha - giftCardAppliedPoisha + rentalDepositPoisha + printFeePoisha;
   return {
     subtotalPoisha: input.itemsSubtotalPoisha,
     couponDiscountPoisha: input.couponDiscountPoisha,
@@ -69,6 +110,8 @@ export function computePricing(input: PricingInput): PricingBreakdown {
     codFeePoisha: input.codFeePoisha,
     taxPoisha,
     giftCardAppliedPoisha,
+    rentalDepositPoisha,
+    printFeePoisha,
     grandTotalPoisha,
   };
 }

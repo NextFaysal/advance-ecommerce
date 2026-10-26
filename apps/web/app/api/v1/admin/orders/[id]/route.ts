@@ -17,7 +17,10 @@
  *   order's gift-card coverage (from the GiftCardTransaction ledger,
  *   the PDF invoice's own helper) as data.giftCard, so the print
  *   centre can decompose the gift-card tender out of its residual
- *   line exactly like the PDF does
+ *   line exactly like the PDF does; the order's rental view rides
+ *   as data.rental (wave 56) and its print-on-demand view —
+ *   parsed from the create-time order note — as data.pod, only
+ *   when the order carries a custom print
  * - the transition is audited (writeAudit, best-effort)
  *
  * DB-BACKED: the order is loaded from and persisted to Prisma via
@@ -34,7 +37,8 @@ import { writeAudit } from "@/lib/audit";
 import { applyOrderTransition, getOrderByIdOrNo } from "@/orders/repository";
 import { getOrderAdvanceView } from "@/orders/advance";
 import { getOrderApprovalState } from "@/orders/approvals";
-import { getOrderGiftCardCoverage } from "@/pdf/invoice-data";
+import { getOrderGiftCardCoverage, getOrderRentalView } from "@/pdf/invoice-data";
+import { getOrderPodView } from "@/pod/customisation";
 import { getEntityCustomFieldValues } from "@/extensibility/custom-fields-store";
 import type { OrderStatus } from "@/orders/types";
 
@@ -76,11 +80,25 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   // when no card touched the order) — the same helper the PDF
   // invoice read model uses, so screen, print and PDF agree.
   const giftCard = await getOrderGiftCardCoverage(order.id);
+  // ADV-23 rental (wave 56): the order's RentalBooking view (frozen
+  // deposit + window + status; null for non-rental orders) rides as
+  // data.rental — the detail page + print centre decompose the
+  // deposit out of the money residual from it, the same helper the
+  // PDF invoice read model uses, so all three surfaces agree.
+  const rental = await getOrderRentalView(order.id);
+  // ADV-23 vertical 5 (wave 56): the order's print-on-demand view
+  // (frozen print text + colour + fee + printed attestation, parsed
+  // from the create-time order note — this vertical has no table)
+  // rides as data.pod, ONLY when the order carries a custom print
+  // (the customFields additive precedent). The detail page shows
+  // the print shop exactly what to print; the print centre
+  // decomposes the fee out of its residual from it.
+  const pod = await getOrderPodView(order.id);
   // ADV-26 (wave 53): merchant custom-field values ride along
   // additively — the key appears ONLY when this order has values.
   const customFields = await getEntityCustomFieldValues("order", order.id);
   return NextResponse.json({
-    data: { ...view, ...(advance ? { advance } : {}), approval, giftCard, ...(customFields ? { customFields } : {}) },
+    data: { ...view, ...(advance ? { advance } : {}), approval, giftCard, rental, ...(pod ? { pod } : {}), ...(customFields ? { customFields } : {}) },
     meta: { db: "PRISMA", source: "DATABASE" },
   });
 }
