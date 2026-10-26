@@ -52,7 +52,16 @@ export async function GET(req: Request) {
     return NextResponse.json(
       {
         data: result.products,
-        meta: { total: result.total, page: result.page, pageSize: result.pageSize, engine: result.engine },
+        meta: {
+          total: result.total,
+          page: result.page,
+          pageSize: result.pageSize,
+          engine: result.engine,
+          // Wave 57B: the Banglish canonical tokens the search
+          // service appended to the query (only when any mapped) —
+          // the /search page renders them as its "খুঁজছেন:" hint.
+          ...(result.banglish ? { banglish: result.banglish } : {}),
+        },
       },
       // Speed wave: identical for every visitor — let the CDN serve
       // it (60s fresh + SWR). Checkout re-validates price/stock live.

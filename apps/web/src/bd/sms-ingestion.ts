@@ -52,6 +52,12 @@
  *    receivedAt columns: records read back after a restart lose the
  *    candidate detail (proposedOrderId and duplicateOfId DO persist).
  *    Within a process, the store's cache returns the full record.
+ *  - Same drift for DEVICE provenance (wave 58): a record submitted
+ *    with a per-device token carries `device: { id, label }` in
+ *    process (the store cache + the create response), but the table
+ *    has no device column, so records read back from the DB report
+ *    no device. Persisting it would need a schema change; the
+ *    device card's lastSeenAt is the durable liveness record.
  */
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
@@ -164,6 +170,14 @@ export interface SmsIngestionRecord {
    * flow / sms-verify.
    */
   marksPaid: false;
+  /**
+   * Provenance (wave 58): the forwarder device that submitted this
+   * SMS, when the ingest request was authenticated with a per-device
+   * token (src/bd/devices.ts). Null/absent for staff-session ingests.
+   * PROCESS-ONLY — the sms_ingestions table has no device column, so
+   * DB-read records lose it (same drift as `candidates`; see header).
+   */
+  device?: { id: string; label: string } | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -354,6 +368,10 @@ export interface IngestSmsInput {
   /** ISO timestamp; defaults to now. */
   receivedAt?: string;
   providerHint?: MerchantProvider;
+  /** Set by the ingest route when the request was authenticated
+   *  with a per-device token — stamped onto the created record as
+   *  provenance. Never taken from the request body. */
+  device?: { id: string; label: string };
 }
 
 export interface IngestSmsDeps {
@@ -431,6 +449,7 @@ export async function ingestSms(input: IngestSmsInput, deps: IngestSmsDeps): Pro
       proposedOrderId: null,
       duplicateOfOrderId: null,
       marksPaid: false,
+      device: input.device ?? null,
     };
     await deps.store.add(record);
     return { record, duplicate: false };
@@ -472,6 +491,7 @@ export async function ingestSms(input: IngestSmsInput, deps: IngestSmsDeps): Pro
       proposedOrderId: null,
       duplicateOfOrderId: verifiedForOrderId,
       marksPaid: false,
+      device: input.device ?? null,
     };
     await deps.store.add(record);
     return { record, duplicate: false };
@@ -495,6 +515,7 @@ export async function ingestSms(input: IngestSmsInput, deps: IngestSmsDeps): Pro
     proposedOrderId: outcome === "MATCHED" ? (candidates[0]?.orderId ?? null) : null,
     duplicateOfOrderId: null,
     marksPaid: false,
+    device: input.device ?? null,
   };
   await deps.store.add(record);
   return { record, duplicate: false };

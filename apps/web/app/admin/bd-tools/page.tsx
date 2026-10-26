@@ -2,11 +2,15 @@
  * Admin > BD Tools — Agent 41 (BD differentiators E1/E2/E4 UI);
  * real data wiring completed 2026-10-25.
  *
- * One page, six tools:
+ * One page, seven tools:
  *  1. ঠিকানা পার্সার   — parseAddress() on staff-typed text (client panel;
  *     the prefilled text is example INPUT for trying the tool, not data)
  *  2. SMS যাচাই        — parseMerchantSms() on pasted SMS (client panel;
  *     same example-input note)
+ *  2b. ডিভাইস টোকেন   — per-device tokens for the Android SMS
+ *     forwarder (wave 58): provisioned here, hashes only at rest
+ *     (src/bd/devices.ts); the ingest route accepts them as
+ *     `Authorization: Bearer ae_dev_…` in place of a staff session
  *  3. পেমেন্ট লিংক     — DB-backed paymentLinkStore (payment_links table);
  *     the list is the newest real links across all orders (listRecent) —
  *     no demo link is seeded for this page any more
@@ -42,6 +46,7 @@ import { listDisputes, listInvoiceRuns, type CourierInvoiceRun } from "@/bd/cour
 import { listAttempts } from "@/integrations/sandbox/db-store";
 import { AddressParserPanel } from "./address-parser-panel";
 import { SmsVerifyPanel } from "./sms-verify-panel";
+import { SmsDevicesPanel } from "./sms-devices-panel";
 import { PaymentLinksPanel } from "./payment-links-panel";
 import { CashClosingPanel, type StoredClosingView } from "./cash-closing-panel";
 import { CourierAssignmentPanel } from "./courier-assignment-panel";
@@ -247,7 +252,7 @@ export default async function BdToolsPage() {
     <div className="space-y-6">
       <PageHeader
         title="বিডি টুলস"
-        description="বাংলাদেশের জন্য বিশেষ টুল — ঠিকানা পার্সার, SMS যাচাই, পেমেন্ট লিংক, দৈনিক ক্যাশ ক্লোজিং, কুরিয়ার রিকনসিলিয়েশন ও অটো কুরিয়ার বাছাই। সব তথ্য ডাটাবেস থেকে; পার্সার দুটি স্টাফের লেখা টেক্সটে চলে (উদাহরণ ইনপুটসহ)।"
+        description="বাংলাদেশের জন্য বিশেষ টুল — ঠিকানা পার্সার, SMS যাচাই, SMS ফরওয়ার্ডার ডিভাইস টোকেন, পেমেন্ট লিংক, দৈনিক ক্যাশ ক্লোজিং, কুরিয়ার রিকনসিলিয়েশন ও অটো কুরিয়ার বাছাই। সব তথ্য ডাটাবেস থেকে; পার্সার দুটি স্টাফের লেখা টেক্সটে চলে (উদাহরণ ইনপুটসহ)।"
         breadcrumb="বিক্রয় / বিডি টুলস"
       />
       <Card>
@@ -255,6 +260,7 @@ export default async function BdToolsPage() {
           tabs={[
             { id: "address", label: "ঠিকানা পার্সার", content: <AddressParserPanel /> },
             { id: "sms", label: "SMS যাচাই", content: <SmsVerifyPanel /> },
+            { id: "sms-devices", label: "ডিভাইস টোকেন", content: <SmsDevicesPanel /> },
             { id: "payment-links", label: "পেমেন্ট লিংক", content: <PaymentLinksPanel initialLinks={links} /> },
             {
               id: "cash-closing",

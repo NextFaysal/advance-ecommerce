@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authenticateDeviceToken, type SmsDeviceAuth } from "@/bd/devices";
 import { dbTrxRegistry } from "@/bd/sms-trx-registry-db";
 import {
   candidateFromOrder,
@@ -14,14 +15,28 @@ import { listOrders } from "@/orders/repository";
 import { guardError, requireAdmin } from "@/reports/guard";
 
 // SMS ingestion — Agent 49, Step 44 (E1 follow-up).
-// GET:  RBAC payments.verify_manual. Lists ingestion records (newest
-//       first, ?outcome= filter, ?limit=). Phones are masked in every
-//       record by construction — the store never holds a full phone.
-// POST: RBAC payments.verify_manual. Body is one SMS item
-//       { smsText, source, receivedAt?, providerHint? } or a batch
-//       { items: [...] } (max 50). Batch items are validated and
-//       ingested one by one: a bad item yields its own error entry and
-//       NEVER fails the batch.
+// GET:  RBAC payments.verify_manual (staff session ONLY — a device
+//       token may submit SMS, never read the record list). Lists
+//       ingestion records (newest first, ?outcome= filter, ?limit=).
+//       Phones are masked in every record by construction — the
+//       store never holds a full phone.
+// POST: EITHER a staff session (RBAC payments.verify_manual, the
+//       admin UI path) OR a per-device token (wave 58):
+//       `Authorization: Bearer ae_dev_…` provisioned in Admin >
+//       BD Tools > ডিভাইস টোকেন (src/bd/devices.ts). Precedence: a
+//       request CARRYING an Authorization header is authenticated
+//       as a device ONLY — an invalid/revoked token answers 401 and
+//       never falls back to the session. No header -> session path,
+//       unchanged. Device-authed records keep source
+//       "android_forwarder" and gain `device: { id, label }`
+//       provenance (process-only — see src/bd/sms-ingestion.ts).
+//       Body is one SMS item { smsText, source, receivedAt?,
+//       providerHint? } or a batch { items: [...] } (max 50). Batch
+//       items are validated and ingested one by one: a bad item
+//       yields its own error entry and NEVER fails the batch. There
+//       is no rate limiter on this route for either auth path — the
+//       zod body caps (50 items, 2000-char SMS) and (provider,
+//       TrxID) dedupe apply identically to both.
 //
 // Persistence: DB-backed (DB swap 2026-10-24) — records live in the
 // sms_ingestions table with UNIQUE(provider, trxId); matching runs
@@ -59,8 +74,24 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const guard = await requireAdmin("payments.verify_manual");
-  if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
+  // Auth (see header): Authorization header present -> device token
+  // only, fail-closed. Absent -> the original staff-session guard.
+  let device: SmsDeviceAuth | null = null;
+  if (req.headers.get("authorization")) {
+    device = await authenticateDeviceToken(req);
+    if (!device) {
+      return NextResponse.json(
+        { error: { code: "DEVICE_TOKEN_INVALID", message: "Device token missing, unknown, or revoked." } },
+        { status: 401 },
+      );
+    }
+  } else {
+    const guard = await requireAdmin("payments.verify_manual");
+    if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
+  }
+  const meta = device
+    ? { ...META, auth: { kind: "device" as const, deviceId: device.id, deviceLabel: device.label } }
+    : META;
   const body: unknown = await req.json().catch(() => null);
   const parsed = ingestSmsRequestSchema.safeParse(body);
   if (!parsed.success) {
@@ -79,8 +110,8 @@ export async function POST(req: Request) {
   };
 
   if (!isBatchRequest(parsed.data)) {
-    const result = await ingestSms(parsed.data, deps);
-    return NextResponse.json({ data: publicResult(result), meta: META }, { status: 201 });
+    const result = await ingestSms(device ? { ...parsed.data, device } : parsed.data, deps);
+    return NextResponse.json({ data: publicResult(result), meta }, { status: 201 });
   }
 
   // Batch mode: validate each item on its own so one malformed SMS
@@ -93,7 +124,7 @@ export async function POST(req: Request) {
       results.push({ index, record: null, duplicate: false, error: "INVALID_ITEM", issues: item.error.issues });
       continue;
     }
-    const result = await ingestSms(item.data, deps);
+    const result = await ingestSms(device ? { ...item.data, device } : item.data, deps);
     results.push({ index, record: result.record, duplicate: result.duplicate, error: null, issues: null });
   }
   const counts: Record<string, number> = {};
@@ -101,5 +132,5 @@ export async function POST(req: Request) {
     const key = entry.record ? entry.record.outcome : "INVALID_ITEM";
     counts[key] = (counts[key] ?? 0) + 1;
   }
-  return NextResponse.json({ data: { results, counts }, meta: META }, { status: 201 });
+  return NextResponse.json({ data: { results, counts }, meta }, { status: 201 });
 }

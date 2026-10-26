@@ -35,7 +35,8 @@ export type SettingCategory =
   | "notification"
   | "branding"
   | "seo"
-  | "accounting";
+  | "accounting"
+  | "ai";
 
 export const STORAGE_PROVIDERS = ["r2", "s3"] as const;
 export const EMAIL_PROVIDERS = ["resend", "smtp"] as const;
@@ -125,6 +126,7 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   // key holds a valid rate in the DB; the ERP sales-VAT report reads
   // only orders that carry a recorded split.
   "accounting.vat_rate_bps": { category: "accounting", value: "", isPublic: false },
+  "ai.api_key": { category: "ai", value: "", isPublic: false },
   // Support ticket SLA targets, in HOURS (ADV-16 remainder —
   // src/support/sla.ts). First-response = creation → first STAFF
   // message; resolution = creation → CLOSED. Computed at READ time

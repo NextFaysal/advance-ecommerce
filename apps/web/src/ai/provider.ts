@@ -47,6 +47,30 @@ export class LiveAiProvider implements AiProvider {
     return process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
   }
 
+  /**
+   * True when an API key resolves (env AI_API_KEY / OPENAI_API_KEY, or
+   * the Admin Setting `ai.api_key`). Wave 57 (src/ai/content.ts) probes
+   * this BEFORE generating: the AiProvider contract below silently
+   * falls back to deterministic templates when unconfigured, and the
+   * module.ai_content routes must answer an honest AI_NOT_CONFIGURED
+   * instead of serving template text as AI output.
+   */
+  async isConfigured(): Promise<boolean> {
+    return (await this.getResolvedApiKey()) !== undefined;
+  }
+
+  /**
+   * Raw JSON-mode chat completion — the thinnest adapter surface over
+   * callLlm for generators whose output shape the AiProvider contract
+   * does not cover (bilingual description+SEO drafts in
+   * src/ai/content.ts). Returns the raw message content, or null when
+   * unconfigured OR the call failed; callers distinguish the two via
+   * isConfigured().
+   */
+  async generateJson(systemPrompt: string, userPrompt: string): Promise<string | null> {
+    return this.callLlm(systemPrompt, userPrompt);
+  }
+
   private async callLlm(systemPrompt: string, userPrompt: string): Promise<string | null> {
     const key = await this.getResolvedApiKey();
     if (!key) return null;
@@ -184,5 +208,7 @@ export class LiveAiProvider implements AiProvider {
   }
 }
 
-/** Singleton instance used across admin AI routes */
-export const aiProvider: AiProvider = new LiveAiProvider();
+/** Singleton instance used across admin AI routes. Typed as the
+ *  concrete class so wave-57 callers can reach isConfigured() /
+ *  generateJson(); it still satisfies the AiProvider contract. */
+export const aiProvider: LiveAiProvider = new LiveAiProvider();

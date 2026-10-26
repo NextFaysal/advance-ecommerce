@@ -12,29 +12,47 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ProductCard } from "@/catalog/ProductCard";
-import { expandQueryTokens } from "@/catalog/search";
 import type { PublicProduct } from "@/catalog/types";
+
+/** One Banglish mapping the server applied (wave 57B, meta.banglish). */
+interface BanglishMapped {
+  from: string;
+  to: string;
+}
 
 type SearchState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "done"; products: PublicProduct[]; engine: "meilisearch" | "postgres" }
+  | { status: "done"; products: PublicProduct[]; engine: "meilisearch" | "postgres"; mapped: BanglishMapped[] }
   | { status: "error" };
 
 async function fetchSearchPage(
   q: string,
-): Promise<{ products: PublicProduct[]; engine: "meilisearch" | "postgres" }> {
+): Promise<{ products: PublicProduct[]; engine: "meilisearch" | "postgres"; mapped: BanglishMapped[] }> {
   const query = new URLSearchParams({ q, page: "1", pageSize: "100" });
   const res = await fetch(`/api/v1/public/products?${query}`);
   if (!res.ok) throw new Error(`GET products -> ${res.status}`);
   const json: unknown = await res.json();
   const data = (json as { data?: unknown }).data;
   const products = Array.isArray(data) ? (data as PublicProduct[]) : [];
-  const engineRaw = (json as { meta?: { engine?: unknown } }).meta?.engine;
+  const meta = (json as { meta?: { engine?: unknown; banglish?: { mapped?: unknown } } }).meta;
+  const engineRaw = meta?.engine;
+  // The Banglish hint shows the mappings the SERVER actually applied
+  // (meta.banglish from the search service), not a client-side guess:
+  // exactly the canonical tokens that were appended to the query.
+  const mappedRaw = meta?.banglish?.mapped;
+  const mapped: BanglishMapped[] = Array.isArray(mappedRaw)
+    ? mappedRaw.filter(
+        (m): m is BanglishMapped =>
+          typeof m === "object" && m !== null &&
+          typeof (m as { from?: unknown }).from === "string" &&
+          typeof (m as { to?: unknown }).to === "string",
+      )
+    : [];
   // The old server page distinguished only Meilisearch vs the
   // Postgres fallback — anything that is not Meilisearch is shown as
   // the fallback, never dressed up as the real engine.
-  return { products, engine: engineRaw === "meilisearch" ? "meilisearch" : "postgres" };
+  return { products, engine: engineRaw === "meilisearch" ? "meilisearch" : "postgres", mapped };
 }
 
 export function SearchBrowser() {
@@ -61,7 +79,7 @@ export function SearchBrowser() {
     };
   }, [q]);
 
-  const expansions = q ? expandQueryTokens(q).filter((t) => t !== q.toLowerCase()) : [];
+  const mapped = state.status === "done" ? state.mapped : [];
   const products = state.status === "done" ? state.products : [];
 
   return (
@@ -84,9 +102,9 @@ export function SearchBrowser() {
         </button>
       </form>
 
-      {expansions.length > 0 && (
+      {mapped.length > 0 && (
         <p className="mt-3 text-sm text-slate-500">
-          আরও খুঁজুন: {expansions.join(", ")} (Banglish → বাংলা synonym)
+          খুঁজছেন: {mapped.map((m) => `${m.to} (${m.from}-এর জন্য)`).join(", ")}
         </p>
       )}
 

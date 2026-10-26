@@ -19,6 +19,12 @@
 // `engine` ("meilisearch" | "postgres"); routes/pages surface it in
 // their meta/UI instead of pretending. Non-query list requests skip
 // Meilisearch entirely and are served (and labelled) as Postgres.
+//
+// Before either engine sees the query, it passes through the
+// deterministic Banglish expansion (src/search/banglish.ts, wave
+// 57B): Romanised tokens gain their canonical Bangla + English
+// forms, appended only — so both engines share the same recall
+// gain and the applied mapping is reported as `banglish`.
 
 import type { CatalogRepository } from "./service";
 import { getPublicProducts } from "./service";
@@ -26,6 +32,8 @@ import type { ProductFilter } from "./search";
 import { searchMeilisearchProducts } from "./indexer";
 import { toPublicProduct } from "./types";
 import type { PublicProduct } from "./types";
+import { expandQuery } from "../search/banglish";
+import type { BanglishMappedToken } from "../search/banglish";
 
 export type SearchEngine = "meilisearch" | "postgres";
 
@@ -35,6 +43,14 @@ export interface PublicSearchResult {
   page: number;
   pageSize: number;
   engine: SearchEngine;
+  /**
+   * Banglish expansion actually applied to this search (wave 57B):
+   * the canonical tokens that were APPENDED to the user's query.
+   * Present only when at least one token mapped; routes surface it
+   * in meta and the /search page shows it as a hint. The user's own
+   * tokens are never removed (see src/search/banglish.ts).
+   */
+  banglish?: { mapped: BanglishMappedToken[] };
 }
 
 export async function searchPublicProducts(
@@ -45,6 +61,19 @@ export async function searchPublicProducts(
   const pageSize = Math.min(100, Math.max(1, filter.pageSize ?? 20));
   const query = filter.query?.trim() ?? "";
 
+  // Banglish expansion (wave 57B) happens HERE — the one seam both
+  // engines pass through: the expanded query (user tokens + appended
+  // canonical Bangla/English tokens) drives Meilisearch AND the
+  // Postgres fallback, so both engines gain the same recall. The
+  // caller's filter is left untouched; only the query handed to the
+  // engines changes, and the mapping is reported on the result.
+  const expansion = query ? expandQuery(query) : null;
+  const effectiveQuery = expansion ? expansion.expanded : query;
+  const banglishMeta =
+    expansion && expansion.mappedTokens.length > 0
+      ? { mapped: expansion.mappedTokens }
+      : undefined;
+
   // Attribute filters (wave 14) live only in Postgres (the Meilisearch
   // document carries no variant attributes), so an attr-filtered
   // request goes straight to the Postgres path below.
@@ -52,7 +81,7 @@ export async function searchPublicProducts(
     filter.attributeFilters !== undefined && Object.keys(filter.attributeFilters).length > 0;
 
   if (query && !hasAttributeFilters) {
-    const outcome = await searchMeilisearchProducts({ ...filter, query, page, pageSize });
+    const outcome = await searchMeilisearchProducts({ ...filter, query: effectiveQuery, page, pageSize });
     if (outcome.ok) {
       // Hydrate in Meilisearch ranking order; drop anything Postgres
       // says is missing or not ACTIVE (the stale-document gate). The
@@ -101,12 +130,24 @@ export async function searchPublicProducts(
           hydrated.push(toPublicProduct(product));
         }
       }
-      return { products: hydrated, total: outcome.total, page, pageSize, engine: "meilisearch" };
+      return {
+        products: hydrated,
+        total: outcome.total,
+        page,
+        pageSize,
+        engine: "meilisearch",
+        ...(banglishMeta ? { banglish: banglishMeta } : {}),
+      };
     }
     // Fall through to Postgres on any Meilisearch failure — search
     // availability never depends on the search engine being up.
   }
 
-  const fallback = await getPublicProducts(repo, { ...filter, page, pageSize });
-  return { ...fallback, engine: "postgres" };
+  const fallback = await getPublicProducts(repo, {
+    ...filter,
+    ...(query ? { query: effectiveQuery } : {}),
+    page,
+    pageSize,
+  });
+  return { ...fallback, engine: "postgres", ...(banglishMeta ? { banglish: banglishMeta } : {}) };
 }

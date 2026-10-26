@@ -345,6 +345,30 @@ function SectionHeading({
 }
 
 /**
+ * Wave 57: status line under the AI draft buttons. Errors are the
+ * SERVER's message verbatim (e.g. the 503 AI_NOT_CONFIGURED text) —
+ * never replaced with a generic "failed" label, so an unconfigured
+ * provider is honestly visible instead of looking like a bug.
+ */
+function AiDraftStatus({ error, note }: { error: string | null; note: string | null }) {
+  if (error) {
+    return (
+      <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm leading-relaxed text-rose-700">
+        {error}
+      </p>
+    );
+  }
+  if (note) {
+    return (
+      <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm leading-relaxed text-emerald-700">
+        {note}
+      </p>
+    );
+  }
+  return null;
+}
+
+/**
  * Description textarea with a markdown-subset toolbar + live preview
  * (wave 14). The syntax inserted here is exactly what
  * src/catalog/description.ts renders — the PDP uses the same
@@ -580,6 +604,76 @@ export function ProductEditor({
   const [seoDescriptionBn, setSeoDescriptionBn] = useState(initial?.seoDescription?.bn ?? "");
   const [seoDescriptionEn, setSeoDescriptionEn] = useState(initial?.seoDescription?.en ?? "");
   const [ogImage, setOgImage] = useState(initial?.ogImage ?? "");
+
+  // --- AI content drafts (wave 57, module.ai_content) -----------------------
+  // The buttons call the draft-only AI routes and fill the ORDINARY
+  // form state above — nothing auto-persists; saving still goes
+  // through the normal product save after human review.
+  const [aiBusy, setAiBusy] = useState<"description" | "seo" | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiNote, setAiNote] = useState<string | null>(null);
+
+  async function requestAiDraft(kind: "description" | "seo") {
+    if (aiBusy) return;
+    setAiBusy(kind);
+    setAiError(null);
+    setAiNote(null);
+    try {
+      const category = categoryOptions.find((c) => c.slug === categorySlug);
+      const name = titleBn.trim() || titleEn.trim();
+      const res = await fetch(
+        kind === "description"
+          ? "/api/v1/admin/products/ai-description"
+          : "/api/v1/admin/products/ai-seo",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...(mode === "edit" && productId ? { productId } : {}),
+            ...(name ? { productName: name } : {}),
+            ...(titleEn.trim() ? { productNameEn: titleEn.trim() } : {}),
+            ...(category ? { categoryName: category.nameBn } : {}),
+            ...(brandName.trim() ? { brandName: brandName.trim() } : {}),
+            keywords: tagsText
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean),
+          }),
+        },
+      );
+      const json = (await res.json().catch(() => null)) as {
+        data?: {
+          bn?: string;
+          en?: string;
+          seoTitleBn?: string;
+          seoTitleEn?: string;
+          seoDescriptionBn?: string;
+          seoDescriptionEn?: string;
+        };
+        error?: { message?: string };
+      } | null;
+      if (!res.ok || !json?.data) {
+        // Server message verbatim — the 503 AI_NOT_CONFIGURED text
+        // must reach the admin exactly as the API states it.
+        setAiError(json?.error?.message ?? `AI অনুরোধ ব্যর্থ হয়েছে (HTTP ${res.status})।`);
+        return;
+      }
+      if (kind === "description") {
+        if (json.data.bn) setDescriptionBn(json.data.bn);
+        if (json.data.en) setDescriptionEn(json.data.en);
+      } else {
+        if (json.data.seoTitleBn) setSeoTitleBn(json.data.seoTitleBn);
+        if (json.data.seoTitleEn) setSeoTitleEn(json.data.seoTitleEn);
+        if (json.data.seoDescriptionBn) setSeoDescriptionBn(json.data.seoDescriptionBn);
+        if (json.data.seoDescriptionEn) setSeoDescriptionEn(json.data.seoDescriptionEn);
+      }
+      setAiNote("AI খসড়া বসানো হয়েছে — যাচাই করে তারপর সংরক্ষণ করুন। এখনো কিছুই সেভ হয়নি।");
+    } catch {
+      setAiError("AI সার্ভিসে পৌঁছানো যায়নি — নেটওয়ার্ক সমস্যা। আবার চেষ্টা করুন।");
+    } finally {
+      setAiBusy(null);
+    }
+  }
 
   // --- Wave 14: physicals, low-stock, scheduling, content -------------------
   const [weightGrams, setWeightGrams] = useState(
@@ -2730,6 +2824,23 @@ export function ProductEditor({
           </section>
 
           <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                disabled={aiBusy !== null}
+                onClick={() => requestAiDraft("description")}
+                className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {aiBusy === "description" ? "AI তৈরি করছে…" : "AI দিয়ে বিবরণ তৈরি করুন"}
+              </button>
+              <p className="min-w-0 flex-1 text-xs leading-relaxed text-text-subtle">
+                AI বাংলা + English বিবরণের খসড়া তৈরি করে নিচের ঘরে বসিয়ে দেবে — সংরক্ষণের আগে অবশ্যই যাচাই করুন।
+              </p>
+            </div>
+            <AiDraftStatus error={aiError} note={aiNote} />
+          </section>
+
+          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
             <DescriptionField
               label="বিবরণ (বাংলা) *"
               value={descriptionBn}
@@ -2928,7 +3039,21 @@ export function ProductEditor({
 
       {tab === "seo" && (
         <section className="mt-5 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
-          <SectionHeading glyph="search" title="SEO" />
+          <SectionHeading
+            glyph="search"
+            title="SEO"
+            action={
+              <button
+                type="button"
+                disabled={aiBusy !== null}
+                onClick={() => requestAiDraft("seo")}
+                className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {aiBusy === "seo" ? "AI তৈরি করছে…" : "AI দিয়ে SEO তৈরি করুন"}
+              </button>
+            }
+          />
+          <AiDraftStatus error={aiError} note={aiNote} />
           <div className="grid gap-4 md:grid-cols-2">
           <label className={labelCls}>
             SEO টাইটেল (বাংলা)

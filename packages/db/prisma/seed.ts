@@ -170,6 +170,7 @@ const FEATURE_FLAGS: Array<{ key: string; description: string }> = [
   { key: "module.subscription_boxes", description: "Subscription boxes: curated recurring boxes with per-cycle rotating contents on the subscription engine (v2 add-on, ADV-23)" },
   { key: "module.print_on_demand", description: "Print-on-demand: custom print text + colour on listed variants, per-item print fee, admin print queue (v2 add-on, ADV-23)" },
   { key: "module.courses", description: "Courses / LMS-lite: sell DIGITAL course variants, buyers get order-derived access to module/lesson content (v2 add-on, ADV-23)" },
+  { key: "module.ai_content", description: "AI content: provider-backed bilingual product description + SEO drafts for the product editor (v2 add-on, ADV-24)" },
 ];
 
 const DEFAULT_SETTINGS: Array<{ key: string; value: string; category: string; isPublic: boolean }> = [
