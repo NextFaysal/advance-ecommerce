@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { ADMIN_NAV, groupBySection, isLockedAddOn, type AdminNavItem } from "@/admin-nav/config";
 import { AdminCommandPalette, CommandPaletteTrigger } from "@/admin/command-palette";
+import { PresenceHeartbeatGlobal } from "./presence-heartbeat";
 
 // Navigation comes from src/admin-nav/config.ts (single source).
 // Showing an item here is UX only — every admin API route still enforces
@@ -98,6 +99,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="min-h-screen bg-bg-app text-text-main">
       <AdminCommandPalette />
+      {/* Staff presence heartbeat for the current /admin path
+          (renders nothing; auth screens returned above, so they
+          never heartbeat). */}
+      <PresenceHeartbeatGlobal />
       <div className="flex">
         {/* Sidebar — full-height, sticky; hidden on phone (bottom nav instead) */}
         <aside className="sticky top-0 hidden h-screen w-[272px] shrink-0 flex-col border-r border-border bg-card md:flex">

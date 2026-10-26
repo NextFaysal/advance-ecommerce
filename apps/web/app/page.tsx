@@ -13,6 +13,7 @@ import { marketingMechanicsEnabled } from "@/marketing/docs";
 import { getRunningHeroExperiment } from "@/marketing/experiments";
 import { HeroExperiment } from "@/marketing/components/HeroExperiment";
 import { SpinWheelSection } from "@/marketing/components/SpinWheelSection";
+import { RecentOrdersSection } from "@/marketing/components/RecentOrdersSection";
 import { VisitorIdBootstrap } from "@/marketing/components/VisitorIdBootstrap";
 import { listHomepageReviews } from "@/reviews/store";
 import { Stars } from "@/reviews/components/Stars";
@@ -328,6 +329,14 @@ export default async function Home() {
           marketing-mechanics flag is on and the wheel is enabled. */}
       <SpinWheelSection />
       {mechanicsOn ? <VisitorIdBootstrap /> : null}
+
+      {/* ---------- Recent orders (doc 23 wave 60, honest social proof) ----------
+          Self-gating server wrapper: renders only when the
+          module.social_proof flag is on. The ticker fetches the
+          edge-cached recent-orders API client-side (this page
+          stays static) and renders nothing until >= 3 REAL
+          recent orders come back — no filler, ever. */}
+      <RecentOrdersSection />
 
       {/* ---------- Trust row ---------- */}
       <Reveal delay={60}>

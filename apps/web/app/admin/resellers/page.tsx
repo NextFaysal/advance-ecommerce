@@ -6,6 +6,7 @@ import { computeMargin } from "@/reseller/pricing";
 import { formatBdt } from "@/checkout/pricing";
 import { CreateResellerForm } from "./create-reseller-form";
 import PayoutActions from "./payout-actions";
+import { RevokeResellerSessions } from "./revoke-sessions";
 
 // Resellers admin — Agent 14, Step 46 (A5).
 // Locked state: while module.reseller is OFF (the seeded default — this is a
@@ -124,6 +125,7 @@ export default async function AdminResellersPage() {
           </tbody>
         </table>
       )}
+      <RevokeResellerSessions />
     </main>
   );
 }

@@ -14,6 +14,7 @@ import { listVendorKyc } from "@/vendors/kyc-store";
 import KycControl from "./kyc-control";
 import VendorDocumentsControl from "./documents-control";
 import VendorPayoutActions from "./payout-actions";
+import RevokeVendorSessions from "./revoke-sessions";
 import type { VendorPayoutSummary } from "@/vendors/types";
 
 // Multi-vendor admin — Step 48 (A12).
@@ -257,6 +258,8 @@ export default async function AdminVendorsPage() {
       )}
 
       <VendorPayoutActions />
+
+      <RevokeVendorSessions />
     </main>
   );
 }

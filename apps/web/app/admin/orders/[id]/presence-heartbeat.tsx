@@ -1,24 +1,24 @@
 "use client";
 
 /**
- * Presence heartbeat + edit-conflict WARNING — admin order detail
- * rail (ADV-27 remainder, doc 23 wave 53-4).
+ * Presence edit-conflict WARNING — admin order detail rail
+ * (ADV-27 remainder, doc 23 wave 53-4).
  *
  * What it does:
- * - Heartbeats POST /api/v1/admin/presence { path: /admin/orders/<id> }
- *   on mount and every 30s (server TTL is 75s, so a closed tab fades
- *   out on its own).
- * - Polls GET /api/v1/admin/presence?path=<same> every 15s. The API
- *   returns `onPath` = OTHER staff currently on this order (the
- *   caller is excluded server-side).
+ * - Polls GET /api/v1/admin/presence?path=/admin/orders/<id> every
+ *   15s. The API returns `onPath` = OTHER staff currently on this
+ *   order (the caller is excluded server-side).
  * - If anyone else is here, renders an amber WARNING banner naming
  *   them ("X এই অর্ডারটি দেখছেন"). It is a warning ONLY — it never
  *   locks, blocks, or disables any editing control.
  *
- * Scope note: this wave mounts the heartbeat ONLY on the order
- * detail page. A layout-wide heartbeat (which would make presence
- * cover every admin page) is a parent decision — the API + service
- * already support any /admin path.
+ * The heartbeat itself is NOT sent from here anymore: the admin
+ * layout mounts PresenceHeartbeatGlobal (app/admin/presence-heartbeat),
+ * which heartbeats the current /admin path on every admin page —
+ * including this one — so this component only polls and displays.
+ * (Wave 53 sent the heartbeat from this component because the layout
+ * mount did not exist yet; behaviour for the order page is
+ * unchanged: same path heartbeated, same 30s cadence, same TTL.)
  *
  * Failure mode: presence is Redis-backed with a silent fallback —
  * if every call fails, the banner just never appears. No error is
@@ -26,7 +26,6 @@
  */
 import { useCallback, useEffect, useState } from "react";
 
-const HEARTBEAT_MS = 30_000;
 const POLL_MS = 15_000;
 
 interface PresenceEntry {
@@ -39,19 +38,6 @@ interface PresenceEntry {
 export function PresenceHeartbeat({ orderId }: { orderId: string }) {
   const path = `/admin/orders/${orderId}`;
   const [others, setOthers] = useState<PresenceEntry[]>([]);
-
-  const heartbeat = useCallback(async () => {
-    try {
-      await fetch("/api/v1/admin/presence", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ path }),
-        cache: "no-store",
-      });
-    } catch {
-      // Presence is best-effort — never surface an error for it.
-    }
-  }, [path]);
 
   const poll = useCallback(async () => {
     try {
@@ -67,15 +53,12 @@ export function PresenceHeartbeat({ orderId }: { orderId: string }) {
   }, [path]);
 
   useEffect(() => {
-    void heartbeat();
     void poll();
-    const heartbeatTimer = setInterval(() => void heartbeat(), HEARTBEAT_MS);
     const pollTimer = setInterval(() => void poll(), POLL_MS);
     return () => {
-      clearInterval(heartbeatTimer);
       clearInterval(pollTimer);
     };
-  }, [heartbeat, poll]);
+  }, [poll]);
 
   if (others.length === 0) return null;
 

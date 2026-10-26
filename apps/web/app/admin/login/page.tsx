@@ -21,8 +21,12 @@
  *    Design System (Step 5, another agent's slice) will replace them
  *    with shared components; do not duplicate a design system here.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import {
+  browserSupportsWebAuthn,
+  startAuthentication,
+} from "@simplewebauthn/browser";
 
 type Step = "login" | "totp" | "error";
 
@@ -34,6 +38,65 @@ export default function AdminLoginPage() {
   const [code, setCode] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [passkeySupported, setPasskeySupported] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+
+  useEffect(() => {
+    setPasskeySupported(browserSupportsWebAuthn());
+  }, []);
+
+  // Passkey sign-in (doc 23 wave 55): options → authenticator →
+  // verify, via /api/v1/admin/auth/passkey/login/*. Any failure
+  // leaves the staff member on this page with an honest line and the
+  // password form untouched — passkey is an additional door, never
+  // the only one.
+  async function handlePasskey() {
+    setMessage("");
+    if (identifier.trim() === "") {
+      setMessage("আগে ইমেইল / ফোন লিখুন, তারপর পাসকি দিয়ে চেষ্টা করুন।");
+      return;
+    }
+    setPasskeyBusy(true);
+    try {
+      const optionsRes = await fetch("/api/v1/admin/auth/passkey/login/options", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier }),
+      });
+      const optionsJson = (await optionsRes.json().catch(() => ({}))) as {
+        data?: { options: Parameters<typeof startAuthentication>[0]["optionsJSON"] };
+        error?: { message?: string };
+      };
+      if (!optionsRes.ok || !optionsJson.data?.options) {
+        setMessage(optionsJson.error?.message ?? "Login failed. Please try again.");
+        return;
+      }
+      let assertion;
+      try {
+        assertion = await startAuthentication({ optionsJSON: optionsJson.data.options });
+      } catch {
+        setMessage("পাসকি লগইন সম্পন্ন হয়নি — প্রম্পট বাতিল হয়ে থাকতে পারে। পাসওয়ার্ড দিয়ে লগইন করুন।");
+        return;
+      }
+      const verifyRes = await fetch("/api/v1/admin/auth/passkey/login/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ response: assertion }),
+      });
+      if (!verifyRes.ok) {
+        const verifyJson = (await verifyRes.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        setMessage(verifyJson.error?.message ?? "Login failed. Please try again.");
+        return;
+      }
+      window.location.href = "/admin";
+    } catch {
+      setMessage("Network error. Check your connection and try again.");
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
 
   async function handleLogin(event: FormEvent) {
     event.preventDefault();
@@ -178,6 +241,23 @@ export default function AdminLoginPage() {
               >
                 {loading ? "লগইন হচ্ছে…" : "লগইন"}
               </button>
+              {passkeySupported && (
+                <>
+                  <div className="flex items-center gap-3 pt-1" aria-hidden="true">
+                    <span className="h-px flex-1 bg-border" />
+                    <span className="text-xs text-text-muted">অথবা</span>
+                    <span className="h-px flex-1 bg-border" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handlePasskey()}
+                    disabled={passkeyBusy}
+                    className="h-12 w-full rounded-xl border border-border bg-bg-app text-sm font-semibold text-text-main transition hover:border-brand-500 disabled:opacity-60"
+                  >
+                    {passkeyBusy ? "পাসকি যাচাই হচ্ছে…" : "পাসকি দিয়ে প্রবেশ"}
+                  </button>
+                </>
+              )}
             </form>
           )}
 

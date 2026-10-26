@@ -195,6 +195,7 @@ model User {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
   sessions            Session[]
+  webAuthnCredentials StaffWebAuthnCredential[]
   auditLogs           AuditLog[]
   otpCodes            OtpCode[]
   passwordResetTokens PasswordResetToken[]
@@ -252,6 +253,31 @@ model Session {
   createdAt  DateTime  @default(now())
   @@index([userId])
   @@index([expiresAt])
+}
+
+// Staff passkeys (WebAuthn) — doc 23 wave 55, staff-first.
+// One row per registered authenticator. The credential id and COSE
+// public key are NOT secrets (a public key is safe to store plain);
+// the private key never leaves the authenticator. publicKey is stored
+// base64-encoded because SimpleWebAuthn hands it back as raw bytes.
+// counter is the authenticator's signature counter, advanced on every
+// successful assertion and compared by the verify call (clone
+// detection). Deleting the staff user cascades — a departed staff
+// member's passkeys must die with the account.
+model StaffWebAuthnCredential {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId String    @unique
+  publicKey    String
+  counter      Int       @default(0)
+  // JSON array of AuthenticatorTransport strings, e.g. ["internal","hybrid"].
+  transports   String?
+  deviceLabel  String
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([userId])
 }
 
 model OtpCode {

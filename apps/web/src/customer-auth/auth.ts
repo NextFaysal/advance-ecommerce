@@ -328,8 +328,8 @@ export function customerSessionCookieOptions(maxAgeSeconds: number) {
 /* (src/lib/rate-limit.ts) in the login + register routes, both       */
 /* counting against this key's single budget. (The in-memory trio     */
 /* from src/lib/auth used to be re-exported here for the register     */
-/* route; it was dropped in wave 54 when register migrated too —      */
-/* the trio remains only for the staff-side routes.)                 */
+/* route; it was dropped in wave 54 when register migrated too, and   */
+/* deleted entirely once the staff-side routes migrated as well.)    */
 /* ------------------------------------------------------------------ */
 
 export function customerLoginRateKey(ip: string, phone: string): string {

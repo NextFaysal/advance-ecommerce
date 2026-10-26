@@ -80,6 +80,7 @@ export const FEATURE_FLAG_DEFINITIONS = [
   { key: "module.product_extras", description: "Product extras: 360° view + barcode labels (v2 add-on)" },
   { key: "module.inventory_depth", description: "Inventory depth: batch/expiry, serial/IMEI, ABC + dead-stock, auto-reorder (v2 add-on, ADV-20)" },
   { key: "module.warehouse_ops", description: "Warehouse ops: pick, pack & ship scanning (v2 add-on, ADV-21)" },
+  { key: "module.social_proof", description: "Social proof — honest variants only: real recent-orders ticker + real low-stock lines (v2 add-on, P11)" },
 ] as const satisfies readonly FeatureFlagDefinition[];
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_DEFINITIONS)[number]["key"];

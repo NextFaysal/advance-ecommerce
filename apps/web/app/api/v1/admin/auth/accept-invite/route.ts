@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { checkLoginRateLimit, hashPassword, recordLoginAttempt } from "@/lib/auth";
+import { hashPassword } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { acceptStaffInvite, findPendingInviteByTokenHash } from "../../staff/store";
 import { hashStaffInviteToken } from "../../staff/invite-token";
 import { recordDemoAudit } from "../../audit-log/store";
@@ -35,10 +36,18 @@ export async function POST(req: Request) {
     );
   }
 
-  // Throttle token guessing per IP (reuses the login rate limiter).
+  // Throttle token guessing per IP via the shared Redis-backed
+  // limiter (src/lib/rate-limit.ts) — same key shape and same budget
+  // as the retired in-memory trio: 10 attempts per 15 minutes per
+  // IP. Semantics delta (wave 52/54 migration pattern): the shared
+  // limiter counts EVERY attempt at check time, where the trio
+  // counted only unknown-token failures (recordLoginAttempt) — a
+  // successful acceptance used to be free and now counts too.
+  // Stricter, never weaker; the token itself (256-bit, hash-only at
+  // rest, burned on use) remains the real credential.
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   const rateKey = `accept-invite:${ip}`;
-  const rate = checkLoginRateLimit(rateKey, 10, 900);
+  const rate = await checkRateLimit(rateKey, 10, 900_000);
   if (!rate.allowed) {
     return NextResponse.json(
       { error: { code: "RATE_LIMITED", message: "অনেকবার চেষ্টা হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।" } },
@@ -48,7 +57,6 @@ export async function POST(req: Request) {
 
   const invite = await findPendingInviteByTokenHash(hashStaffInviteToken(parsed.data.token));
   if (invite === null) {
-    recordLoginAttempt(rateKey, 900);
     return NextResponse.json(GENERIC_FAILURE, { status: 400 });
   }
 

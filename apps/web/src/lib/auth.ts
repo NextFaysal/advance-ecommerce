@@ -176,43 +176,15 @@ export async function revokeAllSessions(userId: string, exceptSessionId?: string
 }
 
 /* ------------------------------------------------------------------ */
-/* Rate limiting — local-dev in-memory fallback.                       */
-/* Production / multi-instance deployments MUST swap this for Redis   */
-/* (REDIS_URL), keyed the same way, before Step 34 hardening. The     */
-/* interface is deliberately Redis-shaped so the swap is one file.     */
+/* Rate limiting — RETIRED from this module. The in-memory trio       */
+/* (checkLoginRateLimit / recordLoginAttempt / resetLoginRateLimit +  */
+/* its loginAttempts Map) was deleted once its last consumers — the  */
+/* staff login and accept-invite routes — migrated to the shared     */
+/* Redis-backed limiter (src/lib/rate-limit.ts checkRateLimit, same  */
+/* keys and budgets). Per-account protection was never this trio's   */
+/* job: the DB-backed lockout in authenticateStaff below (5 failures */
+/* -> 30-minute lock, MAX_FAILED_LOGINS) is untouched.               */
 /* ------------------------------------------------------------------ */
-
-export interface RateLimitResult {
-  allowed: boolean;
-  retryAfterSeconds: number;
-}
-
-const loginAttempts = new Map<string, { count: number; resetAt: number }>();
-
-export function checkLoginRateLimit(key: string, maxAttempts = 5, windowSeconds = 900): RateLimitResult {
-  const now = Date.now();
-  const entry = loginAttempts.get(key);
-  if (entry !== undefined && entry.resetAt < now) loginAttempts.delete(key);
-  const current = loginAttempts.get(key);
-  if (current !== undefined && current.count >= maxAttempts) {
-    return { allowed: false, retryAfterSeconds: Math.ceil((current.resetAt - now) / 1000) };
-  }
-  return { allowed: true, retryAfterSeconds: 0 };
-}
-
-export function recordLoginAttempt(key: string, windowSeconds = 900): void {
-  const now = Date.now();
-  const entry = loginAttempts.get(key);
-  if (entry === undefined || entry.resetAt < now) {
-    loginAttempts.set(key, { count: 1, resetAt: now + windowSeconds * 1000 });
-  } else {
-    entry.count += 1;
-  }
-}
-
-export function resetLoginRateLimit(key: string): void {
-  loginAttempts.delete(key);
-}
 
 /* ------------------------------------------------------------------ */
 /* Staff login                                                         */

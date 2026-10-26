@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { prisma } from "@advance-ecommerce/db";
 import { PageHeader } from "@/components/ui/page-header";
 import { hasUsableTotp, validateSessionToken } from "@/lib/auth";
+import { PasskeyCard } from "@/components/admin/passkey-card";
 import { SecurityAlertsCard } from "@/components/admin/security-alerts-card";
 import { SecurityIpRulesCard } from "@/components/admin/security-ip-rules-card";
 import { SecuritySessionsCard } from "@/components/admin/security-sessions-card";
@@ -58,6 +59,9 @@ export default async function AdminSecurityPage() {
           enrolmentPending={enrolmentPending}
           accountLabel={user?.email ?? user?.phone ?? session.user.id}
         />
+      </div>
+      <div className="mt-6 max-w-2xl">
+        <PasskeyCard />
       </div>
       <div className="mt-6 grid max-w-5xl gap-6">
         <SecurityIpRulesCard />

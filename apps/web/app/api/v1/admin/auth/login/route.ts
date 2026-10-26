@@ -2,13 +2,11 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import {
   authenticateStaff,
-  checkLoginRateLimit,
   createSession,
-  recordLoginAttempt,
-  resetLoginRateLimit,
   signPending2fa,
   staffLoginSchema,
 } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { writeAudit } from "@/lib/audit";
 import { getSetting } from "@/lib/settings";
 import { isIpAllowed, loadIpRules } from "@/security/ip-rules";
@@ -28,7 +26,18 @@ export async function POST(req: Request) {
   }
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   const rateKey = `login:${ip}:${parsed.data.identifier.toLowerCase()}`;
-  const rate = checkLoginRateLimit(rateKey);
+  // Shared Redis-backed limiter (src/lib/rate-limit.ts), same key
+  // shape and same budget as the retired in-memory trio: 5 attempts
+  // per 15 minutes per IP+identifier. Semantics delta (wave 52/54
+  // migration pattern): checkRateLimit counts EVERY login attempt —
+  // successes and IP-blocked tries included — at check time, and
+  // offers no reset-on-success, where the trio counted failures only
+  // (recordLoginAttempt) and cleared the count on success
+  // (resetLoginRateLimit). Stricter, never weaker. The real account
+  // protection is unchanged: the DB-backed per-account lockout
+  // inside authenticateStaff (5 failures -> 30-minute lock) and the
+  // login-alert hooks are untouched.
+  const rate = await checkRateLimit(rateKey, 5, 900_000);
   if (!rate.allowed) {
     return NextResponse.json(
       { error: { code: "RATE_LIMITED", message: "Too many attempts. Please try again later." } },
@@ -41,12 +50,12 @@ export async function POST(req: Request) {
   // login failure — it never reveals that an IP rule stopped the
   // attempt. loadIpRules fails open (empty rules) when the settings
   // read breaks, so a broken store can never lock every staff member
-  // out; the blocked attempt still counts against the rate limit above
-  // (so a flood of blocked tries degrades to 429s, not audit writes)
-  // and is audited under a system actor (actorId null).
+  // out; the blocked attempt already counted against the rate limit
+  // at check time above (so a flood of blocked tries degrades to
+  // 429s, not audit writes) and is audited under a system actor
+  // (actorId null).
   const ipRules = await loadIpRules(getSetting);
   if (!isIpAllowed(ip, ipRules)) {
-    recordLoginAttempt(rateKey);
     await writeAudit({
       actorId: null,
       action: "auth.login_blocked",
@@ -67,13 +76,11 @@ export async function POST(req: Request) {
     userAgent: req.headers.get("user-agent") ?? undefined,
   });
   if (result.status === "failed") {
-    recordLoginAttempt(rateKey);
     return NextResponse.json(
       { error: { code: "INVALID_CREDENTIALS", message: "Login failed. Please try again." } },
       { status: 401 },
     );
   }
-  resetLoginRateLimit(rateKey);
   if (result.status === "needs_2fa") {
     // The pending cookie value is SIGNED (HMAC-SHA256, see signPending2fa
     // in lib/auth) — it is httpOnly and short-lived (10 min), only gates

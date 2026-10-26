@@ -5,6 +5,8 @@ import { fromPoisha } from "@advance-ecommerce/validators";
 import { getLivePublicProductBySlug, tryCatalogRepository } from "@/catalog/server-read";
 import { maxVariantPricePoisha, minVariantPricePoisha, toPublicProduct } from "@/catalog/types";
 import { EmiNote } from "@/marketing/components/EmiNote";
+import { RecentOrdersSection } from "@/marketing/components/RecentOrdersSection";
+import { LOW_STOCK_THRESHOLD, socialProofEnabled } from "@/marketing/social-proof";
 import { SubscribeSaveSection } from "@/subscriptions/subscribe-save-section";
 import { RecordRecentlyViewed } from "@/storefront-ux/components/RecordRecentlyViewed";
 import { RecentlyViewedRail } from "@/storefront-ux/components/RecentlyViewedRail";
@@ -231,6 +233,11 @@ export default async function ProductPage({ params }: { params: { slug: string }
       ? typeFields.bundleAvailability
       : null;
   const displayInStock = bundleUnavailable ? false : bundleCount !== null ? bundleCount > 0 : inStock;
+  // Honest social proof (doc 23 wave 60): while module.social_proof
+  // is on, the buy box may print the selected variant's REAL stock
+  // as a "মাত্র Nটি বাকি" line inside the 1..threshold band.
+  // Flag off -> null -> BuyBoxActions renders no such line.
+  const lowStockThreshold = socialProofEnabled() ? LOW_STOCK_THRESHOLD : null;
   const preorder = typeFields.preorder ?? null;
   const preorderExpectedLabel = preorder?.expectedDate
     ? (() => {
@@ -558,6 +565,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
                 {...(bundleUnavailable
                   ? { forceUnavailable: true, unavailableLabel: "বান্ডল স্টকে নেই" }
                   : {})}
+                lowStockThreshold={lowStockThreshold}
               />
               </AgeGate>
               </>
@@ -643,6 +651,12 @@ export default async function ProductPage({ params }: { params: { slug: string }
           </div>
         </div>
       </div>
+
+      {/* Recent orders (doc 23 wave 60, honest social proof) —
+          self-gating: renders only while module.social_proof is
+          on, and the ticker itself stays silent until >= 3 REAL
+          recent store orders come back from its API. */}
+      <RecentOrdersSection />
 
       {/* Description — markdown rendered via the shared renderer
           (src/catalog/description.ts); English toggle when present. */}

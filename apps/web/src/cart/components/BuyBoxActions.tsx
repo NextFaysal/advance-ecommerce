@@ -50,6 +50,15 @@ export interface BuyBoxActionsProps {
   forceUnavailable?: boolean;
   /** Label shown on the disabled CTA when forceUnavailable applies. */
   unavailableLabel?: string;
+  /** Doc 23 wave 60 (P11, honest social proof): when set, the buy
+   *  box shows a truthful "মাত্র Nটি বাকি" line for the SELECTED
+   *  variant while its real stock is 1..threshold (the PDP passes
+   *  LOW_STOCK_THRESHOLD from src/marketing/social-proof.ts only
+   *  while the module.social_proof flag is on). The number is
+   *  always the variant's actual stock — stock 0 stays the plain
+   *  sold-out state and is never dressed up as urgency.
+   *  Null/unset = never shown; default behaviour is unchanged. */
+  lowStockThreshold?: number | null;
 }
 
 function variantLabel(variant: BuyBoxVariant): string {
@@ -65,6 +74,7 @@ export function BuyBoxActions({
   buyNowLabel,
   forceUnavailable,
   unavailableLabel,
+  lowStockThreshold,
 }: BuyBoxActionsProps) {
   const router = useRouter();
   const digits = useDigitText();
@@ -169,6 +179,19 @@ export function BuyBoxActions({
           </span>
         ) : null}
       </p>
+
+      {/* Real low-stock line (wave 60): the SELECTED variant's
+          actual stock, only in the 1..threshold band, and never
+          while a bundle force-unavailable state is contradicting
+          it. No threshold prop (flag off) = no line at all. */}
+      {lowStockThreshold != null &&
+      !forceUnavailable &&
+      selected.stock > 0 &&
+      selected.stock <= lowStockThreshold ? (
+        <p role="status" className="-mt-1 text-sm font-semibold text-amber-600 dark:text-amber-400">
+          {digits(`মাত্র ${selected.stock}টি বাকি`)}
+        </p>
+      ) : null}
 
       {/* Quantity + add */}
       <div className="flex flex-wrap items-center gap-2">
