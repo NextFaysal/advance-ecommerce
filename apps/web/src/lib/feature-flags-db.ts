@@ -128,6 +128,11 @@ export class DbFeatureFlagSource implements FeatureFlagSource {
 /** The one DB flag source for this process. */
 export const dbFeatureFlagSource = new DbFeatureFlagSource();
 
+// Immediately install behind sharedFeatureFlagSource so all consumers use the DB source
+if (!sharedFeatureFlagSource.isInstalled) {
+  installFeatureFlagSource(dbFeatureFlagSource);
+}
+
 /**
  * Installs the DB source behind the shared reader and hydrates it.
  * Safe to call repeatedly (install + hydration are idempotent).

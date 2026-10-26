@@ -1,3 +1,4 @@
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
@@ -51,6 +52,7 @@ export default async function AdminCallCenterReportsPage({
 }: {
   searchParams: { days?: string; from?: string; to?: string };
 }) {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
       <main>

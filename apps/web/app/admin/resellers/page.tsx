@@ -1,3 +1,4 @@
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { demoResellerFlags, isResellerEnabled } from "@/reseller/flags";
 import { buildDashboardsDb, listPriceEntries, listWithdrawals } from "@/reseller/store";
 import { computeMargin } from "@/reseller/pricing";
@@ -18,6 +19,7 @@ import { CreateResellerForm } from "./create-reseller-form";
 // /api/v1/admin/resellers — the create endpoint that did not exist
 // before; new rows start PENDING_APPROVAL with their code generated.
 export default async function AdminResellersPage() {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isResellerEnabled(demoResellerFlags)) {
     return (
       <main style={{ padding: 24, fontFamily: "system-ui" }}>

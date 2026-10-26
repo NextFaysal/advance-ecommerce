@@ -1,3 +1,4 @@
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -62,6 +63,7 @@ async function sampleOptions(): Promise<SampleProductOption[]> {
 export const dynamic = "force-dynamic";
 
 export default async function AdminAiAssistPage() {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isAiAssistEnabled(demoAiAssistFlags)) {
     return (
       <main>

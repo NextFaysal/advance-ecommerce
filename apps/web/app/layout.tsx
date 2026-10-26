@@ -6,6 +6,7 @@ import TrackingShell from "./tracking-shell";
 import StorefrontShell from "./storefront-shell";
 import { getThemeCatalog } from "@/lib/theme-repository";
 import { THEME_COOKIE, themeToFullStyleString } from "@/lib/theme-engine";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 
 export const metadata: Metadata = {
   title: "Advance Ecommerce — Storefront",
@@ -24,6 +25,13 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Ensure DB feature flags are hydrated for all consumers across the process
+  try {
+    await ensureDbFeatureFlags();
+  } catch {
+    // Database unreachable — fallback gracefully to catalogue defaults
+  }
+
   // Resolve selected theme from cookie; fall back gracefully if DB is not ready.
   let themeStyleBlock: string | null = null;
   try {
@@ -63,20 +71,19 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       {/* Brand fonts via Google Fonts CDN. The self-hosted woff2 files
           exist locally (public/fonts/) but are NOT in the deployed repo
           (binary files could not be pushed), so production rendered in
-          fallback fonts. Until the binaries reach the repo by a real
-          git push, the CDN faces below are the live source; family
-          names match src/styles/fonts.css and the --font-* tokens. */}
+          system-ui. CDN link restores brand typography in deployed envs;
+          local dev still loads public/fonts/ if available. */}
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       <link
-        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200..800&family=Hind+Siliguri:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;700&family=JetBrains+Mono:wght@400..800&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
         rel="stylesheet"
       />
-      <body>
+      <body className="min-h-screen bg-background font-sans text-foreground antialiased selection:bg-brand-500 selection:text-white">
         <RegisterSW />
-        <TrackingShell>
-          <StorefrontShell>{children}</StorefrontShell>
-        </TrackingShell>
+        <StorefrontShell>
+          <TrackingShell>{children}</TrackingShell>
+        </StorefrontShell>
       </body>
     </html>
   );

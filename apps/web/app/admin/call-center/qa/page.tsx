@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
 import { CallCenterTabs } from "../tabs";
 import { QaTable } from "./qa-table";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 
 // Call QA review — C3. Supervisors sample completed call logs and
 // stamp a QA score (0–5) + comment on each (PATCH qa/[logId],
@@ -10,7 +11,8 @@ import { QaTable } from "./qa-table";
 // Guarded by the module flag here and by the API's permissions.
 export const dynamic = "force-dynamic";
 
-export default function AdminCallCenterQaPage() {
+export default async function AdminCallCenterQaPage() {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
       <main>

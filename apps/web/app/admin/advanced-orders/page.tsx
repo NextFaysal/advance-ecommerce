@@ -3,6 +3,7 @@ import { demoAdvancedOrderStore } from "@/advanced-orders";
 import { AdvancedOrdersClient } from "./advanced-orders-client";
 import { SAMPLE_EXTRA_PREORDERS } from "./sample-data";
 import { demoAdvancedOrdersFlag, isAdvancedOrdersEnabled } from "./flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 
 // Admin > Advanced Orders — Agent 43, UI over Agent 16's Step 48 (A9)
 // pure functions in src/advanced-orders (split allocation, partial
@@ -23,7 +24,8 @@ import { demoAdvancedOrdersFlag, isAdvancedOrdersEnabled } from "./flags";
 // reader until Prisma wiring lands, and the same store the feature-flags
 // API toggles.
 
-export default function AdvancedOrdersPage() {
+export default async function AdvancedOrdersPage() {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isAdvancedOrdersEnabled()) {
     return (
       <main>

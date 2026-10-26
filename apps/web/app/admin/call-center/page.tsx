@@ -3,6 +3,7 @@ import { toQueueItemView } from "@/callcenter/queue";
 import { loadCallTasks } from "@/callcenter/store";
 import { CONFIRMATION_SCRIPT } from "@/callcenter/types";
 import { formatBdt } from "@/checkout/pricing";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { CallCenterTabs } from "./tabs";
 import { CallCenterWorkbench } from "./workbench";
 
@@ -18,6 +19,7 @@ import { CallCenterWorkbench } from "./workbench";
 // so an agent can actually work the queue; this page's table + script
 // remain the supervisor view.
 export default async function AdminCallCenterPage() {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
       <main style={{ padding: 24, fontFamily: "system-ui" }}>
@@ -68,7 +70,7 @@ export default async function AdminCallCenterPage() {
         Outcomes: Confirmed, Callback (a time must be scheduled), Cancelled, No Answer
         (re-queues up to 3 attempts), Wrong Number. Recording an outcome via the API
         returns the agent&apos;s next task in the same response. A Confirmed/Cancelled
-        outcome also moves the linked order through the order state machine.
+        outcome applies the corresponding order transition.
       </p>
     </main>
   );

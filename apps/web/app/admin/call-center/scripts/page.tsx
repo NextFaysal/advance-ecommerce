@@ -1,3 +1,4 @@
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { PageHeader } from "@/components/ui/page-header";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
 import { listEffectiveScripts } from "@/callcenter/scripts-store";
@@ -14,6 +15,7 @@ import { ScriptsEditor, type ScriptSourceData } from "./scripts-editor";
 export const dynamic = "force-dynamic";
 
 export default async function AdminCallCenterScriptsPage() {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
       <main>

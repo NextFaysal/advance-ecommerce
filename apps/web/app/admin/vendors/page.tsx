@@ -1,3 +1,4 @@
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { DataTable } from "@/components/ui/table";
@@ -47,6 +48,7 @@ const APPROVAL_TONE: Record<string, "success" | "warning" | "info" | "danger"> =
 };
 
 export default async function AdminVendorsPage() {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!demoVendorFlags.isEnabled("module.multi_vendor")) {
     return (
       <main>
