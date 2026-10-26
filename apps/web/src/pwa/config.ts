@@ -19,6 +19,24 @@ export const PWA_START_URL = "/";
 export const PWA_SCOPE = "/";
 export const PWA_DISPLAY = "standalone" as const;
 
+/**
+ * Segment PWAs (wave 58): separate installable apps over existing
+ * routes/APIs, each with its OWN static manifest in public/ and its
+ * own scope — the shared service worker (scope "/") already covers
+ * both, so there is deliberately no second worker. Keep in sync with:
+ *  - apps/web/public/manifest-rider.webmanifest  (app/rider/layout.tsx)
+ *  - apps/web/public/manifest-owner.webmanifest  (app/owner/layout.tsx)
+ */
+export const RIDER_MANIFEST_PATH = "/manifest-rider.webmanifest";
+export const RIDER_PWA_NAME = "Rider — Advance Ecommerce";
+export const RIDER_PWA_START_URL = "/rider";
+export const RIDER_PWA_SCOPE = "/rider/";
+
+export const OWNER_MANIFEST_PATH = "/manifest-owner.webmanifest";
+export const OWNER_PWA_NAME = "Owner — Advance Ecommerce";
+export const OWNER_PWA_START_URL = "/owner";
+export const OWNER_PWA_SCOPE = "/owner/";
+
 export const SERVICE_WORKER_PATH = "/sw.js";
 export const OFFLINE_URL = "/offline";
 
