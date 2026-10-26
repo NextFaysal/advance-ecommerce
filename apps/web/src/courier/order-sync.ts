@@ -28,6 +28,7 @@
 //  - Business states are reported, never thrown. Only programmer
 //    errors (bad arguments) throw.
 import { prisma } from "@advance-ecommerce/db";
+import { qtyToMilli, roundHalfUpDiv, QTY_MILLI } from "../lib/quantity";
 import { applyOrderTransition, markOrderPayment } from "../orders/repository";
 import { ORDER_TRANSITIONS } from "../orders/state-machine";
 import type { OrderStatus } from "../orders/types";
@@ -343,7 +344,7 @@ export async function computeOrderParcelWeightGrams(
   let total = 0;
   for (const item of items) {
     const perUnit = weightByVariant.get(item.variantId);
-    total += perUnit ? perUnit * item.quantity : DEFAULT_LINE_WEIGHT_GRAMS;
+    total += perUnit ? roundHalfUpDiv(perUnit * qtyToMilli(item.quantity), QTY_MILLI) : DEFAULT_LINE_WEIGHT_GRAMS;
   }
   return total;
 }

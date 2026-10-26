@@ -9,6 +9,7 @@
  * "insufficient_data" status with no scores when no courier has any
  * delivery history yet. Read-only; guard shipments.view.
  */
+import { isValidQtyNumber } from "@/lib/quantity";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -22,7 +23,7 @@ function err(code: string, message: string, status: number, details?: unknown) {
 
 const bodySchema = z.object({
   items: z
-    .array(z.object({ orderItemId: z.string().min(1), quantity: z.number().int().positive() }))
+    .array(z.object({ orderItemId: z.string().min(1), quantity: z.number().refine((n) => isValidQtyNumber(n), "quantity must be positive, max 3 decimals") }))
     .optional(),
 });
 

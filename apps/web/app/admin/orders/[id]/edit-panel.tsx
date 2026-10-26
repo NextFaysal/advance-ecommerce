@@ -25,6 +25,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatPoisha } from "@/components/ui/money";
+import { lineTotalPoisha } from "@/lib/quantity";
 
 interface EditLine {
   orderItemId: string;
@@ -211,8 +212,8 @@ export function EditPanel({ orderId }: { orderId: string }) {
   const previewSubtotal =
     view.lines
       .filter((l) => !removed.has(l.orderItemId))
-      .reduce((sum, l) => sum + l.unitPricePoisha * (qty[l.orderItemId] ?? l.quantity), 0) +
-    adds.reduce((sum, a) => sum + a.unitPricePoisha * a.quantity, 0);
+      .reduce((sum, l) => sum + lineTotalPoisha(l.unitPricePoisha, qty[l.orderItemId] ?? l.quantity), 0) +
+    adds.reduce((sum, a) => sum + lineTotalPoisha(a.unitPricePoisha, a.quantity), 0);
 
   async function save() {
     if (!view) return;
@@ -303,7 +304,7 @@ export function EditPanel({ orderId }: { orderId: string }) {
                   </Button>
                 </div>
                 <span className="w-24 text-right text-small font-medium">
-                  {formatPoisha(l.unitPricePoisha * q)}
+                  {formatPoisha(lineTotalPoisha(l.unitPricePoisha, q))}
                 </span>
                 <Button
                   type="button"

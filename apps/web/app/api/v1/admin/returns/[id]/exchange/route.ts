@@ -12,6 +12,7 @@
  * the customer notification (notifyReturnStatus "EXCHANGED" — the
  * SMS is QUEUED, not delivered; the response meta says so honestly).
  */
+import { isValidQtyNumber } from "@/lib/quantity";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -43,7 +44,7 @@ const bodySchema = z.object({
     .array(
       z.object({
         variantId: z.string().min(1),
-        quantity: z.number().int().positive(),
+        quantity: z.number().refine((n) => isValidQtyNumber(n), "quantity must be positive, max 3 decimals"),
       }),
     )
     .min(1),

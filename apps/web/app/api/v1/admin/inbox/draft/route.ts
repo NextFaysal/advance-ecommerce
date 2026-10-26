@@ -1,3 +1,4 @@
+import { isValidQtyNumber } from "@/lib/quantity";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { guardError, requireAdmin } from "@/reports/guard";
@@ -29,7 +30,7 @@ const draftSchema = z.object({
       addressLine: z.string().min(5).optional(),
     })
     .optional(),
-  items: z.array(z.object({ variantId: z.string().min(1), quantity: z.number().int().positive() })).min(1),
+  items: z.array(z.object({ variantId: z.string().min(1), quantity: z.number().refine((n) => isValidQtyNumber(n), "quantity must be positive, max 3 decimals") })).min(1),
   note: z.string().max(500).optional(),
 });
 

@@ -66,6 +66,7 @@
 import { prisma } from "@advance-ecommerce/db";
 import { editOrderItems, type OrderEditActor, type OrderEditOutcome } from "./edit";
 import { applyOrderTransition, releaseOrderStockReservations } from "./repository";
+import { addQty, stockClaimUnits } from "../lib/quantity";
 
 export const MERGEABLE_ORDER_STATUSES = ["PENDING", "CONFIRMED"] as const;
 
@@ -320,7 +321,8 @@ export async function mergeOrders(
   }
   const byVariant = new Map<string, number>();
   for (const item of sourceItems) {
-    byVariant.set(item.variantId, (byVariant.get(item.variantId) ?? 0) + item.quantity);
+    // Wave 59: stored quantities are Decimals — milli-exact sums.
+    byVariant.set(item.variantId, addQty(byVariant.get(item.variantId) ?? 0, item.quantity));
   }
   const addItems = [...byVariant.entries()].map(([variantId, quantity]) => ({ variantId, quantity }));
 
@@ -333,7 +335,9 @@ export async function mergeOrders(
     // covers the quantity being moved, releasing the source frees
     // exactly enough — release through the single path and retry.
     const outstanding = await outstandingReservations(source.id);
-    const covered = addItems.every((a) => (outstanding.get(a.variantId) ?? 0) >= a.quantity);
+    // Outstanding reservations are whole stock units — compare them
+    // against each line's stockClaimUnits, not its raw quantity.
+    const covered = addItems.every((a) => (outstanding.get(a.variantId) ?? 0) >= stockClaimUnits(a.quantity));
     if (covered) {
       await releaseOrderStockReservations(source.id);
       releasedEarly = true;

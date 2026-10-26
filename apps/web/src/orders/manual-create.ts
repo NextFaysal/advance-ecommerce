@@ -106,6 +106,8 @@ import {
 import { scoreFraud } from "@/fraud/scoring";
 import { publishOrderCreated } from "@/orders/event-bus";
 import { resolveResellerAttribution } from "@/reseller/store";
+import { validateOrderLineQuantities } from "@/orders/quantity-rules";
+import { lineTotalPoisha } from "@/lib/quantity";
 
 export const manualCreateInputSchema = manualOrderSchema.extend({
   /** Client idempotency key (UUID). Absent -> the server mints one;
@@ -242,6 +244,14 @@ export async function createManualOrder(
   if (!phone) {
     return fail(400, "VALIDATION_ERROR", "Manual order input invalid.", ["phone: invalid BD phone"]);
   }
+  // Wave 59: fractional quantities only on grocery weighted variants
+  // (weight-step gated) — the same rule public checkout enforces.
+  // Every createManualOrder consumer (drafts, inbox, import, B2B,
+  // subscriptions, abandoned conversion) inherits the gate here.
+  const qtyGate = await validateOrderLineQuantities(data.items);
+  if (!qtyGate.ok) {
+    return fail(400, qtyGate.code, qtyGate.message, qtyGate.details);
+  }
   const idempotencyKey = data.idempotencyKey ?? randomUUID();
 
   // Idempotency first: a replay returns the stored order, never a copy.
@@ -298,7 +308,7 @@ export async function createManualOrder(
       unitPricePoisha: item.unitPricePoisha,
       quantity: item.quantity,
     });
-    subtotalPoisha += item.unitPricePoisha * item.quantity;
+    subtotalPoisha += lineTotalPoisha(item.unitPricePoisha, item.quantity);
     if (item.unitPricePoisha !== server.unitPricePoisha) {
       priceOverrides.push(
         `${server.sku}: কর্মীর দাম ${item.unitPricePoisha} পয়সা (ক্যাটালগ ${server.unitPricePoisha} পয়সা)`,

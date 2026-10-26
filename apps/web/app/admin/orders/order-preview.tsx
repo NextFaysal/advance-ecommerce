@@ -14,6 +14,7 @@ import { Drawer } from "@/components/ui/drawer";
 import { Icon } from "@/components/ui/icon";
 import { PaymentBadge, type PaymentStatus as UiPaymentStatus } from "@/components/ui/status-badge";
 import { formatBdt } from "../../../src/checkout/pricing";
+import { lineTotalPoisha } from "../../../src/lib/quantity";
 import {
   ORDER_STATUS_VISUAL,
   formatDhakaTime,
@@ -257,7 +258,7 @@ export function OrderPreviewDrawer({
                     </span>
                   </span>
                   <span className="font-mono text-small font-semibold tabular-nums">
-                    {formatBdt(item.unitPricePoisha * item.quantity)}
+                    {formatBdt(lineTotalPoisha(item.unitPricePoisha, item.quantity))}
                   </span>
                 </li>
               ))}

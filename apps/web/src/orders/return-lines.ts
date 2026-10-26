@@ -25,6 +25,7 @@
  * empty list the callers refuse on, never to wrong values.
  */
 import { prisma } from "@advance-ecommerce/db";
+import { isValidQtyNumber, lineTotalPoisha, qtyNumber } from "../lib/quantity";
 
 export interface ReturnLineValue {
   orderItemId: string;
@@ -46,9 +47,24 @@ function asInt(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) ? value : null;
 }
 
+/**
+ * Wave 59: quantities are Decimal(12, 3) — Prisma hands back a
+ * Decimal object, not a JS number, and fractional returns are legal.
+ * Accept a number directly, or anything whose string form parses to
+ * a valid (positive, <= 3 dp) quantity.
+ */
+function asQty(value: unknown): number | null {
+  if (typeof value === "number") return isValidQtyNumber(value) ? value : null;
+  if (typeof value === "string" || (typeof value === "object" && value !== null)) {
+    const n = qtyNumber(String(value));
+    return isValidQtyNumber(n) ? n : null;
+  }
+  return null;
+}
+
 function pickQuantity(row: RawRow): number | null {
   for (const key of ["receivedQuantity", "approvedQuantity", "quantity", "requestedQuantity"]) {
-    const v = asInt(row[key]);
+    const v = asQty(row[key]);
     if (v !== null && v > 0) return v;
   }
   return null;
@@ -136,7 +152,7 @@ export async function loadReturnLines(returnId: string): Promise<ReturnLineValue
   return lines;
 }
 
-/** Σ quantity × snapshot unit price over the return's lines (poisha). */
+/** Σ line totals (single line-level rounding rule) over the return's lines (poisha). */
 export function returnedGoodsPoisha(lines: readonly ReturnLineValue[]): number {
-  return lines.reduce((sum, l) => sum + l.quantity * l.unitPricePoisha, 0);
+  return lines.reduce((sum, l) => sum + lineTotalPoisha(l.unitPricePoisha, l.quantity), 0);
 }

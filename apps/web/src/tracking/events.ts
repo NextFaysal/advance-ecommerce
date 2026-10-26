@@ -5,6 +5,7 @@
 // + server) so the storefront can mint the id, fire the pixel with it, and
 // pass the same id to the server — neither side invents its own.
 import { z } from "zod";
+import { isValidQtyNumber } from "../lib/quantity";
 import type { DeduplicationResult } from "../marketing/tracking";
 import {
   STANDARD_EVENT_NAMES,
@@ -31,7 +32,9 @@ export const trackingEventInputSchema = z.object({
       z.object({
         productId: z.string().min(1).max(64),
         variantId: z.string().max(64).nullable(),
-        quantity: z.number().int().min(1).max(999),
+        // Wave 59: analytics items may carry fractional quantities
+        // (weighted goods) — still bounded, max 3 decimals.
+        quantity: z.number().refine((n) => isValidQtyNumber(n) && n <= 999, "quantity must be positive (max 3 decimals), at most 999"),
         itemPricePoisha: z.number().int().min(0),
       }),
     )

@@ -3,13 +3,14 @@
 // this service never trusts client-side totals — callers must pass rows built
 // from the pricing pipeline's stored poisha fields.
 import type { DateRange, ReportBundle, SalesRow, Totals } from "./types";
+import { addQty } from "../lib/quantity";
 
 function emptyTotals(): Totals {
   return { orders: 0, units: 0, revenuePoisha: 0, costPoisha: 0, shippingPoisha: 0, refundPoisha: 0, grossProfitPoisha: 0, netRevenuePoisha: 0 };
 }
 function addRow(t: Totals, r: SalesRow, orderIds: Set<string>): void {
   if (!orderIds.has(r.orderId)) { t.orders += 1; orderIds.add(r.orderId); }
-  t.units += r.quantity;
+  t.units = addQty(t.units, r.quantity);
   t.revenuePoisha += r.revenuePoisha;
   t.costPoisha += r.costPoisha;
   t.shippingPoisha += r.shippingPoisha;

@@ -17,6 +17,7 @@
 // snapshots; checkout re-validates server-side (see checkout/pricing.ts).
 
 import type { PublicProduct, PublicVariant } from "@/catalog/types";
+import { lineTotalPoisha } from "@/lib/quantity";
 import type { Cart, CartItem } from "../types";
 
 export interface ResolvedCartLine {
@@ -64,10 +65,10 @@ export function resolveCartLines(cart: Cart, catalog: readonly PublicProduct[]):
   return cart.items.map((item) => resolveCartLine(item, catalog));
 }
 
-/** Per-unit item discounts summed over the cart, in poisha. */
+/** Per-unit item discounts summed over the cart, in poisha (line-level rounding rule). */
 export function cartItemDiscountPoisha(lines: ResolvedCartLine[]): number {
   return lines.reduce(
-    (sum, line) => sum + line.discountPoishaPerUnit * line.item.quantity,
+    (sum, line) => sum + lineTotalPoisha(line.discountPoishaPerUnit, line.item.quantity),
     0,
   );
 }

@@ -164,6 +164,8 @@ import {
   tierDiscountForBasePoisha,
 } from "@/marketing/membership-tiers";
 import type { Order } from "@/orders/types";
+import { validateOrderLineQuantities } from "@/orders/quantity-rules";
+import { lineTotalPoisha, qtyToMilli, roundHalfUpDiv, QTY_MILLI } from "@/lib/quantity";
 
 function errorResponse(code: string, message: string, status: number, details?: unknown) {
   return NextResponse.json({ error: { code, message, details } }, { status });
@@ -241,6 +243,13 @@ export async function POST(req: Request) {
 }
 
 async function processCreate(form: CheckoutForm): Promise<NextResponse> {
+  // Wave 59: fractional quantities are sellable ONLY on grocery
+  // weighted variants (and must land on the pack's weight step) —
+  // gated here, before any pricing, with a clear 400.
+  const qtyGate = await validateOrderLineQuantities(form.items);
+  if (!qtyGate.ok) {
+    return errorResponse(qtyGate.code, qtyGate.message, 400, qtyGate.details);
+  }
   // Server-side re-validation: price, SKU, name, stock from the DB only.
   const serverPrices = await getVariantSnapshots(form.items.map((i) => i.variantId));
   // Wave 15: a BUNDLE variant's sellable count is component-derived
@@ -278,8 +287,10 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
       unitPricePoisha: server.unitPricePoisha,
       quantity: item.quantity,
     });
-    subtotalPoisha += server.unitPricePoisha * item.quantity;
-    totalWeightGrams += server.weightGrams * item.quantity;
+    // Wave 59: line totals use the single line-level rounding rule
+    // (integer milli-units) — identical to unit × qty for integers.
+    subtotalPoisha += lineTotalPoisha(server.unitPricePoisha, item.quantity);
+    totalWeightGrams += roundHalfUpDiv(server.weightGrams * qtyToMilli(item.quantity), QTY_MILLI);
     categorySlugs.add(server.categorySlug);
   }
 
@@ -531,7 +542,7 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     const server = serverPrices.get(item.variantId);
     if (server && server.productType === "PREORDER" && server.preorderDepositPercent) {
       preorderDepositPoisha += Math.round(
-        (server.unitPricePoisha * item.quantity * server.preorderDepositPercent) / 100,
+        (lineTotalPoisha(server.unitPricePoisha, item.quantity) * server.preorderDepositPercent) / 100,
       );
     }
   }

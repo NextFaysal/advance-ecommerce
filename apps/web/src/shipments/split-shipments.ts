@@ -26,6 +26,18 @@
  * real courier is contacted.
  */
 import { prisma } from "@advance-ecommerce/db";
+import {
+  addQty,
+  cmpQty,
+  isValidQtyNumber,
+  lineTotalPoisha,
+  qtyNumber,
+  qtyToString,
+  roundHalfUpDiv,
+  qtyToMilli,
+  subQty,
+  QTY_MILLI,
+} from "../lib/quantity";
 import { transitionOrderForCourierEvent } from "@/courier/order-sync";
 import {
   applyManualOverride,
@@ -89,8 +101,10 @@ export function parseAllocations(json: unknown): SplitAllocation[] {
   for (const raw of json) {
     if (typeof raw !== "object" || raw === null) continue;
     const { orderItemId, quantity } = raw as { orderItemId?: unknown; quantity?: unknown };
-    if (typeof orderItemId === "string" && Number.isInteger(quantity) && (quantity as number) > 0) {
-      out.push({ orderItemId, quantity: quantity as number });
+    // Wave 59: allocations may be fractional (a weighted line can be
+    // split across bookings in fractions, to 3 decimals).
+    if (typeof orderItemId === "string" && isValidQtyNumber(quantity)) {
+      out.push({ orderItemId, quantity: qtyNumber(quantity) });
     }
   }
   return out;
@@ -134,12 +148,12 @@ function accumulate(
     if (s.status === "FAILED") continue; // cancelled/failed bookings release their lines
     const allocs =
       s.lineItemsJson === null
-        ? order.items.map((i) => ({ orderItemId: i.id, quantity: i.quantity }))
+        ? order.items.map((i) => ({ orderItemId: i.id, quantity: qtyNumber(i.quantity) }))
         : parseAllocations(s.lineItemsJson);
     for (const a of allocs) {
-      allocated.set(a.orderItemId, (allocated.get(a.orderItemId) ?? 0) + a.quantity);
+      allocated.set(a.orderItemId, addQty(allocated.get(a.orderItemId) ?? 0, a.quantity));
       if (s.status === "DELIVERED") {
-        delivered.set(a.orderItemId, (delivered.get(a.orderItemId) ?? 0) + a.quantity);
+        delivered.set(a.orderItemId, addQty(delivered.get(a.orderItemId) ?? 0, a.quantity));
       }
     }
   }
@@ -160,10 +174,10 @@ export async function getOrderShipmentCoverage(orderId: string): Promise<OrderSh
       orderItemId: i.id,
       productName: i.productName,
       sku: i.sku,
-      quantity: i.quantity,
+      quantity: qtyNumber(i.quantity),
       allocatedQuantity: a,
       deliveredQuantity: d,
-      remainingQuantity: Math.max(0, i.quantity - a),
+      remainingQuantity: Math.max(0, subQty(i.quantity, a)),
     };
   });
   return {
@@ -206,7 +220,7 @@ export async function isOrderFullyDelivered(orderId: string): Promise<boolean> {
   const { order, shipments } = loaded;
   if (shipments.length === 0 || order.items.length === 0) return false;
   const { delivered } = accumulate(order, shipments);
-  return order.items.every((i) => (delivered.get(i.id) ?? 0) >= i.quantity);
+  return order.items.every((i) => cmpQty(delivered.get(i.id) ?? 0, i.quantity) >= 0);
 }
 
 /** Does this order carry any split booking (lineItemsJson set)? */
@@ -298,8 +312,9 @@ export async function createSplitShipment(
   }
   const seen = new Set<string>();
   for (const item of input.items) {
-    if (!item.orderItemId || !Number.isInteger(item.quantity) || item.quantity <= 0) {
-      return { ok: false, code: "INVALID_INPUT", error: "Every item needs an orderItemId and a positive integer quantity." };
+    // Wave 59: quantities may be fractional (weighted lines) to 3dp.
+    if (!item.orderItemId || !isValidQtyNumber(item.quantity)) {
+      return { ok: false, code: "INVALID_INPUT", error: "Every item needs an orderItemId and a positive quantity (fractions to 3 decimals allowed). / প্রতিটি লাইনে ধনাত্মক পরিমাণ আবশ্যক।" };
     }
     if (seen.has(item.orderItemId)) {
       return { ok: false, code: "INVALID_INPUT", error: "The same line appears twice; merge the quantities." };
@@ -352,12 +367,12 @@ export async function createSplitShipment(
   const { allocated } = accumulate(order, shipments);
   for (const item of input.items) {
     const line = itemById.get(item.orderItemId)!;
-    const remaining = line.quantity - (allocated.get(item.orderItemId) ?? 0);
-    if (item.quantity > remaining) {
+    const remaining = subQty(line.quantity, allocated.get(item.orderItemId) ?? 0);
+    if (cmpQty(item.quantity, remaining) > 0) {
       return {
         ok: false,
         code: "OVER_ALLOCATED",
-        error: `Line "${line.productName}" (${line.sku}): requested ${item.quantity}, only ${remaining} of ${line.quantity} left unallocated. / বরাদ্দের বেশি চাওয়া হয়েছে।`,
+        error: `Line "${line.productName}" (${line.sku}): requested ${qtyToString(item.quantity)}, only ${qtyToString(remaining)} of ${qtyToString(line.quantity)} left unallocated. / বরাদ্দের বেশি চাওয়া হয়েছে।`,
       };
     }
   }
@@ -373,8 +388,8 @@ export async function createSplitShipment(
   let codAmountPoisha = 0;
   for (const item of input.items) {
     const line = itemById.get(item.orderItemId)!;
-    codAmountPoisha += line.unitPricePoisha * item.quantity;
-    weightGrams += (weightByVariant.get(line.variantId) ?? 0) * item.quantity;
+    codAmountPoisha += lineTotalPoisha(line.unitPricePoisha, item.quantity);
+    weightGrams += roundHalfUpDiv((weightByVariant.get(line.variantId) ?? 0) * qtyToMilli(item.quantity), QTY_MILLI);
   }
 
   const stamp = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;

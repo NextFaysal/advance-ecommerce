@@ -21,6 +21,7 @@
  * return path by design — the account UI copy sends them to the
  * hotline instead.
  */
+import { isValidQtyNumber } from "@/lib/quantity";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { errorResponse, methodNotAllowed, requireCustomer, unauthorized } from "@/customer-auth/http";
@@ -33,7 +34,7 @@ const createSchema = z.object({
     .array(
       z.object({
         orderItemId: z.string().min(1),
-        quantity: z.number().int().positive(),
+        quantity: z.number().refine((n) => isValidQtyNumber(n), "quantity must be positive, max 3 decimals"),
         reason: z.string().trim().max(300).optional(),
       }),
     )

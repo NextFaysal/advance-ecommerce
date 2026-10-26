@@ -40,6 +40,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon, type IconName } from "@/components/ui/icon";
+import { qtyNumber } from "@/lib/quantity";
 import { formatPoisha } from "@/components/ui/money";
 
 interface BookingItem {
@@ -250,7 +251,8 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
       .filter((l) => selected[l.orderItemId])
       .map((l) => ({
         orderItemId: l.orderItemId,
-        quantity: Math.max(1, Math.min(l.remainingQuantity, Number(quantities[l.orderItemId] ?? l.remainingQuantity) || 0)),
+        // Wave 59: fractional allocations allowed (weighted lines).
+        quantity: Math.max(0.001, Math.min(l.remainingQuantity, qtyNumber(Number(quantities[l.orderItemId] ?? l.remainingQuantity) || 0))),
       }))
       .filter((i) => i.quantity > 0);
   }
@@ -495,7 +497,8 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
                   aria-label={`${l.productName} পরিমাণ`}
                   className="h-9 w-20 rounded-md border border-border bg-card px-2 text-sm shadow-sm outline-none focus:border-brand-500"
                   type="number"
-                  min={1}
+                  min={0.001}
+                  step={0.001}
                   max={l.remainingQuantity}
                   value={quantities[l.orderItemId] ?? String(l.remainingQuantity)}
                   onChange={(e) => {

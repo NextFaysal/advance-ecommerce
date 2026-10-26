@@ -4,6 +4,7 @@
 // so the tsx smoke can pin the behaviour without a browser. The list
 // page and the slide-over preview both consume these; nothing here
 // changes what the API returns or how it is counted.
+import { addQty, lineTotalPoisha } from "../../../src/lib/quantity";
 import type {
   Order,
   OrderStatus,
@@ -57,14 +58,14 @@ export function funnelChips(
  *  against (doc 18 F1 split lines). */
 export function subtotalPoishaOf(order: Pick<Order, "items">): number {
   return order.items.reduce(
-    (sum, item) => sum + item.unitPricePoisha * item.quantity,
+    (sum, item) => sum + lineTotalPoisha(item.unitPricePoisha, item.quantity),
     0,
   );
 }
 
 /** Total units across all lines (Σ quantity, not line count). */
 export function itemUnitCount(order: Pick<Order, "items">): number {
-  return order.items.reduce((sum, item) => sum + item.quantity, 0);
+  return order.items.reduce((sum, item) => addQty(sum, item.quantity), 0);
 }
 
 /** One-line item summary for cards: first product + unit count, e.g.

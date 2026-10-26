@@ -32,6 +32,7 @@ import {
   saveGuestCart,
 } from "../persistence";
 import { cartSubtotalPoisha, type Cart } from "../types";
+import { addQty, DEFAULT_WEIGHTED_STEP, lineTotalPoisha, qtyNumber, qtyToString, subQty } from "@/lib/quantity";
 import {
   CART_SHIPPING_ZONES,
   cartItemDiscountPoisha,
@@ -44,6 +45,10 @@ export interface WeightedVariantAnnotation {
   pricePerKgPoisha: number;
   derivedPricePoisha: number;
   inSync: boolean;
+  /** Wave 59: fractional stepper step in pack units (server-computed
+   *  from the pack's weight step). Absent on older payloads — the
+   *  stepper then falls back to the 0.5 default step. */
+  stepQuantity?: number;
 }
 
 export default function CartPageClient({
@@ -120,8 +125,13 @@ export default function CartPageClient({
   function setQuantity(variantId: string, quantity: number) {
     if (!cart) return;
     const line = lines.find((l) => l.item.variantId === variantId);
-    const cap = line ? Math.max(1, line.stockCap) : quantity;
-    const clamped = Math.min(Math.max(1, quantity), cap);
+    // Wave 59: weighted lines step fractionally from their step size
+    // (0.5 default when the payload predates stepQuantity); every
+    // other line keeps whole-unit stepping from 1.
+    const annotation = weightedVariants?.[variantId];
+    const min = annotation ? (annotation.stepQuantity ?? DEFAULT_WEIGHTED_STEP) : 1;
+    const cap = line ? Math.max(min, line.stockCap) : quantity;
+    const clamped = Math.min(Math.max(min, qtyNumber(quantity)), cap);
     persist({
       ...cart,
       items: cart.items.map((i) =>
@@ -281,36 +291,45 @@ export default function CartPageClient({
                   </p>
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <div className="inline-flex items-center rounded-md border border-border">
-                      <button
-                        type="button"
-                        aria-label="পরিমাণ কমান"
-                        disabled={line.item.quantity <= 1}
-                        onClick={() => setQuantity(line.item.variantId, line.item.quantity - 1)}
-                        className="flex h-11 w-11 items-center justify-center text-lg disabled:opacity-40"
-                      >
-                        −
-                      </button>
-                      <span className="w-10 text-center text-sm font-medium tabular-nums" aria-label="পরিমাণ">
-                        {line.item.quantity}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label="পরিমাণ বাড়ান"
-                        disabled={line.outOfStock || line.item.quantity >= line.stockCap}
-                        onClick={() => setQuantity(line.item.variantId, line.item.quantity + 1)}
-                        className="flex h-11 w-11 items-center justify-center text-lg disabled:opacity-40"
-                      >
-                        +
-                      </button>
-                    </div>
+                    {(() => {
+                      // Wave 59: weighted lines step by their pack step
+                      // (min = one step); other lines step by 1 from 1.
+                      const annotation = weightedVariants?.[line.item.variantId];
+                      const step = annotation ? (annotation.stepQuantity ?? DEFAULT_WEIGHTED_STEP) : 1;
+                      const minQty = step;
+                      return (
+                        <div className="inline-flex items-center rounded-md border border-border">
+                          <button
+                            type="button"
+                            aria-label="পরিমাণ কমান"
+                            disabled={line.item.quantity <= minQty}
+                            onClick={() => setQuantity(line.item.variantId, subQty(line.item.quantity, step))}
+                            className="flex h-11 w-11 items-center justify-center text-lg disabled:opacity-40"
+                          >
+                            −
+                          </button>
+                          <span className="w-10 text-center text-sm font-medium tabular-nums" aria-label="পরিমাণ">
+                            {qtyToString(line.item.quantity)}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label="পরিমাণ বাড়ান"
+                            disabled={line.outOfStock || line.item.quantity >= line.stockCap}
+                            onClick={() => setQuantity(line.item.variantId, addQty(line.item.quantity, step))}
+                            className="flex h-11 w-11 items-center justify-center text-lg disabled:opacity-40"
+                          >
+                            +
+                          </button>
+                        </div>
+                      );
+                    })()}
                     {line.outOfStock ? (
                       <span className="text-xs font-medium text-rose-500">স্টক শেষ</span>
                     ) : line.item.quantity >= line.stockCap ? (
                       <span className="text-xs text-text-muted">স্টকে যা আছে সব নেওয়া হয়েছে</span>
                     ) : null}
                     <span className="ml-auto text-sm font-semibold">
-                      <Money bengaliDigits={bengaliDigits} poisha={line.item.unitPricePoisha * line.item.quantity} />
+                      <Money bengaliDigits={bengaliDigits} poisha={lineTotalPoisha(line.item.unitPricePoisha, line.item.quantity)} />
                     </span>
                   </div>
 

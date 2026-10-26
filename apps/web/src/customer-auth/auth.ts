@@ -32,6 +32,7 @@ import {
   LAST_USED_WRITE_THROTTLE_MS,
 } from "@/lib/auth";
 import { maskPhone } from "@/checkout/validation";
+import { qtyNumber } from "@/lib/quantity";
 import { findDeliverySlot, loadDeliverySlots } from "@/checkout/delivery-slots";
 import { emitAutomationEvent } from "@/automation/producers";
 import { dispatchWebhookEvent } from "@/webhooks/dispatch";
@@ -389,7 +390,7 @@ export async function listCustomerOrders(
       paymentStatus: o.paymentStatus,
       paymentMethod: o.paymentMethod,
       totalPoisha: o.totalPoisha,
-      itemCount: o.items.reduce((sum, i) => sum + i.quantity, 0),
+      itemCount: o.items.reduce((sum, i) => sum + qtyNumber(i.quantity), 0),
       firstItemName: o.items[0]?.productName ?? null,
       phoneMasked: maskPhone(o.customerPhone),
       createdAt: o.createdAt.toISOString(),

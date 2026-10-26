@@ -41,6 +41,7 @@ import { creditDeliveredOrderDb, getReseller, getResellerTierState } from "../re
 import { vendorStore } from "../vendors/db-store";
 import { demoVendorFlags } from "../vendors/flags";
 import { computeCommission } from "../vendors/service";
+import { lineTotalPoisha, qtyNumber } from "../lib/quantity";
 
 function logHookError(section: string, orderId: string, err: unknown): void {
   console.error(`[delivered-hooks] ${section} failed for order ${orderId}:`, err);
@@ -114,7 +115,7 @@ async function creditReseller(order: {
       const resellerPrice = priceByVariant.get(item.variantId);
       const base = baseByVariant.get(item.variantId);
       if (resellerPrice === undefined || base === undefined) continue;
-      marginPoisha += Math.max(0, resellerPrice - base) * item.quantity;
+      marginPoisha += lineTotalPoisha(Math.max(0, resellerPrice - base), item.quantity);
     }
   }
   await creditDeliveredOrderDb({
@@ -152,7 +153,7 @@ async function creditVendors(order: {
   for (const item of order.items) {
     const vendorId = vendorByVariant.get(item.variantId);
     if (!vendorId) continue;
-    grossByVendor.set(vendorId, (grossByVendor.get(vendorId) ?? 0) + item.unitPricePoisha * item.quantity);
+    grossByVendor.set(vendorId, (grossByVendor.get(vendorId) ?? 0) + lineTotalPoisha(item.unitPricePoisha, item.quantity));
   }
   for (const [vendorId, grossPoisha] of grossByVendor) {
     if (grossPoisha <= 0) continue;
@@ -202,25 +203,29 @@ export async function runDeliveredOrderHooks(orderId: string): Promise<void> {
       },
     });
     if (!row || row.status !== "DELIVERED") return;
+    // Wave 59: item quantities arrive as Prisma Decimals — canonicalise
+    // once here so every hook below works in milli-exact app numbers.
+    const items = row.items.map((i) => ({ ...i, quantity: qtyNumber(i.quantity) }));
+    const orderWithItems = { ...row, items };
     try {
-      await creditLoyalty(row);
+      await creditLoyalty(orderWithItems);
     } catch (err) {
       logHookError("loyalty", row.id, err);
     }
     if (row.resellerId) {
       try {
-        await creditReseller({ ...row, resellerId: row.resellerId });
+        await creditReseller({ ...orderWithItems, resellerId: row.resellerId });
       } catch (err) {
         logHookError("reseller", row.id, err);
       }
     }
     try {
-      await creditVendors(row);
+      await creditVendors(orderWithItems);
     } catch (err) {
       logHookError("vendors", row.id, err);
     }
     try {
-      await applyInventoryDepth(row);
+      await applyInventoryDepth(orderWithItems);
     } catch (err) {
       logHookError("inventory-depth", row.id, err);
     }

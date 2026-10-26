@@ -1,13 +1,14 @@
 /**
  * Grocery weighted (per-kg) pricing — ADV-22 wiring (doc 22).
  *
- * MODEL (honest fixed-pack version — see grocery.ts for the audit):
- * quantities are integers at every seam of this platform (OrderItem,
- * CartItem, checkout zod, stock ledger), so fractional quantities
- * cannot flow. A weighted product is therefore sold as FIXED WEIGHT
- * PACKS configured in the grocery pack config (weightedVariants):
- * per-kg rate × pack grams → the pack's derived price, computed with
- * the pack's own priceForWeight (integer math, single floor).
+ * MODEL (fixed-pack version — see grocery.ts for the audit):
+ * a weighted product is sold as FIXED WEIGHT PACKS configured in the
+ * grocery pack config (weightedVariants): per-kg rate × pack grams →
+ * the pack's derived price, computed with the pack's own priceForWeight
+ * (integer math, single floor). Since wave 59 the pack QUANTITY may
+ * itself be fractional (0.5 of a pack) — gated to these configured
+ * variants and the pack's weight step in src/orders/quantity-rules.ts;
+ * the pack remains the unit of price and stock.
  *
  * The RECORDED variant price (ProductVariant.pricePoisha) is what
  * checkout charges — checkout always re-reads it server-side. The
@@ -25,6 +26,9 @@ export interface WeightedVariantInfo {
   productId: string;
   productTitleEn: string;
   packGrams: number;
+  /** The pack's configured weight step (grams) — wave 59 steppers
+   *  express it in pack units (weightStepGrams / packGrams). */
+  weightStepGrams: number;
   pricePerKgPoisha: number;
   /** floor(rate × packGrams / 1000) — the price the rate implies. */
   derivedPricePoisha: number;
@@ -61,6 +65,7 @@ async function loadInfos(config: GroceryConfig, onlyVariantIds?: readonly string
       productId: v.product.id,
       productTitleEn: v.product.titleEn,
       packGrams: entry.packGrams,
+      weightStepGrams: config.weightStepGrams,
       pricePerKgPoisha: entry.pricePerKgPoisha,
       derivedPricePoisha,
       recordedPricePoisha: v.pricePoisha,

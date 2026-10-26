@@ -12,13 +12,17 @@ import { z } from "zod";
 import { errorResponse, requireCustomer, unauthorized } from "@/customer-auth/http";
 import { subscriptionsEnabled } from "@/subscriptions/flags";
 import { SUBSCRIPTION_INTERVALS, updateSubscriptionForCustomer } from "@/subscriptions/service";
+import { isValidQtyNumber } from "@/lib/quantity";
 
 export const dynamic = "force-dynamic";
 
 const patchSchema = z.object({
   action: z.enum(["pause", "resume", "cancel"]).optional(),
   interval: z.enum(SUBSCRIPTION_INTERVALS).optional(),
-  quantity: z.number().int().min(1).max(99).optional(),
+  quantity: z
+    .number()
+    .refine((v) => isValidQtyNumber(v) && v <= 99, "Quantity must be positive (max 99, up to 3 decimals)")
+    .optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {

@@ -1,3 +1,4 @@
+import { lineTotalPoisha } from "../lib/quantity";
 // Pricing pipeline — single source of truth (Master Prompt rule).
 // Order, always in integer poisha:
 //   subtotal -> item discounts -> coupon/campaign -> shipping -> COD fee -> tax/VAT -> grand total
@@ -59,9 +60,13 @@ export function calculatePricing(input: PricingInput): PricingResult {
   let itemDiscountPoisha = 0;
 
   for (const line of input.lines) {
-    const qty = Math.max(0, Math.floor(line.quantity));
-    subtotalPoisha += line.unitPricePoisha * qty;
-    itemDiscountPoisha += (line.discountPoishaPerUnit ?? 0) * qty;
+    // Wave 59: quantities may be fractional (weighted goods) — line
+    // money uses the shared half-up line rule, never a floor (a floor
+    // would zero a 0.5 line). Integer quantities price exactly as
+    // before; non-positive quantities contribute nothing, as before.
+    const qty = line.quantity > 0 ? line.quantity : 0;
+    subtotalPoisha += lineTotalPoisha(line.unitPricePoisha, qty);
+    itemDiscountPoisha += lineTotalPoisha(line.discountPoishaPerUnit ?? 0, qty);
   }
   itemDiscountPoisha = Math.min(itemDiscountPoisha, subtotalPoisha);
   const afterItemDiscount = subtotalPoisha - itemDiscountPoisha;

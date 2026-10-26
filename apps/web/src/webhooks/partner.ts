@@ -29,6 +29,7 @@ import { maskPhone } from "@advance-ecommerce/validators";
 import { checkRateLimit } from "../lib/rate-limit";
 import { authenticatePartnerKey, type AuthenticatedPartnerKey, type PartnerScope } from "./api-keys";
 import { getCustomFieldValuesForIds } from "../extensibility/custom-fields-store";
+import { addQty, qtyToString } from "../lib/quantity";
 
 /** Per-key partner rate limit: 120 requests / minute. */
 export const PARTNER_RATE_LIMIT = { max: 120, windowMs: 60_000 } as const;
@@ -156,8 +157,11 @@ export async function listPartnerOrders(limit: number) {
       shippingPoisha: o.shippingPoisha,
       totalPoisha: o.totalPoisha,
       customerPhoneMasked: maskPhone(o.customerPhone),
-      itemCount: o.items.reduce((sum, i) => sum + i.quantity, 0),
-      items: o.items,
+      // Wave 59: quantities are Decimal(12,3) now — itemCount sums in
+      // milli-exact math and each line's quantity serialises as a
+      // STRING ("1.5"), never a float, per the wire rule.
+      itemCount: o.items.reduce((sum, i) => addQty(sum, i.quantity), 0),
+      items: o.items.map((i) => ({ ...i, quantity: qtyToString(i.quantity) })),
       createdAt: o.createdAt.toISOString(),
       ...(customFields ? { customFields } : {}),
     };

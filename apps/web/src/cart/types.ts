@@ -1,6 +1,9 @@
 // Cart types — Agent 4 (Checkout, Orders & CRM).
 // Money is ALWAYS integer poisha. Never float. Prices come from the server;
 // the client price is display-only and is re-validated server-side (see checkout/pricing.ts).
+// Quantities (wave 59) may be fractional for grocery weighted variants
+// only; all quantity math goes through src/lib/quantity (milli-units).
+import { addQty, lineTotalPoisha } from "../lib/quantity";
 
 export type CartItem = {
   variantId: string;
@@ -27,13 +30,13 @@ export type Cart = {
 
 export function cartSubtotalPoisha(cart: Cart): number {
   return cart.items.reduce(
-    (sum, item) => sum + item.unitPricePoisha * item.quantity,
+    (sum, item) => sum + lineTotalPoisha(item.unitPricePoisha, item.quantity),
     0,
   );
 }
 
 export function cartItemCount(cart: Cart): number {
-  return cart.items.reduce((sum, item) => sum + item.quantity, 0);
+  return cart.items.reduce((sum, item) => addQty(sum, item.quantity), 0);
 }
 
 /** Pure merge: guest cart into the user's cart. Same variant -> quantities add. */
@@ -45,7 +48,7 @@ export function mergeGuestIntoUserCart(guest: Cart, user: Cart): Cart {
     if (existing) {
       byVariant.set(item.variantId, {
         ...existing,
-        quantity: existing.quantity + item.quantity,
+        quantity: addQty(existing.quantity, item.quantity),
         // Keep the user's snapshot; price is re-validated server-side anyway.
         unitPricePoisha: existing.unitPricePoisha,
       });

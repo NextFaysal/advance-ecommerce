@@ -5,6 +5,7 @@
 // from a phone is a v2/device follow-up, not implemented here.
 import type { Order } from "./types";
 import { formatBdt } from "../checkout/pricing";
+import { lineTotalPoisha, qtyToString } from "../lib/quantity";
 
 export type PrintFormat = "A4" | "THERMAL_58" | "THERMAL_80";
 
@@ -51,7 +52,7 @@ export function buildPrintData(
       .filter(Boolean)
       .join(", "),
     itemsText: order.items.map(
-      (i) => `${i.productName} (${i.sku}) x${i.quantity} — ${formatBdt(i.unitPricePoisha * i.quantity)}`,
+      (i) => `${i.productName} (${i.sku}) x${qtyToString(i.quantity)} — ${formatBdt(lineTotalPoisha(i.unitPricePoisha, i.quantity))}`,
     ),
     totalText: formatBdt(order.totalPoisha),
     courier: order.courier,

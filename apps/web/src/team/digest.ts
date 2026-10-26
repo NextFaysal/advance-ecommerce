@@ -50,6 +50,7 @@ import {
   listInventoryItemsDb,
 } from "@/inventory/repository";
 import { enqueueEmailJob, type EnqueueEmailResult } from "@/email/send";
+import { addQty } from "@/lib/quantity";
 import { readDoc, writeDoc } from "./docs";
 
 export interface DailyDigest {
@@ -116,7 +117,7 @@ export async function buildDailyDigest(ymd: string): Promise<DailyDigest> {
   const unitsByProduct = new Map<string, number>();
   for (const r of rows) {
     if (r.status === "CANCELLED") continue;
-    unitsByProduct.set(r.productId, (unitsByProduct.get(r.productId) ?? 0) + r.quantity);
+    unitsByProduct.set(r.productId, addQty(unitsByProduct.get(r.productId) ?? 0, r.quantity));
   }
   const topIds = [...unitsByProduct.entries()]
     .sort((a, b) => b[1] - a[1])

@@ -70,6 +70,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Icon } from "@/components/ui/icon";
 import { formatBdt } from "../../../../src/checkout/pricing";
+import { addQty, lineTotalPoisha } from "../../../../src/lib/quantity";
 
 const MAX_INVOICES = 50;
 
@@ -147,7 +148,7 @@ interface LoadedInvoice {
 
 function toInvoice(order: InvoiceOrder): LoadedInvoice {
   const subtotalPoisha = order.items.reduce(
-    (sum, i) => sum + i.unitPricePoisha * i.quantity,
+    (sum, i) => sum + lineTotalPoisha(i.unitPricePoisha, i.quantity),
     0,
   );
   const paidPoisha =
@@ -279,7 +280,7 @@ function InvoiceSheet({
               <td className="py-2 text-center tabular-nums">{item.quantity}</td>
               <td className="py-2 text-right tabular-nums">{formatBdt(item.unitPricePoisha)}</td>
               <td className="py-2 text-right font-medium tabular-nums">
-                {formatBdt(item.unitPricePoisha * item.quantity)}
+                {formatBdt(lineTotalPoisha(item.unitPricePoisha, item.quantity))}
               </td>
             </tr>
           ))}
@@ -383,7 +384,7 @@ function PackingSlipSheet({
   format: PrintFormat;
 }) {
   const { order } = invoice;
-  const totalQuantity = order.items.reduce((sum, i) => sum + i.quantity, 0);
+  const totalQuantity = order.items.reduce((sum, i) => addQty(sum, i.quantity), 0);
   return (
     <section
       className={`invoice-sheet mb-8 rounded-lg border border-border bg-white p-6 text-text-main shadow-card print:mb-0 print:rounded-none print:border-0 print:shadow-none ${

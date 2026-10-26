@@ -38,6 +38,7 @@ import {
   type ManualOrderActor,
 } from "@/orders/manual-create";
 import { manualShippingPoisha, type ManualShippingMethod } from "@/orders/manual-order";
+import { isValidQtyNumber, lineTotalPoisha } from "../lib/quantity";
 import type { Order } from "@/orders/types";
 
 /** Drafts are staff-only: the actor must be a real user (the widened
@@ -87,10 +88,9 @@ function payloadItems(payload: Record<string, unknown>): Array<{
   for (const entry of raw) {
     const rec = asRecord(entry);
     if (!rec || typeof rec.variantId !== "string" || rec.variantId === "") continue;
-    const quantity =
-      typeof rec.quantity === "number" && Number.isInteger(rec.quantity) && rec.quantity > 0
-        ? rec.quantity
-        : 1;
+    // Wave 59: draft payloads may carry fractional quantities for
+    // weighted variants (conversion re-gates them in createManualOrder).
+    const quantity = isValidQtyNumber(rec.quantity) ? rec.quantity : 1;
     const unitPricePoisha =
       typeof rec.unitPricePoisha === "number" &&
       Number.isInteger(rec.unitPricePoisha) &&
@@ -137,7 +137,7 @@ export async function computeDraftPreviewPoisha(payload: unknown): Promise<numbe
     for (const item of items) {
       const server = snapshots.get(item.variantId);
       if (!server) return null;
-      subtotalPoisha += (item.unitPricePoisha ?? server.unitPricePoisha) * item.quantity;
+      subtotalPoisha += lineTotalPoisha(item.unitPricePoisha ?? server.unitPricePoisha, item.quantity);
     }
   }
   const override =

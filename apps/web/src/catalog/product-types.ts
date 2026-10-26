@@ -56,6 +56,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { prisma } from "@advance-ecommerce/db";
 import { isFeatureEnabled } from "@/lib/feature-flags";
+import { addQty, qtyNumber, stockClaimUnits } from "@/lib/quantity";
 import { presignGetObject, resolveStorageConfig } from "./media-server";
 
 export const PRODUCT_TYPES_FLAG = "module.product_types";
@@ -187,7 +188,7 @@ export async function validateProductTypeRules(
     if (v && v.product.type === "PREORDER" && v.product.preorderMaxUnits !== null) {
       preorderRequested.set(
         v.product.id,
-        (preorderRequested.get(v.product.id) ?? 0) + item.quantity,
+        addQty(preorderRequested.get(v.product.id) ?? 0, item.quantity),
       );
     }
   }
@@ -202,7 +203,9 @@ export async function validateProductTypeRules(
       },
       _sum: { quantity: true },
     });
-    const alreadyOrdered = prior._sum.quantity ?? 0;
+    // Wave 59: _sum over the Decimal quantity column returns a
+    // Prisma Decimal — canonicalise to a milli-exact number.
+    const alreadyOrdered = qtyNumber(prior._sum.quantity ?? 0);
     if (alreadyOrdered + requested > maxUnits) {
       throw new PreorderCapError(
         `Pre-order cap reached for product ${productId}: ${alreadyOrdered} of ${maxUnits} units already ordered.`,
@@ -247,9 +250,12 @@ export async function validateProductTypeRules(
       );
     }
     for (const line of lines) {
+      // Wave 59: components are whole units — a (hypothetical)
+      // fractional bundle line claims components for ceil(qty) whole
+      // packs, the stockClaimUnits rule; integer lines are unchanged.
       componentNeeds.set(
         line.componentVariantId,
-        (componentNeeds.get(line.componentVariantId) ?? 0) + line.quantity * item.quantity,
+        (componentNeeds.get(line.componentVariantId) ?? 0) + line.quantity * stockClaimUnits(item.quantity),
       );
       componentStock.set(line.componentVariantId, {
         sku: line.componentVariant.sku,

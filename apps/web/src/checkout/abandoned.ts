@@ -24,6 +24,8 @@
  *   (source "manual" + an internal note naming the capture).
  */
 import { z } from "zod";
+import { addQty, isValidQtyNumber, lineTotalPoisha, qtyToMilli, roundHalfUpDiv, QTY_MILLI } from "../lib/quantity";
+import { validateOrderLineQuantities } from "../orders/quantity-rules";
 import { prisma } from "@advance-ecommerce/db";
 import { priorityForSource } from "../callcenter/queue";
 import {
@@ -136,7 +138,11 @@ export const captureAbandonedSchema = z.object({
     .array(
       z.object({
         variantId: z.string().min(1),
-        quantity: z.number().int().min(1).max(99),
+        // Wave 59: a captured cart may hold fractional weighted lines;
+        // the conversion path re-gates them before creating the order.
+        quantity: z
+          .number()
+          .refine((v) => isValidQtyNumber(v) && v <= 99, "Quantity must be positive (max 99, up to 3 decimals)"),
       }),
     )
     .min(1, "Cart khali — age product add korun")
@@ -173,7 +179,7 @@ export async function captureAbandonedCheckout(
   // if NOTHING resolves there is no cart worth capturing.
   const merged = new Map<string, number>();
   for (const item of input.items) {
-    merged.set(item.variantId, Math.min(99, (merged.get(item.variantId) ?? 0) + item.quantity));
+    merged.set(item.variantId, Math.min(99, addQty(merged.get(item.variantId) ?? 0, item.quantity)));
   }
   const snapshots = await getVariantSnapshots([...merged.keys()]);
   const items: CapturedItem[] = [];
@@ -186,7 +192,7 @@ export async function captureAbandonedCheckout(
       continue;
     }
     items.push({ variantId, quantity, pricePoishaAtCapture: server.unitPricePoisha });
-    subtotalPoisha += server.unitPricePoisha * quantity;
+    subtotalPoisha += lineTotalPoisha(server.unitPricePoisha, quantity);
   }
   if (items.length === 0) {
     throw new AbandonedError(
@@ -335,7 +341,7 @@ export async function listOpenAbandonedCheckouts(): Promise<{
           productName: snapshots.get(i.variantId)?.productName ?? null,
           sku: snapshots.get(i.variantId)?.sku ?? null,
         })),
-        itemCount: items.reduce((sum, i) => sum + i.quantity, 0),
+        itemCount: items.reduce((sum, i) => addQty(sum, i.quantity), 0),
         subtotalPoisha: row.subtotalPoisha,
         address: (row.addressJson as CapturedAddress | null) ?? null,
         hasCallTask: row.callTaskId !== null,
@@ -385,7 +391,7 @@ export async function createAbandonedCallTask(id: string): Promise<{
     return { callTaskId: row.callTaskId, alreadyCreated: true };
   }
   const items = row.itemsJson as unknown as CapturedItem[];
-  const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
+  const itemCount = items.reduce((sum, i) => addQty(sum, i.quantity), 0);
   const task = await prisma.callTask.create({
     data: {
       kind: "ABANDONED_CHECKOUT",
@@ -468,6 +474,16 @@ export async function convertAbandonedCheckout(id: string): Promise<ConvertResul
   const capturedItems = row.itemsJson as unknown as CapturedItem[];
   const capturedAddress = (row.addressJson as CapturedAddress | null) ?? null;
 
+  // Wave 59: this conversion calls createOrderRecord directly (not
+  // createManualOrder), so the fractional/weighted gate runs HERE —
+  // a captured fraction on a non-weighted variant refuses the
+  // conversion and the capture stays open, exactly like a stock
+  // failure below.
+  const qtyGate = await validateOrderLineQuantities(capturedItems);
+  if (!qtyGate.ok) {
+    throw new AbandonedError("INVALID_QUANTITY", qtyGate.message, 409, qtyGate.details);
+  }
+
   // Re-resolve every line against the LIVE catalog (existence, stock,
   // current price) — the capture-time prices are never charged.
   const snapshots = await getVariantSnapshots(capturedItems.map((i) => i.variantId));
@@ -504,8 +520,8 @@ export async function convertAbandonedCheckout(id: string): Promise<ConvertResul
       unitPricePoisha: server.unitPricePoisha,
       quantity: line.quantity,
     });
-    subtotalPoisha += server.unitPricePoisha * line.quantity;
-    totalWeightGrams += server.weightGrams * line.quantity;
+    subtotalPoisha += lineTotalPoisha(server.unitPricePoisha, line.quantity);
+    totalWeightGrams += roundHalfUpDiv(server.weightGrams * qtyToMilli(line.quantity), QTY_MILLI);
   }
 
   // Address: whatever the shopper had typed. Missing district → the

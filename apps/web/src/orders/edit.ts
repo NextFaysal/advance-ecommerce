@@ -85,6 +85,19 @@ import {
 import { refreshCouponSnapshot } from "../marketing/repository";
 import { writeAudit } from "../lib/audit";
 import {
+  addQty,
+  cmpQty,
+  isValidQtyNumber,
+  lineTotalPoisha,
+  qtyNumber,
+  qtyToDecimalString,
+  qtyToMilli,
+  roundHalfUpDiv,
+  stockClaimUnits,
+  QTY_MILLI,
+} from "../lib/quantity";
+import { validateOrderLineQuantities } from "./quantity-rules";
+import {
   computeVatInclusiveSplit,
   getVariantSnapshots,
   type ServerVariantSnapshot,
@@ -349,7 +362,7 @@ export async function getOrderEditView(idOrNo: string): Promise<OrderEditResult<
         productName: i.productName,
         sku: i.sku,
         unitPricePoisha: i.unitPricePoisha,
-        quantity: i.quantity,
+        quantity: qtyNumber(i.quantity),
       })),
       totals: {
         subtotalPoisha: row.subtotalPoisha,
@@ -386,13 +399,15 @@ export async function editOrderItems(
   if (setQuantities.length === 0 && removeItemIds.length === 0 && addItems.length === 0) {
     return fail("INVALID_INPUT", "কোনো পরিবর্তন পাঠানো হয়নি / No changes were submitted.");
   }
+  // Wave 59: quantities may be fractional (<= 3 decimals) — fractions
+  // are then gated to weighted variants on the planned lines below.
   for (const s of setQuantities) {
-    if (!Number.isInteger(s.quantity) || s.quantity < 0 || s.quantity > 999) {
+    if (!(s.quantity === 0 || isValidQtyNumber(s.quantity)) || s.quantity > 999) {
       return fail("INVALID_INPUT", "পরিমাণ ০–৯৯৯ এর মধ্যে হতে হবে / Quantity must be between 0 and 999.");
     }
   }
   for (const a of addItems) {
-    if (!Number.isInteger(a.quantity) || a.quantity < 1 || a.quantity > 999) {
+    if (!isValidQtyNumber(a.quantity) || a.quantity > 999) {
       return fail("INVALID_INPUT", "নতুন আইটেমের পরিমাণ ১–৯৯৯ হতে হবে / Added item quantity must be between 1 and 999.");
     }
   }
@@ -456,8 +471,11 @@ export async function editOrderItems(
       let quantityChanged = 0;
       for (const item of row.items) {
         if (removedIds.has(item.id)) continue;
-        const qty = qtyByItemId.get(item.id) ?? item.quantity;
-        if (qty !== item.quantity) quantityChanged += 1;
+        // Wave 59: stored quantities are Decimals — canonicalise
+        // before comparing/planning in app numbers.
+        const storedQty = qtyNumber(item.quantity);
+        const qty = qtyByItemId.get(item.id) ?? storedQty;
+        if (cmpQty(qty, storedQty) !== 0) quantityChanged += 1;
         lines.push({
           orderItemId: item.id,
           variantId: item.variantId,
@@ -511,7 +529,7 @@ export async function editOrderItems(
         }
         const existing = lines.find((l) => l.variantId === add.variantId);
         if (existing) {
-          existing.quantity += add.quantity;
+          existing.quantity = addQty(existing.quantity, add.quantity);
           quantityChanged += 1;
         } else {
           lines.push({
@@ -533,18 +551,33 @@ export async function editOrderItems(
         );
       }
 
+      // Wave 59: the planned lines must satisfy the same weighted
+      // gate as create (fractions only on weighted variants, on the
+      // configured weight step) — an edit can never smuggle in a
+      // fraction create would refuse.
+      const qtyGate = await validateOrderLineQuantities(lines);
+      if (!qtyGate.ok) {
+        throw new EditAbort("INVALID_INPUT", qtyGate.message);
+      }
+
       /* ---- stock deltas (per variant, whole-edit atomic) ---- */
       const oldQtyByVariant = new Map<string, number>();
       for (const i of row.items) {
-        oldQtyByVariant.set(i.variantId, (oldQtyByVariant.get(i.variantId) ?? 0) + i.quantity);
+        oldQtyByVariant.set(i.variantId, addQty(oldQtyByVariant.get(i.variantId) ?? 0, i.quantity));
       }
       const newQtyByVariant = new Map<string, number>();
       for (const l of lines) {
-        newQtyByVariant.set(l.variantId, (newQtyByVariant.get(l.variantId) ?? 0) + l.quantity);
+        newQtyByVariant.set(l.variantId, addQty(newQtyByVariant.get(l.variantId) ?? 0, l.quantity));
       }
       const deltas = new Map<string, number>();
       for (const vid of new Set([...oldQtyByVariant.keys(), ...newQtyByVariant.keys()])) {
-        deltas.set(vid, (newQtyByVariant.get(vid) ?? 0) - (oldQtyByVariant.get(vid) ?? 0));
+        // Stock moves in whole units: the delta is between the two
+        // sides' stockClaimUnits totals (identity for integer lines),
+        // matching the reservation claim the create placed.
+        deltas.set(
+          vid,
+          stockClaimUnits(newQtyByVariant.get(vid) ?? 0) - stockClaimUnits(oldQtyByVariant.get(vid) ?? 0),
+        );
       }
       await applyStockDeltas(tx, { id: row.id, orderNo: row.orderNo }, deltas);
 
@@ -561,26 +594,26 @@ export async function editOrderItems(
               productName: line.productName,
               sku: line.sku,
               unitPricePoisha: line.unitPricePoisha,
-              quantity: line.quantity,
+              quantity: qtyToDecimalString(line.quantity),
             },
           });
         } else {
           // Covers both an explicit setQuantities change and a
           // merged add that raised this kept line's quantity.
           const original = byId.get(line.orderItemId);
-          if (original && line.quantity !== original.quantity) {
+          if (original && cmpQty(line.quantity, original.quantity) !== 0) {
             await tx.orderItem.update({
               where: { id: line.orderItemId },
-              data: { quantity: line.quantity },
+              data: { quantity: qtyToDecimalString(line.quantity) },
             });
           }
         }
       }
 
       /* ---- pricing: subtotal + shipping engine ---- */
-      const subtotalPoisha = lines.reduce((sum, l) => sum + l.unitPricePoisha * l.quantity, 0);
+      const subtotalPoisha = lines.reduce((sum, l) => sum + lineTotalPoisha(l.unitPricePoisha, l.quantity), 0);
       const totalWeightGrams = lines.reduce(
-        (sum, l) => sum + (snapshots.get(l.variantId)?.weightGrams ?? 0) * l.quantity,
+        (sum, l) => sum + roundHalfUpDiv((snapshots.get(l.variantId)?.weightGrams ?? 0) * qtyToMilli(l.quantity), QTY_MILLI),
         0,
       );
       const engine = await computeOrderShipping({

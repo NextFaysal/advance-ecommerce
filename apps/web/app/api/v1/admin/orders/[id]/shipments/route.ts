@@ -10,6 +10,7 @@
  * Bookings are sandbox bookings (SBX tracking ids, no real courier is
  * contacted), same as POST /api/v1/admin/shipments.
  */
+import { isValidQtyNumber } from "@/lib/quantity";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -64,7 +65,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
 const createSchema = z.object({
   items: z
-    .array(z.object({ orderItemId: z.string().min(1), quantity: z.number().int().positive() }))
+    .array(z.object({ orderItemId: z.string().min(1), quantity: z.number().refine((n) => isValidQtyNumber(n), "quantity must be positive, max 3 decimals") }))
     .min(1),
   provider: z.string().min(1).optional(),
   note: z.string().max(500).optional(),

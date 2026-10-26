@@ -30,6 +30,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { addOrderTimelineNote } from "@/shipments/split-shipments";
+import { addQty, isValidQtyNumber, qtyNumber } from "../lib/quantity";
 
 export const PICK_LISTS_KEY = "warehouse.pick_lists";
 
@@ -55,7 +56,8 @@ const pickListItemSchema = z.object({
    *  works; nothing here is ever guessed. */
   barcode: z.string().nullable().default(null),
   productName: z.string(),
-  quantity: z.number().int().positive(),
+  // Wave 59: pick quantities mirror order quantities (fractional ok).
+  quantity: z.number().refine((n) => isValidQtyNumber(n), "quantity must be positive, max 3 decimals"),
   packed: z.boolean().default(false),
   packedAt: z.string().nullable().default(null),
   packedBy: z.string().nullable().default(null),
@@ -82,14 +84,14 @@ const pickListLineSchema = z.object({
   /** Bin/rack location from the inventory read model when it
    *  carries one at runtime; null = no location recorded. */
   binLocation: z.string().nullable().default(null),
-  totalQuantity: z.number().int().positive(),
+  totalQuantity: z.number().refine((n) => isValidQtyNumber(n), "quantity must be positive, max 3 decimals"),
   /** Separation markers for packers: how many of this variant go to
    *  each order in the batch. */
   perOrder: z.array(
     z.object({
       orderId: z.string().min(1),
       orderNo: z.string().min(1),
-      quantity: z.number().int().positive(),
+      quantity: z.number().refine((n) => isValidQtyNumber(n), "quantity must be positive, max 3 decimals"),
     }),
   ),
 });
@@ -314,6 +316,11 @@ export async function createPickList(
     include: {
       items: { orderBy: { createdAt: "asc" } },
     },
+  })).map((r) => ({
+    ...r,
+    // OrderItem.quantity is Decimal since wave 59 — canonicalise to
+    // the milli-exact number the snapshot shape carries.
+    items: r.items.map((i) => ({ ...i, quantity: qtyNumber(i.quantity) })),
   })) as OrderSnapshotRow[];
 
   const byId = new Map(rows.map((r) => [r.id, r]));
@@ -366,7 +373,7 @@ export async function createPickList(
       sku: i.sku,
       barcode: barcodes.get(i.variantId) ?? null,
       productName: i.productName,
-      quantity: i.quantity,
+      quantity: qtyNumber(i.quantity),
       packed: false,
       packedAt: null,
       packedBy: null,
@@ -389,7 +396,7 @@ export async function createPickList(
         };
         lineMap.set(item.variantId, line);
       }
-      line.totalQuantity += item.quantity;
+      line.totalQuantity = addQty(line.totalQuantity, item.quantity);
       line.perOrder.push({ orderId: order.orderId, orderNo: order.orderNo, quantity: item.quantity });
     }
   }

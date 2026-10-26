@@ -16,6 +16,7 @@
  * shared server page.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { addQty, isValidQtyNumber } from "../lib/quantity";
 
 export const CART_SHARE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 export const CART_SHARE_MAX_LINES = 50;
@@ -44,9 +45,11 @@ function sign(payloadB64: string, secret: string): string {
   return createHmac("sha256", secret).update(payloadB64).digest("base64url");
 }
 
-/** Normalise untrusted line input: string variant ids, integer
- *  quantities 1–999, duplicates merged, capped at MAX_LINES. Returns
- *  null when nothing usable remains. */
+/** Normalise untrusted line input: string variant ids, quantities
+ *  1–999 (fractional allowed since wave 59 — a shared weighted line
+ *  must survive the round trip; checkout re-gates fractions to
+ *  weighted variants), duplicates merged, capped at MAX_LINES.
+ *  Returns null when nothing usable remains. */
 export function normalizeShareLines(input: unknown): CartShareLine[] | null {
   if (!Array.isArray(input)) return null;
   const byVariant = new Map<string, number>();
@@ -54,8 +57,8 @@ export function normalizeShareLines(input: unknown): CartShareLine[] | null {
     if (typeof entry !== "object" || entry === null) continue;
     const { variantId, quantity } = entry as { variantId?: unknown; quantity?: unknown };
     if (typeof variantId !== "string" || variantId.trim() === "" || variantId.length > 128) continue;
-    if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 1 || quantity > 999) continue;
-    byVariant.set(variantId, Math.min(999, (byVariant.get(variantId) ?? 0) + quantity));
+    if (typeof quantity !== "number" || !isValidQtyNumber(quantity) || quantity > 999) continue;
+    byVariant.set(variantId, Math.min(999, addQty(byVariant.get(variantId) ?? 0, quantity)));
   }
   if (byVariant.size === 0 || byVariant.size > CART_SHARE_MAX_LINES) return null;
   return [...byVariant.entries()].map(([variantId, quantity]) => ({ variantId, quantity }));

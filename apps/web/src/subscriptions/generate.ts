@@ -49,6 +49,7 @@ import { deterministicUuid } from "@/importers/orders-service";
 import { zoneForDistrict } from "@/checkout/shipping-core";
 import { subscriptionsEnabled } from "./flags";
 import { addInterval, loadSubscriptionDiscountBps } from "./service";
+import { qtyNumber } from "../lib/quantity";
 
 const SWEEP_BATCH = 100;
 
@@ -128,7 +129,7 @@ export async function processDueSubscriptions(
           items: [
             {
               variantId: sub.variantId,
-              quantity: sub.quantity,
+              quantity: qtyNumber(sub.quantity),
               unitPricePoisha: snapshot.unitPricePoisha,
             },
           ],

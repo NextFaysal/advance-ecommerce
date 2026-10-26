@@ -35,6 +35,7 @@ import { getOrderAdvanceView } from "@/orders/advance";
 import { getSetting } from "@/lib/settings";
 import { resolveInvoiceTexts } from "@/templates/overrides";
 import { formatBdt } from "@/checkout/pricing";
+import { lineTotalPoisha, qtyNumber } from "@/lib/quantity";
 
 export interface InvoiceMoneyRow {
   labelBn: string;
@@ -201,7 +202,7 @@ export async function buildInvoiceData(
     getSetting("general.store_bin"),
     resolveInvoiceTexts(),
   ]);
-  const subtotalPoisha = order.items.reduce((sum, i) => sum + i.unitPricePoisha * i.quantity, 0);
+  const subtotalPoisha = order.items.reduce((sum, i) => sum + lineTotalPoisha(i.unitPricePoisha, i.quantity), 0);
   const a = order.address;
   return {
     orderId: order.id,
@@ -220,9 +221,9 @@ export async function buildInvoiceData(
     items: order.items.map((i) => ({
       productName: i.productName,
       sku: i.sku,
-      quantity: i.quantity,
+      quantity: qtyNumber(i.quantity),
       unitPricePoisha: i.unitPricePoisha,
-      lineTotalPoisha: i.unitPricePoisha * i.quantity,
+      lineTotalPoisha: lineTotalPoisha(i.unitPricePoisha, i.quantity),
     })),
     moneyRows: computeInvoiceMoneyRows({
       subtotalPoisha,

@@ -3,7 +3,7 @@
 // The reports service (src/reports/service.ts) is a pure aggregator over
 // SalesRow[]; this module is the DB side of that contract. One row per
 // order ITEM, built only from stored poisha fields:
-//   revenuePoisha = OrderItem.unitPricePoisha * quantity
+//   revenuePoisha = lineTotalPoisha(OrderItem.unitPricePoisha, quantity) — wave 59 half-up line rule
 //   costPoisha    = ProductVariant.costPoisha * quantity (a variant with
 //                   no recorded cost counts as 0 — the cost is unknown,
 //                   never invented; see the meta note on report routes)
@@ -16,6 +16,7 @@
 // createdAt — range bounds are converted Dhaka-midnight -> UTC.
 import { prisma } from "@advance-ecommerce/db";
 import type { DateRange, SalesRow } from "./types";
+import { lineTotalPoisha, qtyNumber } from "../lib/quantity";
 import { previousRange } from "./service";
 
 const DHAKA_TZ = "Asia/Dhaka";
@@ -107,9 +108,9 @@ export async function fetchSalesRows(range: DateRange): Promise<SalesRow[]> {
         district: order.district,
         courier,
         productId: item.variant.productId,
-        quantity: item.quantity,
-        revenuePoisha: item.unitPricePoisha * item.quantity,
-        costPoisha: (item.variant.costPoisha ?? 0) * item.quantity,
+        quantity: qtyNumber(item.quantity),
+        revenuePoisha: lineTotalPoisha(item.unitPricePoisha, item.quantity),
+        costPoisha: lineTotalPoisha(item.variant.costPoisha ?? 0, item.quantity),
         shippingPoisha: idx === 0 ? order.shippingPoisha : 0,
         refundPoisha: idx === 0 ? refundPoisha : 0,
         status: order.status as SalesRow["status"],

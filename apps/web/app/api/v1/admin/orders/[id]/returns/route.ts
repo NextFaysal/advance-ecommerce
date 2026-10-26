@@ -10,6 +10,7 @@
  * receive-step restock decision and the completion refund all live on
  * /api/v1/admin/returns/[id] (POST transition).
  */
+import { isValidQtyNumber } from "@/lib/quantity";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -82,7 +83,7 @@ const createSchema = z.object({
     .array(
       z.object({
         orderItemId: z.string().min(1),
-        quantity: z.number().int().min(1),
+        quantity: z.number().refine((n) => isValidQtyNumber(n), "quantity must be positive, max 3 decimals"),
         reason: z.string().trim().max(500).optional(),
       }),
     )

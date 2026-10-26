@@ -1,5 +1,6 @@
 // Reports types — Agent 10, Steps 28/30-33. All money is integer poisha.
 import { z } from "zod";
+import { isValidQtyNumber } from "../lib/quantity";
 
 // Mirrors the full Prisma OrderStatus enum so DB-built rows are lossless
 // (FAILED / RETURN_REQUESTED / RETURNING / EXCHANGED included).
@@ -11,7 +12,8 @@ export const salesRowSchema = z.object({
   district: z.string().min(1),
   courier: z.string().nullable(),
   productId: z.string().min(1),
-  quantity: z.number().int().positive(),
+  // Wave 59: line quantities may be fractional (weighted goods).
+  quantity: z.number().refine((n) => isValidQtyNumber(n), "quantity must be positive, max 3 decimals"),
   revenuePoisha: z.number().int().min(0),
   costPoisha: z.number().int().min(0),
   shippingPoisha: z.number().int().min(0),

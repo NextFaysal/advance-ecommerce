@@ -1,3 +1,4 @@
+import { lineTotalPoisha } from "../lib/quantity";
 /**
  * Mushak 6.3 (চালানপত্র) — ADV-11 (doc 22): the Bangladeshi VAT tax
  * invoice data builder. Pure: takes an order snapshot + seller name
@@ -131,7 +132,7 @@ export function buildMushak63(
 ): Mushak63 {
   const { date, time } = dhakaParts(input.createdAtIso);
   const vatRecorded = input.vatPoisha !== null && input.vatRateBps !== null;
-  const lineValues = input.items.map((i) => i.unitPricePoisha * i.quantity);
+  const lineValues = input.items.map((i) => lineTotalPoisha(i.unitPricePoisha, i.quantity));
   const lineVat = vatRecorded
     ? allocateProRata(input.vatPoisha as number, lineValues)
     : input.items.map(() => null);

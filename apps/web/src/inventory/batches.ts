@@ -48,6 +48,7 @@
  */
 import { prisma } from "@advance-ecommerce/db";
 import { isFeatureEnabled } from "../lib/feature-flags";
+import { isFractionalQty } from "../lib/quantity";
 
 export const INVENTORY_DEPTH_FLAG = "module.inventory_depth";
 
@@ -298,6 +299,15 @@ export async function applyDeliveryDepth(order: {
     const newTakes: BatchTake[] = [];
     for (const item of order.items) {
       if (item.quantity <= 0) continue;
+      // Wave 59: FRACTIONAL lines skip batch/serial depth entirely.
+      // Lots and serial units are whole units by construction — a
+      // 0.5-pack weighted line has no whole lot or serial to deplete,
+      // and rounding it into one would falsify the sub-ledger (the
+      // same documented-skip honesty as untracked units above). The
+      // variant stock cache already claimed ceil(qty) whole packs at
+      // reservation time (stockClaimUnits), so stock truth lives
+      // there for weighted lines.
+      if (isFractionalQty(item.quantity)) continue;
       // --- serials: count what this order already holds (replay-safe)
       const alreadySold = await tx.serialUnit.count({
         where: { variantId: item.variantId, status: "SOLD", orderId: order.id },

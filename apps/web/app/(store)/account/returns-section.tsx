@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { BdtAmount } from "@/components/ui/numerals";
 import { Icon } from "@/components/ui/icon";
+import { lineTotalPoisha, qtyNumber } from "@/lib/quantity";
 
 interface OrderProp {
   id: string;
@@ -207,7 +208,8 @@ function ReturnApplyForm({
                   <span className="text-xs text-text-muted">পরিমাণ</span>
                   <input
                     type="number"
-                    min={1}
+                    min={0.001}
+                    step={0.001}
                     max={line.returnableQuantity}
                     disabled={disabled || !choice.checked}
                     value={choice.quantity}
@@ -216,9 +218,11 @@ function ReturnApplyForm({
                         ...prev,
                         [line.orderItemId]: {
                           ...choice,
-                          quantity: Math.max(
-                            1,
-                            Math.min(line.returnableQuantity, Number(e.target.value) || 1),
+                          // Wave 59: fractional returns allowed to
+                          // 3 decimals (weighted lines); milli-exact.
+                          quantity: Math.min(
+                            line.returnableQuantity,
+                            Math.max(0.001, qtyNumber(Number(e.target.value) || 0)),
                           ),
                         },
                       }))
@@ -354,7 +358,7 @@ export default function ReturnsSection({ orders }: { orders: OrderProp[] }) {
                       {r.lines.map((line, i) => (
                         <li key={i}>
                           {line.productName} × {line.quantity} —{" "}
-                          <BdtAmount poisha={line.unitPricePoisha * line.quantity} />
+                          <BdtAmount poisha={lineTotalPoisha(line.unitPricePoisha, line.quantity)} />
                         </li>
                       ))}
                     </ul>

@@ -1,3 +1,4 @@
+import { addQty, isValidQtyNumber } from "@/lib/quantity";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@advance-ecommerce/db";
@@ -20,7 +21,9 @@ import { createManualOrder, type ManualCreateInput } from "@/orders/manual-creat
 //                   (taken from the group's first row).
 //   - sku           a ProductVariant SKU; prices are the CATALOG
 //                   prices — the file never sets prices.
-//   - quantity      positive integer; the same SKU twice in a group
+//   - quantity      positive number (fractions to 3 decimals allowed
+//                   since wave 59 — the create path gates fractions to
+//                   weighted variants); the same SKU twice in a group
 //                   is merged into one line with summed quantity.
 //   - paymentMethod optional: cod (default) | bkash | nagad.
 //   - note          optional; distinct row notes are joined onto the
@@ -150,10 +153,12 @@ export async function POST(req: Request) {
     const qty = Number(row.quantity ?? "");
     if (!sku) {
       group.rowError ??= "SKU খালি / SKU is empty on a row.";
-    } else if (!Number.isInteger(qty) || qty <= 0) {
+    } else if (!isValidQtyNumber(qty)) {
+      // Wave 59: fractional quantities (weighted goods) import fine;
+      // the create path still gates fractions to weighted variants.
       group.rowError ??= `SKU ${sku}-এর পরিমাণ সঠিক নয় / Invalid quantity for SKU ${sku}.`;
     } else {
-      group.items.set(sku, (group.items.get(sku) ?? 0) + qty);
+      group.items.set(sku, addQty(group.items.get(sku) ?? 0, qty));
     }
   }
   if (groups.size > MAX_GROUPS) {

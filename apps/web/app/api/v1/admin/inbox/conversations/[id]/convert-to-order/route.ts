@@ -1,3 +1,4 @@
+import { isValidQtyNumber } from "@/lib/quantity";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { guardError, requireAdmin } from "@/reports/guard";
@@ -52,7 +53,7 @@ const convertSchema = z.object({
     .array(
       z.object({
         variantId: z.string().min(1),
-        quantity: z.number().int().positive(),
+        quantity: z.number().refine((n) => isValidQtyNumber(n), "quantity must be positive, max 3 decimals"),
         unitPricePoisha: z.number().int().nonnegative().optional(),
       }),
     )

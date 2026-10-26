@@ -46,6 +46,7 @@ import {
   type RankedCourier,
 } from "@/bd/courier-assignment";
 import { buildCourierStatsFromDb } from "@/bd/courier-stats-db";
+import { cmpQty, isValidQtyNumber, lineTotalPoisha, qtyNumber, qtyToMilli, roundHalfUpDiv, QTY_MILLI } from "@/lib/quantity";
 import { SANDBOX_COURIER_PROVIDERS } from "@/integrations/sandbox/courier-provider";
 
 export interface RecommendationLineInput {
@@ -81,8 +82,9 @@ export function buildBookingFacts(input: {
   let weightGrams = 0;
   let goodsValuePoisha = 0;
   for (const line of input.lines) {
-    weightGrams += (line.weightGrams ?? 0) * line.quantity;
-    goodsValuePoisha += line.unitPricePoisha * line.quantity;
+    // Wave 59: milli-exact line math (fractional weighted lines).
+    weightGrams += roundHalfUpDiv((line.weightGrams ?? 0) * qtyToMilli(line.quantity), QTY_MILLI);
+    goodsValuePoisha += lineTotalPoisha(line.unitPricePoisha, line.quantity);
   }
   const weightEstimated = weightGrams <= 0;
   return {
@@ -198,7 +200,8 @@ export async function getBookingRecommendation(
       if (!line) {
         return { ok: false, code: "INVALID_INPUT", error: `Line ${item.orderItemId} does not belong to this order.` };
       }
-      if (!Number.isInteger(item.quantity) || item.quantity <= 0 || item.quantity > line.quantity) {
+      // Wave 59: fractional quantities (to 3dp) are valid here.
+      if (!isValidQtyNumber(item.quantity) || cmpQty(item.quantity, line.quantity) > 0) {
         return { ok: false, code: "INVALID_INPUT", error: `Invalid quantity for line ${item.orderItemId}.` };
       }
       if (seen.has(item.orderItemId)) {
@@ -208,7 +211,7 @@ export async function getBookingRecommendation(
       requested.push({ line, quantity: item.quantity });
     }
   } else {
-    for (const line of order.items) requested.push({ line, quantity: line.quantity });
+    for (const line of order.items) requested.push({ line, quantity: qtyNumber(line.quantity) });
   }
   if (requested.length === 0) {
     return { ok: false, code: "INVALID_INPUT", error: "Order has no lines to book. / অর্ডারে কোনো পণ্য লাইন নেই।" };

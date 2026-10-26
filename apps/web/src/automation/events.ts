@@ -24,6 +24,7 @@
 import { prisma } from "@advance-ecommerce/db";
 import { getOrderByIdOrNo } from "../orders/repository";
 import type { AutomationEvent, AutomationTrigger } from "./types";
+import { addQty } from "../lib/quantity";
 
 export async function buildAutomationEvent(
   trigger: AutomationTrigger,
@@ -46,7 +47,7 @@ export async function buildAutomationEvent(
           paymentStatus: order.paymentStatus,
           paymentMethod: order.paymentMethod,
           totalPoisha: order.totalPoisha,
-          itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
+          itemCount: order.items.reduce((sum, item) => addQty(sum, item.quantity), 0),
           customerPhone: order.customerPhone,
           district: order.address.district,
           division: order.address.division,

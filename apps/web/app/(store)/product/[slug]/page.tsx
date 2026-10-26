@@ -566,6 +566,20 @@ export default async function ProductPage({ params }: { params: { slug: string }
                   ? { forceUnavailable: true, unavailableLabel: "বান্ডল স্টকে নেই" }
                   : {})}
                 lowStockThreshold={lowStockThreshold}
+                {...(weightedInfos.length > 0
+                  ? {
+                      weightedSteps: Object.fromEntries(
+                        weightedInfos.map((info) => [
+                          info.variantId,
+                          {
+                            stepQuantity:
+                              Math.max(1, Math.round((info.weightStepGrams * 1000) / info.packGrams)) / 1000,
+                            packGrams: info.packGrams,
+                          },
+                        ]),
+                      ),
+                    }
+                  : {})}
               />
               </AgeGate>
               </>
@@ -601,7 +615,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
                 Hidden entirely for price-on-request products. */}
             {weightedInfos.length > 0 && !priceOnRequest ? (
               <div className="mt-4 rounded-2xl border border-border bg-surface-2/60 p-4 text-sm leading-6">
-                <p className="font-semibold text-text-main">⚖️ ওজন অনুযায়ী দাম — নির্ধারিত ওজনের প্যাকে বিক্রি হয়</p>
+                <p className="font-semibold text-text-main">⚖️ ওজন অনুযায়ী দাম — প্যাকের ভগ্নাংশেও কেনা যায় (ওজনের ধাপ অনুযায়ী)</p>
                 <ul className="mt-2 space-y-1.5 text-text-muted">
                   {weightedInfos.map((info) => {
                     const variant = product.variants.find((v) => v.id === info.variantId);

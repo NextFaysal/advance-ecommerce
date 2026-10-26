@@ -22,6 +22,8 @@
 import { prisma } from "@advance-ecommerce/db";
 import { getSetting } from "@/lib/settings";
 import { INTERVAL_LABELS, type SubscriptionInterval } from "./labels";
+import { qtyNumber, qtyToDecimalString } from "../lib/quantity";
+import { validateOrderLineQuantities } from "../orders/quantity-rules";
 
 export {
   SUBSCRIPTION_INTERVALS,
@@ -135,7 +137,7 @@ export function serializeSubscription(row: SubscriptionRow): SubscriptionView {
     variantLabel: variantLabel(row.variant.attributes),
     sku: row.variant.sku,
     unitPricePoisha: row.variant.pricePoisha,
-    quantity: row.quantity,
+    quantity: qtyNumber(row.quantity),
     interval: row.interval,
     intervalLabelBn:
       INTERVAL_LABELS[row.interval as SubscriptionInterval]?.bn ?? row.interval,
@@ -207,6 +209,15 @@ export async function createSubscription(input: {
       message: "এই পণ্যটি এখন সাবস্ক্রিপশনের জন্য পাওয়া যাচ্ছে না। / This product is not available for subscription right now.",
     };
   }
+  // Wave 59: a fractional subscription quantity is legal only on a
+  // weighted variant (same gate as order lines) — generation would
+  // refuse it later anyway; fail at create, not at first run.
+  const qtyGate = await validateOrderLineQuantities([
+    { variantId: input.variantId, quantity: input.quantity },
+  ]);
+  if (!qtyGate.ok) {
+    return { ok: false, code: qtyGate.code, message: qtyGate.message };
+  }
   const now = input.now ?? new Date();
   const row = await prisma.subscription.create({
     data: {
@@ -214,7 +225,7 @@ export async function createSubscription(input: {
       customerName: customer.name,
       customerPhone: customer.phone,
       variantId: variant.id,
-      quantity: input.quantity,
+      quantity: qtyToDecimalString(input.quantity),
       interval: input.interval,
       status: "ACTIVE",
       paymentMethod: "cod",
@@ -250,7 +261,7 @@ export async function updateSubscriptionForCustomer(input: {
 }): Promise<UpdateSubscriptionResult> {
   const existing = await prisma.subscription.findFirst({
     where: { id: input.subscriptionId, customerId: input.customerId },
-    select: { id: true, status: true, interval: true },
+    select: { id: true, status: true, interval: true, variantId: true },
   });
   if (existing === null) {
     return { ok: false, code: "NOT_FOUND", message: "সাবস্ক্রিপশন পাওয়া যায়নি। / Subscription not found." };
@@ -263,7 +274,7 @@ export async function updateSubscriptionForCustomer(input: {
     };
   }
   const now = input.now ?? new Date();
-  const data: { status?: string; interval?: string; quantity?: number; nextRunAt?: Date } = {};
+  const data: { status?: string; interval?: string; quantity?: string; nextRunAt?: Date } = {};
   if (input.action === "pause") {
     if (existing.status !== "ACTIVE") {
       return { ok: false, code: "NOT_ACTIVE", message: "শুধু সক্রিয় সাবস্ক্রিপশন থামানো যায়। / Only an active subscription can be paused." };
@@ -288,7 +299,16 @@ export async function updateSubscriptionForCustomer(input: {
       data.nextRunAt = addInterval(now, input.interval);
     }
   }
-  if (input.quantity !== undefined) data.quantity = input.quantity;
+  if (input.quantity !== undefined) {
+    // Wave 59: quantity changes pass the same weighted gate as create.
+    const qtyGate = await validateOrderLineQuantities([
+      { variantId: existing.variantId, quantity: input.quantity },
+    ]);
+    if (!qtyGate.ok) {
+      return { ok: false, code: qtyGate.code, message: qtyGate.message };
+    }
+    data.quantity = qtyToDecimalString(input.quantity);
+  }
   if (Object.keys(data).length === 0) {
     return { ok: false, code: "NOTHING_TO_UPDATE", message: "কোনো পরিবর্তন দেওয়া হয়নি। / Nothing to update." };
   }

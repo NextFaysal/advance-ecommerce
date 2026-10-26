@@ -13,6 +13,7 @@
 // order note by the route).
 import { z } from "zod";
 import { bdAddressSchema, BD_PHONE_REGEX } from "../checkout/validation";
+import { isValidQtyNumber } from "../lib/quantity";
 import {
   calculateShipping,
   DEFAULT_SHIPPING_RATES,
@@ -63,7 +64,9 @@ export const manualOrderSchema = z.object({
     .array(
       z.object({
         variantId: z.string().min(1),
-        quantity: z.number().int().positive(),
+        // Wave 59: fractional (<= 3 decimals) allowed at shape level;
+        // createManualOrder gates fractions to weighted variants.
+        quantity: z.number().refine((v) => isValidQtyNumber(v), "Quantity must be positive with at most 3 decimal places"),
         /** Staff may set a custom price/discount; recorded in order history. */
         unitPricePoisha: z.number().int().nonnegative(),
       }),

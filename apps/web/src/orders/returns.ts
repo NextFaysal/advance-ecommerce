@@ -74,6 +74,17 @@ import { writeAudit } from "@/lib/audit";
 import { notifyBackInStockForVariant } from "../storefront-ux/back-in-stock-notify";
 import { applyOrderTransition } from "./repository";
 import { createRefund, type RefundMethod } from "./refunds";
+import {
+  addQty,
+  cmpQty,
+  isValidQtyNumber,
+  lineTotalPoisha,
+  qtyNumber,
+  qtyToDecimalString,
+  qtyToString,
+  stockClaimUnits,
+  subQty,
+} from "../lib/quantity";
 
 /* ------------------------------------------------------------------ */
 /* Vocabulary                                                          */
@@ -256,12 +267,15 @@ function toView(row: NonNullable<ReturnRow>): ReturnView {
     productName: it.orderItem.productName,
     sku: it.orderItem.sku,
     unitPricePoisha: it.orderItem.unitPricePoisha,
-    orderedQuantity: it.orderItem.quantity,
-    quantity: it.quantity,
+    // Wave 59: both quantities are Decimal columns now — canonicalise
+    // to milli-exact numbers; the line value uses the single
+    // line-level rounding rule.
+    orderedQuantity: qtyNumber(it.orderItem.quantity),
+    quantity: qtyNumber(it.quantity),
     reason: it.reason,
     condition:
       it.condition === "RESTOCKABLE" ? "restockable" : it.condition === "DAMAGED" ? "damaged" : null,
-    lineValuePoisha: it.orderItem.unitPricePoisha * it.quantity,
+    lineValuePoisha: lineTotalPoisha(it.orderItem.unitPricePoisha, it.quantity),
   }));
   const received = items.some((i) => i.condition !== null);
   return {
@@ -342,7 +356,7 @@ async function returnedQuantities(orderId: string): Promise<Map<string, number>>
     select: { orderItemId: true, quantity: true },
   });
   const map = new Map<string, number>();
-  for (const r of rows) map.set(r.orderItemId, (map.get(r.orderItemId) ?? 0) + r.quantity);
+  for (const r of rows) map.set(r.orderItemId, addQty(map.get(r.orderItemId) ?? 0, r.quantity));
   return map;
 }
 
@@ -354,7 +368,7 @@ async function isOrderFullyReturned(orderId: string): Promise<boolean> {
     returnedQuantities(orderId),
   ]);
   if (lines.length === 0) return false;
-  return lines.every((l) => (covered.get(l.id) ?? 0) >= l.quantity);
+  return lines.every((l) => cmpQty(covered.get(l.id) ?? 0, l.quantity) >= 0);
 }
 
 /**
@@ -438,15 +452,17 @@ export async function createReturn(input: CreateReturnInput): Promise<{ returnId
     if (!raw || typeof raw.orderItemId !== "string" || raw.orderItemId.length === 0) {
       throw new ReturnServiceError("INVALID_INPUT", "Every return line needs an order item id. / প্রতিটি লাইনে অর্ডার আইটেমের আইডি আবশ্যক।");
     }
-    if (!Number.isInteger(raw.quantity) || raw.quantity < 1) {
+    // Wave 59: fractional lines may be returned in fractions (to 3
+    // decimals) — the quantity just has to be exactly representable.
+    if (!isValidQtyNumber(raw.quantity)) {
       throw new ReturnServiceError(
         "INVALID_QUANTITY",
-        "Return quantity must be a positive integer. / রিটার্নের পরিমাণ ধনাত্মক সংখ্যা হতে হবে।",
+        "Return quantity must be positive with at most 3 decimal places. / রিটার্নের পরিমাণ ধনাত্মক হতে হবে (সর্বোচ্চ ৩ দশমিক)।",
       );
     }
     const prev = merged.get(raw.orderItemId);
     merged.set(raw.orderItemId, {
-      quantity: (prev?.quantity ?? 0) + raw.quantity,
+      quantity: addQty(prev?.quantity ?? 0, raw.quantity),
       reason: raw.reason?.trim() ? raw.reason.trim() : prev?.reason,
     });
   }
@@ -484,11 +500,11 @@ export async function createReturn(input: CreateReturnInput): Promise<{ returnId
   const returned = await returnedQuantities(order.id);
   for (const [orderItemId, line] of merged) {
     const item = byId.get(orderItemId)!;
-    const remaining = item.quantity - (returned.get(orderItemId) ?? 0);
-    if (line.quantity > remaining) {
+    const remaining = subQty(item.quantity, returned.get(orderItemId) ?? 0);
+    if (cmpQty(line.quantity, remaining) > 0) {
       throw new ReturnServiceError(
         "QUANTITY_EXCEEDED",
-        `Cannot return ${line.quantity} × ${item.productName} (${item.sku}): only ${remaining} of ${item.quantity} ordered remain returnable. / ${item.productName}: অর্ডার করা ${item.quantity}টির মধ্যে আর মাত্র ${remaining}টি ফেরতযোগ্য আছে।`,
+        `Cannot return ${qtyToString(line.quantity)} × ${item.productName} (${item.sku}): only ${qtyToString(remaining)} of ${qtyToString(item.quantity)} ordered remain returnable. / ${item.productName}: অর্ডার করা ${qtyToString(item.quantity)}টির মধ্যে আর মাত্র ${qtyToString(remaining)}টি ফেরতযোগ্য আছে।`,
       );
     }
   }
@@ -517,7 +533,8 @@ export async function createReturn(input: CreateReturnInput): Promise<{ returnId
         data: {
           returnId: row.id,
           orderItemId,
-          quantity: line.quantity,
+          // Decimal(12, 3) column — canonical string, never a float.
+          quantity: qtyToDecimalString(line.quantity),
           reason: line.reason ?? null,
         },
       });
@@ -527,7 +544,7 @@ export async function createReturn(input: CreateReturnInput): Promise<{ returnId
 
   const actor: ReturnActor = { id: await resolveUserId(input.actorLabel), label: input.actorLabel };
   const lineSummary = [...merged.entries()]
-    .map(([id, l]) => `${byId.get(id)!.productName} ×${l.quantity}`)
+    .map(([id, l]) => `${byId.get(id)!.productName} ×${qtyToString(l.quantity)}`)
     .join(", ");
   await addOrderNote(
     order.id,
@@ -662,10 +679,10 @@ export async function getOrderReturnableLines(orderRef: string): Promise<
         productName: i.productName,
         sku: i.sku,
         unitPricePoisha: i.unitPricePoisha,
-        orderedQuantity: i.quantity,
+        orderedQuantity: qtyNumber(i.quantity),
         returnedQuantity: done,
         openReturn: openSet.has(i.id),
-        returnableQuantity: Math.max(0, i.quantity - done),
+        returnableQuantity: Math.max(0, subQty(i.quantity, done)),
       };
     }),
   };
@@ -814,37 +831,44 @@ export async function receiveReturn(
           where: { id: item.id },
           data: { condition: CONDITION_TO_DB[condition] },
         });
+        // Wave 59: the returned quantity is a Decimal (may be
+        // fractional for weighted lines). Display counters keep the
+        // true quantity; every STOCK movement uses whole units via
+        // stockClaimUnits (ceil for fractions — symmetric with the
+        // reservation claim the order placed).
+        const returnedQty = qtyNumber(item.quantity);
+        const stockUnits = stockClaimUnits(returnedQty);
         if (condition === "damaged") {
-          damagedUnits += item.quantity;
+          damagedUnits = addQty(damagedUnits, returnedQty);
           damagedQtyByVariant.set(
             item.orderItem.variantId,
-            (damagedQtyByVariant.get(item.orderItem.variantId) ?? 0) + item.quantity,
+            (damagedQtyByVariant.get(item.orderItem.variantId) ?? 0) + stockUnits,
           );
           continue;
         }
-        restockedUnits += item.quantity;
+        restockedUnits = addQty(restockedUnits, returnedQty);
         const variantId = item.orderItem.variantId;
         const restored = await tx.productVariant.updateMany({
           where: { id: variantId },
-          data: { stock: { increment: item.quantity } },
+          data: { stock: { increment: stockUnits } },
         });
         if (restored.count !== 1) {
           console.warn(
-            `[returns] restock for return ${returnId}: variant ${variantId} not found — stock not restored for ${item.quantity} units.`,
+            `[returns] restock for return ${returnId}: variant ${variantId} not found — stock not restored for ${qtyToString(returnedQty)} units.`,
           );
           continue;
         }
         restockedVariantIds.add(variantId);
-        restockQtyByVariant.set(variantId, (restockQtyByVariant.get(variantId) ?? 0) + item.quantity);
+        restockQtyByVariant.set(variantId, (restockQtyByVariant.get(variantId) ?? 0) + stockUnits);
         const afterRow = await tx.productVariant.findUnique({
           where: { id: variantId },
           select: { stock: true },
         });
-        const after = afterRow?.stock ?? item.quantity;
-        const before = after - item.quantity;
+        const after = afterRow?.stock ?? stockUnits;
+        const before = after - stockUnits;
         if (!warehouse) {
           console.warn(
-            `[returns] restock for return ${returnId}: no warehouse for the ledger movement (variant ${variantId}, qty ${item.quantity}) — stock cache moved, movement skipped.`,
+            `[returns] restock for return ${returnId}: no warehouse for the ledger movement (variant ${variantId}, qty ${qtyToString(returnedQty)}) — stock cache moved, movement skipped.`,
           );
           continue;
         }
@@ -853,7 +877,7 @@ export async function receiveReturn(
             variantId,
             warehouseId: warehouse.id,
             type: "RETURN_RESTOCK",
-            quantityDelta: item.quantity,
+            quantityDelta: stockUnits,
             quantityBefore: before,
             quantityAfter: after,
             referenceType: "RETURN",
@@ -879,7 +903,7 @@ export async function receiveReturn(
             // The delivered order's reservation was terminal (never
             // committed), so the returned units also release their
             // reserved count — clamped at zero for safety.
-            quantityReserved: Math.max(0, (inv?.quantityReserved ?? 0) - item.quantity),
+            quantityReserved: Math.max(0, (inv?.quantityReserved ?? 0) - stockUnits),
           },
         });
       }
@@ -958,7 +982,7 @@ export async function completeReturn(
     if (row.status === "COMPLETED") {
       const refundAmount = row.items
         .filter((i) => i.condition === "RESTOCKABLE")
-        .reduce((s, i) => s + i.orderItem.unitPricePoisha * i.quantity, 0);
+        .reduce((s, i) => s + lineTotalPoisha(i.orderItem.unitPricePoisha, i.quantity), 0);
       return {
         view: toView(row),
         refundId: row.refundId,
@@ -969,7 +993,7 @@ export async function completeReturn(
     expectStatus(row, ["RECEIVED"], "COMPLETED");
     const refundableItems = row.items.filter((i) => i.condition === "RESTOCKABLE");
     const refundAmount = refundableItems.reduce(
-      (s, i) => s + i.orderItem.unitPricePoisha * i.quantity,
+      (s, i) => s + lineTotalPoisha(i.orderItem.unitPricePoisha, i.quantity),
       0,
     );
     if (refundableItems.length === 0 || refundAmount <= 0) {
@@ -1069,7 +1093,7 @@ export async function closeReturn(
     expectStatus(row, ["RECEIVED"], "CLOSED");
     const refundable = row.items
       .filter((i) => i.condition === "RESTOCKABLE")
-      .reduce((s, i) => s + i.orderItem.unitPricePoisha * i.quantity, 0);
+      .reduce((s, i) => s + lineTotalPoisha(i.orderItem.unitPricePoisha, i.quantity), 0);
     if (refundable > 0) {
       throw new ReturnServiceError(
         "INVALID_TRANSITION",

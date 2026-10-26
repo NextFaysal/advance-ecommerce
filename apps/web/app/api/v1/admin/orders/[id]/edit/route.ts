@@ -10,6 +10,7 @@
  *       and free shipping are preserved per the rules in
  *       src/orders/edit.ts, which owns the whole operation.
  */
+import { isValidQtyNumber } from "@/lib/quantity";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -73,7 +74,7 @@ const bodySchema = z.object({
     .array(
       z.object({
         orderItemId: z.string().min(1),
-        quantity: z.number().int().min(0).max(999),
+        quantity: z.number().refine((n) => n === 0 || (isValidQtyNumber(n) && n <= 999), "quantity must be 0 (remove) or positive, max 3 decimals, at most 999"),
       }),
     )
     .max(100)
@@ -83,7 +84,7 @@ const bodySchema = z.object({
     .array(
       z.object({
         variantId: z.string().min(1),
-        quantity: z.number().int().min(1).max(999),
+        quantity: z.number().refine((n) => isValidQtyNumber(n) && n <= 999, "quantity must be positive, max 3 decimals, at most 999"),
       }),
     )
     .max(50)

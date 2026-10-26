@@ -19,6 +19,7 @@ import {
   prismaKeyValueStore,
   type KeyValueStore,
 } from "./pick-lists";
+import { addQty } from "../lib/quantity";
 
 /** YYYY-MM-DD of an instant in Asia/Dhaka. */
 export function dhakaDayKey(iso: string): string {
@@ -101,7 +102,7 @@ export async function getConfirmedQueue(
       customerName: o.customerName,
       district: o.district,
       itemCount: o.items.length,
-      totalQuantity: o.items.reduce((sum, i) => sum + i.quantity, 0),
+      totalQuantity: o.items.reduce((sum, i) => addQty(sum, i.quantity), 0),
       totalPoisha: o.totalPoisha,
       createdAt: o.createdAt.toISOString(),
       confirmedAt,

@@ -19,6 +19,7 @@
  * fill the cart but can never oversell the bundle.
  */
 import { prisma } from "@advance-ecommerce/db";
+import { qtyNumber } from "../lib/quantity";
 
 /** One past-order line that can be re-added to the cart right now. */
 export interface ReorderAddedItem {
@@ -133,6 +134,10 @@ export async function resolveReorder(
   const skipped: ReorderSkippedItem[] = [];
 
   for (const line of order.items) {
+    // Wave 59: the stored quantity is a Decimal — work with the
+    // milli-exact app number (a fractional line re-orders fractionally,
+    // capped by the variant's whole-unit stock).
+    const orderedQty = qtyNumber(line.quantity);
     const variant = byId.get(line.variantId);
     // Storefront visibility, mirrored from the catalog's public rules:
     // product ACTIVE + not deleted + publishAt reached (wave 14 gate),
@@ -151,7 +156,7 @@ export async function resolveReorder(
         variantId: line.variantId,
         name: line.productName,
         sku: line.sku,
-        requestedQuantity: line.quantity,
+        requestedQuantity: orderedQty,
         reason: "DISCONTINUED",
         reasonBn: copy.bn,
         reasonEn: copy.en,
@@ -164,7 +169,7 @@ export async function resolveReorder(
         variantId: line.variantId,
         name: line.productName,
         sku: line.sku,
-        requestedQuantity: line.quantity,
+        requestedQuantity: orderedQty,
         reason: "OUT_OF_STOCK",
         reasonBn: copy.bn,
         reasonEn: copy.en,
@@ -177,8 +182,8 @@ export async function resolveReorder(
       productSlug: variant.product.slug,
       name: variant.product.titleBn,
       sku: variant.sku,
-      quantity: Math.min(line.quantity, variant.stock),
-      requestedQuantity: line.quantity,
+      quantity: Math.min(orderedQty, variant.stock),
+      requestedQuantity: orderedQty,
       unitPricePoisha: variant.pricePoisha,
       previousUnitPricePoisha: line.unitPricePoisha,
       priceChanged: variant.pricePoisha !== line.unitPricePoisha,

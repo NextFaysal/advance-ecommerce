@@ -48,6 +48,7 @@ import { prisma } from "@advance-ecommerce/db";
 import { maskPhone, normalizeBdPhone } from "../checkout/validation";
 import { riskLevel, type RiskLevel } from "../orders/customer";
 import { applyOrderTransition } from "../orders/repository";
+import { qtyNumber } from "../lib/quantity";
 import {
   checkOutcomeAccess,
   claimAssignedTask,
@@ -538,7 +539,7 @@ export async function loadTaskContext(taskId: string): Promise<CallTaskContext |
         items: orderRow.items.map((i) => ({
           productName: i.productName,
           sku: i.sku,
-          quantity: i.quantity,
+          quantity: qtyNumber(i.quantity),
           unitPricePoisha: i.unitPricePoisha,
         })),
         subtotalPoisha: orderRow.subtotalPoisha,

@@ -27,6 +27,7 @@
 import { prisma } from "@advance-ecommerce/db";
 import { getSetting } from "@/lib/settings";
 import { loadReturnLines } from "./return-lines";
+import { addQty, qtyNumber, subQty } from "../lib/quantity";
 
 /* ------------------------------------------------------------------ */
 /* Status vocabulary (both enum generations, labelled bilingually)     */
@@ -184,7 +185,7 @@ export async function checkCustomerReturnEligibility(
   const claimed = new Map<string, number>();
   for (const r of priorReturns) {
     for (const line of await loadReturnLines(r.id)) {
-      claimed.set(line.orderItemId, (claimed.get(line.orderItemId) ?? 0) + line.quantity);
+      claimed.set(line.orderItemId, addQty(claimed.get(line.orderItemId) ?? 0, line.quantity));
     }
   }
 
@@ -202,9 +203,9 @@ export async function checkCustomerReturnEligibility(
         productName: i.productName,
         sku: i.sku,
         unitPricePoisha: i.unitPricePoisha,
-        orderedQuantity: i.quantity,
+        orderedQuantity: qtyNumber(i.quantity),
         alreadyRequestedQuantity: already,
-        returnableQuantity: Math.max(0, i.quantity - already),
+        returnableQuantity: Math.max(0, subQty(i.quantity, already)),
       };
     }),
   };

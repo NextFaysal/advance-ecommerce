@@ -11,6 +11,7 @@
 /* DispositionChip instead of a raw code in parentheses.              */
 /* ------------------------------------------------------------------ */
 
+import { lineTotalPoisha } from "@/lib/quantity";
 import { useCallback, useEffect, useState } from "react";
 import { DispositionChip } from "@/callcenter/components";
 import { isCallDisposition } from "@/callcenter/dispositions";
@@ -190,7 +191,7 @@ export function Customer360Panel({
                     <span>
                       {i.productName} <span className="text-text-muted">({i.sku})</span> × {i.quantity}
                     </span>
-                    <span>{formatBdt(i.unitPricePoisha * i.quantity)}</span>
+                    <span>{formatBdt(lineTotalPoisha(i.unitPricePoisha, i.quantity))}</span>
                   </li>
                 ))}
               </ul>

@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { Button } from "@/components/ui/button";
 import { useDigitText } from "@/components/ui/numerals";
+import { addQty, qtyToMilli, qtyToString, subQty } from "@/lib/quantity";
 import { addItemToGuestCart } from "./AddToCartButton";
 
 export interface BuyBoxVariant {
@@ -59,6 +60,14 @@ export interface BuyBoxActionsProps {
    *  sold-out state and is never dressed up as urgency.
    *  Null/unset = never shown; default behaviour is unchanged. */
   lowStockThreshold?: number | null;
+  /** Wave 59: fractional stepping for grocery weighted variants —
+   *  variantId -> { stepQuantity (pack units, from the pack's weight
+   *  step), packGrams }. A variant present here steps fractionally
+   *  from one step and may be added fractionally; every other variant
+   *  keeps whole-unit stepping exactly as before. The PDP passes this
+   *  only for variants in the grocery pack's weightedVariants config,
+   *  and checkout re-gates fractions server-side regardless. */
+  weightedSteps?: Record<string, { stepQuantity: number; packGrams: number }>;
 }
 
 function variantLabel(variant: BuyBoxVariant): string {
@@ -75,6 +84,7 @@ export function BuyBoxActions({
   forceUnavailable,
   unavailableLabel,
   lowStockThreshold,
+  weightedSteps,
 }: BuyBoxActionsProps) {
   const router = useRouter();
   const digits = useDigitText();
@@ -96,11 +106,18 @@ export function BuyBoxActions({
     activeVariants.find((v) => v.id === selectedId) ?? defaultVariant;
   const stockCap = selected ? Math.max(0, selected.stock) : 0;
   const outOfStock = Boolean(forceUnavailable) || !selected || stockCap <= 0;
+  // Wave 59: the selected variant's quantity step — fractional for
+  // weighted variants, 1 for everything else.
+  const stepInfo = selected ? weightedSteps?.[selected.id] : undefined;
+  const qtyStep = stepInfo?.stepQuantity ?? 1;
+  const qtyMin = qtyStep;
 
   // Keep the quantity inside the newly selected variant's stock.
   useEffect(() => {
-    setQuantity((q) => Math.min(Math.max(1, q), Math.max(1, stockCap)));
+    setQuantity((q) => Math.min(Math.max(qtyMin, q), Math.max(qtyMin, stockCap)));
     setNotice(null);
+    // qtyMin derives from the selection; stockCap covers its changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, stockCap]);
 
   if (!selected) return null;
@@ -119,6 +136,7 @@ export function BuyBoxActions({
         imageUrl: selected.imageUrl ?? imageUrl ?? null,
       },
       quantity,
+      allowFractional: stepInfo !== undefined,
     });
     if (result.addedQuantity <= 0) {
       setNotice("স্টকে আর নেই — কার্টে যোগ করা যায়নি।");
@@ -199,25 +217,30 @@ export function BuyBoxActions({
           <button
             type="button"
             aria-label="পরিমাণ কমান"
-            disabled={quantity <= 1}
-            onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+            disabled={quantity <= qtyMin}
+            onClick={() => setQuantity((q) => Math.max(qtyMin, subQty(q, qtyStep)))}
             className="flex h-11 w-10 items-center justify-center text-lg disabled:opacity-40"
           >
             −
           </button>
           <span className="w-8 text-center text-sm font-medium tabular-nums" aria-label="পরিমাণ">
-            {quantity}
+            {qtyToString(quantity)}
           </span>
           <button
             type="button"
             aria-label="পরিমাণ বাড়ান"
             disabled={outOfStock || quantity >= stockCap}
-            onClick={() => setQuantity((q) => Math.min(stockCap, q + 1))}
+            onClick={() => setQuantity((q) => Math.min(stockCap, addQty(q, qtyStep)))}
             className="flex h-11 w-10 items-center justify-center text-lg disabled:opacity-40"
           >
             +
           </button>
         </div>
+        {stepInfo ? (
+          <span className="text-xs text-text-muted">
+            ≈ {digits(`${Math.round((qtyToMilli(quantity) * stepInfo.packGrams) / 1000)}`)} গ্রাম
+          </span>
+        ) : null}
 
         <Button
           type="button"

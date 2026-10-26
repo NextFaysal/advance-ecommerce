@@ -28,6 +28,7 @@
  * storage is unconfigured and no upload endpoint exists yet.
  */
 import { prisma } from "@advance-ecommerce/db";
+import { lineTotalPoisha, qtyNumber } from "../lib/quantity";
 import { maskPhone } from "../checkout/validation";
 import { getVendorKyc } from "./kyc-store";
 import type { VendorKycRecord } from "./kyc";
@@ -268,11 +269,11 @@ export async function buildVendorPortalDashboard(
         };
         grouped.set(item.orderId, entry);
       }
-      const lineTotal = item.unitPricePoisha * item.quantity;
+      const lineTotal = lineTotalPoisha(item.unitPricePoisha, item.quantity);
       entry.lines.push({
         productName: item.productName,
         sku: item.sku,
-        quantity: item.quantity,
+        quantity: qtyNumber(item.quantity),
         unitPricePoisha: item.unitPricePoisha,
         lineTotalPoisha: lineTotal,
       });

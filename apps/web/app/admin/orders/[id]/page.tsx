@@ -27,6 +27,7 @@ import type { Customer, Order, OrderStatus } from "../../../../src/orders/types"
 import { nextStepLabel, nextStepTarget, ORDER_TRANSITIONS } from "../../../../src/orders/state-machine";
 import { displayPhone, riskLevel } from "../../../../src/orders/customer";
 import { formatBdt } from "../../../../src/checkout/pricing";
+import { lineTotalPoisha } from "../../../../src/lib/quantity";
 import { CustomerSummaryCard } from "../../../../src/orders/components/CustomerSummaryCard";
 import { OneClickPanel } from "../../../../src/orders/components/OneClickPanel";
 import { PrintPanel } from "../../../../src/orders/components/PrintPanel";
@@ -616,7 +617,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
                               <p className="truncate font-medium leading-snug">{i.productName}</p>
                               <p className="font-mono text-caption text-text-muted">{i.sku} × {i.quantity}</p>
                             </div>
-                            <p className="font-mono font-semibold tabular-nums">{formatBdt(i.unitPricePoisha * i.quantity)}</p>
+                            <p className="font-mono font-semibold tabular-nums">{formatBdt(lineTotalPoisha(i.unitPricePoisha, i.quantity))}</p>
                           </li>
                         ))}
                       </ul>

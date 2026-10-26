@@ -27,6 +27,7 @@ import {
   loadSubscriptionDiscountBps,
 } from "@/subscriptions/service";
 import { prisma } from "@advance-ecommerce/db";
+import { isValidQtyNumber } from "@/lib/quantity";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +56,12 @@ export async function GET() {
 
 const createSchema = z.object({
   variantId: z.string().min(1),
-  quantity: z.number().int().min(1).max(99).default(1),
+  // Wave 59: fractional allowed at shape level (weighted gate runs in
+  // the service); cap 99 as before.
+  quantity: z
+    .number()
+    .refine((v) => isValidQtyNumber(v) && v <= 99, "Quantity must be positive (max 99, up to 3 decimals)")
+    .default(1),
   interval: z.enum(SUBSCRIPTION_INTERVALS),
   addressId: z.string().min(1).optional(),
   address: bdAddressSchema.optional(),

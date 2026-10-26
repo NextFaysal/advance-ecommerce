@@ -26,6 +26,7 @@
  * funnel the advance/OTP gate uses — so every confirm path (admin
  * PATCH, call-center outcome, one-click flow) is covered.
  */
+import { qtyNumber } from "../lib/quantity";
 import { productRequiresPrescription, validatePharmacyCheckout, type PharmacyConfig } from "./pharmacy";
 import { getSavedPackConfig } from "./config-store";
 import { isPackEnabled } from "./packs";
@@ -249,7 +250,7 @@ export async function listRxQueue(): Promise<RxQueueRow[]> {
       totalPoisha: o.totalPoisha,
       rxItems: o.items
         .filter((i) => rxMap.get(i.variantId) === true)
-        .map((i) => ({ productName: i.productName, sku: i.sku, quantity: i.quantity })),
+        .map((i) => ({ productName: i.productName, sku: i.sku, quantity: qtyNumber(i.quantity) })),
       prescription: parsePrescriptionRecord(o.notes.map((n) => n.text)),
       queuedAt: (queuedAtByOrder.get(o.id) ?? o.createdAt).toISOString(),
     }))

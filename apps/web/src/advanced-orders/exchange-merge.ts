@@ -1,11 +1,14 @@
 // Exchange + merge + pre-order logic — Agent 16, Step 48 (A9). Pure functions.
+import { lineTotalPoisha } from "../lib/quantity";
 import { SHIPPED_OR_BEYOND, type ExchangeComputation, type ExchangeRequest,
   type MergeCandidate, type MergeValidation, type PreOrder } from "./types";
 
 /** Price difference for an exchange, computed from purchase-time snapshot prices. */
 export function computeExchange(req: ExchangeRequest): ExchangeComputation {
-  const returnedValuePoisha = req.returnedItem.unitPricePoisha * req.returnedQty;
-  const replacementValuePoisha = req.replacementItem.unitPricePoisha * req.replacementQty;
+  // Wave 59: line values use the shared half-up line rule (quantities
+  // may be fractional for weighted lines).
+  const returnedValuePoisha = lineTotalPoisha(req.returnedItem.unitPricePoisha, req.returnedQty);
+  const replacementValuePoisha = lineTotalPoisha(req.replacementItem.unitPricePoisha, req.replacementQty);
   const differencePoisha = replacementValuePoisha - returnedValuePoisha;
   return {
     returnedValuePoisha,

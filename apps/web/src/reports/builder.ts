@@ -18,6 +18,7 @@
  */
 import { z } from "zod";
 import { dateRangeSchema, type DateRange, type SalesRow } from "./types";
+import { addQty } from "../lib/quantity";
 
 export const REPORT_DATASETS = ["orders", "products", "customers"] as const;
 export type ReportDataset = (typeof REPORT_DATASETS)[number];
@@ -103,7 +104,7 @@ type Agg = ReturnType<typeof baseAgg>;
 
 function addToAgg(a: Agg, r: SalesRow): void {
   a.orders.add(r.orderId);
-  a.units += r.quantity;
+  a.units = addQty(a.units, r.quantity);
   a.revenuePoisha += r.revenuePoisha;
   a.costPoisha += r.costPoisha;
   a.shippingPoisha += r.shippingPoisha;

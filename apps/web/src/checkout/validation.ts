@@ -2,6 +2,7 @@
 // Mirrors packages/validators/src/phone.ts (BD_PHONE_REGEX) so this module is
 // self-contained; the validators package remains the canonical source.
 import { z } from "zod";
+import { isValidQtyNumber } from "../lib/quantity";
 
 export const BD_PHONE_REGEX = /^(?:\+?88)?01[3-9]\d{8}$/;
 
@@ -43,7 +44,13 @@ export type BdAddress = z.infer<typeof bdAddressSchema>;
 
 export const checkoutItemSchema = z.object({
   variantId: z.string().min(1),
-  quantity: z.number().int().positive("Quantity 1 er kom hote parbe na"),
+  // Wave 59: quantities may be fractional (<= 3 decimals) — but ONLY
+  // for grocery weighted variants; the integer/weighted gate itself
+  // is enforced server-side in the create path
+  // (src/orders/quantity-rules.ts), which knows the pack config.
+  quantity: z
+    .number()
+    .refine((v) => isValidQtyNumber(v), "Quantity sothik hote hobe (dhonattok, sorbochcho 3 doshomik)"),
 });
 
 export const checkoutFormSchema = z.object({

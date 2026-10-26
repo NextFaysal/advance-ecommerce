@@ -19,6 +19,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@advance-ecommerce/db";
 import { getSetting } from "@/lib/settings";
 import { buildMushak63 } from "@/erp/mushak";
+import { qtyNumber } from "@/lib/quantity";
 import { formatBdt } from "@/checkout/pricing";
 import MushakPrintButton from "./print-button";
 
@@ -67,7 +68,7 @@ export default async function Mushak63Page({
       items: order.items.map((i) => ({
         productName: i.productName,
         sku: i.sku,
-        quantity: i.quantity,
+        quantity: qtyNumber(i.quantity),
         unitPricePoisha: i.unitPricePoisha,
       })),
       subtotalPoisha: order.subtotalPoisha,

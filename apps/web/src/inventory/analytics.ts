@@ -14,6 +14,7 @@
  */
 import { prisma } from "@advance-ecommerce/db";
 import { getSetting } from "../lib/settings";
+import { addQty, lineTotalPoisha } from "../lib/quantity";
 
 function parseDays(raw: string | null | undefined, fallback: number): number {
   const n = Number.parseInt(raw ?? "", 10);
@@ -66,16 +67,16 @@ export async function getAbcAnalysis(rangeDaysInput?: number): Promise<AbcAnalys
   let totalRevenue = 0;
   let totalUnits = 0;
   for (const item of items) {
-    const revenue = item.unitPricePoisha * item.quantity;
+    const revenue = lineTotalPoisha(item.unitPricePoisha, item.quantity);
     totalRevenue += revenue;
-    totalUnits += item.quantity;
+    totalUnits = addQty(totalUnits, item.quantity);
     const agg = byVariant.get(item.variantId) ?? {
       sku: item.sku,
       productName: item.productName,
       units: 0,
       revenue: 0,
     };
-    agg.units += item.quantity;
+    agg.units = addQty(agg.units, item.quantity);
     agg.revenue += revenue;
     byVariant.set(item.variantId, agg);
   }

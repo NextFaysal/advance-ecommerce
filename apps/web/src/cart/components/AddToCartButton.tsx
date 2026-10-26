@@ -22,6 +22,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { milliToQty, qtyToMilli } from "@/lib/quantity";
 import { loadGuestCart, saveGuestCart } from "../persistence";
 import type { Cart, CartItem } from "../types";
 
@@ -45,6 +46,11 @@ export interface AddToCartInput {
   productTitleBn: string;
   variant: AddToCartVariantSnapshot;
   quantity: number;
+  /** Wave 59: a grocery weighted variant may be added in fractional
+   *  pack quantities (kept milli-exact instead of floored). Only the
+   *  PDP buy box sets this, for configured weighted variants; the
+   *  server re-gates fractions at checkout regardless. */
+  allowFractional?: boolean;
 }
 
 export interface AddToCartResult {
@@ -75,15 +81,21 @@ export function loadOrCreateGuestCart(): Cart {
 export function addItemToGuestCart(input: AddToCartInput): AddToCartResult {
   const cart = loadOrCreateGuestCart();
   const { variant } = input;
-  const requested = Math.max(0, Math.floor(input.quantity));
   const stockCap = Math.max(0, variant.stock);
+  // All quantity arithmetic in milli-units (wave 59): whole-unit adds
+  // floor sloppy inputs exactly as before; fractional adds (weighted
+  // variants only) keep their milli-exact quantity.
+  const requestedMilli = input.allowFractional
+    ? Math.max(0, qtyToMilli(input.quantity))
+    : Math.max(0, Math.floor(input.quantity)) * 1000;
 
   const existing = cart.items.find((i) => i.variantId === variant.variantId);
-  const alreadyInCart = existing ? existing.quantity : 0;
-  const addedQuantity = Math.max(
+  const alreadyMilli = existing ? qtyToMilli(existing.quantity) : 0;
+  const addedMilli = Math.max(
     0,
-    Math.min(requested, stockCap - alreadyInCart),
+    Math.min(requestedMilli, stockCap * 1000 - alreadyMilli),
   );
+  const addedQuantity = milliToQty(addedMilli);
 
   let items: CartItem[];
   if (existing) {
@@ -91,7 +103,7 @@ export function addItemToGuestCart(input: AddToCartInput): AddToCartResult {
       i.variantId === variant.variantId
         ? {
             ...i,
-            quantity: i.quantity + addedQuantity,
+            quantity: milliToQty(alreadyMilli + addedMilli),
             // Refresh the snapshot to the latest add-time values.
             sku: variant.sku,
             unitPricePoisha: variant.unitPricePoisha,
@@ -126,7 +138,7 @@ export function addItemToGuestCart(input: AddToCartInput): AddToCartResult {
   return {
     cart: next,
     addedQuantity,
-    capped: addedQuantity < requested,
+    capped: addedMilli < requestedMilli,
   };
 }
 

@@ -78,6 +78,7 @@ import { createManualOrder, type ManualOrderActor } from "./manual-create";
 import { createRefund } from "./refunds";
 import { markOrderPayment } from "./repository";
 import { loadReturnLines, returnedGoodsPoisha } from "./return-lines";
+import { isValidQtyNumber, lineTotalPoisha } from "../lib/quantity";
 import { addOrderTimelineNote } from "@/shipments/split-shipments";
 
 /** Exchanges are staff-only: the actor must be a real user (see
@@ -133,7 +134,9 @@ export async function executeExchange(
   if (
     !Array.isArray(items) ||
     items.length === 0 ||
-    items.some((i) => !i.variantId || !Number.isInteger(i.quantity) || i.quantity <= 0)
+    // Wave 59: fractional replacements are shape-valid; the weighted
+    // gate itself runs inside createManualOrder below.
+    items.some((i) => !i.variantId || !isValidQtyNumber(i.quantity))
   ) {
     return fail(
       "VARIANT_NOT_FOUND",
@@ -220,7 +223,7 @@ export async function executeExchange(
         `Replacement variant not found: ${item.variantId} / বদলি পণ্যের ভ্যারিয়েন্ট পাওয়া যায়নি।`,
       );
     }
-    replacementGoods += price * item.quantity;
+    replacementGoods += lineTotalPoisha(price, item.quantity);
     pricedItems.push({ variantId: item.variantId, quantity: item.quantity, unitPricePoisha: price });
   }
 

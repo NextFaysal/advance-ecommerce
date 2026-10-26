@@ -27,7 +27,16 @@ export default async function CartPage() {
   const weightedInfos = await getAllWeightedVariantInfos();
   const weightedVariants: Record<
     string,
-    { packGrams: number; pricePerKgPoisha: number; derivedPricePoisha: number; inSync: boolean }
+    {
+      packGrams: number;
+      pricePerKgPoisha: number;
+      derivedPricePoisha: number;
+      inSync: boolean;
+      /** Wave 59: fractional stepper step in pack units
+       *  (weightStepGrams / packGrams, e.g. 250 g of a 1 kg pack =
+       *  0.25); the server gate enforces the same step at checkout. */
+      stepQuantity: number;
+    }
   > = {};
   for (const info of weightedInfos) {
     weightedVariants[info.variantId] = {
@@ -35,6 +44,7 @@ export default async function CartPage() {
       pricePerKgPoisha: info.pricePerKgPoisha,
       derivedPricePoisha: info.derivedPricePoisha,
       inSync: info.inSync,
+      stepQuantity: Math.max(1, Math.round((info.weightStepGrams * 1000) / info.packGrams)) / 1000,
     };
   }
   return <CartPageClient catalogProducts={catalogProducts} weightedVariants={weightedVariants} />;

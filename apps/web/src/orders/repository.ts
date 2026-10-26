@@ -91,6 +91,7 @@ import type {
   PaymentMethod,
   PaymentStatus,
 } from "./types";
+import { addQty, qtyNumber, qtyToDecimalString, stockClaimUnits } from "../lib/quantity";
 import type { BdAddress } from "../checkout/validation";
 import type { EnrichedOrder } from "../checkout/order-enrichment";
 
@@ -176,7 +177,8 @@ function orderRowToOrder(row: OrderRow): Order {
       productName: i.productName,
       sku: i.sku,
       unitPricePoisha: i.unitPricePoisha,
-      quantity: i.quantity,
+      // Wave 59: Prisma Decimal -> milli-exact app number at this seam.
+      quantity: qtyNumber(i.quantity),
     })),
     totalPoisha: row.totalPoisha,
     // Doc 18 (F1): the persisted money split rides the detail view so
@@ -475,10 +477,19 @@ async function reserveOrderLineItems(
   orderId: string,
   orderNo: string,
 ): Promise<void> {
-  const wanted = new Map<string, number>();
+  const wantedRaw = new Map<string, number>();
   for (const item of items) {
     if (bundleVariantIds.has(item.variantId)) continue;
-    wanted.set(item.variantId, (wanted.get(item.variantId) ?? 0) + item.quantity);
+    wantedRaw.set(item.variantId, addQty(wantedRaw.get(item.variantId) ?? 0, item.quantity));
+  }
+  // Wave 59: stock columns are whole units — the claim per variant is
+  // stockClaimUnits of the AGGREGATED quantity (ceil for a fractional
+  // total; identity for integer lines). Order-edit deltas use the same
+  // aggregate-then-claim rule, and releases recompute from these same
+  // movements, so claims, edits and releases stay symmetric.
+  const wanted = new Map<string, number>();
+  for (const [variantId, total] of wantedRaw) {
+    wanted.set(variantId, stockClaimUnits(total));
   }
   if (wanted.size === 0) return;
   const warehouse = await tx.warehouse.findFirst({
@@ -974,7 +985,9 @@ export async function createOrderRecord(
               productName: i.productName,
               sku: i.sku,
               unitPricePoisha: i.unitPricePoisha,
-              quantity: i.quantity,
+              // Wave 59: Decimal(12, 3) column — hand Prisma the
+              // canonical decimal string, never a float.
+              quantity: qtyToDecimalString(i.quantity),
             })),
           },
         },
