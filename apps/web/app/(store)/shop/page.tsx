@@ -8,6 +8,7 @@ import { listCategories, listPublicProducts } from "@/catalog/server-read";
 import { listPublicBrands, type PublicBrand } from "@/catalog/public-brands";
 import { listAttributeSetsAdmin, type AdminAttributeSet } from "@/catalog/attributes-admin";
 import type { PublicProduct } from "@/catalog/types";
+import { cached } from "@/lib/ttl-cache";
 import { MobileFilterDrawer } from "./MobileFilterDrawer";
 
 // Data: real catalog DB (ACTIVE products only) via the Prisma
@@ -434,8 +435,13 @@ export default async function ShopPage({ searchParams }: { searchParams: ShopSea
     // the facet base and no second call happens.
     attributeFilters ? listPublicProducts(shopFilter) : Promise.resolve(null),
     listCategories(),
-    listPublicBrands().catch((): PublicBrand[] => []),
-    listAttributeSetsAdmin().catch((): AdminAttributeSet[] => []),
+    // Speed wave batch 2: the facet libraries (brands, attribute
+    // sets) change only on admin edits — serve them through a 60s
+    // in-process TTL instead of raw DB queries on every render.
+    cached("shop:brands", 60_000, () => listPublicBrands()).catch((): PublicBrand[] => []),
+    cached("shop:attribute-sets", 60_000, () => listAttributeSetsAdmin()).catch(
+      (): AdminAttributeSet[] => [],
+    ),
   ]);
   const baseProducts = result.products;
   const products = applyLocalFilters(baseProducts, hasLocalAttrFilter ? attrPairs : []);

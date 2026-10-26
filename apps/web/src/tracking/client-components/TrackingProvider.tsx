@@ -51,6 +51,29 @@ export function useTracking(): TrackingContextValue {
   return ctx;
 }
 
+/**
+ * Run `callback` when the browser is idle (requestIdleCallback, capped by
+ * the given timeout) or after the timeout on browsers without it. Returns
+ * a cancel function for effect cleanup. Third-party pixels are deferred
+ * this way so they never compete with first paint / hydration — server-
+ * side CAPI already covers the events, so the delay loses nothing.
+ */
+type IdleWindow = Window & {
+  requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;
+  cancelIdleCallback?: (id: number) => void;
+};
+
+function deferUntilIdle(callback: () => void, timeoutMs = 3500): () => void {
+  if (typeof window === "undefined") return () => undefined;
+  const win = window as IdleWindow;
+  if (typeof win.requestIdleCallback === "function") {
+    const id = win.requestIdleCallback(callback, { timeout: timeoutMs });
+    return () => win.cancelIdleCallback?.(id);
+  }
+  const timer = window.setTimeout(callback, timeoutMs);
+  return () => window.clearTimeout(timer);
+}
+
 export interface TrackingProviderProps {
   /** Primary Meta pixel id (or comma-separated ids), or null/omitted for no-op mode. */
   pixelId?: string | string[] | null;
@@ -101,63 +124,69 @@ export function TrackingProvider({
   }, [captureUtm]);
 
   // 1. Meta (Facebook) Pixel Base Script & Multi-Pixel Initialization
+  // Deferred until the browser is idle (see deferUntilIdle above).
   useEffect(() => {
     if (parsedPixelIds.length === 0 || typeof window === "undefined") return;
 
-    try {
-      const win = window as any;
-      if (!win.fbq) {
-        const n: any = (win.fbq = function () {
-          n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
-        });
-        if (!win._fbq) win._fbq = n;
-        n.push = n;
-        n.loaded = true;
-        n.version = "2.0";
-        n.queue = [];
-        const t = document.createElement("script");
-        t.async = true;
-        t.id = "meta-pixel-script";
-        t.src = "https://connect.facebook.net/en_US/fbevents.js";
-        const s = document.getElementsByTagName("script")[0];
-        s?.parentNode?.insertBefore(t, s);
-      }
+    return deferUntilIdle(() => {
+      try {
+        const win = window as any;
+        if (!win.fbq) {
+          const n: any = (win.fbq = function () {
+            n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
+          });
+          if (!win._fbq) win._fbq = n;
+          n.push = n;
+          n.loaded = true;
+          n.version = "2.0";
+          n.queue = [];
+          const t = document.createElement("script");
+          t.async = true;
+          t.id = "meta-pixel-script";
+          t.src = "https://connect.facebook.net/en_US/fbevents.js";
+          const s = document.getElementsByTagName("script")[0];
+          s?.parentNode?.insertBefore(t, s);
+        }
 
-      // Initialize all configured pixels (Primary + Backup / Agency pixels)
-      parsedPixelIds.forEach((pid) => {
-        win.fbq("init", pid);
-      });
-    } catch {
-      // Ignore injection error in non-standard / sandboxed environments
-    }
+        // Initialize all configured pixels (Primary + Backup / Agency pixels)
+        parsedPixelIds.forEach((pid) => {
+          win.fbq("init", pid);
+        });
+      } catch {
+        // Ignore injection error in non-standard / sandboxed environments
+      }
+    });
   }, [parsedPixelIds]);
 
   // 2. Microsoft Clarity Script Injection (Heatmaps & Session Recordings)
+  // Deferred until the browser is idle (see deferUntilIdle above).
   useEffect(() => {
     const cid = (clarityProjectId ?? "").trim();
     if (!cid || typeof window === "undefined") return;
 
-    // Guard: do not double-inject Clarity
-    const existing = document.getElementById("microsoft-clarity-tag");
-    if (existing) return;
+    return deferUntilIdle(() => {
+      // Guard: do not double-inject Clarity
+      const existing = document.getElementById("microsoft-clarity-tag");
+      if (existing) return;
 
-    try {
-      (function (c: any, l: any, a: any, r: any, i: any, t?: any, y?: any) {
-        c[a] =
-          c[a] ||
-          function () {
-            (c[a].q = c[a].q || []).push(arguments);
-          };
-        t = l.createElement(r);
-        t.async = 1;
-        t.id = "microsoft-clarity-tag";
-        t.src = "https://www.clarity.ms/tag/" + i;
-        y = l.getElementsByTagName(r)[0];
-        y.parentNode?.insertBefore(t, y);
-      })(window, document, "clarity", "script", cid);
-    } catch {
-      // Ignore injection error in non-standard environments
-    }
+      try {
+        (function (c: any, l: any, a: any, r: any, i: any, t?: any, y?: any) {
+          c[a] =
+            c[a] ||
+            function () {
+              (c[a].q = c[a].q || []).push(arguments);
+            };
+          t = l.createElement(r);
+          t.async = 1;
+          t.id = "microsoft-clarity-tag";
+          t.src = "https://www.clarity.ms/tag/" + i;
+          y = l.getElementsByTagName(r)[0];
+          y.parentNode?.insertBefore(t, y);
+        })(window, document, "clarity", "script", cid);
+      } catch {
+        // Ignore injection error in non-standard environments
+      }
+    });
   }, [clarityProjectId]);
 
   // PageView on route change

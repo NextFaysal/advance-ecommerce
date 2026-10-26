@@ -79,6 +79,9 @@ export function hashSessionToken(token: string): string {
 
 export const STAFF_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** Minimum age of Session.lastUsedAt before validateSessionToken refreshes it. */
+export const LAST_USED_WRITE_THROTTLE_MS = 5 * 60 * 1000;
+
 export async function createSession(input: {
   userId: string;
   userAgent?: string;
@@ -116,10 +119,17 @@ export async function validateSessionToken(token: string) {
   if (!session.user || session.user.isActive !== true || session.user.deletedAt !== null) {
     return null;
   }
-  await prisma.session.update({
-    where: { id: session.id },
-    data: { lastUsedAt: new Date() },
-  });
+  // lastUsedAt is bookkeeping, not part of validation: refresh it at
+  // most once per 5 minutes per session and never make validation
+  // wait on (or fail because of) the write.
+  if (Date.now() - session.lastUsedAt.getTime() > LAST_USED_WRITE_THROTTLE_MS) {
+    void prisma.session
+      .update({
+        where: { id: session.id },
+        data: { lastUsedAt: new Date() },
+      })
+      .catch(() => {});
+  }
   return {
     sessionId: session.id,
     user: {

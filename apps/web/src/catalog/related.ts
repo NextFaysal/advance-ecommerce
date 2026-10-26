@@ -18,7 +18,7 @@
  * (costPoisha stripped via toPublicProduct) — this helper feeds a
  * public page, so the admin shape must never pass through.
  */
-import { tryCatalogRepository } from "./server-read";
+import { listPublicProducts, tryCatalogRepository } from "./server-read";
 import type { Product, PublicProduct } from "./types";
 import { toPublicProduct } from "./types";
 
@@ -44,32 +44,41 @@ export async function getRelatedProducts(
   const out: PublicProduct[] = [];
   const seen = new Set<string>([product.id]);
 
-  // 1) Manual picks, in order.
+  // 1) Manual picks, in order. Speed wave batch 2: the per-pick
+  // fetches run in parallel (was one serial await per pick); the
+  // walk below re-applies the merchant's order, the seen/limit
+  // bookkeeping and the live check exactly as the serial loop did.
+  const pickIds: string[] = [];
   for (const id of product.relatedIds ?? []) {
+    if (!seen.has(id) && !pickIds.includes(id)) pickIds.push(id);
+  }
+  const picks = await Promise.all(pickIds.map((id) => repo.getProductById(id).catch(() => null)));
+  for (let i = 0; i < pickIds.length; i++) {
     if (out.length >= limit) break;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const picked = await repo.getProductById(id).catch(() => null);
+    seen.add(pickIds[i]);
+    const picked = picks[i];
     if (picked && isLive(picked)) out.push(toPublicProduct(picked));
   }
 
-  // 2) Same-category best-rated fill.
+  // 2) Same-category best-rated fill. Batch 2: served through the
+  // TTL-cached public list in server-read instead of a raw
+  // repository call — same semantics (ACTIVE only, publishAt gate
+  // via liveOnly, same category + rating sort + over-fetch window),
+  // and the rows arrive already PUBLIC-shaped, so they are pushed
+  // as-is (no second toPublicProduct pass).
   if (out.length < limit) {
-    const fill = await repo
-      .listProducts({
-        status: "ACTIVE",
-        categorySlug: product.categorySlug,
-        sort: "rating",
-        page: 1,
-        // Over-fetch: some rows are the product itself or manual picks.
-        pageSize: Math.min(100, limit + seen.size + 4),
-      })
-      .catch(() => null);
+    const fill = await listPublicProducts({
+      categorySlug: product.categorySlug,
+      sort: "rating",
+      page: 1,
+      // Over-fetch: some rows are the product itself or manual picks.
+      pageSize: Math.min(100, limit + seen.size + 4),
+    }).catch(() => null);
     for (const candidate of fill?.products ?? []) {
       if (out.length >= limit) break;
       if (seen.has(candidate.id)) continue;
       seen.add(candidate.id);
-      out.push(toPublicProduct(candidate));
+      out.push(candidate);
     }
   }
 

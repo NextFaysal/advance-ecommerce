@@ -12,11 +12,17 @@
 // is — it reads the live catalog per request).
 import { getLiveFlashSale } from "./repository";
 import { FlashSaleCountdown } from "./flash-sale-countdown";
+import { cached } from "@/lib/ttl-cache";
 
 export async function FlashSaleCountdownSection() {
   let sale = null;
   try {
-    sale = await getLiveFlashSale();
+    // Speed wave batch 2: getLiveFlashSale is a heavy multi-join
+    // that ran uncached on every homepage render. A 60s in-process
+    // TTL is display-safe here — the client countdown re-renders
+    // from `endsAt`, and a sale starting/ending may lag up to a
+    // minute on this banner (checkout pricing never reads it).
+    sale = await cached("live-flash-sale", 60_000, () => getLiveFlashSale());
   } catch {
     return null;
   }

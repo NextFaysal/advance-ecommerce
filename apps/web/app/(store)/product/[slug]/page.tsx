@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fromPoisha } from "@advance-ecommerce/validators";
-import { tryCatalogRepository } from "@/catalog/server-read";
+import { getLivePublicProductBySlug, tryCatalogRepository } from "@/catalog/server-read";
 import { maxVariantPricePoisha, minVariantPricePoisha, toPublicProduct } from "@/catalog/types";
 import { EmiNote } from "@/marketing/components/EmiNote";
 import { RecordRecentlyViewed } from "@/storefront-ux/components/RecordRecentlyViewed";
@@ -46,8 +46,7 @@ import { getWeightedInfosForProduct } from "@/business-modules/grocery-pricing";
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
-  const repo = await tryCatalogRepository();
-  const product = repo ? await repo.getPublicProductBySlug(params.slug) : null;
+  const product = await getLivePublicProductBySlug(params.slug);
   if (!product) return { title: "পণ্য পাওয়া যায়নি" };
   const title = product.seoTitle?.bn ?? product.title.bn;
   const description = product.seoDescription?.bn ?? product.description.bn;
@@ -150,7 +149,7 @@ const TRUST_ROWS = [
 
 export default async function ProductPage({ params }: { params: { slug: string } }) {
   const repo = await tryCatalogRepository();
-  const raw = repo ? await repo.getPublicProductBySlug(params.slug) : null;
+  const raw = await getLivePublicProductBySlug(params.slug);
   if (!raw) notFound();
   // Wave 15-3: 360° spin viewer (module.product_extras) for products
   // with enough gallery frames to spin.
@@ -168,9 +167,34 @@ export default async function ProductPage({ params }: { params: { slug: string }
   // the buy box below is wrapped in the AgeGate interstitial — a
   // self-declaration prompt, not verification; the binding gate is
   // the checkout refusal in the orders route.
-  const ageRestriction = priceOnRequest
-    ? null
-    : await getAgeRestrictionForCategorySlug(product.categorySlug);
+  //
+  // Per-product size chart replaces the old categorySlug ===
+  // "fashion" hardcode: the button/section exist only when THIS
+  // product has one.
+  const sizeChart =
+    product.sizeChart && product.sizeChart.headers.length > 0 && product.sizeChart.rows.length > 0
+      ? product.sizeChart
+      : null;
+  // Speed wave batch 2: the four tail reads — age restriction,
+  // fashion-pack size chart, grocery weighted infos, related
+  // products — depend only on `product` (already loaded above),
+  // never on each other, so they run in ONE Promise.all instead of
+  // four serial round trips. Gating is unchanged: the age read is
+  // skipped entirely for price-on-request products, the pack chart
+  // is only fetched when the product has no chart of its own, and
+  // the pack/grocery resolvers return null/[] at ~zero cost while
+  // their module flag is off.
+  const [ageRestriction, packSizeChart, weightedInfos, related] = await Promise.all([
+    priceOnRequest ? null : getAgeRestrictionForCategorySlug(product.categorySlug),
+    sizeChart ? null : resolvePdpPackSizeChart(product.categorySlug),
+    getWeightedInfosForProduct(product.id),
+    getRelatedProducts(product),
+  ]);
+  // ADV-22 (fashion pack): when the product has NO chart of its own,
+  // the pack chart for its category is the fallback (per-category
+  // override, else the pack default). The product's own chart
+  // always wins. The pack chart also carries the category fit note.
+  const displaySizeChart = sizeChart ?? packSizeChart?.table ?? null;
   const maxPrice = maxVariantPricePoisha(raw);
   const hasPriceRange = maxPrice > minPrice;
   // Best available discount across active variants (display only).
@@ -230,24 +254,12 @@ export default async function ProductPage({ params }: { params: { slug: string }
   // behaviour; `saleActive` arrives derived on the public shape.
   const hasSaleWindow = Boolean(product.saleStartsAt || product.saleEndsAt);
   const showDiscount = bestDiscount !== null && (!hasSaleWindow || product.saleActive);
-  // Per-product size chart replaces the old categorySlug === "fashion"
-  // hardcode: the button/section exist only when THIS product has one.
-  const sizeChart =
-    product.sizeChart && product.sizeChart.headers.length > 0 && product.sizeChart.rows.length > 0
-      ? product.sizeChart
-      : null;
-  // ADV-22 (fashion pack): when the product has NO chart of its own,
-  // the pack chart for its category is the fallback (per-category
-  // override, else the pack default) — resolved from the saved pack
-  // config, only while module.fashion is on. The product's own chart
-  // always wins. The pack chart also carries the category fit note.
-  const packSizeChart = !sizeChart ? await resolvePdpPackSizeChart(product.categorySlug) : null;
-  const displaySizeChart = sizeChart ?? packSizeChart?.table ?? null;
-  // ADV-22 (grocery pack): weighted (per-kg) pack annotations for this
-  // product's configured pack variants — rate + pack weight from the
-  // saved grocery config; empty unless module.grocery is on and this
-  // product has configured weighted variants.
-  const weightedInfos = await getWeightedInfosForProduct(product.id);
+  // sizeChart / packSizeChart / displaySizeChart / weightedInfos
+  // are resolved in the parallel tail-read block near the top of
+  // this function (speed wave batch 2). ADV-22 (grocery pack):
+  // weightedInfos carries the per-kg rate + pack weight from the
+  // saved grocery config for this product's configured pack
+  // variants — empty unless module.grocery is on.
   const faqItems = (product.faqItems ?? []).filter((f) => f.q.trim() !== "" && f.a.trim() !== "");
   // Specification table: union of variant attributes, key → distinct
   // values in first-seen order (active variants preferred).
@@ -264,7 +276,6 @@ export default async function ProductPage({ params }: { params: { slug: string }
     }
     for (const [key, values] of byKey) specRows.push({ key, values });
   }
-  const related = await getRelatedProducts(product);
   const outOfStockVariants = product.variants
     .filter((v) => v.isActive && v.stock === 0)
     .map((v) => ({

@@ -9,6 +9,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { toggleWishlistId } from "./wishlist";
@@ -136,12 +137,16 @@ export function ProductCard({ product }: { product: PublicProduct }) {
             otherwise a designed tinted placeholder (never a broken img). */}
         <div className="relative aspect-[4/5] overflow-hidden bg-surface-2">
           {imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            // next/image with fill inside the aspect-[4/5] box: the
+            // optimizer serves AVIF/WebP at the sizes the grid actually
+            // renders instead of the full-resolution original.
+            <Image
               src={imageUrl}
               alt={product.images[0]?.altBn ?? product.title.bn}
+              fill
+              sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
               loading="lazy"
-              className={`h-full w-full object-cover transition duration-500 ease-out group-hover:scale-[1.06] ${inStock ? "" : "opacity-60 grayscale"}`}
+              className={`object-cover transition duration-500 ease-out group-hover:scale-[1.06] ${inStock ? "" : "opacity-60 grayscale"}`}
             />
           ) : (
             <div

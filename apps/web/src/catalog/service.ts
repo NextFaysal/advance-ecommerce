@@ -907,19 +907,23 @@ export class PrismaCatalogRepository implements CatalogRepository {
       filter.sort === "rating"
         ? { ratingAverage: "desc" as const }
         : { createdAt: "desc" as const };
-    const rows = await this.client.product.findMany({
-      where: fullWhere,
-      include: PRODUCT_INCLUDE,
-      orderBy,
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    });
+    // Speed wave: page rows and the total count are independent —
+    // run them in parallel instead of two sequential round trips.
+    const [rows, total] = await Promise.all([
+      this.client.product.findMany({
+        where: fullWhere,
+        include: PRODUCT_INCLUDE,
+        orderBy,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.client.product.count({ where: fullWhere }),
+    ]);
     const products = rows.map((r) => mapRowToProduct(mapPrismaRowToProductRow(r)));
     // applyProductFilter stays for the price sorts (no SQL equivalent for
     // min-variant-price ordering) — its filter predicates are idempotent
     // over rows the SQL already matched.
     const filtered = applyProductFilter(products, filter);
-    const total = await this.client.product.count({ where: fullWhere });
     return { products: filtered, total, page, pageSize };
   }
 

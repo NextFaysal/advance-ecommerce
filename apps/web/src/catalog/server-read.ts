@@ -11,6 +11,26 @@ import type { CatalogRepository } from "./service";
 import type { Category, Product, PublicProduct } from "./types";
 import { toPublicProduct } from "./types";
 
+/* ------------------------------------------------------------------ */
+/* Speed wave (2026-10-26): short in-process TTL cache for the PUBLIC */
+/* storefront reads below. A warm server instance serves the home /   */
+/* shop / PDP renders from memory instead of re-querying Postgres on  */
+/* every hit; data can lag up to the TTL (30s) — checkout always       */
+/* re-validates price + stock live, so staleness here is display-only.*/
+/* Only repository-backed results are cached (a DB-not-ready empty    */
+/* result must never extend an outage). Admin reads are NOT cached.   */
+/* ------------------------------------------------------------------ */
+const PUBLIC_READ_TTL_MS = 30_000;
+const publicReadCache = new Map<string, { at: number; value: unknown }>();
+
+async function cachedPublicRead<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const hit = publicReadCache.get(key);
+  if (hit && Date.now() - hit.at < PUBLIC_READ_TTL_MS) return hit.value as T;
+  const value = await load();
+  publicReadCache.set(key, { at: Date.now(), value });
+  return value;
+}
+
 /** The Prisma catalog repository, or null when the DB is not ready. */
 export async function tryCatalogRepository(): Promise<CatalogRepository | null> {
   try {
@@ -45,8 +65,10 @@ export async function listActiveProducts(pageSize = 100): Promise<Product[]> {
 export async function listActivePublicProducts(pageSize = 100): Promise<PublicProduct[]> {
   const repo = await tryCatalogRepository();
   if (!repo) return [];
-  const result = await repo.listProducts({ status: "ACTIVE", page: 1, pageSize, liveOnly: true });
-  return result.products.map(toPublicProduct);
+  return cachedPublicRead(`active-public:${pageSize}`, async () => {
+    const result = await repo.listProducts({ status: "ACTIVE", page: 1, pageSize, liveOnly: true });
+    return result.products.map(toPublicProduct);
+  });
 }
 
 /** PUBLIC filtered list (shop/search filters) with cost stripped. */
@@ -55,8 +77,10 @@ export async function listPublicProducts(
 ): Promise<{ products: PublicProduct[]; total: number; page: number; pageSize: number }> {
   const repo = await tryCatalogRepository();
   if (!repo) return { products: [], total: 0, page: 1, pageSize: filter.pageSize ?? 100 };
-  const result = await repo.listProducts({ ...filter, status: "ACTIVE", liveOnly: true });
-  return { ...result, products: result.products.map(toPublicProduct) };
+  return cachedPublicRead(`public-list:${JSON.stringify(filter)}`, async () => {
+    const result = await repo.listProducts({ ...filter, status: "ACTIVE", liveOnly: true });
+    return { ...result, products: result.products.map(toPublicProduct) };
+  });
 }
 
 /**
@@ -96,7 +120,20 @@ export async function listAllProducts(pageSizePerStatus = 100): Promise<Product[
 export async function listCategories(): Promise<Category[]> {
   const repo = await tryCatalogRepository();
   if (!repo) return [];
-  return repo.getCategories();
+  return cachedPublicRead("categories", () => repo.getCategories());
+}
+
+/**
+ * PUBLIC single-product read for the PDP (speed wave): same
+ * ACTIVE + publishAt gate as the repository method, TTL-cached.
+ * Returns the ADMIN/full shape from the repository (the PDP strips
+ * cost via toPublicProduct before anything reaches a client
+ * component, exactly as it did with the direct repository call).
+ */
+export async function getLivePublicProductBySlug(slug: string): Promise<Product | null> {
+  const repo = await tryCatalogRepository();
+  if (!repo) return null;
+  return cachedPublicRead(`public-product:${slug}`, () => repo.getPublicProductBySlug(slug));
 }
 
 /**

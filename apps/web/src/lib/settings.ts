@@ -429,7 +429,24 @@ export function decryptValue(stored: string): string {
 
 import { getCachedValue, setCachedValue, invalidateCacheKey } from "./redis";
 
+/* In-process memo in front of the Redis → DB → env → default chain  */
+/* in getSetting(): on a warm isolate this turns repeat reads (the   */
+/* checkout path alone fans out to ~14 keys) into Map lookups. The   */
+/* resolved value is memoised even when it is null (negative result) */
+/* so keys with no DB row, no env fallback and no default stop       */
+/* paying a Redis GET + DB findUnique on every single call. 30s TTL  */
+/* bounds staleness for writes that bypass setSetting (direct DB     */
+/* edits); setSetting() clears the entry immediately via             */
+/* invalidateSettingCache().                                         */
+const SETTING_MEMO_TTL_MS = 30_000;
+const settingMemo = new Map<string, { value: string | null; at: number }>();
+
 export function invalidateSettingCache(key?: string): void {
+  if (key !== undefined) {
+    settingMemo.delete(key);
+  } else {
+    settingMemo.clear();
+  }
   invalidateCacheKey(key).catch(() => {});
 }
 
@@ -438,6 +455,17 @@ export function invalidateSettingCache(key?: string): void {
 /* ------------------------------------------------------------------ */
 
 export async function getSetting(key: string): Promise<string | null> {
+  const memoised = settingMemo.get(key);
+  if (memoised !== undefined && Date.now() - memoised.at < SETTING_MEMO_TTL_MS) {
+    return memoised.value;
+  }
+  const value = await resolveSetting(key);
+  settingMemo.set(key, { value, at: Date.now() });
+  return value;
+}
+
+/** The uncached resolution chain behind getSetting's in-process memo. */
+async function resolveSetting(key: string): Promise<string | null> {
   const cached = await getCachedValue(key);
   if (cached !== null) return cached;
   const row = await prisma.setting.findUnique({ where: { key } });

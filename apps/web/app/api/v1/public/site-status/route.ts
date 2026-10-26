@@ -15,14 +15,24 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const config = await getMaintenanceConfig();
-  return NextResponse.json({
-    data: {
-      maintenance: {
-        enabled: config.enabled,
-        messageBn: config.messageBn,
-        messageEn: config.messageEn,
+  return NextResponse.json(
+    {
+      data: {
+        maintenance: {
+          enabled: config.enabled,
+          messageBn: config.messageBn,
+          messageEn: config.messageEn,
+        },
+      },
+      meta: { source: "settings:site.maintenance" },
+    },
+    {
+      // Edge-cacheable so the middleware maintenance probe (and any
+      // other poller) is served from the CDN instead of invoking this
+      // function per request. Body/shape unchanged.
+      headers: {
+        "Cache-Control": "public, s-maxage=120, stale-while-revalidate=300",
       },
     },
-    meta: { source: "settings:site.maintenance" },
-  });
+  );
 }

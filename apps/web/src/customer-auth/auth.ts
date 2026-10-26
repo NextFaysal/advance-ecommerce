@@ -20,6 +20,7 @@
  */
 import { randomBytes, createHash } from "node:crypto";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { z } from "zod";
 import { prisma } from "@advance-ecommerce/db";
 import { normalizeBdPhone } from "@advance-ecommerce/validators";
@@ -31,6 +32,7 @@ import {
   resetLoginRateLimit,
   MAX_FAILED_LOGINS,
   ACCOUNT_LOCK_MINUTES,
+  LAST_USED_WRITE_THROTTLE_MS,
 } from "@/lib/auth";
 import { maskPhone } from "@/checkout/validation";
 import { findDeliverySlot, loadDeliverySlots } from "@/checkout/delivery-slots";
@@ -264,10 +266,18 @@ export async function validateCustomerSessionToken(token: string): Promise<Publi
   // would lock every OTP/Google customer out of their own session.
   // Blocked / soft-deleted rows stay rejected.
   if (c.blocked || c.deletedAt !== null) return null;
-  await prisma.customerSession.update({
-    where: { id: session.id },
-    data: { lastUsedAt: new Date() },
-  });
+  // lastUsedAt is bookkeeping, not part of validation: refresh it at
+  // most once per 5 minutes per session and never make validation
+  // wait on (or fail because of) the write — same throttle as staff
+  // sessions (src/lib/auth.ts).
+  if (Date.now() - session.lastUsedAt.getTime() > LAST_USED_WRITE_THROTTLE_MS) {
+    void prisma.customerSession
+      .update({
+        where: { id: session.id },
+        data: { lastUsedAt: new Date() },
+      })
+      .catch(() => {});
+  }
   return toPublicCustomer(c);
 }
 
@@ -279,13 +289,21 @@ export async function revokeCustomerSession(token: string): Promise<void> {
   });
 }
 
-/** Current logged-in customer for Route Handlers / Server Components. */
-export async function getCurrentCustomer(): Promise<PublicCustomer | null> {
-  const store = await cookies();
-  const token = store.get(CUSTOMER_SESSION_COOKIE)?.value;
-  if (token === undefined || token === "") return null;
-  return validateCustomerSessionToken(token);
-}
+/**
+ * Current logged-in customer for Route Handlers / Server Components.
+ * Wrapped in React cache() so multiple server components in one
+ * request share a single session validation instead of each paying
+ * the DB lookup (per-request memo only; route-handler callers are
+ * unaffected beyond the same dedupe).
+ */
+export const getCurrentCustomer = cache(
+  async (): Promise<PublicCustomer | null> => {
+    const store = await cookies();
+    const token = store.get(CUSTOMER_SESSION_COOKIE)?.value;
+    if (token === undefined || token === "") return null;
+    return validateCustomerSessionToken(token);
+  },
+);
 
 /** Cookie options shared by the login/register/logout routes. */
 export function customerSessionCookieOptions(maxAgeSeconds: number) {

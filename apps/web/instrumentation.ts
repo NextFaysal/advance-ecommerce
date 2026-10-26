@@ -22,18 +22,28 @@
  */
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  try {
-    const { ensureDbFeatureFlags } = await import("./src/lib/feature-flags-db");
-    await ensureDbFeatureFlags();
-  } catch {
-    // Fail-closed: flags remain on the in-memory catalogue defaults.
-  }
-  try {
-    const { refreshCouponSnapshot } = await import("./src/marketing/repository");
-    await refreshCouponSnapshot();
-  } catch {
-    // Snapshot also warms at module load; checkout falls back safely.
-  }
+  // The two boot loads are independent — run them in parallel so a
+  // cold instance pays max(flags, coupons) instead of their sum
+  // before its first request. Each keeps its own try/catch: one
+  // failing neither blocks the other nor crashes boot.
+  await Promise.all([
+    (async () => {
+      try {
+        const { ensureDbFeatureFlags } = await import("./src/lib/feature-flags-db");
+        await ensureDbFeatureFlags();
+      } catch {
+        // Fail-closed: flags remain on the in-memory catalogue defaults.
+      }
+    })(),
+    (async () => {
+      try {
+        const { refreshCouponSnapshot } = await import("./src/marketing/repository");
+        await refreshCouponSnapshot();
+      } catch {
+        // Snapshot also warms at module load; checkout falls back safely.
+      }
+    })(),
+  ]);
   try {
     // Call-center auto tasks: subscribe to the order event bus so
     // fraud-review orders and failed/returned deliveries create call

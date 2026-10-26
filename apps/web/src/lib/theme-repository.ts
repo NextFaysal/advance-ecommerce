@@ -17,13 +17,34 @@ import { THEME_CATALOG_SETTING_KEY } from "./theme-engine";
 /* Catalog read / write                                                */
 /* ------------------------------------------------------------------ */
 
+/* 60s in-process TTL cache around the catalog read: getThemeCatalog */
+/* is on the render path (root layout resolves the active theme per  */
+/* request), and the catalog changes only on admin theme writes. A   */
+/* missing row caches as [] too; a DB ERROR is not cached, so a      */
+/* transient failure never masks recovery for the whole TTL.         */
+/* saveThemeCatalog() clears the cache so a save in this process is  */
+/* visible on the very next read (other processes converge ≤60s).    */
+const THEME_CATALOG_CACHE_TTL_MS = 60_000;
+let themeCatalogCache: { at: number; catalog: AppTheme[] } | null = null;
+
 export async function getThemeCatalog(): Promise<AppTheme[]> {
+  if (
+    themeCatalogCache !== null &&
+    Date.now() - themeCatalogCache.at < THEME_CATALOG_CACHE_TTL_MS
+  ) {
+    return themeCatalogCache.catalog;
+  }
   try {
     const row = await prisma.setting.findUnique({
       where: { key: THEME_CATALOG_SETTING_KEY },
     });
-    if (!row) return [];
-    return JSON.parse(row.value) as AppTheme[];
+    if (!row) {
+      themeCatalogCache = { at: Date.now(), catalog: [] };
+      return [];
+    }
+    const catalog = JSON.parse(row.value) as AppTheme[];
+    themeCatalogCache = { at: Date.now(), catalog };
+    return catalog;
   } catch {
     return [];
   }
@@ -40,6 +61,7 @@ export async function saveThemeCatalog(themes: AppTheme[]): Promise<void> {
       category: "appearance",
     },
   });
+  themeCatalogCache = null;
 }
 
 /* ------------------------------------------------------------------ */

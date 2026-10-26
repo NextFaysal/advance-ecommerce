@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCatalogRepository, handleServiceError } from "@/catalog/api";
 import { searchPublicProducts } from "@/catalog/search-service";
+import { catalogCacheHeaders } from "@/lib/http-cache";
 
 // GET /api/v1/public/products — public list + search. With ?q= the
 // search service answers Meilisearch-first and degrades to Postgres;
@@ -40,10 +41,15 @@ export async function GET(req: Request) {
       page: Number.isFinite(page) ? page : 1,
       pageSize: Number.isFinite(pageSize) ? pageSize : 20,
     });
-    return NextResponse.json({
-      data: result.products,
-      meta: { total: result.total, page: result.page, pageSize: result.pageSize, engine: result.engine },
-    });
+    return NextResponse.json(
+      {
+        data: result.products,
+        meta: { total: result.total, page: result.page, pageSize: result.pageSize, engine: result.engine },
+      },
+      // Speed wave: identical for every visitor — let the CDN serve
+      // it (60s fresh + SWR). Checkout re-validates price/stock live.
+      { headers: catalogCacheHeaders(60) },
+    );
   } catch (error) {
     return handleServiceError(error);
   }

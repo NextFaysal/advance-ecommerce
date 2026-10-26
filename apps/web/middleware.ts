@@ -27,32 +27,51 @@ const PUBLIC_ADMIN_PATHS = ["/admin/login", "/admin/accept-invite"];
 /* store, and this codebase has no settings-in-middleware pattern    */
 /* (feature flags resolve server-side). So the gate polls the        */
 /* app's own public GET /api/v1/public/site-status (which reads the  */
-/* `site.maintenance` Setting server-side) with a short in-isolate   */
-/* TTL cache, and FAILS OPEN: any fetch/parse problem means "not in  */
+/* `site.maintenance` Setting server-side) with an in-isolate TTL    */
+/* cache, and FAILS OPEN: any fetch/parse problem means "not in      */
 /* maintenance" — a broken probe must never take the store down.     */
+/* The probe has a hard 400ms timeout so a hung site-status route    */
+/* cannot stall page loads, and a failed probe is negatively cached */
+/* for 30s so an outage doesn't turn into a probe per request.      */
 /* Toggling in Admin > Settings > Privacy takes effect within the   */
-/* TTL (20s) plus the settings cache. The block/pass policy itself   */
-/* is the pure decideMaintenanceGate() from maintenance-core.         */
+/* TTL (120s) plus the settings cache. The block/pass policy itself */
+/* is the pure decideMaintenanceGate() from maintenance-core.        */
 /* ------------------------------------------------------------------ */
 
-const MAINTENANCE_CACHE_TTL_MS = 20_000;
+const MAINTENANCE_CACHE_TTL_MS = 120_000;
+const MAINTENANCE_FAILURE_CACHE_TTL_MS = 30_000;
+const MAINTENANCE_PROBE_TIMEOUT_MS = 400;
 let maintenanceCache: { at: number; config: MaintenanceConfig } | null = null;
+let maintenanceProbeFailedAt: number | null = null;
 
 async function fetchMaintenanceConfig(origin: string): Promise<MaintenanceConfig | null> {
   const now = Date.now();
   if (maintenanceCache !== null && now - maintenanceCache.at < MAINTENANCE_CACHE_TTL_MS) {
     return maintenanceCache.config;
   }
+  if (
+    maintenanceProbeFailedAt !== null &&
+    now - maintenanceProbeFailedAt < MAINTENANCE_FAILURE_CACHE_TTL_MS
+  ) {
+    return null;
+  }
   try {
     const res = await fetch(`${origin}/api/v1/public/site-status`, {
       headers: { "x-maintenance-probe": "1" },
+      signal: AbortSignal.timeout(MAINTENANCE_PROBE_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      maintenanceProbeFailedAt = now;
+      return null;
+    }
     const body = (await res.json()) as {
       data?: { maintenance?: { enabled?: unknown; messageBn?: unknown; messageEn?: unknown } };
     };
     const m = body.data?.maintenance;
-    if (!m) return null;
+    if (!m) {
+      maintenanceProbeFailedAt = now;
+      return null;
+    }
     // Rebuild the stored-doc shape and reuse the one parser, so the
     // middleware can never drift from the server-side semantics.
     const config = parseMaintenanceConfig(
@@ -63,8 +82,10 @@ async function fetchMaintenanceConfig(origin: string): Promise<MaintenanceConfig
       }),
     );
     maintenanceCache = { at: now, config };
+    maintenanceProbeFailedAt = null;
     return config;
   } catch {
+    maintenanceProbeFailedAt = now;
     return null;
   }
 }
