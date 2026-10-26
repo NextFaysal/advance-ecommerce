@@ -7,6 +7,7 @@ import { loadCallLogs, loadCallTasks, recordOutcomeDb, type DbCallTask } from "@
 import { recordOutcomeSchema, type CallTask } from "@/callcenter/types";
 import { dispositionSchema, isFraudSignalDisposition } from "@/callcenter/dispositions";
 import { fraudListStore } from "@/fraud/lists";
+import { dispatchCallFollowUp, type FollowUpResult } from "@/callcenter/follow-up";
 import { z } from "zod";
 
 // Call outcome + auto-next — Agent 14. POST { taskId, ...outcome } records the
@@ -135,6 +136,21 @@ export async function POST(req: Request) {
         fraudSignal = { recorded: false, reason: "phone-not-resolved" };
       }
     }
+    // C4 Follow-up automation: trigger SMS when unanswered or callback scheduled
+    let followUp: FollowUpResult | undefined;
+    if (result.task.phoneResolved === true && !result.task.phone.includes("*")) {
+      try {
+        followUp = await dispatchCallFollowUp({
+          customerPhone: result.task.phone,
+          customerName: (result.task as any).customerName,
+          orderId: result.task.orderId,
+          outcome: parsed.data.outcome,
+          callbackDue: parsed.data.callbackAt,
+        });
+      } catch (e) {
+        console.error("[CallCenter Outcome] Follow-up SMS error:", e);
+      }
+    }
     const canViewFullPhone = guard.permissions.includes("customers.view_full_phone");
     const tasks = await loadCallTasks();
     const nextPick = nextTaskForAgent(tasks, guard.userId, new Date().toISOString());
@@ -148,6 +164,7 @@ export async function POST(req: Request) {
         nextTask: next ? view(next, canViewFullPhone) : null,
         performance: agentPerformance(logs, guard.userId),
         ...(fraudSignal ? { fraudSignal } : {}),
+        ...(followUp ? { followUp } : {}),
       },
       meta: { persistence: "database" },
     });
