@@ -1,12 +1,11 @@
 /**
  * F-commerce unified inbox types — Agent 14 (Step 46, A6 / Part G).
  *
- * CHANNELS ARE TYPES ONLY in this slice. There is NO Messenger / Instagram /
- * WhatsApp API call anywhere in this module, and NO channel access token is
- * read, stored, or logged. A real channel integration (Step 46 follow-up)
- * implements a ChannelAdapter that maps each platform's webhook payload into
- * InboxMessage below — credentials for that live ONLY in Admin Settings
- * (encrypted), never in code.
+ * The RECEIVE side went live in ADV-6 part 1: src/inbox/meta-channels.ts
+ * maps real Messenger / Instagram / WhatsApp webhook payloads into
+ * InboundMessageInput below, with channel credentials read ONLY from
+ * Admin Settings (meta.*, encrypted), never from code. The SEND side
+ * (a ChannelAdapter that calls the platform APIs) is still not built.
  *
  * Identity rule: a conversation is keyed by (channel, externalThreadId). The
  * customer is linked to a store Customer only after a phone number is

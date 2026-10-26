@@ -39,6 +39,7 @@ import {
   type AdvanceCandidate,
 } from "../orders/advance";
 import { publishOrderCreated } from "../orders/event-bus";
+import { emitAutomationEvent } from "../automation/producers";
 import {
   createOrderRecord,
   findOrderByIdempotencyKey,
@@ -249,6 +250,16 @@ export async function captureAbandonedCheckout(
       lastSeenAt: now,
     },
   });
+  // Automation lifecycle (ADV-7): checkout.abandoned fires ONLY for a
+  // brand-new capture — the storefront re-posts the same sessionKey on
+  // a debounce while the shopper edits, and those refresh posts must
+  // not re-fire the event (the engine's abandonedMinutes conditions
+  // evaluate against lastSeenAt when the job runs). A closed session
+  // returned early above and never reaches here. The producer is
+  // flag-gated and never throws.
+  if (existing === null) {
+    await emitAutomationEvent("checkout.abandoned", row.id);
+  }
   return { id: row.id, status: "OPEN", closed: false, droppedVariantIds };
 }
 

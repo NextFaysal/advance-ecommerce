@@ -6,10 +6,18 @@
  * All conversation data comes from the src/inbox TEMPORARY DEMO store via
  * the server page (same shapes as GET /api/v1/admin/inbox). This component
  * holds page state only:
- * - The reply composer is a DEMO composer. Sending is disabled in effect:
- *   "কিউতে রাখুন" records the reply text as an intent in page state and
- *   labels it পাঠানো হয়নি — NO channel API (Messenger / WhatsApp /
- *   Instagram) is connected and nothing ever leaves this page.
+ * - The reply composer is REAL on configured channels (ADV-6 part 2):
+ *   the server page passes a boolean `channelLive` map (Meta Settings
+ *   presence only — tokens never reach the browser). On a LIVE channel
+ *   "পাঠান" POSTs to /api/v1/admin/inbox/conversations/[id]/reply,
+ *   which sends through the Meta API; success appends the persisted
+ *   OUTBOUND message the route returns, and a provider failure shows
+ *   the provider's error with the draft kept — never a fake "sent".
+ *   On an UNCONFIGURED channel the composer keeps the original demo
+ *   behaviour exactly: "কিউতে রাখুন (ডেমো)" records the reply as an
+ *   intent in page state, labelled পাঠানো হয়নি, and nothing is sent.
+ *   (If the config changed after page load, the route can still answer
+ *   status "queued" on a live-looking channel — handled the same way.)
  * - The conversion panel POSTs to /api/v1/admin/inbox/draft, which runs
  *   buildOrderDraft() SERVER-SIDE and resolves the customer's phone there
  *   (D1 fix — this component never receives or holds a full phone number;
@@ -29,6 +37,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { maskPhone } from "@/checkout/validation";
 import { formatBdt } from "@/checkout/pricing";
 import type { DraftResult, OrderDraft } from "@/inbox/conversion";
+import BotDraftPanel from "./bot-draft-panel";
 import type {
   ConversationStatus,
   ConversationView,
@@ -133,17 +142,31 @@ export default function InboxClient({
   conversations,
   threads,
   detectedPhoneMasked,
+  channelLive,
 }: {
   /** Masked views only — full customer phones never reach the browser. */
   conversations: ConversationView[];
   threads: Record<string, InboxMessage[]>;
   /** Phone detected in chat, already masked server-side (null = none). */
   detectedPhoneMasked: Record<string, string | null>;
+  /** Per-channel Meta configuration presence (booleans only, computed
+   *  server-side from encrypted Settings — no token material). Live
+   *  channel -> the composer really sends; otherwise demo queueing. */
+  channelLive: Record<InboxChannel, boolean>;
 }) {
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("ALL");
   const [selectedId, setSelectedId] = useState<string | null>(conversations[0]?.id ?? null);
   const [replyText, setReplyText] = useState("");
   const [queuedReplies, setQueuedReplies] = useState<Record<string, QueuedReply[]>>({});
+  /* ---- ADV-6 part 2: real-send state. Sent messages returned by the
+   * reply route (persisted OUTBOUND rows with platform ids) are kept
+   * per conversation and appended to the server-prop thread for
+   * display; a reload shows the same rows from the DB. sendPhase is
+   * per open conversation and resets when the selection changes. */
+  const [sentMessages, setSentMessages] = useState<Record<string, InboxMessage[]>>({});
+  const [sendPhase, setSendPhase] = useState<
+    { kind: "idle" } | { kind: "sending" } | { kind: "failed"; message: string }
+  >({ kind: "idle" });
   const [draftName, setDraftName] = useState("");
   const [draftAddressText, setDraftAddressText] = useState("");
   const [draftQty, setDraftQty] = useState(1);
@@ -192,7 +215,11 @@ export default function InboxClient({
   );
   const selected = conversations.find((c) => c.id === selectedId) ?? null;
   const selectedView = selected;
-  const selectedMessages = selected ? (threads[selected.id] ?? []) : [];
+  const selectedMessages = selected
+    ? [...(threads[selected.id] ?? []), ...(sentMessages[selected.id] ?? [])]
+    : [];
+  const selectedLive = selected ? channelLive[selected.channel] : false;
+  const anyChannelLive = channelLive.MESSENGER || channelLive.WHATSAPP || channelLive.INSTAGRAM;
   const selectedQueued = selected ? (queuedReplies[selected.id] ?? []) : [];
   const totalUnread = views.reduce((sum, v) => sum + v.unreadCount, 0);
 
@@ -202,6 +229,7 @@ export default function InboxClient({
   useEffect(() => {
     if (!selected) return;
     setReplyText("");
+    setSendPhase({ kind: "idle" });
     setDraftResult(null);
     setDraftName(selected.customerDisplayName);
     const inboundTexts = (threads[selected.id] ?? []).filter(
@@ -266,6 +294,58 @@ export default function InboxClient({
       [selected.id]: [...(prev[selected.id] ?? []), entry],
     }));
     setReplyText("");
+  };
+
+  // ADV-6 part 2: REAL send on a live channel. The route decides from
+  // live Settings: "sent" returns the persisted OUTBOUND message (it
+  // is appended to the thread and the composer clears); "queued"
+  // means the channel turned out not to be configured after all —
+  // fall back to the exact demo intent rendering; any error keeps the
+  // draft text and shows the provider's own message (no fake sent).
+  const sendReply = async () => {
+    if (!selected || sendPhase.kind === "sending" || replyText.trim().length === 0) return;
+    const conversationId = selected.id;
+    const text = replyText.trim();
+    setSendPhase({ kind: "sending" });
+    try {
+      const res = await fetch(`/api/v1/admin/inbox/conversations/${conversationId}/reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const payload: unknown = await res.json().catch(() => null);
+      const body = payload as {
+        data?: { status?: string; message?: InboxMessage };
+        error?: { message?: string };
+      } | null;
+      if (res.ok && body?.data?.status === "sent" && body.data.message) {
+        const message = body.data.message;
+        setSentMessages((prev) => ({
+          ...prev,
+          [conversationId]: [...(prev[conversationId] ?? []), message],
+        }));
+        setReplyText("");
+        setSendPhase({ kind: "idle" });
+      } else if (res.ok && body?.data?.status === "queued") {
+        const entry: QueuedReply = { text, queuedAt: new Date().toISOString() };
+        setQueuedReplies((prev) => ({
+          ...prev,
+          [conversationId]: [...(prev[conversationId] ?? []), entry],
+        }));
+        setReplyText("");
+        setSendPhase({ kind: "idle" });
+      } else {
+        setSendPhase({
+          kind: "failed",
+          message: body?.error?.message ?? "পাঠানো যায়নি — আবার চেষ্টা করুন।",
+        });
+      }
+    } catch {
+      setSendPhase({
+        kind: "failed",
+        message: "সার্ভারে পৌঁছানো যায়নি — সংযোগ যাচাই করে আবার চেষ্টা করুন।",
+      });
+    }
   };
 
   // The draft is built by the server draft route: it resolves the phone
@@ -403,17 +483,40 @@ export default function InboxClient({
 
   return (
     <div className="space-y-6">
-      <Card className="border-amber-300 bg-amber-50 text-sm text-amber-900">
-        ⚠️ TEMPORARY DEMO — কোনো চ্যানেল API সংযুক্ত নেই। উত্তর <strong>পাঠানো যায় না</strong>:
-        কম্পোজার শুধু এই পেজের state-এ “কিউ করা” অভিপ্রায় রাখে। ড্রাফট কোনো অর্ডার নয় এবং
-        কোথাও জমা হয় না — নিশ্চিত করতে ম্যানুয়াল অর্ডার ফর্ম ব্যবহার করুন।
-      </Card>
+      {anyChannelLive ? (
+        <Card className="border-emerald-300 bg-emerald-50 text-sm text-emerald-900">
+          ✅ যেসব চ্যানেলের Meta সেটিংস দেওয়া আছে সেগুলো <strong>লাইভ</strong>:{" "}
+          {(Object.keys(CHANNEL_LABEL) as InboxChannel[])
+            .map((ch) => `${CHANNEL_LABEL[ch]} — ${channelLive[ch] ? "উত্তর সত্যিকারে যাবে" : "কিউ-ইনটেন্ট (ডেমো)"}`)
+            .join(" · ")}
+          । লাইভ চ্যানেলে পাঠানো ব্যর্থ হলে Meta-র ত্রুটি এখানেই দেখানো হয় — ভুয়া “পাঠানো
+          হয়েছে” দেখানো হয় না। ড্রাফট কোনো অর্ডার নয় — নিশ্চিত করতে ম্যানুয়াল অর্ডার ফর্ম
+          ব্যবহার করুন।
+        </Card>
+      ) : (
+        <Card className="border-amber-300 bg-amber-50 text-sm text-amber-900">
+          ⚠️ TEMPORARY DEMO — কোনো চ্যানেল API সংযুক্ত নেই। উত্তর <strong>পাঠানো যায় না</strong>:
+          কম্পোজার শুধু এই পেজের state-এ “কিউ করা” অভিপ্রায় রাখে। ড্রাফট কোনো অর্ডার নয় এবং
+          কোথাও জমা হয় না — নিশ্চিত করতে ম্যানুয়াল অর্ডার ফর্ম ব্যবহার করুন।
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="মোট কথোপকথন (ডেমো)" value={String(views.length)} delta="ইন-মেমরি" icon="💬" />
-        <StatCard label="অপঠিত বার্তা" value={String(totalUnread)} delta="ডেমো" icon="🔔" />
+        <StatCard label="মোট কথোপকথন" value={String(views.length)} delta="ডাটাবেস" icon="💬" />
+        <StatCard label="অপঠিত বার্তা" value={String(totalUnread)} delta="ডাটাবেস" icon="🔔" />
         <StatCard label="চ্যানেল" value="3" delta="Messenger · WhatsApp · Instagram" icon="🔌" />
-        <StatCard label="চ্যানেল সংযোগ" value="নেই" delta="টাইপ-অনলি ডেমো" icon="🔒" />
+        <StatCard
+          label="চ্যানেল সংযোগ"
+          value={anyChannelLive ? "আংশিক লাইভ" : "নেই"}
+          delta={
+            anyChannelLive
+              ? (Object.keys(CHANNEL_LABEL) as InboxChannel[])
+                  .map((ch) => `${CHANNEL_LABEL[ch]} ${channelLive[ch] ? "✓" : "ডেমো"}`)
+                  .join(" · ")
+              : "টাইপ-অনলি ডেমো"
+          }
+          icon="🔌"
+        />
       </div>
 
       <div className="flex flex-wrap gap-2" role="tablist" aria-label="চ্যানেল ফিল্টার">
@@ -543,7 +646,9 @@ export default function InboxClient({
 
                 <div className="mt-5 border-t border-border pt-4">
                   <label htmlFor="inbox-reply" className="mb-1 block text-xs font-medium text-text-muted">
-                    উত্তর লিখুন (ডেমো কম্পোজার)
+                    {selectedLive
+                      ? `উত্তর লিখুন — ${CHANNEL_LABEL[selected.channel]} লাইভ, সত্যিকারে পাঠানো হবে`
+                      : "উত্তর লিখুন (ডেমো কম্পোজার)"}
                   </label>
                   <textarea
                     id="inbox-reply"
@@ -553,17 +658,43 @@ export default function InboxClient({
                     placeholder="উত্তর লিখুন…"
                     className="w-full rounded-[10px] border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand-500"
                   />
-                  <div className="mt-2 flex flex-wrap items-center gap-3">
-                    <Button type="button" onClick={queueReply} disabled={replyText.trim().length === 0}>
-                      কিউতে রাখুন (ডেমো)
-                    </Button>
-                    <p className="text-xs text-text-muted">
-                      আসল পাঠানো বন্ধ আছে — কোনো চ্যানেল API সংযুক্ত নেই। কিউ করা উত্তর শুধু এই
-                      পেজের state-এ থাকে, গ্রাহকের কাছে যায় না।
-                    </p>
-                  </div>
+                  {selectedLive ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <Button
+                        type="button"
+                        onClick={sendReply}
+                        disabled={replyText.trim().length === 0 || sendPhase.kind === "sending"}
+                      >
+                        {sendPhase.kind === "sending" ? "পাঠানো হচ্ছে…" : "পাঠান"}
+                      </Button>
+                      {sendPhase.kind === "failed" ? (
+                        <p role="alert" className="text-xs font-medium text-rose-700">
+                          ⚠ পাঠানো যায়নি: {sendPhase.message} — লেখা রেখে দেওয়া হয়েছে, আবার
+                          চেষ্টা করুন।
+                        </p>
+                      ) : (
+                        <p className="text-xs text-text-muted">
+                          এই উত্তর Meta API দিয়ে সরাসরি গ্রাহকের {CHANNEL_LABEL[selected.channel]}
+                          -এ যাবে এবং কথোপকথনে সংরক্ষিত হবে। পাঠানো ব্যর্থ হলে Meta-র ত্রুটি এখানে
+                          দেখানো হবে।
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <Button type="button" onClick={queueReply} disabled={replyText.trim().length === 0}>
+                        কিউতে রাখুন (ডেমো)
+                      </Button>
+                      <p className="text-xs text-text-muted">
+                        আসল পাঠানো বন্ধ আছে — এই চ্যানেলের Meta সেটিংস দেওয়া হয়নি। কিউ করা উত্তর
+                        শুধু এই পেজের state-এ থাকে, গ্রাহকের কাছে যায় না।
+                      </p>
+                    </div>
+                  )}
                 </div>
               </Card>
+
+              {selected ? <BotDraftPanel conversationId={selected.id} /> : null}
 
               <Card>
                 <h2 className="mb-1 font-semibold">অর্ডার ড্রাফটে রূপান্তর</h2>

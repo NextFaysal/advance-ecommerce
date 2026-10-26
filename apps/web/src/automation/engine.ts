@@ -4,12 +4,18 @@
  * injected clock), no id generation (ids are injected).
  *
  * Flow: domain event -> buildRuleContext() -> evaluateConditions() ->
- * describeActions() as effects. Real execution (order status writes, courier
- * booking, SMS/email sends) belongs to the BullMQ worker ("automation-run"
- * queue, src/jobs/queues.ts) which consumes these effects — the send_sms /
- * send_email effects here are stubs carrying only a template key and a
- * MASKED recipient. A run log entry is produced for every evaluation,
- * matched or not, so the admin run log can explain every decision.
+ * describeActions() as effects. The engine itself performs no side
+ * effects; execution belongs to the automation-run worker
+ * (src/jobs/runners.ts createAutomationRunner, ADV-7): for a matched
+ * immediate run it executes the send_sms effect through the platform
+ * SMS send path and the send_email effect through the email producer,
+ * and rewrites those effect entries with the REAL provider outcomes
+ * before the run log persists. The descriptions below are therefore
+ * the PRE-execution wording (intent); "planned" mode (dry-run /
+ * scheduled) is the final truth for those runs — nothing executes
+ * there, by contract. A run log entry is produced for every
+ * evaluation, matched or not, so the admin run log can explain every
+ * decision.
  */
 import { maskPhone } from "../checkout/validation";
 import { canTransition } from "../orders/state-machine";
@@ -166,7 +172,8 @@ export function evaluateConditions(
 }
 
 /* ------------------------------------------------------------------ */
-/* Actions -> effects (described, never executed here)                 */
+/* Actions -> effects (described here; the runner executes the send  */
+/* effects for matched immediate runs and rewrites their outcomes).  */
 /* ------------------------------------------------------------------ */
 
 function describeAction(
@@ -196,13 +203,19 @@ function describeAction(
       return {
         action,
         status: mode,
-        description: `Send SMS (template ${action.templateKey}) to ${masked ?? "customer"} — stub, the jobs worker calls the admin-configured SMS provider.`,
+        description:
+          mode === "applied"
+            ? `Send SMS (template ${action.templateKey}) to ${masked ?? "customer"} via the configured SMS provider — dispatched to the automation worker, which records the provider outcome on this effect.`
+            : `Would send SMS (template ${action.templateKey}) to ${masked ?? "customer"} — planned only; nothing is sent by a planned run.`,
       };
     case "send_email":
       return {
         action,
         status: mode,
-        description: `Send email (template ${action.templateKey}) for order ${ctx.orderNo ?? ctx.orderId ?? ""} — stub, the jobs worker calls the admin-configured email provider.`,
+        description:
+          mode === "applied"
+            ? `Send email (template ${action.templateKey}) for order ${ctx.orderNo ?? ctx.orderId ?? ""} — dispatched to the automation worker, which queues it through the email producer and records the outcome on this effect.`
+            : `Would send email (template ${action.templateKey}) for order ${ctx.orderNo ?? ctx.orderId ?? ""} — planned only; nothing is sent by a planned run.`,
       };
     case "add_tag":
       return { action, status: mode, description: `Add tag "${action.tag}" to order ${ctx.orderNo ?? ctx.orderId ?? ""}.` };

@@ -2,11 +2,17 @@
  * Inbox DB store — Prisma-backed persistence (Agent-14 module swap).
  *
  * Replaces the in-memory demo store in service.ts for the inbox routes
- * and the admin page. Channels are STILL types only — no Messenger /
- * Instagram / WhatsApp API is called and no channel token exists here;
- * `channelsLive` stays false. What changed is only where conversations
- * and messages live: the DB, with webhook-style dedupe on
- * (channel, externalMessageId).
+ * and the admin page. Persistence is the DB, with webhook-style dedupe
+ * on (channel, externalMessageId).
+ *
+ * Channels went RECEIVE-LIVE in ADV-6 part 1 (src/inbox/meta-channels.ts
+ * + app/api/v1/public/meta/webhook): real Messenger / Instagram /
+ * WhatsApp webhook events land here through ingestInboundMessage() —
+ * but ONLY for channels fully configured in Settings (meta.*);
+ * unconfigured channels cannot post (the webhook answers 404) and
+ * `channelsLive` in the inbox API meta is computed from that config,
+ * not hardcoded. The SEND side (Graph API replies) is still not built:
+ * outbound messages created here are local records, not deliveries.
  *
  * Deliberate TS <-> schema mappings (drift, see final report):
  * - Schema `customerName` <-> TS `customerDisplayName`; `body` <-> `text`.
@@ -21,8 +27,10 @@
  *   conversation createdAt); unreadCount is derived as the count of
  *   INBOUND messages created after the conversation's `lastReadAt`
  *   read marker (ALL inbound messages while the marker is null — see
- *   markConversationReadDb). PRODUCT_CARD / ORDER_CARD refs are still
- *   not persisted (InboxMessage has no refId column).
+ *   markConversationReadDb). PRODUCT_CARD / ORDER_CARD refs persist in
+ *   `InboxMessage.refId` (migration 20261026013000_inbox_message_ref_id,
+ *   ADV-6); Conversation.productRefId derives from the first
+ *   PRODUCT_CARD message's refId.
  * - Schema externalMessageId is REQUIRED: locally created messages
  *   without a platform id get a generated `local-<uuid>` id, which also
  *   keeps the dedupe unique constraint meaningful for them.
@@ -51,6 +59,7 @@ function rowToMessage(row: MessageRow): InboxMessage {
     direction: row.direction as MessageDirection,
     kind: row.kind as MessageKind,
     text: row.body ?? undefined,
+    refId: row.refId ?? undefined,
     externalMessageId: row.externalMessageId,
     sentAt: row.createdAt.toISOString(),
   };
@@ -66,6 +75,9 @@ function rowToConversation(row: ConversationRow, messages: InboxMessage[]): Conv
   // time staff opened the conversation. A null marker (never opened)
   // means every inbound message is unread.
   const lastReadMs = row.lastReadAt ? row.lastReadAt.getTime() : null;
+  // The conversation "started from" the product on its first
+  // PRODUCT_CARD message, when that card carried a ref (ADV-6).
+  const productCard = messages.find((m) => m.kind === "PRODUCT_CARD" && m.refId);
   return {
     id: row.id,
     channel: row.channel as InboxChannel,
@@ -74,6 +86,7 @@ function rowToConversation(row: ConversationRow, messages: InboxMessage[]): Conv
     customerPhone: detectedPhone,
     status: row.status as ConversationStatus,
     assignedAgentId: row.assignedToId,
+    productRefId: productCard?.refId,
     unreadCount: messages.filter(
       (m) =>
         m.direction === "INBOUND" &&
@@ -158,7 +171,7 @@ export interface IngestResult {
  * full number itself is never written to the conversation row).
  */
 export async function ingestInboundMessage(
-  input: InboundMessageInput & { direction?: MessageDirection },
+  input: InboundMessageInput & { direction?: MessageDirection; sentAtIso?: string },
 ): Promise<IngestResult> {
   const externalMessageId = input.externalMessageId ?? `local-${randomUUID()}`;
   const existingMessage = await prisma.inboxMessage.findUnique({
@@ -192,6 +205,11 @@ export async function ingestInboundMessage(
     };
   }
 
+  // Platform send time when the caller carries one (Meta webhooks):
+  // the row's createdAt doubles as the message sentAt in the read
+  // model, so a backfilled/replayed event keeps its true position in
+  // the thread. Invalid/absent values fall back to DB now.
+  const platformSentAt = input.sentAtIso ? new Date(input.sentAtIso) : null;
   const created = await prisma.inboxMessage.create({
     data: {
       conversationId: conversationRow.id,
@@ -200,6 +218,10 @@ export async function ingestInboundMessage(
       direction: input.direction ?? "INBOUND",
       kind: input.kind,
       body: input.text ?? null,
+      refId: input.refId ?? null,
+      ...(platformSentAt && !Number.isNaN(platformSentAt.getTime())
+        ? { createdAt: platformSentAt }
+        : {}),
     },
   });
 
@@ -220,4 +242,36 @@ export async function ingestInboundMessage(
     message: rowToMessage(created),
     duplicate: false,
   };
+}
+
+/**
+ * Persist a staff reply AFTER the channel provider accepted it (ADV-6
+ * send path, src/inbox/send.ts). The row carries the PLATFORM message
+ * id as externalMessageId — never a local placeholder — so a persisted
+ * OUTBOUND row is proof of delivery acceptance, and the (channel,
+ * externalMessageId) unique constraint dedupes a retried write.
+ * Callers must invoke this ONLY on provider success: a failed send
+ * persists nothing, so the thread never shows a fake "sent" bubble.
+ * Throws when the conversation does not exist.
+ */
+export async function appendOutboundMessageDb(
+  conversationId: string,
+  input: { text: string; externalMessageId: string },
+): Promise<InboxMessage> {
+  const conversationRow = await prisma.inboxConversation.findUnique({
+    where: { id: conversationId },
+    select: { channel: true },
+  });
+  if (!conversationRow) throw new Error(`Inbox conversation not found: ${conversationId}`);
+  const created = await prisma.inboxMessage.create({
+    data: {
+      conversationId,
+      channel: conversationRow.channel,
+      externalMessageId: input.externalMessageId,
+      direction: "OUTBOUND",
+      kind: "TEXT",
+      body: input.text,
+    },
+  });
+  return rowToMessage(created);
 }

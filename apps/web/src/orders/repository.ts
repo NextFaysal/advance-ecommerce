@@ -78,6 +78,7 @@ import { riskLevel } from "./customer";
 import { runDeliveredOrderHooks } from "./delivered-hooks";
 import { runReversalHooks } from "./reversal-hooks";
 import { publishPaymentSucceeded } from "./event-bus";
+import { emitAutomationEvent } from "../automation/producers";
 import { transitionOrder, type TransitionResult } from "./state-machine";
 import type {
   Customer,
@@ -1011,6 +1012,11 @@ export async function createOrderRecord(
       }
       return order;
     });
+    // Automation lifecycle (ADV-7): order.created fires post-commit so
+    // enabled automation rules can evaluate this order. The producer
+    // is flag-gated and never throws — automation can never fail an
+    // order create. Replays return above and never reach here.
+    await emitAutomationEvent("order.created", created.id);
     return {
       replayed: false,
       orderId: created.id,
@@ -1156,6 +1162,13 @@ export async function applyOrderTransition(
   if (to === "CANCELLED" || to === "RETURNED" || to === "REFUNDED") {
     await runReversalHooks(row.id);
   }
+  // Automation lifecycle (ADV-7): every committed transition emits
+  // order.status_changed; DELIVERED / CANCELLED automations match on
+  // this event's orderStatus condition (the engine has no separate
+  // delivered/cancelled triggers). The dedupe suffix carries the
+  // target status so a re-delivered event for a different transition
+  // is not swallowed by BullMQ jobId dedupe. Never throws.
+  await emitAutomationEvent("order.status_changed", row.id, { dedupeSuffix: to });
   return { kind: "ok", order: result.order, from: order.status };
 }
 
@@ -1435,6 +1448,11 @@ export async function markOrderPayment(
     // The fulfilment function is flag-gated and never throws, so a
     // fulfilment failure can never fail the payment itself.
     await runDigitalFulfilmentForOrder(order.id);
+    // Automation lifecycle (ADV-7): payment.succeeded rules (e.g. the
+    // high-value-paid example rule) evaluate on the transition INTO
+    // PAID only — the same seam as the event-bus publish above.
+    // Never throws.
+    await emitAutomationEvent("payment.succeeded", order.id);
   }
   return {
     orderId: order.id,

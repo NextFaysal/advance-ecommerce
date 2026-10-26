@@ -57,7 +57,10 @@
  *      automationRunner — the (workflowId, triggerEvent, entityId)
  *        dispatch: rule from the DB automation store, event built
  *        from the entity, engine evaluation, run log persisted
- *        through the store (dry-run jobs are never persisted).
+ *        through the store (dry-run jobs are never persisted). ADV-7:
+ *        matched runs execute send_sms / send_email for real, and
+ *        this assembly injects resolveSmsProvider below — the same
+ *        resolver the sms-send queue uses.
  *      importExportRunner — catalog CSV import/export through
  *        src/catalog/import.ts + the Prisma CatalogRepository;
  *        fileRef is a file name inside the local job-files directory
@@ -384,7 +387,10 @@ export const workerDeps: WorkerRuntimeDeps = {
   // The five runners (src/jobs/runners.ts) — see the header.
   webhookFanout: createWebhookFanout({ readSetting, logger: consoleJobLogger }),
   reportRunner: createReportRunner({ logger: consoleJobLogger }),
-  automationRunner: createAutomationRunner(),
+  automationRunner: createAutomationRunner({
+    smsProvider: resolveSmsProvider,
+    logger: consoleJobLogger,
+  }),
   importExportRunner: createImportExportRunner(),
   notificationRetryRunner: createNotificationRetryRunner({
     smsProvider: resolveSmsProvider,

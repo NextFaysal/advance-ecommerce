@@ -3,6 +3,8 @@ import { guardError, requireAdmin } from "@/reports/guard";
 import { demoInboxFlags, isInboxEnabled } from "@/inbox/flags";
 import { toConversationView } from "@/inbox/service";
 import { markConversationReadDb } from "@/inbox/store";
+import { getInboxChannelsLiveMeta } from "@/inbox/meta-channels";
+import { getSetting } from "@/lib/settings";
 
 // Mark an inbox conversation read — W0-E (doc 21 G3-10). Guard mirrors
 // the sibling inbox list/detail route exactly: RBAC customers.view +
@@ -34,9 +36,10 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     if (!conversation) {
       return NextResponse.json({ error: { code: "NOT_FOUND", message: "Conversation not found." } }, { status: 404 });
     }
+    const channelsMeta = await getInboxChannelsLiveMeta({ getSetting });
     return NextResponse.json({
       data: { conversation: toConversationView(conversation) },
-      meta: { persistence: "database", module: "module.f_commerce", channelsLive: false },
+      meta: { persistence: "database", module: "module.f_commerce", ...channelsMeta },
     });
   } catch {
     return dbNotReady();

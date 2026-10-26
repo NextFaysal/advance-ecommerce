@@ -40,6 +40,10 @@ export default async function AdminReportsPage() {
         </section>
       ))}
       <p className="mt-4 text-xs text-slate-500">ডাটাবেস থেকে হিসাব করা — API: GET /api/v1/admin/reports?from=&amp;to=&amp;compare=1, CSV: GET /api/v1/admin/reports/export?from=&amp;to=&amp;reason= (RBAC reports.export, কারণ আবশ্যক — CSV-তে watermark থাকে ও audit-লগ হয়)।</p>
+      <p className="mt-3 text-sm">
+        <a href="/admin/reports/builder" className="font-medium underline">কাস্টম রিপোর্ট বিল্ডার →</a>
+        <span className="text-slate-500"> — ডেটাসেট/কলাম/ফিল্টার বেছে নিজের রিপোর্ট, সংরক্ষণ ও ইমেইল সময়সূচি (ADV-8)।</span>
+      </p>
     </main>
   );
 }

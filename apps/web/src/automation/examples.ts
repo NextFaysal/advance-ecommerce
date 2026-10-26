@@ -4,7 +4,7 @@
  * rules explicitly). Money thresholds are integer poisha.
  * Test cases (each rule against a sample event) are noted in comments and
  * exercise: confirm_order validity, AND/OR composition, delayed scheduling,
- * and the send_sms stub effect.
+ * and the send_sms effect (executed for real by the worker, ADV-7).
  */
 import { and, condition, or, type AutomationRule } from "./types";
 
@@ -49,7 +49,8 @@ export const EXAMPLE_RULES: AutomationRule[] = [
     trigger: "checkout.abandoned",
     // Test: checkout.abandoned, abandonedMinutes 45, totalPoisha 75000
     //   -> matched, status "scheduled", executeAfter = occurredAt + 1800s,
-    //      effect send_sms planned (stub — worker calls the SMS provider).
+    //      effect send_sms planned; the worker's delayed re-invocation
+    //      executes it for real (ADV-7).
     conditions: and(
       condition("abandonedMinutes", "gte", 30),
       condition("totalPoisha", "gte", 50000),
@@ -93,7 +94,7 @@ export const EXAMPLE_RULES: AutomationRule[] = [
   {
     id: "rule_failed_payment_email",
     name: "Payment failed — send payment-help email",
-    description: "When an order's payment status becomes FAILED, email the customer a payment-help message (stub).",
+    description: "When an order's payment status becomes FAILED, email the customer a payment-help message.",
     trigger: "order.status_changed",
     conditions: condition("paymentStatus", "eq", "FAILED"),
     actions: [{ type: "send_email", templateKey: "payment_help" }],

@@ -1,14 +1,22 @@
 import { computeRfm, segmentCounts } from "@/analytics/rfm";
 import type { CustomerOrderSummary } from "@/analytics/rfm";
 import { rankCouriers, type CourierStats } from "@/analytics/performance";
+import { buildCohortTable, buildCustomerActivity } from "@/analytics/cohort";
+import { averageOrderValuePoisha, computeUnitEconomics } from "@/analytics/unit-economics";
+import { getFunnelData, resolveFunnelEventStore } from "@/analytics/funnel-events";
+import { buildDistrictHeatmap } from "@/analytics/district-heatmap";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { daysAgoInDhaka, fetchSalesRows, todayInDhaka } from "@/reports/db-rows";
 import type { SalesRow } from "@/reports/types";
 
-// Admin > Analytics (Step 47, A8).
+// Admin > Analytics (Step 47, A8; wired out in ADV-8, doc 22).
 // Everything on this page is computed by the pure functions in
-// src/analytics over REAL order rows from the DB (Prisma, last 365
-// Dhaka days). No AI model is used; all figures are rule-based.
+// src/analytics over REAL order rows from the DB (Prisma, Asia/Dhaka).
+// No AI model is used; all figures are rule-based. Sections whose data
+// source does not exist yet say so honestly instead of estimating:
+// the funnel needs persisted tracking events (none are stored yet —
+// see src/analytics/funnel-events.ts), and CAC/ROAS need tracked ad
+// spend, so they render null with the reason, never zero.
 export const dynamic = "force-dynamic";
 
 function summaries(rows: SalesRow[]): CustomerOrderSummary[] {
@@ -30,10 +38,22 @@ function summaries(rows: SalesRow[]): CustomerOrderSummary[] {
   }));
 }
 
+function pct(bps: number): string {
+  return `${(bps / 100).toFixed(1)}%`;
+}
+
 export default async function AdminAnalyticsPage() {
-  const rows = await fetchSalesRows({ from: daysAgoInDhaka(364), to: todayInDhaka() });
+  const range = { from: daysAgoInDhaka(364), to: todayInDhaka() };
+  const rows = await fetchSalesRows(range);
+  // Cohort retention is all-history by definition (second full scan —
+  // fine at this scale; both reads are the same indexed order query).
+  const historyRows = await fetchSalesRows({ from: "2000-01-01", to: range.to });
   const rfm = computeRfm(summaries(rows));
   const segments = segmentCounts(rfm);
+  const cohort = buildCohortTable(buildCustomerActivity(historyRows));
+  const funnel = await getFunnelData({ from: daysAgoInDhaka(29), to: range.to }, resolveFunnelEventStore());
+  const heatmap = buildDistrictHeatmap(rows);
+
   const courierMap = new Map<string, CourierStats>();
   for (const r of rows) {
     if (!r.courier) continue;
@@ -48,41 +68,141 @@ export default async function AdminAnalyticsPage() {
   }
   const couriers = rankCouriers(Array.from(courierMap.values()));
   const totalRevenue = rows.reduce((sum, r) => sum + r.revenuePoisha - r.refundPoisha, 0);
+  const orderIds = new Set(rows.filter((r) => r.status !== "CANCELLED").map((r) => r.orderId));
+  const customerCount = new Set(rows.map((r) => r.customerId)).size;
+  const ue = computeUnitEconomics({
+    revenuePoisha: totalRevenue,
+    customers: customerCount,
+    adSpendPoisha: 0,
+    adAttributedRevenuePoisha: 0,
+  });
+  const aov = averageOrderValuePoisha(totalRevenue, orderIds.size);
+  const maxCohortCells = cohort.reduce((m, r) => Math.max(m, r.cells.length), 0);
 
   return (
-    <main>
-      <h1>Analytics</h1>
-      <p role="note">Real order data from the database (last 365 days, Asia/Dhaka). No AI model is used on this page; all figures are rule-based calculations.</p>
+    <main className="min-w-0">
+      <h1 className="text-xl font-bold">অ্যানালিটিক্স (Analytics)</h1>
+      <p role="note" className="mt-2 text-sm text-text-muted">
+        Real order data from the database (last 365 days, Asia/Dhaka; cohort = all history). No AI model is used on this page; all figures are rule-based calculations.
+      </p>
 
-      <section>
-        <h2>Overview</h2>
-        <p>Net revenue: {formatBdt(totalRevenue)} · Customers in data: {rfm.length}</p>
+      <section className="mt-6">
+        <h2 className="font-semibold">Overview</h2>
+        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="rounded-xl border p-3"><div className="text-xs">Net revenue</div><div className="text-lg font-bold">{formatBdt(totalRevenue)}</div></div>
+          <div className="rounded-xl border p-3"><div className="text-xs">Orders</div><div className="text-lg font-bold">{orderIds.size}</div></div>
+          <div className="rounded-xl border p-3"><div className="text-xs">Customers in data</div><div className="text-lg font-bold">{rfm.length}</div></div>
+          <div className="rounded-xl border p-3"><div className="text-xs">Average order value</div><div className="text-lg font-bold">{formatBdt(aov)}</div></div>
+        </div>
       </section>
 
-      <section>
-        <h2>RFM Segments</h2>
-        <ul>
+      <section className="mt-6">
+        <h2 className="font-semibold">সেলস ফানেল (Sales Funnel, last 30 days)</h2>
+        {funnel.state === "not_collecting" ? (
+          <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{funnel.messageBn}</p>
+        ) : (
+          <ul className="mt-2 text-sm">
+            {funnel.steps.map((s) => (
+              <li key={s.stage}>
+                {s.stage}: {s.count} · আগের ধাপ থেকে {pct(s.conversionFromPreviousBps)} · শুরু থেকে {pct(s.conversionFromStartBps)}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-6">
+        <h2 className="font-semibold">Unit Economics</h2>
+        <ul className="mt-2 text-sm">
+          <li>LTV (গড় আয় / কাস্টমার): {formatBdt(ue.ltvPoisha)} — {customerCount} জন কাস্টমারের ওপর হিসাব করা</li>
+          <li>CAC: — (বিজ্ঞাপন খরচ ট্র্যাক করা হয় না, তাই হিসাব করা যায় না)</li>
+          <li>LTV : CAC: {ue.ltvToCacBps === null ? "— (CAC অজানা)" : `${(ue.ltvToCacBps / 10000).toFixed(2)}x`}</li>
+          <li>ROAS: {ue.roasBps === null ? "— (বিজ্ঞাপন খরচ ট্র্যাক করা হয় না)" : pct(ue.roasBps)}</li>
+        </ul>
+      </section>
+
+      <section className="mt-6">
+        <h2 className="font-semibold">RFM Segments</h2>
+        <ul className="mt-2 text-sm">
           {Object.entries(segments).map(([segment, count]) => (
             <li key={segment}>{segment}: {count}</li>
           ))}
         </ul>
       </section>
 
-      <section>
-        <h2>Courier Performance</h2>
-        <ul>
+      <section className="mt-6">
+        <h2 className="font-semibold">কোহর্ট রিটেনশন (Cohort Retention)</h2>
+        {cohort.length === 0 ? (
+          <p className="mt-2 text-sm text-text-muted">কোনো কাস্টমার ডেটা নেই।</p>
+        ) : (
+          <div className="mt-2 overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead>
+                <tr>
+                  <th className="border-b p-2">কোহর্ট (প্রথম অর্ডারের মাস)</th>
+                  <th className="border-b p-2">কাস্টমার</th>
+                  {Array.from({ length: maxCohortCells }, (_, i) => (
+                    <th key={i} className="border-b p-2">মাস {i}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {cohort.map((row) => (
+                  <tr key={row.cohortMonth}>
+                    <td className="border-b p-2 font-medium">{row.cohortMonth}</td>
+                    <td className="border-b p-2">{row.size}</td>
+                    {Array.from({ length: maxCohortCells }, (_, i) => {
+                      const cell = row.cells[i];
+                      return (
+                        <td key={i} className="border-b p-2">
+                          {cell ? `${cell.activeCustomers}/${row.size} (${pct(cell.retentionBps)})` : "—"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="mt-2 text-xs text-text-muted">প্রতিটি সেলে: সেই মাসে সক্রিয় কাস্টমার / কোহর্টের মোট কাস্টমার (শতকরা হার)। বাতিল অর্ডার ধরা হয়নি।</p>
+      </section>
+
+      <section className="mt-6">
+        <h2 className="font-semibold">Courier Performance</h2>
+        <ul className="mt-2 text-sm">
           {couriers.map((c) => (
             <li key={c.provider}>
-              {c.provider} — score {c.score}/100 · delivery {(c.deliveryRateBps / 100).toFixed(1)}% · returns {(c.returnRateBps / 100).toFixed(1)}%
+              {c.provider} — score {c.score}/100 · delivery {pct(c.deliveryRateBps)} · returns {pct(c.returnRateBps)}
             </li>
           ))}
         </ul>
-        {couriers.length === 0 && <p>No courier data in this period.</p>}
+        {couriers.length === 0 && <p className="mt-2 text-sm text-text-muted">No courier data in this period.</p>}
       </section>
 
-      <section>
-        <h2>Not available yet</h2>
-        <p>Funnel (view → cart → checkout → order) needs storefront tracking events. LTV/CAC/ROAS need tracked ad spend. Both will appear here when those sources are wired — they are not estimated.</p>
+      <section className="mt-6">
+        <h2 className="font-semibold">জেলা হিটম্যাপ (District Heatmap)</h2>
+        {heatmap.length === 0 ? (
+          <p className="mt-2 text-sm text-text-muted">এই সময়ে কোনো অর্ডার নেই।</p>
+        ) : (
+          <ul className="mt-2 space-y-2">
+            {heatmap.slice(0, 15).map((d) => (
+              <li key={d.district} className="text-sm">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="font-medium">{d.district}</span>
+                  <span>{d.orders} অর্ডার · {pct(d.shareBps)} · {formatBdt(d.revenuePoisha)}</span>
+                </div>
+                <div className="mt-1 h-2.5 w-full overflow-hidden rounded bg-slate-100">
+                  <div
+                    className="h-full rounded bg-orange-500"
+                    style={{ width: `${Math.max(2, Math.round(d.intensity * 100))}%`, opacity: 0.35 + d.intensity * 0.65 }}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="mt-2 text-xs text-text-muted">বারের দৈর্ঘ্য ও রঙের গাঢ়ত্ব সবচেয়ে ব্যস্ত জেলার তুলনায় (শীর্ষ ১৫টি জেলা)। API: GET /api/v1/admin/analytics/districts?from=&amp;to=</p>
       </section>
     </main>
   );

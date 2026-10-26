@@ -70,6 +70,25 @@ export async function POST(req: Request) {
     });
   }
 
+  // Wave 38 (ADV-8 follow-through): persist the event for the
+  // analytics funnel — ids + event name + order ref + timestamp ONLY,
+  // no PII. Awaited but failure-isolated: a store error (or a replay
+  // racing the in-memory dedup) never fails the intake; the unique
+  // eventId is the durable backstop.
+  try {
+    const { prisma } = await import("@advance-ecommerce/db");
+    await prisma.trackingEvent.create({
+      data: {
+        eventId: event.dedup.eventId,
+        eventName: event.eventName,
+        orderId: event.dedup.orderId,
+        occurredAt: new Date(event.dedup.occurredAt),
+      },
+    });
+  } catch {
+    // duplicate (P2002) or store unavailable — intake proceeds.
+  }
+
   // IP/UA come from the request (server-observed), never from the body.
   const user: TrackingUserInput | undefined =
     decision.mode === "full" && body.user

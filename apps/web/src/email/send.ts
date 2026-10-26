@@ -36,6 +36,7 @@ import { bullMqJobOptions } from "../jobs/workers";
 import type { HandlerResult } from "../jobs/handlers";
 import {
   renderOrderConfirmationEmail,
+  renderReportDeliveryEmail,
   renderStaffInviteEmail,
   type EmailLocale,
 } from "./templates";
@@ -324,6 +325,60 @@ export async function processEmailJob(
     });
     if (result.status === "failed") throw new Error("EMAIL_SEND_FAILED:provider");
     return { status: "succeeded", ref: result.messageId, detail: "staff invite email via adapter" };
+  }
+
+  if (job.templateKey === "report_delivery") {
+    // ADV-8: scheduled report. Ids + period only on the job — the
+    // saved definition is loaded NOW (so an edited definition is
+    // what ships), the CSV is rebuilt from current data for the
+    // job's period and attached. Deleted report / malformed job →
+    // skipped; provider failure → throw (retry/dead-letter).
+    const toEmail = (job.toEmail ?? "").trim();
+    const reportId = (job.reportId ?? "").trim();
+    const from = (job.reportPeriodFrom ?? "").trim();
+    const to = (job.reportPeriodTo ?? "").trim();
+    if (toEmail === "" || reportId === "" || from === "" || to === "") {
+      return { status: "skipped", ref, detail: "malformed report_delivery payload" };
+    }
+    const { listSavedReports, prismaKeyValueStore } = await import("../reports/saved-reports");
+    const { buildReport, builtReportToCsv, buildExportWatermark, describeDefinition } = await import("../reports/builder");
+    const { fetchSalesRows } = await import("../reports/db-rows");
+    const saved = (await listSavedReports(prismaKeyValueStore())).find((r) => r.id === reportId);
+    if (saved === undefined) {
+      return { status: "skipped", ref, detail: "saved report no longer exists" };
+    }
+    const definition = { ...saved.definition, range: { from, to } };
+    const rows = await fetchSalesRows({ from, to });
+    const built = buildReport(definition, rows);
+    const watermark = buildExportWatermark({
+      title: `SCHEDULED REPORT — ${saved.name}`,
+      exportedBy: `schedule:${job.scheduleId ?? "unknown"}`,
+      exportedAt: new Date(),
+      reason: "Scheduled report delivery (ADV-8)",
+      range: { from, to },
+      rowCount: built.rows.length,
+      definitionSummary: describeDefinition(definition),
+    });
+    const csv = builtReportToCsv(built, watermark);
+    const rendered = renderReportDeliveryEmail({
+      locale: identity.locale,
+      storeName: identity.storeName,
+      reportName: saved.name,
+      periodFrom: from,
+      periodTo: to,
+      rowCount: built.rows.length,
+    });
+    const result = await provider.send({
+      to: toEmail,
+      subject: rendered.subject,
+      body: rendered.text,
+      html: rendered.html,
+      templateKey: job.templateKey,
+      orderId: null,
+      attachments: [{ filename: `report-${from}-to-${to}.csv`, contentBase64: Buffer.from(csv, "utf8").toString("base64") }],
+    });
+    if (result.status === "failed") throw new Error("EMAIL_SEND_FAILED:provider");
+    return { status: "succeeded", ref: result.messageId, detail: "scheduled report email via adapter" };
   }
 
   return {

@@ -19,9 +19,14 @@
  *    aggregation from src/reports/service.ts aggregateSales().
  *  - Automation: rules + run logs through the DB-backed
  *    automationStore (src/automation/store.ts), evaluation through
- *    runRule() (src/automation/engine.ts). Effects stay DESCRIBED in
- *    the persisted run log — the engine's contract — exactly as the
- *    admin runs route behaves today.
+ *    runRule() (src/automation/engine.ts), and — since ADV-7 — REAL
+ *    effect execution for matched runs through
+ *    executeAutomationEffects() (src/automation/effects.ts): send_sms
+ *    goes through the same SMS provider resolver the sms-send queue
+ *    uses, send_email enqueues through the ADV-3 email producer, and
+ *    the persisted run log records the provider outcome. Scheduled
+ *    (delayed) rules re-invoke themselves through the automation
+ *    queue with BullMQ's delay and execute on that second pass.
  *  - Import/export: previewImport / parseCsv / groupImportRowsByProduct
  *    (src/catalog/import.ts) and the Prisma CatalogRepository
  *    (src/catalog/service.ts) — the same services the admin import
@@ -84,13 +89,18 @@ import { aggregateSales } from "../reports/service";
 import { dhakaDateOf, fetchSalesRows, withComparisonWindow } from "../reports/db-rows";
 import { dateRangeSchema } from "../reports/types";
 import { runRule } from "../automation/engine";
-import { automationStore } from "../automation/store";
+import { automationStore, type AutomationStore } from "../automation/store";
+import { buildAutomationEvent } from "../automation/events";
+import {
+  executeAutomationEffects,
+  type AutomationEffectDeps,
+} from "../automation/effects";
+import { enqueueAutomationJob } from "../automation/producers";
 import {
   AUTOMATION_TRIGGERS,
   type AutomationEvent,
   type AutomationTrigger,
 } from "../automation/types";
-import { getOrderByIdOrNo } from "../orders/repository";
 import {
   DbNotReadyError,
   PrismaCatalogRepository,
@@ -373,139 +383,113 @@ const automationJobSchema = z.object({
   triggerEvent: z.enum(AUTOMATION_TRIGGERS),
   entityId: z.string().min(1),
   dryRun: z.boolean().optional(),
+  executeScheduled: z.boolean().optional(),
 });
 
-/**
- * The dispatch the engine deliberately does not own: map
- * (triggerEvent, entityId) to the AutomationEvent the engine
- * evaluates, loading the entity from the service layer / DB.
- * entityId is an order id or orderNo for order/payment triggers, a
- * variant id for stock.low, and a cart id for checkout.abandoned.
- */
-async function buildAutomationEvent(
-  trigger: AutomationTrigger,
-  entityId: string,
-): Promise<AutomationEvent> {
-  const occurredAt = new Date().toISOString();
-  switch (trigger) {
-    case "order.created":
-    case "order.status_changed":
-    case "payment.succeeded": {
-      const order = await getOrderByIdOrNo(entityId);
-      if (order === null) throw new Error(`ENTITY_NOT_FOUND:order:${entityId}`);
-      const event: AutomationEvent = {
-        type: trigger,
-        occurredAt,
-        order: {
-          id: order.id,
-          orderNo: order.orderNo,
-          status: order.status,
-          paymentStatus: order.paymentStatus,
-          paymentMethod: order.paymentMethod,
-          totalPoisha: order.totalPoisha,
-          itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
-          customerPhone: order.customerPhone,
-          district: order.address.district,
-          division: order.address.division,
-          ...(order.courier ? { courier: order.courier } : {}),
-          riskScore: order.riskScore,
-          tags: order.tags,
-        },
-      };
-      if (trigger === "payment.succeeded") {
-        // The succeeded amount comes from the Payment row itself —
-        // never assumed from the order total. No PAID payment, no
-        // payment block: conditions on paymentAmountPoisha then
-        // honestly evaluate as not-exists.
-        const payment = await prisma.payment.findFirst({
-          where: { orderId: order.id, status: "PAID" },
-          orderBy: { createdAt: "desc" },
-        });
-        if (payment !== null) {
-          event.payment = {
-            amountPoisha: payment.paidPoisha > 0 ? payment.paidPoisha : payment.amountPoisha,
-            method: String(payment.method).toLowerCase(),
-          };
-        }
-      }
-      return event;
-    }
-    case "stock.low": {
-      const variant = await prisma.productVariant.findUnique({
-        where: { id: entityId },
-        include: { inventoryItems: true },
-      });
-      if (variant === null) throw new Error(`ENTITY_NOT_FOUND:variant:${entityId}`);
-      const available =
-        variant.inventoryItems.length > 0
-          ? variant.inventoryItems.reduce(
-              (sum, item) => sum + (item.quantityOnHand - item.quantityReserved),
-              0,
-            )
-          : variant.stock;
-      return {
-        type: trigger,
-        occurredAt,
-        stock: { variantId: variant.id, sku: variant.sku, available },
-      };
-    }
-    case "checkout.abandoned": {
-      const cart = await prisma.cart.findUnique({
-        where: { id: entityId },
-        include: { items: true },
-      });
-      if (cart === null) throw new Error(`ENTITY_NOT_FOUND:cart:${entityId}`);
-      return {
-        type: trigger,
-        occurredAt,
-        checkout: {
-          id: cart.id,
-          totalPoisha: cart.items.reduce(
-            (sum, item) => sum + item.unitPricePoisha * item.quantity,
-            0,
-          ),
-          abandonedMinutes: Math.max(
-            0,
-            Math.floor((Date.now() - cart.updatedAt.getTime()) / 60_000),
-          ),
-        },
-      };
-    }
-  }
+export interface AutomationRunnerDeps {
+  /** Rule + run-log store; default = the DB-backed automationStore. */
+  store?: AutomationStore;
+  /** Entity -> event builder; default = buildAutomationEvent (DB). */
+  eventBuilder?: (trigger: AutomationTrigger, entityId: string) => Promise<AutomationEvent>;
+  /** SMS resolver for send_sms effects — worker-deps injects the
+   *  same resolver the sms-send queue uses. Absent, effects fall back
+   *  to the sandbox simulator and are labelled simulated. */
+  smsProvider?: AutomationEffectDeps["smsProvider"];
+  /** Email producer seam for send_email effects (src/email/send.ts). */
+  emailEnqueue?: AutomationEffectDeps["emailEnqueue"];
+  /** Delayed re-invocation seam for scheduled rules; default =
+   *  enqueueAutomationJob with BullMQ delay. Returns false when the
+   *  queue could not take the job. */
+  enqueueScheduled?: (job: AutomationJob, delaySeconds: number, jobId: string) => Promise<boolean>;
+  logger?: JobLogger;
 }
 
 /**
  * Executes one queued automation job: workflowId is the AutomationRule
  * id (rules are the workflows of this module — the admin automation
- * API manages them). The rule is loaded from the DB store, the event
- * is built from the entity, the engine evaluates, and the run log is
- * persisted through the store — except for dry-run jobs, which are
- * evaluated but NEVER persisted (the engine's dry-run contract).
- * Effects remain described in the run log; executing them belongs to
- * the downstream queues, exactly as the admin runs route behaves.
+ * API manages them). The rule is loaded from the store, the event is
+ * built from the entity (current DB state — see events.ts), the
+ * engine evaluates, and:
+ *
+ *  - dry-run jobs are evaluated but NEVER persisted and NEVER execute
+ *    effects (the engine's dry-run contract);
+ *  - an immediate "matched" run executes its send_sms / send_email
+ *    effects through the real paths (src/automation/effects.ts) and
+ *    the persisted run log carries the provider outcomes — a failed
+ *    effect is recorded on its own entry, never thrown out of the job
+ *    and never reported as success;
+ *  - a "scheduled" run (rule delaySeconds > 0) persists its log with
+ *    planned effects and enqueues its own re-invocation with the
+ *    rule's delay; the re-invocation (executeScheduled: true)
+ *    re-evaluates conditions against the entity as it stands THEN
+ *    and executes for real. If the delayed enqueue fails, the job
+ *    still completes: the scheduled run log is the visible record and
+ *    the miss is logged, ids only.
  */
-export function createAutomationRunner(): (
-  job: AutomationJob,
-) => Promise<{ ruleRef: string }> {
+export function createAutomationRunner(
+  deps: AutomationRunnerDeps = {},
+): (job: AutomationJob) => Promise<{ ruleRef: string }> {
+  const store = deps.store ?? automationStore;
+  const buildEvent = deps.eventBuilder ?? buildAutomationEvent;
+  const enqueueScheduled =
+    deps.enqueueScheduled ??
+    ((job: AutomationJob, delaySeconds: number, jobId: string) =>
+      enqueueAutomationJob(job, { jobId, delaySeconds }));
+
   return async (job) => {
     const parsed = automationJobSchema.safeParse(job);
     if (!parsed.success) throw invalidJob("automation");
     const { workflowId, triggerEvent, entityId } = parsed.data;
+    const dryRun = parsed.data.dryRun === true;
+    const executeScheduled = parsed.data.executeScheduled === true;
 
-    const rule = await automationStore.getRule(workflowId);
+    const rule = await store.getRule(workflowId);
     if (rule === undefined) {
       // Same precedent as the bulk-actions runner: an id this system
       // has never seen fails loudly (retry / dead-letter), it never
       // reports a phantom success.
       throw new Error(`AUTOMATION_RULE_NOT_FOUND:${workflowId}`);
     }
-    const event = await buildAutomationEvent(triggerEvent, entityId);
-    const log = runRule(rule, event, {
-      dryRun: parsed.data.dryRun === true,
+    const event = await buildEvent(triggerEvent, entityId);
+    // A scheduled re-invocation evaluates as an immediate run: the
+    // delay has already elapsed in the queue, so the rule copy the
+    // engine sees carries delaySeconds 0. Conditions are re-checked
+    // against current state — a rule whose moment has passed (order
+    // already confirmed, capture recovered) honestly logs not_matched
+    // instead of firing stale effects.
+    const effectiveRule = executeScheduled ? { ...rule, delaySeconds: 0 } : rule;
+    let log = runRule(effectiveRule, event, {
+      dryRun,
       runId: `run_${randomUUID()}`,
     });
-    if (parsed.data.dryRun !== true) {
-      await automationStore.appendRun(log);
+
+    if (!dryRun && log.status === "scheduled") {
+      await store.appendRun(log);
+      const delaySeconds = rule.delaySeconds;
+      const ok = await enqueueScheduled(
+        { workflowId, triggerEvent, entityId, executeScheduled: true },
+        delaySeconds,
+        `automation-scheduled-${log.id}`,
+      ).catch(() => false);
+      if (!ok) {
+        deps.logger?.warn("automation.scheduled.enqueue_failed", {
+          ruleId: rule.id,
+          triggerEvent,
+          entityId,
+          delaySeconds,
+        });
+      }
+      return { ruleRef: rule.id };
+    }
+
+    if (!dryRun && log.status === "matched") {
+      log = await executeAutomationEffects(log, event, {
+        smsProvider: deps.smsProvider,
+        emailEnqueue: deps.emailEnqueue,
+      });
+    }
+    if (!dryRun) {
+      await store.appendRun(log);
     }
     return { ruleRef: rule.id };
   };

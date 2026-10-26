@@ -8,15 +8,20 @@ import { fetchSalesRows } from "@/reports/db-rows";
 import { computeRfm, segmentCounts, type CustomerOrderSummary } from "@/analytics/rfm";
 import { computeUnitEconomics } from "@/analytics/unit-economics";
 import { rankCouriers, type CourierStats } from "@/analytics/performance";
+import { buildCohortTable, buildCustomerActivity } from "@/analytics/cohort";
+import { getFunnelData, resolveFunnelEventStore } from "@/analytics/funnel-events";
 import { aggregateSales } from "@/reports/service";
 
 // GET /api/v1/admin/analytics?from=YYYY-MM-DD&to=YYYY-MM-DD
 // Advanced analytics bundle (Step 47, A8) over real order rows from the
 // DB (Prisma, Asia/Dhaka dates). RFM recency is measured against the
 // latest date IN the data, not wall-clock today — the response notes
-// this. Funnel view/cart/checkout counts need storefront tracking
-// events, which are not wired yet, so funnel is null with a reason —
-// never invented.
+// this. ADV-8: cohort retention is computed over ALL order history
+// (a cohort table is meaningless inside one range), and the funnel is
+// a structured state: storefront tracking events do NOT persist yet
+// (they are dispatched to Meta CAPI only — no events table exists), so
+// the funnel reports state "not_collecting" instead of invented
+// numbers until the event-store migration lands.
 // RBAC: reports.view. Flag: module.advanced_analytics.
 
 function daysBetween(a: string, b: string): number {
@@ -72,6 +77,10 @@ export async function GET(req: Request) {
   const rows = await fetchSalesRows(parsed.data);
   const bundle = aggregateSales(rows, parsed.data, false);
   const rfm = computeRfm(buildSummaries(rows));
+  // Cohort needs full history: from the dawn of the data to the range end.
+  const historyRows = await fetchSalesRows({ from: "2000-01-01", to: parsed.data.to });
+  const cohort = buildCohortTable(buildCustomerActivity(historyRows));
+  const funnel = await getFunnelData(parsed.data, resolveFunnelEventStore());
   return NextResponse.json({
     data: {
       totals: bundle.totals,
@@ -84,14 +93,16 @@ export async function GET(req: Request) {
         adAttributedRevenuePoisha: 0,
       }),
       couriers: rankCouriers(buildCourierStats(rows)),
-      funnel: null,
+      cohort,
+      funnel,
     },
     meta: {
       source: "database",
       notes: [
         "RFM recency is measured against the latest date in the data, not today.",
         "Ad spend is not tracked yet, so ROAS/LTV:CAC are null (not zero, not invented).",
-        "Funnel is null until storefront view/cart/checkout tracking events are wired.",
+        "Cohort retention covers all order history up to the range end (non-cancelled orders).",
+        "Funnel state is 'not_collecting': tracking events are dispatched to Meta CAPI but not persisted (no events table yet) — no funnel numbers are shown rather than estimated ones.",
         "Courier COD collected is approximated as delivered revenue; shipment-level COD collection is not broken out in sales rows.",
       ],
     },

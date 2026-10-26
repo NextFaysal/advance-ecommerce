@@ -87,6 +87,7 @@ export const DEFAULT_HEADER_MENU: SiteMenuItem[] = [
   { id: "hm-shop", labelBn: "দোকান", labelEn: "Shop", href: "/shop", visible: true, children: [] },
   { id: "hm-track", labelBn: "অর্ডার ট্র্যাক", labelEn: "Track Order", href: "/track", visible: true, children: [] },
   { id: "hm-faq", labelBn: "জিজ্ঞাসা", labelEn: "FAQ", href: "/faq", visible: true, children: [] },
+  { id: "hm-blog", labelBn: "ব্লগ", labelEn: "Blog", href: "/blog", visible: true, children: [] },
   { id: "hm-contact", labelBn: "যোগাযোগ", labelEn: "Contact", href: "/contact", visible: true, children: [] },
 ];
 
@@ -124,6 +125,7 @@ export const DEFAULT_FOOTER_MENU: FooterMenuGroup[] = [
     id: "fm-about", headingBn: "আমাদের সম্পর্কে", headingEn: "About Us", visible: true,
     links: [
       { id: "fm-about-us", labelBn: "আমাদের কথা", labelEn: "Our Story", href: "/about", visible: true },
+      { id: "fm-about-blog", labelBn: "ব্লগ", labelEn: "Blog", href: "/blog", visible: true },
     ],
   },
 ];

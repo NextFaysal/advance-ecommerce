@@ -72,6 +72,10 @@ export interface AutomationJob {
   /** When true the runner evaluates but never persists a run log
    *  (the automation engine's dry-run contract). */
   dryRun?: boolean;
+  /** ADV-7: marks the delayed re-invocation a scheduled rule made of
+   *  itself — the runner evaluates it as an immediate run
+   *  (conditions re-checked against current state, effects execute). */
+  executeScheduled?: boolean;
 }
 
 export interface ImportExportJob {

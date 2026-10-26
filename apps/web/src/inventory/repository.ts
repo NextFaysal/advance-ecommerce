@@ -34,6 +34,7 @@
  */
 import { prisma } from "@advance-ecommerce/db";
 import { notifyBackInStockForVariant } from "../storefront-ux/back-in-stock-notify";
+import { emitAutomationEvent } from "../automation/producers";
 import {
   planMovement,
   type MovementAction,
@@ -342,13 +343,30 @@ export async function applyMovementDb(
     const actorId = await resolveActorId(tx, input.actorId);
     return applyMovementInTx(tx, input, actorId);
   });
-  if (cacheBefore <= 0) {
-    const cacheAfter = await prisma.productVariant
-      .findUnique({ where: { id: input.variantId }, select: { stock: true } })
-      .then((row) => row?.stock ?? 0)
-      .catch(() => 0);
-    if (cacheAfter > 0) {
-      void notifyBackInStockForVariant(input.variantId).catch(() => undefined);
+  const cacheAfter = await prisma.productVariant
+    .findUnique({ where: { id: input.variantId }, select: { stock: true } })
+    .then((row) => row?.stock ?? 0)
+    .catch(() => 0);
+  if (cacheBefore <= 0 && cacheAfter > 0) {
+    void notifyBackInStockForVariant(input.variantId).catch(() => undefined);
+  }
+  // Automation lifecycle (ADV-7): stock.low fires when THIS movement
+  // DECREASED canonical availability to at/below the variant's
+  // low-stock threshold (product override, else LOW_STOCK_THRESHOLD —
+  // the same resolution the low-stock read model documents). Restocks
+  // and no-op movements never fire it; the engine's stockAvailable
+  // condition is the final arbiter of what counts as "low". Coverage
+  // note: order-driven depletion flows through applyMovementInTx
+  // inside createOrderRecord's transaction, not through here — this
+  // hook covers staff / PO / adjustment movements. The producer is
+  // flag-gated and never throws.
+  if (cacheAfter < cacheBefore) {
+    const meta = await getVariantProductMetaDb([input.variantId])
+      .then((map) => map.get(input.variantId))
+      .catch(() => undefined);
+    const threshold = meta?.lowStockThreshold ?? LOW_STOCK_THRESHOLD;
+    if (cacheAfter <= threshold) {
+      await emitAutomationEvent("stock.low", input.variantId);
     }
   }
   return result;

@@ -3,6 +3,8 @@ import { guardError, requireAdmin } from "@/reports/guard";
 import { demoInboxFlags, isInboxEnabled } from "@/inbox/flags";
 import { toConversationView } from "@/inbox/service";
 import { getConversationDb, loadInbox } from "@/inbox/store";
+import { getInboxChannelsLiveMeta } from "@/inbox/meta-channels";
+import { getSetting } from "@/lib/settings";
 import { extractPhoneFromMessages } from "@/inbox/conversion";
 import { maskPhone } from "@/checkout/validation";
 
@@ -13,9 +15,11 @@ import { maskPhone } from "@/checkout/validation";
 // The list shape carries phoneDetected: boolean alongside the masked
 // value so clients never need the full number to render state.
 // Feature flag: module.f_commerce (defaults OFF -> 403 FEATURE_LOCKED).
-// Persistence: Prisma DB via src/inbox/store.ts. Channels are types only
-// in this slice — NO Messenger/Instagram/WhatsApp API is called and no
-// channel token exists in this code (channelsLive: false stays honest).
+// Persistence: Prisma DB via src/inbox/store.ts. Receive side is LIVE
+// for configured channels (ADV-6 part 1 — Meta webhook in
+// src/inbox/meta-channels.ts); meta.channelsLive + meta.channels are
+// COMPUTED from Settings (meta.*), never hardcoded. The send side
+// (Graph API replies) is not built yet.
 function locked() {
   return NextResponse.json(
     { error: { code: "FEATURE_LOCKED", message: "F-commerce inbox is locked for this install (module.f_commerce is OFF)." } },
@@ -36,6 +40,7 @@ export async function GET(req: Request) {
   if (!isInboxEnabled(demoInboxFlags)) return locked();
   const url = new URL(req.url);
   const conversationId = url.searchParams.get("conversationId");
+  const channelsMeta = await getInboxChannelsLiveMeta({ getSetting });
   try {
     if (conversationId) {
       const found = await getConversationDb(conversationId);
@@ -55,13 +60,13 @@ export async function GET(req: Request) {
             : null,
           phoneDetected: detected !== null,
         },
-        meta: { persistence: "database", module: "module.f_commerce", channelsLive: false },
+        meta: { persistence: "database", module: "module.f_commerce", ...channelsMeta },
       });
     }
     const { conversations } = await loadInbox();
     return NextResponse.json({
       data: { conversations: conversations.map(toConversationView) },
-      meta: { persistence: "database", module: "module.f_commerce", channelsLive: false },
+      meta: { persistence: "database", module: "module.f_commerce", ...channelsMeta },
     });
   } catch {
     return dbNotReady();

@@ -31,12 +31,16 @@
  *   - lists: fraudListStore snapshot (src/fraud/lists) — the DB-backed
  *     blacklist/whitelist (FraudListEntry table) the fraud-rules API
  *     routes manage. assembleFraudInput is async for this read.
- *   - courierHistory is NOT supplied: no courier outcome data exists at
- *     checkout time, so the signal stays absent rather than invented.
+ *   - courierHistory: supplied since ADV-7 from the customer's real
+ *     Shipment history (src/fraud/courier-history.ts — booked parcels
+ *     vs delivered, joined through their orders). Absent when the
+ *     customer has no booked shipment yet, and absent on any loader
+ *     failure — the signal fires only on real data, never an estimate.
  * The assessment's per-signal details are internal (admin fraud UI);
  * nothing here returns them to the public caller.
  */
 import { COUPON_REASON_BN } from "@/cart/components/resolve";
+import { loadCourierHistoryForPhone } from "@/fraud/courier-history";
 import { fraudListStore } from "@/fraud/lists";
 import type { FraudAssessment, FraudScoreInput, RecentOrderRef } from "@/fraud/types";
 import { applyCoupon, type CouponRecord } from "@/marketing/service";
@@ -246,6 +250,9 @@ export async function assembleFraudInput(args: {
       totalOrders: own.length,
       returnedOrders: own.filter((o) => o.status === "RETURNED").length,
     },
+    // ADV-7: the courier_success_rate signal finally has its data
+    // source — this customer's real booked/delivered shipments.
+    courierHistory: await loadCourierHistoryForPhone(args.phone),
     lists: await fraudListStore.snapshot(),
     now: args.now,
   };

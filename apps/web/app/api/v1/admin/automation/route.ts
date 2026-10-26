@@ -20,7 +20,7 @@ export async function GET() {
       flags: demoFeatureFlags.list(),
       rules: await automationStore.listRules(),
     },
-    meta: { persistence: "database", execution: "bullmq-pending" },
+    meta: { persistence: "database", execution: "automation-run-worker" },
   });
 }
 

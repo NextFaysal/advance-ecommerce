@@ -180,3 +180,40 @@ export function renderStaffInviteEmail(input: StaffInviteEmailInput): RenderedEm
   ];
   return { subject, text: lines.join("\n\n"), html: wrapHtml("en", htmlLines) };
 }
+
+/* ------------------------------------------------------------------ */
+/* Scheduled report delivery (ADV-8)                                   */
+/* ------------------------------------------------------------------ */
+
+export interface ReportDeliveryEmailInput {
+  locale: EmailLocale;
+  /** Settings general.store_name; "" when unset. */
+  storeName: string;
+  /** Saved report name (staff-chosen). */
+  reportName: string;
+  /** Covered period, Dhaka YYYY-MM-DD bounds. */
+  periodFrom: string;
+  periodTo: string;
+  /** Data rows in the attached CSV (excluding the watermark). */
+  rowCount: number;
+}
+
+export function renderReportDeliveryEmail(input: ReportDeliveryEmailInput): RenderedEmail {
+  const store = storeLabel(input.storeName, input.locale);
+  if (input.locale === "bn") {
+    const subject = `${store} — নির্ধারিত রিপোর্ট: ${input.reportName} (${input.periodFrom} → ${input.periodTo})`;
+    const lines = [
+      `আপনার নির্ধারিত রিপোর্ট "${input.reportName}" তৈরি হয়ে গেছে।`,
+      `সময়কাল: ${input.periodFrom} → ${input.periodTo} (Asia/Dhaka)। সংযুক্ত CSV ফাইলে ${input.rowCount}টি সারি আছে।`,
+      `এই ইমেইলটি স্বয়ংক্রিয়ভাবে পাঠানো হয়েছে — রিপোর্টের সময়সূচি বদলাতে Admin > Reports > Report Builder-এ যান।`,
+    ];
+    return { subject, text: lines.join("\n\n"), html: wrapHtml("bn", lines.map(escapeHtml)) };
+  }
+  const subject = `${store} — scheduled report: ${input.reportName} (${input.periodFrom} → ${input.periodTo})`;
+  const lines = [
+    `Your scheduled report "${input.reportName}" is ready.`,
+    `Period: ${input.periodFrom} → ${input.periodTo} (Asia/Dhaka). The attached CSV contains ${input.rowCount} rows.`,
+    `This email was sent automatically — manage report schedules in Admin > Reports > Report Builder.`,
+  ];
+  return { subject, text: lines.join("\n\n"), html: wrapHtml("en", lines.map(escapeHtml)) };
+}

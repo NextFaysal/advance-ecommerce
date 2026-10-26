@@ -741,7 +741,7 @@ export function AutomationClient() {
         <EmptyState title="কোনো রান লগ নেই" description="এখনো কোনো ইভেন্ট রান সংরক্ষণ হয়নি। ইভেন্ট ডিসপ্যাচ (POST /runs) হলে লগ এখানে ডাটাবেস থেকে দেখা যাবে।" />
       ) : (
         <DataTable
-          caption="ডাটাবেসে সংরক্ষিত রান লগ — ফোন সবসময় মাস্ক করা। ইফেক্ট কার্যকর করা worker (BullMQ) wiring বাকি — API meta: execution bullmq-pending।"
+          caption="ডাটাবেসে সংরক্ষিত রান লগ — ফোন সবসময় মাস্ক করা। ইফেক্ট worker (automation-run) দিয়ে কার্যকর হয় — API meta: execution automation-run-worker।"
           columns={[
             { key: "rule", header: "নিয়ম" },
             { key: "trigger", header: "ট্রিগার" },

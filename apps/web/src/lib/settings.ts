@@ -74,6 +74,23 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   // (sms.<provider>.api_key / api_token / token / sid / sender_id /
   // enabled) — see sms-resolver.ts for the required-field table.
   "sms.fallback_provider": { category: "sms", value: "", isPublic: false },
+  // Meta / F-commerce channel credentials (ADV-6 — src/inbox/meta-channels.ts).
+  // The category enum has no "meta" member, so these ride "general"
+  // (settingCategoryForKey's fallback for unlisted prefixes, exactly
+  // like call_center.* / orders.*). app_secret + every *_token key is
+  // a secret by the suffix rule in isSecretSettingKey() and is stored
+  // encrypted; ids are plain config. ALL default empty = NOT
+  // configured: the Meta webhook endpoint stays closed (404) and
+  // channelsLive stays false until the fields a channel needs exist.
+  "meta.app_id": { category: "general", value: "", isPublic: false },
+  "meta.app_secret": { category: "general", value: "", isPublic: false },
+  "meta.webhook_verify_token": { category: "general", value: "", isPublic: false },
+  "meta.page_id": { category: "general", value: "", isPublic: false },
+  "meta.page_access_token": { category: "general", value: "", isPublic: false },
+  "meta.waba_id": { category: "general", value: "", isPublic: false },
+  "meta.whatsapp_phone_number_id": { category: "general", value: "", isPublic: false },
+  "meta.whatsapp_access_token": { category: "general", value: "", isPublic: false },
+  "meta.ig_id": { category: "general", value: "", isPublic: false },
   // VAT rate in basis points (1500 = 15%). EMPTY default = NOT
   // configured — there is deliberately no built-in rate: order creation
   // records a VAT split (Order.vatPoisha / vatRateBps) only while this
@@ -130,6 +147,13 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   // many calendar months are anonymized by the retention job; outcomes,
   // dispositions, scores and timestamps are kept so reporting survives.
   "call_center.log_retention_months": { category: "general", value: "12", isPublic: false },
+  // F-commerce order bot v1 (doc 22 ADV-6 part 3 — src/inbox/bot.ts).
+  // The bot (parser + rules, NO LLM) auto-builds an order draft from a
+  // conversation's messages for staff one-tap confirm. It runs ONLY
+  // when the module.f_commerce feature flag is ON AND this setting is
+  // "true" — default OFF, so installing the code changes nothing until
+  // an admin deliberately enables the bot.
+  "f_commerce.bot_enabled": { category: "general", value: "false", isPublic: false },
   // Order-create rules (wave 20, plan 17 batch O2 —
   // src/checkout/order-rules.ts, enforced in the public create route).
   // Every rule defaults OFF / permissive: an unconfigured shop checks

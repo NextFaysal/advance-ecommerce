@@ -2108,6 +2108,9 @@ model InboxMessage {
   direction         String
   kind              String   @default("TEXT")
   body              String?
+  // PRODUCT_CARD / ORDER_CARD target id (variant / order) — doc 22
+  // ADV-6, doc 21 G3-10 remainder. Nullable: TEXT/IMAGE/SYSTEM carry none.
+  refId             String?
   createdAt         DateTime @default(now())
   @@unique([channel, externalMessageId])
   @@index([conversationId, createdAt])
@@ -2210,4 +2213,18 @@ model NewsletterSubscriber {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   unsubscribedAt DateTime?
+}
+
+/// Storefront tracking events persisted for the analytics funnel
+/// (ADV-8 follow-through, wave 38). Append-only; ids + event name +
+/// order ref + timestamp ONLY — no PII is ever stored here.
+model TrackingEvent {
+  id         String   @id @default(cuid())
+  eventId    String   @unique
+  eventName  String
+  orderId    String?
+  occurredAt DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([eventName, occurredAt])
 }

@@ -128,6 +128,18 @@ export interface EmailJob {
   roleName?: string;
   /** Invite expiry (ISO) — rendered into the invite email. */
   expiresAt?: string;
+  /**
+   * Scheduled-report flavour (templateKey === "report_delivery",
+   * ADV-8): produced by src/reports/schedule-delivery.ts. Ids + the
+   * covered period only — the send path rebuilds the CSV from the
+   * saved definition at send time and attaches it. `toEmail` carries
+   * the recipient (one job per recipient).
+   */
+  reportId?: string;
+  scheduleId?: string;
+  /** Covered period, Dhaka YYYY-MM-DD bounds. */
+  reportPeriodFrom?: string;
+  reportPeriodTo?: string;
 }
 export interface CourierBookingJob { orderId: string; shipmentId: string; provider: string; }
 export interface WebhookJob { event: string; payloadId: string; }

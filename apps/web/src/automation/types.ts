@@ -3,7 +3,9 @@
  *
  * Pure domain types + Zod schemas. No DB, no provider calls: actions are
  * DESCRIBED as effects by the engine; the jobs owner (BullMQ, QUEUE_NAMES
- * .automation = "automation-run") executes them. Money is integer poisha.
+ * .automation = "automation-run") executes the send effects for matched
+ * runs (ADV-7, src/automation/effects.ts) and records the outcomes in
+ * the run log. Money is integer poisha.
  * Customer phone exists in the rule context for matching only — it must
  * never be written to a run log unmasked (engine masks it, see engine.ts).
  */
@@ -134,10 +136,12 @@ export function or(...nodes: ConditionNode[]): ConditionGroup {
 }
 
 /* ------------------------------------------------------------------ */
-/* Actions — described as effects, executed by the jobs layer.         */
-/* send_sms / send_email are stubs here: the effect carries the        */
-/* template key + masked recipient; the SMS/email provider (admin-     */
-/* configured, encrypted settings) is called by the worker only.      */
+/* Actions — described as effects by the engine. For matched          */
+/* immediate runs the automation worker executes send_sms (through    */
+/* the SMS send path: configured gateway, or the sandbox simulator     */
+/* labelled simulated) and send_email (queued through the ADV-3 email  */
+/* producer) and rewrites the effect descriptions with the real        */
+/* outcomes; dry-run / scheduled effects stay "planned" descriptions.  */
 /* ------------------------------------------------------------------ */
 
 export type AutomationAction =
