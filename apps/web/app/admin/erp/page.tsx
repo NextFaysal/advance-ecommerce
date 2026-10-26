@@ -9,6 +9,7 @@ import { accountByCode } from "@/erp/accounts";
 import { erpStore, listSalesVatRows } from "@/erp/db-store";
 import { accountBalances } from "@/erp/ledger";
 import { buildVatReport } from "@/erp/vat";
+import { ErpPeriodManager } from "@/components/admin/erp-period-manager";
 import type { AccountType, JournalEntry } from "@/erp/types";
 
 // Admin > ERP-lite — Agent 20, Step 49 (A16) UI over Agent 17's ledger;
@@ -247,22 +248,12 @@ export default async function AdminErpPage() {
         </Card>
 
         <div>
-          <h3 className="mb-3 text-base font-semibold">হিসাব পিরিয়ড</h3>
-          {periods.length > 0 ? (
-            <DataTable
-              caption="পিরিয়ড লক — ErpPeriod টেবিল থেকে"
-              columns={[
-                { key: "period", header: "পিরিয়ড" },
-                { key: "state", header: "অবস্থা" },
-                { key: "note", header: "মন্তব্য" },
-              ]}
-              rows={periodRows}
-            />
-          ) : (
-            <p className="text-sm text-text-muted">
-              কোনো পিরিয়ড রেকর্ড নেই — পিরিয়ড তৈরি/লক হয় erp-journal API দিয়ে।
-            </p>
-          )}
+          <ErpPeriodManager
+            initialPeriods={periods.map((p) => ({
+              code: p.period,
+              lockedAt: p.isLocked ? p.lockedAt || new Date().toISOString() : null,
+            }))}
+          />
         </div>
       </div>
 
