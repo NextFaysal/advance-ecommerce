@@ -8,7 +8,7 @@
  * filters -> weighted scoring -> deterministic tie-break, with the
  * full ranked list, exclusion reasons and the per-rule trace rendered.
  * The stats arrive as props from the server page, which builds them in
- * ./courier-stats.ts: delivered/failed/returned counts, per-district
+ * src/bd/courier-stats-db.ts: delivered/failed/returned counts, per-district
  * rates and average delivery days are aggregated from the real
  * Shipment tables; provider capabilities (zones, max weight, COD,
  * ETA) come from the provider catalogue — the only capability source

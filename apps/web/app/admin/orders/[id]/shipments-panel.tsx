@@ -19,6 +19,15 @@
  * calls (provider + per-line quantities, real booked weights shown
  * from the payload).
  *
+ * ADV-5 (doc 22): the form also offers the assignment engine's ranked
+ * recommendation for the selected lines (POST …/shipments/
+ * recommendation — real shipment-history stats, computed server-side;
+ * this component only renders the serializable result). Staff confirm
+ * the top pick or override it — an override requires a reason, which
+ * the booking API records with the recommendation on the order
+ * timeline. With no delivery history the API returns no scores at all
+ * and the form stays a plain manual choice.
+ *
  * HONEST COPY: these are SANDBOX bookings (SBX tracking ids); no real
  * courier is contacted.
  *
@@ -66,6 +75,31 @@ interface CoverageData {
   bookings: Booking[];
   lines: Line[];
   coverage: { totalLines: number; allocatedLines: number; deliveredLines: number };
+}
+
+/* ADV-5 booking recommendation payload (serializable; mirrors
+ * src/shipments/assignment-recommendation.ts). ranked is EMPTY when
+ * status is "insufficient_data" — no scores exist to show. */
+interface RankedView {
+  provider: string;
+  score: number | null;
+  chargePoisha: number | null;
+  estimatedDays: number | null;
+  deliveryRateBps: number | null;
+  hasHistory: boolean;
+  reasonsBn: string[];
+  exclusionReasonsBn: string[];
+}
+
+interface RecommendationData {
+  status: "ok" | "insufficient_data" | "no_eligible";
+  facts: { district: string; zone: string; weightGrams: number; codAmountPoisha: number };
+  weightEstimated: boolean;
+  historyShipments: number;
+  recommended: RankedView | null;
+  ranked: RankedView[];
+  excluded: RankedView[];
+  noteBn: string;
 }
 
 const PROVIDERS = ["steadfast", "pathao", "redx"] as const;
@@ -167,6 +201,14 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [provider, setProvider] = useState<string>("steadfast");
 
+  // ADV-5 recommendation state: the engine's ranking for the CURRENT
+  // line selection (cleared whenever the selection changes, so a stale
+  // ranking can never be booked against different lines), plus the
+  // override reason staff must give when booking a different courier.
+  const [recommendation, setRecommendation] = useState<RecommendationData | null>(null);
+  const [recBusy, setRecBusy] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
+
   const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/v1/admin/orders/${encodeURIComponent(orderId)}/shipments`);
@@ -203,16 +245,64 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
   const partialDelivery =
     isSplit && deliveredLines > 0 && deliveredLines < totalLines;
 
-  async function createSplit() {
-    const items = openLines
+  function selectedItems() {
+    return openLines
       .filter((l) => selected[l.orderItemId])
       .map((l) => ({
         orderItemId: l.orderItemId,
         quantity: Math.max(1, Math.min(l.remainingQuantity, Number(quantities[l.orderItemId] ?? l.remainingQuantity) || 0)),
       }))
       .filter((i) => i.quantity > 0);
+  }
+
+  function clearRecommendation() {
+    setRecommendation(null);
+    setOverrideReason("");
+  }
+
+  async function fetchRecommendation() {
+    const items = selectedItems();
+    if (items.length === 0) {
+      setError("সুপারিশের জন্য আগে অন্তত একটি লাইন সিলেক্ট করুন।");
+      return;
+    }
+    setRecBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/v1/admin/orders/${encodeURIComponent(orderId)}/shipments/recommendation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: RecommendationData;
+        error?: { message?: string };
+      };
+      if (!res.ok || !json.data) {
+        setError(json.error?.message ?? `সুপারিশ পাওয়া যায়নি (HTTP ${res.status})`);
+        return;
+      }
+      setRecommendation(json.data);
+      setOverrideReason("");
+      if (json.data.recommended) setProvider(json.data.recommended.provider);
+    } catch {
+      setError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।");
+    } finally {
+      setRecBusy(false);
+    }
+  }
+
+  const isOverride =
+    !!recommendation?.recommended && provider !== recommendation.recommended.provider;
+
+  async function createSplit() {
+    const items = selectedItems();
     if (items.length === 0) {
       setError("অন্তত একটি লাইন সিলেক্ট করুন।");
+      return;
+    }
+    if (isOverride && !overrideReason.trim()) {
+      setError("সুপারিশের বাইরে কুরিয়ার বুক করতে কারণ লেখা আবশ্যক।");
       return;
     }
     setBusy(true);
@@ -222,7 +312,18 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
       const res = await fetch(`/api/v1/admin/orders/${encodeURIComponent(orderId)}/shipments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items, provider }),
+        body: JSON.stringify({
+          items,
+          provider,
+          ...(recommendation
+            ? {
+                assignment: {
+                  recommendedProvider: recommendation.recommended?.provider ?? null,
+                  ...(isOverride ? { overrideReason: overrideReason.trim() } : {}),
+                },
+              }
+            : {}),
+        }),
       });
       const json = (await res.json().catch(() => ({}))) as {
         data?: Booking;
@@ -234,6 +335,7 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
       }
       setMessage(`বিভক্ত বুকিং তৈরি হয়েছে — ট্র্যাকিং: ${json.data.trackingId ?? json.data.id}`);
       setSelected({});
+      clearRecommendation();
       await load();
     } catch {
       setError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।");
@@ -381,7 +483,10 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
                   type="checkbox"
                   className="h-4 w-4 rounded accent-brand-600"
                   checked={!!selected[l.orderItemId]}
-                  onChange={(e) => setSelected((s) => ({ ...s, [l.orderItemId]: e.target.checked }))}
+                  onChange={(e) => {
+                    setSelected((s) => ({ ...s, [l.orderItemId]: e.target.checked }));
+                    clearRecommendation();
+                  }}
                 />
                 <span className="min-w-0 flex-1">
                   {l.productName} <span className="text-text-muted">({l.sku}) — বাকি {l.remainingQuantity}টি</span>
@@ -393,10 +498,104 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
                   min={1}
                   max={l.remainingQuantity}
                   value={quantities[l.orderItemId] ?? String(l.remainingQuantity)}
-                  onChange={(e) => setQuantities((q) => ({ ...q, [l.orderItemId]: e.target.value }))}
+                  onChange={(e) => {
+                    setQuantities((q) => ({ ...q, [l.orderItemId]: e.target.value }));
+                    clearRecommendation();
+                  }}
                 />
               </label>
             ))}
+          </div>
+          <div className="mt-4 rounded-lg border border-border bg-slate-50/60 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="text-small font-semibold">কুরিয়ার সুপারিশ (ইতিহাসভিত্তিক)</h4>
+              <Button variant="outline" disabled={recBusy || busy} onClick={() => void fetchRecommendation()}>
+                {recommendation ? "আবার হিসাব করুন" : "সুপারিশ দেখুন"}
+              </Button>
+              {recommendation && (
+                <span className="text-caption text-text-muted">
+                  {recommendation.facts.district} · ওজন {recommendation.facts.weightGrams}g
+                  {recommendation.weightEstimated ? " (আনুমানিক)" : ""} · COD{" "}
+                  {formatPoisha(recommendation.facts.codAmountPoisha)} · ইতিহাস:{" "}
+                  {recommendation.historyShipments}টি সম্পন্ন শিপমেন্ট
+                </span>
+              )}
+            </div>
+            {!recommendation && (
+              <p className="mt-1.5 text-caption text-text-muted">
+                সিলেক্ট করা লাইনগুলোর জন্য আসল শিপমেন্ট ইতিহাস থেকে কুরিয়ারদের র‍্যাংক করা হবে —
+                সুপারিশ মেনে বুক করতে পারবেন, কিংবা কারণ লিখে অন্য কুরিয়ার বেছতে পারবেন।
+              </p>
+            )}
+            {recommendation?.status === "insufficient_data" && (
+              <p className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-small text-amber-800">
+                <Icon name="alert" size={16} className="mt-0.5 shrink-0" />
+                <span>{recommendation.noteBn} নিচে ম্যানুয়ালি কুরিয়ার বেছে বুকিং করুন।</span>
+              </p>
+            )}
+            {recommendation && recommendation.status !== "insufficient_data" && (
+              <>
+                <p className="mt-1.5 text-caption text-text-muted">{recommendation.noteBn}</p>
+                {recommendation.ranked.length > 0 && (
+                  <ul className="mt-2 space-y-2">
+                    {recommendation.ranked.map((r) => {
+                      const isTop = recommendation.recommended?.provider === r.provider;
+                      const isPicked = provider === r.provider;
+                      return (
+                        <li key={r.provider}>
+                          <button
+                            type="button"
+                            aria-pressed={isPicked}
+                            onClick={() => setProvider(r.provider)}
+                            className={`w-full rounded-md border px-3 py-2 text-left text-small shadow-sm transition ${
+                              isPicked
+                                ? "border-brand-500 bg-card ring-2 ring-brand-100"
+                                : "border-border bg-card hover:border-brand-300"
+                            }`}
+                          >
+                            <span className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold">{r.provider}</span>
+                              {isTop && <Badge tone="success">সুপারিশকৃত</Badge>}
+                              {isPicked && (
+                                <Badge tone="info">
+                                  <span className="inline-flex items-center gap-1">
+                                    <Icon name="check" size={12} /> বেছে নেওয়া হয়েছে
+                                  </span>
+                                </Badge>
+                              )}
+                              {r.hasHistory ? (
+                                <span className="tabular-nums text-text-muted">স্কোর {r.score ?? "—"}/১০০</span>
+                              ) : (
+                                <Badge tone="warning">ইতিহাস নেই — হার অজানা</Badge>
+                              )}
+                              <span className="ml-auto tabular-nums text-text-muted">
+                                আনুমানিক চার্জ {r.chargePoisha !== null ? formatPoisha(r.chargePoisha) : "—"}
+                                {r.estimatedDays ? ` · ~${r.estimatedDays} দিন` : ""}
+                                {r.deliveryRateBps !== null
+                                  ? ` · ডেলিভারি হার ${(r.deliveryRateBps / 100).toFixed(1)}%`
+                                  : ""}
+                              </span>
+                            </span>
+                            {isTop && r.reasonsBn.length > 0 && (
+                              <span className="mt-1 block text-caption text-text-muted">
+                                কারণ: {r.reasonsBn.join(" · ")}
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                {recommendation.excluded.length > 0 && (
+                  <ul className="mt-2 space-y-0.5 text-caption text-text-muted">
+                    {recommendation.excluded.map((r) => (
+                      <li key={r.provider}>{r.exclusionReasonsBn[0] ?? `${r.provider}: যোগ্য নয়`}</li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <select
@@ -415,6 +614,25 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
               বিভক্ত বুকিং তৈরি করুন
             </Button>
           </div>
+          {isOverride && (
+            <div className="mt-3">
+              <label htmlFor="courier-override-reason" className="text-small font-medium">
+                সুপারিশ ছিল {recommendation?.recommended?.provider} — অন্য কুরিয়ার বেছে নেওয়ার কারণ
+                (আবশ্যক)
+              </label>
+              <textarea
+                id="courier-override-reason"
+                className="mt-1.5 w-full rounded-md border border-border bg-card px-3 py-2 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                rows={2}
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                placeholder="যেমন: কাস্টমার এই কুরিয়ারেই ডেলিভারি চেয়েছেন"
+              />
+              <p className="mt-1 text-caption text-text-muted">
+                কারণটি সুপারিশসহ অর্ডারের টাইমলাইনে রেকর্ড থাকবে।
+              </p>
+            </div>
+          )}
         </div>
       )}
 

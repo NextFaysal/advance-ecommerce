@@ -4,12 +4,21 @@
  * Tracking lookup form + result — Agent 19. Client component.
  * Posts { orderNo, phone } to /api/v1/public/track (POST so the phone is
  * never in a URL). Renders the timeline from the API view: done/current/
- * upcoming steps, shipment status, items and total. Phone shown masked only.
+ * upcoming steps, items and total. Phone shown masked only.
+ *
+ * Shipment section (doc 21 G3-20): when the view carries real parcels
+ * (view.parcels, from Shipment rows) each parcel gets its own card —
+ * courier, tracking code, a parcel stepper in OD5's visual language,
+ * its split items when the booking was split, and the REAL courier
+ * event timeline. When the order has no Shipment rows the API marks
+ * the view shipmentSource "order-status" and this renders the old
+ * derived summary strip PLUS an explicit note that it follows the
+ * order's steps, not live courier data — never a fake parcel.
  */
 import { useState } from "react";
 import { formatBdt } from "@advance-ecommerce/validators";
-import type { TrackingView } from "@/storefront-ux/order-tracking";
-import { Icon } from "@/components/ui/icon";
+import type { TrackingParcel, TrackingView } from "@/storefront-ux/order-tracking";
+import { Icon, type IconName } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
 
 // Mobile polish (Design v3 §3): 48px fields and submit, token colours,
@@ -17,6 +26,129 @@ import { useDigitText } from "@/components/ui/numerals";
 // and the TrackingView rendering contract are unchanged.
 const TRACK_INPUT_CLASS =
   "mt-1.5 h-12 w-full rounded-xl border border-border bg-card px-4 text-sm text-text-main outline-none transition placeholder:text-text-subtle focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30";
+
+/* Parcel stepper — the OD5 shipments-panel visual language (same
+ * pipeline steps, off-path banners and tones), mirrored here rather
+ * than imported: the panel is admin code and must not leak into the
+ * public storefront bundle. OD7's account stepper follows the same
+ * mirror-don't-import pattern. */
+const PARCEL_PIPELINE_STEPS = [
+  { status: "CREATED", labelBn: "তৈরি", icon: "package" },
+  { status: "PICKED_UP", labelBn: "পিকআপ", icon: "box" },
+  { status: "IN_TRANSIT", labelBn: "পথে", icon: "truck" },
+  { status: "OUT_FOR_DELIVERY", labelBn: "ডেলিভারিতে", icon: "arrow-right" },
+  { status: "DELIVERED", labelBn: "ডেলিভার্ড", icon: "check" },
+] as const satisfies readonly { status: string; labelBn: string; icon: IconName }[];
+
+const PARCEL_OFF_PATH: Record<string, { labelBn: string; icon: IconName; cls: string }> = {
+  FAILED: { labelBn: "ডেলিভারি ব্যর্থ হয়েছে", icon: "alert", cls: "border-rose-200 bg-rose-50 text-rose-700" },
+  RETURNING: { labelBn: "পার্সেলটি ফেরত আসছে", icon: "rotate-ccw", cls: "border-amber-200 bg-amber-50 text-amber-800" },
+  RETURNED: { labelBn: "পার্সেলটি ফেরত এসেছে", icon: "rotate-ccw", cls: "border-border bg-slate-50 text-slate-600" },
+};
+
+function ParcelStepper({ status }: { status: string }) {
+  const activeIdx = PARCEL_PIPELINE_STEPS.findIndex((s) => s.status === status);
+  if (activeIdx === -1) {
+    const off = PARCEL_OFF_PATH[status];
+    if (!off) return null;
+    return (
+      <p className={`mt-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${off.cls}`}>
+        <Icon name={off.icon} size={16} />
+        {off.labelBn}
+      </p>
+    );
+  }
+  return (
+    <ol className="mt-3 flex items-start" aria-label={`পার্সেলের অবস্থা: ${PARCEL_PIPELINE_STEPS[activeIdx].labelBn}`}>
+      {PARCEL_PIPELINE_STEPS.map((step, idx) => {
+        const done = idx < activeIdx || status === "DELIVERED";
+        const active = idx === activeIdx && status !== "DELIVERED";
+        return (
+          <li key={step.status} className={`flex items-start ${idx > 0 ? "flex-1" : ""}`}>
+            {idx > 0 && (
+              <span aria-hidden="true" className={`mx-1 mt-[13px] h-0.5 flex-1 rounded ${idx <= activeIdx ? "bg-emerald-400" : "bg-border"}`} />
+            )}
+            <span className="flex w-12 flex-col items-center gap-1 text-center sm:w-14">
+              <span
+                aria-hidden="true"
+                className={`flex h-[27px] w-[27px] items-center justify-center rounded-full ${
+                  done
+                    ? "bg-emerald-500 text-white"
+                    : active
+                      ? "bg-brand-600 text-white ring-4 ring-brand-100"
+                      : "bg-slate-100 text-slate-400"
+                }`}
+              >
+                <Icon name={done ? "check" : step.icon} size={14} />
+              </span>
+              <span className={`text-caption leading-tight ${done || active ? "font-semibold text-text-main" : "text-text-muted"}`}>
+                {step.labelBn}
+              </span>
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** One real parcel: courier + tracking code, stepper, split items and
+ *  the recorded courier events (real timestamps, oldest first). */
+function ParcelCard({ parcel, index, total }: { parcel: TrackingParcel; index: number; total: number }) {
+  return (
+    <div className="mt-4 rounded-xl border border-border bg-surface-2/60 px-4 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-text-main">
+          {total > 1 ? `পার্সেল ${index + 1} — ` : ""}কুরিয়ার: {parcel.courier}
+        </h3>
+        <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-700">
+          {parcel.statusLabelBn}
+        </span>
+      </div>
+      {parcel.trackingId && <p className="mt-1 text-xs text-text-muted">ট্র্যাকিং নম্বর: {parcel.trackingId}</p>}
+
+      <ParcelStepper status={parcel.status} />
+
+      {parcel.items && (
+        <div className="mt-3">
+          <p className="text-xs font-semibold text-text-muted">এই পার্সেলে আছে:</p>
+          <ul className="mt-1 space-y-0.5 text-sm text-text-main">
+            {parcel.items.map((item, i) => (
+              <li key={i}>
+                {item.productName} × {item.quantity}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {parcel.events.length > 0 && (
+        <ol className="mt-4 space-y-3 border-t border-border pt-3">
+          {parcel.events.map((ev, i) => (
+            <li key={i} className="relative flex items-start gap-2.5">
+              {i < parcel.events.length - 1 && (
+                <span aria-hidden className="absolute -bottom-3 left-[5px] top-4 w-0.5 bg-border" />
+              )}
+              <span
+                aria-hidden
+                className={`relative mt-1 h-[11px] w-[11px] shrink-0 rounded-full ${
+                  i === parcel.events.length - 1 ? "bg-brand-600 ring-4 ring-brand-100" : "bg-emerald-500"
+                }`}
+              />
+              <span className="min-w-0">
+                <span className="text-sm font-medium text-text-main">{ev.labelBn}</span>
+                <span className="block text-xs text-text-muted">
+                  {new Date(ev.at).toLocaleString("bn-BD", { timeZone: "Asia/Dhaka" })}
+                  {ev.location ? ` • ${ev.location}` : ""}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
 
 type State =
   | { phase: "idle" }
@@ -151,11 +283,28 @@ export default function TrackForm() {
             ))}
           </ol>
 
-          {state.view.shipmentStatusLabelBn && (
-            <p className="mt-5 rounded-xl bg-surface-2 px-3.5 py-2.5 text-sm text-text-main">
-              কুরিয়ার: {state.view.courier ?? "—"}
-              {state.view.trackingId ? ` • ট্র্যাকিং: ${state.view.trackingId}` : ""} • {state.view.shipmentStatusLabelBn}
-            </p>
+          {state.view.parcels.length > 0 ? (
+            <div>
+              {state.view.parcels.map((parcel, i) => (
+                <ParcelCard key={i} parcel={parcel} index={i} total={state.view.parcels.length} />
+              ))}
+            </div>
+          ) : (
+            <>
+              {state.view.shipmentStatusLabelBn && (
+                <p className="mt-5 rounded-xl bg-surface-2 px-3.5 py-2.5 text-sm text-text-main">
+                  কুরিয়ার: {state.view.courier ?? "—"}
+                  {state.view.trackingId ? ` • ট্র্যাকিং: ${state.view.trackingId}` : ""} • {state.view.shipmentStatusLabelBn}
+                </p>
+              )}
+              {/* Honest fallback label (G3-20): no Shipment rows exist for
+                  this order yet, so nothing above is live courier data. */}
+              <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-800">
+                <Icon name="info" size={14} className="mt-0.5 shrink-0" />
+                কুরিয়ারের লাইভ ট্র্যাকিং তথ্য এখনো এই অর্ডারে যুক্ত হয়নি — বুকিং হলে কুরিয়ারের নাম, ট্র্যাকিং
+                নম্বর ও লাইভ অবস্থা এখানে দেখা যাবে। আপাতত অবস্থা অর্ডারের ধাপ অনুযায়ী দেখানো হচ্ছে।
+              </p>
+            </>
           )}
 
           <h3 className="mt-5 text-sm font-semibold text-text-main">পণ্য</h3>

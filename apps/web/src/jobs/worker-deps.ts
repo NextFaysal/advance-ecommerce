@@ -30,10 +30,16 @@
  *    below still returns the sandbox adapter ON PURPOSE: its only
  *    consumer is the notification-retry runner, whose contract
  *    expects a simulated "queued" result (see runners.ts).
- *  - courierProvider — the sandbox courier factory (Steadfast /
- *    Pathao / RedX). Paperfly / eCourier have no adapter at all yet
- *    and throw NO_ADAPTER:<name>, exactly like the handlers' own
- *    default. Real adapters slot behind this same dep later.
+ *  - courierProvider — resolver (ADV-5 part 1). For steadfast it
+ *    first tries the REAL adapter (src/integrations/steadfast.ts)
+ *    behind the Settings-driven resolver in
+ *    src/integrations/steadfast-resolver.ts: when
+ *    courier.steadfast is enabled AND carries api_key + secret_key in
+ *    encrypted Settings, bookings/status go to the live Steadfast API;
+ *    otherwise the sandbox factory below stays in use and stays
+ *    labelled sandbox. Pathao / RedX remain sandbox-only for now.
+ *    Paperfly / eCourier have no adapter at all yet and throw
+ *    NO_ADAPTER:<name>, exactly like the handlers' own default.
  *  - bulkActionsRunner — real: getBulkJob(id) -> processBulkJob(job)
  *    from src/jobs/bulk-actions.ts, the same executor the admin route
  *    triggers in-process today.
@@ -263,6 +269,27 @@ async function resolveEmailProvider(providerName: string | null): Promise<EmailP
 }
 
 async function resolveCourierProvider(provider: CourierProviderName): Promise<CourierProvider> {
+  if (provider === "steadfast") {
+    // ADV-5 part 1: a configured live Steadfast wins. The resolver +
+    // settings service load lazily (the Prisma landmine note above),
+    // and ANY failure in the real path degrades to the sandbox adapter
+    // — a booking is then simulated and labelled simulated, never
+    // silently "real".
+    try {
+      const resolver = await import("../integrations/steadfast-resolver");
+      const resolved = await resolver.resolveSteadfastCourier({
+        getSetting: (key) => readSetting(key),
+        getProviderSecrets: async () => {
+          const settings = await import("../lib/settings");
+          return settings.getIntegrationConfigWithSecrets("courier", "steadfast");
+        },
+      });
+      if (resolved !== null) return resolved.provider;
+    } catch {
+      // fall through to the sandbox adapter
+    }
+    return createSandboxCourierProvider("steadfast");
+  }
   if ((SANDBOX_COURIER_PROVIDERS as readonly string[]).includes(provider)) {
     return createSandboxCourierProvider(provider as SandboxCourierProvider);
   }

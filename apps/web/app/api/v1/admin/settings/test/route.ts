@@ -12,6 +12,10 @@ import {
 } from "@/integrations/sms-resolver";
 import { SmsProviderError } from "@/integrations/sms-providers";
 import { probeBkashConnection, type BkashSettingsReader } from "@/integrations/bkash/resolver";
+import {
+  probeSteadfastConnection,
+  type SteadfastSettingsReader,
+} from "@/integrations/steadfast-resolver";
 
 // POST /api/v1/admin/settings/test — contract in src/integrations/sandbox/SETTINGS-API-CONTRACT.md
 // Sandbox: succeeds without any credential, reported as sandbox (simulated, no real provider call).
@@ -22,6 +26,9 @@ import { probeBkashConnection, type BkashSettingsReader } from "@/integrations/b
 // SMS (ADV-2): the real adapters EXIST, so the sms branch in POST is a REAL balance
 // probe against the named provider (never the fallback): unconfigured -> 422 with
 // the missing pieces named, provider rejection -> 502 with the provider's code.
+// Steadfast (ADV-5): the real adapter EXISTS, so the courier/steadfast branch is a
+// REAL balance probe against the live API: unconfigured -> 422 naming the missing
+// courier.steadfast.* fields, provider rejection -> 502 with the provider's code.
 // No credential value is ever returned or logged.
 const bodySchema = z.object({
   category: z.enum(["payment", "courier", "sms"]),
@@ -83,6 +90,38 @@ async function testSmsProvider(provider: SmsProviderName) {
       { status: 502 },
     );
   }
+}
+
+/** ADV-5 real balance probe for Steadfast (see header pattern). */
+async function testSteadfastCourier() {
+  const reader: SteadfastSettingsReader = {
+    getSetting: (key) => getSetting(key),
+    getProviderSecrets: (name) => getIntegrationConfigWithSecrets("courier", name),
+  };
+  const probe = await probeSteadfastConnection(reader);
+  if (!probe.ok) {
+    const status = probe.code === "STEADFAST_NOT_CONFIGURED" ? 422 : 502;
+    return NextResponse.json(
+      {
+        error: {
+          code: probe.code,
+          message: probe.message,
+          details: { missingFields: probe.missingFields },
+        },
+      },
+      { status },
+    );
+  }
+  return NextResponse.json({
+    data: {
+      ok: true,
+      status: "connected",
+      provider: "steadfast",
+      balancePoisha: probe.balancePoisha,
+      currency: probe.currency,
+      message: probe.message,
+    },
+  });
 }
 
 export async function POST(req: Request) {
@@ -148,6 +187,20 @@ export async function POST(req: Request) {
     } catch {
       return NextResponse.json(
         { error: { code: "DB_NOT_READY", message: "bKash settings could not be read (Settings store unavailable)." } },
+        { status: 503 },
+      );
+    }
+  }
+  if (category === "courier" && provider === "steadfast") {
+    // ADV-5: the real Steadfast adapter EXISTS, so this is a REAL
+    // balance probe against the live API — never the generic sandbox
+    // pass below. Unconfigured -> 422 naming the missing Settings
+    // fields (names only); provider rejection -> 502 with its code.
+    try {
+      return await testSteadfastCourier();
+    } catch {
+      return NextResponse.json(
+        { error: { code: "DB_NOT_READY", message: "Steadfast settings could not be read (Settings store unavailable)." } },
         { status: 503 },
       );
     }

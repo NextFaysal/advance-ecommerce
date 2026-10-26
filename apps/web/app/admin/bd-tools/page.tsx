@@ -21,7 +21,7 @@
  *     src/bd/courier-invoice.ts (courier_invoice_runs table) plus the
  *     open disputes list; no run imported yet -> honest empty state
  *  6. অটো কুরিয়ার বাছাই — assignCourier() over stats built server-side
- *     in ./courier-stats.ts (history from the Shipment tables,
+ *     in src/bd/courier-stats-db.ts (history from the Shipment tables,
  *     capabilities from the provider catalogue)
  *
  * The matching API route groups live under app/api/v1/admin/bd/*.
@@ -45,7 +45,7 @@ import { SmsVerifyPanel } from "./sms-verify-panel";
 import { PaymentLinksPanel } from "./payment-links-panel";
 import { CashClosingPanel, type StoredClosingView } from "./cash-closing-panel";
 import { CourierAssignmentPanel } from "./courier-assignment-panel";
-import { buildCourierStatsFromDb } from "./courier-stats";
+import { buildCourierStatsFromDb } from "@/bd/courier-stats-db";
 import type { PaymentLinkListItemView } from "./actions";
 import {
   RECONCILIATION_STATUS_LABELS_BN,

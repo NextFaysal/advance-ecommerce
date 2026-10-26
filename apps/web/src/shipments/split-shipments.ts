@@ -27,6 +27,13 @@
  */
 import { prisma } from "@advance-ecommerce/db";
 import { transitionOrderForCourierEvent } from "@/courier/order-sync";
+import {
+  applyManualOverride,
+  buildEngineDecision,
+  type CourierAssignmentDecision,
+  type CourierAssignmentResult,
+  type RankedCourier,
+} from "@/bd/courier-assignment";
 import { applyShipmentStatus } from "@/integrations/sandbox/db-store";
 import { courierChargePoisha } from "@/integrations/sandbox/courier-rates";
 import { sandboxShipmentId, sandboxTrackingId } from "@/integrations/sandbox/deterministic";
@@ -211,10 +218,62 @@ export async function orderHasSplitShipments(orderId: string): Promise<boolean> 
   return rows.some((r) => r.lineItemsJson !== null);
 }
 
+/**
+ * The assignment context the booking flow collected (ADV-5): which
+ * courier the engine recommended for this parcel (null when no
+ * recommendation was available — insufficient history or none
+ * eligible), plus the staff override reason when they booked a
+ * different one. The decision is validated through the engine's own
+ * builders and recorded on the order timeline (OrderNote — the same
+ * mechanism the booking `note` uses; the Shipment row has no field
+ * for it and no schema was invented).
+ */
+export interface AssignmentBookingInput {
+  recommendedProvider: string | null;
+  overrideReason?: string | null;
+}
+
 export interface CreateSplitShipmentInput {
   items: SplitAllocation[];
   provider?: string;
   note?: string;
+  assignment?: AssignmentBookingInput;
+  /** Staff identity for the assignment decision (route passes the
+   *  session user's name/email). Required for an override. */
+  decidedBy?: string | null;
+}
+
+/** Minimal engine result carrying only the recommendation itself, so
+ *  the engine's decision builders can validate a booking decision
+ *  without re-running the ranking (metrics stay null — none are
+ *  claimed here). */
+function recommendationStub(orderId: string, recommendedProvider: string | null): CourierAssignmentResult {
+  const chosen: RankedCourier | null = recommendedProvider
+    ? {
+        provider: recommendedProvider,
+        eligible: true,
+        exclusionCodes: [],
+        exclusionReasonsBn: [],
+        exclusionReasonsEn: [],
+        chargePoisha: null,
+        estimatedDays: null,
+        deliveryRateBps: null,
+        returnRateBps: null,
+        score: null,
+        components: [],
+        reasonsBn: [],
+        reasonsEn: [],
+      }
+    : null;
+  return {
+    order: { orderId, district: "", zone: "inside_dhaka", weightGrams: 1, codAmountPoisha: 0, fragile: false, highValue: false },
+    chosen,
+    ranked: chosen ? [chosen] : [],
+    excluded: [],
+    reasonsBn: [],
+    reasonsEn: [],
+    trace: [],
+  };
 }
 
 /**
@@ -246,6 +305,36 @@ export async function createSplitShipment(
       return { ok: false, code: "INVALID_INPUT", error: "The same line appears twice; merge the quantities." };
     }
     seen.add(item.orderItemId);
+  }
+
+  // Assignment decision validation (pure, before any DB work): when
+  // the engine recommended a courier and staff book a DIFFERENT one,
+  // the engine's own override builder demands a non-empty reason and
+  // a decider. Confirming the recommendation, or booking when no
+  // recommendation existed, needs neither.
+  let assignmentDecision: CourierAssignmentDecision | null = null;
+  if (input.assignment) {
+    const stub = recommendationStub(orderId, input.assignment.recommendedProvider);
+    if (input.assignment.recommendedProvider && input.assignment.recommendedProvider !== provider) {
+      const applied = applyManualOverride(
+        stub,
+        provider,
+        input.assignment.overrideReason ?? "",
+        input.decidedBy ?? "",
+        new Date().toISOString(),
+      );
+      if (!applied.ok) {
+        return {
+          ok: false,
+          code: "INVALID_INPUT",
+          error: `${applied.error} / সুপারিশের বাইরে কুরিয়ার বুক করতে কারণ আবশ্যক।`,
+        };
+      }
+      assignmentDecision = applied.decision;
+    } else if (input.assignment.recommendedProvider) {
+      const built = buildEngineDecision(stub, input.decidedBy ?? null, new Date().toISOString());
+      if (built.ok) assignmentDecision = built.decision;
+    }
   }
 
   const loaded = await loadCoverageRows(orderId);
@@ -307,6 +396,25 @@ export async function createSplitShipment(
   });
   if (input.note?.trim()) {
     await addOrderTimelineNote(orderId, `বিভক্ত শিপমেন্ট তৈরি (${row.trackingId ?? row.id}): ${input.note.trim()}`);
+  }
+  // Assignment audit trail (ADV-5): the recommendation is recorded
+  // alongside the booking on the order timeline — never silently
+  // replaced by the staff pick.
+  if (assignmentDecision?.source === "manual_override") {
+    await addOrderTimelineNote(
+      orderId,
+      `কুরিয়ার সুপারিশ অগ্রাহ্য করে বুকিং (${row.trackingId ?? row.id}): সুপারিশ ছিল ${assignmentDecision.recommendedProvider}, বুক হয়েছে ${assignmentDecision.chosenProvider} — সিদ্ধান্ত নিয়েছেন ${assignmentDecision.decidedBy ?? "স্টাফ"}। কারণ: ${assignmentDecision.overrideReason} / Courier recommendation overridden for booking ${row.trackingId ?? row.id}: recommended ${assignmentDecision.recommendedProvider}, booked ${assignmentDecision.chosenProvider} by ${assignmentDecision.decidedBy ?? "staff"}. Reason: ${assignmentDecision.overrideReason}`,
+    );
+  } else if (assignmentDecision) {
+    await addOrderTimelineNote(
+      orderId,
+      `কুরিয়ার সুপারিশ অনুযায়ী বুকিং (${row.trackingId ?? row.id}): ${assignmentDecision.chosenProvider}। / Booked per courier recommendation: ${assignmentDecision.chosenProvider}.`,
+    );
+  } else if (input.assignment) {
+    await addOrderTimelineNote(
+      orderId,
+      `কুরিয়ার ম্যানুয়ালি বেছে বুকিং (${row.trackingId ?? row.id}): ${provider} — কোনো সুপারিশ পাওয়া যায়নি। / Courier chosen manually for booking ${row.trackingId ?? row.id}: ${provider} — no recommendation was available.`,
+    );
   }
   return {
     ok: true,

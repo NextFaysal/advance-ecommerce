@@ -5,20 +5,27 @@
  *   { orderNo, phone }
  * Phone must match the order's phone (normalized compare). Not-found and
  * phone-mismatch return the identical generic 404 — no enumeration.
- * Rate limit: 10 lookups / 5 min / IP (in-memory demo limiter; production
- * swaps it for Redis — see src/storefront-ux/order-tracking.ts).
+ * Rate limit: 10 lookups / 5 min / IP via the shared Redis limiter
+ * (src/lib/rate-limit.ts; process-local fallback only when Redis is
+ * unreachable — the meta reports which backend answered).
  *
  * DB-BACKED: the order is looked up by orderNo in Prisma (via
  * src/orders/repository) and handed to lookupTracking as a one-element
- * list, so the generic not-found/phone-mismatch behaviour and the
- * response shape are byte-identical to the mock era. ShipmentStatus is
- * still derived from the order status by lookupTracking (real Shipment
- * rows are the shipments slice).
+ * list, so the generic not-found/phone-mismatch behaviour is unchanged.
+ * The order's real Shipment rows + ShipmentEvent history are read via
+ * src/shipments/tracking.ts and passed along: when they exist the view
+ * is per-parcel from real courier data (meta.shipmentSource
+ * "shipments"); orders without any Shipment row get the labelled
+ * order-status-derived fallback ("order-status"). Shipments are
+ * fetched server-side only — on a phone mismatch lookupTracking still
+ * returns the generic 404 and nothing about them leaks.
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getOrderByOrderNo } from "@/orders/repository";
-import { lookupTracking, trackingRateLimiter } from "@/storefront-ux/order-tracking";
+import { getTrackingShipmentsForOrder } from "@/shipments/tracking";
+import { lookupTracking } from "@/storefront-ux/order-tracking";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const trackBodySchema = z.object({
   orderNo: z.string().min(3).max(40),
@@ -27,7 +34,7 @@ const trackBodySchema = z.object({
 
 export async function POST(req: Request) {
   const ip = (req.headers.get("x-forwarded-for") ?? "unknown").split(",")[0]?.trim() || "unknown";
-  const limit = trackingRateLimiter.check(ip);
+  const limit = await checkRateLimit(`track:ip:${ip}`, 10, 5 * 60_000);
   if (!limit.allowed) {
     return NextResponse.json(
       { error: { code: "RATE_LIMITED", message: "অনেকবার চেষ্টা করা হয়েছে — কিছুক্ষণ পর আবার চেষ্টা করুন।" } },
@@ -42,7 +49,8 @@ export async function POST(req: Request) {
     );
   }
   const order = await getOrderByOrderNo(parsed.data.orderNo.trim().toUpperCase());
-  const result = lookupTracking(order ? [order] : [], parsed.data.orderNo, parsed.data.phone);
+  const shipments = order ? await getTrackingShipmentsForOrder(order.id) : [];
+  const result = lookupTracking(order ? [order] : [], parsed.data.orderNo, parsed.data.phone, shipments);
   if (!result.ok) {
     return NextResponse.json(
       { error: { code: "NOT_FOUND", message: result.messageBn } },
@@ -51,6 +59,11 @@ export async function POST(req: Request) {
   }
   return NextResponse.json({
     data: { tracking: result.view },
-    meta: { source: "DATABASE", rateLimit: "10 requests / 5 min / IP" },
+    meta: {
+      source: "DATABASE",
+      shipmentSource: result.view.shipmentSource,
+      rateLimit: "10 requests / 5 min / IP",
+      rateLimitBackend: limit.backend,
+    },
   });
 }

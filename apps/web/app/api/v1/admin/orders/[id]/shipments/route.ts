@@ -68,6 +68,16 @@ const createSchema = z.object({
     .min(1),
   provider: z.string().min(1).optional(),
   note: z.string().max(500).optional(),
+  // ADV-5 assignment context: which courier the engine recommended
+  // (null = none was available) + the staff reason when booking a
+  // different one. The service validates the override via the
+  // engine's own decision builder and records it on the timeline.
+  assignment: z
+    .object({
+      recommendedProvider: z.string().min(1).nullable(),
+      overrideReason: z.string().max(500).nullable().optional(),
+    })
+    .optional(),
 });
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -78,7 +88,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!parsed.success) {
     return err("INVALID_INPUT", "Invalid split shipment input.", 400, parsed.error.issues);
   }
-  const out = unwrap(await createSplitShipment(params.id, parsed.data));
+  const out = unwrap(
+    await createSplitShipment(params.id, {
+      ...parsed.data,
+      decidedBy: auth.session.user.name ?? auth.session.user.email ?? auth.session.user.id,
+    }),
+  );
   if ("response" in out) return out.response;
   return NextResponse.json({ data: out.value, meta: { sandbox: true } }, { status: 201 });
 }
