@@ -39,6 +39,7 @@ import { OrderStatusBadge } from "../../../src/orders/components/OrderStatusBadg
 import { ORDER_STATUS_VISUAL } from "../../../src/orders/components/labels";
 import { ORDER_DENSITY } from "../../../src/orders/components/density";
 import { OrderPreviewDrawer } from "./order-preview";
+import { MergeAction } from "./merge-action";
 import {
   funnelChips,
   itemsSummaryLabel,
@@ -568,6 +569,19 @@ export default function AdminOrdersPage() {
            *  component and its job behaviour are unchanged. */}
           <div className={selected.size > 0 ? "mb-4 max-md:fixed max-md:inset-x-3 max-md:bottom-3 max-md:z-40" : "mb-4 empty:mb-0"}>
             <BulkActionBar selectedIds={selectedIds} onClear={() => setSelected(new Set())} onDone={() => void load()} />
+            {/* ADV-19: order merge — renders only for an exact pair. */}
+            {selected.size === 2 ? (
+              <div className="mt-2 flex justify-end">
+                <MergeAction
+                  selectedIds={selectedIds}
+                  knownOrders={pageOrders
+                    .filter((o) => selected.has(o.id))
+                    .map((o) => ({ id: o.id, orderNo: o.orderNo, createdAt: o.createdAt }))}
+                  onClear={() => setSelected(new Set())}
+                  onDone={() => void load()}
+                />
+              </div>
+            ) : null}
           </div>
 
           {orders.length === 0 ? (
@@ -654,6 +668,15 @@ export default function AdminOrdersPage() {
                           <a href={`/admin/orders/${o.id}`} className="font-mono text-small font-semibold text-brand-700 hover:underline">
                             {o.orderNo}
                           </a>
+                          {/* ADV-19: pickup badge — the choice is recorded
+                           *  in the create-time note with a [pickup:<id>]
+                           *  marker (src/checkout/pickup-points.ts); list
+                           *  rows already carry their notes. */}
+                          {o.notes.some((n) => n.text.includes("[pickup:")) ? (
+                            <span className="mt-1 block">
+                              <Badge tone="info">পিকআপ</Badge>
+                            </span>
+                          ) : null}
                           <span className="block text-caption text-text-subtle">{o.address.district}, {o.address.division}</span>
                         </td>
                         {orderCols.isVisible("customer") ? (
@@ -724,7 +747,10 @@ export default function AdminOrdersPage() {
                           <a href={`/admin/orders/${o.id}`} className="font-mono text-small font-semibold text-brand-700 hover:underline">
                             {o.orderNo}
                           </a>
-                          <OrderStatusBadge status={o.status} />
+                          <span className="flex items-center gap-1.5">
+                            {o.notes.some((n) => n.text.includes("[pickup:")) ? <Badge tone="info">পিকআপ</Badge> : null}
+                            <OrderStatusBadge status={o.status} />
+                          </span>
                         </div>
                         <p className="mt-1.5 truncate text-small font-medium leading-snug">{o.customerName}</p>
                         <p className="text-caption text-text-muted">

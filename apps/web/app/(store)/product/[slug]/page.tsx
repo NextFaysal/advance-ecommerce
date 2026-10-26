@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { fromPoisha } from "@advance-ecommerce/validators";
 import { tryCatalogRepository } from "@/catalog/server-read";
 import { maxVariantPricePoisha, minVariantPricePoisha, toPublicProduct } from "@/catalog/types";
+import { EmiNote } from "@/marketing/components/EmiNote";
 import { RecordRecentlyViewed } from "@/storefront-ux/components/RecordRecentlyViewed";
 import { RecentlyViewedRail } from "@/storefront-ux/components/RecentlyViewedRail";
 import { StickyBuyBar } from "@/storefront-ux/components/StickyBuyBar";
@@ -475,6 +476,10 @@ export default async function ProductPage({ params }: { params: { slug: string }
                   : {})}
               />
             </div>
+
+            {/* EMI breakdown (ADV-18B) — display-only bank-card terms
+                at the product's lowest variant price; self-gating. */}
+            <EmiNote totalPoisha={minPrice} />
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <WishlistToggleButton productId={product.id} />

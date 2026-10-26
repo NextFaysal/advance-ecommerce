@@ -493,6 +493,8 @@ model ProductVariant {
   orderItems      OrderItem[]
   inventoryItems  InventoryItem[]
   stockMovements  StockMovement[]
+  inventoryBatches InventoryBatch[]
+  serialUnits      SerialUnit[]
   flashSaleItems  FlashSaleItem[]
   purchaseOrderItems PurchaseOrderItem[]
   vendorProducts  VendorProduct[]
@@ -857,6 +859,7 @@ model Order {
   returns          Return[]
   remittanceItems  RemittanceItem[]
   supportTickets   SupportTicket[]
+  serialUnits      SerialUnit[]
   couponUsages     CouponUsage[]
   notificationLogs NotificationLog[]
   paymentLinks     PaymentLink[]
@@ -1240,6 +1243,8 @@ model Warehouse {
   inventoryItems InventoryItem[]
   stockMovements StockMovement[]
   purchaseOrders PurchaseOrder[]
+  inventoryBatches InventoryBatch[]
+  serialUnits      SerialUnit[]
 }
 
 model InventoryItem {
@@ -1250,6 +1255,11 @@ model InventoryItem {
   warehouse        Warehouse      @relation(fields: [warehouseId], references: [id])
   quantityOnHand   Int            @default(0)
   quantityReserved Int            @default(0)
+  // Bin / rack location label (ADV-20, doc 22): free-text shelf code
+  // (e.g. "A-01") written by PO receives that carry a bin; the
+  // warehouse-ops wave (ADV-21) reads it for pick lists. Null = no
+  // location recorded — never guessed.
+  bin              String?
   updatedAt        DateTime       @updatedAt
   @@unique([variantId, warehouseId])
   @@index([warehouseId])
@@ -1273,6 +1283,63 @@ model StockMovement {
   createdAt     DateTime          @default(now())
   @@index([variantId, createdAt])
   @@index([referenceType, referenceId])
+}
+
+// ---------------------------------------------------------------------------
+// Inventory depth (ADV-20, doc 22) — batch/lot + expiry, serial/IMEI units.
+// Gated by the module.inventory_depth flag: with the flag OFF nothing
+// writes these tables and every pre-ADV-20 behaviour is byte-identical.
+// ---------------------------------------------------------------------------
+
+// One received lot of a variant in one warehouse. quantityOnHand is the
+// batch sub-ledger: incremented by PO receives that name the batch,
+// decremented FEFO (earliest expiry first, then oldest received) when
+// a sale of the variant is delivered. Variants without batches are
+// not tracked here at all — their absence means "untracked", never 0.
+model InventoryBatch {
+  id              String         @id @default(cuid())
+  variantId       String
+  variant         ProductVariant @relation(fields: [variantId], references: [id])
+  warehouseId     String
+  warehouse       Warehouse      @relation(fields: [warehouseId], references: [id])
+  batchCode       String
+  expiryDate      DateTime?
+  quantityOnHand  Int            @default(0)
+  costPoisha      Int?
+  purchaseOrderId String?
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  bin             String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  serialUnits     SerialUnit[]
+  @@index([variantId, warehouseId])
+  @@index([expiryDate])
+}
+
+// One physical unit of a serial-tracked (IMEI) variant. status is an
+// app-level string (house style): IN_STOCK | SOLD | RETURNED.
+// RETURNED means the unit came back DAMAGED on a return — physically
+// present but kept out of sellable stock, mirroring the returns rule
+// that DAMAGED goods never restock. Restockable returns flip SOLD
+// units straight back to IN_STOCK. orderId keeps the last order the
+// unit was sold on (traceability), cleared when it restocks.
+model SerialUnit {
+  id          String         @id @default(cuid())
+  variantId   String
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+  warehouseId String
+  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id])
+  serial      String
+  status      String         @default("IN_STOCK")
+  orderId     String?
+  order       Order?         @relation(fields: [orderId], references: [id])
+  batchId     String?
+  batch       InventoryBatch? @relation(fields: [batchId], references: [id])
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  @@unique([variantId, serial])
+  @@index([variantId, status])
+  @@index([orderId])
 }
 
 // ---------------------------------------------------------------- Marketing / Notifications
@@ -1460,6 +1527,7 @@ model PurchaseOrder {
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
   items       PurchaseOrderItem[]
+  inventoryBatches InventoryBatch[]
   @@index([supplierId])
   @@index([status])
 }
@@ -2322,4 +2390,47 @@ model ReviewHelpfulVote {
 
   @@unique([reviewId, voterKey])
   @@index([reviewId])
+}
+
+// ------------------------------------------------------- Gift cards (ADV-18)
+// Bearer instruments: the plaintext code is shown ONCE at issue time
+// and never stored — only its SHA-256 hash (unique lookup) and the
+// last 4 characters (display) persist, the staff-invite-token pattern.
+// The balance is NEVER a stored column: it is the sum of
+// GiftCardTransaction.amountPoisha (the ISSUE row is the opening
+// entry), derived on every read, so the ledger and the balance can
+// never disagree. status is the
+// staff-controlled state (ACTIVE / DISABLED); DEPLETED and EXPIRED
+// are derived from the balance / expiresAt at read time.
+model GiftCard {
+  id            String   @id @default(cuid())
+  codeHash      String   @unique
+  codeLast4     String
+  initialPoisha Int
+  status        String   @default("ACTIVE")
+  expiresAt     DateTime?
+  createdById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  transactions  GiftCardTransaction[]
+
+  @@index([status, createdAt])
+}
+
+model GiftCardTransaction {
+  id           String   @id @default(cuid())
+  giftCardId   String
+  giftCard     GiftCard @relation(fields: [giftCardId], references: [id])
+  // Plain reference (no FK): the order row is the system of record for
+  // the order; this ledger only needs the id for restore/idempotency.
+  orderId      String?
+  // Signed poisha: ISSUE is +initialPoisha at creation; REDEEM is
+  // negative; REFUND_RESTORE is positive; ADJUST is staff-signed.
+  amountPoisha Int
+  kind         String
+  actorId      String?
+  createdAt    DateTime @default(now())
+
+  @@index([giftCardId, createdAt])
+  @@index([orderId])
 }

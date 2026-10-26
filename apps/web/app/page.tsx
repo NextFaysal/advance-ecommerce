@@ -9,6 +9,11 @@ import { NewsletterForm } from "@/newsletter/components/NewsletterForm";
 import { FlashSaleCountdownSection } from "@/marketing/flash-sale-section";
 import { HeroSlides } from "@/cms/HeroSlides";
 import { getActiveHeroSlides } from "@/cms/site-content";
+import { cookies } from "next/headers";
+import { marketingMechanicsEnabled } from "@/marketing/docs";
+import { resolveHeroForVisitor, VISITOR_COOKIE } from "@/marketing/experiments";
+import { SpinWheelSection } from "@/marketing/components/SpinWheelSection";
+import { VisitorIdBootstrap } from "@/marketing/components/VisitorIdBootstrap";
 import { listHomepageReviews } from "@/reviews/store";
 import { Stars } from "@/reviews/components/Stars";
 
@@ -242,6 +247,23 @@ export default async function Home() {
     // section at all, exactly like the other data-driven sections.
     listHomepageReviews(6).catch(() => []),
   ]);
+  // A/B hero experiment (ADV-18B): when the marketing-mechanics flag
+  // is on and a hero experiment is running, the visitor's assigned
+  // variant copy overrides the hero (exposure is recorded server-
+  // side, deduped per visitor). Control / no experiment / flag off
+  // -> null -> the hero below renders exactly as before.
+  const mechanicsOn = marketingMechanicsEnabled();
+  const heroOverride = mechanicsOn
+    ? await (async () => {
+        try {
+          const visitorId = (await cookies()).get(VISITOR_COOKIE)?.value ?? null;
+          const resolution = await resolveHeroForVisitor(visitorId);
+          return resolution?.hero ?? null;
+        } catch {
+          return null;
+        }
+      })()
+    : null;
   // Real catalogue totals for the hero stat row (Design v3) — summed
   // from the same category fetch; the row hides when the store is empty.
   const totalProducts = categories.reduce((sum, c) => sum + c.productCount, 0);
@@ -279,7 +301,7 @@ export default async function Home() {
   return (
     <main className="mx-auto min-w-0 max-w-[1440px] px-4 sm:px-6">
       {/* ---------- Hero ---------- */}
-      {heroSlides.length > 0 ? (
+      {heroSlides.length > 0 && heroOverride === null ? (
         /* CMS campaign slides (Admin → Content) replace the static
            hero copy while at least one slide is active. */
         <HeroSlides slides={heroSlides} visual={<HeroVisual />} stats={heroStats} />
@@ -292,18 +314,26 @@ export default async function Home() {
               বাংলাদেশের নিজস্ব অনলাইন শপ
             </span>
             <h1 className="mt-5 break-words text-4xl font-extrabold leading-[1.2] text-text-main [overflow-wrap:anywhere] sm:text-5xl sm:leading-[1.15]">
-              সারাদেশে হোম ডেলিভারি,
-              <span className="brand-gradient bg-clip-text text-transparent"> পছন্দের সব পণ্য</span>
+              {heroOverride !== null ? (
+                heroOverride.headlineBn
+              ) : (
+                <>
+                  সারাদেশে হোম ডেলিভারি,
+                  <span className="brand-gradient bg-clip-text text-transparent"> পছন্দের সব পণ্য</span>
+                </>
+              )}
             </h1>
             <p className="mt-4 max-w-lg break-words text-[15px] leading-7 text-text-muted [overflow-wrap:anywhere]">
-              ফ্যাশন, ইলেকট্রনিক্স, ঘরোয়া পণ্য ও আরও অনেক কিছু — যাচাই করা অরিজিনাল পণ্য, সেরা দামে, ঘরে বসে অর্ডার করুন বাংলায়।
+              {heroOverride !== null && heroOverride.subBn !== ""
+                ? heroOverride.subBn
+                : "ফ্যাশন, ইলেকট্রনিক্স, ঘরোয়া পণ্য ও আরও অনেক কিছু — যাচাই করা অরিজিনাল পণ্য, সেরা দামে, ঘরে বসে অর্ডার করুন বাংলায়।"}
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link
-                href="/shop"
+                href={heroOverride !== null ? heroOverride.ctaHref : "/shop"}
                 className="brand-gradient rounded-xl px-6 py-3.5 text-[15px] font-bold text-white shadow-md transition hover:opacity-90"
               >
-                কেনাকাটা শুরু করুন
+                {heroOverride !== null ? heroOverride.ctaLabelBn : "কেনাকাটা শুরু করুন"}
               </Link>
               <Link
                 href="/shop?sort=newest"
@@ -336,6 +366,12 @@ export default async function Home() {
           Self-fetching server wrapper: renders the live sale's
           countdown section, or nothing when no sale is live. */}
       <FlashSaleCountdownSection />
+
+      {/* ---------- Spin wheel (ADV-18B) ----------
+          Self-gating server wrapper: renders only when the
+          marketing-mechanics flag is on and the wheel is enabled. */}
+      <SpinWheelSection />
+      {mechanicsOn ? <VisitorIdBootstrap /> : null}
 
       {/* ---------- Trust row ---------- */}
       <Reveal delay={60}>

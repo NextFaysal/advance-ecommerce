@@ -74,6 +74,17 @@ export const checkoutFormSchema = z.object({
    */
   resellerCode: z.string().max(32).optional(),
   /**
+   * Optional gift-card code (ADV-18): a bearer code submitted at
+   * checkout. Same permissive contract as resellerCode — the server
+   * normalizes it (case/dash tolerant), validates it read-only for
+   * pricing, and re-validates under a row lock inside the
+   * order-create transaction. An unknown/ineligible code never fails
+   * the order; it is reported in the response meta and the order
+   * proceeds at full price. Only consulted when the
+   * module.marketing_mechanics flag is on.
+   */
+  giftCardCode: z.string().max(64).optional(),
+  /**
    * Optional abandoned-checkout session key (wave 22, doc 17 batch
    * O4): the checkout page's sessionStorage UUID for its capture row.
    * When present, the orders route stamps that capture RECOVERED
@@ -88,6 +99,15 @@ export const checkoutFormSchema = z.object({
    * in the response meta, and never fails the order).
    */
   deliverySlotId: z.string().max(64).optional(),
+  /**
+   * Optional pickup point id (ADV-19, click & collect): one of the ids
+   * in Settings stores.pickup_points. Same contract as deliverySlotId
+   * — the orders route resolves it against the configured set (only
+   * when shippingMethod is "pickup") and records a match in the
+   * create-time order note; an unknown/stale id is dropped, reported
+   * in the response meta, and never fails the order.
+   */
+  pickupPointId: z.string().max(64).optional(),
   /**
    * Optional gift message (doc 17 batch O9-2): present (possibly an
    * empty string) only when the customer ticked the gift option.

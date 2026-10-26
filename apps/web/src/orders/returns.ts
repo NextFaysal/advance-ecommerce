@@ -784,6 +784,11 @@ export async function receiveReturn(
     let restockedUnits = 0;
     let damagedUnits = 0;
     const restockedVariantIds = new Set<string>();
+    // ADV-20: per-variant returned quantities for the post-commit
+    // serial flip (SOLD → IN_STOCK restockable, SOLD → RETURNED
+    // damaged) in src/inventory/batches.ts.
+    const restockQtyByVariant = new Map<string, number>();
+    const damagedQtyByVariant = new Map<string, number>();
     await prisma.$transaction(async (tx) => {
       // Guarded status flip FIRST inside the tx: if a racing receive
       // already moved the return, abort before any stock moves (the
@@ -811,6 +816,10 @@ export async function receiveReturn(
         });
         if (condition === "damaged") {
           damagedUnits += item.quantity;
+          damagedQtyByVariant.set(
+            item.orderItem.variantId,
+            (damagedQtyByVariant.get(item.orderItem.variantId) ?? 0) + item.quantity,
+          );
           continue;
         }
         restockedUnits += item.quantity;
@@ -826,6 +835,7 @@ export async function receiveReturn(
           continue;
         }
         restockedVariantIds.add(variantId);
+        restockQtyByVariant.set(variantId, (restockQtyByVariant.get(variantId) ?? 0) + item.quantity);
         const afterRow = await tx.productVariant.findUnique({
           where: { id: variantId },
           select: { stock: true },
@@ -889,6 +899,22 @@ export async function receiveReturn(
     // a queue failure must not fail a completed receive.
     for (const variantId of restockedVariantIds) {
       void notifyBackInStockForVariant(variantId).catch(() => undefined);
+    }
+
+    // ADV-20: flip this order's recorded serials back (restockable →
+    // IN_STOCK, damaged → RETURNED). Fire-and-forget after commit,
+    // same discipline as the notify above; the depth module self-gates
+    // on module.inventory_depth and never throws.
+    if (restockQtyByVariant.size > 0 || damagedQtyByVariant.size > 0) {
+      void import("../inventory/batches")
+        .then((m) =>
+          m.restoreSerialsForReturnDepth({
+            orderId: row.orderId,
+            restockByVariant: restockQtyByVariant,
+            damagedByVariant: damagedQtyByVariant,
+          }),
+        )
+        .catch(() => undefined);
     }
 
     await addOrderNote(

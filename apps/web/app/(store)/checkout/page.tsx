@@ -58,6 +58,8 @@ import { newIdempotencyKey, normalizeBdPhone, validateCheckoutForm } from "../..
 import { BkashMark, CodMark, NagadMark, SslCommerzMark } from "@/components/brand-marks";
 import { Icon } from "@/components/ui/icon";
 import OrderOtpPanel from "@/storefront-ux/order-otp-panel";
+import { EmiCheckoutNote } from "@/marketing/components/EmiCheckoutNote";
+import { ExperimentConversionPing } from "@/marketing/components/ExperimentConversionPing";
 import { PAYMENT_NOT_LIVE_MESSAGE_BN } from "../../../src/checkout/payment-methods";
 
 // Responsive pass (Design v3 §3): single-column flow at every width,
@@ -98,6 +100,21 @@ type PlacedOrder = {
    *  a mode flipped ahead of its adapter) — the confirmation must
    *  say so plainly instead of silently promising a payment step. */
   paymentInitiation?: { status: string; url?: string };
+  /** ADV-19: meta.pickupPoint — the resolved pickup point for a
+   *  pickup order, shown on the confirmation so the customer knows
+   *  exactly where to collect from. */
+  pickupPoint?: { id: string; name: string; address: string; hours: string } | null;
+  /** ADV-18: meta.giftCard — the gift-card outcome of THIS order.
+   *  "applied" carries the exact amounts the server recorded;
+   *  "rejected" carries the server's bn/en reason (the order still
+   *  went through at full price); absent when no code was sent. */
+  giftCard?:
+    | { status: "applied"; appliedPoisha: number; codeLast4: string; remainingPoisha: number }
+    | { status: "rejected"; reasonBn: string; reasonEn: string }
+    | { status: "disabled" };
+  /** ADV-18: meta.membershipTier — the tier benefit applied to this
+   *  order (discount and/or free shipping), when the module is on. */
+  membershipTier?: { tier: string | null; discountPoisha: number; freeShippingApplied: boolean };
 };
 
 export default function CheckoutPage() {
@@ -129,6 +146,49 @@ export default function CheckoutPage() {
   // server re-resolves the submitted id against the configured set.
   const [slots, setSlots] = useState<{ id: string; labelBn: string; labelEn: string }[]>([]);
   const [deliverySlotId, setDeliverySlotId] = useState("");
+  // Pickup points (ADV-19, click & collect): from GET
+  // /api/v1/public/pickup-points (Settings stores.pickup_points).
+  // Empty until the merchant configures real points — pickup itself
+  // stays available without a named point. The server re-resolves the
+  // submitted id; a failed fetch simply hides the picker.
+  const [pickupPoints, setPickupPoints] = useState<{ id: string; name: string; address: string; hours: string }[]>([]);
+  const [pickupPointId, setPickupPointId] = useState("");
+  // Gift cards (ADV-18): the code field renders ONLY when the module
+  // is on — GET /api/v1/public/gift-cards/status returns {enabled}
+  // and nothing else (no code is ever sent there; validation happens
+  // inside the order attempt itself, rate-limited server-side). A
+  // failed fetch hides the field — checkout never blocks on it.
+  const [giftCardsEnabled, setGiftCardsEnabled] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/public/gift-cards/status")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("gift card status fetch failed"))))
+      .then((json: { data?: { enabled?: boolean } }) => {
+        if (cancelled) return;
+        if (json.data?.enabled) setGiftCardsEnabled(true);
+      })
+      .catch(() => {
+        // No gift-card field; the order flow is unaffected.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/public/pickup-points")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("pickup points fetch failed"))))
+      .then((json: { data?: { points?: { id: string; name: string; address: string; hours: string }[] } }) => {
+        if (cancelled) return;
+        if (Array.isArray(json.data?.points)) setPickupPoints(json.data.points);
+      })
+      .catch(() => {
+        // No point picker; pickup ordering is unaffected.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [gift, setGift] = useState(false);
   const [giftMessage, setGiftMessage] = useState("");
   useEffect(() => {
@@ -402,6 +462,11 @@ export default function CheckoutPage() {
       items: cart.items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
       idempotencyKey,
       couponCode: data.get("couponCode") || undefined,
+      // Gift card (ADV-18): submitted only when the module is on (the
+      // field renders only then). The server validates the code
+      // inside the order attempt — a rejected code never fails the
+      // order; the outcome comes back in meta.giftCard.
+      giftCardCode: giftCardsEnabled ? data.get("giftCardCode") || undefined : undefined,
       // Reseller attribution (wave 6): the ?ref= code the storefront
       // shell captured into localStorage, while it is inside the
       // 30-day window. The server resolves it (ACTIVE resellers
@@ -416,6 +481,10 @@ export default function CheckoutPage() {
       // server-side against the configured set; the gift message is
       // sent only when the gift box is ticked ("" = gift, no message).
       deliverySlotId: deliverySlotId || undefined,
+      // Pickup point (ADV-19): sent only for pickup orders; the server
+      // resolves it against Settings stores.pickup_points and records
+      // a match in the order's create-time note.
+      pickupPointId: deliveryType === "pickup" ? pickupPointId || undefined : undefined,
       giftMessage: gift ? giftMessage : undefined,
     });
     if (!result.ok) {
@@ -446,6 +515,9 @@ export default function CheckoutPage() {
           advance?: { requiredPoisha?: number; linkUrl?: string };
           otp?: { required?: boolean; sms?: string };
           paymentInitiation?: { status?: string; url?: string; provider?: string };
+          pickupPoint?: { id: string; name: string; address: string; hours: string };
+          giftCard?: PlacedOrder["giftCard"];
+          membershipTier?: PlacedOrder["membershipTier"];
         };
         error?: { code?: string; message?: string; details?: unknown };
       } | null;
@@ -482,6 +554,11 @@ export default function CheckoutPage() {
                 },
               }
             : {}),
+          ...(json?.meta?.pickupPoint
+            ? { pickupPoint: json.meta.pickupPoint }
+            : {}),
+          ...(json?.meta?.giftCard ? { giftCard: json.meta.giftCard } : {}),
+          ...(json?.meta?.membershipTier ? { membershipTier: json.meta.membershipTier } : {}),
           couponStatus: order.couponStatus,
         });
         return;
@@ -543,6 +620,24 @@ export default function CheckoutPage() {
               <dt className="text-text-muted">সর্বমোট</dt>
               <dd className="font-semibold tabular-nums">{digits(formatBdt(placedOrder.totalPoisha))}</dd>
             </div>
+            {placedOrder.pickupPoint ? (
+              <>
+                <div className="flex justify-between gap-3">
+                  <dt className="shrink-0 text-text-muted">পিকআপ পয়েন্ট</dt>
+                  <dd className="text-right font-semibold">{placedOrder.pickupPoint.name}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="shrink-0 text-text-muted">ঠিকানা</dt>
+                  <dd className="text-right">{placedOrder.pickupPoint.address}</dd>
+                </div>
+                {placedOrder.pickupPoint.hours ? (
+                  <div className="flex justify-between gap-3">
+                    <dt className="shrink-0 text-text-muted">খোলার সময়</dt>
+                    <dd className="text-right">{placedOrder.pickupPoint.hours}</dd>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
           </dl>
           {placedOrder.paymentMethod === "cod" ? (
             <p className="mt-4 text-sm leading-6 text-text-muted">
@@ -630,8 +725,36 @@ export default function CheckoutPage() {
               smsState={placedOrder.otpSms}
             />
           ) : null}
+          {/* A/B conversion ping (ADV-18B): the server derives the
+              visitor's variant from its cookie and verifies the
+              order — this only reports that the order happened. */}
+          <ExperimentConversionPing orderId={placedOrder.id} />
           {placedOrder.couponStatus === "applied" ? (
             <p className="mt-3 text-sm font-medium text-emerald-700">আপনার কুপনটি প্রয়োগ হয়েছে — ছাড়সহ মোট উপরে দেখানো হয়েছে।</p>
+          ) : null}
+          {placedOrder.giftCard?.status === "applied" ? (
+            <p className="mt-3 text-sm font-medium text-emerald-700">
+              গিফট কার্ড (…{placedOrder.giftCard.codeLast4}) দিয়ে{" "}
+              {digits(formatBdt(placedOrder.giftCard.appliedPoisha))} পরিশোধ হয়েছে — কার্ডে অবশিষ্ট
+              ব্যালেন্স {digits(formatBdt(placedOrder.giftCard.remainingPoisha))}, পরের অর্ডারে ব্যবহার
+              করা যাবে।
+            </p>
+          ) : placedOrder.giftCard?.status === "rejected" ? (
+            <p role="status" className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
+              গিফট কার্ডটি প্রয়োগ করা যায়নি: {placedOrder.giftCard.reasonBn} অর্ডারটি সম্পূর্ণ মূল্যেই
+              সম্পন্ন হয়েছে।
+            </p>
+          ) : null}
+          {placedOrder.membershipTier &&
+          (placedOrder.membershipTier.discountPoisha > 0 ||
+            placedOrder.membershipTier.freeShippingApplied) ? (
+            <p className="mt-3 text-sm font-medium text-emerald-700">
+              আপনার মেম্বারশিপ টিয়ারের সুবিধা প্রয়োগ হয়েছে
+              {placedOrder.membershipTier.discountPoisha > 0
+                ? ` — পণ্যে ছাড় ${digits(formatBdt(placedOrder.membershipTier.discountPoisha))}`
+                : ""}
+              {placedOrder.membershipTier.freeShippingApplied ? " — ডেলিভারি চার্জ ফ্রি" : ""}।
+            </p>
           ) : null}
           <div className="mt-6 flex flex-wrap justify-center gap-2">
             <Link
@@ -745,6 +868,8 @@ export default function CheckoutPage() {
           ডেলিভারি চার্জ আনুমানিক — চূড়ান্ত চার্জ সার্ভারে জেলা ও ওজন অনুযায়ী নির্ধারিত হবে।
           কুপনের ছাড় থাকলে তা অর্ডারের মোটে কমে যাবে।
         </p>
+        {/* EMI note (ADV-18B) — display-only; never changes totals. */}
+        <EmiCheckoutNote subtotalPoisha={pricing.subtotalPoisha} />
         {stockProblems.length > 0 && (
           <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
             স্টক সমস্যা: {stockProblems.map((p) => `${p.name} (চেয়েছেন ${p.requested}টি, স্টকে আছে ${p.available}টি)`).join(", ")}
@@ -943,6 +1068,37 @@ export default function CheckoutPage() {
             <option value="pickup">পিকআপ (নিজে এসে নেবেন)</option>
           </select>
         </label>
+        {/* Pickup point picker (ADV-19): only for pickup orders and
+            only when the merchant has configured points. The choice is
+            a display/note preference — pickup costs the same either
+            way; the server records the point in the order note. */}
+        {deliveryType === "pickup" && pickupPoints.length > 0 && (
+          <fieldset className="m-0 border-0 p-0">
+            <legend className="mb-2 text-sm font-medium text-text-main">কোন পয়েন্ট থেকে নেবেন?</legend>
+            <div className="grid gap-2">
+              {pickupPoints.map((p) => (
+                <label key={p.id} className={SLOT_CARD_CLASS}>
+                  <input
+                    type="radio"
+                    checked={pickupPointId === p.id}
+                    onChange={() => setPickupPointId(p.id)}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-text-main">{p.name}</span>
+                    <span className="block text-xs text-text-muted">{p.address}</span>
+                    {p.hours ? <span className="block text-xs text-text-muted">খোলা: {p.hours}</span> : null}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+        {deliveryType === "pickup" && pickupPoints.length === 0 && (
+          <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
+            পিকআপের ঠিকানা ও সময় অর্ডারের পর আমাদের টিম ফোনে জানিয়ে দেবে।
+          </p>
+        )}
         {/* Delivery slot + gift (doc 17 batch O9-2): shown only when
             the shop has slots configured/fetched. Neither choice
             changes the price — there is no slot fee and no gift fee. */}
@@ -1059,6 +1215,21 @@ export default function CheckoutPage() {
             defaultValue={cart.couponCode ?? ""}
           />
         </label>
+        {giftCardsEnabled ? (
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-text-main">গিফট কার্ড কোড (ঐচ্ছিক)</span>
+            <input
+              name="giftCardCode"
+              autoComplete="off"
+              placeholder="GC-XXXX-XXXX-XXXX"
+              className={INPUT_CLASS}
+            />
+            <span className="mt-1.5 block text-xs leading-5 text-text-muted">
+              গিফট কার্ডের ব্যালেন্স থেকে অর্ডারের মূল্য পরিশোধ হবে (সর্বোচ্চ অর্ডারের মোট মূল্য পর্যন্ত);
+              অবশিষ্ট ব্যালেন্স কার্ডেই থেকে যাবে।
+            </span>
+          </label>
+        ) : null}
         <button
           id="checkout-submit"
           type="submit"

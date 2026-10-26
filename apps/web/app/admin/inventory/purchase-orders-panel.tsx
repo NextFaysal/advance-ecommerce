@@ -50,6 +50,16 @@ interface HistoryEntry {
   createdAt: string;
 }
 
+interface DetailBatch {
+  batchId: string;
+  batchCode: string;
+  sku: string | null;
+  expiryDate: string | null;
+  quantityOnHand: number;
+  bin: string | null;
+  serialCount: number;
+}
+
 interface PoDetail {
   id: string;
   supplierName: string;
@@ -60,7 +70,18 @@ interface PoDetail {
   totalPoisha: number;
   lines: DetailLine[];
   history: HistoryEntry[];
+  batches: DetailBatch[];
 }
+
+/** ADV-20 optional per-line depth capture, held as raw form text. */
+interface DepthDraft {
+  batchCode: string;
+  expiryDate: string;
+  bin: string;
+  serials: string;
+}
+
+const EMPTY_DEPTH: DepthDraft = { batchCode: "", expiryDate: "", bin: "", serials: "" };
 
 const STATUS_LABEL: Record<PoListRow["status"], string> = {
   draft: "খসড়া",
@@ -90,6 +111,8 @@ export default function PurchaseOrdersPanel() {
   const [detail, setDetail] = useState<PoDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const [depthDrafts, setDepthDrafts] = useState<Record<string, DepthDraft>>({});
+  const [depthOpen, setDepthOpen] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formNotice, setFormNotice] = useState<string | null>(null);
@@ -135,6 +158,8 @@ export default function PurchaseOrdersPanel() {
     setOpenId(poId);
     setDetail(null);
     setQuantities({});
+    setDepthDrafts({});
+    setDepthOpen({});
     setFormError(null);
     setFormNotice(null);
     idempotencyKey.current = newKey();
@@ -144,7 +169,23 @@ export default function PurchaseOrdersPanel() {
   async function submitReceive() {
     if (!detail || submitting) return;
     const lines = detail.lines
-      .map((l) => ({ itemId: l.itemId, quantity: Number(quantities[l.itemId] ?? "") }))
+      .map((l) => {
+        const quantity = Number(quantities[l.itemId] ?? "");
+        const base = { itemId: l.itemId, quantity };
+        if (!depthOpen[l.itemId]) return base;
+        const draft = depthDrafts[l.itemId] ?? EMPTY_DEPTH;
+        const serials = draft.serials
+          .split(/[\n,]+/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+        return {
+          ...base,
+          ...(draft.batchCode.trim() ? { batchCode: draft.batchCode.trim() } : {}),
+          ...(draft.expiryDate ? { expiryDate: draft.expiryDate } : {}),
+          ...(draft.bin.trim() ? { bin: draft.bin.trim() } : {}),
+          ...(serials.length > 0 ? { serials } : {}),
+        };
+      })
       .filter((l) => Number.isInteger(l.quantity) && l.quantity > 0);
     if (lines.length === 0) {
       setFormError("অন্তত একটি লাইনে গৃহীত পরিমাণ লিখুন।");
@@ -166,7 +207,13 @@ export default function PurchaseOrdersPanel() {
         setFormError(
           code === "over_receive" && d?.remaining !== undefined
             ? `অতিরিক্ত রিসিভ — এই লাইনে বাকি আছে মাত্র ${d.remaining}টি। পুরো রিসিভটাই বাতিল হয়েছে, কিছুই জমা হয়নি।`
-            : (json?.error?.message ?? "রিসিভ করা যায়নি।"),
+            : code === "serial_count_mismatch"
+              ? "সিরিয়াল সংখ্যা গৃহীত পরিমাণের সমান হতে হবে — প্রতিটি পণ্যের একটি করে সিরিয়াল/IMEI দিন। পুরো রিসিভটাই বাতিল হয়েছে।"
+              : code === "duplicate_serial"
+                ? "এই সিরিয়ালটি আগেই রেকর্ড করা আছে (একই ভ্যারিয়েন্টে এক সিরিয়াল দুবার নয়)। পুরো রিসিভটাই বাতিল হয়েছে।"
+                : code === "inventory_depth_disabled"
+                  ? "ব্যাচ/সিরিয়াল রেকর্ড করতে module.inventory_depth ফিচারটি চালু থাকতে হবে — সেটিংস → ফিচার ফ্ল্যাগ থেকে চালু করুন, অথবা ব্যাচ/সিরিয়াল ছাড়া রিসিভ করুন।"
+                  : (json?.error?.message ?? "রিসিভ করা যায়নি।"),
         );
         return;
       }
@@ -188,6 +235,8 @@ export default function PurchaseOrdersPanel() {
       );
       idempotencyKey.current = newKey();
       setQuantities({});
+      setDepthDrafts({});
+      setDepthOpen({});
       await loadDetail(detail.id);
       await loadOrders();
     } catch {
@@ -301,6 +350,73 @@ export default function PurchaseOrdersPanel() {
                       </table>
                     </div>
 
+                    {/* ADV-20: optional batch / serial capture per
+                        line. Collapsed by default — a plain receive
+                        is byte-identical to before. The server
+                        rejects depth fields while the
+                        module.inventory_depth flag is OFF. */}
+                    {detail.status !== "cancelled" && detail.lines.some((l) => l.remaining > 0) ? (
+                      <div className="mt-3 space-y-2">
+                        {detail.lines
+                          .filter((l) => l.remaining > 0)
+                          .map((l) => {
+                            const draft = depthDrafts[l.itemId] ?? EMPTY_DEPTH;
+                            const openDepth = depthOpen[l.itemId] === true;
+                            const setDraft = (patch: Partial<DepthDraft>) =>
+                              setDepthDrafts((d) => ({ ...d, [l.itemId]: { ...(d[l.itemId] ?? EMPTY_DEPTH), ...patch } }));
+                            return (
+                              <div key={l.itemId} className="rounded-md border border-border bg-card px-3 py-2">
+                                <label className="flex cursor-pointer items-center gap-2 text-small font-medium text-text-main">
+                                  <input
+                                    type="checkbox"
+                                    checked={openDepth}
+                                    disabled={submitting}
+                                    onChange={(e) =>
+                                      setDepthOpen((o) => ({ ...o, [l.itemId]: e.target.checked }))
+                                    }
+                                  />
+                                  ব্যাচ / সিরিয়াল (ঐচ্ছিক) — {l.productTitleBn ?? l.variantId}
+                                  {l.sku ? <span className="font-mono text-caption text-text-subtle">{l.sku}</span> : null}
+                                </label>
+                                {openDepth ? (
+                                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                    <Input
+                                      placeholder="ব্যাচ / লট কোড (যেমন LOT-2026-01)"
+                                      aria-label="ব্যাচ কোড"
+                                      value={draft.batchCode}
+                                      disabled={submitting}
+                                      onChange={(e) => setDraft({ batchCode: e.target.value })}
+                                    />
+                                    <Input
+                                      type="date"
+                                      aria-label="মেয়াদ শেষের তারিখ"
+                                      value={draft.expiryDate}
+                                      disabled={submitting}
+                                      onChange={(e) => setDraft({ expiryDate: e.target.value })}
+                                    />
+                                    <Input
+                                      placeholder="বিন / শেলফ (যেমন A-01)"
+                                      aria-label="বিন / শেলফ"
+                                      value={draft.bin}
+                                      disabled={submitting}
+                                      onChange={(e) => setDraft({ bin: e.target.value })}
+                                    />
+                                    <textarea
+                                      className="min-h-16 rounded-md border border-border bg-card px-3 py-2 text-small"
+                                      placeholder="সিরিয়াল / IMEI — প্রতিটি লাইনে একটি (সংখ্যা গৃহীত পরিমাণের সমান হতে হবে)"
+                                      aria-label="সিরিয়াল / IMEI তালিকা"
+                                      value={draft.serials}
+                                      disabled={submitting}
+                                      onChange={(e) => setDraft({ serials: e.target.value })}
+                                    />
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                      </div>
+                    ) : null}
+
                     {formError ? (
                       <p className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-small text-rose-700">{formError}</p>
                     ) : null}
@@ -335,6 +451,29 @@ export default function PurchaseOrdersPanel() {
                         </ul>
                       )}
                     </div>
+
+                    {detail.batches.length > 0 ? (
+                      <div className="mt-4">
+                        <p className="text-small font-semibold text-text-main">এই অর্ডারে রেকর্ড করা ব্যাচ</p>
+                        <ul className="mt-1 space-y-1">
+                          {detail.batches.map((b) => (
+                            <li key={b.batchId} className="text-caption text-text-muted">
+                              <span className="font-mono font-semibold text-text-main">{b.batchCode}</span>
+                              {b.sku ? ` · SKU: ${b.sku}` : ""} · হাতে {b.quantityOnHand}টি
+                              {b.expiryDate
+                                ? ` · মেয়াদ: ${new Date(b.expiryDate).toLocaleDateString("bn-BD")}`
+                                : " · মেয়াদ রেকর্ড নেই"}
+                              {b.bin ? ` · বিন: ${b.bin}` : ""}
+                              {b.serialCount > 0 ? ` · সিরিয়াল: ${b.serialCount}টি` : ""}
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="mt-1 text-caption text-text-subtle">
+                          ব্যাচ ছাড়া রিসিভ করা সিরিয়াল এই অর্ডারের সঙ্গে যুক্ত থাকে না — সেগুলো গভীর
+                          বিশ্লেষণে গণনা হয়, এখানে দেখানো যায় না।
+                        </p>
+                      </div>
+                    ) : null}
                   </>
                 )}
               </div>

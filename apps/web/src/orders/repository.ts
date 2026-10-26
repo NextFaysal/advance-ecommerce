@@ -79,6 +79,7 @@ import { runDeliveredOrderHooks } from "./delivered-hooks";
 import { runReversalHooks } from "./reversal-hooks";
 import { publishPaymentSucceeded } from "./event-bus";
 import { emitAutomationEvent } from "../automation/producers";
+import { redeemGiftCardInTx } from "../marketing/gift-cards";
 import { postOrderPaidErp } from "../erp/auto-posting";
 import { transitionOrder, type TransitionResult } from "./state-machine";
 import type {
@@ -734,6 +735,15 @@ export interface CreateOrderRecordInput {
   /** Gift message (wave 27): persisted verbatim on Order.giftMessage
    *  ("" = gift requested with no message); omit for no gift. */
   giftMessage?: string;
+  /** Gift-card redemption (ADV-18): the checkout route resolved +
+   *  read-only validated the code; the redemption itself is written
+   *  HERE, inside the create transaction, by
+   *  src/marketing/gift-cards.redeemGiftCardInTx (card row locked,
+   *  balance re-derived from the ledger under the lock). A failure
+   *  throws GiftCardRedemptionError and rolls the whole create back —
+   *  an order is never born claiming gift-card coverage it did not
+   *  record. pricing.totalPoisha is already net of the redemption. */
+  giftCardRedemption?: { cardId: string; amountPoisha: number; codeLast4: string } | null;
 }
 
 export type CreateOrderRecordResult =
@@ -744,6 +754,10 @@ export type CreateOrderRecordResult =
       createdAt: string;
       /** DB id of the checkout note row, when a note was supplied. */
       noteId: string | null;
+      /** Gift-card balance (poisha) after this order's redemption,
+       *  derived from the ledger inside the create transaction;
+       *  null when the order redeemed no gift card. */
+      giftCardBalanceAfterPoisha: number | null;
     }
   | { replayed: true; existing: OrderRow };
 
@@ -879,6 +893,7 @@ export async function createOrderRecord(
   const vatSplit =
     vatRateBps !== null ? computeVatInclusiveSplit(input.pricing.totalPoisha, vatRateBps) : null;
   let noteId: string | null = null;
+  let giftCardBalanceAfterPoisha: number | null = null;
   try {
     const created = await prisma.$transaction(async (tx) => {
       // Wave 20: the order number is minted INSIDE the transaction
@@ -1011,6 +1026,31 @@ export async function createOrderRecord(
           },
         });
       }
+      // ADV-18 gift card: the redemption write lives in the SAME
+      // transaction as the order + payment + coupon usage, after the
+      // Payment row (whose amountPoisha is the post-gift-card total —
+      // the amount actually due). redeemGiftCardInTx locks the card
+      // row and re-derives the balance under the lock, so a balance
+      // race since the route's read-only validation fails the whole
+      // create instead of overdrawing the card. The covering note
+      // makes the tender visible on the order timeline (the Payment
+      // row alone cannot show it: there is no GIFT_CARD method and
+      // the card coverage is not collected money).
+      if (input.giftCardRedemption) {
+        const redeemed = await redeemGiftCardInTx(tx, {
+          cardId: input.giftCardRedemption.cardId,
+          orderId: order.id,
+          amountPoisha: input.giftCardRedemption.amountPoisha,
+        });
+        giftCardBalanceAfterPoisha = redeemed.balanceAfterPoisha;
+        await tx.orderNote.create({
+          data: {
+            orderId: order.id,
+            authorId: null,
+            text: `গিফট কার্ড (…${input.giftCardRedemption.codeLast4}) দিয়ে ${input.giftCardRedemption.amountPoisha} পয়সা পরিশোধ হয়েছে — অবশিষ্ট ব্যালেন্স ${redeemed.balanceAfterPoisha} পয়সা। / Gift card (…${input.giftCardRedemption.codeLast4}) covered ${input.giftCardRedemption.amountPoisha} poisha — remaining balance ${redeemed.balanceAfterPoisha} poisha.`,
+          },
+        });
+      }
       return order;
     });
     // Automation lifecycle (ADV-7): order.created fires post-commit so
@@ -1024,6 +1064,7 @@ export async function createOrderRecord(
       orderNo: created.orderNo,
       createdAt: created.createdAt.toISOString(),
       noteId,
+      giftCardBalanceAfterPoisha,
     };
   } catch (e) {
     if (isUniqueViolation(e, "idempotencyKey")) {

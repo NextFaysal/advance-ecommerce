@@ -9,11 +9,13 @@ import {
   listInventoryItemsDb,
 } from "@/inventory/repository";
 import { getSetting } from "@/lib/settings";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import PurchaseOrdersPanel from "./purchase-orders-panel";
+import InventoryDepthPanel from "./depth-panel";
 
 // Admin inventory — reads the stock_movements ledger state from the DB
 // (InventoryItem rows, src/inventory/repository.ts). Direct quantity
@@ -270,6 +272,32 @@ export default async function AdminInventoryPage() {
           <PurchaseOrdersPanel />
         </div>
       </Card>
+
+      {/* ADV-20 inventory depth — flag-gated (module.inventory_depth).
+          ABC + dead stock + expiring batches + auto-reorder, all from
+          src/inventory/analytics.ts + reorder.ts via the depth API. */}
+      {isFeatureEnabled("module.inventory_depth") ? (
+        <Card className="mt-5 shadow-card">
+          <div className="flex flex-wrap items-center gap-3">
+            <span
+              aria-hidden="true"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-500 ring-1 ring-brand-100"
+            >
+              <Icon name="chart" size={20} />
+            </span>
+            <h2 className="text-h3">গভীর বিশ্লেষণ</h2>
+            <Badge tone="brand">ADV-20</Badge>
+          </div>
+          <p className="mt-2 max-w-3xl text-small leading-relaxed text-text-muted">
+            ব্যাচ/লট ও মেয়াদ, সিরিয়াল/IMEI হিসাব, ABC আয়-বিশ্লেষণ, ডেড স্টক এবং অটো রি-অর্ডার —
+            সব সংখ্যা আসল রেকর্ড থেকে হিসাব করা। ব্যাচ ছাড়া রিসিভ করা স্টক এই বিশ্লেষণে আসে না
+            (অনট্র্যাকড — শূন্য ধরা হয় না)।
+          </p>
+          <div className="mt-4">
+            <InventoryDepthPanel />
+          </div>
+        </Card>
+      ) : null}
 
       <p className="mt-4 text-caption leading-relaxed text-text-subtle">
         ডাটাবেস থেকে — API: GET/POST /api/v1/admin/inventory, POST /api/v1/admin/inventory/purchase-orders,

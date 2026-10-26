@@ -164,6 +164,26 @@ async function creditVendors(order: {
 }
 
 /**
+ * ADV-20 inventory depth at delivery: recorded serials flip to SOLD
+ * (with the order ref) and tracked batches deplete FEFO. The seam is
+ * HERE — not at reservation — because this module is the platform's
+ * exactly-once-per-INTO-DELIVERED-transition fan-out, the same
+ * discipline the credits above follow: reserving a serial at
+ * reservation time would strand units on never-delivered orders.
+ * Dynamic import keeps src/inventory off this module's static graph
+ * (batches.ts reads the flag source, which the flag DB layer wires
+ * independently). The depth module self-gates on
+ * module.inventory_depth; with the flag OFF this writes nothing.
+ */
+async function applyInventoryDepth(order: {
+  id: string;
+  items: { variantId: string; quantity: number }[];
+}): Promise<void> {
+  const depth = await import("../inventory/batches");
+  await depth.applyDeliveryDepth(order);
+}
+
+/**
  * Run every delivered-order credit for an order that has JUST been
  * persisted as DELIVERED. Loads the order row itself so call sites
  * stay one line. Never throws.
@@ -198,6 +218,11 @@ export async function runDeliveredOrderHooks(orderId: string): Promise<void> {
       await creditVendors(row);
     } catch (err) {
       logHookError("vendors", row.id, err);
+    }
+    try {
+      await applyInventoryDepth(row);
+    } catch (err) {
+      logHookError("inventory-depth", row.id, err);
     }
   } catch (err) {
     logHookError("load", orderId, err);

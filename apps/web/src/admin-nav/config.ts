@@ -177,6 +177,20 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: null,
   },
   {
+    id: "warehouse",
+    path: "/admin/warehouse",
+    labelBn: "ওয়্যারহাউস",
+    labelEn: "Warehouse",
+    icon: "Warehouse",
+    section: "sales",
+    // ADV-21: pick → pack → ship scanning. The warehouse APIs guard
+    // every read AND write on orders.view (the queue is order-based —
+    // same precedent as call-center); the flag is the paid add-on gate.
+    permission: "orders.view",
+    featureFlag: "module.warehouse_ops",
+    badge: "locked-add-on",
+  },
+  {
     id: "call-center",
     path: "/admin/call-center",
     labelBn: "কল সেন্টার",
@@ -422,6 +436,34 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     permission: "marketing.coupon",
     featureFlag: null,
     badge: null,
+  },
+  {
+    // Gift cards (ADV-18A): issue / list (ledger-derived balances) /
+    // disable. APIs guard reads on marketing.coupon and writes
+    // (issue/disable) on marketing.campaign.
+    id: "gift-cards",
+    path: "/admin/gift-cards",
+    labelBn: "গিফট কার্ড",
+    labelEn: "Gift Cards",
+    icon: "Gift",
+    section: "marketing",
+    permission: "marketing.coupon",
+    featureFlag: "module.marketing_mechanics",
+    badge: "locked-add-on",
+  },
+  {
+    // Marketing mechanics (ADV-18B): spin wheel config + odds, A/B
+    // experiments + raw counts, WhatsApp broadcast campaigns. One
+    // page with sections; every API re-checks marketing.campaign.
+    id: "marketing-mechanics",
+    path: "/admin/marketing-mechanics",
+    labelBn: "মার্কেটিং মেকানিক্স",
+    labelEn: "Marketing Mechanics",
+    icon: "Sparkles",
+    section: "marketing",
+    permission: "marketing.campaign",
+    featureFlag: "module.marketing_mechanics",
+    badge: "locked-add-on",
   },
   {
     // Newsletter subscribers (wave 7): the admin list over the

@@ -133,7 +133,21 @@ import {
   orderRowToEnriched,
 } from "@/orders/repository";
 import { findDeliverySlot, loadDeliverySlots } from "@/checkout/delivery-slots";
+import { findPickupPoint, loadPickupPoints, pickupChoiceNoteText } from "@/checkout/pickup-points";
 import { BundleStockError, PreorderCapError, productTypesEnabledInDb } from "@/catalog/product-types";
+import { isFeatureEnabled } from "@/lib/feature-flags";
+import { checkRateLimit } from "@/lib/rate-limit";
+import {
+  GiftCardRedemptionError,
+  validateGiftCardForCheckout,
+  type GiftCardValidation,
+} from "@/marketing/gift-cards";
+import {
+  deriveMembershipTier,
+  lifetimeDeliveredSpendPoisha,
+  loadMembershipTierConfig,
+  tierDiscountForBasePoisha,
+} from "@/marketing/membership-tiers";
 import type { Order } from "@/orders/types";
 
 function errorResponse(code: string, message: string, status: number, details?: unknown) {
@@ -171,6 +185,24 @@ export async function POST(req: Request) {
       { data: { order: existing, pricing: null }, meta: { idempotentReplay: true, db: "PRISMA" } },
       { status: 200 },
     );
+  }
+  // ADV-18: a checkout attempt carrying a gift-card code is the ONLY
+  // public validation surface for codes (there is deliberately no
+  // standalone balance-oracle endpoint), so attempts are
+  // rate-limited per IP+phone — a gift-card code is a bearer
+  // instrument and guessing must be expensive. Runs before the
+  // idempotency claim so a limited attempt never poisons the key;
+  // only when the module flag is on (off = the code is ignored).
+  if (form.giftCardCode && isFeatureEnabled("module.marketing_mechanics")) {
+    const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() || "unknown";
+    const limit = await checkRateLimit(`gift-card-checkout:${ip}:${form.phone}`, 10, 60 * 60 * 1000);
+    if (!limit.allowed) {
+      return errorResponse(
+        "RATE_LIMITED",
+        "অনেকবার গিফট কার্ড যাচাইয়ের চেষ্টা হয়েছে — কিছুক্ষণ পরে আবার চেষ্টা করুন। / Too many gift-card attempts — please try again later.",
+        429,
+      );
+    }
   }
   if (!idempotencyStore.claim(form.idempotencyKey)) {
     return errorResponse("IDEMPOTENCY_CONFLICT", "This checkout attempt was already processed.", 409);
@@ -297,13 +329,60 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     userKey: form.phone,
     isFirstOrder: priorOrders.length === 0,
   });
-  const pricing = computePricing({
+
+  // ADV-18 marketing mechanics (flag module.marketing_mechanics):
+  // membership tier + gift card, applied in this same pricing seam.
+  // Tier: derived from the customer's lifetime DELIVERED spend (the
+  // priorOrders rows already loaded above); its discount lands in
+  // the pipeline's discount stage next to the coupon, and a
+  // free-shipping tier zeroes the shipping charge for THIS order's
+  // pricing (the coupon evaluation above keeps the engine price — a
+  // shipping-scoped coupon still sees the real charge). Gift card:
+  // validated read-only against the pre-gift total; the authoritative
+  // re-check + REDEEM write happen under a row lock inside the
+  // create transaction (createOrderRecord). A code that fails
+  // validation never fails the order — it is reported in
+  // meta.giftCard and the order proceeds at full price.
+  const marketingOn = isFeatureEnabled("module.marketing_mechanics");
+  let tierDiscountPoisha = 0;
+  let tierFreeShipping = false;
+  let tierKey: string | null = null;
+  if (marketingOn) {
+    const tierState = deriveMembershipTier(
+      lifetimeDeliveredSpendPoisha(priorOrders),
+      await loadMembershipTierConfig(),
+    );
+    tierKey = tierState.tier.key;
+    tierDiscountPoisha = tierDiscountForBasePoisha(
+      Math.max(0, subtotalPoisha - coupon.discountPoisha),
+      tierState.tier,
+    );
+    tierFreeShipping = tierState.tier.freeShipping;
+  }
+  const effectiveShippingPoisha = tierFreeShipping ? 0 : coupon.shippingPoisha;
+  const pricingInput = {
     itemsSubtotalPoisha: subtotalPoisha,
     couponDiscountPoisha: coupon.discountPoisha,
-    shippingPoisha: coupon.shippingPoisha,
+    tierDiscountPoisha,
+    shippingPoisha: effectiveShippingPoisha,
     codFeePoisha: form.paymentMethod === "cod" ? shipping.codFeePoisha : 0,
     taxBps: 0,
-  });
+  };
+  const preGiftPricing = computePricing(pricingInput);
+  let giftCardValidation: GiftCardValidation | null = null;
+  let pricing = preGiftPricing;
+  if (marketingOn && form.giftCardCode) {
+    giftCardValidation = await validateGiftCardForCheckout(
+      form.giftCardCode,
+      preGiftPricing.grandTotalPoisha,
+    );
+    if (giftCardValidation.ok && giftCardValidation.applicablePoisha > 0) {
+      pricing = computePricing({
+        ...pricingInput,
+        giftCardAppliedPoisha: giftCardValidation.applicablePoisha,
+      });
+    }
+  }
 
   // Fraud: scored with the REAL scoreFraud() over facts available at
   // create time (see assembleFraudInput). Enforcement:
@@ -408,6 +487,23 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
   const deliverySlot = findDeliverySlot(await loadDeliverySlots(), form.deliverySlotId);
   const giftMessage = form.giftMessage !== undefined ? form.giftMessage.trim() : undefined;
 
+  // Pickup point (ADV-19, click & collect): resolved ONLY for pickup
+  // orders, against Settings stores.pickup_points. Order has no
+  // pickupPoint column, so a match is recorded in the create-time
+  // OrderNote (name + address frozen at order time, plus the
+  // `[pickup:<id>]` marker the admin list badge scans for) — appended
+  // to the customer's own note when they wrote one. An unknown id is
+  // dropped and reported via meta.pickupPointAccepted; the create
+  // never fails over it.
+  const pickupPoint =
+    form.shippingMethod === "pickup"
+      ? findPickupPoint(await loadPickupPoints(), form.pickupPointId)
+      : null;
+  const createNote =
+    [form.note, pickupPoint ? pickupChoiceNoteText(pickupPoint) : null]
+      .filter((part): part is string => typeof part === "string" && part.trim() !== "")
+      .join("\n") || undefined;
+
   // Persist in ONE transaction (see repository.createOrderRecord). A
   // concurrent create with the same key loses the UNIQUE race and comes
   // back as a replay of the winning row. Wave 15 product-type failures
@@ -424,7 +520,11 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     items: snapshotItems,
     pricing: {
       subtotalPoisha: pricing.subtotalPoisha,
-      discountPoisha: pricing.couponDiscountPoisha,
+      // ADV-18: the Order row's discount column carries coupon + tier
+      // discount combined (both are merchandise discounts from the
+      // pipeline's discount stage; the split stays visible in the
+      // response pricing breakdown + meta).
+      discountPoisha: pricing.couponDiscountPoisha + pricing.tierDiscountPoisha,
       shippingPoisha: pricing.shippingPoisha,
       codFeePoisha: pricing.codFeePoisha,
       taxPoisha: pricing.taxPoisha,
@@ -445,7 +545,19 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
       coupon.status === "applied" && coupon.code
         ? { code: coupon.code, discountPoisha: coupon.discountPoisha }
         : null,
-    note: form.note,
+    // ADV-18: the redemption the create transaction must record
+    // (re-validated under the card row lock in there). Null when no
+    // code was submitted, the module is off, or validation rejected
+    // the code — the order then simply carries no redemption.
+    giftCardRedemption:
+      giftCardValidation?.ok && pricing.giftCardAppliedPoisha > 0
+        ? {
+            cardId: giftCardValidation.cardId,
+            amountPoisha: pricing.giftCardAppliedPoisha,
+            codeLast4: giftCardValidation.codeLast4,
+          }
+        : null,
+    note: createNote,
     });
   } catch (err) {
     if (err instanceof BundleStockError) {
@@ -453,6 +565,19 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     }
     if (err instanceof PreorderCapError) {
       return errorResponse("PREORDER_CAP_REACHED", err.message, 409, err.details);
+    }
+    // ADV-18: the gift card passed read-only validation but failed
+    // the in-transaction re-check (balance raced down, card disabled
+    // mid-checkout). The create rolled back in full — no order, no
+    // charge — and the wrapper releases the idempotency claim on
+    // this 422 so the customer can retry (with or without the card).
+    if (err instanceof GiftCardRedemptionError) {
+      return errorResponse(
+        "GIFT_CARD_REJECTED",
+        "গিফট কার্ডটি ব্যবহার করা যায়নি — অর্ডারটি তৈরি হয়নি, অনুগ্রহ করে আবার চেষ্টা করুন। / The gift card could not be redeemed — the order was not created, please try again.",
+        422,
+        { giftCardError: err.code },
+      );
     }
     throw err;
   }
@@ -495,8 +620,8 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     couponReasonEn: coupon.reasonEn,
     tags: [],
     history: [{ from: null, to: "PENDING", changedBy: "customer", changedAt: now }],
-    notes: form.note
-      ? [{ id: created.noteId ?? created.orderId, author: "customer", text: form.note, createdAt: now }]
+    notes: createNote
+      ? [{ id: created.noteId ?? created.orderId, author: "customer", text: createNote, createdAt: now }]
       : [],
     createdAt: created.createdAt,
   };
@@ -612,6 +737,33 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     }
   }
 
+  // ADV-18 gift-card outcome for the confirmation screen: present
+  // whenever a code was submitted. "applied" carries the exact
+  // ledger outcome — remainingPoisha is the balance the create
+  // transaction itself derived under the card lock, not the earlier
+  // read-only estimate. "rejected" means validation refused the code
+  // and the order proceeded at full price; "disabled" means the
+  // module flag is off and the code was never consulted.
+  const giftCardMeta = !form.giftCardCode
+    ? undefined
+    : !marketingOn
+      ? { status: "disabled" as const }
+      : giftCardValidation?.ok
+        ? {
+            status: "applied" as const,
+            appliedPoisha: pricing.giftCardAppliedPoisha,
+            codeLast4: giftCardValidation.codeLast4,
+            remainingPoisha:
+              created.giftCardBalanceAfterPoisha ??
+              giftCardValidation.balancePoisha - pricing.giftCardAppliedPoisha,
+          }
+        : {
+            status: "rejected" as const,
+            reason: giftCardValidation?.reason ?? "NOT_FOUND",
+            reasonBn: giftCardValidation?.reasonBn ?? "",
+            reasonEn: giftCardValidation?.reasonEn ?? "",
+          };
+
   return NextResponse.json(
     {
       data: { order, pricing },
@@ -653,8 +805,38 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
         ...(form.deliverySlotId !== undefined
           ? { deliverySlotAccepted: deliverySlot !== null }
           : {}),
+        // ADV-19: pickupPointAccepted is present only when a pickup
+        // order submitted a point id — false means the id was not in
+        // the configured set and was dropped (order unaffected).
+        // pickupPoint carries the resolved point for the confirmation
+        // screen's "collect from" display.
+        ...(form.shippingMethod === "pickup" && form.pickupPointId !== undefined
+          ? { pickupPointAccepted: pickupPoint !== null }
+          : {}),
+        ...(pickupPoint
+          ? {
+              pickupPoint: {
+                id: pickupPoint.id,
+                name: pickupPoint.name,
+                address: pickupPoint.address,
+                hours: pickupPoint.hours,
+              },
+            }
+          : {}),
         shippingZone: shipping.zone,
         freeShippingApplied: shipping.freeShippingApplied,
+        // ADV-18: membership-tier outcome (present when the module is
+        // on) + the gift-card outcome (present when a code was sent).
+        ...(marketingOn
+          ? {
+              membershipTier: {
+                tier: tierKey,
+                discountPoisha: pricing.tierDiscountPoisha,
+                freeShippingApplied: tierFreeShipping && coupon.shippingPoisha > 0,
+              },
+            }
+          : {}),
+        ...(giftCardMeta ? { giftCard: giftCardMeta } : {}),
         note: "Order persisted to the database (Prisma). Coupon records + fraud lists are DB-backed (marketing/fraud modules); checkout assembles fraud input from DB lists and the coupon lookup from a DB snapshot.",
       },
     },

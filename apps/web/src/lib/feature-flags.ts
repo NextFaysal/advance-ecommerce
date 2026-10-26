@@ -65,6 +65,7 @@ export const FEATURE_FLAG_DEFINITIONS = [
   { key: "module.advanced_analytics", description: "Advanced analytics (v2 add-on)" },
   { key: "module.b2b", description: "B2B / wholesale (v2 add-on)" },
   { key: "module.b2b_portal", description: "B2B buyer portal (v2 add-on, ADV-14)" },
+  { key: "module.marketing_mechanics", description: "Marketing mechanics: gift cards, membership tiers, spin wheel, A/B tests, bundle builder, EMI display, WhatsApp broadcast (v2 add-on, ADV-18)" },
   { key: "module.fashion", description: "Fashion pack (v2 add-on)" },
   { key: "module.electronics", description: "Electronics pack (v2 add-on)" },
   { key: "module.grocery", description: "Grocery pack (v2 add-on)" },
@@ -76,6 +77,8 @@ export const FEATURE_FLAG_DEFINITIONS = [
   { key: "module.product_types", description: "Product types: digital, bundle & pre-order products (v2 add-on)" },
   { key: "module.sourcing", description: "Sourcing import + landed-cost calculator (v2 add-on)" },
   { key: "module.product_extras", description: "Product extras: 360° view + barcode labels (v2 add-on)" },
+  { key: "module.inventory_depth", description: "Inventory depth: batch/expiry, serial/IMEI, ABC + dead-stock, auto-reorder (v2 add-on, ADV-20)" },
+  { key: "module.warehouse_ops", description: "Warehouse ops: pick, pack & ship scanning (v2 add-on, ADV-21)" },
 ] as const satisfies readonly FeatureFlagDefinition[];
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_DEFINITIONS)[number]["key"];

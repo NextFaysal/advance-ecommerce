@@ -18,7 +18,9 @@
  *  - CANCELLED: the order's CouponUsage row is deleted. usedCount and
  *    the per-user counts are DERIVED from CouponUsage rows (see
  *    src/marketing/repository.ts), so deleting the row restores both
- *    the global limit and the customer's per-user slot. (Bundle stock
+ *    the global limit and the customer's per-user slot. A gift-card
+ *    redemption on the order is likewise restored (REFUND_RESTORE,
+ *    ADV-18 — see the gift-card section below). (Bundle stock
  *    release on cancel lives in product-types and is NOT duplicated
  *    here.) Credits are not touched on cancel: the state machine only
  *    allows cancelling from pre-delivery states, where the delivered
@@ -108,6 +110,25 @@ async function restoreCouponOnFullRefund(order: { id: string; totalPoisha: numbe
   if ((agg._sum.amountPoisha ?? 0) >= order.totalPoisha) {
     await restoreCouponUsage(order.id);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Gift card (ADV-18)                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Restore the order's gift-card redemption on cancel: the REDEEM row
+ * the create transaction wrote gets its REFUND_RESTORE mirror
+ * (+redeemed amount) from src/marketing/gift-cards, exactly once
+ * (the service keys on its own marker row). Cancel-only by design in
+ * this slice: a pre-delivery cancel means the stored value was never
+ * really spent, while a RETURNED/REFUNDED order's gift-card value is
+ * a staff refund decision in the refund workbench (see the ADV-18
+ * report). Dynamic import, same cycle discipline as loyalty below.
+ */
+async function restoreGiftCard(orderId: string): Promise<void> {
+  const giftCards = await import("../marketing/gift-cards");
+  await giftCards.restoreGiftCardForCancelledOrder(orderId);
 }
 
 /* ------------------------------------------------------------------ */
@@ -305,6 +326,11 @@ export async function runReversalHooks(orderId: string): Promise<void> {
         await restoreCouponUsage(row.id);
       } catch (err) {
         logReversalError("coupon", row.id, err);
+      }
+      try {
+        await restoreGiftCard(row.id);
+      } catch (err) {
+        logReversalError("gift-card", row.id, err);
       }
       return;
     }

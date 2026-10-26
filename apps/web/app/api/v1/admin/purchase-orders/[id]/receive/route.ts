@@ -22,6 +22,12 @@ const receiveSchema = z.object({
       z.object({
         itemId: z.string().min(1),
         quantity: z.number().int().positive(),
+        // ADV-20 depth capture (optional; the service rejects the
+        // whole receive when module.inventory_depth is OFF).
+        batchCode: z.string().trim().max(80).optional(),
+        expiryDate: z.string().trim().max(40).optional(),
+        bin: z.string().trim().max(40).optional(),
+        serials: z.array(z.string().trim().min(1).max(120)).max(1000).optional(),
       }),
     )
     .min(1),
@@ -38,6 +44,11 @@ const ERROR_STATUS: Record<string, number> = {
   item_not_on_order: 422,
   invalid_quantity: 400,
   over_receive: 422,
+  serial_count_mismatch: 400,
+  duplicate_serial: 409,
+  invalid_expiry_date: 400,
+  expiry_without_batch: 400,
+  inventory_depth_disabled: 422,
 };
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {

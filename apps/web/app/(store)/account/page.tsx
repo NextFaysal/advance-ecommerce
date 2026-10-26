@@ -33,6 +33,7 @@ import LogoutButton from "@/customer-auth/components/LogoutButton";
 import PushSubscribeToggle from "@/pwa/push-subscribe";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getB2bProfileByPhone } from "@/b2b/portal";
+import MembershipTierCard from "./membership-tier-card";
 import { Icon } from "@/components/ui/icon";
 import { Money } from "@/components/ui/money";
 import {
@@ -247,6 +248,10 @@ export default async function AccountPage({
           </li>
         </ul>
       </section>
+
+      {isFeatureEnabled("module.marketing_mechanics") ? (
+        <MembershipTierCard customerId={customer.id} />
+      ) : null}
 
       {b2bProfile ? (
         <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label="B2B পোর্টাল">

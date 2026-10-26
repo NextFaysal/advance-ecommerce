@@ -10,8 +10,10 @@ import {
 } from "@/checkout/delivery-slots";
 import { FULL_GEO_DICTIONARY } from "@/bd/geo-dictionary";
 import { listCategoriesAdmin } from "@/catalog/taxonomy-admin";
+import { loadPickupPoints, loadRetailLocations, type PickupPoint } from "@/checkout/pickup-points";
 import { OrderRulesCard, type CategoryOption, type DistrictGroup } from "./order-rules-card";
 import { DeliverySlotsCard } from "./delivery-slots-card";
+import { PickupPointsCard } from "./pickup-points-card";
 
 // Admin > Settings > Orders — order rules + delivery slots (doc 18,
 // F2-1). Until now the `orders.rules.*` keys (wave 20) and
@@ -45,15 +47,30 @@ export default async function OrderSettingsPage() {
   let slots = DEFAULT_DELIVERY_SLOTS;
   let slotsCustomized = false;
   let categories: CategoryOption[] = [];
+  let pickupPoints: PickupPoint[] = [];
+  let pickupConfigured = false;
+  let retailLocations: PickupPoint[] = [];
+  let retailConfigured = false;
   try {
-    const [loadedRules, loadedSlots, rawSlots, adminCategories] = await Promise.all([
+    const [loadedRules, loadedSlots, rawSlots, adminCategories, loadedPickup, rawPickup, loadedRetail, rawRetail] = await Promise.all([
       loadOrderRules(),
       loadDeliverySlots(),
       getSetting("orders.delivery_slots"),
       listCategoriesAdmin(),
+      loadPickupPoints(),
+      getSetting("stores.pickup_points"),
+      loadRetailLocations(),
+      getSetting("stores.retail_locations"),
     ]);
     rules = loadedRules;
     slots = loadedSlots;
+    pickupPoints = loadedPickup;
+    // Display copy only: a stored non-empty document is unmistakably
+    // "configured"; an empty one is indistinguishable from the
+    // registered default through getSetting, and reads as such.
+    pickupConfigured = rawPickup !== null && rawPickup !== "[]";
+    retailLocations = loadedRetail;
+    retailConfigured = rawRetail !== null && rawRetail !== "[]";
     // getSetting falls back to the registered default when no row is
     // stored, so "customized" = a stored value that differs from the
     // built-in default JSON (saving the defaults back reads the same).
@@ -161,10 +178,37 @@ export default async function OrderSettingsPage() {
         <DeliverySlotsCard initialSlots={slots} storedCustomized={slotsCustomized} dbReady={dbReady} />
       </div>
 
+      {/* ADV-19: click & collect pickup points + store locations.
+          Pickup points are offered at checkout; retail locations only
+          appear on the /stores page. */}
+      <div className="mt-4">
+        <PickupPointsCard
+          settingKey="stores.pickup_points"
+          title="পিকআপ পয়েন্ট (ক্লিক অ্যান্ড কালেক্ট)"
+          description="চেকআউটে ক্রেতা পিকআপ বেছে নিলে এই পয়েন্টগুলো থেকে একটি বেছে নিতে পারবেন; পছন্দটি অর্ডারের নোটে পয়েন্টের নাম-ঠিকানাসহ সংরক্ষিত থাকে। এই পয়েন্টগুলো /stores পেজেও দেখানো হয়।"
+          initialPoints={pickupPoints}
+          storedConfigured={pickupConfigured}
+          dbReady={dbReady}
+        />
+      </div>
+
+      <div className="mt-4">
+        <PickupPointsCard
+          settingKey="stores.retail_locations"
+          title="স্টোর লোকেশন (/stores পেজ)"
+          description="শুধু /stores পেজে দেখানোর জন্য — এই লোকেশনগুলো চেকআউটে পিকআপ পয়েন্ট হিসেবে দেওয়া হয় না।"
+          initialPoints={retailLocations}
+          storedConfigured={retailConfigured}
+          dbReady={dbReady}
+        />
+      </div>
+
       <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-text-muted">
         সেটিং কী:
         <code className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs ring-1 ring-inset ring-black/5">orders.rules.*</code>
         <code className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs ring-1 ring-inset ring-black/5">orders.delivery_slots</code>
+        <code className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs ring-1 ring-inset ring-black/5">stores.pickup_points</code>
+        <code className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs ring-1 ring-inset ring-black/5">stores.retail_locations</code>
         — টাকার মান পয়সায় (integer), জেলা/ক্যাটাগরি তালিকা কমা দিয়ে আলাদা করে, স্লট JSON আকারে সংরক্ষিত হয়।
         প্রতিটি পরিবর্তন কারণসহ অডিট লগে (<span className="font-mono text-xs">settings.update</span>) লেখা থাকে।
       </p>

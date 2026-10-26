@@ -57,6 +57,14 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   "general.currency": { category: "general", value: "BDT", isPublic: true },
   "general.timezone": { category: "general", value: "Asia/Dhaka", isPublic: true },
   "general.store_name": { category: "general", value: "", isPublic: true },
+  // EMI display (ADV-18B — src/marketing/emi.ts). DISPLAY ONLY: no
+  // gateway, no change to amounts charged; the breakdown is computed
+  // from these values and labelled as bank-card terms. months is a
+  // comma list of tenures; surcharge_bps applies once over the tenure.
+  "payments.emi.enabled": { category: "payment", value: "false", isPublic: false },
+  "payments.emi.months": { category: "payment", value: "3,6,12", isPublic: false },
+  "payments.emi.surcharge_bps": { category: "payment", value: "0", isPublic: false },
+  "payments.emi.min_order_poisha": { category: "payment", value: "0", isPublic: false },
   "general.store_address": { category: "general", value: "", isPublic: false },
   "general.store_bin": { category: "general", value: "", isPublic: false },
   "storage.provider": { category: "storage", value: "r2", isPublic: false },
@@ -179,6 +187,36 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
     value: "{\"BRONZE\":0,\"SILVER\":2500000,\"GOLD\":10000000,\"PLATINUM\":50000000}",
     isPublic: false,
   },
+  // Inventory depth (ADV-20, src/inventory/analytics.ts +
+  // src/inventory/reorder.ts; surfaces gated by module.inventory_depth).
+  // Days without a sale before a stocked variant counts as dead stock.
+  "inventory.dead_stock_days": { category: "general", value: "90", isPublic: false },
+  // Days ahead the expiring-soon batch list looks (doc 22 acceptance: 30).
+  "inventory.expiry_warning_days": { category: "general", value: "30", isPublic: false },
+  // Auto-reorder fallbacks. A variant is a reorder candidate when its
+  // canonical stock (ProductVariant.stock) is at/below its point:
+  // per-variant override (inventory.reorder.overrides JSON) → default.
+  // Empty default_point = no global rule (overrides only).
+  "inventory.reorder.default_point": { category: "general", value: "", isPublic: false },
+  "inventory.reorder.default_qty": { category: "general", value: "", isPublic: false },
+  // Supplier used when neither a per-variant override nor the variant's
+  // own purchase history names one. Empty = such variants are skipped
+  // with a no_supplier report entry, never guessed.
+  "inventory.reorder.default_supplier_id": { category: "general", value: "", isPublic: false },
+  // JSON map: { "<variantId>": { "point": 10, "qty": 50,
+  // "supplierId": "..." } } — every field optional per variant.
+  "inventory.reorder.overrides": { category: "general", value: "{}", isPublic: false },
+  // Membership tiers (ADV-18, src/marketing/membership-tiers.ts). One
+  // JSON document: an ordered ladder of { key, labelBn, labelEn,
+  // thresholdPoisha, discountBps, freeShipping }. Thresholds are
+  // LIFETIME DELIVERED spend in poisha needed to reach the tier (the
+  // first tier's threshold is always 0). Invalid/missing documents
+  // fall back to the built-in defaults in DEFAULT_MEMBERSHIP_TIERS.
+  "loyalty.tiers.config": {
+    category: "general",
+    value: "{\"tiers\":[{\"key\":\"REGULAR\",\"labelBn\":\"সাধারণ\",\"labelEn\":\"Regular\",\"thresholdPoisha\":0,\"discountBps\":0,\"freeShipping\":false},{\"key\":\"SILVER\",\"labelBn\":\"সিলভার\",\"labelEn\":\"Silver\",\"thresholdPoisha\":5000000,\"discountBps\":200,\"freeShipping\":false},{\"key\":\"GOLD\",\"labelBn\":\"গোল্ড\",\"labelEn\":\"Gold\",\"thresholdPoisha\":20000000,\"discountBps\":500,\"freeShipping\":true},{\"key\":\"PLATINUM\",\"labelBn\":\"প্লাটিনাম\",\"labelEn\":\"Platinum\",\"thresholdPoisha\":50000000,\"discountBps\":1000,\"freeShipping\":true}]}",
+    isPublic: false,
+  },
   // Order-create rules (wave 20, plan 17 batch O2 —
   // src/checkout/order-rules.ts, enforced in the public create route).
   // Every rule defaults OFF / permissive: an unconfigured shop checks
@@ -212,6 +250,25 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
     category: "general",
     value:
       '[{"id":"morning","labelBn":"সকাল (৯টা – দুপুর ১টা)","labelEn":"Morning (9am – 1pm)"},{"id":"afternoon","labelBn":"দুপুর–বিকেল (১টা – ৬টা)","labelEn":"Afternoon (1pm – 6pm)"},{"id":"evening","labelBn":"সন্ধ্যা (৬টা – রাত ১০টা)","labelEn":"Evening (6pm – 10pm)"}]',
+    isPublic: false,
+  },
+  // Pickup points for click & collect (ADV-19 — src/checkout/
+  // pickup-points.ts): a JSON array of { id, name, address, hours }.
+  // The default is deliberately an EMPTY list — there are no honest
+  // built-in store addresses; the merchant configures real points in
+  // Settings > Orders. MUST stay in sync with EMPTY_PICKUP_POINTS_JSON
+  // in that module (no import — cycle).
+  "stores.pickup_points": {
+    category: "general",
+    value: "[]",
+    isPublic: false,
+  },
+  // Retail store locations shown on /stores alongside the pickup
+  // points (ADV-19 — src/checkout/pickup-points.ts). Same JSON shape;
+  // these are display-only (not offered as checkout pickup choices).
+  "stores.retail_locations": {
+    category: "general",
+    value: "[]",
     isPublic: false,
   },
 };

@@ -51,6 +51,12 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
   const [savedCouponCode, setSavedCouponCode] = useState<string | null>(null);
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Cart-share (ADV-19): the minted signed link + its UI state. The
+  // link is created by POST /api/v1/public/cart-share (server signs;
+  // nothing is stored server-side).
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareMessage, setShareMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const guest = loadGuestCart();
@@ -396,6 +402,66 @@ export default function CartPageClient({ catalogProducts }: { catalogProducts: P
               চেকআউট করুন
             </Button>
           </Link>
+
+          {/* Cart-share (ADV-19): mint a signed, 7-day link carrying
+              only variant ids + quantities. The recipient's page
+              re-resolves prices/stock live. */}
+          <div className="mt-3 border-t border-border pt-3">
+            <Button
+              variant="secondary"
+              className="w-full"
+              disabled={shareBusy || !cart || cart.items.length === 0}
+              onClick={() => {
+                if (!cart) return;
+                setShareBusy(true);
+                setShareMessage(null);
+                void fetch("/api/v1/public/cart-share", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    lines: cart.items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
+                  }),
+                })
+                  .then(async (res) => {
+                    const json = (await res.json().catch(() => ({}))) as {
+                      data?: { path?: string };
+                      error?: { message?: string };
+                    };
+                    if (!res.ok || !json.data?.path) {
+                      setShareMessage(json.error?.message ?? "শেয়ার লিংক তৈরি করা যায়নি।");
+                      return;
+                    }
+                    setShareUrl(`${window.location.origin}${json.data.path}`);
+                  })
+                  .catch(() => setShareMessage("সার্ভারের সঙ্গে যোগাযোগ করা যায়নি।"))
+                  .finally(() => setShareBusy(false));
+              }}
+            >
+              {shareBusy ? "লিংক তৈরি হচ্ছে…" : "কার্ট শেয়ার করুন"}
+            </Button>
+            {shareUrl ? (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate rounded-lg bg-surface-2 px-3 py-2 text-xs text-text-muted" title={shareUrl}>
+                  {shareUrl}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard
+                      ?.writeText(shareUrl)
+                      .then(() => setShareMessage("লিংক কপি হয়েছে — ৭ দিন মেয়াদ থাকবে।"))
+                      .catch(() => setShareMessage("কপি করা যায়নি — লিংকটি হাতে কপি করুন।"));
+                  }}
+                  className="inline-flex h-9 shrink-0 items-center rounded-lg border border-border bg-card px-3 text-sm font-medium text-text-main transition hover:bg-surface-2"
+                >
+                  কপি করুন
+                </button>
+              </div>
+            ) : null}
+            {shareMessage ? (
+              <p role="status" className="mt-1.5 text-xs text-text-muted">{shareMessage}</p>
+            ) : null}
+          </div>
           <Link
             href="/shop"
             className="mt-2 block text-center text-sm font-medium text-brand-700 hover:underline"

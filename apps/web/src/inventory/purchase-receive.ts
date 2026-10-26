@@ -78,6 +78,7 @@
 import { prisma } from "@advance-ecommerce/db";
 import { postPurchaseReceivedErp, type AutoPostResult } from "../erp/auto-posting";
 import { notifyBackInStockForVariant } from "../storefront-ux/back-in-stock-notify";
+import { DepthError, isInventoryDepthEnabled, recordReceiveDepthInTx } from "./batches";
 import { applyMovementInTx, resolveActorId } from "./repository";
 
 /* ------------------------------------------------------------------ */
@@ -92,7 +93,13 @@ export type PurchaseReceiveErrorCode =
   | "duplicate_line"
   | "item_not_on_order"
   | "invalid_quantity"
-  | "over_receive";
+  | "over_receive"
+  // ADV-20 inventory-depth capture failures (src/inventory/batches.ts)
+  | "serial_count_mismatch"
+  | "duplicate_serial"
+  | "invalid_expiry_date"
+  | "expiry_without_batch"
+  | "inventory_depth_disabled";
 
 export class PurchaseReceiveError extends Error {
   readonly code: PurchaseReceiveErrorCode;
@@ -112,6 +119,20 @@ export class PurchaseReceiveError extends Error {
 export interface ReceiveLineInput {
   itemId: string;
   quantity: number;
+  /**
+   * ADV-20 inventory-depth capture (all optional; gated by the
+   * module.inventory_depth flag — providing any of them with the
+   * flag OFF rejects the whole receive, recorded data is never
+   * silently dropped):
+   *  - batchCode/expiryDate: the lot this quantity arrived in;
+   *  - bin: shelf label for the lot + the variant's warehouse row;
+   *  - serials: one entry per unit; the count MUST equal quantity.
+   */
+  batchCode?: string;
+  /** ISO date/datetime string; stored on the batch's first receipt. */
+  expiryDate?: string;
+  bin?: string;
+  serials?: string[];
 }
 
 export interface ReceivePurchaseOrderInput {
@@ -197,6 +218,36 @@ export async function receivePurchaseOrder(
         quantity: line.quantity,
       });
     }
+    if (line.expiryDate !== undefined && Number.isNaN(Date.parse(line.expiryDate))) {
+      throw new PurchaseReceiveError("invalid_expiry_date", "Batch expiry date is not a valid date.", {
+        itemId: line.itemId,
+        expiryDate: line.expiryDate,
+      });
+    }
+    if (line.expiryDate !== undefined && (!line.batchCode || line.batchCode.trim() === "")) {
+      throw new PurchaseReceiveError(
+        "expiry_without_batch",
+        "An expiry date needs a batch code — expiry is recorded on the batch, never dropped.",
+        { itemId: line.itemId },
+      );
+    }
+  }
+  // ADV-20: depth capture is all-or-nothing with the flag. A receive
+  // naming batches/serials while the module is OFF is rejected whole —
+  // the alternative (booking stock, dropping the lot data) would make
+  // recorded units silently untracked.
+  const usesDepth = input.lines.some(
+    (l) =>
+      (l.batchCode !== undefined && l.batchCode.trim() !== "") ||
+      l.expiryDate !== undefined ||
+      (l.bin !== undefined && l.bin.trim() !== "") ||
+      l.serials !== undefined,
+  );
+  if (usesDepth && !isInventoryDepthEnabled()) {
+    throw new PurchaseReceiveError(
+      "inventory_depth_disabled",
+      "Batch/serial capture requires the module.inventory_depth feature flag.",
+    );
   }
   const referenceId = input.idempotencyKey ? `${poId}:${input.idempotencyKey}` : poId;
   const reason =
@@ -340,6 +391,34 @@ export async function receivePurchaseOrder(
         },
         actorId,
       );
+      // ADV-20 depth capture for this line, INSIDE the same
+      // transaction: a serial/batch problem rolls the whole receive
+      // back (no half-booked stock without its lot data).
+      if (
+        (line.batchCode !== undefined && line.batchCode.trim() !== "") ||
+        line.expiryDate !== undefined ||
+        (line.bin !== undefined && line.bin.trim() !== "") ||
+        line.serials !== undefined
+      ) {
+        try {
+          await recordReceiveDepthInTx(tx, {
+            variantId: item.variantId,
+            warehouseId,
+            quantity: line.quantity,
+            costPoisha: item.costPoisha,
+            purchaseOrderId: poId,
+            batchCode: line.batchCode,
+            expiryDate: line.expiryDate ? new Date(line.expiryDate) : null,
+            bin: line.bin,
+            serials: line.serials,
+          });
+        } catch (err) {
+          if (err instanceof DepthError) {
+            throw new PurchaseReceiveError(err.depthCode, err.message, err.details);
+          }
+          throw err;
+        }
+      }
       receivedValueDeltaPoisha += line.quantity * item.costPoisha;
       lineResults.push({
         itemId: item.id,
@@ -455,6 +534,23 @@ export interface PurchaseReceiveDetail {
   createdAt: string;
   lines: PurchaseReceiveLineDetail[];
   history: PurchaseReceiveHistoryEntry[];
+  /** ADV-20: batches first recorded against this PO + how many serial
+   *  units each carries. Serials received without a batch code carry
+   *  no PO link and are not attributable here (panel copy says so). */
+  batches: PurchaseReceiveBatchDetail[];
+}
+
+export interface PurchaseReceiveBatchDetail {
+  batchId: string;
+  batchCode: string;
+  variantId: string;
+  sku: string | null;
+  warehouseId: string;
+  expiryDate: string | null;
+  quantityOnHand: number;
+  costPoisha: number | null;
+  bin: string | null;
+  serialCount: number;
 }
 
 export async function getPurchaseReceiveDetailDb(
@@ -500,6 +596,31 @@ export async function getPurchaseReceiveDetailDb(
     take: 200,
   });
 
+  const batchRows = await prisma.inventoryBatch.findMany({
+    where: { purchaseOrderId: po.id },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      batchCode: true,
+      variantId: true,
+      warehouseId: true,
+      expiryDate: true,
+      quantityOnHand: true,
+      costPoisha: true,
+      bin: true,
+    },
+  });
+  const serialCounts = batchRows.length
+    ? await prisma.serialUnit.groupBy({
+        by: ["batchId"],
+        where: { batchId: { in: batchRows.map((b) => b.id) } },
+        _count: { _all: true },
+      })
+    : [];
+  const serialCountByBatch = new Map(
+    serialCounts.map((g) => [g.batchId, g._count._all] as const),
+  );
+
   return {
     id: po.id,
     supplierId: po.supplier.id,
@@ -532,6 +653,18 @@ export async function getPurchaseReceiveDetailDb(
       actorId: m.actorId,
       reason: m.reason,
       createdAt: m.createdAt.toISOString(),
+    })),
+    batches: batchRows.map((b) => ({
+      batchId: b.id,
+      batchCode: b.batchCode,
+      variantId: b.variantId,
+      sku: variantMeta.get(b.variantId)?.sku ?? null,
+      warehouseId: b.warehouseId,
+      expiryDate: b.expiryDate?.toISOString() ?? null,
+      quantityOnHand: b.quantityOnHand,
+      costPoisha: b.costPoisha,
+      bin: b.bin,
+      serialCount: serialCountByBatch.get(b.id) ?? 0,
     })),
   };
 }
