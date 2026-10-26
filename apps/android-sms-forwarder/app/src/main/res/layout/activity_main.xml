@@ -42,7 +42,43 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Staff sign-in (account needs the payments.verify_manual permission)"
+            android:text="Device token (recommended) — create it in Admin → BD Tools → ডিভাইস টোকেন; it is shown only once"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/deviceTokenInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="ae_dev_… (paste the device token)"
+            android:inputType="textPassword"
+            android:importantForAutofill="no" />
+
+        <Button
+            android:id="@+id/pairTokenButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Pair with token" />
+
+        <Button
+            android:id="@+id/removeTokenButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Remove token"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/pairingStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="Staff sign-in (legacy fallback — only if this phone has no device token; account needs the payments.verify_manual permission)"
             android:textStyle="bold" />
 
         <EditText

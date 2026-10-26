@@ -10,7 +10,20 @@ export const metadata: Metadata = {
   title: "Advance Ecommerce — Storefront",
   description: "Bangladesh-first ecommerce platform (local first)",
   manifest: "/manifest.webmanifest",
-  icons: [{ rel: "icon", type: "image/svg+xml", url: "/favicon.svg" }],
+  icons: [
+    { rel: "icon", type: "image/svg+xml", url: "/favicon.svg" },
+    // iOS home-screen icon (Safari ignores the web manifest's icons).
+    { rel: "apple-touch-icon", type: "image/png", url: "/icons/icon-192.png" },
+  ],
+  // iOS "Add to Home Screen" behaviour: launch standalone (no Safari
+  // chrome) with the store name — the Apple-side half of the customer
+  // PWA (see apps/customer-app/README.md). Android/desktop use the web
+  // manifest above; theme colour is in the viewport export below.
+  appleWebApp: {
+    capable: true,
+    title: "AdvEcommerce",
+    statusBarStyle: "default",
+  },
 };
 
 // Browser chrome colour for the PWA / mobile browser UI. Matches the

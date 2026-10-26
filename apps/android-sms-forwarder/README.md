@@ -113,25 +113,25 @@ re-sign-in on the phone; no staff password ever touches the phone;
 TOTP on staff accounts is irrelevant; a lost phone is fixed by
 revoking one token instead of changing a staff password.
 
-> **App-side status (honest):** the app source in this repository
-> still implements the legacy session sign-in below — `ApiClient.kt`
-> predates the token API (its header comment says so) and has no
-> token field yet. The remaining app-side change is small and is
-> deliberately not hidden: store the device token where `Prefs.kt`
-> keeps the session token, send it as the `Authorization: Bearer`
-> header in `ApiClient.post(...)` instead of the `admin_session`
-> cookie, drop the login call, and treat **401** on the token path
-> as "token revoked or invalid — re-pair the phone from BD Tools"
-> instead of "sign in again". Until that change is built, pairing
-> the shipped source uses the legacy flow below.
+> **App-side status:** the app source in this repository implements
+> this token flow. `Prefs.kt` stores the device token alongside (and
+> ahead of) the legacy session token; `ApiClient.post(...)` sends it
+> as the `Authorization: Bearer` header — exactly one credential per
+> call, never both — and no login call is made on the token path.
+> A **401** on the token path is treated as terminal: forwarding
+> pauses in a "টোকেন বাতিল/ভুল — আবার পেয়ার করুন" (token revoked or
+> invalid — re-pair) state instead of retrying, until a person pairs
+> a fresh token. The legacy session sign-in below remains in the app
+> as a fallback for installs not yet using device tokens.
 
 ### Authentication — staff session (legacy fallback)
 
 The route still accepts the **staff session cookie**
 (`requireAdmin("payments.verify_manual")` in
 `apps/web/src/reports/guard.ts`) for requests with **no**
-`Authorization` header — that is what the admin UI itself uses, and
-what the current app source implements:
+`Authorization` header — that is what the admin UI itself uses. The
+app keeps this sign-in as a legacy fallback (used only when no
+device token is paired):
 
 1. Sign in with a staff account:
    `POST /api/v1/admin/auth/login` with `{ identifier, password }`
@@ -190,16 +190,21 @@ is worth sending. Provider can also be hinted from the SMS sender ID
   no database for a handful of pending messages.
 - `ForwardWorker` (WorkManager, network-connected constraint) POSTs the
   queue in batches of ≤ 50 with exponential-backoff retries on network
-  errors / server 5xx. On 401/403 it stops and says why in the app —
-  auth problems need a person, not a retry loop.
-- The session token and queued SMS bodies are stored with
-  `EncryptedSharedPreferences` (AES-256, Android Keystore). If the
-  keystore is unavailable the app falls back to plain preferences
-  (documented in `Prefs.kt`) — on such a device the token is only as
-  safe as the device.
+  errors / server 5xx. Auth failures stop it, and say why in the app —
+  auth problems need a person, not a retry loop. On the token path a
+  401 additionally sets a needs-repair flag: later runs fail fast
+  without touching the network until a fresh token is paired, and the
+  queue is kept (re-pairing forwards the waiting SMS; nothing is
+  resent to a dead token in the meantime).
+- The device token, the legacy session token and queued SMS bodies are
+  stored with `EncryptedSharedPreferences` (AES-256, Android
+  Keystore). If the keystore is unavailable the app falls back to
+  plain preferences (documented in `Prefs.kt`) — on such a device the
+  tokens are only as safe as the device.
 - No production URL or credential is hardcoded anywhere: the store
-  address and sign-in are entered on the phone. Sign-in refuses
-  non-`https://` addresses so the token never travels over plain HTTP.
+  address and the token (or sign-in) are entered on the phone. Pairing
+  and sign-in both refuse non-`https://` addresses so no credential
+  ever travels over plain HTTP.
 
 ## Build & install
 
@@ -243,9 +248,11 @@ this source.
 2. Install the app on the phone that receives the bKash/Nagad merchant
    SMS (the SIM must be in this phone).
 3. In the app: enter the **store address** (e.g.
-   `https://your-store.example.com`, no trailing path) and paste the
-   **device token**. Grant SMS permission when asked, and leave the
-   **Forwarding** switch on.
+   `https://your-store.example.com`, no trailing path), paste the
+   **device token** and tap **Pair with token**. Grant SMS permission
+   when asked, and leave the **Forwarding** switch on. (The token
+   field clears after pairing — the app keeps the token in encrypted
+   storage and shows only "Paired" state.)
 4. Send a test payment to the merchant number. The SMS should appear
    in the app queue, forward within moments, and show up in
    Admin → BD Tools → SMS যাচাই as a proposed match for staff to
@@ -253,14 +260,12 @@ this source.
    ডিভাইস টোকেন card confirms the phone is checking in.
 5. No calendar note: tokens do not expire. If the phone is lost or
    replaced, revoke its token on the same card (effective
-   immediately) and create a fresh one for the new phone.
+   immediately) and create a fresh one for the new phone. If a token
+   is revoked while the phone still uses it, the app stops
+   forwarding and shows "টোকেন বাতিল/ভুল — আবার পেয়ার করুন" until
+   the new token is paired — it does not keep retrying the dead one.
 
-> Step 3 assumes the app build with token support in `ApiClient`
-> (see the honest app-side status note under Authentication above).
-> With the app source exactly as shipped in this repository, use
-> the legacy pairing below instead.
-
-**Legacy — staff session (current shipped app source):**
+**Legacy — staff session (fallback, kept in the app):**
 
 1. **In the admin panel**, create (or pick) a dedicated staff account
    for the forwarder phone and make sure it has the
@@ -296,13 +301,11 @@ this source.
 ## What remains unverified
 
 - **Compilation** — no Android SDK on the authoring VM (see above).
-- **Device-token pairing from the app** — the server side is live
-  (provisioning UI + Bearer auth on the ingest route), but the app
-  source still signs in with the legacy session flow; the small
-  `ApiClient` token change described under Authentication has not
-  been built or tested yet.
+  The device-token pairing flow is implemented in the app source
+  (see the app-side status note under Authentication) but, like the
+  rest of the app, has not been compiled or run yet.
 - **On-device receive/forward** — needs a real phone + SIM receiving
-  genuine bKash/Nagad SMS, and a live store to sign in against.
+  genuine bKash/Nagad SMS, and a live store to pair against.
 - Real-world SMS wording variants beyond the server parser's documented
   examples (`apps/web/src/bd/sms-autoverify.ts` header) — the mirror
   matches the server exactly, so any format the server cannot parse is
@@ -315,7 +318,7 @@ this source.
 | `app/src/main/java/com/advanceecommerce/smsforwarder/SmsReceiver.kt` | SMS broadcast → filter → queue |
 | `.../MerchantSmsParser.kt` | Mirror of the server parser (filter + extraction) |
 | `.../QueueStore.kt` | Local retry queue + dedupe set (JSON in encrypted prefs) |
-| `.../ForwardWorker.kt` | WorkManager drain with backoff; auth-failure stop |
-| `.../ApiClient.kt` | Login + ingest calls implementing the contract above |
-| `.../Prefs.kt` | Encrypted settings/token storage |
-| `.../MainActivity.kt` + `res/layout/activity_main.xml` | Settings + status screen |
+| `.../ForwardWorker.kt` | WorkManager drain with backoff; auth-failure stop; revoked-token needs-repair state |
+| `.../ApiClient.kt` | Device-token (Bearer) + legacy login ingest calls implementing the contract above |
+| `.../Prefs.kt` | Encrypted settings/token storage (device token primary, session legacy) |
+| `.../MainActivity.kt` + `res/layout/activity_main.xml` | Pairing + legacy sign-in + status screen |

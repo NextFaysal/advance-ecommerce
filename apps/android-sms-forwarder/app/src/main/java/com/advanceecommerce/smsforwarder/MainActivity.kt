@@ -18,20 +18,31 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * The whole UI: store address, staff sign-in, on/off switch, permission
- * state, and the last-forward status. Plain views on purpose — there is
- * nothing here that needs a UI framework.
+ * The whole UI: store address, device-token pairing, legacy staff
+ * sign-in, on/off switch, permission state, and the last-forward
+ * status. Plain views on purpose — there is nothing here that needs a
+ * UI framework.
  *
- * Sign-in calls the store's normal staff login (see ApiClient) and keeps
- * ONLY the session token. If the account has TOTP 2FA enabled the login
- * answers needs_2fa, which this app cannot complete — the README tells
- * the merchant to use a dedicated staff account for the forwarder phone
- * (with the payments.verify_manual permission) instead.
+ * PAIRING (primary): the merchant pastes the per-device token created
+ * in Admin → BD Tools → ডিভাইস টোকেন. No password ever touches the
+ * phone, the token does not expire, and staff can revoke it instantly
+ * from the same admin card — a revoked token puts the app into the
+ * needs-repair state (see ForwardWorker) instead of retrying.
+ *
+ * SIGN-IN (legacy fallback, kept for installs not yet using device
+ * tokens): calls the store's normal staff login (see ApiClient) and
+ * keeps ONLY the session token. If the account has TOTP 2FA enabled
+ * the login answers needs_2fa, which this app cannot complete — the
+ * README tells the merchant to use a dedicated staff account for the
+ * forwarder phone (with the payments.verify_manual permission) instead.
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var prefs: Prefs
     private lateinit var baseUrlInput: EditText
+    private lateinit var deviceTokenInput: EditText
+    private lateinit var pairingStatus: TextView
+    private lateinit var removeTokenButton: Button
     private lateinit var identifierInput: EditText
     private lateinit var passwordInput: EditText
     private lateinit var sessionStatus: TextView
@@ -45,6 +56,9 @@ class MainActivity : AppCompatActivity() {
         prefs = Prefs.get(this)
 
         baseUrlInput = findViewById(R.id.baseUrlInput)
+        deviceTokenInput = findViewById(R.id.deviceTokenInput)
+        pairingStatus = findViewById(R.id.pairingStatus)
+        removeTokenButton = findViewById(R.id.removeTokenButton)
         identifierInput = findViewById(R.id.identifierInput)
         passwordInput = findViewById(R.id.passwordInput)
         sessionStatus = findViewById(R.id.sessionStatus)
@@ -61,6 +75,8 @@ class MainActivity : AppCompatActivity() {
             refreshStatus()
         }
 
+        findViewById<Button>(R.id.pairTokenButton).setOnClickListener { pairWithToken() }
+        removeTokenButton.setOnClickListener { removeToken() }
         findViewById<Button>(R.id.signInButton).setOnClickListener { signIn() }
         grantPermissionButton.setOnClickListener {
             ActivityCompat.requestPermissions(
@@ -88,6 +104,51 @@ class MainActivity : AppCompatActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_SMS_PERMISSION) refreshStatus()
+    }
+
+    /**
+     * Pair with a per-device token. The token is validated for shape
+     * only (ae_dev_… — the server is the authority and answers 401 if
+     * it is wrong/revoked); it is then stored in encrypted prefs and
+     * the input field is cleared so the secret does not sit on screen.
+     */
+    private fun pairWithToken() {
+        val baseUrl = baseUrlInput.text.toString().trim()
+        val token = deviceTokenInput.text.toString().trim()
+        if (baseUrl.isEmpty() || token.isEmpty()) {
+            Toast.makeText(this, "Fill in the store address and the device token.", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (!baseUrl.startsWith("https://")) {
+            // The token is a credential — never send it over HTTP.
+            Toast.makeText(this, "Store address must start with https://", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (!token.startsWith("ae_dev_")) {
+            Toast.makeText(
+                this,
+                "That does not look like a device token — it starts with ae_dev_. " +
+                    "Copy it exactly from Admin → BD Tools → ডিভাইস টোকেন.",
+                Toast.LENGTH_LONG,
+            ).show()
+            return
+        }
+        prefs.baseUrl = baseUrl
+        prefs.deviceToken = token
+        prefs.needsRepair = false
+        deviceTokenInput.text.clear()
+        prefs.lastStatus = "Paired with a device token. Waiting for payment SMS."
+        // Anything queued while unpaired can go now.
+        ForwardWorker.schedule(this)
+        Toast.makeText(this, "Paired.", Toast.LENGTH_SHORT).show()
+        refreshStatus()
+    }
+
+    private fun removeToken() {
+        prefs.clearDeviceToken()
+        prefs.needsRepair = false
+        prefs.lastStatus = "Device token removed. Pair a new token or sign in to resume forwarding."
+        refreshStatus()
     }
 
     private fun signIn() {
@@ -134,11 +195,30 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshStatus() {
+        // Pairing state (primary credential). The stored token itself
+        // is never rendered back onto the screen — paired state only.
+        val paired = prefs.deviceToken.isNotEmpty()
+        pairingStatus.text = when {
+            prefs.needsRepair -> ForwardWorker.REPAIR_STATUS
+            paired ->
+                "Paired with a device token (ae_dev_•••). This is the credential used " +
+                    "for forwarding — it does not expire; staff can revoke it in " +
+                    "Admin → BD Tools."
+            else ->
+                "Not paired. Paste the token from Admin → BD Tools → ডিভাইস টোকেন " +
+                    "(shown once when the device is created)."
+        }
+        removeTokenButton.visibility = if (paired) View.VISIBLE else View.GONE
+
         val signedIn = prefs.sessionToken.isNotEmpty()
+        val standbyNote =
+            if (paired) " (Standby only — the device token is in use.)" else ""
         sessionStatus.text = when {
             signedIn && prefs.identifier.isNotEmpty() ->
-                "Signed in as ${prefs.identifier}. Session lasts 7 days; sign in again when it expires."
-            signedIn -> "Signed in. Session lasts 7 days; sign in again when it expires."
+                "Signed in as ${prefs.identifier}. Session lasts 7 days; " +
+                    "sign in again when it expires.$standbyNote"
+            signedIn ->
+                "Signed in. Session lasts 7 days; sign in again when it expires.$standbyNote"
             else -> "Not signed in."
         }
 

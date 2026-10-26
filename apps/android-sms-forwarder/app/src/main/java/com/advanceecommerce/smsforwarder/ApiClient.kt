@@ -8,10 +8,21 @@ import java.net.URL
 
 /**
  * The server contract, implemented exactly as the code defines it.
- * There is NO device-token API on the server — these are the facts the
- * app is built against:
+ * Two auth paths exist on the server; the DEVICE TOKEN is primary:
  *
- *  - Sign-in: POST /api/v1/admin/auth/login { identifier, password }
+ *  - Device token (primary): staff provision a per-device token in
+ *    Admin → BD Tools → ডিভাইস টোকেন (apps/web/src/bd/devices.ts;
+ *    management API /api/v1/admin/bd/devices). The token looks like
+ *    `ae_dev_<43 url-safe chars>`; the server stores only its SHA-256
+ *    hash and shows the plaintext exactly once, at creation. The app
+ *    sends it as `Authorization: Bearer ae_dev_…` — no cookie, no
+ *    sign-in, no expiry. Revocation is immediate: the next request
+ *    with a revoked/unknown token gets 401 DEVICE_TOKEN_INVALID, and
+ *    the route NEVER falls back to a session when an Authorization
+ *    header is present. A device token can submit SMS only — it
+ *    cannot read the ingest list or call any other admin API.
+ *  - Sign-in (legacy fallback): POST /api/v1/admin/auth/login
+ *    { identifier, password }
  *    (apps/web/app/api/v1/admin/auth/login/route.ts). On success the
  *    response body is { data: { status: "ok" } } and the session token
  *    arrives ONLY as an `admin_session` Set-Cookie (HttpOnly, 7-day
@@ -21,8 +32,9 @@ import java.net.URL
  *    accounts lock after repeated failures — so this client NEVER
  *    auto-retries a login; only the user signs in, from the app screen.
  *  - Ingest: POST /api/v1/admin/bd/sms-ingest
- *    (apps/web/app/api/v1/admin/bd/sms-ingest/route.ts), guarded by the
- *    admin_session cookie via requireAdmin("payments.verify_manual")
+ *    (apps/web/app/api/v1/admin/bd/sms-ingest/route.ts). With no
+ *    Authorization header it is guarded by the admin_session cookie
+ *    via requireAdmin("payments.verify_manual")
  *    (apps/web/src/reports/guard.ts). Body is one item
  *    { smsText, source, receivedAt?, providerHint? } or a batch
  *    { items: [...] } (max 50) — schema: ingestSmsItemSchema in
@@ -44,7 +56,15 @@ class ApiClient(private val baseUrl: String) {
         /** HTTP 201 — [summary] is the server's per-outcome counts. */
         data class Ok(val summary: String) : IngestResult
 
-        /** 401 — session expired/revoked; the user must sign in again. */
+        /**
+         * 401 on the DEVICE-TOKEN path (DEVICE_TOKEN_INVALID) — the
+         * token is revoked or wrong. Terminal: retrying would hammer
+         * the server with a dead credential. A person must pair a
+         * fresh token from Admin → BD Tools → ডিভাইস টোকেন.
+         */
+        object DeviceTokenInvalid : IngestResult
+
+        /** 401 on the legacy session path — expired/revoked; sign in again. */
         object Unauthorized : IngestResult
 
         /** 403 — signed in, but the account lacks payments.verify_manual. */
@@ -57,7 +77,13 @@ class ApiClient(private val baseUrl: String) {
             .put("identifier", identifier)
             .put("password", password)
         val (code, responseBody, cookies) = try {
-            post("/api/v1/admin/auth/login", body, sessionToken = null, readCookies = true)
+            post(
+                "/api/v1/admin/auth/login",
+                body,
+                bearerToken = null,
+                sessionToken = null,
+                readCookies = true,
+            )
         } catch (e: IOException) {
             return LoginResult.Failed("Network error: ${e.message}")
         }
@@ -82,8 +108,25 @@ class ApiClient(private val baseUrl: String) {
         }
     }
 
-    /** POST a batch of queued SMS (server accepts at most 50 per call). */
-    fun ingestBatch(sessionToken: String, items: List<QueueStore.PendingSms>): IngestResult {
+    /**
+     * POST a batch of queued SMS with the per-device token
+     * (server accepts at most 50 per call). This is the primary path:
+     * no login call is made — the token IS the credential.
+     */
+    fun ingestBatchWithDeviceToken(
+        deviceToken: String,
+        items: List<QueueStore.PendingSms>,
+    ): IngestResult = ingest(items, bearerToken = deviceToken, sessionToken = null)
+
+    /** Legacy fallback: same batch, authenticated by the session cookie. */
+    fun ingestBatch(sessionToken: String, items: List<QueueStore.PendingSms>): IngestResult =
+        ingest(items, bearerToken = null, sessionToken = sessionToken)
+
+    private fun ingest(
+        items: List<QueueStore.PendingSms>,
+        bearerToken: String?,
+        sessionToken: String?,
+    ): IngestResult {
         val arr = JSONArray()
         for (item in items) {
             val obj = JSONObject()
@@ -95,7 +138,13 @@ class ApiClient(private val baseUrl: String) {
         }
         val body = JSONObject().put("items", arr)
         val (code, responseBody, _) = try {
-            post("/api/v1/admin/bd/sms-ingest", body, sessionToken, readCookies = false)
+            post(
+                "/api/v1/admin/bd/sms-ingest",
+                body,
+                bearerToken = bearerToken,
+                sessionToken = sessionToken,
+                readCookies = false,
+            )
         } catch (e: IOException) {
             return IngestResult.Failed("Network error: ${e.message}", retryable = true)
         }
@@ -112,7 +161,14 @@ class ApiClient(private val baseUrl: String) {
                 }
                 IngestResult.Ok(summary)
             }
-            401 -> IngestResult.Unauthorized
+            // A 401 means different things per path, and the caller must
+            // not confuse them: a dead device token needs re-pairing,
+            // a dead session needs a fresh sign-in.
+            401 -> if (bearerToken != null) {
+                IngestResult.DeviceTokenInvalid
+            } else {
+                IngestResult.Unauthorized
+            }
             403 -> IngestResult.Forbidden
             in 500..599 -> IngestResult.Failed("Server error (HTTP $code)", retryable = true)
             else -> IngestResult.Failed("Unexpected response (HTTP $code)", retryable = false)
@@ -123,6 +179,7 @@ class ApiClient(private val baseUrl: String) {
     private fun post(
         path: String,
         jsonBody: JSONObject,
+        bearerToken: String?,
         sessionToken: String?,
         readCookies: Boolean,
     ): Triple<Int, String, List<String>> {
@@ -135,7 +192,12 @@ class ApiClient(private val baseUrl: String) {
             conn.setRequestProperty("Content-Type", "application/json")
             conn.setRequestProperty("Accept", "application/json")
             conn.setRequestProperty("User-Agent", "AdvanceSmsForwarder/1.0 (Android)")
-            if (sessionToken != null) {
+            // Exactly one credential per call. If a Bearer header is
+            // sent, the server authenticates as a device ONLY and never
+            // falls back to the cookie — so never send both.
+            if (bearerToken != null) {
+                conn.setRequestProperty("Authorization", "Bearer $bearerToken")
+            } else if (sessionToken != null) {
                 conn.setRequestProperty("Cookie", "admin_session=$sessionToken")
             }
             conn.outputStream.use { it.write(jsonBody.toString().toByteArray(Charsets.UTF_8)) }
