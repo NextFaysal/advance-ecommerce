@@ -164,6 +164,7 @@ const FEATURE_FLAGS: Array<{ key: string; description: string }> = [
   { key: "module.inventory_depth", description: "Inventory depth: batch/expiry, serial/IMEI, ABC + dead-stock, auto-reorder (v2 add-on, ADV-20)" },
   { key: "module.warehouse_ops", description: "Warehouse ops: pick, pack & ship scanning (v2 add-on, ADV-21)" },
   { key: "module.social_proof", description: "Social proof — honest variants only: real recent-orders ticker + real low-stock lines (v2 add-on, P11)" },
+  { key: "module.restaurant", description: "Restaurant + kitchen display (KDS): dine-in tables & takeaway tickets (v2 add-on, ADV-23)" },
 ];
 
 const DEFAULT_SETTINGS: Array<{ key: string; value: string; category: string; isPublic: boolean }> = [

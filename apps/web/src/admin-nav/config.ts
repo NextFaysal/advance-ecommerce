@@ -204,6 +204,17 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: "locked-add-on",
   },
   {
+    id: "kitchen",
+    path: "/admin/kitchen",
+    labelBn: "কিচেন (KDS)",
+    labelEn: "Kitchen (KDS)",
+    icon: "Store",
+    section: "sales",
+    permission: "orders.view",
+    featureFlag: "module.restaurant",
+    badge: "locked-add-on",
+  },
+  {
     id: "pharmacy-rx",
     path: "/admin/pharmacy",
     labelBn: "প্রেসক্রিপশন যাচাই",

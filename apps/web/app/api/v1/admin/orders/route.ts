@@ -50,6 +50,7 @@ import type { Order } from "@/orders/types";
 import { enqueueBulkJob, triggerBulkJobProcessing } from "@/jobs/bulk-actions";
 import { manualOrderSchema } from "@/orders/manual-order";
 import { createManualOrder } from "@/orders/manual-create";
+import { restaurantSelectionSchema } from "@/restaurant/selection";
 
 function err(code: string, message: string, status: number, details?: unknown) {
   return NextResponse.json({ error: { code, message, details } }, { status });
@@ -253,6 +254,12 @@ async function handleBulkAction(req: Request, session: AdminSession, body: unkno
 const manualCreateSchema = manualOrderSchema.extend({
   idempotencyKey: z.string().uuid().optional(),
   resellerCode: z.string().max(32).optional(),
+  // ADV-23 (wave 56): the restaurant selection must be declared here
+  // too — this route safeParses the body and passes parsed.data to
+  // createManualOrder, and zod strips undeclared keys, so without
+  // this line a staff-submitted selection would never reach the
+  // service's restaurant gate.
+  restaurant: restaurantSelectionSchema.optional(),
   // Wave 21 (doc 17 batch O3): a staff-set advance requirement for
   // this order (poisha). Validated against the computed grand total
   // in the service (0..total); the persisted requirement is the MAX

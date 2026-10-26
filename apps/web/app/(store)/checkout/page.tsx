@@ -124,6 +124,11 @@ type PlacedOrder = {
    *  this order (terms only; serials arrive at delivery and show on
    *  the account warranty card). Warranty starts at delivery. */
   warrantyTerms?: Array<{ categorySlug: string; months: number }>;
+  /** ADV-23: meta.restaurant — present only when a kitchen ticket
+   *  was created with this order (restaurant module on + a dine-in /
+   *  takeaway choice submitted). The ticket starts QUEUED; its live
+   *  state is watched on /track. */
+  restaurant?: { fulfilmentType: "DINE_IN" | "TAKEAWAY"; tableLabel: string | null; kitchenStatus: string };
 };
 
 export default function CheckoutPage() {
@@ -162,6 +167,51 @@ export default function CheckoutPage() {
   // submitted id; a failed fetch simply hides the picker.
   const [pickupPoints, setPickupPoints] = useState<{ id: string; name: string; address: string; hours: string }[]>([]);
   const [pickupPointId, setPickupPointId] = useState("");
+  // Restaurant fulfilment (ADV-23, wave 56): from GET
+  // /api/v1/public/restaurant/config — rendered ONLY when the
+  // restaurant module is enabled for this install. dineInEnabled in
+  // that response is already EFFECTIVE (no tables configured = no
+  // dine-in offered). A failed fetch hides the section — checkout
+  // never blocks on it, and the server re-validates the submitted
+  // selection anyway.
+  const [restaurantConfig, setRestaurantConfig] = useState<{
+    enabled: boolean;
+    dineInEnabled: boolean;
+    takeawayEnabled: boolean;
+    tables: string[];
+  } | null>(null);
+  const [fulfilmentType, setFulfilmentType] = useState<"DINE_IN" | "TAKEAWAY" | "">("");
+  const [tableLabel, setTableLabel] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/public/restaurant/config")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("restaurant config fetch failed"))))
+      .then(
+        (json: {
+          data?: { enabled?: boolean; dineInEnabled?: boolean; takeawayEnabled?: boolean; tables?: string[] };
+        }) => {
+          if (cancelled) return;
+          const cfg = {
+            enabled: json.data?.enabled === true,
+            dineInEnabled: json.data?.dineInEnabled === true,
+            takeawayEnabled: json.data?.takeawayEnabled === true,
+            tables: Array.isArray(json.data?.tables) ? json.data.tables : [],
+          };
+          setRestaurantConfig(cfg);
+          if (cfg.enabled) {
+            // Pre-select the one sensible default: takeaway when it
+            // is offered, else dine-in (whose table is picked below).
+            setFulfilmentType(cfg.takeawayEnabled ? "TAKEAWAY" : "DINE_IN");
+          }
+        },
+      )
+      .catch(() => {
+        // No restaurant section; the order flow is unaffected.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Gift cards (ADV-18): the code field renders ONLY when the module
   // is on — GET /api/v1/public/gift-cards/status returns {enabled}
   // and nothing else (no code is ever sent there; validation happens
@@ -582,6 +632,18 @@ export default function CheckoutPage() {
       // a match in the order's create-time note.
       pickupPointId: deliveryType === "pickup" ? pickupPointId || undefined : undefined,
       giftMessage: gift ? giftMessage : undefined,
+      // Restaurant selection (ADV-23): sent only when the module is
+      // enabled AND a fulfilment choice is active; the server
+      // re-validates it against restaurant.config (a dine-in without
+      // a table, or a table no longer configured, comes back as a
+      // bilingual 400 in the error list — the order is not created).
+      restaurant:
+        restaurantConfig?.enabled && fulfilmentType
+          ? {
+              fulfilmentType,
+              tableLabel: fulfilmentType === "DINE_IN" ? tableLabel || undefined : undefined,
+            }
+          : undefined,
     });
     if (!result.ok) {
       setErrors(result.errors);
@@ -616,6 +678,7 @@ export default function CheckoutPage() {
           membershipTier?: PlacedOrder["membershipTier"];
           pharmacyRx?: PlacedOrder["pharmacyRx"];
           warrantyTerms?: PlacedOrder["warrantyTerms"];
+          restaurant?: PlacedOrder["restaurant"];
         };
         error?: { code?: string; message?: string; details?: unknown };
       } | null;
@@ -659,6 +722,7 @@ export default function CheckoutPage() {
           ...(json?.meta?.membershipTier ? { membershipTier: json.meta.membershipTier } : {}),
           ...(json?.meta?.pharmacyRx ? { pharmacyRx: json.meta.pharmacyRx } : {}),
           ...(json?.meta?.warrantyTerms ? { warrantyTerms: json.meta.warrantyTerms } : {}),
+          ...(json?.meta?.restaurant ? { restaurant: json.meta.restaurant } : {}),
           couponStatus: order.couponStatus,
         });
         return;
@@ -720,6 +784,17 @@ export default function CheckoutPage() {
               <dt className="text-text-muted">সর্বমোট</dt>
               <dd className="font-semibold tabular-nums">{digits(formatBdt(placedOrder.totalPoisha))}</dd>
             </div>
+            {placedOrder.restaurant ? (
+              <div className="flex justify-between gap-3">
+                <dt className="shrink-0 text-text-muted">রান্নাঘর</dt>
+                <dd className="text-right font-semibold">
+                  {placedOrder.restaurant.fulfilmentType === "DINE_IN"
+                    ? `ডাইন-ইন${placedOrder.restaurant.tableLabel ? ` • টেবিল: ${placedOrder.restaurant.tableLabel}` : ""}`
+                    : "টেকঅওয়ে"}{" "}
+                  — অপেক্ষমাণ
+                </dd>
+              </div>
+            ) : null}
             {placedOrder.pickupPoint ? (
               <>
                 <div className="flex justify-between gap-3">
@@ -1222,6 +1297,65 @@ export default function CheckoutPage() {
           <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
             পিকআপের ঠিকানা ও সময় অর্ডারের পর আমাদের টিম ফোনে জানিয়ে দেবে।
           </p>
+        )}
+        {/* Restaurant fulfilment (ADV-23, wave 56): rendered ONLY when
+            the restaurant module is enabled for this install (the
+            public config fetch above). The choice rides the create
+            payload as `restaurant` and is re-validated server-side
+            against restaurant.config — this picker is a convenience,
+            never the authority. A dine-in choice without a table is
+            refused by the server with a bilingual message. */}
+        {restaurantConfig?.enabled && (restaurantConfig.dineInEnabled || restaurantConfig.takeawayEnabled) && (
+          <fieldset className="m-0 border-0 p-0">
+            <legend className="mb-2 text-sm font-medium text-text-main">খাবার কীভাবে নেবেন?</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {restaurantConfig.dineInEnabled && (
+                <label className={SLOT_CARD_CLASS}>
+                  <input
+                    type="radio"
+                    checked={fulfilmentType === "DINE_IN"}
+                    onChange={() => setFulfilmentType("DINE_IN")}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-text-main">ডাইন-ইন</span>
+                    <span className="block text-xs text-text-muted">রেস্টুরেন্টে বসে খাবেন — টেবিল বেছে নিন</span>
+                  </span>
+                </label>
+              )}
+              {restaurantConfig.takeawayEnabled && (
+                <label className={SLOT_CARD_CLASS}>
+                  <input
+                    type="radio"
+                    checked={fulfilmentType === "TAKEAWAY"}
+                    onChange={() => setFulfilmentType("TAKEAWAY")}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-text-main">টেকঅওয়ে</span>
+                    <span className="block text-xs text-text-muted">প্যাক করে নিয়ে যাবেন</span>
+                  </span>
+                </label>
+              )}
+            </div>
+            {fulfilmentType === "DINE_IN" && restaurantConfig.tables.length > 0 && (
+              <label className="mt-3 block">
+                <span className="mb-1.5 block text-sm font-medium text-text-main">টেবিল</span>
+                <select
+                  value={tableLabel}
+                  onChange={(e) => setTableLabel(e.target.value)}
+                  className={INPUT_CLASS}
+                >
+                  <option value="">— টেবিল বেছে নিন —</option>
+                  {restaurantConfig.tables.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </fieldset>
         )}
         {/* Delivery slot + gift (doc 17 batch O9-2): shown only when
             the shop has slots configured/fetched. Neither choice

@@ -87,6 +87,13 @@
  *   Order.deliverySlot; the gift message persists verbatim on
  *   Order.giftMessage. Neither affects pricing — no slot fee and no
  *   gift-wrap fee exist.
+ * - Restaurant (ADV-23, wave 56): an optional `restaurant` selection
+ *   (dine-in + table, or takeaway) is gated by module.restaurant —
+ *   field present + flag OFF -> 403 FEATURE_LOCKED; flag ON -> the
+ *   choice is validated against the effective Setting doc
+ *   restaurant.config (src/restaurant/tickets.prepareKitchenTicket)
+ *   and the KitchenTicket row is written inside the create
+ *   transaction. No money is affected: no service charge exists.
  *
  * STILL DEMO / NOT THIS SLICE:
  * - The coupon RECORDS evaluated by evaluateOrderCoupon still come from
@@ -164,6 +171,7 @@ import {
   tierDiscountForBasePoisha,
 } from "@/marketing/membership-tiers";
 import type { Order } from "@/orders/types";
+import { prepareKitchenTicket } from "@/restaurant/tickets";
 import { validateOrderLineQuantities } from "@/orders/quantity-rules";
 import { lineTotalPoisha, qtyToMilli, roundHalfUpDiv, QTY_MILLI } from "@/lib/quantity";
 
@@ -249,6 +257,18 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
   const qtyGate = await validateOrderLineQuantities(form.items);
   if (!qtyGate.ok) {
     return errorResponse(qtyGate.code, qtyGate.message, 400, qtyGate.details);
+  }
+  // Restaurant selection (ADV-23, wave 56): a payload carrying
+  // `restaurant` while module.restaurant is OFF is refused 403
+  // FEATURE_LOCKED (a locked module never runs open); with the flag
+  // ON the choice is validated against the effective
+  // restaurant.config BEFORE pricing, and the validated spec rides
+  // into createOrderRecord, which writes the KitchenTicket inside
+  // the create transaction. No field -> ticket null -> the default
+  // path below is byte-identical.
+  const kitchenPrep = await prepareKitchenTicket(form.restaurant);
+  if (!kitchenPrep.ok) {
+    return errorResponse(kitchenPrep.code, kitchenPrep.message, kitchenPrep.httpStatus);
   }
   // Server-side re-validation: price, SKU, name, stock from the DB only.
   const serverPrices = await getVariantSnapshots(form.items.map((i) => i.variantId));
@@ -655,6 +675,9 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
           }
         : null,
     note: createNote,
+    // ADV-23 (wave 56): the validated kitchen-ticket spec (null for
+    // every non-restaurant order) — written in the create transaction.
+    kitchenTicket: kitchenPrep.ticket,
     });
   } catch (err) {
     if (err instanceof BundleStockError) {
@@ -983,6 +1006,18 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
         // ADV-22: pharmacy outcome (present only for Rx orders) +
         // electronics warranty terms for the confirmation screen.
         ...(rxMeta ? { pharmacyRx: rxMeta } : {}),
+        // ADV-23 (wave 56): restaurant outcome — present only when a
+        // kitchen ticket was created with this order; the ticket
+        // starts QUEUED and the customer watches it on /track.
+        ...(kitchenPrep.ticket
+          ? {
+              restaurant: {
+                fulfilmentType: kitchenPrep.ticket.fulfilmentType,
+                tableLabel: kitchenPrep.ticket.tableLabel,
+                kitchenStatus: "QUEUED",
+              },
+            }
+          : {}),
         // ADV-29: age-gate outcome (present only for restricted carts).
         ...(ageGate.required
           ? { ageGate: { required: true, minAge: ageGate.minAge, attested: true } }

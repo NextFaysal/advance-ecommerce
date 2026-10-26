@@ -22,6 +22,10 @@
 import { maskPhone, normalizeBdPhone } from "@advance-ecommerce/validators";
 import type { Order, OrderStatus } from "@/orders/types";
 import type { ShipmentStatus } from "@/integrations/courier";
+import {
+  KITCHEN_STATUS_LABELS_BN,
+  type KitchenTicketStatus,
+} from "@/restaurant/selection";
 
 export const ORDER_STATUS_LABELS_BN: Record<OrderStatus, string> = {
   PENDING: "অর্ডার পেয়েছি",
@@ -164,6 +168,16 @@ export interface TrackingView {
    *  rows + events; "order-status" = derived from the order's own
    *  status (no live courier data yet). The UI labels the fallback. */
   shipmentSource: "shipments" | "order-status";
+  /** Restaurant kitchen state (ADV-23, wave 56): present only when
+   *  the order has a KitchenTicket row. Projected server-side to
+   *  status + fulfilment + table — the customer watches their food,
+   *  nothing about other orders or kitchen internals is included. */
+  kitchen: {
+    status: string;
+    statusLabelBn: string;
+    fulfilmentType: "DINE_IN" | "TAKEAWAY";
+    tableLabel: string | null;
+  } | null;
   timeline: TrackingTimelineStep[];
   createdAt: string;
 }
@@ -219,6 +233,11 @@ export function lookupTracking(
   orderNoInput: string,
   phoneInput: string,
   shipments: readonly TrackingShipmentRow[] = [],
+  kitchen: {
+    status: string;
+    fulfilmentType: "DINE_IN" | "TAKEAWAY";
+    tableLabel: string | null;
+  } | null = null,
 ): TrackingLookupResult {
   const fail: TrackingLookupResult = { ok: false, error: "not_found", messageBn: GENERIC_NOT_FOUND };
   const normalized = normalizeBdPhone(phoneInput);
@@ -228,6 +247,17 @@ export function lookupTracking(
   if (!order) return fail;
   // Stored phones are normalized at checkout; compare normalized-to-normalized.
   if (normalizeBdPhone(order.customerPhone) !== normalized) return fail;
+  // The kitchen projection is attached ONLY past the phone check —
+  // like the shipments above, a mismatch leaks nothing about it.
+  const kitchenView = kitchen
+    ? {
+        status: kitchen.status,
+        statusLabelBn:
+          KITCHEN_STATUS_LABELS_BN[kitchen.status as KitchenTicketStatus] ?? kitchen.status,
+        fulfilmentType: kitchen.fulfilmentType,
+        tableLabel: kitchen.tableLabel,
+      }
+    : null;
   const parcels = buildParcels(shipments);
   if (parcels.length > 0) {
     // Real Shipment rows win. The legacy single-parcel summary fields
@@ -252,6 +282,7 @@ export function lookupTracking(
         shipmentStatusLabelBn: single ? single.statusLabelBn : null,
         parcels,
         shipmentSource: "shipments",
+        kitchen: kitchenView,
         timeline: buildTimeline(order),
         createdAt: order.createdAt,
       },
@@ -275,6 +306,7 @@ export function lookupTracking(
       shipmentStatusLabelBn: shipmentStatus ? SHIPMENT_STATUS_LABELS_BN[shipmentStatus] : null,
       parcels,
       shipmentSource: "order-status",
+      kitchen: kitchenView,
       timeline: buildTimeline(order),
       createdAt: order.createdAt,
     },

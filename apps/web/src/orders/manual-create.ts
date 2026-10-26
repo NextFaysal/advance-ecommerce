@@ -108,6 +108,8 @@ import { publishOrderCreated } from "@/orders/event-bus";
 import { resolveResellerAttribution } from "@/reseller/store";
 import { validateOrderLineQuantities } from "@/orders/quantity-rules";
 import { lineTotalPoisha } from "@/lib/quantity";
+import { restaurantSelectionSchema } from "@/restaurant/selection";
+import { prepareKitchenTicket } from "@/restaurant/tickets";
 
 export const manualCreateInputSchema = manualOrderSchema.extend({
   /** Client idempotency key (UUID). Absent -> the server mints one;
@@ -140,6 +142,14 @@ export const manualCreateInputSchema = manualOrderSchema.extend({
    *  line — callers never pass a pre-computed amount, so a stale or
    *  tampered figure cannot reach the persisted pricing. */
   subscriptionDiscountBps: z.number().int().min(0).max(10000).optional(),
+  /** Restaurant selection (ADV-23, wave 56, ADDITIVE): the same
+   *  shape public checkout accepts (src/restaurant/selection). When
+   *  present it runs through the identical gate as checkout —
+   *  module.restaurant OFF -> 403 FEATURE_LOCKED; ON -> validated
+   *  against the effective restaurant.config, and the KitchenTicket
+   *  is written inside the create transaction. This is what lets
+   *  POS / phone orders reach the KDS board too. */
+  restaurant: restaurantSelectionSchema.optional(),
   /** Order.source label for this channel. Default "manual". */
   source: z.string().min(1).max(32).optional(),
   /** Extra note line prepended to the order note — e.g. the inbox
@@ -251,6 +261,17 @@ export async function createManualOrder(
   const qtyGate = await validateOrderLineQuantities(data.items);
   if (!qtyGate.ok) {
     return fail(400, qtyGate.code, qtyGate.message, qtyGate.details);
+  }
+  // Restaurant selection (ADV-23, wave 56): the identical gate the
+  // public checkout runs (shared helper — flag 403, config 400), so
+  // every createManualOrder consumer (POS, drafts, inbox, import,
+  // B2B conversion) inherits the same restaurant behaviour. Runs
+  // before the idempotency replay check, like the quantity gate: a
+  // locked/invalid restaurant payload is refused, never replayed
+  // into a ticket.
+  const kitchenPrep = await prepareKitchenTicket(data.restaurant);
+  if (!kitchenPrep.ok) {
+    return fail(kitchenPrep.httpStatus, kitchenPrep.code, kitchenPrep.message);
   }
   const idempotencyKey = data.idempotencyKey ?? randomUUID();
 
@@ -501,6 +522,10 @@ export async function createManualOrder(
       // nothing.
       deliverySlot: deliverySlot?.id,
       giftMessage: data.giftMessage !== undefined ? data.giftMessage.trim() : undefined,
+      // ADV-23 (wave 56): the validated kitchen-ticket spec (null for
+      // every non-restaurant order) — written in the create
+      // transaction, exactly like public checkout.
+      kitchenTicket: kitchenPrep.ticket,
     });
   } catch (e) {
     // Wave 15 product-type failures roll the create back — map them

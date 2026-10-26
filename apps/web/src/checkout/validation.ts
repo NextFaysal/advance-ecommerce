@@ -3,6 +3,10 @@
 // self-contained; the validators package remains the canonical source.
 import { z } from "zod";
 import { isValidQtyNumber } from "../lib/quantity";
+// ADV-23 (wave 56): the restaurant selection shape lives in its own
+// pure module so the manual-create seam validates the identical
+// shape — one definition, two create paths.
+import { restaurantSelectionSchema } from "../restaurant/selection";
 
 export const BD_PHONE_REGEX = /^(?:\+?88)?01[3-9]\d{8}$/;
 
@@ -160,6 +164,18 @@ export const checkoutFormSchema = z.object({
       confirmed: z.literal(true),
     })
     .optional(),
+  /**
+   * Optional restaurant fulfilment selection (ADV-23, wave 56):
+   * submitted when the restaurant module is on and the customer
+   * picked dine-in (with a table) or takeaway at checkout. The
+   * shape is src/restaurant/selection.ts (pure, shared with the
+   * manual-create seam). The orders route re-validates the choice
+   * against the merchant's effective restaurant.config — a stale
+   * or forged table label is refused (400) there, and a payload
+   * carrying this field while module.restaurant is OFF is refused
+   * 403 FEATURE_LOCKED; without the field nothing changes.
+   */
+  restaurant: restaurantSelectionSchema.optional(),
 });
 
 export type CheckoutForm = z.infer<typeof checkoutFormSchema>;

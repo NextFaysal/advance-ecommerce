@@ -24,6 +24,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getOrderByOrderNo } from "@/orders/repository";
 import { getTrackingShipmentsForOrder } from "@/shipments/tracking";
+import { getKitchenTicketView } from "@/restaurant/tickets";
 import { lookupTracking } from "@/storefront-ux/order-tracking";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -50,7 +51,11 @@ export async function POST(req: Request) {
   }
   const order = await getOrderByOrderNo(parsed.data.orderNo.trim().toUpperCase());
   const shipments = order ? await getTrackingShipmentsForOrder(order.id) : [];
-  const result = lookupTracking(order ? [order] : [], parsed.data.orderNo, parsed.data.phone, shipments);
+  // ADV-23 (wave 56): the order's kitchen ticket, when it has one —
+  // fetched server-side only and attached by lookupTracking solely
+  // on a phone match (same no-leak discipline as the shipments).
+  const kitchen = order ? await getKitchenTicketView(order.id) : null;
+  const result = lookupTracking(order ? [order] : [], parsed.data.orderNo, parsed.data.phone, shipments, kitchen);
   if (!result.ok) {
     return NextResponse.json(
       { error: { code: "NOT_FOUND", message: result.messageBn } },

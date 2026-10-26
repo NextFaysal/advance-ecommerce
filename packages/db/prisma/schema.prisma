@@ -930,12 +930,40 @@ model Order {
   paymentLinks     PaymentLink[]
   vendorCommissionLines VendorCommissionLine[]
   vendorRefunds    VendorRefund[]
+  kitchenTicket    KitchenTicket?
   @@index([customerId])
   @@index([resellerId])
   @@index([status])
   @@index([paymentStatus])
   @@index([createdAt])
   @@index([deletedAt])
+}
+
+// Kitchen tickets (ADV-23 vertical 1, doc 23 wave 56): the restaurant
+// module's one row per restaurant order, created INSIDE the order-create
+// transaction (src/orders/repository.ts, the gift-card in-transaction
+// precedent) when the order carries a validated `restaurant` selection
+// and module.restaurant is ON. The KDS board (app/admin/kitchen) works
+// this queue: QUEUED -> PREPARING -> READY -> SERVED (forward-only,
+// readyAt stamped at READY); an order cancellation moves a live ticket
+// to CANCELLED from applyOrderTransition. Status/fulfilment are plain
+// strings (the Subscription precedent) — the allowed values are owned
+// by src/restaurant/selection.ts and enforced at every write seam.
+// tableLabel is the merchant-configured label from Setting doc
+// restaurant.config, frozen at order time (renaming a table later does
+// not rewrite open tickets). Money is NEVER touched by this module.
+model KitchenTicket {
+  id             String    @id @default(cuid())
+  orderId        String    @unique
+  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fulfilmentType String
+  tableLabel     String?
+  status         String    @default("QUEUED")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  readyAt        DateTime?
+
+  @@index([status, createdAt])
 }
 
 // Per-day order-number sequence (wave 20, plan 17 batch O2). The human

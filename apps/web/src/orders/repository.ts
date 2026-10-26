@@ -757,6 +757,17 @@ export interface CreateOrderRecordInput {
    *  an order is never born claiming gift-card coverage it did not
    *  record. pricing.totalPoisha is already net of the redemption. */
   giftCardRedemption?: { cardId: string; amountPoisha: number; codeLast4: string } | null;
+  /** Restaurant kitchen ticket (ADV-23, wave 56): the callers (the
+   *  public orders route and createManualOrder) validated the
+   *  submitted `restaurant` selection against the effective
+   *  restaurant.config while module.restaurant is ON
+   *  (src/restaurant/tickets.prepareKitchenTicket) and pass the
+   *  validated spec here; the KitchenTicket row is written INSIDE
+   *  this create transaction (the gift-card precedent above), so an
+   *  order is never born claiming a kitchen ticket it did not record
+   *  — and a rolled-back create leaves no orphan ticket. Null/omitted
+   *  = not a restaurant order. */
+  kitchenTicket?: { fulfilmentType: "DINE_IN" | "TAKEAWAY"; tableLabel: string | null } | null;
 }
 
 export type CreateOrderRecordResult =
@@ -1066,6 +1077,21 @@ export async function createOrderRecord(
           },
         });
       }
+      // ADV-23 restaurant (wave 56): the kitchen ticket joins the
+      // same transaction (see CreateOrderRecordInput.kitchenTicket) —
+      // validated by the caller against restaurant.config while the
+      // module flag is ON; this write is the durable half of that
+      // validation, so the KDS board can never show a ticket for an
+      // order that rolled back, nor miss one that committed.
+      if (input.kitchenTicket) {
+        await tx.kitchenTicket.create({
+          data: {
+            orderId: order.id,
+            fulfilmentType: input.kitchenTicket.fulfilmentType,
+            tableLabel: input.kitchenTicket.tableLabel,
+          },
+        });
+      }
       return order;
     });
     // Automation lifecycle (ADV-7): order.created fires post-commit so
@@ -1266,6 +1292,12 @@ export async function applyOrderTransition(
   if (to === "CANCELLED") {
     await restoreBundleComponentsForOrder(row.id);
     await releaseOrderStockReservations(row.id);
+    // ADV-23 restaurant (wave 56): a cancelled order's kitchen
+    // ticket is cancelled with it — the kitchen must never keep
+    // cooking an order that no longer exists. Same never-throws,
+    // dynamic-import discipline as the pickup-OTP seam above.
+    const { cancelKitchenTicketForOrder } = await import("../restaurant/tickets");
+    await cancelKitchenTicketForOrder(row.id);
   }
   // Wave 18 (plan 17, O0): reversal engine — cancelling restores the
   // coupon usage; RETURNED / REFUNDED claw back the delivered-order
@@ -1350,6 +1382,10 @@ export async function saveOrder(order: Order): Promise<void> {
   if (row.status !== "CANCELLED" && order.status === "CANCELLED") {
     await restoreBundleComponentsForOrder(order.id);
     await releaseOrderStockReservations(order.id);
+    // ADV-23 restaurant (wave 56): same kitchen-ticket cancel as the
+    // single-order funnel above, on the bulk-actions path.
+    const { cancelKitchenTicketForOrder } = await import("../restaurant/tickets");
+    await cancelKitchenTicketForOrder(order.id);
   }
   // Wave 18 (plan 17, O0): same reversal engine on the bulk-actions
   // path — only when THIS save moved the stored status INTO a reversal

@@ -243,6 +243,22 @@ export default function TrackForm() {
           </div>
           <p className="mt-1 text-sm text-text-muted">ফোন: {state.view.maskedPhone}</p>
 
+          {/* Restaurant kitchen state (ADV-23, wave 56): present only
+              when the order has a kitchen ticket — the real ticket
+              status from the KDS queue, projected server-side. */}
+          {state.view.kitchen && (
+            <p className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 px-4 py-3 text-sm text-text-main">
+              <span aria-hidden="true">🍳</span>
+              <span className="font-semibold">রান্নাঘর:</span>
+              <span>{state.view.kitchen.statusLabelBn}</span>
+              <span className="text-text-muted">
+                {state.view.kitchen.fulfilmentType === "DINE_IN"
+                  ? `• ডাইন-ইন${state.view.kitchen.tableLabel ? ` • টেবিল: ${state.view.kitchen.tableLabel}` : ""}`
+                  : "• টেকঅওয়ে"}
+              </span>
+            </p>
+          )}
+
           <ol className="mt-5 space-y-4">
             {state.view.timeline.map((step, idx) => (
               <li key={step.status} className="relative flex items-start gap-3">
