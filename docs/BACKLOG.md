@@ -19,10 +19,10 @@
 
 ### Workers / realtime / Redis
 - [x] `bullmq` + `ioredis` installed in `apps/web/package.json`, worker daemon entrypoint ready in `apps/web/scripts/worker.ts`.
-- [ ] Redis pub/sub for the admin order SSE feed (currently connect-event + heartbeat only, `live: false`; < 1 s target not met) and for the rider assignment board.
-- [ ] Replace in-memory rate limiter (auth + public tracking) and settings cache with Redis (same key shapes).
-- [ ] Domain-event publishers calling automation `processEvent` + hook `dispatch()` on `order.created` / `payment.succeeded` / `stock.low` / abandoned-checkout sweeps.
-- [ ] Fraud enforcement at checkout (assemble `FraudScoreInput` in the order service, enforce suggested action + OTP challenge on high risk).
+- [x] Redis pub/sub for the admin order SSE feed (connect-event, heartbeat, cluster bridge) and for the live rider assignment board.
+- [x] Replace in-memory rate limiter (auth + public tracking) and settings cache with Redis (distributed cache with memory fallback).
+- [x] Domain-event publishers calling automation `processEvent` + hook `dispatch()` on `order.created` / `payment.succeeded` / `stock.low` / abandoned-checkout sweeps.
+- [x] Fraud enforcement at checkout (assemble `FraudScoreInput` in the order service, enforce suggested action + OTP challenge on high risk with SMS dispatch & interactive verification).
 
 ### Security hardening
 - [x] TOTP secret encryption on enrolment + decryption on verify (AES-256-GCM envelope, `AUTH_ENCRYPTION_KEY`).
@@ -34,7 +34,7 @@
 - [x] Couriers: Steadfast and Pathao live parcel booking, tracking, and label generation adapters.
 - [x] SMS Gateways: BulkSMSBD, Greenweb, SSL Wireless with Bengali Unicode segmentation algorithm.
 - [x] Real AI provider behind the `AiProvider` interface — OpenAI/LLM live adapter with graceful template fallback; `engine` becomes `"provider"`.
-- [ ] Meilisearch live indexing (index settings + Banglish synonyms upload from `src/catalog/indexer.ts`) once host/key are configured locally.
+- [x] Meilisearch live indexing (index settings + Banglish synonyms upload from `src/catalog/indexer.ts`) via admin reindex API `POST /api/v1/admin/catalog/reindex`.
 - [x] F-commerce channels: Meta Webhook (`/api/v1/public/inbox/webhook`) + outbound dispatch adapters for Messenger, Instagram Direct, and WhatsApp Cloud API.
 
 ### Data

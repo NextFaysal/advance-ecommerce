@@ -191,12 +191,13 @@ export function orderRowToEnriched(row: OrderRow): EnrichedOrder {
   const score = row.riskScore;
   const fraudAction: EnrichedOrder["fraudAction"] =
     score >= 70 ? "require_advance" : score >= 40 ? "manual_review" : "auto_confirm";
+  const isOtpVerified = row.tags?.some((t) => t.tag === "otp_verified") ?? false;
   return {
     ...base,
     riskBand: riskLevel(score),
     fraudAction,
     advanceRequired: fraudAction === "require_advance",
-    requiresOtp: score >= 70,
+    requiresOtp: score >= 70 && !isOtpVerified,
     couponCode: usage ? usage.coupon.code : null,
     couponStatus: usage ? "applied" : "none",
     couponDiscountPoisha: usage ? row.discountPoisha : 0,

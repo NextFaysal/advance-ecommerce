@@ -66,6 +66,65 @@ export default function CheckoutPage() {
   // One key per checkout attempt; reused on retry, never regenerated on retry.
   const [idempotencyKey] = useState<string>(() => newIdempotencyKey());
 
+  // Interactive OTP Challenge state (Fraud protection)
+  const [otpCode, setOtpCode] = useState("");
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [otpResending, setOtpResending] = useState(false);
+  const [otpCountdown, setOtpCountdown] = useState(45);
+
+  useEffect(() => {
+    if (placedOrder?.requiresOtp && !otpVerified && otpCountdown > 0) {
+      const timer = setTimeout(() => setOtpCountdown((c) => c - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [placedOrder, otpVerified, otpCountdown]);
+
+  async function handleVerifyOtp(orderNo: string) {
+    if (!otpCode || otpVerifying) return;
+    setOtpVerifying(true);
+    setOtpError(null);
+    try {
+      const res = await fetch(`/api/v1/public/orders/${orderNo}/otp/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: otpCode }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setOtpVerified(true);
+      } else {
+        setOtpError(data.error?.message || "ভুল ওটিপি কোড।");
+      }
+    } catch {
+      setOtpError("নেটওয়ার্ক সমস্যা। আবার চেষ্টা করুন।");
+    } finally {
+      setOtpVerifying(false);
+    }
+  }
+
+  async function handleResendOtp(orderNo: string) {
+    if (otpResending || otpCountdown > 0) return;
+    setOtpResending(true);
+    setOtpError(null);
+    try {
+      const res = await fetch(`/api/v1/public/orders/${orderNo}/otp/send`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setOtpCountdown(45);
+      } else {
+        setOtpError(data.error?.message || "ওটিপি পাঠানো যায়নি।");
+      }
+    } catch {
+      setOtpError("নেটওয়ার্ক সমস্যা।");
+    } finally {
+      setOtpResending(false);
+    }
+  }
+
   useEffect(() => {
     setCart(loadGuestCart());
     setLoaded(true);
@@ -231,9 +290,66 @@ export default function CheckoutPage() {
               অনলাইন পেমেন্ট সম্পন্ন না হলে আমাদের টিম ফোনে যোগাযোগ করে পেমেন্টের ধাপ জানিয়ে দেবে।
             </p>
           )}
-          {placedOrder.advanceRequired || placedOrder.requiresOtp ? (
+          {placedOrder.requiresOtp ? (
+            otpVerified ? (
+              <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-50/60 p-4 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-300">
+                <div className="flex items-center justify-center gap-2 font-semibold">
+                  <Icon name="check" size={18} className="text-emerald-600" />
+                  <span>ফোন নম্বর সফলভাবে যাচাই হয়েছে (Phone Verified)!</span>
+                </div>
+                <p className="mt-1 text-xs text-emerald-700/80 dark:text-emerald-400">
+                  আপনার অর্ডারটি সুরক্ষিতভাবে নিশ্চিত করা হয়েছে এবং শীঘ্রই প্যাকেজিং শুরু হবে।
+                </p>
+              </div>
+            ) : (
+              <div className="mt-5 rounded-2xl border border-amber-500/30 bg-amber-50/50 p-5 text-left shadow-sm dark:bg-amber-950/20">
+                <div className="flex items-center gap-2 font-bold text-amber-800 dark:text-amber-300">
+                  <Icon name="shield" size={20} className="text-amber-600" />
+                  <span>নিরাপত্তা যাচাই: ফোন নম্বরে পাঠানো OTP কোড দিন</span>
+                </div>
+                <p className="mt-1 text-xs text-amber-700/90 dark:text-amber-400">
+                  অর্ডারের সত্যতা যাচাইয়ের জন্য আপনার নম্বরে ৬-সংখ্যার একটি ওটিপি পাঠানো হয়েছে। নিচে কোডটি দিয়ে ভেরিফিকেশন সম্পন্ন করুন:
+                </p>
+                {otpError && (
+                  <p className="mt-2 text-xs font-semibold text-rose-600">{otpError}</p>
+                )}
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    placeholder="৬ সংখ্যার কোড (যেমন: 123456)"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+                    className="h-11 flex-1 rounded-xl border border-border bg-card px-4 font-mono text-base tracking-widest text-text-main outline-none focus:border-brand-500"
+                  />
+                  <button
+                    type="button"
+                    disabled={otpCode.length !== 6 || otpVerifying}
+                    onClick={() => handleVerifyOtp(placedOrder.orderNo)}
+                    className="h-11 rounded-xl bg-brand-600 px-5 text-sm font-semibold text-white shadow transition hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    {otpVerifying ? "যাচাই হচ্ছে…" : "যাচাই করুন"}
+                  </button>
+                </div>
+                <div className="mt-2 text-right">
+                  <button
+                    type="button"
+                    disabled={otpCountdown > 0 || otpResending}
+                    onClick={() => handleResendOtp(placedOrder.orderNo)}
+                    className="text-xs font-medium text-amber-800 underline hover:text-amber-900 disabled:text-text-muted disabled:no-underline dark:text-amber-300"
+                  >
+                    {otpCountdown > 0
+                      ? `পুনরায় ওটিপি পাঠান (${otpCountdown}s)`
+                      : otpResending
+                      ? "পাঠানো হচ্ছে…"
+                      : "কোড পাননি? পুনরায় পাঠান"}
+                  </button>
+                </div>
+              </div>
+            )
+          ) : placedOrder.advanceRequired ? (
             <p role="status" className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
-              নিরাপত্তা যাচাইয়ের জন্য এই অর্ডারে অগ্রিম পেমেন্ট বা ফোন যাচাই (OTP) লাগতে পারে — আমাদের টিম যোগাযোগ করবে।
+              নিরাপত্তা যাচাইয়ের জন্য এই অর্ডারে অগ্রিম ডেলিভারি চার্জ লাগতে পারে — আমাদের টিম ফোনে যোগাযোগ করবে।
             </p>
           ) : null}
           {placedOrder.couponStatus === "applied" ? (

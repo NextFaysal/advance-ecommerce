@@ -77,6 +77,7 @@ export const API_ROUTE_REGISTRY: readonly ApiRouteEntry[] = [
   r("GET", "/api/v1/admin/products/{id}", "admin", "Product detail (admin view, includes cost)"),
   r("PATCH", "/api/v1/admin/products/{id}", "admin", "Update a product (price change requires a reason)"),
   r("POST", "/api/v1/admin/products/import", "admin", "Preview a CSV product import (per-row validation, nothing saved)"),
+  r("POST", "/api/v1/admin/catalog/reindex", "admin", "Reindex active products into Meilisearch with Banglish synonyms"),
 
   // ---- Admin: payments / shipments ----------------------------------
   r("GET", "/api/v1/admin/payments/manual-trx", "admin", "List manual TrxID submissions awaiting review"),
@@ -211,6 +212,8 @@ export const API_ROUTE_REGISTRY: readonly ApiRouteEntry[] = [
   r("GET", "/api/v1/public/products/{slug}", "public", "Product detail by slug"),
   r("GET", "/api/v1/public/categories", "public", "List categories"),
   r("POST", "/api/v1/public/orders", "public", "Create an order (server re-validates price and stock; idempotency key required)"),
+  r("POST", "/api/v1/public/orders/{orderNo}/otp/send", "public", "Send SMS OTP challenge for order phone verification"),
+  r("POST", "/api/v1/public/orders/{orderNo}/otp/verify", "public", "Verify SMS OTP challenge for order phone verification"),
   r("GET", "/api/v1/public/pay/{token}", "public", "Resolve a payment link by its plain token (hash lookup; view never contains the hash)"),
   r("POST", "/api/v1/public/pay/{token}", "public", "Start a sandbox payment for a payment link"),
   r("POST", "/api/v1/public/track", "public", "Track an order by order number + matching phone (generic error otherwise)"),

@@ -295,6 +295,14 @@ export async function POST(req: Request) {
   // Delivery is the in-process bus (src/orders/event-bus); the helper
   // never throws into this mutation path.
   publishOrderCreated(order);
+
+  // Dispatch OTP challenge when fraud score requires OTP verification
+  if (enforcement.requiresOtp) {
+    import("@/checkout/otp").then(({ sendOrderOtp }) => {
+      sendOrderOtp(created.orderNo, form.phone).catch(() => {});
+    }).catch(() => {});
+  }
+
   // Coupon usage is recorded only now that the order exists — never on a
   // fraud block (returned above) and never on an idempotent replay
   // (returned at the top of this handler). (CouponUsage row: written
