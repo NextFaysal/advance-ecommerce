@@ -22,6 +22,7 @@ import {
   type SubscriptionInterval,
 } from "@/subscriptions/labels";
 import type { SubscriptionView } from "@/subscriptions/service";
+import type { BoxSubscriptionExtra } from "@/boxes/service";
 
 export interface PurchasableOption {
   variantId: string;
@@ -43,8 +44,15 @@ interface ListResponse {
     subscriptions: SubscriptionView[];
     addresses: AddressOption[];
     discountBps: number;
+    /** ADV-23 vertical 4: box extras by subscription id (absent /
+     *  empty while the boxes layer is OFF). */
+    boxes?: Record<string, BoxSubscriptionExtra>;
   };
   error?: { message?: string };
+}
+
+function fmtQty(n: number): string {
+  return Number.isInteger(n) ? String(n) : String(Math.round(n * 1000) / 1000);
 }
 
 const selectClass =
@@ -54,6 +62,7 @@ const smallButton =
 
 export function SubscriptionsManager({ purchasable }: { purchasable: PurchasableOption[] }) {
   const [subscriptions, setSubscriptions] = useState<SubscriptionView[] | null>(null);
+  const [boxes, setBoxes] = useState<Record<string, BoxSubscriptionExtra>>({});
   const [addresses, setAddresses] = useState<AddressOption[]>([]);
   const [discountBps, setDiscountBps] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -76,6 +85,7 @@ export function SubscriptionsManager({ purchasable }: { purchasable: Purchasable
         return;
       }
       setSubscriptions(json.data.subscriptions);
+      setBoxes(json.data.boxes ?? {});
       setAddresses(json.data.addresses);
       setDiscountBps(json.data.discountBps);
       setAddressId((prev) => {
@@ -245,6 +255,11 @@ export function SubscriptionsManager({ purchasable }: { purchasable: Purchasable
                   <div className="min-w-0">
                     <p className="font-semibold leading-snug text-text-main">
                       {s.productName} — {s.variantLabel}
+                      {boxes[s.id] ? (
+                        <span className="ml-2 rounded-full bg-brand-100 px-2 py-0.5 text-xs font-semibold text-brand-800 dark:bg-brand-500/15 dark:text-brand-200">
+                          📦 বক্স
+                        </span>
+                      ) : null}
                     </p>
                     <p className="mt-0.5 text-sm text-text-muted">
                       {formatBdt(s.unitPricePoisha)} × {s.quantity} · {INTERVAL_LABELS[s.interval as SubscriptionInterval]?.bn ?? s.interval} ·
@@ -266,6 +281,44 @@ export function SubscriptionsManager({ purchasable }: { purchasable: Purchasable
                 <p className="mt-2 text-sm text-text-muted">
                   ঠিকানা: {s.address.addressLine}, {s.address.upazila}, {s.address.district}
                 </p>
+                {boxes[s.id] ? (
+                  <div className="mt-2 rounded-xl bg-surface-2/60 p-3 text-sm">
+                    <p className="font-semibold text-text-main">
+                      📦 পরের বাক্স · সাইকেল {boxes[s.id]?.nextCycleKey}
+                      {boxes[s.id]?.nextContents?.noteBn
+                        ? ` — ${boxes[s.id]?.nextContents?.noteBn}`
+                        : ""}
+                    </p>
+                    {boxes[s.id]?.nextContents ? (
+                      <ul className="mt-1 list-inside list-disc space-y-0.5 text-text-muted">
+                        {boxes[s.id]?.nextContents?.items.map((item) => (
+                          <li key={item.variantId}>
+                            {item.productName} — {item.variantLabel} × {fmtQty(item.quantity)}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-text-muted">
+                        এই সাইকেলের বাক্সের তালিকা এখনো ঘোষণা হয়নি — তালিকা নির্ধারণ না হলে এই
+                        চক্রে অর্ডার তৈরি হবে না।
+                      </p>
+                    )}
+                    {boxes[s.id]?.lastContents ? (
+                      <>
+                        <p className="mt-2 font-semibold text-text-main">
+                          আগের বাক্সে ছিল · সাইকেল {boxes[s.id]?.lastCycleKey}
+                        </p>
+                        <ul className="mt-1 list-inside list-disc space-y-0.5 text-text-muted">
+                          {boxes[s.id]?.lastContents?.items.map((item) => (
+                            <li key={item.variantId}>
+                              {item.productName} — {item.variantLabel} × {fmtQty(item.quantity)}
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
                 {s.status === "ACTIVE" ? (
                   <p className="mt-1 text-sm text-text-muted">
                     পরবর্তী অর্ডার: {formatSubscriptionDate(s.nextRunAt)}

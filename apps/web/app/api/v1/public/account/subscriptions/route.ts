@@ -26,6 +26,7 @@ import {
   listSubscriptionsForCustomer,
   loadSubscriptionDiscountBps,
 } from "@/subscriptions/service";
+import { getBoxExtrasForSubscriptions } from "@/boxes/service";
 import { prisma } from "@advance-ecommerce/db";
 import { isValidQtyNumber } from "@/lib/quantity";
 
@@ -48,8 +49,12 @@ export async function GET() {
     listCustomerAddressOptions(customer.id),
     loadSubscriptionDiscountBps(),
   ]);
+  // ADV-23 vertical 4: box extras (next cycle + announced contents,
+  // last box's contents) keyed by subscription id — {} while the
+  // boxes layer is OFF or the customer has no box subscriptions.
+  const boxes = await getBoxExtrasForSubscriptions(subscriptions);
   return NextResponse.json({
-    data: { subscriptions, addresses, discountBps },
+    data: { subscriptions, addresses, discountBps, boxes },
     meta: { db: "PRISMA" },
   });
 }

@@ -21,6 +21,18 @@
  * (lastError) and surface in the admin subscription list — a failed
  * cycle is visible, not silent.
  *
+ * BOX BRANCH (ADV-23 vertical 4, wave 56): when the subscription-
+ * boxes layer is ON (module.subscription_boxes) and a due row's
+ * variant is a listed box (boxes.config.boxVariantIds), the cycle
+ * first resolves through src/boxes/generate.ts — no contents
+ * defined for the due cycle -> the cycle is SKIPPED with a
+ * BOX_CONTENTS_MISSING error on the row (never an empty box, never
+ * last cycle's contents); contents defined -> the same single-line
+ * order as any subscription, with the box discount applied and the
+ * frozen contents list appended to the order note. With the layer
+ * OFF every row follows the plain per-product path below,
+ * unchanged.
+ *
  * HONEST STATE: this function runs ONLY in the worker process. No
  * worker host exists yet (VPS lands after development completes), so
  * in production today subscriptions accumulate and NO orders are
@@ -50,6 +62,12 @@ import { zoneForDistrict } from "@/checkout/shipping-core";
 import { subscriptionsEnabled } from "./flags";
 import { addInterval, loadSubscriptionDiscountBps } from "./service";
 import { qtyNumber } from "../lib/quantity";
+import {
+  boxContentsMissingError,
+  createBoxSweepContext,
+  isBoxSubscription,
+  resolveBoxCycle,
+} from "@/boxes/generate";
 
 const SWEEP_BATCH = 100;
 
@@ -63,6 +81,10 @@ export interface SubscriptionSweepResult {
   due: number;
   created: number;
   failed: number;
+  /** Due box cycles skipped because their contents were not
+   *  defined (a subset of `failed`, broken out so the worker log
+   *  can name the cause). Always 0 while the boxes layer is OFF. */
+  boxesSkipped: number;
   orderIds: string[];
 }
 
@@ -76,6 +98,7 @@ export async function processDueSubscriptions(
       due: 0,
       created: 0,
       failed: 0,
+      boxesSkipped: 0,
       orderIds: [],
     };
   }
@@ -86,9 +109,12 @@ export async function processDueSubscriptions(
     take: SWEEP_BATCH,
   });
   const discountBps = await loadSubscriptionDiscountBps();
+  // Box layer context (null while module.subscription_boxes is OFF).
+  const boxCtx = await createBoxSweepContext(discountBps);
 
   let created = 0;
   let failed = 0;
+  let boxesSkipped = 0;
   const orderIds: string[] = [];
 
   for (const sub of due) {
@@ -114,6 +140,30 @@ export async function processDueSubscriptions(
         continue;
       }
 
+      // Box branch (ADV-23 vertical 4): a due BOX cycle must have
+      // its contents defined, or it is skipped — visibly, on the
+      // row, under the same missed-cycle advance as any failure.
+      let boxNoteText: string | null = null;
+      let orderDiscountBps = discountBps;
+      if (boxCtx !== null && isBoxSubscription(boxCtx, sub.variantId)) {
+        const resolved = await resolveBoxCycle(boxCtx, {
+          variantId: sub.variantId,
+          interval: sub.interval,
+          scheduledAt: sub.nextRunAt,
+        });
+        if (resolved.kind === "missing") {
+          await prisma.subscription.update({
+            where: { id: sub.id },
+            data: { lastError: boxContentsMissingError(resolved.cycleKey), nextRunAt },
+          });
+          failed += 1;
+          boxesSkipped += 1;
+          continue;
+        }
+        boxNoteText = resolved.noteText;
+        orderDiscountBps = resolved.discountBps;
+      }
+
       const result = await createManualOrder(
         {
           customerId: sub.customerId,
@@ -136,9 +186,11 @@ export async function processDueSubscriptions(
           paymentMethod: "cod",
           shippingMethod: zoneForDistrict(sub.district),
           source: "subscription",
-          internalNote: `সাবস্ক্রিপশন অর্ডার — সাবস্ক্রিপশন আইডি: ${sub.id} [subscription:${sub.id}]`,
+          internalNote:
+            `সাবস্ক্রিপশন অর্ডার — সাবস্ক্রিপশন আইডি: ${sub.id} [subscription:${sub.id}]` +
+            (boxNoteText !== null ? `\n${boxNoteText}` : ""),
           idempotencyKey: deterministicUuid(`subscription:${sub.id}:${sub.nextRunAt.toISOString()}`),
-          subscriptionDiscountBps: discountBps,
+          subscriptionDiscountBps: orderDiscountBps,
         },
         SYSTEM_ACTOR,
       );
@@ -181,5 +233,5 @@ export async function processDueSubscriptions(
     }
   }
 
-  return { ran: true, due: due.length, created, failed, orderIds };
+  return { ran: true, due: due.length, created, failed, boxesSkipped, orderIds };
 }

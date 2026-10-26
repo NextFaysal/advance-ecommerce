@@ -166,6 +166,8 @@ const FEATURE_FLAGS: Array<{ key: string; description: string }> = [
   { key: "module.social_proof", description: "Social proof — honest variants only: real recent-orders ticker + real low-stock lines (v2 add-on, P11)" },
   { key: "module.restaurant", description: "Restaurant + kitchen display (KDS): dine-in tables & takeaway tickets (v2 add-on, ADV-23)" },
   { key: "module.services", description: "Services + appointment booking: bookable service variants, slot calendar + bookings board (v2 add-on, ADV-23)" },
+  { key: "module.rental", description: "Rental: rentable variants, date-range booking with stock-overlap availability + security deposit (v2 add-on, ADV-23)" },
+  { key: "module.subscription_boxes", description: "Subscription boxes: curated recurring boxes with per-cycle rotating contents on the subscription engine (v2 add-on, ADV-23)" },
 ];
 
 const DEFAULT_SETTINGS: Array<{ key: string; value: string; category: string; isPublic: boolean }> = [

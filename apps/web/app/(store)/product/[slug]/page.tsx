@@ -8,6 +8,8 @@ import { EmiNote } from "@/marketing/components/EmiNote";
 import { RecentOrdersSection } from "@/marketing/components/RecentOrdersSection";
 import { LOW_STOCK_THRESHOLD, socialProofEnabled } from "@/marketing/social-proof";
 import { SubscribeSaveSection } from "@/subscriptions/subscribe-save-section";
+import { BoxSubscribeSection } from "@/boxes/box-subscribe-section";
+import { getBoxPdpData } from "@/boxes/service";
 import { RecordRecentlyViewed } from "@/storefront-ux/components/RecordRecentlyViewed";
 import { RecentlyViewedRail } from "@/storefront-ux/components/RecentlyViewedRail";
 import { StickyBuyBar } from "@/storefront-ux/components/StickyBuyBar";
@@ -178,20 +180,25 @@ export default async function ProductPage({ params }: { params: { slug: string }
     product.sizeChart && product.sizeChart.headers.length > 0 && product.sizeChart.rows.length > 0
       ? product.sizeChart
       : null;
-  // Speed wave batch 2: the four tail reads — age restriction,
+  // Speed wave batch 2: the tail reads — age restriction,
   // fashion-pack size chart, grocery weighted infos, related
-  // products — depend only on `product` (already loaded above),
+  // products, subscription-box data — depend only on `product`
+  // (already loaded above),
   // never on each other, so they run in ONE Promise.all instead of
   // four serial round trips. Gating is unchanged: the age read is
   // skipped entirely for price-on-request products, the pack chart
   // is only fetched when the product has no chart of its own, and
   // the pack/grocery resolvers return null/[] at ~zero cost while
   // their module flag is off.
-  const [ageRestriction, packSizeChart, weightedInfos, related] = await Promise.all([
+  const [ageRestriction, packSizeChart, weightedInfos, related, boxPdpData] = await Promise.all([
     priceOnRequest ? null : getAgeRestrictionForCategorySlug(product.categorySlug),
     sizeChart ? null : resolvePdpPackSizeChart(product.categorySlug),
     getWeightedInfosForProduct(product.id),
     getRelatedProducts(product),
+    // ADV-23 vertical 4: subscription-box data — null unless BOTH
+    // subscription flags are ON and a variant of this product is a
+    // listed box (~zero cost otherwise, the weightedInfos contract).
+    priceOnRequest ? null : getBoxPdpData(product.variants.map((v) => v.id)),
   ]);
   // ADV-22 (fashion pack): when the product has NO chart of its own,
   // the pack chart for its category is the fallback (per-category
@@ -594,8 +601,21 @@ export default async function ProductPage({ params }: { params: { slug: string }
             {/* Subscribe & save (ADV-18 remainder) — self-gating
                 server section: renders nothing while the
                 module.subscriptions flag is OFF. Hidden for
-                price-on-request products like the EMI note. */}
-            {priceOnRequest ? null : (
+                price-on-request products like the EMI note.
+                ADV-23 vertical 4: a listed BOX product gets the box
+                section instead (cycle choice + announced contents) —
+                never both cards stacked. */}
+            {priceOnRequest ? null : boxPdpData !== null ? (
+              <BoxSubscribeSection
+                variants={product.variants.map((v) => ({
+                  id: v.id,
+                  label: Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড",
+                  pricePoisha: v.pricePoisha,
+                  stock: v.stock,
+                }))}
+                data={boxPdpData}
+              />
+            ) : (
               <SubscribeSaveSection
                 variants={product.variants.map((v) => ({
                   id: v.id,
