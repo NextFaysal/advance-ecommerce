@@ -15,6 +15,9 @@
  *    adapter is injected, sandbox fallbacks are used: SMS/email return a
  *    simulated queued result, courier uses Agent 9's sandbox providers
  *    (steadfast/pathao/redx). Nothing here makes a network call.
+ *    (ADV-3 exception by design: email jobs delegate to
+ *    HandlerDeps.emailSend when wired — that send path DOES call the
+ *    real transport, resolved from Settings by the worker assembly.)
  *  - Failures throw: workers.ts lets BullMQ retry per the queue's policy
  *    (DEFAULT_RETRY / COURIER_RETRY) and records a dead-letter entry
  *    after the final attempt. Handlers must never swallow an error and
@@ -233,6 +236,16 @@ export interface HandlerDeps {
    *  process these payloads (it would send an empty message to a
    *  signup id and the signup would never be marked notified). */
   backInStockSmsSend?: (job: SmsJob) => Promise<HandlerResult>;
+  /** ADV-3: send path for lifecycle email jobs (the email-send
+   *  queue's real producer is src/email/send.ts), wired by the worker
+   *  deps assembly to processEmailJob there. It renders the template
+   *  at send time and calls the REAL transport resolved from Settings
+   *  (src/email/config.ts); unconfigured transport / missing
+   *  recipient / vanished entity SKIP honestly. When this dep is
+   *  wired the generic email path below never runs — it would "send"
+   *  an empty subject/body and report a phantom success. Deployments
+   *  without the dep keep the legacy sandbox fallback. */
+  emailSend?: (job: EmailJob) => Promise<HandlerResult>;
   logger?: JobLogger;
 }
 
@@ -411,8 +424,20 @@ export function createHandlers(
     });
   };
 
-  const email: (e: JobEnvelope<EmailJob>) => Promise<HandlerResult> = (envelope) =>
-    runIdempotent(store, envelope, envelope.payload.recipientRef, async () => {
+  const email: (e: JobEnvelope<EmailJob>) => Promise<HandlerResult> = (envelope) => {
+    // ADV-3: lifecycle email jobs delegate to their own send path
+    // (template rendered at send time, real transport from Settings,
+    // honest SKIP when unconfigured). The generic path below is the
+    // legacy sandbox fallback for deployments without the dep wired
+    // — with the dep wired it must never run (empty subject/body =
+    // phantom success).
+    if (deps.emailSend) {
+      const sendEmail = deps.emailSend;
+      return runIdempotent(store, envelope, envelope.payload.recipientRef, () =>
+        sendEmail(envelope.payload),
+      );
+    }
+    return runIdempotent(store, envelope, envelope.payload.recipientRef, async () => {
       const provider = deps.emailProvider
         ? await deps.emailProvider(null)
         : createSandboxEmailProvider();
@@ -431,6 +456,7 @@ export function createHandlers(
       });
       return { status: "succeeded", ref: result.messageId, detail: "email via adapter" };
     });
+  };
 
   const courierBooking: (e: JobEnvelope<CourierBookingJob>) => Promise<HandlerResult> = (
     envelope,

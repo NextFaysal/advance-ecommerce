@@ -16,7 +16,7 @@ import { buildTrackingEvent, demoDedupStore, trackingEventInputSchema } from "@/
 import { buildMetaCapiPayload, dispatchMetaCapi } from "@/tracking/capi";
 import { evaluateTrackingConsent, CONSENT_STATES, type TrackingConsentState } from "@/tracking/consent";
 import { utmParamsSchema } from "@/tracking/attribution";
-import { UNCONFIGURED_TRACKING_STATUS } from "@/tracking/settings";
+import { resolveMetaCapi } from "@/tracking/resolve";
 import type { TrackingUserInput } from "@/tracking/types";
 
 const bodySchema = trackingEventInputSchema.extend({
@@ -80,14 +80,17 @@ export async function POST(req: Request) {
         }
       : undefined;
 
-  const testEventCode = process.env.META_TEST_EVENT_CODE ?? UNCONFIGURED_TRACKING_STATUS.metaTestEventCode;
+  // Test event code resolves DB-first (seo.meta.test_event_code) with the
+  // META_TEST_EVENT_CODE env var as fallback — see @/tracking/resolve.
+  const { testEventCode } = await resolveMetaCapi();
 
   const payload = buildMetaCapiPayload(event, user, {
     includeUserData: decision.mode === "full",
     testEventCode,
   });
 
-  // Dispatches to real Meta Graph API if META_ACCESS_TOKEN is present, or sandbox fallback.
+  // Dispatches to real Meta Graph API when a pixel + token resolve (Admin
+  // Settings DB first, env fallback), or sandbox fallback when unconfigured.
   const capiResults = await dispatchMetaCapi(payload);
 
   const hasSent = capiResults.some((r) => r.status === "sent");
@@ -105,7 +108,7 @@ export async function POST(req: Request) {
       sender: hasSent ? "live_meta_capi" : "sandbox_simulated",
       note: hasSent
         ? "Successfully delivered to Meta Conversions API over HTTPS."
-        : "Simulated in sandbox. Provide META_ACCESS_TOKEN in .env.local to dispatch live to graph.facebook.com.",
+        : "Simulated in sandbox. Configure a Meta pixel + access token in Admin > Settings > Tracking (or META_ACCESS_TOKEN in env) to dispatch live to graph.facebook.com.",
     },
   });
 }

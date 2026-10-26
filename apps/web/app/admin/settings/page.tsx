@@ -20,6 +20,7 @@ import {
 import { TRACKING_SETTING_KEYS } from "@/tracking/settings";
 import { loadOrderRules } from "@/checkout/order-rules";
 import { loadDeliverySlots } from "@/checkout/delivery-slots";
+import { getEmailTransportStatus } from "@/email/config";
 import { StoreNameCard } from "./store-name-card";
 
 // Settings index — landing page for Admin > Settings.
@@ -145,10 +146,18 @@ export default async function AdminSettingsPage() {
     const anyConfigured = sms.configured.length + email.configured.length > 0;
     const fmt = (label: string, s: typeof sms) =>
       `${label}: ক্রেডেনশিয়াল ${s.configured.length > 0 ? s.configured.join(", ") : "নেই"} · চালু ${s.enabled.length > 0 ? s.enabled.join(", ") : "নেই"}`;
+    // ADV-3: the email TRANSPORT verdict is stricter than a credential
+    // row existing — it is exactly what src/email/config.ts resolves
+    // at send time (provider + api_key + from_address). Booleans and a
+    // machine reason only; no credential value is read onto this page.
+    const transport = await getEmailTransportStatus();
+    const transportText = transport.configured
+      ? `ইমেইল ট্রান্সপোর্ট (${transport.provider}): প্রস্তুত — অর্ডার নিশ্চিতকরণ ও স্টাফ আমন্ত্রণ ইমেইল কিউ থেকে পাঠানো যাবে (ওয়ার্কার চালু থাকলে)।`
+      : `ইমেইল ট্রান্সপোর্ট (${transport.provider}): প্রস্তুত নয় — ${transport.reason ?? "unknown"}। কিউতে থাকা ইমেইল SKIP হবে, পাঠানো হয়েছে বলে দেখানো হবে না।`;
     return {
       tone: anyConfigured ? "success" : "warning",
       label: anyConfigured ? "কনফিগার হয়েছে" : "কনফিগার হয়নি",
-      detail: `${fmt("SMS", sms)}। ${fmt("ইমেইল", email)}।`,
+      detail: `${fmt("SMS", sms)}। ${fmt("ইমেইল", email)}। ${transportText}`,
     } satisfies CardStatus;
   });
 

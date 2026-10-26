@@ -133,16 +133,16 @@ export default function TrackingSettingsPage() {
         Configure Multi-Pixel tracking, Meta Conversions API (CAPI), Microsoft Clarity Heatmaps & Recordings, Google Analytics 4, and TikTok Pixel.
       </p>
 
-      {/* Honesty banner (doc 21, G3-2): these DB settings are NOT wired
-          to the live pixel/CAPI yet — the runtime reads server env. */}
+      {/* Resolution note (ADV-9): this page's DB settings ARE the live
+          source of truth for pixel + CAPI; server env is fallback only. */}
       <div
-        role="alert"
-        style={{ border: "1px solid #F59E0B", backgroundColor: "#FFFBEB", color: "#92400E", borderRadius: 8, padding: "12px 16px", marginBottom: 24, fontSize: 14, lineHeight: 1.7 }}
+        style={{ border: "1px solid #34D399", backgroundColor: "#ECFDF5", color: "#065F46", borderRadius: 8, padding: "12px 16px", marginBottom: 24, fontSize: 14, lineHeight: 1.7 }}
       >
-        <strong>⚠️ সতর্কতা:</strong> এই পেজের সেটিংস এখনো live pixel/CAPI-তে কার্যকর নয় — live মান আসে
-        সার্ভার env (<code>NEXT_PUBLIC_META_PIXEL_ID</code>, <code>META_PIXEL_ID</code>,{" "}
-        <code>META_ACCESS_TOKEN</code>) থেকে; env সেট থাকলে সেটাই প্রযোজ্য। এখানে সেভ করা মান
-        ডাটাবেসে সংরক্ষিত থাকে, কিন্তু runtime এখনো তা পড়ে না — DB ওয়্যারিং আসবে doc 21-এর W3 ধাপে।
+        <strong>✅ Live:</strong> এই পেজে সেভ করা সেটিংসই এখন live pixel/CAPI চালায় — runtime প্রথমে
+        ডাটাবেসের মান পড়ে (<code>seo.meta.pixel_id</code>, <code>seo.meta.access_token</code> ইত্যাদি);
+        সার্ভার env (<code>NEXT_PUBLIC_META_PIXEL_ID</code>, <code>META_ACCESS_TOKEN</code>) শুধু
+        fallback — DB-তে মান খালি থাকলেই কেবল env প্রযোজ্য। সেভ করার পর পরিবর্তন সর্বোচ্চ ~১ মিনিটের
+        মধ্যে কার্যকর হয় (server cache)। Access token সবসময় server-side থাকে — browser-এ কখনো পাঠানো হয় না।
       </div>
 
       {/* Live Status Card */}

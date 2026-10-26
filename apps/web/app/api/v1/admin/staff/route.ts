@@ -18,12 +18,16 @@ import { recordDemoAudit } from "../audit-log/store";
 // Staff API — Agent 39, DB-backed since the Prisma persistence swap.
 // GET: staff.view. POST (invite): staff.manage.
 // Persistence: the User/Role tables via Prisma (see ./store.ts for the
-// status derivation). NO email is ever sent by the invite — POST creates
-// an INACTIVE user with an unusable random password hash plus a one-time
-// invite token (only its SHA-256 hash is stored); the response returns
-// the invite link ONCE so the inviter can share it manually. The invitee
-// accepts at /admin/accept-invite, sets their own password, and only
-// then can log in. Resend/revoke live under ./[id]/resend-invite and
+// status derivation). POST creates an INACTIVE user with an unusable
+// random password hash plus a one-time invite token (only its SHA-256
+// hash is stored); the response returns the invite link ONCE so the
+// inviter can share it manually. ADV-3: when the invite has an email
+// address, the same link is ALSO enqueued as an invite email on the
+// email-send queue (src/email/send.ts) — queued is not delivered;
+// delivery needs the worker + a configured email transport, and the
+// outcome rides in invite.email. The invitee accepts at
+// /admin/accept-invite, sets their own password, and only then can
+// log in. Resend/revoke live under ./[id]/resend-invite and
 // ./[id]/revoke-invite.
 // An Owner can NEVER be created through this API: the first Owner is
 // created only by packages/db/scripts/create-first-owner.ts (run once,
@@ -167,6 +171,37 @@ export async function POST(req: Request) {
     userAgent: req.headers.get("user-agent"),
   });
 
+  const inviteLink = staffInviteLink(new URL(req.url).origin, token);
+
+  // ADV-3: email the invite when an address exists. The raw link
+  // rides on the queued job (only its hash is stored); the outcome is
+  // reported exactly — "queued" is not "delivered" (delivery needs
+  // the worker process + a configured transport). A failure here
+  // never fails the invite: the manual link below remains valid.
+  let inviteEmail: { status: string; reason?: string } = {
+    status: "not_queued",
+    reason: "phone-only-invite",
+  };
+  if (emailLower !== null) {
+    try {
+      const emailModule = await import("@/email/send");
+      const result = await emailModule.enqueueStaffInviteEmail({
+        userId: member.id,
+        toEmail: emailLower,
+        inviteeName: name,
+        roleName: role,
+        inviteLink,
+        expiresAtIso: expiresAt.toISOString(),
+      });
+      inviteEmail =
+        result.email === "queued"
+          ? { status: "queued" }
+          : { status: "not_queued", reason: result.reason };
+    } catch {
+      inviteEmail = { status: "not_queued", reason: "queue-unavailable" };
+    }
+  }
+
   return NextResponse.json(
     {
       data: {
@@ -177,13 +212,17 @@ export async function POST(req: Request) {
           channel: "manual_link",
           // Shown ONCE — only the token's hash is stored, so this link
           // can never be reconstructed. The inviter shares it manually.
-          link: staffInviteLink(new URL(req.url).origin, token),
+          link: inviteLink,
           expiresAt: expiresAt.toISOString(),
+          // ADV-3: the queued-email outcome for the same link
+          // (absent reason on "queued"; phone-only invites report
+          // reason "phone-only-invite").
+          email: inviteEmail,
         },
       },
       meta: {
         persistence: "database",
-        note: "Invite recorded as an inactive User row with a hashed one-time token (72h). NO email was sent — share the link manually; it is shown only in this response.",
+        note: "Invite recorded as an inactive User row with a hashed one-time token (72h). The link is shown only in this response; when an email address was provided, the same link was also queued for email delivery (invite.email) — queued is not delivered.",
       },
     },
     { status: 201 },

@@ -6,14 +6,15 @@
 // safe getter, never shown in the admin UI. This module holds key NAMES and
 // shapes only; no value, token, or pixel id lives in code.
 //
-// HONESTY NOTE (doc 21, G3-2): no runtime code reads these DB keys
-// yet. The live browser pixel reads NEXT_PUBLIC_META_PIXEL_ID from the
-// server env (app/tracking-shell.tsx), and real CAPI sending reads env
-// via getActiveMetaCapiTargets() in src/tracking/capi.ts (META_PIXEL_ID
-// / META_ACCESS_TOKEN) — NOT `seo.meta.access_token` from this store.
-// Values saved through the admin Tracking page are stored (encrypted
-// where secret) but have no live effect until the runtime is wired to
-// this store; that wiring is doc 21 step W3. Env wins until then.
+// RUNTIME WIRING (ADV-9, doc 21 G3-2): the runtime DOES read these DB
+// keys now. src/tracking/resolve.ts resolves every value DB-first (this
+// store, via src/lib/settings.ts getSetting()) with the server env as
+// fallback: the browser pixel ids reach the storefront through the
+// server shell (app/tracking-shell.tsx), and real CAPI sending resolves
+// its pixel/token targets through resolveMetaCapi() — so the token CAPI
+// sends with is `seo.meta.access_token` from this store when set, else
+// META_ACCESS_TOKEN from env. Env applies only where the DB value is
+// empty. See src/tracking/resolve.ts for the full resolution order.
 export const TRACKING_SETTING_KEYS = {
   metaPixelId: "seo.meta.pixel_id",
   metaBackupPixelId: "seo.meta.backup_pixel_id", // Secondary / Backup Meta Pixel
@@ -63,11 +64,10 @@ export interface TrackingConfigStatus {
 }
 
 /**
- * Demo resolver used until the DB-backed settings reader is wired into the
- * tracking routes: everything unconfigured/disabled (fail-closed — with no
- * pixel id and CAPI disabled, the sender seam stays sandbox and no event
- * leaves the server). Swap point: resolve the same shape from
- * src/lib/settings.ts getSetting()/integration status when Prisma lands.
+ * All-unconfigured status constant (fail-closed shape: no pixel id and
+ * CAPI disabled means the sender seam stays sandbox and no event leaves
+ * the server). The live status is resolved by resolveTrackingConfigStatus()
+ * in src/tracking/resolve.ts; this constant remains the empty baseline.
  */
 export const UNCONFIGURED_TRACKING_STATUS: TrackingConfigStatus = {
   metaPixelId: null,

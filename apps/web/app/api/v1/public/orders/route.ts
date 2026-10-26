@@ -560,6 +560,27 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
     }
   }
 
+  // Order-confirmation email (ADV-3): when the customer gave an email,
+  // a confirmation job is enqueued on the email-send queue — same
+  // guarded seam discipline as the blocks around it. meta.email is
+  // honest: "queued" means the job sits in Redis; delivery still
+  // needs the worker process AND a configured email transport
+  // (Settings email.*) — until then the job waits / skips, and no
+  // email is ever claimed sent here. Phone-only orders (no email)
+  // skip the seam entirely and carry no meta.email.
+  let emailMeta: { confirmation: string } | undefined;
+  if (form.email !== undefined && form.email !== "") {
+    try {
+      const email = await import("@/email/send");
+      const result = await email.enqueueOrderConfirmationEmail(created.orderId);
+      emailMeta = {
+        confirmation: result.email === "queued" ? "queued" : result.reason,
+      };
+    } catch {
+      emailMeta = { confirmation: "queue-unavailable" };
+    }
+  }
+
   // Prepaid initiation (O3-2 seam): a non-COD order also attempts the
   // hosted-payment initiation. Dynamic import + try/catch by design —
   // its absence (or failure) degrades to meta, never breaks a create
@@ -625,6 +646,7 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
           : {}),
         ...(paymentInitiation ? { paymentInitiation } : {}),
         ...(otpMeta ? { otp: otpMeta } : {}),
+        ...(emailMeta ? { email: emailMeta } : {}),
         // Wave 27: deliverySlotAccepted is present only when the
         // customer submitted a slot id — false means the id was not
         // in the configured set and was dropped (order unaffected).

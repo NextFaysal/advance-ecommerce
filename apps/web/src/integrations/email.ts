@@ -10,8 +10,13 @@ export const EMAIL_PROVIDERS: readonly EmailProviderName[] = ["resend", "smtp"];
 export interface EmailSendInput {
   to: string;
   subject: string;
-  /** Rendered HTML/text body. Template variables: {customer_name}, {order_no}, {tracking_url}. */
+  /** Rendered plain-text body. Template variables: {customer_name}, {order_no}, {tracking_url}. */
   body: string;
+  /** Optional rendered HTML body (ADV-3 templates produce both). */
+  html?: string;
+  /** Optional file attachments (base64 content) — the path ADV-29's
+   *  PDF invoices will ride on; no caller attaches anything yet. */
+  attachments?: { filename: string; contentBase64: string }[];
   templateKey: string | null;
   orderId: string | null;
 }

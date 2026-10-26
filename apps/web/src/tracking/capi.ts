@@ -4,6 +4,7 @@
 // Real HTTP sender dispatches to Meta Graph API (graph.facebook.com/v19.0/{pixel_id}/events)
 // using Bearer token authentication, supporting both Primary and Backup Pixels.
 import { hashEmailForCapi, hashExternalId, hashPhoneForCapi } from "./hashing";
+import { resolveMetaCapi } from "./resolve";
 import type { BuiltTrackingEvent, TrackingUserInput } from "./types";
 
 /**
@@ -205,27 +206,15 @@ export async function sendMetaCapiHttp(
 }
 
 /**
- * Returns any server-configured Meta CAPI targets (Primary + Backup).
- * Reads from environment variables (fallback) or DB settings.
+ * Returns the server-configured Meta CAPI targets (Primary + Backup).
+ * Resolution (ADV-9): Admin Settings DB first — `seo.meta.pixel_id` /
+ * `seo.meta.access_token` (and the backup pair), saved from Admin >
+ * Settings > Tracking — with the env vars (NEXT_PUBLIC_META_PIXEL_ID /
+ * META_PIXEL_ID / META_ACCESS_TOKEN, ...) as fallback when the DB value
+ * is empty. A target exists only when a pixel id AND its token resolve.
  */
-export function getActiveMetaCapiTargets(): MetaCapiTarget[] {
-  const targets: MetaCapiTarget[] = [];
-  const testEventCode = process.env.META_TEST_EVENT_CODE ?? null;
-
-  // Primary
-  const primaryPixel = (process.env.NEXT_PUBLIC_META_PIXEL_ID ?? process.env.META_PIXEL_ID ?? "").trim();
-  const primaryToken = (process.env.META_ACCESS_TOKEN ?? "").trim();
-  if (primaryPixel && primaryToken) {
-    targets.push({ pixelId: primaryPixel, accessToken: primaryToken, testEventCode });
-  }
-
-  // Backup
-  const backupPixel = (process.env.NEXT_PUBLIC_META_BACKUP_PIXEL_ID ?? process.env.META_BACKUP_PIXEL_ID ?? "").trim();
-  const backupToken = (process.env.META_BACKUP_ACCESS_TOKEN ?? "").trim();
-  if (backupPixel && backupToken) {
-    targets.push({ pixelId: backupPixel, accessToken: backupToken, testEventCode });
-  }
-
+export async function getActiveMetaCapiTargets(): Promise<MetaCapiTarget[]> {
+  const { targets } = await resolveMetaCapi();
   return targets;
 }
 
@@ -257,7 +246,7 @@ export const sandboxCapiSender = new SandboxCapiSender();
  * Falls back to sandbox if no real credentials are configured in this environment.
  */
 export async function dispatchMetaCapi(payload: MetaCapiPayload): Promise<CapiSendResult[]> {
-  const targets = getActiveMetaCapiTargets();
+  const targets = await getActiveMetaCapiTargets();
   if (targets.length === 0) {
     const sandboxResult = await sandboxCapiSender.send(payload);
     return [sandboxResult];

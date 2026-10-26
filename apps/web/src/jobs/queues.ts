@@ -105,6 +105,29 @@ export interface SmsJob {
   /** Stable dedupe key (also used as the BullMQ jobId by the producer). */
   idempotencyKey?: string;
 }
-export interface EmailJob { orderId?: string; templateKey: string; recipientRef: string; }
+export interface EmailJob {
+  orderId?: string;
+  templateKey: string;
+  recipientRef: string;
+  /** Stable dedupe key (also used as the BullMQ jobId by the producer). */
+  idempotencyKey?: string;
+  /**
+   * Staff-invite flavour (templateKey === "staff_invite", ADV-3):
+   * produced by src/email/send.ts from the staff invite routes. The
+   * recipient address, the invitee's name/role and the RAW invite
+   * link ride on the payload — the link because only the token's
+   * SHA-256 hash is ever stored, so the job is the only channel that
+   * can carry it to the worker (the otpCode precedent above). None of
+   * these fields is ever logged. Order-confirmation jobs carry ids
+   * only; their recipient is resolved from the Customer row at send
+   * time.
+   */
+  toEmail?: string;
+  inviteLink?: string;
+  inviteeName?: string;
+  roleName?: string;
+  /** Invite expiry (ISO) — rendered into the invite email. */
+  expiresAt?: string;
+}
 export interface CourierBookingJob { orderId: string; shipmentId: string; provider: string; }
 export interface WebhookJob { event: string; payloadId: string; }

@@ -61,8 +61,19 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   "storage.cdn_url": { category: "storage", value: "", isPublic: true },
   "email.provider": { category: "email", value: "resend", isPublic: false },
   "email.from_name": { category: "email", value: "", isPublic: true },
+  // Sender ADDRESS for the ADV-3 email transport (src/email/config.ts).
+  // Empty = NOT configured: with no from-address the transport honestly
+  // resolves to not-configured and queued lifecycle emails SKIP.
+  "email.from_address": { category: "email", value: "", isPublic: false },
   "sms.provider": { category: "sms", value: "", isPublic: false },
   "sms.sender_id": { category: "sms", value: "", isPublic: false },
+  // Fallback gateway for ADV-2 (src/integrations/sms-resolver.ts):
+  // when the active provider is not configured (disabled or missing
+  // credentials) but the fallback is, sends route through the fallback.
+  // Per-provider credentials/enabled ride the provider-scoped pattern
+  // (sms.<provider>.api_key / api_token / token / sid / sender_id /
+  // enabled) — see sms-resolver.ts for the required-field table.
+  "sms.fallback_provider": { category: "sms", value: "", isPublic: false },
   // VAT rate in basis points (1500 = 15%). EMPTY default = NOT
   // configured — there is deliberately no built-in rate: order creation
   // records a VAT split (Order.vatPoisha / vatRateBps) only while this
@@ -162,6 +173,7 @@ export const SETTING_ENV_FALLBACK: Record<string, string> = {
   "storage.cdn_url": "NEXT_PUBLIC_CDN_URL",
   "email.provider": "EMAIL_PROVIDER",
   "email.from_name": "EMAIL_FROM_NAME",
+  "email.from_address": "EMAIL_FROM_ADDRESS",
   "sms.provider": "SMS_PROVIDER",
   "sms.sender_id": "SMS_SENDER_ID",
 };
@@ -335,6 +347,7 @@ export async function getIntegrationStatus(
     const enabled = (await getSetting(`${category}.${provider}.enabled`)) === "true";
     const credentialKeys = [
       `${category}.${provider}.api_key`,
+      `${category}.${provider}.api_token`,
       `${category}.${provider}.secret`,
       `${category}.${provider}.password`,
       `${category}.${provider}.token`,

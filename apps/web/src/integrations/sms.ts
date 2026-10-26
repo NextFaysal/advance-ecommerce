@@ -1,5 +1,8 @@
 // SmsProvider adapter interface — Agent 5, Step 26 (base only).
-// No real SMS API calls here. Providers are admin-selectable; the active provider
+// The interface lives here; the REAL gateway adapters (BulkSMSBD /
+// SSL Wireless / GreenWeb) live in src/integrations/sms-providers.ts
+// and the Settings-driven resolution in src/integrations/sms-resolver.ts
+// (ADV-2, doc 22). Providers are admin-selectable; the active provider
 // and fallback provider are set in Admin > Settings > Notifications.
 import type { ProviderConfig } from "./types";
 

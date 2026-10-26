@@ -6,8 +6,10 @@ import { createSessionToken, hashSessionToken } from "@/lib/auth";
  * A token is 32 random bytes (hex, via the same generator as staff
  * session tokens). Only its SHA-256 hash is stored on the User row
  * (User.inviteTokenHash); the raw token exists only in the invite link
- * returned ONCE to the inviter, who shares it manually — no email is
- * sent by this system yet. Tokens live 72 hours; resending an invite
+ * returned ONCE to the inviter — and, since ADV-3, on the queued
+ * invite-email job that carries the same link to the invitee's inbox
+ * (src/email/send.ts). It is never stored anywhere else and can never
+ * be reconstructed. Tokens live 72 hours; resending an invite
  * replaces the hash, which invalidates every previously shared link.
  */
 export const STAFF_INVITE_TTL_MS = 72 * 60 * 60 * 1000;

@@ -7,18 +7,29 @@
  * this codebase; handlers.ts itself stays free of deployment wiring.
  *
  * WIRED (real modules behind the dep):
- *  - smsProvider / emailProvider — resolvers. They read the
- *    admin-configured provider name from the settings service
- *    (Admin > Settings: `sms.provider` / `email.provider`, env fallback
- *    SMS_PROVIDER / EMAIL_PROVIDER) and return an adapter for it.
- *    HONEST LIMIT: no real SMS/email adapter exists in the codebase
- *    yet — src/integrations defines the interfaces only, and the only
- *    implementations are the sandbox ones (mirrored here from
- *    handlers.ts, carrying the configured provider's name so logs and
- *    refs never claim a different provider than the one selected).
- *    When a real adapter lands it slots into these resolvers behind
- *    the same names; nothing else changes. Sends are simulated
- *    (status "queued", SBX-style deterministic ids) until then.
+ *  - smsProvider — resolver. It reads the admin-configured provider
+ *    name from the settings service (Admin > Settings: `sms.provider`,
+ *    env fallback SMS_PROVIDER) and returns an adapter for it.
+ *    ADV-2 (doc 22): REAL gateway adapters exist —
+ *    src/integrations/sms-providers.ts (BulkSMSBD / SSL Wireless /
+ *    GreenWeb) behind the Settings-driven resolver in
+ *    src/integrations/sms-resolver.ts. When the active provider (or
+ *    the configured fallback) is enabled AND carries its credentials
+ *    in encrypted Settings, sends go through the real gateway and
+ *    provider failures throw (BullMQ retry / dead-letter). When
+ *    nothing is configured, the resolver returns the sandbox adapter
+ *    below (mirrored from handlers.ts, carrying the configured
+ *    provider's name so logs and refs never claim a different provider
+ *    than the one selected) and sends stay simulated + labelled.
+ *  - emailSend (ADV-3) — the email-send queue's send path is REAL:
+ *    processEmailJob in src/email/send.ts renders the lifecycle
+ *    templates (order confirmation, staff invite) and calls the
+ *    Resend transport resolved from encrypted Settings by
+ *    src/email/config.ts (null = not configured → the job SKIPs,
+ *    never a simulated send). The legacy emailProvider resolver
+ *    below still returns the sandbox adapter ON PURPOSE: its only
+ *    consumer is the notification-retry runner, whose contract
+ *    expects a simulated "queued" result (see runners.ts).
  *  - courierProvider — the sandbox courier factory (Steadfast /
  *    Pathao / RedX). Paperfly / eCourier have no adapter at all yet
  *    and throw NO_ADAPTER:<name>, exactly like the handlers' own
@@ -215,6 +226,27 @@ const DEFAULT_SMS_PROVIDER: SmsProviderName = "bulksmsbd";
 const DEFAULT_EMAIL_PROVIDER: EmailProviderName = "resend";
 
 async function resolveSmsProvider(providerName: string | null): Promise<SmsProvider> {
+  // ADV-2: a configured real gateway wins. The resolver + settings
+  // service load lazily (the Prisma landmine note above applies to
+  // both), and ANY failure in the real path degrades to the sandbox
+  // adapter below — a send is then simulated and labelled simulated,
+  // never silently "real".
+  try {
+    const resolver = await import("../integrations/sms-resolver");
+    const resolved = await resolver.resolveConfiguredSmsProvider(
+      {
+        getSetting: (key) => readSetting(key),
+        getProviderSecrets: async (provider) => {
+          const settings = await import("../lib/settings");
+          return settings.getIntegrationConfigWithSecrets("sms", provider);
+        },
+      },
+      providerName,
+    );
+    if (resolved !== null) return resolved.provider;
+  } catch {
+    // fall through to the sandbox adapter
+  }
   if (providerName !== null && (SMS_PROVIDERS as readonly string[]).includes(providerName)) {
     return sandboxSmsProvider(providerName as SmsProviderName);
   }
@@ -293,6 +325,22 @@ export const workerDeps: WorkerRuntimeDeps = {
   backInStockSmsSend: async (job) => {
     const backInStock = await import("../storefront-ux/back-in-stock-notify");
     return backInStock.processBackInStockSmsJob(job, { smsProvider: resolveSmsProvider });
+  },
+  // ADV-3: lifecycle email jobs (email-send queue) delegate here.
+  // The transport is resolved per job from encrypted Settings via
+  // src/email/config.ts — configured → the real Resend adapter,
+  // otherwise null and processEmailJob SKIPs honestly. Lazy imports
+  // for the same reason as the SMS send paths above: src/email/send
+  // pulls in Prisma at module top level.
+  emailSend: async (job) => {
+    const emailSend = await import("../email/send");
+    const emailConfig = await import("../email/config");
+    return emailSend.processEmailJob(job, {
+      emailTransport: async () => {
+        const loaded = await emailConfig.loadEmailTransport();
+        return loaded.configured ? loaded.provider : null;
+      },
+    });
   },
   courierProvider: resolveCourierProvider,
   bulkActionsRunner: async (job) => {

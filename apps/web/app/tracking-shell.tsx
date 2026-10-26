@@ -1,32 +1,23 @@
-"use client";
-
-import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { ConsentBanner, TrackingProvider } from "@/tracking/client-components";
+import { resolvePublicTrackingIds } from "@/tracking/resolve";
+import TrackingShellClient from "./tracking-shell-client";
 
-// Storefront tracking shell (integration mount for Agent 26 + Multi-Pixel & Clarity).
-// Reads configured public IDs (or NEXT_PUBLIC env fallbacks) for browser-side tracking.
-// Access tokens are NEVER passed here; they remain server-only.
-export default function TrackingShell({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
-  const isAdmin = pathname?.startsWith("/admin") ?? false;
-  if (isAdmin) return <>{children}</>;
-
-  const primaryPixel = process.env.NEXT_PUBLIC_META_PIXEL_ID ?? null;
-  const backupPixel = process.env.NEXT_PUBLIC_META_BACKUP_PIXEL_ID ?? null;
-  const clarityId = process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID ?? null;
-
-  const pixelIds = [primaryPixel, backupPixel].filter(Boolean) as string[];
+// Storefront tracking shell — server component (ADV-9).
+// Resolves the configured public tracking ids from Admin Settings DB
+// (`seo.*` keys) with server-env fallback, via src/tracking/resolve.ts,
+// and hands ONLY those public ids to the client shell. Access tokens are
+// never resolved here and never serialised to the browser; CAPI reads
+// them server-side through the same resolver.
+export default async function TrackingShell({ children }: { children: ReactNode }) {
+  const ids = await resolvePublicTrackingIds();
 
   return (
-    <TrackingProvider
-      pixelId={primaryPixel}
-      pixelIds={pixelIds.length > 0 ? pixelIds : null}
-      clarityProjectId={clarityId}
-      pathname={pathname}
+    <TrackingShellClient
+      primaryPixel={ids.metaPixelId}
+      backupPixel={ids.metaBackupPixelId}
+      clarityId={ids.clarityProjectId}
     >
       {children}
-      <ConsentBanner privacyHref="/privacy" />
-    </TrackingProvider>
+    </TrackingShellClient>
   );
 }
