@@ -34,6 +34,7 @@ import { SHOBJI_STRINGS } from "./strings";
 export interface ShobjiSidebarCategory {
   slug: string;
   nameBn: string;
+  nameEn: string;
   productCount: number;
 }
 
@@ -91,7 +92,7 @@ export default function ShobjiCategorySidebar({
                       : "text-text-muted hover:bg-muted hover:text-text-main"
                   }`}
                 >
-                  <span className="min-w-0 flex-1 truncate">{c.nameBn}</span>
+                  <span className="min-w-0 flex-1 truncate">{locale === "bn" ? c.nameBn : c.nameEn || c.nameBn}</span>
                   <span
                     className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] tabular-nums ${
                       active ? "bg-white/20 text-white" : "bg-muted text-text-subtle"

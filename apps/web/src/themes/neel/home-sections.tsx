@@ -77,7 +77,8 @@ export default async function NeelHomeSections({
   mechanicsOn,
   heroStats,
 }: HomeSectionsProps) {
-  const s = pick(await getRequestLocale(), NEEL_STRINGS);
+  const locale = await getRequestLocale();
+  const s = pick(locale, NEEL_STRINGS);
   const TRUST_ITEMS = trustItems(s);
   // Per-category rails from the REAL categorySlug on each fetched
   // product; categories keep the catalog's own order, capped at 3.
@@ -136,8 +137,8 @@ export default async function NeelHomeSections({
 
       {/* ---------- Category rails (real membership only) ---------- */}
       {rails.map(({ category, items }) => (
-        <section key={category.slug} className="mt-12" aria-label={category.name.bn}>
-          <RailHeading s={s} title={category.name.bn} href={`/shop?category=${category.slug}`} />
+        <section key={category.slug} className="mt-12" aria-label={category.name[locale] || category.name.bn}>
+          <RailHeading s={s} title={category.name[locale] || category.name.bn} href={`/shop?category=${category.slug}`} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {items.map((p) => (
               <ThemedProductCard key={p.id} product={p} />

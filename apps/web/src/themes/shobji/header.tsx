@@ -198,7 +198,7 @@ export default function ShobjiHeader({
                 href={`/shop?category=${c.slug}`}
                 className="shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] font-medium text-text-muted transition hover:bg-muted hover:text-text-main"
               >
-                {c.name.bn}
+                {c.name[locale] || c.name.bn}
               </Link>
             ))}
           </div>

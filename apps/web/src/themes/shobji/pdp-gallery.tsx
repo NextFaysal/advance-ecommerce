@@ -22,6 +22,7 @@ import { SHOBJI_STRINGS } from "./strings";
 export interface ShobjiGalleryImage {
   url: string;
   altBn: string;
+  altEn: string;
 }
 
 function BasketPlaceholder() {
@@ -47,9 +48,11 @@ function BasketPlaceholder() {
 export default function ShobjiPdpGallery({
   images,
   titleBn,
+  titleEn,
 }: {
   images: ShobjiGalleryImage[];
   titleBn: string;
+  titleEn: string;
 }) {
   const { locale } = useLocale();
   const s = pick(locale, SHOBJI_STRINGS);
@@ -103,7 +106,7 @@ export default function ShobjiPdpGallery({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={current.url}
-          alt={current.altBn || titleBn}
+          alt={(locale === "en" ? current.altEn || current.altBn : current.altBn) || (locale === "en" ? titleEn || titleBn : titleBn)}
           className="aspect-square h-full w-full object-cover"
         />
         {images.length > 1 ? (

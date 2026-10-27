@@ -126,7 +126,12 @@ export default async function ShobjiPdpComposition({
   recentlyViewedEntry,
   jsonLd,
 }: PdpCompositionProps) {
-  const s = pick(await getRequestLocale(), SHOBJI_STRINGS);
+  const locale = await getRequestLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
+  // Merchant data with bn/en variants renders in the active locale;
+  // the other variant stays as the small subtitle (the PDP's design).
+  const title = product.title[locale] || product.title.bn;
+  const titleAlt = locale === "bn" ? product.title.en : product.title.bn;
   const TRUST_ROWS = trustRows(s);
   void bestDiscount;
   return (
@@ -151,10 +156,10 @@ export default async function ShobjiPdpComposition({
             href={`/shop?category=${product.categorySlug}`}
             className="py-1 transition hover:text-primary"
           >
-            {product.categoryName.bn}
+            {product.categoryName[locale] || product.categoryName.bn}
           </Link>
           <span aria-hidden="true" className="text-border">/</span>
-          <span className="min-w-0 truncate py-1 font-medium text-text-main">{product.title.bn}</span>
+          <span className="min-w-0 truncate py-1 font-medium text-text-main">{title}</span>
         </nav>
 
         {/* ============ The white PDP container ============ */}
@@ -163,19 +168,20 @@ export default async function ShobjiPdpComposition({
             {/* ---------- LEFT: gallery ---------- */}
             <div className="min-w-0">
               <ShobjiPdpGallery
-                images={product.images.map((img) => ({ url: img.url, altBn: img.altBn }))}
+                images={product.images.map((img) => ({ url: img.url, altBn: img.altBn, altEn: img.altEn }))}
                 titleBn={product.title.bn}
+                titleEn={product.title.en}
               />
               {product.videoUrl ? (
                 <div className="mt-4">
-                  <ProductVideo videoUrl={product.videoUrl} titleBn={product.title.bn} />
+                  <ProductVideo videoUrl={product.videoUrl} titleBn={title} />
                 </div>
               ) : null}
               {spinEnabled ? (
                 <div className="mt-4">
                   <SpinViewer
                     images={product.images.map((img) => img.url)}
-                    title={product.title.bn}
+                    title={title}
                   />
                 </div>
               ) : null}
@@ -189,10 +195,10 @@ export default async function ShobjiPdpComposition({
                 </span>
               ) : null}
               <h1 className="mt-2 break-words font-display text-[26px] font-extrabold leading-snug text-text-main [overflow-wrap:anywhere] sm:text-[32px]">
-                {product.title.bn}
+                {title}
               </h1>
-              {product.title.en && product.title.en !== product.title.bn ? (
-                <p className="mt-1 break-words text-[15px] text-text-subtle">{product.title.en}</p>
+              {titleAlt && titleAlt !== title ? (
+                <p className="mt-1 break-words text-[15px] text-text-subtle">{titleAlt}</p>
               ) : null}
 
               {/* Meta row: rating · brand · stock */}
@@ -676,7 +682,7 @@ export default async function ShobjiPdpComposition({
           price-on-request (no price to show). */}
       {priceOnRequest ? null : (
         <StickyBuyBar
-          titleBn={product.title.bn}
+          titleBn={title}
           pricePoisha={minPrice}
           inStock={displayInStock}
           buyBoxId="buy-box"

@@ -224,7 +224,7 @@ export default function BazaarShopChrome({
             active={category === c.slug}
             count={c.productCount}
           >
-            {c.name.bn}
+            {c.name[locale] || c.name.bn}
           </CheckLink>
         ))}
       </SidebarCard>

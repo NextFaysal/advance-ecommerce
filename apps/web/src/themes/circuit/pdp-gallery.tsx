@@ -20,6 +20,7 @@ import { CIRCUIT_STRINGS } from "./strings";
 export interface CircuitGalleryImage {
   url: string;
   altBn: string;
+  altEn: string;
 }
 
 function DevicePlaceholder() {
@@ -44,9 +45,11 @@ function DevicePlaceholder() {
 export default function CircuitPdpGallery({
   images,
   titleBn,
+  titleEn,
 }: {
   images: CircuitGalleryImage[];
   titleBn: string;
+  titleEn: string;
 }) {
   const { locale } = useLocale();
   const s = pick(locale, CIRCUIT_STRINGS);
@@ -100,7 +103,7 @@ export default function CircuitPdpGallery({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={current.url}
-          alt={current.altBn || titleBn}
+          alt={(locale === "en" ? current.altEn || current.altBn : current.altBn) || (locale === "en" ? titleEn || titleBn : titleBn)}
           className="aspect-square h-full w-full object-cover"
         />
         {images.length > 1 ? (

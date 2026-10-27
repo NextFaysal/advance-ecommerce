@@ -227,7 +227,7 @@ export default function ShobjiShopChrome({
             active={category === c.slug}
             count={c.productCount}
           >
-            {c.name.bn}
+            {c.name[locale] || c.name.bn}
           </CheckLink>
         ))}
       </SidebarCard>
@@ -346,6 +346,7 @@ export default function ShobjiShopChrome({
                 categories={categories.map((c) => ({
                   slug: c.slug,
                   nameBn: c.name.bn,
+                  nameEn: c.name.en,
                   productCount: c.productCount,
                 }))}
                 activeCategorySlug={category}

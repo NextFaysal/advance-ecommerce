@@ -215,7 +215,7 @@ export function BoighorProductCard({ product }: ThemeProductCardProps) {
           {data.imageUrl ? (
             <Image
               src={data.imageUrl}
-              alt={product.images[0]?.altBn ?? product.title.bn}
+              alt={(locale === "en" ? product.images[0]?.altEn || product.images[0]?.altBn : product.images[0]?.altBn) ?? (product.title[locale] || product.title.bn)}
               fill
               sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
               loading="lazy"
@@ -243,7 +243,7 @@ export function BoighorProductCard({ product }: ThemeProductCardProps) {
         {/* Centred text column */}
         <div className="px-3 pt-3 text-center">
           <h3 className="line-clamp-2 min-h-[2.6em] break-words text-sm font-semibold leading-snug text-text-main [overflow-wrap:anywhere]">
-            {product.title.bn}
+            {product.title[locale] || product.title.bn}
           </h3>
           {product.brandName ? (
             <p className="mt-0.5 truncate text-xs font-medium text-text-subtle">

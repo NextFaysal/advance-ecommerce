@@ -239,7 +239,7 @@ export function CircuitProductCard({ product }: ThemeProductCardProps) {
           {data.imageUrl ? (
             <Image
               src={data.imageUrl}
-              alt={product.images[0]?.altBn ?? product.title.bn}
+              alt={(locale === "en" ? product.images[0]?.altEn || product.images[0]?.altBn : product.images[0]?.altBn) ?? (product.title[locale] || product.title.bn)}
               fill
               sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
               loading="lazy"
@@ -276,7 +276,7 @@ export function CircuitProductCard({ product }: ThemeProductCardProps) {
             </p>
           ) : null}
           <h3 className="line-clamp-2 min-h-[2.6em] break-words text-left text-[15px] font-semibold leading-snug text-text-main [overflow-wrap:anywhere]">
-            {product.title.bn}
+            {product.title[locale] || product.title.bn}
           </h3>
           <div className="mt-2">
             <PriceRow data={data} digits={digits} />
@@ -309,12 +309,12 @@ export function CircuitProductCardHorizontal({
       <Link
         href={`/product/${product.slug}`}
         className="relative block w-[40%] shrink-0 self-stretch overflow-hidden bg-surface-2"
-        aria-label={product.title.bn}
+        aria-label={product.title[locale] || product.title.bn}
       >
         {data.imageUrl ? (
           <Image
             src={data.imageUrl}
-            alt={product.images[0]?.altBn ?? product.title.bn}
+            alt={(locale === "en" ? product.images[0]?.altEn || product.images[0]?.altBn : product.images[0]?.altBn) ?? (product.title[locale] || product.title.bn)}
             fill
             sizes="(max-width: 768px) 40vw, 20vw"
             loading="lazy"
@@ -347,7 +347,7 @@ export function CircuitProductCardHorizontal({
             </p>
           ) : null}
           <h3 className="line-clamp-2 break-words text-left text-[15px] font-semibold leading-snug text-text-main [overflow-wrap:anywhere]">
-            {product.title.bn}
+            {product.title[locale] || product.title.bn}
           </h3>
           <div className="mt-2">
             <PriceRow data={data} digits={digits} />

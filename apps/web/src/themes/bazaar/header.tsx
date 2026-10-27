@@ -232,7 +232,7 @@ export default function BazaarHeader({
                 href={`/shop?category=${c.slug}`}
                 className="shrink-0 whitespace-nowrap px-3 py-2.5 text-sm font-medium text-white/90 transition hover:bg-white/10 hover:text-white"
               >
-                {c.name.bn}
+                {c.name[locale] || c.name.bn}
               </Link>
             ))}
             <span aria-hidden="true" className="mx-1 hidden h-5 w-px shrink-0 bg-white/20 md:block" />

@@ -152,7 +152,7 @@ function BagPlaceholder() {
 
 /** The real wishlist heart — toggles the platform's wishlist list
  *  and stays in sync with toggles made anywhere else. */
-function WishlistHeart({ productId, titleBn }: { productId: string; titleBn: string }) {
+function WishlistHeart({ productId, title }: { productId: string; title: { bn: string; en: string } }) {
   const { locale } = useLocale();
   const s = pick(locale, NEEL_STRINGS);
   const [wishlisted, setWishlisted] = useState(false);
@@ -171,7 +171,7 @@ function WishlistHeart({ productId, titleBn }: { productId: string; titleBn: str
   return (
     <button
       type="button"
-      aria-label={wishlisted ? interpolate(s.wishlistRemoveAria, { title: titleBn }) : interpolate(s.wishlistAddAria, { title: titleBn })}
+      aria-label={wishlisted ? interpolate(s.wishlistRemoveAria, { title: title[locale] || title.bn }) : interpolate(s.wishlistAddAria, { title: title[locale] || title.bn })}
       aria-pressed={wishlisted}
       onClick={() => {
         toggleWishlistId(productId);
@@ -317,7 +317,7 @@ export function NeelProductCard({ product }: ThemeProductCardProps) {
             {data.imageUrl ? (
               <Image
                 src={data.imageUrl}
-                alt={product.images[0]?.altBn ?? product.title.bn}
+                alt={(locale === "en" ? product.images[0]?.altEn || product.images[0]?.altBn : product.images[0]?.altBn) ?? (product.title[locale] || product.title.bn)}
                 fill
                 sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
                 loading="lazy"
@@ -346,7 +346,7 @@ export function NeelProductCard({ product }: ThemeProductCardProps) {
         </div>
         {/* Wishlist heart — the platform's real toggle */}
         <span className="absolute right-2 top-2 z-[5]">
-          <WishlistHeart productId={product.id} titleBn={product.title.bn} />
+          <WishlistHeart productId={product.id} title={product.title} />
         </span>
       </div>
 
@@ -358,7 +358,7 @@ export function NeelProductCard({ product }: ThemeProductCardProps) {
             </p>
           ) : null}
           <h3 className="line-clamp-2 min-h-[2.6em] break-words text-left text-sm font-semibold leading-snug text-text-main [overflow-wrap:anywhere]">
-            {product.title.bn}
+            {product.title[locale] || product.title.bn}
           </h3>
           <RatingRow data={data} />
           <div className="mt-1.5">
@@ -389,12 +389,12 @@ export function NeelProductCardHorizontal({ product }: ThemeProductCardProps) {
       <Link
         href={`/product/${product.slug}`}
         className="relative block w-[40%] shrink-0 self-stretch overflow-hidden bg-surface-2"
-        aria-label={product.title.bn}
+        aria-label={product.title[locale] || product.title.bn}
       >
         {data.imageUrl ? (
           <Image
             src={data.imageUrl}
-            alt={product.images[0]?.altBn ?? product.title.bn}
+            alt={(locale === "en" ? product.images[0]?.altEn || product.images[0]?.altBn : product.images[0]?.altBn) ?? (product.title[locale] || product.title.bn)}
             fill
             sizes="(max-width: 768px) 40vw, 20vw"
             loading="lazy"
@@ -417,7 +417,7 @@ export function NeelProductCardHorizontal({ product }: ThemeProductCardProps) {
             ) : null}
             {data.typeBadgeLabel ? <TypeFlag label={data.typeBadgeLabel} /> : null}
           </div>
-          <WishlistHeart productId={product.id} titleBn={product.title.bn} />
+          <WishlistHeart productId={product.id} title={product.title} />
         </div>
         <Link href={`/product/${product.slug}`} className="mt-1.5 block min-w-0">
           {product.brandName ? (
@@ -426,7 +426,7 @@ export function NeelProductCardHorizontal({ product }: ThemeProductCardProps) {
             </p>
           ) : null}
           <h3 className="line-clamp-2 break-words text-left text-sm font-semibold leading-snug text-text-main [overflow-wrap:anywhere]">
-            {product.title.bn}
+            {product.title[locale] || product.title.bn}
           </h3>
           <RatingRow data={data} />
           <div className="mt-1.5">

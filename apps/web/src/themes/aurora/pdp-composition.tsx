@@ -179,12 +179,12 @@ export default async function AuroraPdpComposition({
         {/* Gallery + product video (gallery-adjacent, same column) */}
         <div className="min-w-0 space-y-4">
           <Gallery
-            images={product.images.map((img) => ({ url: img.url, altBn: img.altBn }))}
-            titleBn={product.title.bn}
+            images={product.images.map((img) => ({ url: img.url, altBn: locale === "en" ? img.altEn || img.altBn : img.altBn }))}
+            titleBn={title}
           />
-          {product.videoUrl ? <ProductVideo videoUrl={product.videoUrl} titleBn={product.title.bn} /> : null}
+          {product.videoUrl ? <ProductVideo videoUrl={product.videoUrl} titleBn={title} /> : null}
           {spinEnabled ? (
-            <SpinViewer images={product.images.map((i) => i.url)} title={product.title.bn} />
+            <SpinViewer images={product.images.map((i) => i.url)} title={title} />
           ) : null}
         </div>
 

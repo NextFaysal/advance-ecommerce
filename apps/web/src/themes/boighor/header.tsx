@@ -226,7 +226,7 @@ export default function BoighorHeader({
               href={`/shop?category=${c.slug}`}
               className="shrink-0 whitespace-nowrap px-3 py-2.5 text-sm font-medium text-text-muted transition hover:bg-muted hover:text-primary"
             >
-              {c.name.bn}
+              {c.name[locale] || c.name.bn}
             </Link>
           ))}
           <span aria-hidden="true" className="mx-1 hidden h-5 w-px shrink-0 bg-border md:block" />
@@ -289,7 +289,7 @@ export default function BoighorHeader({
                 href={`/shop?category=${c.slug}`}
                 className="shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[13px] font-medium text-text-muted transition hover:bg-white hover:text-primary"
               >
-                {c.name.bn}
+                {c.name[locale] || c.name.bn}
               </Link>
             ))}
           </div>

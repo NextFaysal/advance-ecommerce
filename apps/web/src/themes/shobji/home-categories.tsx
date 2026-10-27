@@ -87,7 +87,7 @@ export default function ShobjiHomeCategories({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={c.imageUrl}
-                  alt={c.name.bn}
+                  alt={c.name[locale] || c.name.bn}
                   loading="lazy"
                   className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.05]"
                 />
@@ -96,12 +96,12 @@ export default function ShobjiHomeCategories({
                   aria-hidden="true"
                   className={`flex h-full w-full items-center justify-center text-3xl font-extrabold ${TILE_TINTS[i % TILE_TINTS.length]}`}
                 >
-                  {c.name.bn.charAt(0)}
+                  {(c.name[locale] || c.name.bn).charAt(0)}
                 </span>
               )}
             </span>
             <span className="mt-2 block truncate text-center text-[13px] font-bold leading-snug text-text-main">
-              {c.name.bn}
+              {c.name[locale] || c.name.bn}
             </span>
             <span className="block text-center text-[11px] text-text-subtle">
               {digits(interpolate(s.productsCount, { count: c.productCount }))}

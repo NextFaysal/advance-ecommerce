@@ -67,7 +67,8 @@ export default async function HaatHomeSections({
   mechanicsOn,
   heroStats,
 }: HomeSectionsProps) {
-  const s = pick(await getRequestLocale(), HAAT_STRINGS);
+  const locale = await getRequestLocale();
+  const s = pick(locale, HAAT_STRINGS);
   // Per-category rails from the REAL categorySlug on each fetched
   // product; categories keep the catalog's own order, capped at 3.
   const byCategory = new Map<string, typeof products>();
@@ -99,8 +100,8 @@ export default async function HaatHomeSections({
 
       {/* ---------- Category rails (real membership only) ---------- */}
       {rails.map(({ category, items }) => (
-        <section key={category.slug} className="mt-12" aria-label={category.name.bn}>
-          <RailHeading title={category.name.bn} href={`/shop?category=${category.slug}`} s={s} />
+        <section key={category.slug} className="mt-12" aria-label={category.name[locale] || category.name.bn}>
+          <RailHeading title={category.name[locale] || category.name.bn} href={`/shop?category=${category.slug}`} s={s} />
           <div className="mt-5 grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-6">
             {items.map((p) => (
               <ThemedProductCard key={p.id} product={p} />

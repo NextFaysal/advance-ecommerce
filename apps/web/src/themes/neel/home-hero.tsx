@@ -126,13 +126,13 @@ function CategoryTile({ category }: { category: Category }) {
     <Link
       href={`/shop?category=${category.slug}`}
       className="group relative block min-h-[112px] overflow-hidden rounded-xl shadow-card lg:min-h-0"
-      aria-label={category.name.bn}
+      aria-label={category.name[locale] || category.name.bn}
     >
       {category.imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={category.imageUrl}
-          alt={category.name.bn}
+          alt={category.name[locale] || category.name.bn}
           loading="lazy"
           className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.05]"
         />
@@ -149,7 +149,7 @@ function CategoryTile({ category }: { category: Category }) {
             category.imageUrl ? "text-white" : "text-text-main"
           }`}
         >
-          {category.name.bn}
+          {category.name[locale] || category.name.bn}
         </span>
         <span
           className={`mt-0.5 block text-[11px] ${category.imageUrl ? "text-white/85" : "text-text-muted"}`}

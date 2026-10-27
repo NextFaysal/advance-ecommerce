@@ -91,13 +91,13 @@ function VisualSlot({
       <Link
         href={`/shop?category=${category.slug}`}
         className="group relative block min-h-[180px] overflow-hidden rounded-xl shadow-card lg:min-h-full"
-        aria-label={category.name.bn}
+        aria-label={category.name[locale] || category.name.bn}
       >
         {category.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={category.imageUrl}
-            alt={category.name.bn}
+            alt={category.name[locale] || category.name.bn}
             loading="lazy"
             className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.04]"
           />
@@ -107,7 +107,7 @@ function VisualSlot({
         <span aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
         <span className="absolute inset-x-0 bottom-0 block p-4">
           <span className="block font-display text-lg font-extrabold leading-snug text-white">
-            {category.name.bn}
+            {category.name[locale] || category.name.bn}
           </span>
           <span className="mt-0.5 block text-xs text-white/85">
             {interpolate(s.heroCategoryLine, { count: category.productCount })}

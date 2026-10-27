@@ -379,13 +379,13 @@ export default function NeelCartDrawer({ open, onClose }: ThemeCartDrawerProps) 
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={p.images[0].url}
-                            alt={p.title.bn}
+                            alt={p.title[locale] || p.title.bn}
                             loading="lazy"
                             className="h-full w-full object-cover"
                           />
                         ) : (
                           <span className="flex h-full w-full items-center justify-center font-display text-xl font-extrabold text-primary/40">
-                            {p.title.bn.charAt(0)}
+                            {(p.title[locale] || p.title.bn).charAt(0)}
                           </span>
                         )}
                       </Link>
@@ -394,7 +394,7 @@ export default function NeelCartDrawer({ open, onClose }: ThemeCartDrawerProps) 
                         onClick={onClose}
                         className="mt-2 line-clamp-1 block break-words text-xs font-semibold text-text-main transition hover:text-primary [overflow-wrap:anywhere]"
                       >
-                        {p.title.bn}
+                        {p.title[locale] || p.title.bn}
                       </Link>
                       <p className="mt-0.5 text-[13px] font-bold text-text-main">
                         {digits(formatBdt(price))}

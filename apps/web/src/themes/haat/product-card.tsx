@@ -174,7 +174,7 @@ export function HaatProductCard({ product }: ThemeProductCardProps) {
           {data.imageUrl ? (
             <Image
               src={data.imageUrl}
-              alt={product.images[0]?.altBn ?? product.title.bn}
+              alt={(locale === "en" ? product.images[0]?.altEn || product.images[0]?.altBn : product.images[0]?.altBn) ?? (product.title[locale] || product.title.bn)}
               fill
               sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 20vw"
               loading="lazy"
@@ -212,7 +212,7 @@ export function HaatProductCard({ product }: ThemeProductCardProps) {
             </p>
           ) : null}
           <h3 className="line-clamp-2 min-h-[2.6em] break-words text-left text-sm font-medium leading-snug text-text-main [overflow-wrap:anywhere]">
-            {product.title.bn}
+            {product.title[locale] || product.title.bn}
           </h3>
           <div className="mt-1.5">
             {data.priceOnRequest ? (

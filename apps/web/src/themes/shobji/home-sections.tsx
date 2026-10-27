@@ -88,7 +88,8 @@ export default async function ShobjiHomeSections({
   mechanicsOn,
   heroStats,
 }: HomeSectionsProps) {
-  const s = pick(await getRequestLocale(), SHOBJI_STRINGS);
+  const locale = await getRequestLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   const USP_ITEMS = uspItems(s);
   // Per-category rails from the REAL categorySlug on each fetched
   // product; categories keep the catalog's own order, capped at 3.
@@ -124,6 +125,7 @@ export default async function ShobjiHomeSections({
           categories={categories.map((c) => ({
             slug: c.slug,
             nameBn: c.name.bn,
+            nameEn: c.name.en,
             productCount: c.productCount,
           }))}
         />
@@ -167,8 +169,8 @@ export default async function ShobjiHomeSections({
 
           {/* ---------- Category rails (real membership only) ---------- */}
           {rails.map(({ category, items }) => (
-            <section key={category.slug} className="mt-12" aria-label={category.name.bn}>
-              <RailHeading s={s} title={category.name.bn} href={`/shop?category=${category.slug}`} />
+            <section key={category.slug} className="mt-12" aria-label={category.name[locale] || category.name.bn}>
+              <RailHeading s={s} title={category.name[locale] || category.name.bn} href={`/shop?category=${category.slug}`} />
               <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4">
                 {items.map((p) => (
                   <ThemedProductCard key={p.id} product={p} />

@@ -148,8 +148,8 @@ export default async function BazaarHomeSections({
 
       {/* ---------- Category rails (real membership only) ---------- */}
       {rails.map(({ category, items }) => (
-        <section key={category.slug} className="mt-12" aria-label={category.name.bn}>
-          <RailHeading title={category.name.bn} href={`/shop?category=${category.slug}`} viewAllLabel={s.viewAllItems} />
+        <section key={category.slug} className="mt-12" aria-label={category.name[locale] || category.name.bn}>
+          <RailHeading title={category.name[locale] || category.name.bn} href={`/shop?category=${category.slug}`} viewAllLabel={s.viewAllItems} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {items.map((p) => (
               <ThemedProductCard key={p.id} product={p} />

@@ -21,6 +21,7 @@ import { BAZAAR_STRINGS } from "./strings";
 export interface BazaarGalleryImage {
   url: string;
   altBn: string;
+  altEn: string;
 }
 
 function BagPlaceholder() {
@@ -45,9 +46,11 @@ function BagPlaceholder() {
 export default function BazaarPdpGallery({
   images,
   titleBn,
+  titleEn,
 }: {
   images: BazaarGalleryImage[];
   titleBn: string;
+  titleEn: string;
 }) {
   const { locale } = useLocale();
   const s = pick(locale, BAZAAR_STRINGS);
@@ -101,7 +104,7 @@ export default function BazaarPdpGallery({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={current.url}
-          alt={current.altBn || titleBn}
+          alt={(locale === "en" ? current.altEn || current.altBn : current.altBn) || (locale === "en" ? titleEn || titleBn : titleBn)}
           className="aspect-square h-full w-full object-cover"
         />
         {images.length > 1 ? (

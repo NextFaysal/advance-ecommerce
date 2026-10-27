@@ -106,7 +106,7 @@ export default async function BoighorHomeSections({
     categories.length > 0
       ? categories.slice(0, 3).map((c, i) => ({
           icon: TILE_ICONS[i % TILE_ICONS.length]!,
-          title: c.name.bn,
+          title: c.name[locale] || c.name.bn,
           text: interpolate(s.productsCollectionCount, { count: c.productCount }),
           href: `/shop?category=${c.slug}`,
         }))
@@ -153,8 +153,8 @@ export default async function BoighorHomeSections({
 
       {/* ---------- Category rails (real membership only) ---------- */}
       {rails.map(({ category, items }) => (
-        <section key={category.slug} className="mt-12" aria-label={category.name.bn}>
-          <RailHeading title={category.name.bn} href={`/shop?category=${category.slug}`} s={s} />
+        <section key={category.slug} className="mt-12" aria-label={category.name[locale] || category.name.bn}>
+          <RailHeading title={category.name[locale] || category.name.bn} href={`/shop?category=${category.slug}`} s={s} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {items.map((p) => (
               <ThemedProductCard key={p.id} product={p} />

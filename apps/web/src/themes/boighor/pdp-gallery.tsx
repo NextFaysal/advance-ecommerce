@@ -22,6 +22,7 @@ import { BOIGHOR_STRINGS } from "./strings";
 export interface BoighorGalleryImage {
   url: string;
   altBn: string;
+  altEn: string;
 }
 
 function BookPlaceholder() {
@@ -48,9 +49,11 @@ function BookPlaceholder() {
 export default function BoighorPdpGallery({
   images,
   titleBn,
+  titleEn,
 }: {
   images: BoighorGalleryImage[];
   titleBn: string;
+  titleEn: string;
 }) {
   const { locale } = useLocale();
   const s = pick(locale, BOIGHOR_STRINGS);
@@ -104,7 +107,7 @@ export default function BoighorPdpGallery({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={current.url}
-          alt={current.altBn || titleBn}
+          alt={(locale === "en" ? current.altEn || current.altBn : current.altBn) || (locale === "en" ? titleEn || titleBn : titleBn)}
           className="aspect-[3/4] h-full w-full object-cover"
         />
         {images.length > 1 ? (
