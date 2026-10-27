@@ -1,36 +1,39 @@
 "use client";
 
 /**
- * /account/preferences — customer theme preferences page.
+ * /account/preferences — customer preferences page.
  *
- * Lets logged-in customers pick a custom store theme.
- * Theme switching sets the selected_theme cookie via the ThemeProvider hook.
+ * Lets logged-in customers pick a custom store theme and their own
+ * language (doc 30). Theme switching sets the selected_theme cookie
+ * via the ThemeProvider hook; the language control
+ * (language-preference.tsx) switches the root LocaleProvider, which
+ * persists the choice (cookie + localStorage) store-wide.
  */
-import type { Metadata } from "next";
 import Link from "next/link";
-import { useEffect } from "react";
 import { ThemeProvider, useTheme } from "@/components/ui/theme-provider";
-
-// Note: metadata export in a client component file won't be picked up by
-// Next.js. For a client page with metadata, wrap with a server parent.
-// Since the task requires a client component for the selector, we export
-// metadata from here but it's picked up when Next.js processes the module.
-// (Metadata won't work in a "use client" file — it's here for reference.)
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { ACCOUNT_STRINGS } from "../strings";
+import LanguagePreference from "./language-preference";
 
 function ThemeSelectorContent() {
   const { themeId, setTheme, themes, isLoading } = useTheme();
+  const { locale } = useLocale();
+  const s = pick(locale, ACCOUNT_STRINGS);
 
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-8">
       <div className="mb-2">
         <Link href="/account" className="text-sm text-primary hover:underline">
-          ← আমার অ্যাকাউন্ট
+          {s.backToAccount}
         </Link>
       </div>
-      <h1 className="mt-2 font-display text-2xl font-bold text-text-main">থিম পছন্দ</h1>
+      <h1 className="mt-2 font-display text-2xl font-bold text-text-main">{s.themePreference}</h1>
       <p className="mt-1 text-sm leading-6 text-text-muted">
-        আপনার পছন্দের স্টোর থিম বেছে নিন। এই পছন্দ শুধু আপনার ডিভাইসে সংরক্ষিত হবে।
+        {s.themePreferenceDesc}
       </p>
+
+      <LanguagePreference />
 
       <div className="mt-8 rounded-2xl border border-border bg-card p-6">
         {/* Default theme option */}
@@ -55,23 +58,23 @@ function ThemeSelectorContent() {
                 ))}
               </div>
               <div>
-                <p className="text-sm font-semibold text-text-main">ডিফল্ট থিম</p>
-                <p className="text-xs text-text-muted">স্টোরের মূল রঙ পরিকল্পনা</p>
+                <p className="text-sm font-semibold text-text-main">{s.defaultTheme}</p>
+                <p className="text-xs text-text-muted">{s.defaultThemeDesc}</p>
               </div>
             </div>
             {!themeId && (
-              <span className="text-xs font-semibold text-primary">সক্রিয়</span>
+              <span className="text-xs font-semibold text-primary">{s.activeLabel}</span>
             )}
           </button>
         </div>
 
         {isLoading && (
-          <p className="py-4 text-center text-sm text-text-muted">থিম লোড হচ্ছে…</p>
+          <p className="py-4 text-center text-sm text-text-muted">{s.themesLoading}</p>
         )}
 
         {!isLoading && themes.length === 0 && (
           <p className="py-4 text-center text-sm text-text-muted">
-            কোনো কাস্টম থিম পাওয়া যায়নি।
+            {s.noCustomThemes}
           </p>
         )}
 
@@ -107,7 +110,7 @@ function ThemeSelectorContent() {
                 </div>
               </div>
               {themeId === theme.id && (
-                <span className="text-xs font-semibold text-primary">সক্রিয়</span>
+                <span className="text-xs font-semibold text-primary">{s.activeLabel}</span>
               )}
             </button>
           </div>

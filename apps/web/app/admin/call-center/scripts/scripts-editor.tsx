@@ -27,6 +27,9 @@ import { Icon } from "@/components/ui/icon";
 import { SourceChip } from "@/callcenter/components/badges";
 import { SOURCE_VISUAL, type StatusVisual } from "@/callcenter/components/visuals";
 import type { CallQueueSource } from "@/callcenter/types";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick } from "@/i18n/locale";
+import { CALL_CENTER_STRINGS, type CallCenterStrings } from "../strings";
 
 export interface ScriptStepData {
   key: string;
@@ -43,13 +46,22 @@ export interface ScriptSourceData {
   updatedAt: string | null;
 }
 
-const SOURCE_LABELS: Record<string, { bn: string; en: string }> = {
-  PENDING_ORDER: { bn: "পেন্ডিং অর্ডার নিশ্চিতকরণ", en: "Pending order confirmation" },
-  FAILED_DELIVERY: { bn: "ব্যর্থ ডেলিভারি উদ্ধার", en: "Failed delivery rescue" },
-  ABANDONED_CHECKOUT: { bn: "পরিত্যক্ত চেকআউট", en: "Abandoned checkout" },
-  MANUAL: { bn: "ম্যানুয়াল টাস্ক", en: "Manual task" },
-  DEFAULT: { bn: "ডিফল্ট", en: "Default fallback" },
-};
+function sourceLabel(s: CallCenterStrings, source: string): string {
+  switch (source) {
+    case "PENDING_ORDER":
+      return s.srcScriptPendingOrder;
+    case "FAILED_DELIVERY":
+      return s.srcScriptFailedDelivery;
+    case "ABANDONED_CHECKOUT":
+      return s.srcScriptAbandoned;
+    case "MANUAL":
+      return s.srcScriptManual;
+    case "DEFAULT":
+      return s.srcScriptDefault;
+    default:
+      return source;
+  }
+}
 
 function slugifyKey(text: string, index: number): string {
   const slug = text
@@ -61,6 +73,8 @@ function slugifyKey(text: string, index: number): string {
 }
 
 export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSourceData[] }) {
+  const { locale } = useLocale();
+  const s = pick(locale, CALL_CENTER_STRINGS);
   const [scripts, setScripts] = useState<ScriptSourceData[]>(initialScripts);
   const [savingSource, setSavingSource] = useState<string | null>(null);
   const [notice, setNotice] = useState<Record<string, string>>({});
@@ -107,7 +121,7 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
         error?: { message?: string };
       };
       if (!res.ok || !json.data?.script) {
-        setError((p) => ({ ...p, [script.source]: json.error?.message ?? `সেভ ব্যর্থ হয়েছে (${res.status})` }));
+        setError((p) => ({ ...p, [script.source]: json.error?.message ?? interpolate(s.saveFailed, { status: res.status }) }));
         return;
       }
       const saved = json.data.script;
@@ -122,9 +136,9 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
             : s,
         ),
       );
-      setNotice((p) => ({ ...p, [script.source]: `সেভ হয়েছে — নতুন সংস্করণ ${saved.versionLabel}।` }));
+      setNotice((p) => ({ ...p, [script.source]: interpolate(s.savedNotice, { version: saved.versionLabel }) }));
     } catch {
-      setError((p) => ({ ...p, [script.source]: "নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।" }));
+      setError((p) => ({ ...p, [script.source]: s.networkErrorRetry }));
     } finally {
       setSavingSource(null);
     }
@@ -133,7 +147,6 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
   return (
     <div className="space-y-8">
       {scripts.map((script) => {
-        const label = SOURCE_LABELS[script.source] ?? { bn: script.source, en: script.source };
         const sourceV = (SOURCE_VISUAL as Record<string, StatusVisual>)[script.source];
         return (
           <Card
@@ -141,28 +154,27 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
             className={`border-l-4 p-5 ${script.isDefault ? "border-l-amber-400" : "border-l-emerald-400"}`}
           >
             <div className="mb-1 flex flex-wrap items-center gap-2">
-              {sourceV ? <SourceChip source={script.source as CallQueueSource} /> : null}
-              <h2 className="text-base font-semibold">{label.bn}</h2>
-              <span className="text-sm text-text-muted">({label.en})</span>
+              {sourceV ? <SourceChip source={script.source as CallQueueSource} lang={locale} /> : null}
+              <h2 className="text-base font-semibold">{sourceLabel(s, script.source)}</h2>
               <span className="ml-auto flex flex-wrap items-center gap-2">
                 <Badge tone="info" icon={<Icon name="tag" size={12} />}>
                   {script.versionLabel}
                 </Badge>
                 {script.isDefault ? (
                   <Badge tone="warning" icon={<Icon name="info" size={12} />}>
-                    বিল্ট-ইন ডিফল্ট — এখনো কাস্টম সেভ হয়নি
+                    {s.builtinBadge}
                   </Badge>
                 ) : (
                   <Badge tone="success" icon={<Icon name="check" size={12} />}>
-                    কাস্টম স্ক্রিপ্ট
+                    {s.customBadge}
                   </Badge>
                 )}
               </span>
             </div>
             <p className="mb-4 text-sm text-text-muted">
               {script.isDefault
-                ? "এই ধরনের জন্য এখনো আলাদা স্ক্রিপ্ট সেভ হয়নি — নিচের ধাপগুলো বিল্ট-ইন কনফার্মেশন স্ক্রিপ্ট (শুরুর খসড়া হিসেবে)। সেভ করলেই এটি এই ধরনের নিজস্ব স্ক্রিপ্ট হয়ে যাবে।"
-                : `সর্বশেষ সেভ: ${script.updatedAt ? new Date(script.updatedAt).toLocaleString("bn-BD", { timeZone: "Asia/Dhaka" }) : "—"}`}
+                ? s.defaultStepsNote
+                : interpolate(s.lastSaved, { date: script.updatedAt ? new Date(script.updatedAt).toLocaleString(intlLocale(locale), { timeZone: "Asia/Dhaka" }) : "—" })}
             </p>
 
             <div className="space-y-3">
@@ -176,26 +188,26 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
                       >
                         {idx + 1}
                       </span>
-                      ধাপ
+                      {s.stepWord}
                     </span>
                     <input
                       className="h-9 w-44 rounded-md border border-border px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                       value={step.key}
                       onChange={(e) => patchStep(script.source, idx, "key", e.target.value)}
                       placeholder="step-key"
-                      aria-label="Step key"
+                      aria-label={s.stepKeyAria}
                     />
                     <span className="ml-auto flex gap-1">
-                      <button type="button" className="rounded-md border border-border px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300" onClick={() => moveStep(script.source, idx, -1)} disabled={idx === 0} aria-label="Move up">↑</button>
-                      <button type="button" className="rounded-md border border-border px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300" onClick={() => moveStep(script.source, idx, 1)} disabled={idx === script.steps.length - 1} aria-label="Move down">↓</button>
+                      <button type="button" className="rounded-md border border-border px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300" onClick={() => moveStep(script.source, idx, -1)} disabled={idx === 0} aria-label={s.moveUpAria}>↑</button>
+                      <button type="button" className="rounded-md border border-border px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300" onClick={() => moveStep(script.source, idx, 1)} disabled={idx === script.steps.length - 1} aria-label={s.moveDownAria}>↓</button>
                       <button
                         type="button"
                         className="rounded-md border border-border px-2 py-1 text-sm text-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                         onClick={() => patch(script.source, script.steps.filter((_, i) => i !== idx))}
                         disabled={script.steps.length <= 1}
-                        aria-label="Remove step"
+                        aria-label={s.removeStepAria}
                       >
-                        মুছুন
+                        {s.removeStepBtn}
                       </button>
                     </span>
                   </div>
@@ -204,15 +216,15 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
                     rows={2}
                     value={step.promptBn}
                     onChange={(e) => patchStep(script.source, idx, "promptBn", e.target.value)}
-                    placeholder="বাংলা স্ক্রিপ্ট (আবশ্যক) — {name}, {total} জাতীয় placeholder ব্যবহার করা যায়"
-                    aria-label="Bangla prompt"
+                    placeholder={s.banglaPromptPlaceholder}
+                    aria-label={s.banglaPromptAria}
                   />
                   <input
                     className="w-full rounded-md border border-border px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     value={step.promptEn}
                     onChange={(e) => patchStep(script.source, idx, "promptEn", e.target.value)}
-                    placeholder="English gloss (optional, for training)"
-                    aria-label="English prompt"
+                    placeholder={s.englishPromptPlaceholder}
+                    aria-label={s.englishPromptAria}
                   />
                 </div>
               ))}
@@ -224,7 +236,7 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
                 className="rounded-md border border-border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                 onClick={() => patch(script.source, [...script.steps, { key: "", promptBn: "", promptEn: "" }])}
               >
-                + ধাপ যোগ করুন
+                {s.addStepBtn}
               </button>
               <button
                 type="button"
@@ -232,7 +244,7 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
                 onClick={() => save(script)}
                 disabled={savingSource === script.source || script.steps.some((st) => !st.promptBn.trim())}
               >
-                {savingSource === script.source ? "সেভ হচ্ছে…" : `সেভ করুন (নতুন সংস্করণ হবে)`}
+                {savingSource === script.source ? s.savingText : s.saveBtn}
               </button>
               {notice[script.source] ? <span className="text-sm text-emerald-700">{notice[script.source]}</span> : null}
               {error[script.source] ? <span className="text-sm text-rose-700">{error[script.source]}</span> : null}

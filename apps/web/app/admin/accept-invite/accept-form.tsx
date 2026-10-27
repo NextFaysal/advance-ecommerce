@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { ACCEPT_INVITE_STRINGS } from "./strings";
 
 /**
  * Accept-invite form (client). Receives only serializable props from the
@@ -21,6 +24,8 @@ export function AcceptInviteForm({
   role: string;
 }) {
   const router = useRouter();
+  const { locale } = useLocale();
+  const s = pick(locale, ACCEPT_INVITE_STRINGS);
   const [name, setName] = useState(invitedName);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -32,11 +37,11 @@ export function AcceptInviteForm({
     e.preventDefault();
     setError(null);
     if (password.length < 8) {
-      setError("পাসওয়ার্ড কমপক্ষে ৮ অক্ষরের হতে হবে।");
+      setError(s.errPasswordShort);
       return;
     }
     if (password !== confirm) {
-      setError("পাসওয়ার্ড দুটি মিলছে না।");
+      setError(s.errPasswordMismatch);
       return;
     }
     setSubmitting(true);
@@ -52,7 +57,7 @@ export function AcceptInviteForm({
       if (!res.ok || json?.data?.status !== "accepted") {
         setError(
           json?.error?.message ??
-            "আমন্ত্রণ লিংকটি অবৈধ বা এর মেয়াদ শেষ হয়ে গেছে। নতুন লিংকের জন্য অ্যাডমিনের সাথে যোগাযোগ করুন।",
+            s.invalidLink,
         );
         setSubmitting(false);
         return;
@@ -60,7 +65,7 @@ export function AcceptInviteForm({
       setDone(true);
       router.push("/admin/login");
     } catch {
-      setError("সার্ভারে সংযোগ করা যায়নি। আবার চেষ্টা করুন।");
+      setError(s.errNetwork);
       setSubmitting(false);
     }
   }
@@ -68,7 +73,7 @@ export function AcceptInviteForm({
   if (done) {
     return (
       <div role="status" className="mt-6 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
-        অ্যাকাউন্ট সক্রিয় হয়েছে! এখন লগইন পেজে গিয়ে ইমেইল/ফোন ও আপনার নতুন পাসওয়ার্ড দিয়ে লগইন করুন।
+        {s.doneText}
       </div>
     );
   }
@@ -80,15 +85,15 @@ export function AcceptInviteForm({
   return (
     <form onSubmit={handleSubmit} className="mt-6 space-y-4">
       <div>
-        <span className={labelClass}>আমন্ত্রিত অ্যাকাউন্ট</span>
+        <span className={labelClass}>{s.invitedAccount}</span>
         <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm text-text-main">
           {identifier}
-          {role ? <span className="text-text-muted"> · ভূমিকা: {role}</span> : null}
+          {role ? <span className="text-text-muted"> · {interpolate(s.roleLabel, { role })}</span> : null}
         </p>
       </div>
       <div>
         <label htmlFor="accept-name" className={labelClass}>
-          আপনার নাম
+          {s.yourName}
         </label>
         <input
           id="accept-name"
@@ -98,12 +103,12 @@ export function AcceptInviteForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           className={inputClass}
-          placeholder="আপনার পুরো নাম"
+          placeholder={s.namePlaceholder}
         />
       </div>
       <div>
         <label htmlFor="accept-password" className={labelClass}>
-          নতুন পাসওয়ার্ড (কমপক্ষে ৮ অক্ষর)
+          {s.newPassword}
         </label>
         <input
           id="accept-password"
@@ -118,7 +123,7 @@ export function AcceptInviteForm({
       </div>
       <div>
         <label htmlFor="accept-confirm" className={labelClass}>
-          পাসওয়ার্ড আবার লিখুন
+          {s.confirmPassword}
         </label>
         <input
           id="accept-confirm"
@@ -141,7 +146,7 @@ export function AcceptInviteForm({
         disabled={submitting}
         className="brand-gradient h-12 w-full rounded-xl text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
       >
-        {submitting ? "অপেক্ষা করুন…" : "অ্যাকাউন্ট সক্রিয় করুন"}
+        {submitting ? s.submitting : s.submit}
       </button>
     </form>
   );

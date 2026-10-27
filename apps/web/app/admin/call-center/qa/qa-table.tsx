@@ -27,15 +27,19 @@ import { dispositionDef, isCallDisposition } from "@/callcenter/dispositions";
 import { DispositionChip, OutcomeBadge, SourceChip } from "@/callcenter/components/badges";
 import { OUTCOME_VISUAL, SOURCE_VISUAL, type StatusVisual } from "@/callcenter/components/visuals";
 import type { CallOutcome, CallQueueSource } from "@/callcenter/types";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
+import { CALL_CENTER_STRINGS } from "../strings";
 
 /** Saved QA score as a 5-star meter (display only — the editable
  *  draft lives in the number input beside it). */
-function ScoreMeter({ score }: { score: number | null }) {
+function ScoreMeter({ score, locale }: { score: number | null; locale: Locale }) {
+  const s = pick(locale, CALL_CENTER_STRINGS);
   return (
     <span
       className="mt-1 flex items-center gap-0.5"
       role="img"
-      aria-label={score === null ? "এখনো স্কোর হয়নি" : `স্কোর ${score}/৫`}
+      aria-label={score === null ? s.scoreNotYet : interpolate(s.scoreAria, { score })}
     >
       {[0, 1, 2, 3, 4].map((i) => (
         <Icon
@@ -46,7 +50,7 @@ function ScoreMeter({ score }: { score: number | null }) {
         />
       ))}
       <span className="ml-1 font-mono text-[11px] tabular-nums text-text-muted">
-        {score === null ? "—/৫" : `${score}/৫`}
+        {score === null ? s.scoreFractionNone : interpolate(s.scoreFraction, { score })}
       </span>
     </span>
   );
@@ -87,6 +91,8 @@ function draftsFor(logs: QaLog[]): Drafts {
 }
 
 export function QaTable() {
+  const { locale } = useLocale();
+  const s = pick(locale, CALL_CENTER_STRINGS);
   const [logs, setLogs] = useState<QaLog[] | null>(null);
   const [unscored, setUnscored] = useState(0);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -137,7 +143,7 @@ export function QaTable() {
         if (cancelled) return;
         if (!res.ok || !json.data) {
           if (json.error?.code === "FEATURE_LOCKED") setLocked(true);
-          setLoadError(json.error?.message ?? `লোড ব্যর্থ হয়েছে (${res.status})`);
+          setLoadError(json.error?.message ?? interpolate(s.loadFailed, { status: res.status }));
           setLogs([]);
           return;
         }
@@ -148,7 +154,7 @@ export function QaTable() {
         rememberAgents(json.data.logs);
       } catch {
         if (cancelled) return;
-        setLoadError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+        setLoadError(s.networkErrorRetry);
         setLogs([]);
       }
     })();
@@ -157,7 +163,7 @@ export function QaTable() {
     };
     // pageUrl is derived from the two filters; they are the real deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentFilter, minScoreFilter]);
+  }, [agentFilter, minScoreFilter, locale]);
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return;
@@ -168,7 +174,7 @@ export function QaTable() {
       const json = (await res.json().catch(() => ({}))) as QaResponse;
       if (!res.ok || !json.data) {
         // Loaded rows stay on screen; only the button area reports.
-        setMoreError(json.error?.message ?? `লোড ব্যর্থ হয়েছে (${res.status})`);
+        setMoreError(json.error?.message ?? interpolate(s.loadFailed, { status: res.status }));
         return;
       }
       const incoming = json.data.logs;
@@ -178,7 +184,7 @@ export function QaTable() {
       setDrafts((prev) => ({ ...draftsFor(incoming), ...prev }));
       rememberAgents(incoming);
     } catch {
-      setMoreError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+      setMoreError(s.networkErrorRetry);
     } finally {
       setLoadingMore(false);
     }
@@ -188,7 +194,7 @@ export function QaTable() {
     const draft = drafts[log.id] ?? { score: "", comment: "" };
     const score = Number(draft.score);
     if (!Number.isInteger(score) || score < 0 || score > 5) {
-      setRowError((p) => ({ ...p, [log.id]: "স্কোর ০–৫ এর মধ্যে পূর্ণ সংখ্যা হতে হবে।" }));
+      setRowError((p) => ({ ...p, [log.id]: s.scoreRangeError }));
       return;
     }
     setSavingId(log.id);
@@ -201,24 +207,24 @@ export function QaTable() {
       });
       const json = (await res.json().catch(() => ({}))) as QaResponse & { data?: { log: QaLog } };
       if (!res.ok || !json.data?.log) {
-        setRowError((p) => ({ ...p, [log.id]: json.error?.message ?? `সেভ ব্যর্থ হয়েছে (${res.status})` }));
+        setRowError((p) => ({ ...p, [log.id]: json.error?.message ?? interpolate(s.saveFailed, { status: res.status }) }));
         return;
       }
       const updated = json.data.log;
       setLogs((prev) => (prev ?? []).map((l) => (l.id === updated.id ? { ...l, qaScore: updated.qaScore, qaComment: updated.qaComment } : l)));
       setUnscored((n) => Math.max(0, n - (log.qaScore === null ? 1 : 0)));
     } catch {
-      setRowError((p) => ({ ...p, [log.id]: "নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।" }));
+      setRowError((p) => ({ ...p, [log.id]: s.networkErrorRetry }));
     } finally {
       setSavingId(null);
     }
   }
 
-  if (logs === null) return <p className="text-sm text-text-muted">লোড হচ্ছে… (Loading…)</p>;
+  if (logs === null) return <p className="text-sm text-text-muted">{s.loadingText}</p>;
   if (locked) {
     return (
       <p role="status" className="rounded-md bg-amber-50 px-3.5 py-2.5 text-small leading-relaxed text-amber-800">
-        🔒 Call Center মডিউল লক করা আছে (module.call_center OFF) — QA তালিকা দেখা যাচ্ছে না।
+        {s.lockedQa}
       </p>
     );
   }
@@ -234,53 +240,53 @@ export function QaTable() {
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <label className="text-sm">
-          এজেন্ট:{" "}
+          {s.agentFilterLabel}{" "}
           <select
             className="h-10 rounded-md border border-border px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             value={agentFilter}
             onChange={(e) => setAgentFilter(e.target.value)}
           >
-            <option value="">সবাই</option>
+            <option value="">{s.allAgents}</option>
             {knownAgents.map((a) => (
               <option key={a.id} value={a.id}>{a.name}</option>
             ))}
           </select>
         </label>
         <label className="text-sm">
-          সর্বনিম্ন স্কোর:{" "}
+          {s.minScoreLabel}{" "}
           <select
             className="h-10 rounded-md border border-border px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             value={minScoreFilter}
             onChange={(e) => setMinScoreFilter(e.target.value)}
           >
-            <option value="">সব</option>
+            <option value="">{s.allScores}</option>
             {[0, 1, 2, 3, 4, 5].map((s) => (
               <option key={s} value={String(s)}>{s}+</option>
             ))}
           </select>
         </label>
         <span className="text-sm text-text-muted">
-          মোট {logs.length}টি কল লোড হয়েছে · স্কোর বাকি {unscored}টি
-          {nextCursor ? " · আরও পুরনো কল আছে" : ""}
+          {interpolate(s.loadedSummary, { loaded: logs.length, unscored })}
+          {nextCursor ? s.moreOldSuffix : ""}
         </span>
       </div>
 
       {logs.length === 0 ? (
-        <p className="text-sm text-text-muted">কোনো সম্পন্ন কল পাওয়া যায়নি। (No completed calls found.)</p>
+        <p className="text-sm text-text-muted">{s.noCompletedCalls}</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm max-lg:block">
             <thead className="max-lg:hidden">
               <tr className="border-b border-border text-left">
-                <th className="py-2 pr-3">সময়</th>
-                <th className="py-2 pr-3">উৎস</th>
-                <th className="py-2 pr-3">এজেন্ট</th>
-                <th className="py-2 pr-3">ফলাফল</th>
-                <th className="py-2 pr-3">Disposition</th>
-                <th className="py-2 pr-3">স্ক্রিপ্ট</th>
-                <th className="py-2 pr-3">নোট</th>
-                <th className="py-2 pr-3">QA স্কোর (০–৫)</th>
-                <th className="py-2">সংরক্ষণ</th>
+                <th className="py-2 pr-3">{s.colTime}</th>
+                <th className="py-2 pr-3">{s.colSource}</th>
+                <th className="py-2 pr-3">{s.colAgent}</th>
+                <th className="py-2 pr-3">{s.colOutcome}</th>
+                <th className="py-2 pr-3">{s.colDisposition}</th>
+                <th className="py-2 pr-3">{s.colScript}</th>
+                <th className="py-2 pr-3">{s.colNote}</th>
+                <th className="py-2 pr-3">{s.colQaScore}</th>
+                <th className="py-2">{s.colSave}</th>
               </tr>
             </thead>
             <tbody className="max-lg:block">
@@ -300,11 +306,11 @@ export function QaTable() {
                     className="border-b border-border align-top max-lg:mb-3 max-lg:block max-lg:rounded-md max-lg:border max-lg:p-3"
                   >
                     <td className="py-2 pr-3 whitespace-nowrap max-lg:block max-lg:py-1 max-lg:pr-0">
-                      {new Date(log.calledAt).toLocaleString("bn-BD", { timeZone: "Asia/Dhaka" })}
+                      {new Date(log.calledAt).toLocaleString(intlLocale(locale), { timeZone: "Asia/Dhaka" })}
                     </td>
                     <td className="py-2 pr-3 max-lg:block max-lg:py-1 max-lg:pr-0">
                       {sourceV ? (
-                        <SourceChip source={log.source as CallQueueSource} />
+                        <SourceChip source={log.source as CallQueueSource} lang={locale} />
                       ) : (
                         log.source
                       )}
@@ -313,7 +319,7 @@ export function QaTable() {
                     <td className="py-2 pr-3 max-lg:block max-lg:py-1 max-lg:pr-0">
                       {outcomeV ? (
                         <span className="inline-flex flex-wrap items-center gap-2">
-                          <OutcomeBadge outcome={log.outcome as CallOutcome} />
+                          <OutcomeBadge outcome={log.outcome as CallOutcome} lang={locale} />
                           <span className="font-mono text-[11px] text-text-muted">
                             {log.outcome}
                           </span>
@@ -327,7 +333,7 @@ export function QaTable() {
                     <td className="py-2 pr-3 max-lg:block max-lg:py-1 max-lg:pr-0">
                       {disp ? (
                         <span className="inline-flex flex-wrap items-center gap-2">
-                          <DispositionChip disposition={disp.code} />
+                          <DispositionChip disposition={disp.code} lang={locale} />
                           <span className="font-mono text-[11px] text-text-muted">
                             ({disp.code})
                           </span>
@@ -356,22 +362,22 @@ export function QaTable() {
                           className="h-10 w-16 rounded-md border border-border px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                           value={draft.score}
                           onChange={(e) => setDrafts((p) => ({ ...p, [log.id]: { ...draft, score: e.target.value } }))}
-                          aria-label="QA score"
+                          aria-label={s.qaScoreAria}
                         />
                         <input
                           className="h-10 w-full rounded-md border border-border px-2 sm:w-48 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                           value={draft.comment}
                           onChange={(e) => setDrafts((p) => ({ ...p, [log.id]: { ...draft, comment: e.target.value } }))}
-                          placeholder="QA মন্তব্য (ঐচ্ছিক)"
-                          aria-label="QA comment"
+                          placeholder={s.qaCommentPlaceholder}
+                          aria-label={s.qaCommentAria}
                         />
                       </div>
                       {log.qaScore !== null ? (
-                        <span className="text-xs text-emerald-700">বর্তমান স্কোর: {log.qaScore}</span>
+                        <span className="text-xs text-emerald-700">{interpolate(s.currentScore, { score: log.qaScore })}</span>
                       ) : (
-                        <span className="text-xs text-text-muted">এখনো স্কোর হয়নি</span>
+                        <span className="text-xs text-text-muted">{s.scoreNotYet}</span>
                       )}
-                      <ScoreMeter score={log.qaScore} />
+                      <ScoreMeter score={log.qaScore} locale={locale} />
                       {rowError[log.id] ? <div className="text-xs text-rose-700">{rowError[log.id]}</div> : null}
                     </td>
                     <td className="py-2 max-lg:block max-lg:py-1">
@@ -381,7 +387,7 @@ export function QaTable() {
                         onClick={() => saveScore(log)}
                         disabled={savingId === log.id}
                       >
-                        {savingId === log.id ? "…" : "স্কোর দিন"}
+                        {savingId === log.id ? "…" : s.scoreBtn}
                       </button>
                     </td>
                   </tr>
@@ -400,7 +406,7 @@ export function QaTable() {
             onClick={loadMore}
             disabled={loadingMore}
           >
-            {loadingMore ? "লোড হচ্ছে…" : "আরও দেখুন (Load more)"}
+            {loadingMore ? s.loadingText : s.loadMoreBtn}
           </button>
           {moreError ? (
             <span role="alert" className="text-sm text-rose-700">{moreError}</span>

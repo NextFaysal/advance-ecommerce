@@ -11,6 +11,9 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { formatBpsPercent } from "@/subscriptions/labels";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { BOXES_STRINGS } from "./strings";
 import type { BoxCycleKind } from "@/boxes/cycles";
 
 interface BoxesConfig {
@@ -30,6 +33,8 @@ const INPUT_CLASS =
   "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-text-main";
 
 export function BoxesConfigCard() {
+  const { locale } = useLocale();
+  const s = pick(locale, BOXES_STRINGS);
   const [data, setData] = useState<ConfigData | null>(null);
   const [variantIdsText, setVariantIdsText] = useState("");
   const [cycles, setCycles] = useState<BoxCycleKind[]>(["monthly"]);
@@ -47,7 +52,7 @@ export function BoxesConfigCard() {
         error?: { message?: string };
       } | null;
       if (!res.ok || !json?.data) {
-        setError(json?.error?.message ?? "কনফিগ লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.configLoadFailed);
         return;
       }
       const cfg = json.data.config;
@@ -57,9 +62,9 @@ export function BoxesConfigCard() {
       setDiscountBps(cfg.discountBps);
       setError(null);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — কনফিগ লোড করা যায়নি।");
+      setError(s.configLoadNetwork);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load();
@@ -90,14 +95,14 @@ export function BoxesConfigCard() {
         error?: { message?: string };
       } | null;
       if (!res.ok) {
-        setError(json?.error?.message ?? "কনফিগ সংরক্ষণ করা যায়নি।");
+        setError(json?.error?.message ?? s.configSaveFailed);
         return;
       }
-      setNotice("কনফিগ সংরক্ষিত হয়েছে।");
+      setNotice(s.configSaved);
       setReason("");
       await load();
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — কনফিগ সংরক্ষণ করা যায়নি।");
+      setError(s.configSaveNetwork);
     } finally {
       setBusy(false);
     }
@@ -105,12 +110,15 @@ export function BoxesConfigCard() {
 
   return (
     <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
-      <h2 className="font-display text-base font-bold text-text-main">বক্স কনফিগ</h2>
+      <h2 className="font-display text-base font-bold text-text-main">{s.configTitle}</h2>
       <p className="mt-1 text-sm leading-6 text-text-muted">
-        কোন ভ্যারিয়েন্টগুলো সাবস্ক্রিপশন বক্স, কোন সাইকেলে সাবস্ক্রাইব করা যাবে, আর বক্স
-        অর্ডারের ছাড়।{" "}
+        {s.configIntro}{" "}
         {data
-          ? `উৎস: ${data.source === "saved" ? "সংরক্ষিত ডকুমেন্ট" : "ডিফল্ট (এখনো সংরক্ষণ হয়নি)"} · বক্স মডিউল: ${data.moduleEnabled ? "চালু" : "বন্ধ"} · সাবস্ক্রিপশন ইঞ্জিন: ${data.engineEnabled ? "চালু" : "বন্ধ"}`
+          ? interpolate(s.configSourceLine, {
+              source: data.source === "saved" ? s.sourceSaved : s.sourceDefault,
+              module: data.moduleEnabled ? s.stateOn : s.stateOff,
+              engine: data.engineEnabled ? s.stateOn : s.stateOff,
+            })
           : ""}
       </p>
 
@@ -127,21 +135,18 @@ export function BoxesConfigCard() {
 
       <div className="mt-4 grid gap-4">
         <label className="grid gap-1.5 text-sm">
-          <span className="font-medium text-text-main">বক্স ভ্যারিয়েন্ট আইডি (প্রতি লাইনে একটি)</span>
+          <span className="font-medium text-text-main">{s.variantIdsLabel}</span>
           <textarea
             className={INPUT_CLASS + " min-h-[96px] font-mono text-xs"}
             value={variantIdsText}
             onChange={(e) => setVariantIdsText(e.target.value)}
             placeholder={"variant-id-1\nvariant-id-2"}
           />
-          <span className="text-xs text-text-muted">
-            তালিকায় থাকা ভ্যারিয়েন্টের পেজে বক্স সাবস্ক্রিপশন কার্ড দেখা যাবে; তালিকা থেকে
-            সরালে ওই ভ্যারিয়েন্ট আবার সাধারণ সাবস্ক্রিপশন পণ্যের মতো আচরণ করবে।
-          </span>
+          <span className="text-xs text-text-muted">{s.variantIdsHelp}</span>
         </label>
 
         <fieldset className="grid gap-1.5 text-sm">
-          <legend className="font-medium text-text-main">অনুমোদিত সাইকেল</legend>
+          <legend className="font-medium text-text-main">{s.cyclesLegend}</legend>
           <div className="flex flex-wrap gap-4">
             <label className="inline-flex items-center gap-2">
               <input
@@ -149,7 +154,7 @@ export function BoxesConfigCard() {
                 checked={cycles.includes("weekly")}
                 onChange={(e) => toggleCycle("weekly", e.target.checked)}
               />
-              সাপ্তাহিক (প্রতি সপ্তাহে)
+              {s.weeklyLabel}
             </label>
             <label className="inline-flex items-center gap-2">
               <input
@@ -157,15 +162,17 @@ export function BoxesConfigCard() {
                 checked={cycles.includes("monthly")}
                 onChange={(e) => toggleCycle("monthly", e.target.checked)}
               />
-              মাসিক (প্রতি মাসে)
+              {s.monthlyLabel}
             </label>
           </div>
-          <span className="text-xs text-text-muted">অন্তত একটি সাইকেল চালু থাকতে হবে।</span>
+          <span className="text-xs text-text-muted">{s.cyclesHelp}</span>
         </fieldset>
 
         <label className="grid gap-1.5 text-sm">
           <span className="font-medium text-text-main">
-            বক্স ছাড় (বেসিস পয়েন্ট{discountBps > 0 ? ` — এখন ${formatBpsPercent(discountBps)}%` : ""})
+            {interpolate(s.discountLabel, {
+              current: discountBps > 0 ? interpolate(s.discountNow, { pct: formatBpsPercent(discountBps) }) : "",
+            })}
           </span>
           <input
             className={INPUT_CLASS + " max-w-[200px]"}
@@ -176,19 +183,16 @@ export function BoxesConfigCard() {
             value={discountBps}
             onChange={(e) => setDiscountBps(Number(e.target.value))}
           />
-          <span className="text-xs text-text-muted">
-            1000 = 10%। 0 রাখলে সাধারণ সাবস্ক্রিপশন ছাড় (subscriptions.discount_bps) প্রযোজ্য
-            হবে; ধনাত্মক মান দিলে বক্স অর্ডারে সেটাই প্রযোজ্য হবে।
-          </span>
+          <span className="text-xs text-text-muted">{s.discountHelp}</span>
         </label>
 
         <label className="grid gap-1.5 text-sm">
-          <span className="font-medium text-text-main">পরিবর্তনের কারণ (বাধ্যতামূলক)</span>
+          <span className="font-medium text-text-main">{s.reasonLabel}</span>
           <input
             className={INPUT_CLASS}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="যেমন: নভেম্বর বক্স চালু"
+            placeholder={s.reasonPlaceholderConfig}
           />
         </label>
 
@@ -199,7 +203,7 @@ export function BoxesConfigCard() {
             onClick={save}
             className="inline-flex items-center justify-center rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? "সংরক্ষণ হচ্ছে…" : "কনফিগ সংরক্ষণ করুন"}
+            {busy ? s.saving : s.saveConfig}
           </button>
         </div>
       </div>

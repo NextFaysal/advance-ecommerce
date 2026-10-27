@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { listActivePublicProducts } from "@/catalog/server-read";
 import { getAllWeightedVariantInfos } from "@/business-modules/grocery-pricing";
+import { pick } from "@/i18n/locale";
+import { getRequestLocale } from "@/i18n/server";
+import { CART_STRINGS } from "@/cart/strings";
 import { getThemeSlots, AURORA_SLOTS } from "@/themes/slot-registry";
 import { resolveStorefrontThemeFromStore } from "@/themes/resolution-server";
 import { ThemeBoundary } from "@/themes/theme-boundary";
@@ -17,10 +20,13 @@ import type { ThemeCartPageProps } from "@/themes/slots";
 // resolved here server-side with Aurora as the ThemeBoundary fallback.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "আপনার কার্ট — Advance Ecommerce",
-  description: "আপনার কার্টের পণ্য, কুপন ছাড় ও ডেলিভারি চার্জসহ মোট হিসাব দেখুন।",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const s = pick(await getRequestLocale(), CART_STRINGS);
+  return {
+    title: s.cartMetaTitle,
+    description: s.cartMetaDescription,
+  };
+}
 
 export default async function CartPage() {
   // PUBLIC shape (cost stripped): the catalog list is serialized into

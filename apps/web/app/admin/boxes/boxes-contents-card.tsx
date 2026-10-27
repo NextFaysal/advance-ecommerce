@@ -21,6 +21,9 @@ import { dhakaYmdOf, shiftYmd } from "@/lib/dhaka-date";
 import { isoWeekKeyOfYmd } from "@/boxes/cycles";
 import type { BoxVariantOption, BoxVariantSummary } from "@/boxes/service";
 import type { BoxContentItem } from "@/boxes/contents";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { BOXES_STRINGS } from "./strings";
 
 interface CycleDraft {
   cycleKey: string;
@@ -48,6 +51,8 @@ function nextMonthKey(): string {
 }
 
 export function BoxesContentsCard() {
+  const { locale } = useLocale();
+  const s = pick(locale, BOXES_STRINGS);
   const [boxes, setBoxes] = useState<BoxVariantSummary[] | null>(null);
   const [variantId, setVariantId] = useState("");
   const [cycles, setCycles] = useState<CycleDraft[]>([]);
@@ -73,7 +78,7 @@ export function BoxesContentsCard() {
       });
       const json = (await res.json().catch(() => null)) as ContentsResponse | null;
       if (!res.ok) {
-        setError(json?.error?.message ?? "তালিকা লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.contentsLoadFailed);
         return;
       }
       setCycles(
@@ -86,9 +91,9 @@ export function BoxesContentsCard() {
       );
       setError(null);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — তালিকা লোড করা যায়নি।");
+      setError(s.contentsLoadNetwork);
     }
-  }, []);
+  }, [s]);
 
   const loadBoxes = useCallback(async () => {
     try {
@@ -98,7 +103,7 @@ export function BoxesContentsCard() {
         error?: { message?: string };
       } | null;
       if (!res.ok || !json?.data) {
-        setError(json?.error?.message ?? "বক্সের তালিকা লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.boxesLoadFailed);
         return;
       }
       setBoxes(json.data.boxes);
@@ -108,9 +113,9 @@ export function BoxesContentsCard() {
         return next;
       });
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — বক্সের তালিকা লোড করা যায়নি।");
+      setError(s.boxesLoadNetwork);
     }
-  }, [loadDoc]);
+  }, [loadDoc, s]);
 
   useEffect(() => {
     void loadBoxes();
@@ -196,15 +201,15 @@ export function BoxesContentsCard() {
         error?: { message?: string; details?: unknown };
       } | null;
       if (!res.ok) {
-        setError(json?.error?.message ?? "তালিকা সংরক্ষণ করা যায়নি।");
+        setError(json?.error?.message ?? s.contentsSaveFailed);
         return;
       }
-      setNotice("সাইকেলের তালিকা সংরক্ষিত হয়েছে।");
+      setNotice(s.contentsSaved);
       setReason("");
       await loadBoxes();
       await loadDoc(variantId);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — তালিকা সংরক্ষণ করা যায়নি।");
+      setError(s.contentsSaveNetwork);
     } finally {
       setBusy(false);
     }
@@ -212,20 +217,17 @@ export function BoxesContentsCard() {
 
   const today = dhakaYmdOf(new Date());
   const quickKeys: { label: string; key: string }[] = [
-    { label: "এই মাস", key: today.slice(0, 7) },
-    { label: "পরের মাস", key: nextMonthKey() },
-    { label: "এই সপ্তাহ", key: isoWeekKeyOfYmd(today) },
-    { label: "পরের সপ্তাহ", key: isoWeekKeyOfYmd(shiftYmd(today, 7)) },
+    { label: s.quickThisMonth, key: today.slice(0, 7) },
+    { label: s.quickNextMonth, key: nextMonthKey() },
+    { label: s.quickThisWeek, key: isoWeekKeyOfYmd(today) },
+    { label: s.quickNextWeek, key: isoWeekKeyOfYmd(shiftYmd(today, 7)) },
   ];
   const selectedSummary = boxes?.find((b) => b.variantId === variantId) ?? null;
 
   return (
     <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
-      <h2 className="font-display text-base font-bold text-text-main">সাইকেল অনুযায়ী বাক্সের তালিকা</h2>
-      <p className="mt-1 text-sm leading-6 text-text-muted">
-        প্রতি সাইকেলে বাক্সে কী কী থাকবে তা এখানে নির্ধারণ করুন। যে সাইকেলের তালিকা নেই, সেই
-        চক্রে অর্ডার তৈরি হবে না — আগের সাইকেলের তালিকা কখনো নিজে থেকে পুনরায় ব্যবহার হবে না।
-      </p>
+      <h2 className="font-display text-base font-bold text-text-main">{s.contentsTitle}</h2>
+      <p className="mt-1 text-sm leading-6 text-text-muted">{s.contentsIntro}</p>
 
       {error ? (
         <p role="alert" className="mt-3 text-sm font-medium text-red-700 dark:text-red-300">
@@ -239,16 +241,13 @@ export function BoxesContentsCard() {
       ) : null}
 
       {boxes === null ? (
-        <p className="mt-3 text-sm text-text-muted">লোড হচ্ছে…</p>
+        <p className="mt-3 text-sm text-text-muted">{s.loading}</p>
       ) : boxes.length === 0 ? (
-        <p className="mt-3 text-sm text-text-muted">
-          আগে নিচের বক্স কনফিগে অন্তত একটি বক্স ভ্যারিয়েন্ট যোগ করুন — তারপর এখানে সাইকেলের
-          তালিকা দেওয়া যাবে।
-        </p>
+        <p className="mt-3 text-sm text-text-muted">{s.noBoxesNote}</p>
       ) : (
         <div className="mt-4 grid gap-4">
           <label className="grid gap-1.5 text-sm">
-            <span className="font-medium text-text-main">বক্স ভ্যারিয়েন্ট</span>
+            <span className="font-medium text-text-main">{s.variantLabel}</span>
             <select
               className={INPUT_CLASS}
               value={variantId}
@@ -256,20 +255,20 @@ export function BoxesContentsCard() {
                 setVariantId(e.target.value);
                 void loadDoc(e.target.value);
               }}
-              aria-label="বক্স ভ্যারিয়েন্ট"
+              aria-label={s.variantLabel}
             >
               {boxes.map((b) => (
                 <option key={b.variantId} value={b.variantId}>
-                  {b.productName ?? "(পণ্য পাওয়া যায়নি)"} — {b.variantLabel ?? ""} ({b.sku ?? b.variantId})
+                  {b.productName ?? s.productMissing} — {b.variantLabel ?? ""} ({b.sku ?? b.variantId})
                 </option>
               ))}
             </select>
             {selectedSummary && selectedSummary.definedCycleKeys.length > 0 ? (
               <span className="text-xs text-text-muted">
-                তালিকা আছে: {selectedSummary.definedCycleKeys.join(", ")}
+                {interpolate(s.definedCycles, { keys: selectedSummary.definedCycleKeys.join(", ") })}
               </span>
             ) : (
-              <span className="text-xs text-text-muted">এই বক্সের কোনো সাইকেলের তালিকা এখনো নেই।</span>
+              <span className="text-xs text-text-muted">{s.noCyclesYet}</span>
             )}
           </label>
 
@@ -277,7 +276,7 @@ export function BoxesContentsCard() {
             <div key={ci} className="rounded-xl border border-border bg-card p-3.5">
               <div className="flex flex-wrap items-end gap-2.5">
                 <label className="grid flex-1 gap-1 text-sm" style={{ minWidth: 160 }}>
-                  <span className="font-medium text-text-main">সাইকেল কী (YYYY-MM অথবা YYYY-Www)</span>
+                  <span className="font-medium text-text-main">{s.cycleKeyLabel}</span>
                   <input
                     className={INPUT_CLASS + " font-mono"}
                     value={cycle.cycleKey}
@@ -302,35 +301,35 @@ export function BoxesContentsCard() {
                   className={SMALL_BUTTON + " border-red-300 text-red-700 hover:bg-red-50 dark:border-red-400/30 dark:text-red-300 dark:hover:bg-red-500/10"}
                   onClick={() => setCycles((prev) => prev.filter((_, i) => i !== ci))}
                 >
-                  সাইকেল মুছুন
+                  {s.deleteCycle}
                 </button>
               </div>
 
               <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
                 <label className="grid gap-1 text-sm">
-                  <span className="font-medium text-text-main">থিম/নোট (বাংলা, ঐচ্ছিক)</span>
+                  <span className="font-medium text-text-main">{s.noteBnLabel}</span>
                   <input
                     className={INPUT_CLASS}
                     value={cycle.noteBn}
                     onChange={(e) => patchCycle(ci, { noteBn: e.target.value })}
-                    placeholder="যেমন: শীতের যত্ন বক্স"
+                    placeholder={s.noteBnPlaceholder}
                   />
                 </label>
                 <label className="grid gap-1 text-sm">
-                  <span className="font-medium text-text-main">Theme/note (English, optional)</span>
+                  <span className="font-medium text-text-main">{s.noteEnLabel}</span>
                   <input
                     className={INPUT_CLASS}
                     value={cycle.noteEn}
                     onChange={(e) => patchCycle(ci, { noteEn: e.target.value })}
-                    placeholder="e.g. Winter care box"
+                    placeholder={s.noteEnPlaceholder}
                   />
                 </label>
               </div>
 
               <div className="mt-3">
-                <p className="text-sm font-medium text-text-main">বাক্সের পণ্যসমূহ (প্রতি বাক্সে)</p>
+                <p className="text-sm font-medium text-text-main">{s.itemsHeading}</p>
                 {cycle.items.length === 0 ? (
-                  <p className="mt-1 text-sm text-text-muted">এখনো কোনো পণ্য যোগ হয়নি।</p>
+                  <p className="mt-1 text-sm text-text-muted">{s.noItems}</p>
                 ) : (
                   <ul className="mt-2 space-y-1.5">
                     {cycle.items.map((item) => (
@@ -354,7 +353,7 @@ export function BoxesContentsCard() {
                               ),
                             })
                           }
-                          aria-label="পরিমাণ"
+                          aria-label={s.quantityAria}
                         />
                         <button
                           type="button"
@@ -365,7 +364,7 @@ export function BoxesContentsCard() {
                             })
                           }
                         >
-                          সরান
+                          {s.removeBtn}
                         </button>
                       </li>
                     ))}
@@ -385,8 +384,8 @@ export function BoxesContentsCard() {
                       setSearchCycle(ci);
                       setSearchText(e.target.value);
                     }}
-                    placeholder="পণ্য যোগ করুন — SKU বা পণ্যের নাম লিখে খুঁজুন…"
-                    aria-label="পণ্য খুঁজুন"
+                    placeholder={s.searchPlaceholder}
+                    aria-label={s.searchAria}
                   />
                   {searchCycle === ci && searchResults.length > 0 ? (
                     <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-border bg-card shadow-lg">
@@ -400,7 +399,7 @@ export function BoxesContentsCard() {
                             {r.productName} — {r.variantLabel}
                             <span className="text-text-muted">
                               {" "}
-                              ({r.sku} · স্টক {r.stock})
+                              ({r.sku} · {interpolate(s.stockPart, { stock: r.stock })})
                             </span>
                           </button>
                         </li>
@@ -420,17 +419,17 @@ export function BoxesContentsCard() {
                 setCycles((prev) => [...prev, { cycleKey: "", noteBn: "", noteEn: "", items: [] }])
               }
             >
-              + নতুন সাইকেল যোগ করুন
+              {s.addCycle}
             </button>
           </div>
 
           <label className="grid gap-1.5 text-sm">
-            <span className="font-medium text-text-main">পরিবর্তনের কারণ (বাধ্যতামূলক)</span>
+            <span className="font-medium text-text-main">{s.reasonLabel}</span>
             <input
               className={INPUT_CLASS}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="যেমন: নভেম্বর সাইকেলের তালিকা"
+              placeholder={s.reasonPlaceholderContents}
             />
           </label>
 
@@ -441,7 +440,7 @@ export function BoxesContentsCard() {
               onClick={save}
               className="inline-flex items-center justify-center rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {busy ? "সংরক্ষণ হচ্ছে…" : "তালিকা সংরক্ষণ করুন"}
+              {busy ? s.saving : s.saveContents}
             </button>
           </div>
         </div>

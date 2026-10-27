@@ -23,6 +23,17 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { formatPoisha } from "@/components/ui/money";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, type Locale } from "@/i18n/locale";
+import {
+  ACTION_PARAM_LABEL,
+  ACTION_TYPE_TEXT,
+  AUTOMATION_STRINGS,
+  FIELD_TEXT,
+  OPERATOR_TEXT,
+  TRIGGER_TEXT,
+  type AutomationStrings,
+} from "./strings";
 import {
   AUTOMATION_TRIGGERS,
   CONDITION_FIELDS,
@@ -37,47 +48,6 @@ import {
   type ConditionOperator,
   type ConditionValue,
 } from "@/automation/types";
-
-const TRIGGER_TEXT: Record<string, string> = {
-  "order.created": "অর্ডার তৈরি হলে (order.created)",
-  "order.status_changed": "অর্ডারের অবস্থা বদলালে (order.status_changed)",
-  "payment.succeeded": "পেমেন্ট সফল হলে (payment.succeeded)",
-  "stock.low": "মজুদ কমে গেলে (stock.low)",
-  "checkout.abandoned": "চেকআউট পরিত্যক্ত হলে (checkout.abandoned)",
-  "customer.registered": "নতুন গ্রাহক নিবন্ধন হলে (customer.registered)",
-};
-
-const FIELD_TEXT: Record<ConditionField, string> = {
-  orderStatus: "অর্ডারের অবস্থা",
-  paymentStatus: "পেমেন্টের অবস্থা",
-  paymentMethod: "পেমেন্ট মাধ্যম",
-  totalPoisha: "মোট টাকা",
-  itemCount: "আইটেম সংখ্যা",
-  district: "জেলা",
-  division: "বিভাগ",
-  courier: "কুরিয়ার",
-  riskScore: "ঝুঁকি স্কোর",
-  tags: "ট্যাগ",
-  stockAvailable: "মজুদ",
-  sku: "SKU",
-  abandonedMinutes: "পরিত্যক্ত সময় (মিনিট)",
-  paymentAmountPoisha: "পেমেন্টের পরিমাণ",
-};
-
-const OPERATOR_TEXT: Record<string, string> = {
-  eq: "=",
-  neq: "≠",
-  gt: ">",
-  gte: "≥",
-  lt: "<",
-  lte: "≤",
-  in: "এর মধ্যে",
-  not_in: "এর মধ্যে নয়",
-  contains: "ধারণ করে",
-  not_contains: "ধারণ করে না",
-  exists: "আছে",
-  not_exists: "নেই",
-};
 
 const NUMERIC_FIELDS: ReadonlySet<ConditionField> = new Set([
   "totalPoisha",
@@ -97,52 +67,33 @@ function valueText(field: ConditionField, value: ConditionValue | undefined): st
   return String(value);
 }
 
-function describeConditions(node: ConditionNode): string {
+function describeConditions(node: ConditionNode, t: AutomationStrings, locale: Locale): string {
   if (node.kind === "condition") {
     const v = valueText(node.field, node.value);
-    return `${FIELD_TEXT[node.field]} ${OPERATOR_TEXT[node.operator] ?? node.operator}${v ? ` ${v}` : ""}`;
+    return `${FIELD_TEXT[locale][node.field]} ${OPERATOR_TEXT[locale][node.operator] ?? node.operator}${v ? ` ${v}` : ""}`;
   }
-  const joined = node.nodes.map(describeConditions).join(node.logic === "AND" ? " এবং " : " অথবা ");
+  const joined = node.nodes.map((n) => describeConditions(n, t, locale)).join(node.logic === "AND" ? t.condAnd : t.condOr);
   return `(${joined})`;
 }
 
-function describeAction(action: AutomationAction): string {
+function describeAction(action: AutomationAction, t: AutomationStrings): string {
   switch (action.type) {
     case "confirm_order":
-      return "অর্ডার নিশ্চিত করুন";
+      return t.actConfirmOrder;
     case "assign_courier":
-      return `কুরিয়ার নির্ধারণ করুন: ${action.courier}`;
+      return interpolate(t.actAssignCourier, { courier: action.courier });
     case "send_sms":
-      return `SMS পাঠান (টেমপ্লেট: ${action.templateKey})`;
+      return interpolate(t.actSendSms, { key: action.templateKey });
     case "send_email":
-      return `ইমেইল পাঠান (টেমপ্লেট: ${action.templateKey})`;
+      return interpolate(t.actSendEmail, { key: action.templateKey });
     case "add_tag":
-      return `ট্যাগ যোগ করুন: ${action.tag}`;
+      return interpolate(t.actAddTag, { tag: action.tag });
     case "remove_tag":
-      return `ট্যাগ সরান: ${action.tag}`;
+      return interpolate(t.actRemoveTag, { tag: action.tag });
     case "notify_staff":
-      return `স্টাফকে জানান: ${action.message}`;
+      return interpolate(t.actNotifyStaff, { message: action.message });
   }
 }
-
-const ACTION_TYPE_TEXT: Record<AutomationAction["type"], string> = {
-  confirm_order: "অর্ডার নিশ্চিত করুন",
-  assign_courier: "কুরিয়ার নির্ধারণ",
-  send_sms: "SMS পাঠান",
-  send_email: "ইমেইল পাঠান",
-  add_tag: "ট্যাগ যোগ",
-  remove_tag: "ট্যাগ সরান",
-  notify_staff: "স্টাফকে জানান",
-};
-
-const ACTION_PARAM_LABEL: Partial<Record<AutomationAction["type"], string>> = {
-  assign_courier: "কুরিয়ারের নাম",
-  send_sms: "টেমপ্লেট কী",
-  send_email: "টেমপ্লেট কী",
-  add_tag: "ট্যাগ",
-  remove_tag: "ট্যাগ",
-  notify_staff: "বার্তা",
-};
 
 function actionParam(action: AutomationAction): string {
   switch (action.type) {
@@ -180,52 +131,40 @@ function buildAction(type: AutomationAction["type"], param: string): AutomationA
   }
 }
 
-/** Sample events — INPUT FIXTURES for the dry-run tester only (fixed times, deterministic). */
-const SAMPLE_EVENTS: { label: string; event: AutomationEvent }[] = [
+/** Sample events — INPUT FIXTURES for the dry-run tester only (fixed times, deterministic). Labels live in strings.ts (sample1…sample4, same order). */
+const SAMPLE_EVENTS: AutomationEvent[] = [
   {
-    label: "নমুনা: নতুন COD অর্ডার (ঢাকা)",
-    event: {
-      type: "order.created",
-      occurredAt: "2026-10-24T09:15:00.000Z",
-      order: {
-        id: "ord_sample_1",
-        orderNo: "SAMPLE-1001",
-        status: "PENDING",
-        paymentStatus: "UNPAID",
-        paymentMethod: "cod",
-        totalPoisha: 185000,
-        itemCount: 2,
-        customerPhone: "+8801712345678",
-        district: "Dhaka",
-        division: "Dhaka",
-        riskScore: 12,
-        tags: [],
-      },
+    type: "order.created",
+    occurredAt: "2026-10-24T09:15:00.000Z",
+    order: {
+      id: "ord_sample_1",
+      orderNo: "SAMPLE-1001",
+      status: "PENDING",
+      paymentStatus: "UNPAID",
+      paymentMethod: "cod",
+      totalPoisha: 185000,
+      itemCount: 2,
+      customerPhone: "+8801712345678",
+      district: "Dhaka",
+      division: "Dhaka",
+      riskScore: 12,
+      tags: [],
     },
   },
   {
-    label: "নমুনা: পরিত্যক্ত চেকআউট (৪৫ মিনিট)",
-    event: {
-      type: "checkout.abandoned",
-      occurredAt: "2026-10-24T09:40:00.000Z",
-      checkout: { id: "chk_sample_1", totalPoisha: 75000, abandonedMinutes: 45 },
-    },
+    type: "checkout.abandoned",
+    occurredAt: "2026-10-24T09:40:00.000Z",
+    checkout: { id: "chk_sample_1", totalPoisha: 75000, abandonedMinutes: 45 },
   },
   {
-    label: "নমুনা: মজুদ কম (৩টি বাকি)",
-    event: {
-      type: "stock.low",
-      occurredAt: "2026-10-24T10:05:00.000Z",
-      stock: { variantId: "var_sample_1", sku: "SKU-SAMPLE-001", available: 3 },
-    },
+    type: "stock.low",
+    occurredAt: "2026-10-24T10:05:00.000Z",
+    stock: { variantId: "var_sample_1", sku: "SKU-SAMPLE-001", available: 3 },
   },
   {
-    label: "নমুনা: bKash পেমেন্ট সফল",
-    event: {
-      type: "payment.succeeded",
-      occurredAt: "2026-10-24T10:20:00.000Z",
-      payment: { amountPoisha: 1200000, method: "bkash" },
-    },
+    type: "payment.succeeded",
+    occurredAt: "2026-10-24T10:20:00.000Z",
+    payment: { amountPoisha: 1200000, method: "bkash" },
   },
 ];
 
@@ -277,6 +216,9 @@ function parseConditionValue(form: RuleFormState): ConditionValue | undefined {
 }
 
 export function AutomationClient() {
+  const { locale } = useLocale();
+  const t = AUTOMATION_STRINGS[locale];
+  const sampleLabels = [t.sample1, t.sample2, t.sample3, t.sample4];
   const [state, setState] = useState<"loading" | "locked" | "unauthenticated" | "error" | "ready">("loading");
   const [errorMessage, setErrorMessage] = useState("");
   const [rules, setRules] = useState<AutomationRule[]>([]);
@@ -307,17 +249,17 @@ export function AutomationClient() {
       if (first) {
         if (first.error?.code === "FEATURE_LOCKED") return setState("locked");
         if (first.status === 401) return setState("unauthenticated");
-        setErrorMessage(first.error?.message ?? `সার্ভার ত্রুটি (${first.status})`);
+        setErrorMessage(first.error?.message ?? interpolate(t.serverError, { status: first.status }));
         return setState("error");
       }
       setRules(rulesRes.data?.rules ?? []);
       setRuns(runsRes.data?.runs ?? []);
       setState("ready");
     } catch {
-      setErrorMessage("নেটওয়ার্ক ত্রুটি — সার্ভারে পৌঁছানো যায়নি।");
+      setErrorMessage(t.networkError);
       setState("error");
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -338,10 +280,10 @@ export function AutomationClient() {
       if (res.ok && res.data?.rule) {
         setRules((prev) => prev.map((r) => (r.id === rule.id ? res.data!.rule : r)));
       } else {
-        setFormStatus(`টগল ব্যর্থ: ${res.error?.message ?? `HTTP ${res.status}`}`);
+        setFormStatus(interpolate(t.toggleFailed, { message: res.error?.message ?? `HTTP ${res.status}` }));
       }
     } catch {
-      setFormStatus("টগল ব্যর্থ: নেটওয়ার্ক ত্রুটি।");
+      setFormStatus(t.toggleNetwork);
     } finally {
       setRowBusyId(null);
     }
@@ -359,10 +301,10 @@ export function AutomationClient() {
           setForm(EMPTY_FORM);
         }
       } else {
-        setFormStatus(`মুছতে ব্যর্থ: ${res.error?.message ?? `HTTP ${res.status}`}`);
+        setFormStatus(interpolate(t.deleteFailed, { message: res.error?.message ?? `HTTP ${res.status}` }));
       }
     } catch {
-      setFormStatus("মুছতে ব্যর্থ: নেটওয়ার্ক ত্রুটি।");
+      setFormStatus(t.deleteNetwork);
     } finally {
       setRowBusyId(null);
     }
@@ -427,10 +369,10 @@ export function AutomationClient() {
         });
         if (res.ok && res.data?.rule) {
           setRules((prev) => prev.map((r) => (r.id === editingId ? res.data!.rule : r)));
-          setFormStatus(`সংরক্ষিত হয়েছে: ${res.data.rule.name} (ডাটাবেসে)`);
+          setFormStatus(interpolate(t.savedEdit, { name: res.data.rule.name }));
           cancelEdit();
         } else {
-          setFormStatus(`সংরক্ষণ ব্যর্থ: ${res.error?.message ?? `HTTP ${res.status}`} — কিছুই বদলায়নি।`);
+          setFormStatus(interpolate(t.saveFailed, { message: res.error?.message ?? `HTTP ${res.status}` }));
         }
       } else {
         const condition: Condition = { kind: "condition", field: form.field, operator: form.operator };
@@ -443,14 +385,14 @@ export function AutomationClient() {
         });
         if (res.ok && res.data?.rule) {
           setRules((prev) => [...prev, res.data!.rule]);
-          setFormStatus(`তৈরি হয়েছে: ${res.data.rule.name} (ডাটাবেসে সংরক্ষিত)`);
+          setFormStatus(interpolate(t.created, { name: res.data.rule.name }));
           setForm(EMPTY_FORM);
         } else {
-          setFormStatus(`তৈরি ব্যর্থ: ${res.error?.message ?? `HTTP ${res.status}`} — কিছুই সংরক্ষিত হয়নি।`);
+          setFormStatus(interpolate(t.createFailed, { message: res.error?.message ?? `HTTP ${res.status}` }));
         }
       }
     } catch {
-      setFormStatus("নেটওয়ার্ক ত্রুটি — কিছুই সংরক্ষিত হয়নি।");
+      setFormStatus(t.formNetwork);
     } finally {
       setFormBusy(false);
     }
@@ -466,15 +408,15 @@ export function AutomationClient() {
       const res = await apiJson<{ log: AutomationRunLog }>("/api/v1/admin/automation/dry-run", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ruleId: dryRuleId, event: sample.event }),
+        body: JSON.stringify({ ruleId: dryRuleId, event: sample }),
       });
       if (res.ok && res.data?.log) {
         setDryResult(res.data.log);
       } else {
-        setDryStatus(`ড্রাই-রান ব্যর্থ: ${res.error?.message ?? `HTTP ${res.status}`}`);
+        setDryStatus(interpolate(t.dryFailed, { message: res.error?.message ?? `HTTP ${res.status}` }));
       }
     } catch {
-      setDryStatus("ড্রাই-রান ব্যর্থ: নেটওয়ার্ক ত্রুটি।");
+      setDryStatus(t.dryNetwork);
     } finally {
       setDryBusy(false);
     }
@@ -483,10 +425,11 @@ export function AutomationClient() {
   if (state === "locked") {
     return (
       <main>
-        <PageHeader title="অটোমেশন (Automation)" description="নিয়মভিত্তিক অটোমেশন ইঞ্জিন (ধাপ ৪৩, A1)" />
+        <PageHeader title={t.title} description={t.descShort} />
         <p role="status">
-          🔒 এই মডিউলটি এই ইনস্টলের জন্য লক করা আছে। অটোমেশন একটি পেইড অ্যাড-অন —
-          আনলক করতে Admin &gt; Settings &gt; Feature Flags-এ <code>module.automation</code> চালু করুন।
+          {t.lockedA}
+          <code>module.automation</code>
+          {t.lockedB}
         </p>
       </main>
     );
@@ -495,8 +438,8 @@ export function AutomationClient() {
   if (state === "unauthenticated") {
     return (
       <main>
-        <PageHeader title="অটোমেশন (Automation)" description="নিয়মভিত্তিক অটোমেশন ইঞ্জিন (ধাপ ৪৩, A1)" />
-        <p role="status">লগইন প্রয়োজন — ডেটা দেখতে আগে অ্যাডমিন হিসেবে লগইন করুন।</p>
+        <PageHeader title={t.title} description={t.descShort} />
+        <p role="status">{t.loginRequired}</p>
       </main>
     );
   }
@@ -504,13 +447,13 @@ export function AutomationClient() {
   if (state === "loading" || state === "error") {
     return (
       <main>
-        <PageHeader title="অটোমেশন (Automation)" description="নিয়মভিত্তিক অটোমেশন ইঞ্জিন (ধাপ ৪৩, A1)" breadcrumb="Admin / Automation" />
+        <PageHeader title={t.title} description={t.descShort} breadcrumb={t.breadcrumb} />
         {state === "loading" ? (
-          <p role="status" className="text-sm text-text-muted">নিয়ম ও রান লগ লোড হচ্ছে…</p>
+          <p role="status" className="text-sm text-text-muted">{t.loading}</p>
         ) : (
           <div>
-            <p role="alert" className="text-sm text-rose-500">⚠ ডেটা লোড হয়নি: {errorMessage}</p>
-            <Button type="button" className="mt-3" onClick={() => void load()}>আবার চেষ্টা করুন</Button>
+            <p role="alert" className="text-sm text-rose-500">{interpolate(t.loadFailed, { message: errorMessage })}</p>
+            <Button type="button" className="mt-3" onClick={() => void load()}>{t.retry}</Button>
           </div>
         )}
       </main>
@@ -520,11 +463,11 @@ export function AutomationClient() {
   const matchedRuns = runs.filter((r) => r.matched);
   const runRows = runs.map((run) => ({
     rule: <span className="font-medium">{run.ruleName}</span>,
-    trigger: TRIGGER_TEXT[run.trigger] ?? run.trigger,
+    trigger: TRIGGER_TEXT[locale][run.trigger] ?? run.trigger,
     status: (
       <Badge tone={run.status === "scheduled" ? "warning" : run.matched ? "success" : "neutral"}>
-        {run.status === "scheduled" ? "◷ সময়সূচি" : run.matched ? "✓ মিলেছে" : "মিলেনি"}
-        {run.dryRun ? " (ড্রাই-রান)" : ""}
+        {run.status === "scheduled" ? t.statusScheduled : run.matched ? t.statusMatched : t.statusNotMatched}
+        {run.dryRun ? t.dryRunSuffix : ""}
       </Badge>
     ),
     order: run.orderId ? <span className="font-mono">{run.orderId}</span> : "—",
@@ -535,22 +478,18 @@ export function AutomationClient() {
 
   return (
     <main>
-      <PageHeader
-        title="অটোমেশন (Automation)"
-        description="নিয়ম, ড্রাই-রান ও রান লগ — সব ডাটাবেস থেকে (Automation API)। ড্রাই-রানে কিছুই প্রয়োগ বা সংরক্ষণ হয় না।"
-        breadcrumb="Admin / Automation"
-      />
+      <PageHeader title={t.title} description={t.descLong} breadcrumb={t.breadcrumb} />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="মোট নিয়ম" value={String(rules.length)} delta="ডাটাবেসে সংরক্ষিত" icon="⚙" />
-        <StatCard label="সক্রিয় নিয়ম" value={String(rules.filter((r) => r.enabled).length)} delta="চালু আছে" icon="✓" />
-        <StatCard label="রান লগ" value={String(runs.length)} delta="সংরক্ষিত লগ" icon="↻" />
-        <StatCard label="মিল পাওয়া রান" value={String(matchedRuns.length)} delta={`${runs.length}টি লগের মধ্যে`} icon="▸" />
+        <StatCard label={t.statTotalRules} value={String(rules.length)} delta={t.statTotalRulesDelta} icon="⚙" />
+        <StatCard label={t.statActive} value={String(rules.filter((r) => r.enabled).length)} delta={t.statActiveDelta} icon="✓" />
+        <StatCard label={t.statRuns} value={String(runs.length)} delta={t.statRunsDelta} icon="↻" />
+        <StatCard label={t.statMatched} value={String(matchedRuns.length)} delta={interpolate(t.statMatchedDelta, { count: runs.length })} icon="▸" />
       </div>
 
-      <h2 className="mb-3 text-lg font-semibold">নিয়মের তালিকা</h2>
+      <h2 className="mb-3 text-lg font-semibold">{t.rulesTitle}</h2>
       {rules.length === 0 ? (
-        <EmptyState title="কোনো নিয়ম নেই" description="ডাটাবেসে এখনো কোনো অটোমেশন নিয়ম তৈরি হয়নি — নিচের ফর্ম দিয়ে প্রথম নিয়মটি তৈরি করুন।" />
+        <EmptyState title={t.noRulesTitle} description={t.noRulesDesc} />
       ) : (
         <div className="space-y-3">
           {rules.map((rule) => (
@@ -561,37 +500,37 @@ export function AutomationClient() {
                   {rule.description ? <p className="mt-0.5 text-sm text-text-muted">{rule.description}</p> : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={rule.enabled ? "success" : "neutral"}>{rule.enabled ? "✓ সক্রিয়" : "✕ বন্ধ"}</Badge>
+                  <Badge tone={rule.enabled ? "success" : "neutral"}>{rule.enabled ? t.badgeActive : t.badgeOff}</Badge>
                   <Button type="button" size="sm" variant={rule.enabled ? "outline" : "secondary"} loading={rowBusyId === rule.id} onClick={() => void toggleRule(rule)}>
-                    {rule.enabled ? "বন্ধ করুন" : "চালু করুন"}
+                    {rule.enabled ? t.disable : t.enable}
                   </Button>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => startEdit(rule)}>সম্পাদনা</Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => startEdit(rule)}>{t.edit}</Button>
                   {confirmDeleteId === rule.id ? (
                     <>
-                      <Button type="button" size="sm" variant="destructive" loading={rowBusyId === rule.id} onClick={() => void deleteRule(rule)}>নিশ্চিত মুছুন</Button>
-                      <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmDeleteId(null)}>বাতিল</Button>
+                      <Button type="button" size="sm" variant="destructive" loading={rowBusyId === rule.id} onClick={() => void deleteRule(rule)}>{t.confirmDelete}</Button>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmDeleteId(null)}>{t.cancel}</Button>
                     </>
                   ) : (
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmDeleteId(rule.id)}>মুছুন</Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmDeleteId(rule.id)}>{t.delete}</Button>
                   )}
                 </div>
               </div>
               <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
                 <div>
-                  <dt className="text-xs font-medium text-text-muted">ট্রিগার</dt>
-                  <dd>{TRIGGER_TEXT[rule.trigger] ?? rule.trigger}</dd>
+                  <dt className="text-xs font-medium text-text-muted">{t.dtTrigger}</dt>
+                  <dd>{TRIGGER_TEXT[locale][rule.trigger] ?? rule.trigger}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-medium text-text-muted">বিলম্ব</dt>
-                  <dd>{rule.delaySeconds === 0 ? "সাথে সাথে" : `${rule.delaySeconds} সেকেন্ড পরে (সময়সূচি অনুযায়ী)`}</dd>
+                  <dt className="text-xs font-medium text-text-muted">{t.dtDelay}</dt>
+                  <dd>{rule.delaySeconds === 0 ? t.delayNow : interpolate(t.delayLater, { seconds: rule.delaySeconds })}</dd>
                 </div>
                 <div className="sm:col-span-2">
-                  <dt className="text-xs font-medium text-text-muted">শর্ত</dt>
-                  <dd>{describeConditions(rule.conditions)}</dd>
+                  <dt className="text-xs font-medium text-text-muted">{t.dtConditions}</dt>
+                  <dd>{describeConditions(rule.conditions, t, locale)}</dd>
                 </div>
                 <div className="sm:col-span-2">
-                  <dt className="text-xs font-medium text-text-muted">কাজ</dt>
-                  <dd>{rule.actions.map(describeAction).join(" · ")}</dd>
+                  <dt className="text-xs font-medium text-text-muted">{t.dtActions}</dt>
+                  <dd>{rule.actions.map((a) => describeAction(a, t)).join(" · ")}</dd>
                 </div>
               </dl>
             </article>
@@ -599,84 +538,76 @@ export function AutomationClient() {
         </div>
       )}
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{editingId ? "নিয়ম সম্পাদনা" : "নতুন নিয়ম তৈরি"}</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold">{editingId ? t.formTitleEdit : t.formTitleNew}</h2>
       <Card>
-        {editingComplex ? (
-          <p className="mb-3 text-xs text-text-muted">
-            এই নিয়মে শর্ত-গ্রুপ বা একাধিক কাজ আছে — ফর্ম দিয়ে শুধু নাম, বিবরণ, ট্রিগার, বিলম্ব ও অবস্থা বদলানো যাবে;
-            শর্ত ও কাজ আগের মতোই ডাটাবেসে থাকবে।
-          </p>
-        ) : null}
+        {editingComplex ? <p className="mb-3 text-xs text-text-muted">{t.complexNote}</p> : null}
         <form onSubmit={(e) => void submitForm(e)} className="grid gap-3 sm:grid-cols-2">
-          <Input label="নিয়মের নাম" name="rule-name" required minLength={3} maxLength={120} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <Input label={t.fName} name="rule-name" required minLength={3} maxLength={120} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <div>
-            <span className="mb-1 block text-xs font-medium text-text-muted">ট্রিগার *</span>
+            <span className="mb-1 block text-xs font-medium text-text-muted">{t.fTrigger}</span>
             <select className={SELECT_CLASS} value={form.trigger} onChange={(e) => setForm({ ...form, trigger: e.target.value })}>
-              {AUTOMATION_TRIGGERS.map((t) => (
-                <option key={t} value={t}>{TRIGGER_TEXT[t] ?? t}</option>
+              {AUTOMATION_TRIGGERS.map((tr) => (
+                <option key={tr} value={tr}>{TRIGGER_TEXT[locale][tr] ?? tr}</option>
               ))}
             </select>
           </div>
-          <Input label="বিবরণ (ঐচ্ছিক)" name="rule-description" maxLength={500} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          <Input label="বিলম্ব (সেকেন্ড)" name="rule-delay" type="number" min={0} max={604800} value={form.delaySeconds} onChange={(e) => setForm({ ...form, delaySeconds: e.target.value })} />
+          <Input label={t.fDescription} name="rule-description" maxLength={500} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          <Input label={t.fDelay} name="rule-delay" type="number" min={0} max={604800} value={form.delaySeconds} onChange={(e) => setForm({ ...form, delaySeconds: e.target.value })} />
           <div>
-            <span className="mb-1 block text-xs font-medium text-text-muted">শর্তের ক্ষেত্র</span>
+            <span className="mb-1 block text-xs font-medium text-text-muted">{t.fField}</span>
             <select className={SELECT_CLASS} disabled={editingComplex} value={form.field} onChange={(e) => setForm({ ...form, field: e.target.value as ConditionField })}>
               {CONDITION_FIELDS.map((f) => (
-                <option key={f} value={f}>{FIELD_TEXT[f]}</option>
+                <option key={f} value={f}>{FIELD_TEXT[locale][f]}</option>
               ))}
             </select>
           </div>
           <div>
-            <span className="mb-1 block text-xs font-medium text-text-muted">অপারেটর</span>
+            <span className="mb-1 block text-xs font-medium text-text-muted">{t.fOperator}</span>
             <select className={SELECT_CLASS} disabled={editingComplex} value={form.operator} onChange={(e) => setForm({ ...form, operator: e.target.value as ConditionOperator })}>
               {CONDITION_OPERATORS.map((o) => (
-                <option key={o} value={o}>{OPERATOR_TEXT[o] ?? o}</option>
+                <option key={o} value={o}>{OPERATOR_TEXT[locale][o] ?? o}</option>
               ))}
             </select>
           </div>
           <Input
-            label="শর্তের মান"
+            label={t.fValue}
             name="rule-value"
-            helper={form.operator === "in" || form.operator === "not_in" ? "কমা দিয়ে আলাদা করুন" : form.operator === "exists" || form.operator === "not_exists" ? "এই অপারেটরে মান লাগে না" : NUMERIC_FIELDS.has(form.field) ? "সংখ্যা (টাকার ক্ষেত্রে পয়সা)" : undefined}
+            helper={form.operator === "in" || form.operator === "not_in" ? t.helperComma : form.operator === "exists" || form.operator === "not_exists" ? t.helperNoValue : NUMERIC_FIELDS.has(form.field) ? t.helperNumber : undefined}
             disabled={editingComplex || form.operator === "exists" || form.operator === "not_exists"}
             value={form.value}
             onChange={(e) => setForm({ ...form, value: e.target.value })}
           />
           <div>
-            <span className="mb-1 block text-xs font-medium text-text-muted">কাজ</span>
+            <span className="mb-1 block text-xs font-medium text-text-muted">{t.fAction}</span>
             <select className={SELECT_CLASS} disabled={editingComplex} value={form.actionType} onChange={(e) => setForm({ ...form, actionType: e.target.value as AutomationAction["type"] })}>
-              {(Object.keys(ACTION_TYPE_TEXT) as AutomationAction["type"][]).map((t) => (
-                <option key={t} value={t}>{ACTION_TYPE_TEXT[t]}</option>
+              {(Object.keys(ACTION_TYPE_TEXT[locale]) as AutomationAction["type"][]).map((ty) => (
+                <option key={ty} value={ty}>{ACTION_TYPE_TEXT[locale][ty]}</option>
               ))}
             </select>
           </div>
-          {ACTION_PARAM_LABEL[form.actionType] ? (
-            <Input label={ACTION_PARAM_LABEL[form.actionType] ?? ""} name="rule-action-param" disabled={editingComplex} value={form.actionParam} onChange={(e) => setForm({ ...form, actionParam: e.target.value })} />
+          {ACTION_PARAM_LABEL[locale][form.actionType] ? (
+            <Input label={ACTION_PARAM_LABEL[locale][form.actionType] ?? ""} name="rule-action-param" disabled={editingComplex} value={form.actionParam} onChange={(e) => setForm({ ...form, actionParam: e.target.value })} />
           ) : null}
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-            নিয়মটি সক্রিয় থাকবে
+            {t.enabledLabel}
           </label>
           <div className="flex items-center gap-2">
-            <Button type="submit" loading={formBusy}>{editingId ? "সংরক্ষণ করুন" : "নিয়ম তৈরি করুন"}</Button>
+            <Button type="submit" loading={formBusy}>{editingId ? t.saveButton : t.createButton}</Button>
             {editingId ? (
-              <Button type="button" variant="ghost" onClick={cancelEdit}>বাতিল</Button>
+              <Button type="button" variant="ghost" onClick={cancelEdit}>{t.cancel}</Button>
             ) : null}
           </div>
         </form>
         {formStatus ? <p role="status" className="mt-3 text-sm">{formStatus}</p> : null}
       </Card>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">ড্রাই-রান টেস্টার (নমুনা ইভেন্ট)</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold">{t.dryTitle}</h2>
       <Card>
-        <p className="mb-3 text-xs text-text-muted">
-          নমুনা ইভেন্টগুলো শুধু টেস্টের ইনপুট ফিক্সচার — এগুলো সংরক্ষিত ডেটা নয়। ড্রাই-রান আসল API দিয়ে চালানো হয়:
-          শর্ত যাচাই হয়, কিন্তু কোনো কাজ প্রয়োগ হয় না এবং রান লগ সংরক্ষণ হয় না।
-        </p>
+        <p className="mb-3 text-xs text-text-muted">{t.dryNote}</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <span className="mb-1 block text-xs font-medium text-text-muted">নিয়ম</span>
+            <span className="mb-1 block text-xs font-medium text-text-muted">{t.dryRule}</span>
             <select className={SELECT_CLASS} value={dryRuleId} onChange={(e) => setDryRuleId(e.target.value)}>
               {rules.map((r) => (
                 <option key={r.id} value={r.id}>{r.name}</option>
@@ -684,40 +615,40 @@ export function AutomationClient() {
             </select>
           </div>
           <div>
-            <span className="mb-1 block text-xs font-medium text-text-muted">নমুনা ইভেন্ট</span>
+            <span className="mb-1 block text-xs font-medium text-text-muted">{t.dryEvent}</span>
             <select className={SELECT_CLASS} value={dryEventIdx} onChange={(e) => setDryEventIdx(Number(e.target.value))}>
               {SAMPLE_EVENTS.map((s, i) => (
-                <option key={s.label} value={i}>{s.label}</option>
+                <option key={s.type + i} value={i}>{sampleLabels[i]}</option>
               ))}
             </select>
           </div>
         </div>
         <Button type="button" className="mt-3" loading={dryBusy} disabled={rules.length === 0} onClick={() => void runDryRun()}>
-          ড্রাই-রান চালান
+          {t.dryRunButton}
         </Button>
         {dryStatus ? <p role="status" className="mt-3 text-sm">{dryStatus}</p> : null}
         {dryResult ? (
           <div className="mt-4">
             <p className="text-sm">
-              নিয়ম: <span className="font-medium">{dryResult.ruleName}</span> — ফলাফল:{" "}
-              <Badge tone={dryResult.matched ? "success" : "neutral"}>{dryResult.matched ? "✓ মিলেছে" : "মিলেনি"}</Badge>
+              {t.dryResultRule}: <span className="font-medium">{dryResult.ruleName}</span> — {t.dryResultLabel}:{" "}
+              <Badge tone={dryResult.matched ? "success" : "neutral"}>{dryResult.matched ? t.matched : t.notMatched}</Badge>
             </p>
             <div className="mt-4">
               <DataTable
-                caption="শর্ত যাচাই (trace) — API-র উত্তর"
+                caption={t.traceCaption}
                 columns={[
-                  { key: "field", header: "ক্ষেত্র" },
-                  { key: "operator", header: "অপারেটর" },
-                  { key: "expected", header: "প্রত্যাশিত" },
-                  { key: "actual", header: "প্রকৃত" },
-                  { key: "result", header: "ফলাফল" },
+                  { key: "field", header: t.colField },
+                  { key: "operator", header: t.colOperator },
+                  { key: "expected", header: t.colExpected },
+                  { key: "actual", header: t.colActual },
+                  { key: "result", header: t.colResult },
                 ]}
-                rows={dryResult.trace.map((t) => ({
-                  field: FIELD_TEXT[t.field],
-                  operator: OPERATOR_TEXT[t.operator] ?? t.operator,
-                  expected: t.expected === undefined ? "—" : valueText(t.field, t.expected),
-                  actual: t.actual === undefined ? "—" : valueText(t.field, t.actual),
-                  result: <Badge tone={t.matched ? "success" : "danger"}>{t.matched ? "✓ মিলেছে" : "✕ মিলেনি"}</Badge>,
+                rows={dryResult.trace.map((tr) => ({
+                  field: FIELD_TEXT[locale][tr.field],
+                  operator: OPERATOR_TEXT[locale][tr.operator] ?? tr.operator,
+                  expected: tr.expected === undefined ? "—" : valueText(tr.field, tr.expected),
+                  actual: tr.actual === undefined ? "—" : valueText(tr.field, tr.actual),
+                  result: <Badge tone={tr.matched ? "success" : "danger"}>{tr.matched ? t.traceMatched : t.traceNotMatched}</Badge>,
                 }))}
               />
             </div>
@@ -725,7 +656,7 @@ export function AutomationClient() {
               <ul className="mt-4 list-disc space-y-1 pl-5 text-sm">
                 {dryResult.effects.map((e, i) => (
                   <li key={i}>
-                    <Badge tone="info">পরিকল্পিত</Badge> {e.description}
+                    <Badge tone="info">{t.plannedBadge}</Badge> {e.description}
                   </li>
                 ))}
               </ul>
@@ -735,22 +666,22 @@ export function AutomationClient() {
       </Card>
 
       <h2 className="mb-3 mt-8 flex items-center gap-3 text-lg font-semibold">
-        রান লগ
-        <Button type="button" size="sm" variant="outline" onClick={() => void load()}>রিফ্রেশ</Button>
+        {t.runsTitle}
+        <Button type="button" size="sm" variant="outline" onClick={() => void load()}>{t.refresh}</Button>
       </h2>
       {runs.length === 0 ? (
-        <EmptyState title="কোনো রান লগ নেই" description="এখনো কোনো ইভেন্ট রান সংরক্ষণ হয়নি। ইভেন্ট ডিসপ্যাচ (POST /runs) হলে লগ এখানে ডাটাবেস থেকে দেখা যাবে।" />
+        <EmptyState title={t.noRunsTitle} description={t.noRunsDesc} />
       ) : (
         <DataTable
-          caption="ডাটাবেসে সংরক্ষিত রান লগ — ফোন সবসময় মাস্ক করা। ইফেক্ট worker (automation-run) দিয়ে কার্যকর হয় — SMS, ইমেইল, অর্ডার নিশ্চিতকরণ, কুরিয়ার বুকিং ও ট্যাগ আসলেই কার্যকর হয়; 'স্টাফকে জানান' শুধু পরিকল্পনা (plan-only) — স্টাফদের কাছে পৌঁছানোর কোনো চ্যানেল সিস্টেমে নেই, তাই রান লগই এর একমাত্র রেকর্ড। API meta: execution automation-run-worker।"
+          caption={t.runsCaption}
           columns={[
-            { key: "rule", header: "নিয়ম" },
-            { key: "trigger", header: "ট্রিগার" },
-            { key: "status", header: "অবস্থা" },
-            { key: "order", header: "অর্ডার" },
-            { key: "customer", header: "গ্রাহক (মাস্ক করা)" },
-            { key: "effects", header: "পরিকল্পিত কাজ" },
-            { key: "at", header: "মূল্যায়নের সময়" },
+            { key: "rule", header: t.colRule },
+            { key: "trigger", header: t.colTrigger },
+            { key: "status", header: t.colStatus },
+            { key: "order", header: t.colOrder },
+            { key: "customer", header: t.colCustomer },
+            { key: "effects", header: t.colEffects },
+            { key: "at", header: t.colAt },
           ]}
           rows={runRows}
         />

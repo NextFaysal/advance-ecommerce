@@ -10,6 +10,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { B2B_STRINGS } from "./strings";
 
 type ConvertResponse = {
   data?: { orderNo?: string };
@@ -26,6 +29,8 @@ async function postConvert(id: string, body: Record<string, unknown>): Promise<C
 }
 
 export function ConvertQuotationButton({ quotationId }: { quotationId: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, B2B_STRINGS);
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -36,12 +41,12 @@ export function ConvertQuotationButton({ quotationId }: { quotationId: string })
     try {
       let result = await postConvert(quotationId, {});
       if (result.error?.code === "ADDRESS_REQUIRED") {
-        const division = window.prompt("বিভাগ / Division", "Dhaka");
-        const district = window.prompt("জেলা / District", "Dhaka");
-        const upazila = window.prompt("উপজেলা / Upazila", "");
-        const addressLine = window.prompt("বিস্তারিত ঠিকানা / Address line", "");
+        const division = window.prompt(s.promptDivision, "Dhaka");
+        const district = window.prompt(s.promptDistrict, "Dhaka");
+        const upazila = window.prompt(s.promptUpazila, "");
+        const addressLine = window.prompt(s.promptAddress, "");
         if (!division || !district || !upazila || !addressLine) {
-          setMessage({ ok: false, text: "ঠিকানা ছাড়া অর্ডার তৈরি বাতিল হয়েছে। / Conversion cancelled — no address given." });
+          setMessage({ ok: false, text: s.cancelledNoAddress });
           return;
         }
         result = await postConvert(quotationId, {
@@ -49,13 +54,13 @@ export function ConvertQuotationButton({ quotationId }: { quotationId: string })
         });
       }
       if (result.error) {
-        setMessage({ ok: false, text: result.error.message ?? result.error.code ?? "Conversion failed." });
+        setMessage({ ok: false, text: result.error.message ?? result.error.code ?? s.conversionFailed });
         return;
       }
-      setMessage({ ok: true, text: `অর্ডার তৈরি হয়েছে: ${result.data?.orderNo ?? ""} — পেজ রিফ্রেশ হচ্ছে। / Order created: ${result.data?.orderNo ?? ""}` });
+      setMessage({ ok: true, text: interpolate(s.orderCreated, { orderNo: result.data?.orderNo ?? "" }) });
       router.refresh();
     } catch {
-      setMessage({ ok: false, text: "নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন। / Network error — please retry." });
+      setMessage({ ok: false, text: s.networkError });
     } finally {
       setBusy(false);
     }
@@ -64,7 +69,7 @@ export function ConvertQuotationButton({ quotationId }: { quotationId: string })
   return (
     <span className="inline-flex flex-col gap-1">
       <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={convert}>
-        {busy ? "তৈরি হচ্ছে…" : "অর্ডারে রূপান্তর"}
+        {busy ? s.converting : s.convertBtn}
       </Button>
       {message ? (
         <span role="status" className={message.ok ? "text-xs text-emerald-700" : "text-xs text-rose-700"}>

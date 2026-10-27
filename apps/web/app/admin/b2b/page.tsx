@@ -12,6 +12,9 @@ import { b2bStore } from "@/b2b/db-store";
 import { readB2bRequestMetaMap } from "@/b2b/requests";
 import { checkCredit, effectiveQuotationStatus } from "@/b2b/service";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
+import { B2B_STRINGS } from "./strings";
 
 // B2B / Wholesale admin — Agent 25, Step 48 (A12); real data wired 2026-10-25.
 // Locked state: while module.b2b is OFF in the feature_flags TABLE
@@ -32,16 +35,14 @@ import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 export const dynamic = "force-dynamic";
 
 export default async function AdminB2bPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, B2B_STRINGS);
   await ensureDbFeatureFlags();
   if (!isB2bEnabled(demoB2bFlags)) {
     return (
       <main>
-        <PageHeader title="B2B / পাইকারি" description="Wholesale, quotations and credit (A12)" />
-        <p role="status">
-          এই মডিউলটি এই ইনস্টলে লক করা আছে। B2B / পাইকারি একটি পেইড অ্যাড-অন —
-          খুলতে Admin &gt; Settings থেকে <code>module.b2b</code> ফিচার ফ্ল্যাগ চালু করুন।
-          (This module is locked — enable the <code>module.b2b</code> feature flag to unlock it.)
-        </p>
+        <PageHeader title={s.title} description={s.lockedDesc} />
+        <p role="status">{s.locked}</p>
       </main>
     );
   }
@@ -84,17 +85,17 @@ export default async function AdminB2bPage() {
         <span>
           <Money poisha={c.outstandingPoisha} />
           {c.oldestDueDate ? (
-            <span className="block text-xs text-text-muted">সবচেয়ে পুরনো মেয়াদ: {c.oldestDueDate}</span>
+            <span className="block text-xs text-text-muted">{interpolate(s.oldestDue, { date: c.oldestDueDate })}</span>
           ) : null}
         </span>
       ),
       available: <Money poisha={credit.availablePoisha} />,
       creditState: credit.overdue ? (
-        <Badge tone="danger">ওভারডিউ — ক্রেডিট বন্ধ</Badge>
+        <Badge tone="danger">{s.overdueBadge}</Badge>
       ) : credit.allowed ? (
-        <Badge tone="success">ক্রেডিট চালু</Badge>
+        <Badge tone="success">{s.creditOn}</Badge>
       ) : (
-        <Badge tone="warning">অনুমোদিত নয়</Badge>
+        <Badge tone="warning">{s.notApproved}</Badge>
       ),
     };
   });
@@ -111,16 +112,16 @@ export default async function AdminB2bPage() {
       source:
         request !== null ? (
           <span>
-            <Badge tone="info">ক্রেতার RFQ</Badge>
+            <Badge tone="info">{s.buyerRfq}</Badge>
             <span className="mt-1 block text-xs text-text-muted">
-              {request.channel === "BULK_CSV" ? "বাল্ক CSV" : "পোর্টাল ফর্ম"} ·{" "}
+              {request.channel === "BULK_CSV" ? s.bulkCsv : s.portalForm} ·{" "}
               {request.submittedAt.slice(0, 10)}
-              {request.desiredDate ? ` · কাঙ্ক্ষিত তারিখ: ${request.desiredDate}` : ""}
-              {request.note ? ` · নোট: ${request.note}` : ""}
+              {request.desiredDate ? ` · ${interpolate(s.desiredDate, { date: request.desiredDate })}` : ""}
+              {request.note ? ` · ${interpolate(s.noteSuffix, { note: request.note })}` : ""}
             </span>
           </span>
         ) : (
-          <Badge>স্টাফ তৈরি</Badge>
+          <Badge>{s.staffCreated}</Badge>
         ),
       business: businessName(q.b2bCustomerId),
       lines: q.lines.reduce((s, l) => s + l.quantity, 0),
@@ -146,7 +147,7 @@ export default async function AdminB2bPage() {
           <ConvertQuotationButton quotationId={q.id} />
         ) : status === "CONVERTED" ? (
           <span className="text-xs text-text-muted">
-            অর্ডার: <span className="font-mono">{q.convertedOrderId ?? "—"}</span>
+            {interpolate(s.orderLabel, { id: q.convertedOrderId ?? "—" })}
           </span>
         ) : (
           <span className="text-text-muted">—</span>
@@ -160,86 +161,80 @@ export default async function AdminB2bPage() {
     phone: <Phone phone={c.phone} />,
     applied: c.createdAt.slice(0, 10),
     note: c.tradeLicenseNo
-      ? `ট্রেড লাইসেন্স: ${c.tradeLicenseNo} — যাচাই করে সিদ্ধান্ত B2B API দিয়ে (PATCH customers)`
-      : "যাচাই: ট্রেড লাইসেন্স ও ক্রেডিট সীমা — সিদ্ধান্ত B2B API দিয়ে (PATCH customers)",
+      ? interpolate(s.queueNoteLicense, { no: c.tradeLicenseNo })
+      : s.queueNotePlain,
   }));
 
   return (
     <main>
-      <PageHeader
-        title="B2B / পাইকারি"
-        description="আসল ডেটা — B2B গ্রাহক ও কোটেশন ডাটাবেস থেকে (B2B API-র একই স্টোর)। ক্রেডিট অবস্থা আসল checkCredit() দিয়ে হিসাব করা; ফোন মাস্ক করা। (B2B / Wholesale)"
-        breadcrumb="Admin / Add-on Modules"
-      />
+      <PageHeader title={s.title} description={s.description} breadcrumb={s.breadcrumb} />
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="B2B গ্রাহক" value={String(customers.length)} delta={`${approvalQueue.length} অনুমোদনের অপেক্ষায়`} icon={<Icon name="users" size={22} />} />
-        <StatCard label="মোট বকেয়া" value={formatPoisha(totalOutstanding)} delta="সব গ্রাহক মিলিয়ে" icon={<Icon name="banknote" size={22} />} />
-        <StatCard label="ওভারডিউ গ্রাহক" value={String(overdueCount)} delta={overdueCount > 0 ? "ক্রেডিট বন্ধ আছে" : "মেয়াদ/সীমা/অবস্থা অনুযায়ী কেউ নেই"} deltaTone={overdueCount > 0 ? "down" : "up"} icon={<Icon name="clock" size={22} />} />
-        <StatCard label="কোটেশন" value={String(quotations.length)} delta="সক্রিয় তালিকা নিচে" icon={<Icon name="tag" size={22} />} />
+        <StatCard label={s.statCustomers} value={String(customers.length)} delta={interpolate(s.statPending, { count: approvalQueue.length })} icon={<Icon name="users" size={22} />} />
+        <StatCard label={s.statOutstanding} value={formatPoisha(totalOutstanding)} delta={s.statOutstandingDelta} icon={<Icon name="banknote" size={22} />} />
+        <StatCard label={s.statOverdue} value={String(overdueCount)} delta={overdueCount > 0 ? s.statOverdueYes : s.statOverdueNo} deltaTone={overdueCount > 0 ? "down" : "up"} icon={<Icon name="clock" size={22} />} />
+        <StatCard label={s.statQuotations} value={String(quotations.length)} delta={s.statQuotationsDelta} icon={<Icon name="tag" size={22} />} />
       </div>
 
       <p className="mb-6 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-        ক্রেডিট নিয়ম পুরোপুরি সক্রিয়: বকেয়ার মেয়াদ-তারিখ (oldestDueDate) ও ট্রেড লাইসেন্স নম্বর এখন
-        ডাটাবেসে সংরক্ষিত হয় — তাই মেয়াদ পেরিয়ে যাওয়া বকেয়া থাকলেই checkCredit() নতুন ক্রেডিট অর্ডার
-        বন্ধ করে, এবং ওপরের ওভারডিউ সংখ্যায় মেয়াদ-ভিত্তিক নিয়মও অন্তর্ভুক্ত।
-      </p>
+        {s.creditRuleNote}
+        </p>
 
       {customers.length === 0 ? (
         <p className="mb-6 text-sm text-text-muted">
-          এখনো কোনো B2B গ্রাহক নিবন্ধিত হয়নি — B2B API দিয়ে গ্রাহক যোগ হলে এখানে দেখা যাবে।
+          {s.noCustomers}
         </p>
       ) : null}
 
-      <h2 className="mb-3 text-lg font-semibold">গ্রাহক ও ক্রেডিট অবস্থা</h2>
+      <h2 className="mb-3 text-lg font-semibold">{s.customersTitle}</h2>
       <DataTable
-        caption="B2B গ্রাহক — বকেয়া থাকলে ও মেয়াদ পেরিয়ে গেলে নতুন ক্রেডিট অর্ডার বন্ধ (checkCredit নিয়ম)"
+        caption={s.customersCaption}
         columns={[
-          { key: "business", header: "প্রতিষ্ঠান" },
-          { key: "contact", header: "যোগাযোগ" },
-          { key: "phone", header: "ফোন" },
-          { key: "approval", header: "অনুমোদন" },
-          { key: "limit", header: "ক্রেডিট সীমা" },
-          { key: "outstanding", header: "বকেয়া" },
-          { key: "available", header: "অবশিষ্ট ক্রেডিট" },
-          { key: "creditState", header: "ক্রেডিট অবস্থা" },
+          { key: "business", header: s.colBusiness },
+          { key: "contact", header: s.colContact },
+          { key: "phone", header: s.colPhone },
+          { key: "approval", header: s.colApproval },
+          { key: "limit", header: s.colLimit },
+          { key: "outstanding", header: s.colOutstanding },
+          { key: "available", header: s.colAvailable },
+          { key: "creditState", header: s.colCreditState },
         ]}
         rows={customerRows}
       />
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">অনুমোদনের সারি (Approval queue)</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.queueTitle}</h2>
       {queueRows.length > 0 ? (
         <DataTable
-          caption="PENDING আবেদন — অনুমোদন/বাতিল B2B API-র approval transition নিয়ম মেনে হয়"
+          caption={s.queueCaption}
           columns={[
-            { key: "business", header: "প্রতিষ্ঠান" },
-            { key: "contact", header: "যোগাযোগ" },
-            { key: "phone", header: "ফোন" },
-            { key: "applied", header: "আবেদনের তারিখ" },
-            { key: "note", header: "যাচাই নোট" },
+            { key: "business", header: s.colBusiness },
+            { key: "contact", header: s.colContact },
+            { key: "phone", header: s.colPhone },
+            { key: "applied", header: s.colApplied },
+            { key: "note", header: s.colNote },
           ]}
           rows={queueRows}
         />
       ) : (
-        <p className="text-sm text-text-muted">কোনো আবেদন অপেক্ষমাণ নেই।</p>
+        <p className="text-sm text-text-muted">{s.noQueue}</p>
       )}
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">গ্রুপ প্রাইসিং</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.groupPricingTitle}</h2>
       <div className="mb-8">
         <B2bGroupsCard />
       </div>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">কোটেশনসমূহ</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.quotationsTitle}</h2>
       <DataTable
-        caption="কোটেশন — মেয়াদ পেরিয়ে যাওয়া DRAFT/SENT কার্যত EXPIRED হিসেবে দেখানো হয় (effectiveQuotationStatus)"
+        caption={s.quotationsCaption}
         columns={[
-          { key: "id", header: "কোটেশন" },
-          { key: "source", header: "উৎস" },
-          { key: "business", header: "প্রতিষ্ঠান" },
-          { key: "lines", header: "মোট পরিমাণ (পিস)" },
-          { key: "total", header: "মোট" },
-          { key: "validUntil", header: "মেয়াদ" },
-          { key: "status", header: "অবস্থা" },
-          { key: "action", header: "অ্যাকশন" },
+          { key: "id", header: s.colQuotation },
+          { key: "source", header: s.colSource },
+          { key: "business", header: s.colBusiness },
+          { key: "lines", header: s.colLines },
+          { key: "total", header: s.colTotal },
+          { key: "validUntil", header: s.colValidUntil },
+          { key: "status", header: s.colStatus },
+          { key: "action", header: s.colAction },
         ]}
         rows={quotationRows}
       />

@@ -13,6 +13,9 @@ import { SHOBJI_TOKENS } from "@/themes/shobji/tokens";
 import { BOIGHOR_TOKENS } from "@/themes/boighor/tokens";
 import { CIRCUIT_TOKENS } from "@/themes/circuit/tokens";
 import { NEEL_TOKENS } from "@/themes/neel/tokens";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate } from "@/i18n/locale";
+import { APPEARANCE_STRINGS } from "../strings";
 
 /**
  * Packages that ship a ready-made starter instance (hand-authored
@@ -31,6 +34,8 @@ const PACKAGE_STARTER_TOKENS: Record<string, typeof BAZAAR_TOKENS> = {
 };
 
 export default function AdminThemesPage() {
+  const { locale } = useLocale();
+  const t = APPEARANCE_STRINGS[locale];
   const [themes, setThemes] = useState<AppTheme[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,12 +55,13 @@ export default function AdminThemesPage() {
         if (json.error) setError(json.error.message);
         else setThemes(json.data ?? []);
       })
-      .catch(() => setError("থিম তালিকা লোড করা যায়নি।"))
+      .catch(() => setError(t.loadFailed))
       .finally(() => setLoading(false));
   }
 
   useEffect(() => {
     loadThemes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Duplicate Theme
@@ -66,7 +72,7 @@ export default function AdminThemesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: `${theme.name} (কপি)`,
+          name: `${theme.name}${t.copySuffix}`,
           description: theme.description || undefined,
           preview: theme.preview,
           isActive: false,
@@ -76,10 +82,10 @@ export default function AdminThemesPage() {
       if (res.ok) {
         loadThemes();
       } else {
-        alert("থিম ডুপ্লিকেট করা যায়নি।");
+        alert(t.duplicateFailed);
       }
     } catch {
-      alert("নেটওয়ার্ক ত্রুটি।");
+      alert(t.networkError);
     } finally {
       setCloningId(null);
     }
@@ -104,10 +110,10 @@ export default function AdminThemesPage() {
       if (res.ok) {
         setPreviewNoteId(theme.id);
       } else {
-        alert(json?.error?.message ?? "প্রিভিউ grant তৈরি করা যায়নি।");
+        alert(json?.error?.message ?? t.previewGrantFailed);
       }
     } catch {
-      alert("নেটওয়ার্ক ত্রুটি।");
+      alert(t.networkError);
     } finally {
       setPreviewingId(null);
     }
@@ -117,7 +123,7 @@ export default function AdminThemesPage() {
   // the theme every visitor sees unless they picked their own.
   async function handleApplyToStore(theme: AppTheme) {
     if (applyReason.trim() === "") {
-      alert("কারণ লিখুন — এই পরিবর্তনটি অডিট লগে সংরক্ষিত হবে।");
+      alert(t.reasonRequired);
       return;
     }
     setApplying(true);
@@ -133,10 +139,10 @@ export default function AdminThemesPage() {
         setApplyReason("");
         loadThemes();
       } else {
-        alert(json?.error?.message ?? "স্টোর থিম সেট করা যায়নি।");
+        alert(json?.error?.message ?? t.applyFailed);
       }
     } catch {
-      alert("নেটওয়ার্ক ত্রুটি।");
+      alert(t.networkError);
     } finally {
       setApplying(false);
     }
@@ -167,10 +173,10 @@ export default function AdminThemesPage() {
         loadThemes();
       } else {
         const json = await res.json().catch(() => null);
-        alert(json?.error?.message ?? "থিম যোগ করা যায়নি।");
+        alert(json?.error?.message ?? t.addPackageFailed);
       }
     } catch {
-      alert("নেটওয়ার্ক ত্রুটি।");
+      alert(t.networkError);
     } finally {
       setAddingPackageId(null);
     }
@@ -205,7 +211,7 @@ export default function AdminThemesPage() {
       try {
         const parsed = JSON.parse(event.target?.result as string);
         if (!parsed.name || !parsed.tokens) {
-          alert("ভুল ফরম্যাট! থিম ফাইলে name এবং tokens থাকতে হবে।");
+          alert(t.importFormatError);
           return;
         }
         const res = await fetch("/api/v1/admin/themes", {
@@ -222,10 +228,10 @@ export default function AdminThemesPage() {
         if (res.ok) {
           loadThemes();
         } else {
-          alert("থিম ইমপোর্ট ব্যর্থ হয়েছে।");
+          alert(t.importFailed);
         }
       } catch {
-        alert("JSON পার্স করতে ব্যর্থ হয়েছে।");
+        alert(t.importParseFailed);
       }
     };
     reader.readAsText(file);
@@ -235,20 +241,19 @@ export default function AdminThemesPage() {
     <main className="mx-auto w-full max-w-6xl px-4 py-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold text-text-main">থিম ম্যানেজমেন্ট</h1>
-          <p className="mt-1 text-sm leading-6 text-text-muted">
-            ওয়ার্ডপ্রেস স্টাইলে স্টোরের কাস্টম থিম তৈরি, এডিট ও ডুপ্লিকেট করুন।
-          </p>
+          <h1 className="font-display text-2xl font-bold text-text-main">{t.listTitle}</h1>
+          <p className="mt-1 text-sm leading-6 text-text-muted">{t.listSubtitle}</p>
           <p className="mt-1 text-xs leading-5 text-text-muted">
-            <strong className="text-text-main">স্টোর থিম</strong> = যেই থিম সব নতুন ভিজিটর প্রথমে দেখে
-            (একটিই হতে পারে)। <strong className="text-text-main">সক্রিয়</strong> = কাস্টমার নিজের
-            পছন্দের তালিকা (অ্যাকাউন্ট → পছন্দ) থেকে বেছে নিতে পারে — দুটি আলাদা বিষয়।
+            <strong className="text-text-main">{t.storeThemeWord}</strong>
+            {t.storeThemeExplA}
+            <strong className="text-text-main">{t.activeWord}</strong>
+            {t.storeThemeExplB}
           </p>
         </div>
         <div className="flex items-center gap-3">
           {/* Import JSON button */}
           <label className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-semibold text-text-main shadow-sm hover:bg-muted">
-            📥 থিম ইমপোর্ট
+            {t.importTheme}
             <input type="file" accept=".json" onChange={handleImport} className="hidden" />
           </label>
 
@@ -256,7 +261,7 @@ export default function AdminThemesPage() {
             href="/admin/appearance/themes/new"
             className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-90"
           >
-            + নতুন থিম
+            {t.newTheme}
           </Link>
         </div>
       </div>
@@ -272,12 +277,8 @@ export default function AdminThemesPage() {
           data, so this client page reads it directly. A package owns
           the layout; an instance owns colours + option values. */}
       <section className="mt-8">
-        <h2 className="font-display text-lg font-bold text-text-main">থিম প্যাকেজ</h2>
-        <p className="mt-1 text-sm leading-6 text-text-muted">
-          প্যাকেজ হলো কোডে তৈরি সম্পূর্ণ থিম — হেডার, ফুটার, হোমপেজের গঠন, কার্ডসহ পুরো
-          ফ্রন্টএন্ড বদলে দেয়। নিচের প্রতিটি কাস্টম থিম কোনো একটি প্যাকেজের ইনস্ট্যান্স
-          (প্যাকেজ + নিজস্ব রঙ ও অপশন)।
-        </p>
+        <h2 className="font-display text-lg font-bold text-text-main">{t.packagesTitle}</h2>
+        <p className="mt-1 text-sm leading-6 text-text-muted">{t.packagesDesc}</p>
         <div className="mt-4 grid gap-5 sm:grid-cols-2">
           {listThemePackages().map((pkg) => (
             <div
@@ -287,7 +288,7 @@ export default function AdminThemesPage() {
               <div className="flex items-start justify-between gap-2">
                 <h3 className="font-display text-base font-bold text-text-main">
                   {pkg.name}
-                  {pkg.nameBn && (
+                  {pkg.nameBn && locale === "bn" && (
                     <span className="ml-2 text-sm font-semibold text-text-muted">
                       {pkg.nameBn}
                     </span>
@@ -298,7 +299,7 @@ export default function AdminThemesPage() {
                 </span>
               </div>
               <p className="mt-0.5 text-[11px] font-medium text-text-muted">
-                তৈরি: {pkg.author} • প্যাকেজ আইডি:{" "}
+                {interpolate(t.pkgAuthor, { author: pkg.author })}{" "}
                 <span className="font-mono">{pkg.id}</span>
               </p>
               <p className="mt-2 text-xs leading-5 text-text-muted">{pkg.description}</p>
@@ -315,31 +316,30 @@ export default function AdminThemesPage() {
                     ),
                   )}
                 </div>
-                <span className="text-[11px] font-medium text-text-muted">প্যাকেজ প্রিভিউ</span>
+                <span className="text-[11px] font-medium text-text-muted">{t.pkgPreview}</span>
               </div>
 
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {pkg.lockPalette ? (
                   <span className="rounded-full bg-warning/15 px-2.5 py-0.5 text-[11px] font-bold text-warning">
-                    🔒 প্যালেট লক — ভিজিটর রঙ বদলাতে পারবে না
+                    {t.paletteLocked}
                   </span>
                 ) : (
                   <span className="rounded-full bg-success/15 px-2.5 py-0.5 text-[11px] font-bold text-success">
-                    🎨 প্যালেট খোলা — ভিজিটর নিজের রঙ বেছে নিতে পারে
+                    {t.paletteOpen}
                   </span>
                 )}
                 {pkg.supportsDark ? (
                   <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-bold text-primary">
-                    🌙 ডার্ক মোড সমর্থিত
+                    {t.darkSupported}
                   </span>
                 ) : (
                   <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-bold text-text-muted">
-                    ☀️ শুধু লাইট মোড
+                    {t.lightOnly}
                   </span>
                 )}
                 <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-bold text-text-muted">
-                  লেআউট স্লট: {Object.keys(pkg.slots).length} • কাস্টমাইজার অপশন:{" "}
-                  {pkg.optionsSchema.length}
+                  {interpolate(t.slotsAndOptions, { slots: Object.keys(pkg.slots).length, options: pkg.optionsSchema.length })}
                 </span>
               </div>
 
@@ -348,10 +348,8 @@ export default function AdminThemesPage() {
                   catalog theme in one click, until one instance of
                   the package exists. */}
               {PACKAGE_STARTER_TOKENS[pkg.id] &&
-                (themes.some((t) => t.packageId === pkg.id) ? (
-                  <p className="mt-4 text-xs font-semibold text-success">
-                    ✓ এই প্যাকেজের থিম নিচের তালিকায় আছে — সেখান থেকে স্টোরে প্রয়োগ করুন
-                  </p>
+                (themes.some((th) => th.packageId === pkg.id) ? (
+                  <p className="mt-4 text-xs font-semibold text-success">{t.packageInList}</p>
                 ) : (
                   <button
                     type="button"
@@ -359,7 +357,7 @@ export default function AdminThemesPage() {
                     disabled={addingPackageId === pkg.id || loading}
                     className="mt-4 rounded-lg bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
                   >
-                    {addingPackageId === pkg.id ? "যোগ হচ্ছে…" : "➕ থিম হিসেবে যোগ করুন"}
+                    {addingPackageId === pkg.id ? t.adding : t.addAsTheme}
                   </button>
                 ))}
             </div>
@@ -369,20 +367,20 @@ export default function AdminThemesPage() {
 
       {!loading && themes.length > 0 && (
         <h2 className="mt-10 font-display text-lg font-bold text-text-main">
-          আপনার কাস্টম থিম
+          {t.yourThemes}
         </h2>
       )}
 
       {loading && (
-        <div className="mt-10 text-center text-sm text-text-muted">থিম লোড হচ্ছে…</div>
+        <div className="mt-10 text-center text-sm text-text-muted">{t.loadingThemes}</div>
       )}
 
       {!loading && themes.length === 0 && (
         <div className="mt-10 rounded-2xl border border-border bg-card p-10 text-center">
           <p className="text-sm text-text-muted">
-            কোনো কাস্টম থিম তৈরি হয়নি।{" "}
+            {t.noThemes}
             <Link href="/admin/appearance/themes/new" className="font-semibold text-primary hover:underline">
-              প্রথম থিম তৈরি করুন
+              {t.createFirst}
             </Link>
           </p>
         </div>
@@ -401,12 +399,12 @@ export default function AdminThemesPage() {
                   <span className="flex shrink-0 flex-wrap justify-end gap-1.5">
                     {theme.isStoreDefault && (
                       <span className="rounded-full bg-warning/15 px-2.5 py-0.5 text-[11px] font-bold text-warning">
-                        🏪 স্টোর থিম
+                        {t.storeThemeBadge}
                       </span>
                     )}
                   {theme.isActive && (
                     <span className="rounded-full bg-success/15 px-2.5 py-0.5 text-[11px] font-bold text-success">
-                      সক্রিয়
+                      {t.activeBadge}
                     </span>
                   )}
                   </span>
@@ -428,7 +426,7 @@ export default function AdminThemesPage() {
                       ),
                     )}
                   </div>
-                  <span className="text-[11px] font-medium text-text-muted">কালার প্যালেট</span>
+                  <span className="text-[11px] font-medium text-text-muted">{t.colorPalette}</span>
                 </div>
               </div>
 
@@ -442,7 +440,7 @@ export default function AdminThemesPage() {
                       disabled={cloningId === theme.id}
                       className="text-xs font-semibold text-text-muted hover:text-text-main disabled:opacity-50"
                     >
-                      {cloningId === theme.id ? "কপি হচ্ছে…" : "📋 ডুপ্লিকেট"}
+                      {cloningId === theme.id ? t.duplicating : t.duplicate}
                     </button>
                     <span className="text-border">•</span>
                     <button
@@ -450,7 +448,7 @@ export default function AdminThemesPage() {
                       onClick={() => handleExport(theme)}
                       className="text-xs font-semibold text-text-muted hover:text-text-main"
                     >
-                      📤 এক্সপোর্ট
+                      {t.exportBtn}
                     </button>
                   </div>
 
@@ -458,7 +456,7 @@ export default function AdminThemesPage() {
                     href={`/admin/appearance/themes/${theme.id}`}
                     className="rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition hover:bg-primary hover:text-primary-foreground"
                   >
-                    সম্পাদনা →
+                    {t.editBtn}
                   </Link>
                 </div>
 
@@ -475,17 +473,10 @@ export default function AdminThemesPage() {
                     disabled={previewingId === theme.id}
                     className="text-xs font-semibold text-text-muted hover:text-text-main disabled:opacity-50"
                   >
-                    {previewingId === theme.id
-                      ? "প্রিভিউ তৈরি হচ্ছে…"
-                      : "👁 প্রিভিউ grant তৈরি করুন"}
+                    {previewingId === theme.id ? t.previewCreating : t.previewCreate}
                   </button>
                   {previewNoteId === theme.id && (
-                    <p className="mt-1.5 text-[11px] leading-5 text-text-muted">
-                      ✓ প্রিভিউ grant তৈরি হয়েছে (৩০ মিনিটের জন্য) — তবে ভিজ্যুয়াল
-                      প্রিভিউ এখনো সক্রিয় নয়: স্টোরফ্রন্টের লেআউট এখন স্টোর থিম
-                      অনুযায়ীই রেন্ডার হয়, এই grant অনুযায়ী নয়। ভিজ্যুয়াল
-                      প্রিভিউ আসছে পরের ধাপে।
-                    </p>
+                    <p className="mt-1.5 text-[11px] leading-5 text-text-muted">{t.previewNote}</p>
                   )}
                 </div>
 
@@ -494,16 +485,14 @@ export default function AdminThemesPage() {
                     requires one for the audit record. */}
                 <div className="mt-3">
                   {theme.isStoreDefault ? (
-                    <p className="text-xs font-semibold text-warning">
-                      ✓ বর্তমান স্টোর থিম — নতুন ভিজিটররা এটাই দেখছেন
-                    </p>
+                    <p className="text-xs font-semibold text-warning">{t.currentStoreTheme}</p>
                   ) : applyingId === theme.id ? (
                     <div className="flex flex-wrap items-center gap-2">
                       <input
                         type="text"
                         value={applyReason}
                         onChange={(e) => setApplyReason(e.target.value)}
-                        placeholder="পরিবর্তনের কারণ (অডিটের জন্য)"
+                        placeholder={t.applyReasonPlaceholder}
                         className="min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs text-text-main shadow-sm focus:border-ring focus:outline-none"
                       />
                       <button
@@ -512,7 +501,7 @@ export default function AdminThemesPage() {
                         disabled={applying}
                         className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
                       >
-                        {applying ? "প্রয়োগ হচ্ছে…" : "নিশ্চিত করুন"}
+                        {applying ? t.applying : t.confirm}
                       </button>
                       <button
                         type="button"
@@ -523,7 +512,7 @@ export default function AdminThemesPage() {
                         disabled={applying}
                         className="text-xs font-semibold text-text-muted hover:text-text-main disabled:opacity-50"
                       >
-                        বাতিল
+                        {t.cancel}
                       </button>
                     </div>
                   ) : (
@@ -535,7 +524,7 @@ export default function AdminThemesPage() {
                       }}
                       className="text-xs font-semibold text-text-muted hover:text-text-main"
                     >
-                      🏪 স্টোরে প্রয়োগ করুন
+                      {t.applyToStore}
                     </button>
                   )}
                 </div>

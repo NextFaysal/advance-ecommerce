@@ -18,6 +18,7 @@
  * client install, never globally.
  */
 import { isFeatureEnabled } from "@/lib/feature-flags";
+import type { Locale } from "@/i18n/locale";
 
 export const ADVANCED_ORDERS_FLAG_KEY = "module.advanced_orders";
 
@@ -31,7 +32,10 @@ export const demoAdvancedOrdersFlag = {
   get enabled(): boolean {
     return isFeatureEnabled(ADVANCED_ORDERS_FLAG_KEY);
   },
-  note: "module.advanced_orders is seeded OFF in the seed FEATURE_FLAGS and read from the DB-backed flag store (hydrated per request by ensureDbFeatureFlags).",
+  note: {
+    bn: "module.advanced_orders seed FEATURE_FLAGS-এ OFF অবস্থায় সিড করা এবং DB-ভিত্তিক ফ্ল্যাগ স্টোর থেকে পড়া হয় (ensureDbFeatureFlags দিয়ে প্রতি অনুরোধে হাইড্রেট করা)।",
+    en: "module.advanced_orders is seeded OFF in the seed FEATURE_FLAGS and read from the DB-backed flag store (hydrated per request by ensureDbFeatureFlags).",
+  } satisfies Record<Locale, string>,
 };
 
 export function isAdvancedOrdersEnabled(): boolean {

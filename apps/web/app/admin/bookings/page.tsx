@@ -1,5 +1,8 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { isServicesEnabled } from "@/services/flags";
+import { pick } from "@/i18n/locale";
+import { getRequestLocale } from "@/i18n/server";
+import { BOOKINGS_STRINGS } from "./strings";
 import { BookingsBoard } from "./bookings-board";
 import { BookingsConfigCard } from "./bookings-config-card";
 
@@ -14,14 +17,14 @@ import { BookingsConfigCard } from "./bookings-config-card";
 
 export const dynamic = "force-dynamic";
 
-export default function BookingsPage() {
+export default async function BookingsPage() {
+  const s = pick(await getRequestLocale(), BOOKINGS_STRINGS);
   if (!isServicesEnabled()) {
     return (
       <main style={{ padding: 24, fontFamily: "system-ui" }}>
-        <h1>বুকিং</h1>
+        <h1>{s.title}</h1>
         <p role="status">
-          🔒 This module is locked for this install. Services + appointment booking is a paid add-on —
-          enable <code>module.services</code> in Admin &gt; Settings &gt; Feature Flags to unlock it.
+          {s.lockedPrefix} <code>module.services</code> {s.lockedSuffix}
         </p>
       </main>
     );
@@ -29,10 +32,7 @@ export default function BookingsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="বুকিং"
-        description="সেবার অ্যাপয়েন্টমেন্ট বোর্ড — দিন অনুযায়ী স্লটভিত্তিক তালিকা। বোর্ডটি প্রতি ৩০ সেকেন্ডে নিজে হালনাগাদ হয় (polling — live realtime নয়)। অর্ডার বাতিল হলে তার বুকিংও নিজে থেকে বাতিল হয়ে যায়।"
-      />
+      <PageHeader title={s.title} description={s.description} />
       <BookingsBoard />
       <BookingsConfigCard />
     </div>

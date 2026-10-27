@@ -9,6 +9,9 @@ import { buildDistrictHeatmap } from "@/analytics/district-heatmap";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { daysAgoInDhaka, fetchSalesRows, todayInDhaka } from "@/reports/db-rows";
 import type { SalesRow } from "@/reports/types";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
+import { ANALYTICS_STRINGS, SEGMENT_LABEL_KEYS } from "./strings";
 
 // Admin > Analytics (Step 47, A8; wired out in ADV-8, doc 22).
 // Everything on this page is computed by the pure functions in
@@ -44,6 +47,8 @@ function pct(bps: number): string {
 }
 
 export default async function AdminAnalyticsPage() {
+  const locale = await getRequestLocale();
+  const t = pick(locale, ANALYTICS_STRINGS);
   const range = { from: daysAgoInDhaka(364), to: todayInDhaka() };
   const rows = await fetchSalesRows(range);
   // Cohort retention is all-history by definition (second full scan —
@@ -83,7 +88,7 @@ export default async function AdminAnalyticsPage() {
     for (const u of users) {
       staffMap.set(u.id, {
         staffId: u.id,
-        name: u.name || "Staff",
+        name: u.name || t.staffFallbackName,
         ordersProcessed: 0,
         ordersConfirmed: 0,
         callsHandled: 0,
@@ -120,30 +125,30 @@ export default async function AdminAnalyticsPage() {
 
   return (
     <main className="min-w-0">
-      <h1 className="text-xl font-bold">অ্যানালিটিক্স (Analytics)</h1>
+      <h1 className="text-xl font-bold">{t.title}</h1>
       <p role="note" className="mt-2 text-sm text-text-muted">
-        Real order data from the database (last 365 days, Asia/Dhaka; cohort = all history). No AI model is used on this page; all figures are rule-based calculations.
+        {t.note}
       </p>
 
       <section className="mt-6">
-        <h2 className="font-semibold">Overview</h2>
+        <h2 className="font-semibold">{t.overview}</h2>
         <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <div className="rounded-xl border p-3"><div className="text-xs">Net revenue</div><div className="text-lg font-bold">{formatBdt(totalRevenue)}</div></div>
-          <div className="rounded-xl border p-3"><div className="text-xs">Orders</div><div className="text-lg font-bold">{orderIds.size}</div></div>
-          <div className="rounded-xl border p-3"><div className="text-xs">Customers in data</div><div className="text-lg font-bold">{rfm.length}</div></div>
-          <div className="rounded-xl border p-3"><div className="text-xs">Average order value</div><div className="text-lg font-bold">{formatBdt(aov)}</div></div>
+          <div className="rounded-xl border p-3"><div className="text-xs">{t.netRevenue}</div><div className="text-lg font-bold">{formatBdt(totalRevenue)}</div></div>
+          <div className="rounded-xl border p-3"><div className="text-xs">{t.orders}</div><div className="text-lg font-bold">{orderIds.size}</div></div>
+          <div className="rounded-xl border p-3"><div className="text-xs">{t.customersInData}</div><div className="text-lg font-bold">{rfm.length}</div></div>
+          <div className="rounded-xl border p-3"><div className="text-xs">{t.aov}</div><div className="text-lg font-bold">{formatBdt(aov)}</div></div>
         </div>
       </section>
 
       <section className="mt-6">
-        <h2 className="font-semibold">সেলস ফানেল (Sales Funnel, last 30 days)</h2>
+        <h2 className="font-semibold">{t.funnelTitle}</h2>
         {funnel.state === "not_collecting" ? (
-          <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{funnel.messageBn}</p>
+          <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{locale === "bn" ? funnel.messageBn : t.funnelNotCollecting}</p>
         ) : (
           <ul className="mt-2 text-sm">
             {funnel.steps.map((s) => (
               <li key={s.stage}>
-                {s.stage}: {s.count} · আগের ধাপ থেকে {pct(s.conversionFromPreviousBps)} · শুরু থেকে {pct(s.conversionFromStartBps)}
+                {s.stage}: {s.count} · {t.funnelFromPrev} {pct(s.conversionFromPreviousBps)} · {t.funnelFromStart} {pct(s.conversionFromStartBps)}
               </li>
             ))}
           </ul>
@@ -151,37 +156,37 @@ export default async function AdminAnalyticsPage() {
       </section>
 
       <section className="mt-6">
-        <h2 className="font-semibold">Unit Economics</h2>
+        <h2 className="font-semibold">{t.unitEconomics}</h2>
         <ul className="mt-2 text-sm">
-          <li>LTV (গড় আয় / কাস্টমার): {formatBdt(ue.ltvPoisha)} — {customerCount} জন কাস্টমারের ওপর হিসাব করা</li>
-          <li>CAC: — (বিজ্ঞাপন খরচ ট্র্যাক করা হয় না, তাই হিসাব করা যায় না)</li>
-          <li>LTV : CAC: {ue.ltvToCacBps === null ? "— (CAC অজানা)" : `${(ue.ltvToCacBps / 10000).toFixed(2)}x`}</li>
-          <li>ROAS: {ue.roasBps === null ? "— (বিজ্ঞাপন খরচ ট্র্যাক করা হয় না)" : pct(ue.roasBps)}</li>
+          <li>{interpolate(t.ltvLine, { amount: formatBdt(ue.ltvPoisha), count: customerCount })}</li>
+          <li>{t.cacLine}</li>
+          <li>{interpolate(t.ltvCacLine, { value: ue.ltvToCacBps === null ? t.cacUnknown : `${(ue.ltvToCacBps / 10000).toFixed(2)}x` })}</li>
+          <li>{interpolate(t.roasLine, { value: ue.roasBps === null ? t.roasUnknown : pct(ue.roasBps) })}</li>
         </ul>
       </section>
 
       <section className="mt-6">
-        <h2 className="font-semibold">RFM Segments</h2>
+        <h2 className="font-semibold">{t.rfmTitle}</h2>
         <ul className="mt-2 text-sm">
           {Object.entries(segments).map(([segment, count]) => (
-            <li key={segment}>{segment}: {count}</li>
+            <li key={segment}>{SEGMENT_LABEL_KEYS[segment] ? t[SEGMENT_LABEL_KEYS[segment]] : segment}: {count}</li>
           ))}
         </ul>
       </section>
 
       <section className="mt-6">
-        <h2 className="font-semibold">কোহর্ট রিটেনশন (Cohort Retention)</h2>
+        <h2 className="font-semibold">{t.cohortTitle}</h2>
         {cohort.length === 0 ? (
-          <p className="mt-2 text-sm text-text-muted">কোনো কাস্টমার ডেটা নেই।</p>
+          <p className="mt-2 text-sm text-text-muted">{t.cohortEmpty}</p>
         ) : (
           <div className="mt-2 overflow-x-auto">
             <table className="min-w-full text-left text-sm">
               <thead>
                 <tr>
-                  <th className="border-b p-2">কোহর্ট (প্রথম অর্ডারের মাস)</th>
-                  <th className="border-b p-2">কাস্টমার</th>
+                  <th className="border-b p-2">{t.cohortColMonth}</th>
+                  <th className="border-b p-2">{t.cohortColCustomers}</th>
                   {Array.from({ length: maxCohortCells }, (_, i) => (
-                    <th key={i} className="border-b p-2">মাস {i}</th>
+                    <th key={i} className="border-b p-2">{interpolate(t.cohortMonth, { n: i })}</th>
                   ))}
                 </tr>
               </thead>
@@ -204,41 +209,41 @@ export default async function AdminAnalyticsPage() {
             </table>
           </div>
         )}
-        <p className="mt-2 text-xs text-text-muted">প্রতিটি সেলে: সেই মাসে সক্রিয় কাস্টমার / কোহর্টের মোট কাস্টমার (শতকরা হার)। বাতিল অর্ডার ধরা হয়নি।</p>
+        <p className="mt-2 text-xs text-text-muted">{t.cohortNote}</p>
       </section>
 
       <section className="mt-6">
-        <h2 className="font-semibold">Courier Performance</h2>
+        <h2 className="font-semibold">{t.courierTitle}</h2>
         <ul className="mt-2 text-sm">
           {couriers.map((c) => (
             <li key={c.provider}>
-              {c.provider} — score {c.score}/100 · delivery {pct(c.deliveryRateBps)} · returns {pct(c.returnRateBps)}
+              {interpolate(t.courierLine, { provider: c.provider, score: c.score, delivery: pct(c.deliveryRateBps), returns: pct(c.returnRateBps) })}
             </li>
           ))}
         </ul>
-        {couriers.length === 0 && <p className="mt-2 text-sm text-text-muted">No courier data in this period.</p>}
+        {couriers.length === 0 && <p className="mt-2 text-sm text-text-muted">{t.courierEmpty}</p>}
       </section>
 
       <section className="mt-6">
-        <h2 className="font-semibold">স্টাফ ও কল সেন্টার কর্মদক্ষতা (Staff Performance)</h2>
+        <h2 className="font-semibold">{t.staffTitle}</h2>
         {staffScores.length === 0 ? (
-          <p className="mt-2 text-sm text-text-muted">কোনো স্টাফ হিস্টোরি পাওয়া যায়নি।</p>
+          <p className="mt-2 text-sm text-text-muted">{t.staffEmpty}</p>
         ) : (
           <div className="mt-2 overflow-x-auto">
             <table className="min-w-full text-left text-sm">
               <thead>
                 <tr>
-                  <th className="border-b p-2">স্টাফ নাম</th>
-                  <th className="border-b p-2">প্রসেস করা অর্ডার</th>
-                  <th className="border-b p-2">কনফার্মেশন রেট</th>
-                  <th className="border-b p-2">SLA রেট</th>
+                  <th className="border-b p-2">{t.staffColName}</th>
+                  <th className="border-b p-2">{t.staffColOrders}</th>
+                  <th className="border-b p-2">{t.staffColConfirm}</th>
+                  <th className="border-b p-2">{t.staffColSla}</th>
                 </tr>
               </thead>
               <tbody>
                 {staffScores.map((s) => (
                   <tr key={s.staffId}>
                     <td className="border-b p-2 font-medium">{s.name}</td>
-                    <td className="border-b p-2">{s.ordersProcessed} টি</td>
+                    <td className="border-b p-2">{interpolate(t.staffOrdersCell, { count: s.ordersProcessed })}</td>
                     <td className="border-b p-2">{(s.confirmRateBps / 100).toFixed(1)}%</td>
                     <td className="border-b p-2">{(s.slaRateBps / 100).toFixed(1)}%</td>
                   </tr>
@@ -247,20 +252,20 @@ export default async function AdminAnalyticsPage() {
             </table>
           </div>
         )}
-        <p className="mt-2 text-xs text-text-muted">কল লগ থেকে হিসাব করা (সর্বশেষ ১০০০টি এন্ট্রি)। API: GET /api/v1/admin/analytics/staff-performance</p>
+        <p className="mt-2 text-xs text-text-muted">{t.staffNote}</p>
       </section>
 
       <section className="mt-6">
-        <h2 className="font-semibold">জেলা হিটম্যাপ (District Heatmap)</h2>
+        <h2 className="font-semibold">{t.heatmapTitle}</h2>
         {heatmap.length === 0 ? (
-          <p className="mt-2 text-sm text-text-muted">এই সময়ে কোনো অর্ডার নেই।</p>
+          <p className="mt-2 text-sm text-text-muted">{t.heatmapEmpty}</p>
         ) : (
           <ul className="mt-2 space-y-2">
             {heatmap.slice(0, 15).map((d) => (
               <li key={d.district} className="text-sm">
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="font-medium">{d.district}</span>
-                  <span>{d.orders} অর্ডার · {pct(d.shareBps)} · {formatBdt(d.revenuePoisha)}</span>
+                  <span>{interpolate(t.heatmapOrders, { count: d.orders, share: pct(d.shareBps), revenue: formatBdt(d.revenuePoisha) })}</span>
                 </div>
                 <div className="mt-1 h-2.5 w-full overflow-hidden rounded bg-slate-100">
                   <div
@@ -272,7 +277,7 @@ export default async function AdminAnalyticsPage() {
             ))}
           </ul>
         )}
-        <p className="mt-2 text-xs text-text-muted">বারের দৈর্ঘ্য ও রঙের গাঢ়ত্ব সবচেয়ে ব্যস্ত জেলার তুলনায় (শীর্ষ ১৫টি জেলা)। API: GET /api/v1/admin/analytics/districts?from=&amp;to=</p>
+        <p className="mt-2 text-xs text-text-muted">{t.heatmapNote}</p>
       </section>
     </main>
   );

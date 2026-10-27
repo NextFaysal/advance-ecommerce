@@ -1,7 +1,11 @@
+"use client";
+
 import { Skeleton } from "@/components/ui/skeleton";
+import { useLocale } from "@/i18n/LocaleProvider";
 
 // Shop loading state — sidebar + card-grid skeletons so the PLP never
-// flashes a blank page while the catalog query runs.
+// flashes a blank page while the catalog query runs. Client component
+// only for the aria-label's locale (doc 30); markup is unchanged.
 function CardSkeleton() {
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -17,8 +21,9 @@ function CardSkeleton() {
 }
 
 export default function ShopLoading() {
+  const { t } = useLocale();
   return (
-    <main className="mx-auto min-w-0 max-w-[1440px] px-4 py-6 sm:px-6 lg:py-8" aria-label="লোড হচ্ছে">
+    <main className="mx-auto min-w-0 max-w-[1440px] px-4 py-6 sm:px-6 lg:py-8" aria-label={t.loading}>
       <Skeleton className="h-4 w-40" />
       <div className="mt-4 grid gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
         <aside className="hidden rounded-2xl border border-border bg-card p-4 shadow-sm lg:block">

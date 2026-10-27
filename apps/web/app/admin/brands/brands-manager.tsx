@@ -9,6 +9,9 @@ import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
 import { Toast } from "@/components/ui/toast";
 import type { AdminBrand } from "@/catalog/taxonomy-admin";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { BRANDS_STRINGS } from "./strings";
 
 // Brands manager (Wave P2a) — list + create/edit modal + guarded
 // delete against the real /api/v1/admin/brands API. A brand that
@@ -21,14 +24,14 @@ interface ApiErrorBody {
   error?: { code?: string; message?: string };
 }
 
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
+async function api<T>(url: string, init?: RequestInit, fallback?: (status: number) => string): Promise<T> {
   const res = await fetch(url, {
     ...init,
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
   });
   const body = (await res.json().catch(() => ({}))) as ApiErrorBody & { data?: T };
   if (!res.ok) {
-    throw new Error(body.error?.message ?? `অনুরোধ ব্যর্থ হয়েছে (${res.status})`);
+    throw new Error(body.error?.message ?? (fallback ? fallback(res.status) : `Request failed (${res.status})`));
   }
   return body.data as T;
 }
@@ -43,6 +46,10 @@ interface BrandForm {
 const EMPTY_FORM: BrandForm = { name: "", slug: "", logoUrl: "", description: "" };
 
 export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
+  const { locale, t: common } = useLocale();
+  const s = pick(locale, BRANDS_STRINGS);
+  const apiL = <T,>(url: string, init?: RequestInit): Promise<T> =>
+    api<T>(url, init, (status) => interpolate(s.requestFailed, { status }));
   const [brands, setBrands] = useState<AdminBrand[]>(initial);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -51,7 +58,7 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
   const [deleteTarget, setDeleteTarget] = useState<AdminBrand | null>(null);
 
   async function refresh() {
-    const data = await api<{ brands: AdminBrand[] }>("/api/v1/admin/brands");
+    const data = await apiL<{ brands: AdminBrand[] }>("/api/v1/admin/brands");
     setBrands(data.brands);
   }
 
@@ -83,34 +90,34 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
     if (form.slug.trim() !== "") payload.slug = form.slug.trim();
     try {
       if (editing) {
-        await api(`/api/v1/admin/brands/${editing.id}`, {
+        await apiL(`/api/v1/admin/brands/${editing.id}`, {
           method: "PATCH",
           body: JSON.stringify(payload),
         });
-        setNotice({ tone: "success", text: "ব্র্যান্ড আপডেট হয়েছে।" });
+        setNotice({ tone: "success", text: s.updated });
       } else {
-        await api("/api/v1/admin/brands", {
+        await apiL("/api/v1/admin/brands", {
           method: "POST",
           body: JSON.stringify(payload),
         });
-        setNotice({ tone: "success", text: "নতুন ব্র্যান্ড তৈরি হয়েছে।" });
+        setNotice({ tone: "success", text: s.created });
       }
       setFormOpen(false);
       await refresh();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "সংরক্ষণ ব্যর্থ হয়েছে।" });
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : s.saveFailed });
     }
   }
 
   async function confirmDelete() {
     if (!deleteTarget) return;
     try {
-      await api(`/api/v1/admin/brands/${deleteTarget.id}`, { method: "DELETE" });
-      setNotice({ tone: "success", text: "ব্র্যান্ড মুছে ফেলা হয়েছে।" });
+      await apiL(`/api/v1/admin/brands/${deleteTarget.id}`, { method: "DELETE" });
+      setNotice({ tone: "success", text: s.deleted });
       setDeleteTarget(null);
       await refresh();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "মুছে ফেলা যায়নি।" });
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : s.deleteFailed });
       setDeleteTarget(null);
     }
   }
@@ -128,10 +135,10 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
           <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
             <Icon name="tag" size={17} />
           </span>
-          মোট {brands.length}টি ব্র্যান্ড।
+          {interpolate(s.totalLabel, { count: brands.length })}
         </p>
         <Button variant="gradient" onClick={openCreate} className="max-sm:w-full">
-          <Icon name="plus" size={16} /> নতুন ব্র্যান্ড
+          <Icon name="plus" size={16} /> {s.newBrand}
         </Button>
       </div>
 
@@ -141,7 +148,7 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
             <Icon name="tag" size={28} />
           </span>
           <p className="mt-4 text-sm leading-relaxed text-text-muted">
-            এখনো কোনো ব্র্যান্ড নেই — প্রথমটি তৈরি করুন।
+            {s.empty}
           </p>
         </div>
       ) : (
@@ -151,10 +158,10 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-surface-2/80 text-left">
-                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">ব্র্যান্ড</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">স্লাগ</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">পণ্য</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-text-muted">কাজ</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">{s.colBrand}</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">{s.colSlug}</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">{s.colProducts}</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-text-muted">{s.colActions}</th>
                 </tr>
               </thead>
               <tbody>
@@ -179,14 +186,14 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
                       </div>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-text-muted">{brand.slug}</td>
-                    <td className="px-4 py-3">{brand.productCount}টি</td>
+                    <td className="px-4 py-3">{interpolate(s.productsCount, { count: brand.productCount })}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
                         <Button size="sm" variant="secondary" onClick={() => openEdit(brand)}>
-                          এডিট
+                          {s.edit}
                         </Button>
                         <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(brand)}>
-                          মুছুন
+                          {s.deleteBtn}
                         </Button>
                       </div>
                     </td>
@@ -214,7 +221,7 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
                     <span className="block truncate font-mono text-xs text-text-muted">{brand.slug}</span>
                   </span>
                   <span className="ml-auto inline-flex h-6 shrink-0 items-center rounded-full bg-surface-2 px-2.5 text-xs text-text-muted ring-1 ring-inset ring-black/5">
-                    {brand.productCount}টি পণ্য
+                    {interpolate(s.productsCountFull, { count: brand.productCount })}
                   </span>
                 </div>
                 {brand.description ? (
@@ -222,10 +229,10 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
                 ) : null}
                 <div className="mt-3 flex gap-1.5 [&>*]:flex-1">
                   <Button size="sm" variant="secondary" onClick={() => openEdit(brand)}>
-                    এডিট
+                    {s.edit}
                   </Button>
                   <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(brand)}>
-                    মুছুন
+                    {s.deleteBtn}
                   </Button>
                 </div>
               </li>
@@ -237,53 +244,53 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
       <Drawer
         open={formOpen}
         onClose={() => setFormOpen(false)}
-        title={editing ? "ব্র্যান্ড এডিট" : "নতুন ব্র্যান্ড"}
+        title={editing ? s.editTitle : s.createTitle}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setFormOpen(false)}>বাতিল</Button>
-            <Button variant="gradient" onClick={submitForm}>নিশ্চিত করুন</Button>
+            <Button variant="outline" onClick={() => setFormOpen(false)}>{common.cancel}</Button>
+            <Button variant="gradient" onClick={submitForm}>{s.confirm}</Button>
           </div>
         }
       >
         <div className="grid gap-3">
           <Input
-            label="ব্র্যান্ডের নাম"
+            label={s.nameLabel}
             name="name"
             required
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="e.g. Walton"
+            placeholder={s.namePh}
           />
           <Input
-            label="স্লাগ (খালি রাখলে নাম থেকে তৈরি হবে)"
+            label={s.slugLabel}
             name="slug"
             value={form.slug}
             onChange={(e) => setForm({ ...form, slug: e.target.value })}
-            placeholder="walton"
+            placeholder={s.slugPh}
           />
           <Input
-            label="লোগোর URL"
+            label={s.logoUrl}
             name="logoUrl"
             value={form.logoUrl}
             onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
-            placeholder="https://…"
+            placeholder={s.logoPh}
           />
           {form.logoUrl.trim() !== "" ? (
             <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2.5">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={form.logoUrl.trim()} alt="লোগো প্রিভিউ" className="h-11 w-11 rounded-lg bg-card object-contain ring-1 ring-border" />
-              <span className="text-xs text-text-muted">লোগো প্রিভিউ</span>
+              <img src={form.logoUrl.trim()} alt={s.logoPreviewAlt} className="h-11 w-11 rounded-lg bg-card object-contain ring-1 ring-border" />
+              <span className="text-xs text-text-muted">{s.logoPreview}</span>
             </div>
           ) : null}
           <Textarea
-            label="বর্ণনা (Description)"
+            label={s.descLabel}
             name="description"
             rows={3}
             maxLength={2000}
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
-            placeholder="ব্র্যান্ডের সংক্ষিপ্ত পরিচিতি"
-            helper="ঐচ্ছিক — ব্র্যান্ডের পরিচিতিমূলক লেখা।"
+            placeholder={s.descPh}
+            helper={s.descHelper}
           />
         </div>
       </Drawer>
@@ -291,7 +298,7 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
       <Modal
         open={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
-        title="ব্র্যান্ড মুছে ফেলবেন?"
+        title={s.deleteTitle}
         onConfirm={confirmDelete}
       >
         <div className="flex gap-3">
@@ -299,8 +306,7 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
             <Icon name="alert" size={20} />
           </span>
           <p className="text-sm leading-relaxed text-text-muted">
-            “{deleteTarget?.name}” মুছে ফেলা হবে। এই ব্র্যান্ডে পণ্য থাকলে মুছতে দেওয়া
-            হবে না — আগে সেই পণ্যগুলো অন্য ব্র্যান্ডে নিন।
+            {interpolate(s.deleteBody, { name: deleteTarget?.name ?? "" })}
           </p>
         </div>
       </Modal>

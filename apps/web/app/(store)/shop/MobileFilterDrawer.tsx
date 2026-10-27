@@ -10,6 +10,9 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { Drawer } from "@/components/ui/drawer";
+import { interpolate, pick } from "@/i18n/locale";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { STORE_STRINGS } from "../store-strings";
 
 function FilterIcon() {
   return (
@@ -40,6 +43,8 @@ export function MobileFilterDrawer({
   clearHref?: string;
   children: ReactNode;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, STORE_STRINGS);
   const [open, setOpen] = useState(false);
 
   return (
@@ -53,12 +58,12 @@ export function MobileFilterDrawer({
         <span className="text-brand-600 dark:text-brand-300">
           <FilterIcon />
         </span>
-        ফিল্টার
+        {s.filter}
       </button>
       <Drawer
         open={open}
         onClose={() => setOpen(false)}
-        title="ফিল্টার"
+        title={s.filter}
         footer={
           <div className="flex items-center gap-2">
             {clearHref ? (
@@ -67,7 +72,7 @@ export function MobileFilterDrawer({
                 onClick={() => setOpen(false)}
                 className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-semibold text-text-main transition duration-200 hover:bg-surface-2 active:scale-[0.98]"
               >
-                সব মুছুন
+                {s.clearAll}
               </Link>
             ) : null}
             <button
@@ -75,7 +80,7 @@ export function MobileFilterDrawer({
               onClick={() => setOpen(false)}
               className="brand-gradient inline-flex min-h-[48px] flex-1 items-center justify-center rounded-xl px-4 text-sm font-bold text-white shadow-md transition duration-200 hover:opacity-90 hover:shadow-lift active:scale-[0.99]"
             >
-              ফলাফল দেখুন ({resultCount}টি পণ্য)
+              {interpolate(s.viewResults, { count: resultCount })}
             </button>
           </div>
         }

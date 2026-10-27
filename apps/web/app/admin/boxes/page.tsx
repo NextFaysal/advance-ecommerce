@@ -4,6 +4,9 @@ import { subscriptionsEnabled } from "@/subscriptions/flags";
 import { BoxesList } from "./boxes-list";
 import { BoxesConfigCard } from "./boxes-config-card";
 import { BoxesContentsCard } from "./boxes-contents-card";
+import { pick } from "@/i18n/locale";
+import { getRequestLocale } from "@/i18n/server";
+import { BOXES_STRINGS } from "./strings";
 
 // Admin > Subscription Boxes — ADV-23 vertical 4 (doc 23, wave 56).
 // Locked state: while module.subscription_boxes is OFF (the seeded
@@ -16,16 +19,16 @@ import { BoxesContentsCard } from "./boxes-contents-card";
 
 export const dynamic = "force-dynamic";
 
-export default function BoxesPage() {
+export default async function BoxesPage() {
+  const s = pick(await getRequestLocale(), BOXES_STRINGS);
   if (!subscriptionBoxesEnabled()) {
     return (
       <main style={{ padding: 24, fontFamily: "system-ui" }}>
-        <h1>সাবস্ক্রিপশন বক্স</h1>
+        <h1>{s.title}</h1>
         <p role="status">
-          🔒 This module is locked for this install. Subscription boxes is a paid add-on —
-          enable <code>module.subscription_boxes</code> (and the subscription engine,{" "}
-          <code>module.subscriptions</code>) in Admin &gt; Settings &gt; Feature Flags to
-          unlock it.
+          {s.lockedPrefix} <code>module.subscription_boxes</code> {s.lockedMid}{" "}
+          <code>module.subscriptions</code>
+          {s.lockedSuffix}
         </p>
       </main>
     );
@@ -34,12 +37,8 @@ export default function BoxesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="সাবস্ক্রিপশন বক্স"
-        description={
-          subscriptionsEnabled()
-            ? "কিউরেটেড রিকারিং বক্স — প্রতি সাইকেলের তালিকা অনুযায়ী অর্ডার তৈরি হয়। তালিকা নির্ধারণ না থাকলে ওই সাইকেল বাদ যায় (আগের বাক্স কখনো পাঠানো হয় না)। অর্ডার তৈরি হয় শুধু ওয়ার্কার সুইপ চললে।"
-            : "সতর্কতা: সাবস্ক্রিপশন ইঞ্জিন (module.subscriptions) বন্ধ আছে — বক্স সাবস্ক্রিপশন তৈরি বা অর্ডার জেনারেশন কোনোটাই হবে না। আগে Feature Flags থেকে ইঞ্জিন চালু করুন।"
-        }
+        title={s.title}
+        description={subscriptionsEnabled() ? s.descriptionEnabled : s.descriptionEngineOff}
       />
       <BoxesList />
       <BoxesContentsCard />

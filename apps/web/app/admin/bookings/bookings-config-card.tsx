@@ -10,6 +10,9 @@
  * types have no SERVICE value).
  */
 import { useCallback, useEffect, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { BOOKINGS_STRINGS } from "./strings";
 
 interface ServicesConfig {
   slotMinutes: 15 | 30 | 60;
@@ -28,12 +31,13 @@ interface ConfigData {
   config: ServicesConfig;
 }
 
-const WEEKDAY_LABELS = ["রবিবার", "সোমবার", "মঙ্গলবার", "বুধবার", "বৃহস্পতিবার", "শুক্রবার", "শনিবার"];
-
 const INPUT_CLASS =
   "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-text-main";
 
 export function BookingsConfigCard() {
+  const { locale } = useLocale();
+  const s = pick(locale, BOOKINGS_STRINGS);
+  const weekdayLabels = [s.weekday0, s.weekday1, s.weekday2, s.weekday3, s.weekday4, s.weekday5, s.weekday6];
   const [data, setData] = useState<ConfigData | null>(null);
   const [slotMinutes, setSlotMinutes] = useState<15 | 30 | 60>(30);
   const [openTime, setOpenTime] = useState("09:00");
@@ -56,7 +60,7 @@ export function BookingsConfigCard() {
         error?: { message?: string };
       } | null;
       if (!res.ok || !json?.data) {
-        setError(json?.error?.message ?? "কনফিগ লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.configLoadFailed);
         return;
       }
       const cfg = json.data.config;
@@ -71,9 +75,9 @@ export function BookingsConfigCard() {
       setVariantIdsText(cfg.serviceVariantIds.join("\n"));
       setError(null);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — কনফিগ লোড করা যায়নি।");
+      setError(s.configLoadNetwork);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load();
@@ -88,7 +92,7 @@ export function BookingsConfigCard() {
   async function save() {
     if (busy) return;
     if (!reason.trim()) {
-      setError("পরিবর্তনের কারণ লিখুন (অডিটের জন্য আবশ্যক)।");
+      setError(s.reasonRequired);
       return;
     }
     const serviceVariantIds = variantIdsText
@@ -119,59 +123,58 @@ export function BookingsConfigCard() {
       } | null;
       if (!res.ok || !json?.data) {
         setError(
-          json?.error?.details?.join("; ") ?? json?.error?.message ?? "কনফিগ সংরক্ষণ করা যায়নি।",
+          json?.error?.details?.join("; ") ?? json?.error?.message ?? s.configSaveFailed,
         );
         return;
       }
       setData(json.data);
       setReason("");
-      setNotice("কনফিগ সংরক্ষিত হয়েছে।");
+      setNotice(s.configSaved);
       setError(null);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — কনফিগ সংরক্ষণ করা যায়নি।");
+      setError(s.configSaveNetwork);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <section aria-label="সেবা বুকিং কনফিগ" className="rounded-2xl border border-border bg-card p-5 shadow-card">
-      <h2 className="text-base font-bold text-text-main">বুকিং কনফিগ</h2>
+    <section aria-label={s.configAria} className="rounded-2xl border border-border bg-card p-5 shadow-card">
+      <h2 className="text-base font-bold text-text-main">{s.configTitle}</h2>
       <p className="mt-1 text-sm text-text-muted">
-        স্লটের দৈর্ঘ্য, খোলার সময়, বন্ধের দিন ও কোন ভ্যারিয়েন্টগুলো বুকিংযোগ্য সেবা — সব এখান থেকে।
+        {s.configIntro}
         {data && (
           <>
             {" "}
-            উৎস: <strong className="text-text-main">{data.source === "saved" ? "সংরক্ষিত" : "ডিফল্ট"}</strong>
-            {!data.moduleEnabled && (
-              <> · মডিউল এখন বন্ধ (module.services) — কনফিগ আগে থেকে তৈরি রাখা যায়।</>
-            )}
+            {s.sourceLabel}{" "}
+            <strong className="text-text-main">{data.source === "saved" ? s.sourceSaved : s.sourceDefault}</strong>
+            {!data.moduleEnabled && <> · {s.moduleOffNote}</>}
           </>
         )}
       </p>
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">স্লটের দৈর্ঘ্য (মিনিট)</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{s.slotLength}</span>
           <select
             value={slotMinutes}
             onChange={(e) => setSlotMinutes(Number(e.target.value) as 15 | 30 | 60)}
             className={INPUT_CLASS}
           >
-            <option value={15}>১৫ মিনিট</option>
-            <option value={30}>৩০ মিনিট</option>
-            <option value={60}>৬০ মিনিট</option>
+            <option value={15}>{interpolate(s.minutes, { n: 15 })}</option>
+            <option value={30}>{interpolate(s.minutes, { n: 30 })}</option>
+            <option value={60}>{interpolate(s.minutes, { n: 60 })}</option>
           </select>
         </label>
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">খোলার সময়</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{s.openTime}</span>
           <input type="time" value={openTime} onChange={(e) => setOpenTime(e.target.value)} className={INPUT_CLASS} />
         </label>
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">বন্ধের সময়</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{s.closeTime}</span>
           <input type="time" value={closeTime} onChange={(e) => setCloseTime(e.target.value)} className={INPUT_CLASS} />
         </label>
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">কত দিন আগে পর্যন্ত বুকিং</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{s.advanceDays}</span>
           <input
             type="number"
             min={0}
@@ -182,7 +185,7 @@ export function BookingsConfigCard() {
           />
         </label>
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">প্রতিটি বুকিংয়ের পর বিরতি (মিনিট)</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{s.bufferMinutes}</span>
           <input
             type="number"
             min={0}
@@ -193,7 +196,7 @@ export function BookingsConfigCard() {
           />
         </label>
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">এক স্লটে সর্বোচ্চ বুকিং</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{s.capacityPerSlot}</span>
           <input
             type="number"
             min={1}
@@ -205,9 +208,9 @@ export function BookingsConfigCard() {
         </label>
       </div>
       <fieldset className="mt-4">
-        <legend className="mb-1.5 text-sm font-medium text-text-main">সাপ্তাহিক বন্ধের দিন</legend>
+        <legend className="mb-1.5 text-sm font-medium text-text-main">{s.closedWeekdaysLegend}</legend>
         <div className="flex flex-wrap gap-2">
-          {WEEKDAY_LABELS.map((label, day) => (
+          {weekdayLabels.map((label, day) => (
             <label
               key={day}
               className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface-2/60 px-3 py-1.5 text-sm text-text-main"
@@ -224,9 +227,7 @@ export function BookingsConfigCard() {
         </div>
       </fieldset>
       <label className="mt-4 block">
-        <span className="mb-1.5 block text-sm font-medium text-text-main">
-          বুকিংযোগ্য সেবার ভ্যারিয়েন্ট ID (প্রতি লাইনে একটি)
-        </span>
+        <span className="mb-1.5 block text-sm font-medium text-text-main">{s.variantIdsLabel}</span>
         <textarea
           value={variantIdsText}
           onChange={(e) => setVariantIdsText(e.target.value)}
@@ -234,16 +235,14 @@ export function BookingsConfigCard() {
           placeholder={"variant-id-1\nvariant-id-2"}
           className={`${INPUT_CLASS} font-mono text-xs`}
         />
-        <span className="mt-1 block text-xs text-text-muted">
-          তালিকার বাইরের কোনো ভ্যারিয়েন্টে বুকিং নেওয়া হবে না। ভ্যারিয়েন্ট ID পণ্যের সম্পাদনা পেজে পাওয়া যায়।
-        </span>
+        <span className="mt-1 block text-xs text-text-muted">{s.variantIdsHelp}</span>
       </label>
       <label className="mt-4 block">
-        <span className="mb-1.5 block text-sm font-medium text-text-main">পরিবর্তনের কারণ (আবশ্যক)</span>
+        <span className="mb-1.5 block text-sm font-medium text-text-main">{s.reasonLabel}</span>
         <input
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="যেমন: নতুন সেবা যোগ করা হলো"
+          placeholder={s.reasonPlaceholder}
           className={INPUT_CLASS}
         />
       </label>
@@ -264,7 +263,7 @@ export function BookingsConfigCard() {
           onClick={() => void save()}
           className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
         >
-          {busy ? "সংরক্ষণ হচ্ছে…" : "কনফিগ সংরক্ষণ করুন"}
+          {busy ? s.saving : s.saveConfig}
         </button>
       </div>
     </section>

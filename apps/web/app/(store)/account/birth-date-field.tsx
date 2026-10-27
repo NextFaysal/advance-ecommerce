@@ -8,8 +8,13 @@
  * the copy says plainly.
  */
 import { useEffect, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { ACCOUNT_STRINGS } from "./strings";
 
 export default function BirthDateField() {
+  const { locale } = useLocale();
+  const s = pick(locale, ACCOUNT_STRINGS);
   const [value, setValue] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -52,13 +57,13 @@ export default function BirthDateField() {
         data?: { birthDate?: string | null };
       };
       if (!res.ok) {
-        setError(body.error?.message ?? "সংরক্ষণ করা যায়নি।");
+        setError(body.error?.message ?? s.birthDateSaveFailed);
         return;
       }
       setValue(body.data?.birthDate ?? "");
-      setMessage(next === null ? "জন্মতারিখ মুছে ফেলা হয়েছে।" : "জন্মতারিখ সংরক্ষিত হয়েছে।");
+      setMessage(next === null ? s.birthDateCleared : s.birthDateSaved);
     } catch {
-      setError("সংরক্ষণ করা যায়নি — সংযোগ পরীক্ষা করুন।");
+      setError(s.birthDateSaveFailedConn);
     } finally {
       setBusy(false);
     }
@@ -66,7 +71,7 @@ export default function BirthDateField() {
 
   return (
     <div>
-      <dt className="text-text-muted">জন্মতারিখ (ঐচ্ছিক)</dt>
+      <dt className="text-text-muted">{s.birthDateLabel}</dt>
       <dd className="mt-0.5">
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -75,7 +80,7 @@ export default function BirthDateField() {
             disabled={!loaded || busy}
             onChange={(e) => setValue(e.target.value)}
             className="rounded-md border border-border bg-card px-2 py-1.5 text-sm text-text-main"
-            aria-label="জন্মতারিখ"
+            aria-label={s.birthDateAria}
           />
           <button
             type="button"
@@ -83,7 +88,7 @@ export default function BirthDateField() {
             onClick={() => void save(value === "" ? null : value)}
             className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
-            সংরক্ষণ
+            {s.saveShort}
           </button>
           {value !== "" ? (
             <button
@@ -92,12 +97,12 @@ export default function BirthDateField() {
               onClick={() => void save(null)}
               className="rounded-md border border-border px-3 py-1.5 text-sm text-text-muted disabled:opacity-50"
             >
-              মুছুন
+              {s.deleteShort}
             </button>
           ) : null}
         </div>
         <p className="mt-1 text-xs leading-5 text-text-subtle">
-          জন্মদিনের অফার পেতে জন্মতারিখ দিন — জন্মদিনের আগে একটি ডিসকাউন্ট কুপন পাবেন।
+          {s.birthDateHint}
         </p>
         {message ? <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">{message}</p> : null}
         {error ? <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{error}</p> : null}

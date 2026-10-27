@@ -1,4 +1,7 @@
 import { PageHeader } from "@/components/ui/page-header";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { APPROVALS_STRINGS } from "./strings";
 import { ApprovalsPanel } from "./approvals-panel";
 
 // Approvals admin (ADV-27) — the manager queue for approval
@@ -10,13 +13,12 @@ import { ApprovalsPanel } from "./approvals-panel";
 // shell; the panel is a self-fetching client component.
 export const dynamic = "force-dynamic";
 
-export default function AdminApprovalsPage() {
+export default async function AdminApprovalsPage() {
+  const locale = await getRequestLocale();
+  const t = pick(locale, APPROVALS_STRINGS);
   return (
     <main>
-      <PageHeader
-        title="অনুমোদন"
-        description="বড় ছাড়ের অর্ডার ও বড় রিফান্ডের জন্য ম্যানেজারের অনুমোদনের তালিকা। অনুমোদন ছাড়া সংশ্লিষ্ট অর্ডার নিশ্চিত করা বা রিফান্ড পাঠানো যাবে না — কেন আটকে আছে, প্রতিটি অনুরোধেই তা লেখা আছে।"
-      />
+      <PageHeader title={t.title} description={t.description} />
       <ApprovalsPanel />
     </main>
   );

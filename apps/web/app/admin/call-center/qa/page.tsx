@@ -1,7 +1,10 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
+import { pick } from "@/i18n/locale";
+import { getRequestLocale } from "@/i18n/server";
 import { CallCenterTabs } from "../tabs";
+import { CALL_CENTER_STRINGS } from "../strings";
 import { QaTable } from "./qa-table";
 
 // Call QA review — C3. Supervisors sample completed call logs and
@@ -12,15 +15,15 @@ import { QaTable } from "./qa-table";
 export const dynamic = "force-dynamic";
 
 export default async function AdminCallCenterQaPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, CALL_CENTER_STRINGS);
   await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
       <main>
-        <PageHeader title="কল QA রিভিউ" description="Call QA Review (module.call_center)" breadcrumb="Admin / Call Center" />
+        <PageHeader title={s.qaTitle} description={s.qaDescShort} breadcrumb={s.breadcrumb} />
         <p role="status">
-          🔒 এই মডিউলটি এই ইনস্টলে লক করা আছে। Call Center একটি পেইড অ্যাড-অন —
-          খুলতে Admin &gt; Settings থেকে <code>module.call_center</code> ফিচার ফ্ল্যাগ চালু করুন।
-          (This module is locked — enable the <code>module.call_center</code> feature flag to unlock it.)
+          {s.lockedA} <code>module.call_center</code> {s.lockedB}
         </p>
       </main>
     );
@@ -29,9 +32,9 @@ export default async function AdminCallCenterQaPage() {
   return (
     <main>
       <PageHeader
-        title="কল QA রিভিউ"
-        description="সম্পন্ন কলগুলোর নমুনা যাচাই — প্রতিটি কলে ০–৫ স্কোর ও মন্তব্য দিন (শুধু সুপারভাইজার, staff.manage)। কোন স্ক্রিপ্ট সংস্করণে কল হয়েছে এবং কী disposition দেওয়া হয়েছে তাও দেখা যায়। (Call QA Review — sampled call logs with supervisor scoring)"
-        breadcrumb="Admin / Call Center"
+        title={s.qaTitle}
+        description={s.qaDescLong}
+        breadcrumb={s.breadcrumb}
       />
       <CallCenterTabs active="qa" />
       <QaTable />

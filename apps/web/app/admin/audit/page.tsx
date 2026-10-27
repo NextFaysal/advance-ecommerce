@@ -1,4 +1,7 @@
 import { PageHeader } from "@/components/ui/page-header";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { AUDIT_STRINGS } from "./strings";
 import { AuditClient } from "./audit-client";
 
 // Audit Log admin.
@@ -9,14 +12,12 @@ import { AuditClient } from "./audit-client";
 // hardcoded SAMPLE rows are gone. Sensitive actions (the
 // SENSITIVE_ACTIONS set in src/lib/audit.ts) required a reason when
 // written and are highlighted by the client component.
-export default function AdminAuditPage() {
+export default async function AdminAuditPage() {
+  const locale = await getRequestLocale();
+  const t = pick(locale, AUDIT_STRINGS);
   return (
     <main>
-      <PageHeader
-        title="অডিট লগ"
-        description="আসল অডিট রেকর্ড — AuditLog টেবিল থেকে। সংবেদনশীল কাজে কারণ বাধ্যতামূলক, আর গোপন তথ্য লগে কখনো থাকে না (লেখার সময়ই [REDACTED] হয়)। (Audit Log — audit.view)"
-        breadcrumb="Admin / System"
-      />
+      <PageHeader title={t.title} description={t.description} breadcrumb={t.breadcrumb} />
       <AuditClient />
     </main>
   );

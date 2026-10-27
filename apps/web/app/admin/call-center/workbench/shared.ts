@@ -10,6 +10,8 @@
  * They mirror CallTaskView / CallScriptStep in src/callcenter/types.
  */
 import { formatBdt } from "@/checkout/pricing";
+import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
+import { CALL_CENTER_STRINGS } from "../strings";
 
 export type CallOutcome = "CONFIRMED" | "CALLBACK" | "CANCELLED" | "NO_ANSWER" | "WRONG_NUMBER";
 export type CallQueueSource = "PENDING_ORDER" | "FAILED_DELIVERY" | "ABANDONED_CHECKOUT" | "MANUAL";
@@ -168,23 +170,28 @@ export interface ManualResponse {
 /* Labels + formatting                                                 */
 /* ------------------------------------------------------------------ */
 
-export const SOURCE_LABEL: Record<CallQueueSource, string> = {
-  PENDING_ORDER: "অর্ডার কনফার্মেশন (Pending order)",
-  FAILED_DELIVERY: "ডেলিভারি ব্যর্থ — রেসকিউ কল (Failed delivery)",
-  ABANDONED_CHECKOUT: "ছেড়ে যাওয়া চেকআউট (Abandoned checkout)",
-  MANUAL: "ম্যানুয়াল (Manual)",
+const S = CALL_CENTER_STRINGS;
+
+export const SOURCE_LABEL: Record<CallQueueSource, Record<Locale, string>> = {
+  PENDING_ORDER: { bn: S.bn.srcPendingOrder, en: S.en.srcPendingOrder },
+  FAILED_DELIVERY: { bn: S.bn.srcFailedDelivery, en: S.en.srcFailedDelivery },
+  ABANDONED_CHECKOUT: { bn: S.bn.srcAbandonedCheckout, en: S.en.srcAbandonedCheckout },
+  MANUAL: { bn: S.bn.srcManual, en: S.en.srcManual },
 };
 
-export const OUTCOME_BUTTONS: Array<{ key: CallOutcome; label: string; className: string }> = [
-  { key: "CONFIRMED", label: "✓ কনফার্ম করেছেন", className: "bg-emerald-600 text-white hover:bg-emerald-700" },
-  { key: "CALLBACK", label: "🕐 পরে কল করতে হবে", className: "bg-amber-500 text-white hover:bg-amber-600" },
-  { key: "NO_ANSWER", label: "📵 ফোন ধরেননি", className: "bg-slate-600 text-white hover:bg-slate-700" },
-  { key: "WRONG_NUMBER", label: "🚫 ভুল নম্বর", className: "bg-slate-600 text-white hover:bg-slate-700" },
-  { key: "CANCELLED", label: "✕ বাতিল করেছেন", className: "bg-rose-600 text-white hover:bg-rose-700" },
-];
+export function outcomeButtons(locale: Locale): Array<{ key: CallOutcome; label: string; className: string }> {
+  const s = pick(locale, S);
+  return [
+    { key: "CONFIRMED", label: s.outConfirmed, className: "bg-emerald-600 text-white hover:bg-emerald-700" },
+    { key: "CALLBACK", label: s.outCallback, className: "bg-amber-500 text-white hover:bg-amber-600" },
+    { key: "NO_ANSWER", label: s.outNoAnswer, className: "bg-slate-600 text-white hover:bg-slate-700" },
+    { key: "WRONG_NUMBER", label: s.outWrongNumber, className: "bg-slate-600 text-white hover:bg-slate-700" },
+    { key: "CANCELLED", label: s.outCancelled, className: "bg-rose-600 text-white hover:bg-rose-700" },
+  ];
+}
 
-export function bnDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("bn-BD", {
+export function bnDateTime(iso: string, locale: Locale): string {
+  return new Date(iso).toLocaleString(intlLocale(locale), {
     timeZone: "Asia/Dhaka",
     day: "numeric",
     month: "long",
@@ -214,47 +221,47 @@ export function initialElapsedSec(assignedAt: string | undefined, nowMs: number)
 /** C4: WhatsApp deep link (wa.me) with a prefilled Bangla template.
  *  Built ONLY from a visible full number — when the API withheld
  *  phoneFull there is nothing to link to and this returns null. */
-export function whatsAppUrl(task: TaskView): string | null {
+export function whatsAppUrl(task: TaskView, locale: Locale): string | null {
   if (!task.phoneFull) return null;
   const digits = task.phoneFull.replace(/\D/g, "");
   if (!digits) return null;
-  const text =
-    `আসসালামু আলাইকুম ${task.customerName}, আপনার অর্ডার` +
-    `${task.orderNo ? ` (${task.orderNo})` : ""} সম্পর্কে কথা বলতে চাই।`;
+  const text = interpolate(pick(locale, S).waTemplate, {
+    name: task.customerName,
+    order: task.orderNo ? ` (${task.orderNo})` : "",
+  });
   return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
 }
 
 /** C4 automation timeline labels (values are the log contract). */
-export const AUTO_OUTCOME_LABEL: Record<string, string> = {
-  AUTO_SMS_SCHEDULED: "🤖 SMS নির্ধারিত হয়েছে",
-  AUTO_SMS_SENT: "🤖 SMS পাঠানো হয়েছে",
-  AUTO_SMS_SKIPPED: "🤖 SMS পাঠানো হয়নি",
+export const AUTO_OUTCOME_LABEL: Record<string, Record<Locale, string>> = {
+  AUTO_SMS_SCHEDULED: { bn: S.bn.autoSmsScheduled, en: S.en.autoSmsScheduled },
+  AUTO_SMS_SENT: { bn: S.bn.autoSmsSent, en: S.en.autoSmsSent },
+  AUTO_SMS_SKIPPED: { bn: S.bn.autoSmsSkipped, en: S.en.autoSmsSkipped },
 };
 
-export const AUTO_KIND_LABEL: Record<string, string> = {
-  NO_ANSWER_SMS: "যোগাযোগ-হয়নি",
-  CALLBACK_REMINDER_SMS: "কলব্যাক রিমাইন্ডার",
-  RESCUE_SMS: "রেসকিউ",
+export const AUTO_KIND_LABEL: Record<string, Record<Locale, string>> = {
+  NO_ANSWER_SMS: { bn: S.bn.autoKindNoAnswer, en: S.en.autoKindNoAnswer },
+  CALLBACK_REMINDER_SMS: { bn: S.bn.autoKindCallbackReminder, en: S.en.autoKindCallbackReminder },
+  RESCUE_SMS: { bn: S.bn.autoKindRescue, en: S.en.autoKindRescue },
 };
 
-/** Bangla summary lines for the outcome response's automation block. */
-export function automationSummaryLines(summary: AutomationSummary | undefined): string[] {
+/** Summary lines for the outcome response's automation block. */
+export function automationSummaryLines(summary: AutomationSummary | undefined, locale: Locale): string[] {
+  const s = pick(locale, S);
   if (!summary || !summary.enabled) return [];
   const lines: string[] = [];
   for (const a of summary.actions) {
     if (a.kind === "retry-scheduled" && a.runAt) {
-      lines.push(`🤖 পুনঃচেষ্টা নির্ধারিত হয়েছে: ${bnDateTime(a.runAt)} — এর আগে টাস্কটি কিউতে আসবে না।`);
+      lines.push(interpolate(s.autoRetryLine, { date: bnDateTime(a.runAt, locale) }));
     } else if (a.kind === "sms-scheduled") {
-      const label = a.automationKind ? (AUTO_KIND_LABEL[a.automationKind] ?? a.automationKind) : "";
+      const label = a.automationKind ? (AUTO_KIND_LABEL[a.automationKind]?.[locale] ?? a.automationKind) : "";
       if (a.enqueued && a.runAt) {
-        lines.push(`🤖 ${label} SMS নির্ধারিত হয়েছে: ${bnDateTime(a.runAt)}।`);
+        lines.push(interpolate(s.autoSmsScheduledLine, { label, date: bnDateTime(a.runAt, locale) }));
       } else {
-        lines.push(`🤖 ${label} SMS নির্ধারণ করা যায়নি (${a.detail}) — টাইমলাইনে রেকর্ড আছে।`);
+        lines.push(interpolate(s.autoSmsFailedLine, { label, detail: a.detail }));
       }
     } else if (a.kind === "note" && a.detail === "covered-by-order-sms") {
-      lines.push(
-        "🤖 কনফার্মেশন SMS অর্ডার সিস্টেম থেকে যাবে — ডুপ্লিকেট এড়াতে কল সেন্টার থেকে আলাদা SMS পাঠানো হয়নি।",
-      );
+      lines.push(s.autoCoveredNote);
     }
   }
   return lines;
@@ -262,14 +269,14 @@ export function automationSummaryLines(summary: AutomationSummary | undefined): 
 
 /** C3 dispositions for CANCELLED / WRONG_NUMBER outcomes (values are
  *  the API contract — do not translate the keys). */
-export const DISPOSITIONS: Array<{ key: string; label: string }> = [
-  { key: "PRICE", label: "দাম বেশি (Price)" },
-  { key: "DELIVERY_CHARGE", label: "ডেলিভারি চার্জ (Delivery charge)" },
-  { key: "CHANGED_MIND", label: "মন বদলেছেন (Changed mind)" },
-  { key: "DUPLICATE_ORDER", label: "ডুপ্লিকেট অর্ডার (Duplicate order)" },
-  { key: "FAKE_ORDER", label: "ভুয়া অর্ডার (Fake order)" },
-  { key: "WRONG_NUMBER_CONFIRMED", label: "নম্বর ভুল নিশ্চিত (Wrong number confirmed)" },
-  { key: "OTHER", label: "অন্যান্য (Other)" },
+export const DISPOSITIONS: Array<{ key: string; label: Record<Locale, string> }> = [
+  { key: "PRICE", label: { bn: S.bn.dispPrice, en: S.en.dispPrice } },
+  { key: "DELIVERY_CHARGE", label: { bn: S.bn.dispDeliveryCharge, en: S.en.dispDeliveryCharge } },
+  { key: "CHANGED_MIND", label: { bn: S.bn.dispChangedMind, en: S.en.dispChangedMind } },
+  { key: "DUPLICATE_ORDER", label: { bn: S.bn.dispDuplicateOrder, en: S.en.dispDuplicateOrder } },
+  { key: "FAKE_ORDER", label: { bn: S.bn.dispFakeOrder, en: S.en.dispFakeOrder } },
+  { key: "WRONG_NUMBER_CONFIRMED", label: { bn: S.bn.dispWrongNumberConfirmed, en: S.en.dispWrongNumberConfirmed } },
+  { key: "OTHER", label: { bn: S.bn.dispOther, en: S.en.dispOther } },
 ];
 
 /** Fill the script placeholders we truthfully have ({name}, {total});

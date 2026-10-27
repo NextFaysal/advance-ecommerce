@@ -17,9 +17,14 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useDigitText } from "@/components/ui/numerals";
 import { buildComparison } from "@/storefront-ux/compare";
 import { useCompareIds } from "@/storefront-ux/components/CompareTray";
+import { pick } from "@/i18n/locale";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { STORE_STRINGS } from "../store-strings";
 
 export default function ComparePage() {
   const digits = useDigitText();
+  const { locale } = useLocale();
+  const s = pick(locale, STORE_STRINGS);
   const { ids, setIds } = useCompareIds();
   const [loaded, setLoaded] = useState(false);
   const [catalog, setCatalog] = useState<PublicProduct[]>([]);
@@ -39,7 +44,7 @@ export default function ComparePage() {
   const products: PublicProduct[] = ids
     .map((id) => catalog.find((p) => p.id === id))
     .filter((p): p is NonNullable<typeof p> => Boolean(p));
-  const table = buildComparison(products);
+  const table = buildComparison(products, locale);
 
   function remove(productId: string) {
     setIds(ids.filter((id) => id !== productId));
@@ -47,18 +52,18 @@ export default function ComparePage() {
 
   return (
     <main className="mx-auto min-w-0 max-w-7xl px-4 py-6">
-      <h1 className="text-xl font-bold">পণ্য তুলনা</h1>
-      <p className="mt-1 text-xs text-slate-400">পণ্যের তথ্য আসল ক্যাটালগ থেকে আসে; তুলনার তালিকা এই ব্রাউজারেই থাকে।</p>
+      <h1 className="text-xl font-bold">{s.compareHeading}</h1>
+      <p className="mt-1 text-xs text-slate-400">{s.compareNote}</p>
 
       {loaded && products.length === 0 ? (
         <div className="mt-6">
           <EmptyState
-            title="তুলনায় কোনো পণ্য নেই"
-            description="পণ্যের পেজে 'তুলনা করুন' চাপলে এখানে পাশাপাশি তুলনা দেখা যাবে (সর্বোচ্চ ৩টি)।"
+            title={s.compareEmptyTitle}
+            description={s.compareEmptyDescription}
           />
           <div className="mt-4 text-center">
             <Link href="/shop" className="inline-block rounded-lg bg-[#4F46E5] px-4 py-2 font-semibold text-white">
-              কেনাকাটা শুরু করুন
+              {s.startShopping}
             </Link>
           </div>
         </div>
@@ -69,18 +74,18 @@ export default function ComparePage() {
           <table className="w-full min-w-[560px] text-left text-sm">
             <thead>
               <tr className="border-b bg-bg-app">
-                <th className="px-3 py-3 font-semibold">বৈশিষ্ট্য</th>
+                <th className="px-3 py-3 font-semibold">{s.featureColumn}</th>
                 {products.map((p) => (
                   <th key={p.id} className="px-3 py-3">
                     <Link href={`/product/${p.slug}`} className="font-semibold text-[#4F46E5]">
-                      {p.title.bn}
+                      {p.title[locale] || p.title.bn}
                     </Link>
                     <button
                       type="button"
                       onClick={() => remove(p.id)}
                       className="ml-2 text-xs font-normal text-red-600 underline"
                     >
-                      সরান
+                      {s.removeShort}
                     </button>
                   </th>
                 ))}
@@ -92,10 +97,10 @@ export default function ComparePage() {
                 .map((r) => (
                   <tr key={r.key} className={`border-b last:border-0 ${r.differing ? "bg-amber-50" : ""}`}>
                     <th className="px-3 py-2 font-medium text-slate-600">
-                      {r.labelBn}
+                      {locale === "bn" ? r.labelBn : r.labelEn}
                       {r.differing ? (
                         <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
-                          পার্থক্য
+                          {s.differingBadge}
                         </span>
                       ) : null}
                     </th>

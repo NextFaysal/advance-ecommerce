@@ -7,6 +7,9 @@ import { maxVariantPricePoisha, minVariantPricePoisha, type Product } from "@/ca
 import { AI_FEATURE_FLAG } from "@/ai/types";
 import { demoAiAssistFlags, isAiAssistEnabled } from "./demo-flag";
 import { AiAssistTools, type SampleProductOption } from "./tools";
+import { getRequestLocale } from "@/i18n/server";
+import { pick, type Locale } from "@/i18n/locale";
+import { AI_ASSIST_STRINGS } from "./strings";
 
 // Admin > AI Assist — Agent 45, UI over Agent 15's src/ai services.
 // Locked state: while module.ai_assist is OFF (seeded default — paid
@@ -39,11 +42,12 @@ function attributesOf(product: Product): Record<string, string[]> {
   return out;
 }
 
-async function sampleOptions(): Promise<SampleProductOption[]> {
+async function sampleOptions(locale: Locale): Promise<SampleProductOption[]> {
+  const s = pick(locale, AI_ASSIST_STRINGS);
   const products = await listActiveProducts(100);
   return products.filter((p) => p.status === "ACTIVE").map((p) => ({
     id: p.id,
-    label: `${p.title.bn} (${p.title.en}) — নমুনা পণ্য`,
+    label: `${p.title.bn} (${p.title.en})${s.sampleSuffix}`,
     input: {
       product: {
         title: p.title,
@@ -63,14 +67,17 @@ async function sampleOptions(): Promise<SampleProductOption[]> {
 export const dynamic = "force-dynamic";
 
 export default async function AdminAiAssistPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, AI_ASSIST_STRINGS);
   await ensureDbFeatureFlags().catch(() => {});
   if (!isAiAssistEnabled(demoAiAssistFlags)) {
     return (
       <main>
-        <PageHeader title="AI সহায়ক (AI Assist)" description="পণ্যের বর্ণনা, SEO ও রিভিউ সহায়ক (টেমপ্লেট-ভিত্তিক)" />
+        <PageHeader title={s.title} description={s.description} />
         <p role="status">
-          🔒 এই মডিউলটি এই ইনস্টলের জন্য লক করা আছে। AI সহায়ক একটি পেইড অ্যাড-অন —
-          আনলক করতে Admin &gt; Settings &gt; Feature Flags-এ <code>{AI_FEATURE_FLAG}</code> চালু করুন।
+          {s.lockedText1}
+          <code>{AI_FEATURE_FLAG}</code>
+          {s.lockedText2}
         </p>
       </main>
     );
@@ -78,28 +85,38 @@ export default async function AdminAiAssistPage() {
 
   return (
     <main className="space-y-6">
-      <PageHeader title="AI সহায়ক (AI Assist)" description="পণ্যের বর্ণনা, SEO ও রিভিউ সহায়ক (টেমপ্লেট-ভিত্তিক)" />
+      <PageHeader title={s.title} description={s.description} />
 
       <p role="note" className="rounded-lg border border-border bg-surface-2 p-3 text-sm">
-        ⚠️ <strong>TEMPORARY DEMO:</strong> এই পেজে কোনো আসল AI মডেল নেই। সব আউটপুট{" "}
-        <code>src/ai</code>-এর টেমপ্লেট/কিওয়ার্ড ফলব্যাক থেকে আসে এবং প্রতিটিতেই{" "}
-        <strong>template-fallback — মানুষের রিভিউ লাগবে</strong> স্ট্যাম্প থাকে। নমুনা পণ্যগুলো আসল
-        ক্যাটালগ ডাটাবেস থেকে নেওয়া।
+        {s.demoNote1}
+        <strong>{s.demoNoteStrong1}</strong>
+        {s.demoNote2}
+        <code>src/ai</code>
+        {s.demoNote3}
+        <strong>{s.demoNoteStrong2}</strong>
+        {s.demoNote4}
       </p>
 
-      <AiAssistTools samples={await sampleOptions()} />
+      <AiAssistTools samples={await sampleOptions(locale)} />
 
       <Card className="p-4">
-        <h3 className="text-base font-semibold">আসল AI প্রোভাইডার — পরে যুক্ত হবে</h3>
+        <h3 className="text-base font-semibold">{s.providerTitle}</h3>
         <p className="mt-1 text-sm leading-relaxed text-text-muted">
-          আসল AI প্রোভাইডার পরে <code>AiProvider</code> seam (<code>src/ai/types.ts</code>) দিয়ে যুক্ত হবে — এর API
-          কী থাকবে Admin &gt; Settings-এ <strong>এনক্রিপ্ট করা</strong> অবস্থায়, শুধু সার্ভার সাইডে। তখন API রুটগুলোর
-          (<code>/api/v1/admin/ai/*</code>) ইঞ্জিন <code>provider</code> হয়ে যাবে, রেসপন্সের ধরন বদলাবে না; আর এই
-          টেমপ্লেট ফলব্যাকটাই অফলাইন মোড হিসেবে থেকে যাবে।
+          {s.providerText1}
+          <code>AiProvider</code>
+          {s.providerText2}
+          <code>src/ai/types.ts</code>
+          {s.providerText3}
+          <strong>{s.providerStrong}</strong>
+          {s.providerText4}
+          <code>/api/v1/admin/ai/*</code>
+          {s.providerText5}
+          <code>provider</code>
+          {s.providerText6}
         </p>
         <p className="mt-3 text-sm">
           <Link href="/admin/settings/integrations" className="font-medium text-brand-700 underline">
-            Admin &gt; Settings &gt; Integrations-এ যান →
+            {s.providerLink}
           </Link>
         </p>
       </Card>

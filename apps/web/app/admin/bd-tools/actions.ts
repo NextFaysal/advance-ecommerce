@@ -29,6 +29,9 @@ import {
   type PaymentLinkStatus,
 } from "@/bd/payment-link";
 import { SandboxOrderNotFoundError } from "@/integrations/sandbox/db-store";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { BD_TOOLS_STRINGS } from "./strings";
 
 export interface PaymentLinkListItemView {
   id: string;
@@ -68,9 +71,10 @@ export async function createBdPaymentLinkAction(input: {
   purpose: string;
   ttlMinutes: number;
 }): Promise<CreateBdPaymentLinkResult> {
+  const s = pick(await getRequestLocale(), BD_TOOLS_STRINGS);
   const parsed = createPaymentLinkSchema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, error: "তথ্য সঠিক নয় — অর্ডার আইডি, পরিমাণ (পয়সায় ধনাত্মক পূর্ণসংখ্যা) ও মেয়াদ যাচাই করুন।" };
+    return { ok: false, error: s.actionInvalidInput };
   }
   // The displayed full URL uses the configured app URL when one is set;
   // without it createPaymentLink falls back to its placeholder base
@@ -83,7 +87,7 @@ export async function createBdPaymentLinkAction(input: {
     await paymentLinkStore.add(created.record);
   } catch (err) {
     if (err instanceof SandboxOrderNotFoundError) {
-      return { ok: false, error: "অর্ডারটি খুঁজে পাওয়া যায়নি — সঠিক অর্ডার আইডি দিন।" };
+      return { ok: false, error: s.actionOrderNotFound };
     }
     throw err;
   }

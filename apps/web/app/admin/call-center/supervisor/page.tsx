@@ -13,7 +13,10 @@ import {
 import { SlaChip, SourceChip, TaskCard } from "@/callcenter/components";
 import { slaStateForTask } from "@/callcenter/components";
 import { formatDhakaTime } from "@/orders/components/labels";
+import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { getRequestLocale } from "@/i18n/server";
 import { CallCenterTabs } from "../tabs";
+import { CALL_CENTER_STRINGS } from "../strings";
 import { AutoRefresh } from "./auto-refresh";
 import { SupervisorControls } from "./controls";
 import { ageLabel } from "./board-ui";
@@ -79,7 +82,8 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function AgentLoadCard({ load, maxActive }: { load: SupervisorAgentLoad; maxActive: number }) {
+function AgentLoadCard({ load, maxActive, locale }: { load: SupervisorAgentLoad; maxActive: number; locale: Locale }) {
+  const s = pick(locale, CALL_CENTER_STRINGS);
   const active = load.inCall + load.queuedAssigned;
   const loadPct = maxActive > 0 ? Math.round((active / maxActive) * 100) : 0;
   const confirmPct = load.outcomesToday > 0 ? Math.round((load.confirmedToday / load.outcomesToday) * 100) : 0;
@@ -90,42 +94,42 @@ function AgentLoadCard({ load, maxActive }: { load: SupervisorAgentLoad; maxActi
           {load.agentName ?? load.agentId}
         </p>
         <Badge tone={load.inCall > 0 ? "info" : "neutral"} icon={<Icon name="phone" size={12} />}>
-          {load.inCall > 0 ? "কলে আছে" : "মুক্ত"}
+          {load.inCall > 0 ? s.inCallBadge : s.freeBadge}
         </Badge>
       </div>
 
       <div className="mt-3">
         <div className="flex justify-between text-xs text-text-muted">
-          <span>সক্রিয় টাস্ক (কল + সারি)</span>
+          <span>{s.activeTasksLabel}</span>
           <span className="font-mono font-semibold tabular-nums text-text-main">{active}</span>
         </div>
         <div
           className="mt-1.5 h-2 overflow-hidden rounded-full bg-surface-2"
           role="img"
-          aria-label={`Active tasks ${active} of board max ${maxActive}`}
+          aria-label={interpolate(s.ariaActiveTasks, { active, max: maxActive })}
         >
           <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${loadPct}%` }} />
         </div>
         <p className="mt-1.5 text-xs text-text-muted">
-          কলে <span className="font-medium text-text-main">{load.inCall}</span> · সারিতে দায়িত্ব{" "}
+          {s.inCallWord} <span className="font-medium text-text-main">{load.inCall}</span> · {s.queuedAssignedWord}{" "}
           <span className="font-medium text-text-main">{load.queuedAssigned}</span>
         </p>
       </div>
 
       <div className="mt-3 border-t border-border/60 pt-3">
         <div className="flex justify-between text-xs text-text-muted">
-          <span>আজকের আউটকাম</span>
+          <span>{s.todayOutcomes}</span>
           <span className="font-mono font-semibold tabular-nums text-text-main">{load.outcomesToday}</span>
         </div>
         <div
           className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-surface-2"
           role="img"
-          aria-label={`Confirmed ${load.confirmedToday} of ${load.outcomesToday} outcomes today`}
+          aria-label={interpolate(s.ariaConfirmed, { confirmed: load.confirmedToday, total: load.outcomesToday })}
         >
           <div className="h-full bg-emerald-500 transition-all" style={{ width: `${confirmPct}%` }} />
         </div>
         <p className="mt-1.5 text-xs text-text-muted">
-          কনফার্ম <span className="font-medium text-emerald-700">{load.confirmedToday}</span> · বাকি আউটকাম{" "}
+          {s.confirmedWord} <span className="font-medium text-emerald-700">{load.confirmedToday}</span> · {s.otherOutcomesWord}{" "}
           <span className="font-medium text-text-main">{load.outcomesToday - load.confirmedToday}</span>
         </p>
       </div>
@@ -133,7 +137,8 @@ function AgentLoadCard({ load, maxActive }: { load: SupervisorAgentLoad; maxActi
   );
 }
 
-function Board({ board }: { board: SupervisorBoard }) {
+function Board({ board, locale }: { board: SupervisorBoard; locale: Locale }) {
+  const s = pick(locale, CALL_CENTER_STRINGS);
   // SLA chips are judged against the board's own generation instant,
   // so they always agree with the aggregates on this page.
   const now = new Date(board.generatedAt);
@@ -150,38 +155,37 @@ function Board({ board }: { board: SupervisorBoard }) {
   return (
     <main>
       <PageHeader
-        title="সুপারভাইজার কনসোল"
-        description="Call Center — Supervisor board (masked numbers only)"
-        breadcrumb="Admin / Call Center"
+        title={s.supervisorTitle}
+        description={s.supervisorDesc}
+        breadcrumb={s.breadcrumb}
       />
       <CallCenterTabs active="supervisor" />
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <AutoRefresh generatedAt={board.generatedAt} />
         <span className="text-xs text-text-muted">
-          SLA: কনফার্মেশন টাস্ক {board.sla.confirmMinutes} মিনিটে, ডেলিভারি রেসকিউ {board.sla.rescueMinutes}{" "}
-          মিনিটে চেষ্টা করতে হয় (Settings: call_center.sla_confirm_minutes / call_center.sla_rescue_minutes)।
+          {interpolate(s.slaNote, { confirm: board.sla.confirmMinutes, rescue: board.sla.rescueMinutes })}
         </span>
       </div>
 
       {/* SLA status summary — counts straight from the board payload */}
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
         <SlaTile
-          label="SLA-এর মধ্যে আছে (খোলা টাস্ক)"
+          label={s.tileWithinSla}
           value={String(withinSla)}
           icon="shield"
           accent="bg-emerald-50 text-emerald-600"
           valueClass="text-emerald-700"
         />
         <SlaTile
-          label="কলব্যাকের সময় হয়েছে"
+          label={s.tileCallbacksDue}
           value={String(board.dueCallbacks.length)}
           icon="clock"
           accent="bg-amber-50 text-amber-600"
           valueClass={board.dueCallbacks.length > 0 ? "text-amber-700" : "text-text-main"}
         />
         <SlaTile
-          label="SLA ভেঙেছে"
+          label={s.tileSlaBreached}
           value={String(board.slaBreaches.length)}
           icon="alert"
           accent="bg-rose-50 text-rose-600"
@@ -190,23 +194,23 @@ function Board({ board }: { board: SupervisorBoard }) {
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <MiniStat label="সারিতে · Queued" value={String(board.countsByStatus.QUEUED)} />
-        <MiniStat label="কলে আছে · In call" value={String(board.countsByStatus.IN_CALL)} />
-        <MiniStat label="দায়িত্বহীন · Unassigned" value={String(board.unassignedCount)} />
+        <MiniStat label={s.miniQueued} value={String(board.countsByStatus.QUEUED)} />
+        <MiniStat label={s.miniInCall} value={String(board.countsByStatus.IN_CALL)} />
+        <MiniStat label={s.miniUnassigned} value={String(board.unassignedCount)} />
         <MiniStat
-          label="সবচেয়ে পুরনো সারির টাস্ক"
+          label={s.miniOldest}
           value={board.oldestQueuedAgeMinutes === null ? "—" : `${board.oldestQueuedAgeMinutes}m`}
         />
-        <MiniStat label="সম্পন্ন · Done" value={String(board.countsByStatus.DONE)} />
-        <MiniStat label="স্কিপ · Skipped" value={String(board.countsByStatus.SKIPPED)} />
+        <MiniStat label={s.miniDone} value={String(board.countsByStatus.DONE)} />
+        <MiniStat label={s.miniSkipped} value={String(board.countsByStatus.SKIPPED)} />
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-1.5">
-        <span className="mr-1 text-xs font-medium text-text-muted">উৎস অনুযায়ী:</span>
+        <span className="mr-1 text-xs font-medium text-text-muted">{s.bySourceLabel}</span>
         {(Object.entries(board.countsBySource) as [keyof typeof board.countsBySource, number][]).map(
           ([source, count]) => (
             <span key={source} className="inline-flex items-center gap-1.5">
-              <SourceChip source={source} />
+              <SourceChip source={source} lang={locale} />
               <span className="font-mono text-xs font-semibold tabular-nums text-text-main">{count}</span>
             </span>
           ),
@@ -215,10 +219,10 @@ function Board({ board }: { board: SupervisorBoard }) {
 
       {/* Due / overdue callbacks — attention strip */}
       <SectionTitle icon="bell" tone={board.dueCallbacks.length > 0 ? "text-rose-700" : undefined}>
-        বাকি কলব্যাক · Due / Overdue Callbacks ({board.dueCallbacks.length})
+        {interpolate(s.dueSectionTitle, { count: board.dueCallbacks.length })}
       </SectionTitle>
       {board.dueCallbacks.length === 0 ? (
-        <p className="text-sm text-text-muted">No callbacks are due right now.</p>
+        <p className="text-sm text-text-muted">{s.noCallbacksDue}</p>
       ) : (
         <Card className="border-rose-200 bg-rose-50/60 p-4">
           <ul className="grid gap-2.5 lg:grid-cols-2">
@@ -232,17 +236,18 @@ function Board({ board }: { board: SupervisorBoard }) {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-text-main">{cb.customerName || "—"}</p>
                     <p className="mt-0.5 font-mono text-xs tabular-nums text-text-muted">
-                      {cb.phoneMasked} · কলব্যাক: {cb.callbackAt ? formatDhakaTime(cb.callbackAt) : "—"} ·{" "}
-                      {cb.assignedAgentName ?? cb.assignedAgentId ?? "কেউ নয়"}
+                      {cb.phoneMasked} · {s.callbackPrefix} {cb.callbackAt ? formatDhakaTime(cb.callbackAt) : "—"} ·{" "}
+                      {cb.assignedAgentName ?? cb.assignedAgentId ?? s.nobody}
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <SourceChip source={cb.source} />
+                    <SourceChip source={cb.source} lang={locale} />
                     {cbState ? (
                       <SlaChip
                         state={cbState}
+                        lang={locale}
                         label={
-                          cb.minutesOverdue > 0 ? `কলব্যাক ${cb.minutesOverdue} মিনিট পেরিয়ে` : undefined
+                          cb.minutesOverdue > 0 ? interpolate(s.callbackOverdueLabel, { mins: cb.minutesOverdue }) : undefined
                         }
                       />
                     ) : null}
@@ -256,11 +261,11 @@ function Board({ board }: { board: SupervisorBoard }) {
 
       {/* SLA breaches */}
       <SectionTitle icon="alert" tone={board.slaBreaches.length > 0 ? "text-rose-700" : undefined}>
-        SLA ভঙ্গ · SLA Breaches ({board.slaBreaches.length})
+        {interpolate(s.breachesSectionTitle, { count: board.slaBreaches.length })}
       </SectionTitle>
       {board.slaBreaches.length === 0 ? (
         <p className="text-sm text-text-muted">
-          No breaches — every open confirmation/rescue task is inside its SLA window or already attempted.
+          {s.noBreaches}
         </p>
       ) : (
         <ul className="grid gap-2.5 lg:grid-cols-2">
@@ -269,8 +274,8 @@ function Board({ board }: { board: SupervisorBoard }) {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="min-w-0 truncate text-sm font-semibold text-text-main">{b.customerName || "—"}</p>
                 <div className="flex items-center gap-1.5">
-                  <Badge tone="info">{b.rule === "CONFIRM" ? "কনফার্মেশন" : "রেসকিউ"}</Badge>
-                  <SlaChip state="overdue" label={`${b.overdueByMinutes} মিনিট পেরিয়ে`} />
+                  <Badge tone="info">{b.rule === "CONFIRM" ? s.ruleConfirm : s.ruleRescue}</Badge>
+                  <SlaChip state="overdue" lang={locale} label={interpolate(s.overdueLabel, { mins: b.overdueByMinutes })} />
                 </div>
               </div>
               <p className="mt-1 font-mono text-xs tabular-nums text-text-muted">
@@ -278,14 +283,14 @@ function Board({ board }: { board: SupervisorBoard }) {
                 {b.orderNo ? ` · ${b.orderNo}` : ""}
               </p>
               <div className="mt-2.5">
-                <SourceChip source={b.source} />
+                <SourceChip source={b.source} lang={locale} />
               </div>
               <p className="mt-2.5 text-xs text-text-muted">
-                দায়িত্বে:{" "}
+                {s.assignedToLabel}{" "}
                 <span className="font-medium text-text-main">
-                  {b.assignedAgentName ?? b.assignedAgentId ?? "কেউ নয়"}
+                  {b.assignedAgentName ?? b.assignedAgentId ?? s.nobody}
                 </span>{" "}
-                · বয়স {ageLabel(b.ageMinutes)} · SLA সীমা {b.thresholdMinutes} মিনিট
+                · {s.ageWord} {ageLabel(b.ageMinutes, locale)} · {interpolate(s.slaLimitPart, { mins: b.thresholdMinutes })}
               </p>
             </li>
           ))}
@@ -293,31 +298,31 @@ function Board({ board }: { board: SupervisorBoard }) {
       )}
 
       {/* Agents today — load cards */}
-      <SectionTitle icon="users">আজকের এজেন্ট লোড · Agents Today (Asia/Dhaka)</SectionTitle>
+      <SectionTitle icon="users">{s.agentsSectionTitle}</SectionTitle>
       {board.agentLoads.length === 0 ? (
         <p className="text-sm text-text-muted">
-          No agent holds an open task and nobody has logged an outcome today.
+          {s.noAgentsToday}
         </p>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {board.agentLoads.map((a) => (
-            <AgentLoadCard key={a.agentId} load={a} maxActive={maxActive} />
+            <AgentLoadCard key={a.agentId} load={a} maxActive={maxActive} locale={locale} />
           ))}
         </div>
       )}
 
       {/* Live board grouped by status */}
-      <SectionTitle icon="grid">লাইভ বোর্ড · Board by Status</SectionTitle>
+      <SectionTitle icon="grid">{s.boardSectionTitle}</SectionTitle>
       {capped ? (
         <p className="mb-3 text-xs text-text-muted">
-          খোলা টাস্ক {openTotal}টি — বোর্ডে প্রথম {board.openTasks.length}টি দেখানো হচ্ছে।
+          {interpolate(s.cappedNote, { open: openTotal, shown: board.openTasks.length })}
         </p>
       ) : null}
       <div className="grid gap-4 lg:grid-cols-2">
         {(
           [
-            { status: "QUEUED" as const, title: "সারিতে · Queued", tasks: queuedTasks, count: board.countsByStatus.QUEUED },
-            { status: "IN_CALL" as const, title: "কলে আছে · In Call", tasks: inCallTasks, count: board.countsByStatus.IN_CALL },
+            { status: "QUEUED" as const, title: s.colQueuedTitle, tasks: queuedTasks, count: board.countsByStatus.QUEUED },
+            { status: "IN_CALL" as const, title: s.colInCallTitle, tasks: inCallTasks, count: board.countsByStatus.IN_CALL },
           ]
         ).map((col) => (
           <section key={col.status} aria-label={col.title} className="rounded-lg border border-border/70 bg-surface-2/60 p-3.5">
@@ -331,11 +336,11 @@ function Board({ board }: { board: SupervisorBoard }) {
               </span>
             </h3>
             {col.tasks.length === 0 ? (
-              <p className="text-sm text-text-muted">এই অবস্থায় কোনো টাস্ক নেই।</p>
+              <p className="text-sm text-text-muted">{s.noTasksInState}</p>
             ) : (
               <div className="space-y-2.5">
                 {col.tasks.map((t) => (
-                  <TaskCard key={t.id} task={t} slaThresholds={board.sla} now={now} />
+                  <TaskCard key={t.id} task={t} slaThresholds={board.sla} now={now} lang={locale} />
                 ))}
               </div>
             )}
@@ -343,10 +348,9 @@ function Board({ board }: { board: SupervisorBoard }) {
         ))}
       </div>
 
-      <SectionTitle icon="settings">টাস্ক পরিচালনা · Manage Tasks</SectionTitle>
+      <SectionTitle icon="settings">{s.manageSectionTitle}</SectionTitle>
       <p className="mb-3 max-w-2xl text-sm leading-relaxed text-text-muted">
-        Reassign, release back to the pool, or force-close with a reason. Every action is written to the
-        task&apos;s call log (REASSIGNED / RELEASED / FORCE_CLOSED) under your name.
+        {s.manageDesc}
       </p>
       <SupervisorControls tasks={board.openTasks} agents={board.agents} />
     </main>
@@ -354,18 +358,19 @@ function Board({ board }: { board: SupervisorBoard }) {
 }
 
 export default async function AdminCallCenterSupervisorPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, CALL_CENTER_STRINGS);
   await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
       <main>
         <PageHeader
-          title="সুপারভাইজার কনসোল"
-          description="Call Center — Supervisor"
-          breadcrumb="Admin / Call Center"
+          title={s.supervisorTitle}
+          description={s.supervisorDescShort}
+          breadcrumb={s.breadcrumb}
         />
         <p role="status">
-          🔒 This module is locked for this install. Call center is a paid add-on —
-          enable <code>module.call_center</code> in Admin &gt; Settings &gt; Feature Flags to unlock it.
+          {s.lockedA} <code>module.call_center</code> {s.lockedB}
         </p>
       </main>
     );
@@ -377,13 +382,13 @@ export default async function AdminCallCenterSupervisorPage() {
     return (
       <main>
         <PageHeader
-          title="সুপারভাইজার কনসোল"
-          description="Call Center — Supervisor"
-          breadcrumb="Admin / Call Center"
+          title={s.supervisorTitle}
+          description={s.supervisorDescShort}
+          breadcrumb={s.breadcrumb}
         />
-        <p role="alert">ডাটাবেস থেকে সুপারভাইজার বোর্ড পড়া যায়নি — কোনো সংখ্যা দেখানো হচ্ছে না। (Could not read the supervisor board from the database; no numbers are shown.)</p>
+        <p role="alert">{s.boardReadError}</p>
       </main>
     );
   }
-  return <Board board={board} />;
+  return <Board board={board} locale={locale} />;
 }

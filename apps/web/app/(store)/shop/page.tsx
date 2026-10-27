@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { ShopBrowser } from "./ShopBrowser";
+import { pick } from "@/i18n/locale";
+import { getStoreDefaultLocale } from "@/i18n/server";
+import { STORE_STRINGS } from "../store-strings";
 
 // Wave 47 (shop speed): /shop used to render per-request on the server
 // from searchParams (force-dynamic — 8.2s TTFB in production while the
@@ -20,13 +23,14 @@ import { ShopBrowser } from "./ShopBrowser";
 // document.title client-side from the same SEO fields once the
 // categories payload lands. Social/SEO crawlers that don't run JS
 // will see the generic shop title for category URLs.
-const SHOP_DEFAULT_TITLE = "দোকান — Advance Ecommerce";
-const SHOP_DEFAULT_DESCRIPTION = "সব পণ্য — ফিল্টার, সর্ট ও সার্চ দিয়ে খুঁজুন।";
-
-export const metadata: Metadata = {
-  title: SHOP_DEFAULT_TITLE,
-  description: SHOP_DEFAULT_DESCRIPTION,
-};
+// Doc 30: metadata follows the STORE DEFAULT locale. This stays
+// ISR-safe — getStoreDefaultLocale reads only the settings store
+// (no cookies/headers), so the shell remains a static edge page;
+// the per-visitor override applies to the rendered UI, not metadata.
+export async function generateMetadata(): Promise<Metadata> {
+  const s = pick(await getStoreDefaultLocale(), STORE_STRINGS);
+  return { title: s.shopDefaultTitle, description: s.shopMetaDescription };
+}
 
 // The shell itself never changes; a long revalidate keeps it a pure
 // edge-served static page (all live data arrives via the cached APIs).

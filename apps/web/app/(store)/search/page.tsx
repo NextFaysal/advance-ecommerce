@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { SearchBrowser } from "./SearchBrowser";
+import { pick } from "@/i18n/locale";
+import { getStoreDefaultLocale } from "@/i18n/server";
+import { STORE_STRINGS } from "../store-strings";
 
 // Wave 52 (search speed): /search used to render per-request on the
 // server from the ?q= searchParam (force-dynamic), while /shop —
@@ -19,10 +22,12 @@ import { SearchBrowser } from "./SearchBrowser";
 // instead of arriving in the first HTML, and a no-JS crawler sees
 // the empty shell rather than a result list. The served metadata was
 // already query-independent, so nothing SEO-visible is lost.
-export const metadata: Metadata = {
-  title: "Search — Advance Ecommerce",
-  description: "পণ্য খুঁজুন — বাংলা ও Banglish দুটোতেই।",
-};
+// Doc 30: metadata follows the STORE DEFAULT locale (ISR-safe —
+// settings store only, no request APIs; see shop/page.tsx).
+export async function generateMetadata(): Promise<Metadata> {
+  const s = pick(await getStoreDefaultLocale(), STORE_STRINGS);
+  return { title: s.searchMetaTitle, description: s.searchMetaDescription };
+}
 
 // The shell itself never changes; a long revalidate keeps it a pure
 // edge-served static page (all live data arrives via the cached API).

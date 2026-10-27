@@ -13,6 +13,9 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ThemedProductCard } from "@/themes/themed-product-card";
 import type { PublicProduct } from "@/catalog/types";
+import { interpolate, pick } from "@/i18n/locale";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { STORE_STRINGS } from "../store-strings";
 
 /** One Banglish mapping the server applied (wave 57B, meta.banglish). */
 interface BanglishMapped {
@@ -56,6 +59,8 @@ async function fetchSearchPage(
 }
 
 export function SearchBrowser() {
+  const { locale, t } = useLocale();
+  const s = pick(locale, STORE_STRINGS);
   const searchParams = useSearchParams();
   const q = searchParams.get("q") ?? "";
   const [state, setState] = useState<SearchState>({ status: "idle" });
@@ -85,7 +90,7 @@ export function SearchBrowser() {
   return (
     <main className="mx-auto min-w-0 max-w-7xl px-4 py-6">
       <h1 className="break-words text-xl font-bold [overflow-wrap:anywhere]">
-        {q ? `“${q}” এর ফলাফল` : "পণ্য খুঁজুন"}
+        {q ? interpolate(s.searchResultsFor, { q }) : s.searchHeadingDefault}
       </h1>
 
       {/* Search form — GET so results are shareable */}
@@ -94,35 +99,35 @@ export function SearchBrowser() {
           key={q}
           name="q"
           defaultValue={q}
-          placeholder="যেমন: জামা, sharee, charger…"
+          placeholder={s.searchPlaceholder}
           className="min-w-0 flex-1 rounded-lg border border-[#E6E8F2] px-3 py-2 text-sm"
         />
         <button type="submit" className="rounded-lg bg-[#4F46E5] px-4 py-2 text-sm font-semibold text-white">
-          খুঁজুন
+          {t.search}
         </button>
       </form>
 
       {mapped.length > 0 && (
         <p className="mt-3 text-sm text-slate-500">
-          খুঁজছেন: {mapped.map((m) => `${m.to} (${m.from}-এর জন্য)`).join(", ")}
+          {s.searchMappedPrefix} {mapped.map((m) => interpolate(s.searchMappedItem, { to: m.to, from: m.from })).join(", ")}
         </p>
       )}
 
-      {!q && <p className="mt-6 text-sm text-slate-500">উপরে শব্দ লিখে খুঁজুন — বাংলা বা Banglish, দুটোই চলবে।</p>}
+      {!q && <p className="mt-6 text-sm text-slate-500">{s.searchIdleHint}</p>}
 
       {q && state.status === "loading" && (
-        <p className="mt-6 text-sm text-slate-500">খুঁজছি…</p>
+        <p className="mt-6 text-sm text-slate-500">{s.searchLoading}</p>
       )}
 
       {q && state.status === "error" && (
         <div className="mt-6 rounded-xl border p-6 text-center">
-          <p>খুঁজতে সমস্যা হয়েছে — একটু পরে আবার চেষ্টা করুন, অথবা <Link href="/shop" className="font-semibold text-[#4F46E5]">সব পণ্য</Link> দেখুন।</p>
+          <p>{s.searchErrorPrefix} <Link href="/shop" className="font-semibold text-[#4F46E5]">{t.allProducts}</Link> {s.searchErrorSuffix}</p>
         </div>
       )}
 
       {q && state.status === "done" && products.length === 0 && (
         <div className="mt-6 rounded-xl border p-6 text-center">
-          <p>“{q}” দিয়ে কিছু পাওয়া যায়নি। বানান দেখে আবার চেষ্টা করুন বা <Link href="/shop" className="font-semibold text-[#4F46E5]">সব পণ্য</Link> দেখুন।</p>
+          <p>{interpolate(s.searchNoResultsPrefix, { q })} <Link href="/shop" className="font-semibold text-[#4F46E5]">{t.allProducts}</Link> {s.searchNoResultsSuffix}</p>
         </div>
       )}
 
@@ -136,9 +141,9 @@ export function SearchBrowser() {
       <p className="mt-6 text-xs text-slate-500">
         {state.status === "done"
           ? state.engine === "meilisearch"
-            ? "Search engine: Meilisearch (typo-tolerant, বাংলা + Banglish synonyms)।"
-            : "Search engine: PostgreSQL (fallback — Meilisearch unavailable)।"
-          : "Typo-tolerant search: Meilisearch (বাংলা + Banglish synonyms), না থাকলে PostgreSQL fallback।"}
+            ? s.engineMeilisearch
+            : s.enginePostgres
+          : s.engineDefault}
       </p>
     </main>
   );

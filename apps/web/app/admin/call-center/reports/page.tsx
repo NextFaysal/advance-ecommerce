@@ -12,7 +12,10 @@ import {
   parseReportRange,
   type CallCenterReport,
 } from "@/callcenter/reports";
+import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { getRequestLocale } from "@/i18n/server";
 import { CallCenterTabs } from "../tabs";
+import { CALL_CENTER_STRINGS, type CallCenterStrings } from "../strings";
 import { daysAgoInDhaka, todayInDhaka } from "@/reports/db-rows";
 import type { DateRange } from "@/reports/types";
 import { ReportsExportButton } from "./export-button";
@@ -114,32 +117,35 @@ const MIX_DOT_CLASS: Record<string, string> = {
   wrongNumber: "bg-slate-500",
 };
 
-const MIX_LABELS: Record<string, string> = {
-  confirmed: "কনফার্ম",
-  callbacks: "কলব্যাক",
-  cancelled: "বাতিল",
-  noAnswer: "No Answer",
-  wrongNumber: "Wrong Number",
-};
+function mixLabels(s: CallCenterStrings): Record<string, string> {
+  return {
+    confirmed: s.mixConfirmed,
+    callbacks: s.mixCallbacks,
+    cancelled: s.mixCancelled,
+    noAnswer: s.mixNoAnswer,
+    wrongNumber: s.mixWrongNumber,
+  };
+}
 
 export default async function AdminCallCenterReportsPage({
   searchParams,
 }: {
   searchParams: { days?: string; from?: string; to?: string };
 }) {
+  const locale: Locale = await getRequestLocale();
+  const s = pick(locale, CALL_CENTER_STRINGS);
+  const MIX_LABELS = mixLabels(s);
   await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
       <main>
         <PageHeader
-          title="কল রিপোর্ট"
-          description="Call-center reporting (C5)"
-          breadcrumb="Admin / Call Center"
+          title={s.reportsTitle}
+          description={s.reportsDescShort}
+          breadcrumb={s.breadcrumb}
         />
         <p role="status">
-          🔒 এই মডিউলটি এই ইনস্টলে লক করা আছে। কল সেন্টার একটি পেইড অ্যাড-অন — খুলতে
-          Admin &gt; Settings থেকে <code>module.call_center</code> ফিচার ফ্ল্যাগ চালু করুন।
-          (This module is locked — enable the <code>module.call_center</code> feature flag to unlock it.)
+          {s.lockedA} <code>module.call_center</code> {s.lockedB}
         </p>
       </main>
     );
@@ -161,16 +167,16 @@ export default async function AdminCallCenterReportsPage({
         activeDays === d ? "border-primary bg-primary/10 font-semibold" : "border-border"
       }`}
     >
-      {d} দিন
+      {interpolate(s.daysPreset, { days: d })}
     </Link>
   ));
 
   return (
     <main>
       <PageHeader
-        title="কল রিপোর্ট"
-        description={`কল সেন্টারের কার্যকারিতা — আসল CallTask/CallLogEntry ডেটা থেকে। পরিসর: ${range.from} → ${range.to} (ঢাকা সময়)। (Call Reports — C5)`}
-        breadcrumb="Admin / Call Center"
+        title={s.reportsTitle}
+        description={interpolate(s.reportsDescLong, { from: range.from, to: range.to })}
+        breadcrumb={s.breadcrumb}
       />
       <CallCenterTabs active="reports" />
 
@@ -184,45 +190,43 @@ export default async function AdminCallCenterReportsPage({
           role="alert"
           className="rounded-md bg-rose-50 px-3.5 py-2.5 text-small leading-relaxed text-rose-700"
         >
-          ডাটাবেস থেকে রিপোর্ট পড়া যায়নি — কোনো সংখ্যা দেখানো হচ্ছে না। (Could not read the
-          report from the database; no numbers are shown.)
+          {s.reportReadError}
         </p>
       ) : (
         <>
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <RateCard
-              label="মোট কল চেষ্টা"
+              label={s.rateTotalAttempts}
               value={String(report.attempts)}
               detail={
                 <>
-                  নতুন টাস্ক{" "}
+                  {s.newTasksLead}{" "}
                   <span className="font-mono font-semibold tabular-nums text-text-main">
                     {report.tasksCreated}
                   </span>
-                  টি
+                  {s.countSuffix}
                 </>
               }
               icon={<Icon name="phone" size={22} />}
               accent="bg-brand-50 text-brand-600"
             />
             <RateCard
-              label="যোগাযোগের হার"
+              label={s.rateContact}
               value={pct(report.contactRateBps)}
               detail={
                 <>
-                  কথা হয়েছে <Frac n={report.contactedAttempts} d={report.attempts} /> — No
-                  Answer ও Wrong Number বাদে
+                  {s.contactedLead} <Frac n={report.contactedAttempts} d={report.attempts} /> {s.contactedTail}
                 </>
               }
               icon={<Icon name="users" size={22} />}
               accent="bg-sky-50 text-sky-600"
             />
             <RateCard
-              label="কনফার্মেশন হার"
+              label={s.rateConfirmation}
               value={pct(report.confirmation.rateBps)}
               detail={
                 <>
-                  সম্পন্ন টাস্কের মধ্যে কনফার্ম{" "}
+                  {s.confirmationLead}{" "}
                   <Frac n={report.confirmation.confirmed} d={report.confirmation.completed} />
                 </>
               }
@@ -230,37 +234,34 @@ export default async function AdminCallCenterReportsPage({
               accent="bg-emerald-50 text-emerald-600"
             />
             <RateCard
-              label="রেসকিউ হার"
+              label={s.rateRescue}
               value={pct(report.rescue.rateBps)}
               detail={
                 <>
-                  ব্যর্থ ডেলিভারির সম্পন্ন টাস্কের মধ্যে কনফার্ম{" "}
-                  <Frac n={report.rescue.confirmed} d={report.rescue.completed} /> (শুধু কল
-                  outcome অনুযায়ী)
+                  {s.rescueLead}{" "}
+                  <Frac n={report.rescue.confirmed} d={report.rescue.completed} /> {s.rescueTail}
                 </>
               }
               icon={<Icon name="truck" size={22} />}
               accent="bg-amber-50 text-amber-600"
             />
             <RateCard
-              label="কলব্যাক রাখার হার"
+              label={s.rateCallbackKept}
               value={pct(report.callbacks.rateBps)}
               detail={
                 <>
-                  কলব্যাক <Frac n={report.callbacks.kept} d={report.callbacks.total} /> পরে
-                  কনফার্ম হয়েছে
+                  {s.callbacksWord} <Frac n={report.callbacks.kept} d={report.callbacks.total} /> {s.callbackKeptTail}
                 </>
               }
               icon={<Icon name="rotate-ccw" size={22} />}
               accent="bg-teal-50 text-teal-600"
             />
             <RateCard
-              label="সম্পন্নপ্রতি গড় চেষ্টা"
+              label={s.rateAvgAttempts}
               value={String(report.avgAttemptsPerCompletedTask)}
               detail={
                 <>
-                  সম্পন্ন টাস্ক <span className="font-mono font-semibold tabular-nums text-text-main">{report.tasksCompleted}</span>টির
-                  উপর
+                  {s.completedTasksLead} <span className="font-mono font-semibold tabular-nums text-text-main">{report.tasksCompleted}</span>{s.avgSuffix}
                 </>
               }
               icon={<Icon name="refresh-ccw" size={22} />}
@@ -268,42 +269,40 @@ export default async function AdminCallCenterReportsPage({
             />
           </div>
 
-          <h2 className="mb-1 text-lg font-semibold">উৎস অনুযায়ী</h2>
+          <h2 className="mb-1 text-lg font-semibold">{s.bySourceTitle}</h2>
           <p className="mb-3 text-xs text-text-muted">
-            উৎস (source) অনুযায়ী টাস্ক — তৈরি, সম্পন্ন, শেষ outcome কনফার্ম, আর ওই উৎসের
-            টাস্কে মোট কল চেষ্টা। বার = মোট তৈরির মধ্যে ওই উৎসের অংশ।
+            {s.bySourceDesc}
           </p>
           <div className="space-y-3">
-            {report.bySource.map((s) => {
+            {report.bySource.map((src) => {
               const totalCreated = report.bySource.reduce((sum, x) => sum + x.created, 0);
               return (
-                <div key={s.source} className="rounded-md border border-border p-4">
+                <div key={src.source} className="rounded-md border border-border p-4">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                    <SourceChip source={s.source} />
+                    <SourceChip source={src.source} lang={locale} />
                     <span className="font-mono text-xs tabular-nums text-text-muted">
-                      তৈরি {s.created} · সম্পন্ন {s.completed} · কনফার্ম (শেষ outcome){" "}
-                      {s.confirmedFinal} · কল চেষ্টা {s.attempts}
+                      {interpolate(s.bySourceStats, { created: src.created, completed: src.completed, confirmed: src.confirmedFinal, attempts: src.attempts })}
                     </span>
                   </div>
                   <div
                     className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2"
                     role="img"
-                    aria-label={`তৈরি ${s.created}টি — মোট ${totalCreated}টির মধ্যে`}
+                    aria-label={interpolate(s.bySourceAria, { created: src.created, total: totalCreated })}
                   >
                     <div
                       className="h-full rounded-full bg-brand-500"
-                      style={{ width: `${sharePct(s.created, totalCreated)}%` }}
+                      style={{ width: `${sharePct(src.created, totalCreated)}%` }}
                     />
                   </div>
                   <div className="mt-2 flex items-center gap-2">
                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
                       <div
                         className="h-full rounded-full bg-emerald-500"
-                        style={{ width: `${sharePct(s.completed, s.created)}%` }}
+                        style={{ width: `${sharePct(src.completed, src.created)}%` }}
                       />
                     </div>
                     <span className="text-[11px] text-text-muted">
-                      সম্পন্ন {s.completed}/{s.created}
+                      {interpolate(s.completedFrac, { completed: src.completed, created: src.created })}
                     </span>
                   </div>
                 </div>
@@ -311,7 +310,7 @@ export default async function AdminCallCenterReportsPage({
             })}
           </div>
 
-          <h2 className="mb-3 mt-8 text-lg font-semibold">ঘণ্টা অনুযায়ী কল (ঢাকা সময়)</h2>
+          <h2 className="mb-3 mt-8 text-lg font-semibold">{s.byHourTitle}</h2>
           <div className="rounded-md border border-border p-4">
             <div className="flex gap-1 overflow-x-auto pb-2 lg:grid lg:grid-cols-12 lg:overflow-visible">
               {report.byHour.map((b) => {
@@ -321,7 +320,7 @@ export default async function AdminCallCenterReportsPage({
                   <div
                     key={b.hour}
                     className="flex w-10 shrink-0 flex-col items-center gap-1 lg:w-auto"
-                    title={`${b.hour}:00 — চেষ্টা ${b.attempts}টি, কথা হয়েছে ${b.contacted}টি`}
+                    title={interpolate(s.hourCellTitle, { hour: b.hour, attempts: b.attempts, contacted: b.contacted })}
                   >
                     <div
                       className="flex h-12 w-full items-center justify-center rounded-md text-sm font-semibold tabular-nums"
@@ -344,7 +343,7 @@ export default async function AdminCallCenterReportsPage({
               })}
             </div>
             <div className="mt-1 flex items-center gap-1.5 text-[11px] text-text-muted">
-              <span>কম</span>
+              <span>{s.heatLess}</span>
               {[0.15, 0.4, 0.65, 0.9].map((a) => (
                 <span
                   key={a}
@@ -353,18 +352,16 @@ export default async function AdminCallCenterReportsPage({
                   style={{ backgroundColor: `rgba(79, 70, 229, ${a})` }}
                 />
               ))}
-              <span>বেশি</span>
+              <span>{s.heatMore}</span>
             </div>
             <p className="mt-2 text-xs text-text-muted">
-              প্রতিটি ঘর = ওই ঘণ্টায় মোট কল চেষ্টা (সংখ্যাটি ঘরের ভিতরেই)। ঘরের উপর মাউস
-              রাখলে কথা-হওয়ার সংখ্যা দেখা যাবে।
+              {s.byHourNote}
             </p>
           </div>
 
-          <h2 className="mb-1 mt-8 text-lg font-semibold">এজেন্ট অনুযায়ী</h2>
+          <h2 className="mb-1 mt-8 text-lg font-semibold">{s.byAgentTitle}</h2>
           <p className="mb-3 text-xs text-text-muted">
-            এজেন্টের কার্যকারিতা — agentPerformance() হেল্পার থেকে; কলব্যাক-রক্ষা এই রিপোর্টে
-            যোগ করা। মোট সময় = প্রতিটি কলের আসল duration (outcome-এর সময় সেভ হয়)।
+            {s.byAgentDesc}
           </p>
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-text-muted">
             {Object.keys(MIX_LABELS).map((k) => (
@@ -382,13 +379,13 @@ export default async function AdminCallCenterReportsPage({
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className="font-medium">{a.agentName ?? a.agentId}</span>
                     <span className="font-mono text-xs tabular-nums text-text-muted">
-                      মোট কল {a.totalCalls} · কনফার্ম হার {pct(a.confirmRateBps)}
+                      {interpolate(s.agentStatsLine, { calls: a.totalCalls, rate: pct(a.confirmRateBps) })}
                     </span>
                   </div>
                   <div
                     className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-surface-2"
                     role="img"
-                    aria-label={`কনফার্ম ${a.confirmed}, কলব্যাক ${a.callbacks}, বাতিল ${a.cancelled}, No Answer ${a.noAnswer}, Wrong Number ${a.wrongNumber}`}
+                    aria-label={interpolate(s.agentMixAria, { confirmed: a.confirmed, callbacks: a.callbacks, cancelled: a.cancelled, noAnswer: a.noAnswer, wrongNumber: a.wrongNumber })}
                   >
                     {outcomeMix(a).map((seg) =>
                       seg.value > 0 ? (
@@ -402,12 +399,10 @@ export default async function AdminCallCenterReportsPage({
                     )}
                   </div>
                   <p className="mt-2 font-mono text-xs tabular-nums text-text-muted">
-                    কনফার্ম {a.confirmed} · কলব্যাক {a.callbacks} · বাতিল {a.cancelled} · No
-                    Answer {a.noAnswer} · Wrong Number {a.wrongNumber} · কলব্যাক রক্ষা{" "}
-                    {a.callbacksKept} ({pct(a.callbackKeptRateBps)})
+                    {interpolate(s.agentMixLine, { confirmed: a.confirmed, callbacks: a.callbacks, cancelled: a.cancelled, noAnswer: a.noAnswer, wrongNumber: a.wrongNumber, kept: a.callbacksKept, rate: pct(a.callbackKeptRateBps) })}
                   </p>
                   <div className="mt-3 flex items-center gap-2">
-                    <span className="w-16 shrink-0 text-[11px] text-text-muted">মোট সময়</span>
+                    <span className="w-16 shrink-0 text-[11px] text-text-muted">{s.totalTimeLabel}</span>
                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
                       <div
                         className="h-full rounded-full bg-brand-500"
@@ -415,7 +410,7 @@ export default async function AdminCallCenterReportsPage({
                       />
                     </div>
                     <span className="font-mono text-xs tabular-nums text-text-muted">
-                      {a.totalTalkSeconds} সেকেন্ড
+                      {interpolate(s.secondsText, { n: a.totalTalkSeconds })}
                     </span>
                   </div>
                 </div>
@@ -424,7 +419,7 @@ export default async function AdminCallCenterReportsPage({
           </div>
           {report.agents.length === 0 ? (
             <p className="mt-3 text-sm text-text-muted">
-              এই সময়ে কোনো এজেন্টের কল লগ নেই। (No agent call logs in this range.)
+              {s.noAgentLogs}
             </p>
           ) : null}
         </>

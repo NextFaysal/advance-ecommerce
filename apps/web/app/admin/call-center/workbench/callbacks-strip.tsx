@@ -13,6 +13,9 @@
  * SLA language — see the CD1 report).
  */
 import { SlaChip, TaskCard } from "@/callcenter/components";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { CALL_CENTER_STRINGS } from "../strings";
 import { bnDateTime, type TaskView } from "./shared";
 
 function CallbackRow({
@@ -21,17 +24,21 @@ function CallbackRow({
   busy,
   onClaimTask,
   accent,
+  locale,
 }: {
   task: TaskView;
   current: TaskView | null;
   busy: boolean;
   onClaimTask: (taskId: string) => void;
   accent: "amber" | "sky";
+  locale: Locale;
 }) {
+  const s = pick(locale, CALL_CENTER_STRINGS);
   return (
     <li className="w-72 shrink-0 snap-start">
       <TaskCard
         task={task}
+        lang={locale}
         actions={
           !current ? (
             <button
@@ -44,7 +51,7 @@ function CallbackRow({
                   : "bg-sky-600 hover:bg-sky-700"
               }`}
             >
-              এই কলটি নিন
+              {s.claimThisCall}
             </button>
           ) : undefined
         }
@@ -53,10 +60,10 @@ function CallbackRow({
         {/* The workbench payload carries no SLA thresholds, so only the
             board's threshold-free callback rule is shown: callbackAt < now. */}
         {task.callbackAt && Date.parse(task.callbackAt) < Date.now() ? (
-          <SlaChip state="overdue" />
+          <SlaChip state="overdue" lang={locale} />
         ) : null}
         {task.callbackAt ? (
-          <span className="text-xs text-text-muted">সময়: {bnDateTime(task.callbackAt)}</span>
+          <span className="text-xs text-text-muted">{s.callbackTimePrefix} {bnDateTime(task.callbackAt, locale)}</span>
         ) : null}
       </div>
     </li>
@@ -76,13 +83,15 @@ export function CallbacksStrip({
   busy: boolean;
   onClaimTask: (taskId: string) => void;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, CALL_CENTER_STRINGS);
   if (dueCallbacks.length === 0 && myCallbacks.length === 0) return null;
   return (
     <div className="space-y-3">
       {dueCallbacks.length > 0 ? (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-3">
           <h3 className="text-sm font-semibold text-amber-900">
-            ⏰ কলব্যাকের সময় হয়েছে ({dueCallbacks.length}টি)
+            {interpolate(s.dueCallbacksTitle, { count: dueCallbacks.length })}
           </h3>
           <ul className="mt-2 flex snap-x gap-3 overflow-x-auto pb-1">
             {dueCallbacks.map((t) => (
@@ -93,6 +102,7 @@ export function CallbacksStrip({
                 busy={busy}
                 onClaimTask={onClaimTask}
                 accent="amber"
+                locale={locale}
               />
             ))}
           </ul>
@@ -102,7 +112,7 @@ export function CallbacksStrip({
       {myCallbacks.length > 0 ? (
         <div className="rounded-xl border border-sky-300 bg-sky-50 p-3">
           <h3 className="text-sm font-semibold text-sky-900">
-            🗓 আমার কলব্যাক ({myCallbacks.length}টি)
+            {interpolate(s.myCallbacksTitle, { count: myCallbacks.length })}
           </h3>
           <ul className="mt-2 flex snap-x gap-3 overflow-x-auto pb-1">
             {myCallbacks.map((t) => (
@@ -113,6 +123,7 @@ export function CallbacksStrip({
                 busy={busy}
                 onClaimTask={onClaimTask}
                 accent="sky"
+                locale={locale}
               />
             ))}
           </ul>

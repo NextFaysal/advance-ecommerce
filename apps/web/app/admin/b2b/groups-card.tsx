@@ -22,6 +22,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { formatPoisha } from "@/components/ui/money";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { B2B_STRINGS } from "./strings";
 
 interface PriceGroup {
   id: string;
@@ -73,6 +76,8 @@ function percentLabel(bps: number): string {
 }
 
 export function B2bGroupsCard() {
+  const { locale } = useLocale();
+  const s = pick(locale, B2B_STRINGS);
   const [doc, setDoc] = useState<GroupsDoc>(EMPTY_DOC);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [variants, setVariants] = useState<VariantOption[]>([]);
@@ -94,14 +99,14 @@ export function B2bGroupsCard() {
         const body = (await res.json().catch(() => ({}))) as GroupsResponse;
         if (cancelled) return;
         if (!res.ok || !body.data) {
-          setError(body.error?.message ?? "গ্রুপ প্রাইসিং লোড করা যায়নি — আবার চেষ্টা করুন।");
+          setError(body.error?.message ?? s.loadFailed);
           return;
         }
         setDoc(body.data.groups);
         setCustomers(body.data.customers ?? []);
         setVariants(body.data.variants ?? []);
       } catch {
-        if (!cancelled) setError("সার্ভারে পৌঁছানো যাচ্ছে না — নেটওয়ার্ক দেখে আবার চেষ্টা করুন।");
+        if (!cancelled) setError(s.serverUnreachable);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -118,7 +123,7 @@ export function B2bGroupsCard() {
     const id = `grp_${Date.now().toString(36)}_${doc.groups.length + 1}`;
     setDoc((d) => ({
       ...d,
-      groups: [...d.groups, { id, name: "নতুন গ্রুপ", discountBps: 0 }],
+      groups: [...d.groups, { id, name: s.newGroupName, discountBps: 0 }],
     }));
   }
 
@@ -174,7 +179,7 @@ export function B2bGroupsCard() {
     if (newOverrideGroup === "" || newOverrideVariant === "") return;
     const price = Number(newOverridePrice);
     if (!Number.isInteger(price) || price < 0) {
-      setError("ওভাররাইড মূল্য অবশ্যই ০ বা তার বেশি পূর্ণসংখ্যা (পয়সা) হতে হবে।");
+      setError(s.overrideInvalid);
       return;
     }
     setError(null);
@@ -195,7 +200,7 @@ export function B2bGroupsCard() {
       });
       const body = (await res.json().catch(() => ({}))) as GroupsResponse;
       if (!res.ok || !body.data) {
-        setError(body.error?.message ?? "গ্রুপ প্রাইসিং সংরক্ষণ করা যায়নি — আবার চেষ্টা করুন।");
+        setError(body.error?.message ?? s.saveFailed);
         if (Array.isArray(body.error?.details)) {
           setErrorDetails(body.error.details.filter((x): x is string => typeof x === "string"));
         }
@@ -203,9 +208,9 @@ export function B2bGroupsCard() {
       }
       setDoc(body.data.groups);
       setReason("");
-      setMessage("গ্রুপ প্রাইসিং সংরক্ষিত হয়েছে — পোর্টালের মূল্য ও নতুন RFQ-তে এখন থেকে এটাই প্রযোজ্য।");
+      setMessage(s.savedMsg);
     } catch {
-      setError("সার্ভারে পৌঁছানো যাচ্ছে না — নেটওয়ার্ক দেখে আবার চেষ্টা করুন।");
+      setError(s.serverUnreachable);
     } finally {
       setBusy(false);
     }
@@ -213,27 +218,24 @@ export function B2bGroupsCard() {
 
   return (
     <Card>
-      <h3 className="text-base font-semibold text-text-main">গ্রুপ প্রাইসিং (Group pricing)</h3>
+      <h3 className="text-base font-semibold text-text-main">{s.groupsTitle}</h3>
       <p className="mt-1 text-sm leading-6 text-text-muted">
-        প্রতিটি B2B গ্রাহক সর্বোচ্চ একটি গ্রুপে থাকেন। ক্রেতার মূল্য: গ্রুপের{" "}
-        <strong>ওভাররাইড</strong> থাকলে সেটাই, না থাকলে ক্যাটালগ মূল্য − গ্রুপ ছাড়, গ্রুপ না থাকলে
-        ক্যাটালগ মূল্য। মূল্য RFQ/বাল্ক জমার সময় কোটেশনে স্ন্যাপশট হয় — এই ডক বদলালে পুরনো
-        কোটেশনের মূল্য বদলায় না। স্টাফ-তৈরি কোটেশনে গ্রুপ প্রাইসিং প্রযোজ্য নয়।
+        {s.groupsDesc}
       </p>
 
       {loading ? (
-        <p className="mt-4 text-sm text-text-muted">লোড হচ্ছে…</p>
+        <p className="mt-4 text-sm text-text-muted">{s.loading}</p>
       ) : (
         <div className="mt-4 space-y-6">
           <section>
             <div className="flex items-center justify-between gap-2">
-              <h4 className="text-sm font-semibold text-text-main">গ্রুপসমূহ</h4>
+              <h4 className="text-sm font-semibold text-text-main">{s.groupsHeading}</h4>
               <Button onClick={addGroup} disabled={busy}>
-                + নতুন গ্রুপ
+                {s.addGroup}
               </Button>
             </div>
             {doc.groups.length === 0 ? (
-              <p className="mt-2 text-sm text-text-muted">এখনো কোনো গ্রুপ নেই — সব ক্রেতা ক্যাটালগ মূল্যে কিনছেন।</p>
+              <p className="mt-2 text-sm text-text-muted">{s.noGroups}</p>
             ) : (
               <ul className="mt-2 space-y-2">
                 {doc.groups.map((group) => (
@@ -243,7 +245,7 @@ export function B2bGroupsCard() {
                   >
                     <label className="block">
                       <span className="mb-1 block text-xs font-medium text-text-muted">
-                        গ্রুপের নাম <span className="font-mono">({group.id})</span>
+                        {s.groupNameLabel} <span className="font-mono">({group.id})</span>
                       </span>
                       <input
                         className={inputCls}
@@ -254,7 +256,7 @@ export function B2bGroupsCard() {
                     </label>
                     <label className="block">
                       <span className="mb-1 block text-xs font-medium text-text-muted">
-                        ছাড় (bps — {percentLabel(group.discountBps)})
+                        {interpolate(s.discountLabel, { pct: percentLabel(group.discountBps) })}
                       </span>
                       <input
                         className={inputCls}
@@ -272,19 +274,19 @@ export function B2bGroupsCard() {
                       />
                     </label>
                     <Button onClick={() => removeGroup(group.id)} disabled={busy}>
-                      মুছুন
+                      {s.remove}
                     </Button>
                   </li>
                 ))}
               </ul>
             )}
-            <p className="mt-1 text-xs text-text-muted">bps = শতাংশের ১/১০০ অংশ: 500 bps = 5% ছাড়।</p>
+            <p className="mt-1 text-xs text-text-muted">{s.bpsNote}</p>
           </section>
 
           <section>
-            <h4 className="text-sm font-semibold text-text-main">গ্রাহক → গ্রুপ অ্যাসাইনমেন্ট</h4>
+            <h4 className="text-sm font-semibold text-text-main">{s.assignmentsHeading}</h4>
             {customers.length === 0 ? (
-              <p className="mt-2 text-sm text-text-muted">কোনো B2B গ্রাহক নেই।</p>
+              <p className="mt-2 text-sm text-text-muted">{s.noB2bCustomers}</p>
             ) : (
               <ul className="mt-2 max-h-64 space-y-2 overflow-auto pr-1">
                 {customers.map((customer) => (
@@ -303,12 +305,12 @@ export function B2bGroupsCard() {
                       value={doc.assignments[customer.id] ?? ""}
                       onChange={(e) => setAssignment(customer.id, e.target.value)}
                       disabled={busy}
-                      aria-label={`${customer.businessName}-এর গ্রুপ`}
+                      aria-label={interpolate(s.customerGroupAria, { name: customer.businessName })}
                     >
-                      <option value="">কোনো গ্রুপ নয় (ক্যাটালগ মূল্য)</option>
+                      <option value="">{s.noGroupOption}</option>
                       {doc.groups.map((group) => (
                         <option key={group.id} value={group.id}>
-                          {group.name} — {percentLabel(group.discountBps)} ছাড়
+                          {group.name} — {interpolate(s.discountSuffix, { pct: percentLabel(group.discountBps) })}
                         </option>
                       ))}
                     </select>
@@ -319,17 +321,17 @@ export function B2bGroupsCard() {
           </section>
 
           <section>
-            <h4 className="text-sm font-semibold text-text-main">ভ্যারিয়েন্ট মূল্য ওভাররাইড</h4>
+            <h4 className="text-sm font-semibold text-text-main">{s.overridesHeading}</h4>
             <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1.4fr_150px_auto] sm:items-end">
               <label className="block">
-                <span className="mb-1 block text-xs font-medium text-text-muted">গ্রুপ</span>
+                <span className="mb-1 block text-xs font-medium text-text-muted">{s.groupLabel}</span>
                 <select
                   className={selectCls}
                   value={newOverrideGroup}
                   onChange={(e) => setNewOverrideGroup(e.target.value)}
                   disabled={busy}
                 >
-                  <option value="">গ্রুপ বেছে নিন…</option>
+                  <option value="">{s.chooseGroup}</option>
                   {doc.groups.map((group) => (
                     <option key={group.id} value={group.id}>
                       {group.name}
@@ -338,7 +340,7 @@ export function B2bGroupsCard() {
                 </select>
               </label>
               <label className="block">
-                <span className="mb-1 block text-xs font-medium text-text-muted">ভ্যারিয়েন্ট (SKU)</span>
+                <span className="mb-1 block text-xs font-medium text-text-muted">{s.variantLabel}</span>
                 <select
                   className={selectCls}
                   value={newOverrideVariant}
@@ -349,16 +351,16 @@ export function B2bGroupsCard() {
                   }}
                   disabled={busy}
                 >
-                  <option value="">ভ্যারিয়েন্ট বেছে নিন…</option>
+                  <option value="">{s.chooseVariant}</option>
                   {variants.map((variant) => (
                     <option key={variant.variantId} value={variant.variantId}>
-                      {variant.sku} — {variant.productNameBn} ({formatPoisha(variant.cataloguePricePoisha)})
+                      {variant.sku} — {locale === "bn" ? variant.productNameBn : variant.productNameEn} ({formatPoisha(variant.cataloguePricePoisha)})
                     </option>
                   ))}
                 </select>
               </label>
               <label className="block">
-                <span className="mb-1 block text-xs font-medium text-text-muted">ওভাররাইড মূল্য (পয়সা)</span>
+                <span className="mb-1 block text-xs font-medium text-text-muted">{s.overridePriceLabel}</span>
                 <input
                   className={inputCls}
                   type="number"
@@ -373,12 +375,12 @@ export function B2bGroupsCard() {
                 onClick={addOverride}
                 disabled={busy || newOverrideGroup === "" || newOverrideVariant === ""}
               >
-                যোগ করুন
+                {s.addBtn}
               </Button>
             </div>
 
             {Object.keys(doc.overrides).length === 0 ? (
-              <p className="mt-2 text-sm text-text-muted">কোনো ওভাররাইড নেই — সব ভ্যারিয়েন্টে গ্রুপ ছাড়ই প্রযোজ্য।</p>
+              <p className="mt-2 text-sm text-text-muted">{s.noOverrides}</p>
             ) : (
               <ul className="mt-2 space-y-2">
                 {Object.entries(doc.overrides).map(([groupId, byVariant]) => (
@@ -396,8 +398,8 @@ export function B2bGroupsCard() {
                               <span className="font-mono">{variant?.sku ?? variantId}</span>{" "}
                               <span className="text-text-muted">
                                 {variant
-                                  ? `${variant.productNameBn} · ক্যাটালগ ${formatPoisha(variant.cataloguePricePoisha)}`
-                                  : "(ভ্যারিয়েন্ট পাওয়া যায়নি — সংরক্ষণে যাচাই ব্যর্থ হবে)"}
+                                  ? `${locale === "bn" ? variant.productNameBn : variant.productNameEn} · ${interpolate(s.catalogueSuffix, { price: formatPoisha(variant.cataloguePricePoisha) })}`
+                                  : s.variantMissing}
                               </span>
                             </span>
                             <input
@@ -406,14 +408,14 @@ export function B2bGroupsCard() {
                               min={0}
                               step={1}
                               value={price}
-                              aria-label={`${variant?.sku ?? variantId}-এর ওভাররাইড মূল্য (পয়সা)`}
+                              aria-label={interpolate(s.overrideAria, { sku: variant?.sku ?? variantId })}
                               onChange={(e) =>
                                 setOverride(groupId, variantId, Math.max(0, Math.trunc(Number(e.target.value) || 0)))
                               }
                               disabled={busy}
                             />
                             <Button onClick={() => removeOverride(groupId, variantId)} disabled={busy}>
-                              সরান
+                              {s.removeBtn}
                             </Button>
                           </li>
                         );
@@ -428,11 +430,11 @@ export function B2bGroupsCard() {
           <Input
             id="b2b-groups-reason"
             name="b2b-groups-reason"
-            label="পরিবর্তনের কারণ"
-            helper="মূল্য পরিবর্তনের কারণ অডিট লগে রাখা বাধ্যতামূলক।"
+            label={s.reasonLabel}
+            helper={s.reasonHelper}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="যেমন: ডিলার গ্রুপের ছাড় ৫% থেকে ৭% করা হলো"
+            placeholder={s.reasonPlaceholder}
             required
             disabled={busy}
           />
@@ -457,7 +459,7 @@ export function B2bGroupsCard() {
 
           <div className="flex justify-end">
             <Button onClick={save} disabled={busy || reason.trim() === ""}>
-              {busy ? "সংরক্ষণ হচ্ছে…" : "গ্রুপ প্রাইসিং সংরক্ষণ করুন"}
+              {busy ? s.saving : s.saveBtn}
             </Button>
           </div>
         </div>

@@ -85,13 +85,16 @@
  */
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
 import { CallbacksStrip } from "./workbench/callbacks-strip";
 import { CallStage, MobileOutcomeBar } from "./workbench/call-stage";
 import { Customer360Panel } from "./workbench/context-panel";
 import { ManualTaskForm } from "./workbench/manual-form";
 import { QueueRail } from "./workbench/queue-rail";
+import { CALL_CENTER_STRINGS } from "./strings";
 import {
-  OUTCOME_BUTTONS,
+  outcomeButtons,
   automationSummaryLines,
   initialElapsedSec,
   readJson,
@@ -154,6 +157,8 @@ type LoadState = "loading" | "ready" | "locked" | "error";
 
 export function CallCenterWorkbench() {
   const router = useRouter();
+  const { locale } = useLocale();
+  const s = pick(locale, CALL_CENTER_STRINGS);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [loadError, setLoadError] = useState("");
   const [script, setScript] = useState<ScriptStep[]>([]);
@@ -200,7 +205,7 @@ export function CallCenterWorkbench() {
       }
       if (!res.ok || !body.data) {
         setLoadState("error");
-        setLoadError(body.error?.message ?? `সার্ভার ত্রুটি (${res.status})`);
+        setLoadError(body.error?.message ?? interpolate(s.serverError, { status: res.status }));
         return;
       }
       setScript(body.data.script);
@@ -219,9 +224,10 @@ export function CallCenterWorkbench() {
       setLoadState("ready");
     } catch {
       setLoadState("error");
-      setLoadError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+      setLoadError(s.networkErrorRetry);
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locale]);
 
   /** Soft refresh of the side data (due callbacks / counts) after an
    *  action, without disturbing the task in hand. */
@@ -277,11 +283,11 @@ export function CallCenterWorkbench() {
         });
         const body = await readJson<ClaimResponse>(res);
         if (!res.ok || body.error) {
-          setActionError(body.error?.message ?? `টাস্ক নেওয়া যায়নি (${res.status})`);
+          setActionError(body.error?.message ?? interpolate(s.claimFailed, { status: res.status }));
           return;
         }
         if (!body.data?.task) {
-          setNotice("কিউতে এখন নেওয়ার মতো কোনো টাস্ক নেই। নতুন টাস্ক এলে আবার চেষ্টা করুন।");
+          setNotice(s.noTaskAvailable);
           setUpNext(null);
           return;
         }
@@ -297,12 +303,13 @@ export function CallCenterWorkbench() {
         void refreshSideData();
         router.refresh();
       } catch {
-        setActionError("নেটওয়ার্ক ত্রুটি — টাস্ক নেওয়া যায়নি। আবার চেষ্টা করুন।");
+        setActionError(s.claimNetworkError);
       } finally {
         setBusy(false);
       }
     },
-    [refreshSideData, router],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [refreshSideData, router, locale],
   );
 
   const recordOutcome = useCallback(
@@ -350,12 +357,12 @@ export function CallCenterWorkbench() {
       }
       if (outcome === "CALLBACK") {
         if (!callbackAt) {
-          setActionError("কলব্যাকের সময় বেছে দিন — সময় ছাড়া কলব্যাক রেকর্ড হয় না।");
+          setActionError(s.callbackTimeRequired);
           return;
         }
         const when = new Date(callbackAt);
         if (Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) {
-          setActionError("কলব্যাকের সময় ভবিষ্যতের হতে হবে।");
+          setActionError(s.callbackTimeFuture);
           return;
         }
         payload.callbackAt = when.toISOString();
@@ -370,24 +377,18 @@ export function CallCenterWorkbench() {
         });
         const body = await readJson<OutcomeResponse>(res);
         if (!res.ok || body.error || !body.data) {
-          setActionError(body.error?.message ?? `ফলাফল রেকর্ড হয়নি (${res.status})`);
+          setActionError(body.error?.message ?? interpolate(s.outcomeFailed, { status: res.status }));
           return;
         }
         const effect = body.data.orderEffect;
         if (effect.attempted && effect.applied) {
-          setNotice(
-            effect.to === "CONFIRMED"
-              ? "ফলাফল রেকর্ড হয়েছে — সংযুক্ত অর্ডারটি CONFIRMED করা হয়েছে।"
-              : "ফলাফল রেকর্ড হয়েছে — সংযুক্ত অর্ডারটি CANCELLED করা হয়েছে।",
-          );
+          setNotice(effect.to === "CONFIRMED" ? s.outcomeOrderConfirmed : s.outcomeOrderCancelled);
         } else if (effect.attempted && !effect.applied) {
-          setNotice(
-            `ফলাফল রেকর্ড হয়েছে, কিন্তু অর্ডার আপডেট হয়নি: ${effect.error ?? "অজানা কারণ"} — সুপারভাইজারকে জানান।`,
-          );
+          setNotice(interpolate(s.outcomeOrderNotUpdated, { error: effect.error ?? s.unknownReason }));
         } else {
-          setNotice("ফলাফল রেকর্ড হয়েছে।");
+          setNotice(s.outcomeRecorded);
         }
-        setAutoLines(automationSummaryLines(body.data.automation));
+        setAutoLines(automationSummaryLines(body.data.automation, locale));
         clearClaimTime();
         setCurrent(null);
         setUpNext(body.data.nextTask);
@@ -399,12 +400,13 @@ export function CallCenterWorkbench() {
         void refreshSideData();
         router.refresh();
       } catch {
-        setActionError("নেটওয়ার্ক ত্রুটি — ফলাফল রেকর্ড হয়নি। আবার চেষ্টা করুন।");
+        setActionError(s.outcomeNetworkError);
       } finally {
         setBusy(false);
       }
     },
-    [current, callbackOpen, callbackAt, note, armedOutcome, disposition, elapsedSec, refreshSideData, router],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [current, callbackOpen, callbackAt, note, armedOutcome, disposition, elapsedSec, refreshSideData, router, locale],
   );
 
   /* CD4: keyboard outcome shortcuts. Keys 1–5 press the outcome
@@ -442,7 +444,7 @@ export function CallCenterWorkbench() {
         return;
       }
       if (e.key >= "1" && e.key <= "5") {
-        const btn = OUTCOME_BUTTONS[Number(e.key) - 1];
+        const btn = outcomeButtons(locale)[Number(e.key) - 1];
         if (btn) {
           e.preventDefault();
           void recordOutcome(btn.key);
@@ -461,7 +463,7 @@ export function CallCenterWorkbench() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [current, busy, queueOpen, callbackOpen, armedOutcome, recordOutcome]);
+  }, [current, busy, queueOpen, callbackOpen, armedOutcome, recordOutcome, locale]);
 
   const createManual = useCallback(
     async (e: FormEvent) => {
@@ -482,22 +484,23 @@ export function CallCenterWorkbench() {
         });
         const body = await readJson<ManualResponse>(res);
         if (!res.ok || body.error || !body.data) {
-          setMError(body.error?.message ?? `টাস্ক তৈরি হয়নি (${res.status})`);
+          setMError(body.error?.message ?? interpolate(s.manualFailed, { status: res.status }));
           return;
         }
-        setMNotice(`ম্যানুয়াল টাস্ক তৈরি হয়েছে (${body.data.task.phoneMasked}) — কিউতে যোগ হয়েছে।`);
+        setMNotice(interpolate(s.manualCreated, { phone: body.data.task.phoneMasked }));
         setMName("");
         setMPhone("");
         setMNote("");
         void refreshSideData();
         router.refresh();
       } catch {
-        setMError("নেটওয়ার্ক ত্রুটি — টাস্ক তৈরি হয়নি। আবার চেষ্টা করুন।");
+        setMError(s.manualNetworkError);
       } finally {
         setMBusy(false);
       }
     },
-    [mName, mPhone, mNote, refreshSideData, router],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mName, mPhone, mNote, refreshSideData, router, locale],
   );
 
   /* ------------------------------ render ------------------------------ */
@@ -505,8 +508,8 @@ export function CallCenterWorkbench() {
   if (loadState === "loading") {
     return (
       <section aria-busy="true" className="mb-6 rounded-lg border border-border bg-card p-4">
-        <h2 className="text-lg font-semibold">এজেন্ট ওয়ার্কবেঞ্চ</h2>
-        <p className="mt-2 text-sm text-text-muted">কিউ লোড হচ্ছে…</p>
+        <h2 className="text-lg font-semibold">{s.wbTitle}</h2>
+        <p className="mt-2 text-sm text-text-muted">{s.queueLoading}</p>
       </section>
     );
   }
@@ -514,10 +517,9 @@ export function CallCenterWorkbench() {
   if (loadState === "locked") {
     return (
       <section className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4">
-        <h2 className="text-lg font-semibold">এজেন্ট ওয়ার্কবেঞ্চ</h2>
+        <h2 className="text-lg font-semibold">{s.wbTitle}</h2>
         <p role="status" className="mt-2 text-sm">
-          🔒 কল সেন্টার মডিউল বন্ধ আছে (<code>module.call_center</code> OFF) — ওয়ার্কবেঞ্চ ব্যবহার
-          করতে Admin &gt; Settings &gt; Feature Flags থেকে মডিউলটি চালু করুন।
+          {s.wbLockedA}<code>module.call_center</code>{s.wbLockedB}
         </p>
       </section>
     );
@@ -526,16 +528,16 @@ export function CallCenterWorkbench() {
   if (loadState === "error") {
     return (
       <section className="mb-6 rounded-lg border border-rose-300 bg-rose-50 p-4">
-        <h2 className="text-lg font-semibold">এজেন্ট ওয়ার্কবেঞ্চ</h2>
+        <h2 className="text-lg font-semibold">{s.wbTitle}</h2>
         <p role="alert" className="mt-2 text-sm text-rose-700">
-          কিউ লোড করা যায়নি: {loadError}
+          {interpolate(s.queueLoadFailed, { error: loadError })}
         </p>
         <button
           type="button"
           onClick={() => void load()}
           className="mt-3 rounded-md bg-slate-700 px-3 py-1.5 text-sm text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
-          আবার চেষ্টা করুন
+          {s.tryAgain}
         </button>
       </section>
     );
@@ -544,18 +546,17 @@ export function CallCenterWorkbench() {
   return (
     <section className={`mb-6 rounded-lg border border-border bg-card p-4 ${current ? "pb-24 xl:pb-4" : ""}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">এজেন্ট ওয়ার্কবেঞ্চ (Agent Workbench)</h2>
+        <h2 className="text-lg font-semibold">{s.wbTitle}</h2>
         <button
           type="button"
           onClick={() => setQueueOpen(true)}
           className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 xl:hidden"
         >
-          🗂 কিউ ({unassignedCount})
+          {interpolate(s.queueButton, { count: unassignedCount })}
         </button>
       </div>
       <p className="mt-1 text-sm text-text-muted">
-        অ্যাসাইন না করা টাস্ক বাকি: <strong>{unassignedCount}</strong>টি। টাস্ক নিয়ে কাজ শেষে ফলাফল
-        রেকর্ড করুন — পরের টাস্ক এখানেই আসবে।
+        {s.unassignedLead} <strong>{unassignedCount}</strong>{s.unassignedTail}
       </p>
 
       {notice ? (

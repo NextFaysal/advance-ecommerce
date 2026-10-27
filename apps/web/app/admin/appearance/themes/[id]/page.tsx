@@ -12,6 +12,9 @@ import type { AppTheme, ThemeTokens } from "@/lib/themes";
 import { generateSmartPalette } from "@/lib/theme-palette-generator";
 import { ThemeLivePreview } from "@/components/admin/theme-live-preview";
 import type { ThemeOptionField, ThemeOptions } from "@/themes/registry";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, type Locale } from "@/i18n/locale";
+import { APPEARANCE_STRINGS, TOKEN_GROUP_LABELS, TOKEN_META_LABELS, type AppearanceStrings } from "../../strings";
 
 /* ------------------------------------------------------------------ */
 /* Customizer-lite (wave S2) — the package options form.              */
@@ -30,7 +33,11 @@ interface ThemeOptionsData {
   stored: ThemeOptions;
 }
 
-function ThemeCustomizerSection({ themeId }: { themeId: string }) {
+function fieldLabel(field: ThemeOptionField, locale: Locale): string {
+  return locale === "bn" ? (field.labelBn ?? field.label) : field.label;
+}
+
+function ThemeCustomizerSection({ themeId, t, locale }: { themeId: string; t: AppearanceStrings; locale: Locale }) {
   const [data, setData] = useState<ThemeOptionsData | null>(null);
   const [values, setValues] = useState<ThemeOptions>({});
   const [reason, setReason] = useState("");
@@ -54,8 +61,9 @@ function ThemeCustomizerSection({ themeId }: { themeId: string }) {
           }
         },
       )
-      .catch(() => setLoadError("কাস্টমাইজার অপশন লোড করা যায়নি।"))
+      .catch(() => setLoadError(t.optionsLoadFailed))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [themeId]);
 
   function setValue(key: string, value: string | number | boolean) {
@@ -69,13 +77,13 @@ function ThemeCustomizerSection({ themeId }: { themeId: string }) {
     // validation anyway — catch it here with a clearer message.
     for (const field of data.schema) {
       if (field.type === "number" && values[field.key] === "") {
-        setSaveError(`“${field.labelBn ?? field.label}” এর জন্য একটি সংখ্যা দিন।`);
+        setSaveError(interpolate(t.numberRequired, { label: fieldLabel(field, locale) }));
         setSaveDetails([]);
         return;
       }
     }
     if (reason.trim() === "") {
-      setSaveError("কারণ লিখুন — এই পরিবর্তনটি অডিট লগে সংরক্ষিত হবে।");
+      setSaveError(t.reasonRequired);
       setSaveDetails([]);
       return;
     }
@@ -94,7 +102,7 @@ function ThemeCustomizerSection({ themeId }: { themeId: string }) {
         error?: { message: string; details?: unknown };
       } | null;
       if (!res.ok) {
-        setSaveError(json?.error?.message ?? "অপশন সংরক্ষণ করা যায়নি।");
+        setSaveError(json?.error?.message ?? t.optionsSaveFailed);
         if (Array.isArray(json?.error?.details)) {
           setSaveDetails(json.error.details.map(String));
         }
@@ -107,7 +115,7 @@ function ThemeCustomizerSection({ themeId }: { themeId: string }) {
       setReason("");
       setSaved(true);
     } catch {
-      setSaveError("নেটওয়ার্ক ত্রুটি। আবার চেষ্টা করুন।");
+      setSaveError(t.networkRetry);
     } finally {
       setSaving(false);
     }
@@ -118,7 +126,7 @@ function ThemeCustomizerSection({ themeId }: { themeId: string }) {
 
   function renderField(field: ThemeOptionField) {
     const value = values[field.key];
-    const label = field.labelBn ?? field.label;
+    const label = fieldLabel(field, locale);
     return (
       <div
         key={field.key}
@@ -138,7 +146,7 @@ function ThemeCustomizerSection({ themeId }: { themeId: string }) {
                 className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
               />
               <span className="font-medium text-text-main">
-                {value === true ? "চালু" : "বন্ধ"}
+                {value === true ? t.onWord : t.offWord}
               </span>
             </label>
           )}
@@ -206,16 +214,16 @@ function ThemeCustomizerSection({ themeId }: { themeId: string }) {
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <h2 className="text-sm font-bold text-text-main">🎛️ কাস্টমাইজার — প্যাকেজ অপশন</h2>
+      <h2 className="text-sm font-bold text-text-main">{t.customizerTitle}</h2>
       {data && (
         <p className="mt-1 text-[11px] leading-4 text-text-muted">
-          এই থিমটি <span className="font-mono font-semibold">{data.packageId}</span>{" "}
-          প্যাকেজের ইনস্ট্যান্স। অপশনগুলো প্যাকেজের স্কিমা থেকে তৈরি — এগুলো শুধু
-          উপস্থাপনা বদলায়, স্টোরের ডেটা বা আচরণ নয়।
+          {t.customizerDescA}
+          <span className="font-mono font-semibold">{data.packageId}</span>
+          {t.customizerDescB}
         </p>
       )}
 
-      {loading && <p className="mt-4 text-xs text-text-muted">অপশন লোড হচ্ছে…</p>}
+      {loading && <p className="mt-4 text-xs text-text-muted">{t.optionsLoading}</p>}
 
       {loadError && (
         <div className="mt-4 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-xs text-destructive">
@@ -225,14 +233,8 @@ function ThemeCustomizerSection({ themeId }: { themeId: string }) {
 
       {!loading && !loadError && data && data.schema.length === 0 && (
         <div className="mt-4 rounded-xl border border-border/60 bg-muted/50 px-4 py-3">
-          <p className="text-xs font-semibold text-text-main">
-            এই প্যাকেজে কোনো কাস্টমাইজার অপশন নেই
-          </p>
-          <p className="mt-1 text-[11px] leading-4 text-text-muted">
-            প্যাকেজে অপশন স্কিমা ঘোষণা করা থাকলে এখানে স্বয়ংক্রিয়ভাবে ফর্ম তৈরি হবে —
-            যেমন Ghorer প্যাকেজে থাকবে। ততদিন এই থিম শুধু রঙের টোকেন দিয়েই কাস্টমাইজ করা
-            যায় (নিচের CSS ভ্যারিয়েবল অংশ)।
-          </p>
+          <p className="text-xs font-semibold text-text-main">{t.noOptionsTitle}</p>
+          <p className="mt-1 text-[11px] leading-4 text-text-muted">{t.noOptionsDesc}</p>
         </div>
       )}
 
@@ -254,7 +256,7 @@ function ThemeCustomizerSection({ themeId }: { themeId: string }) {
           )}
           {saved && (
             <div className="mt-4 rounded-xl border border-success/20 bg-success/10 px-4 py-3 text-xs text-success">
-              ✓ কাস্টমাইজার অপশন সংরক্ষিত হয়েছে (অডিট লগে কারণসহ নথিভুক্ত)।
+              {t.optionsSaved}
             </div>
           )}
 
@@ -263,7 +265,7 @@ function ThemeCustomizerSection({ themeId }: { themeId: string }) {
               type="text"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="পরিবর্তনের কারণ (অডিটের জন্য, আবশ্যক)"
+              placeholder={t.reasonPlaceholderRequired}
               className="min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs text-text-main shadow-sm focus:border-ring focus:outline-none"
             />
             <button
@@ -272,7 +274,7 @@ function ThemeCustomizerSection({ themeId }: { themeId: string }) {
               disabled={saving}
               className="rounded-lg bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
             >
-              {saving ? "সংরক্ষণ হচ্ছে…" : "অপশন সংরক্ষণ করুন"}
+              {saving ? t.saving : t.saveOptions}
             </button>
           </div>
         </div>
@@ -288,6 +290,8 @@ interface Props {
 export default function EditThemePage({ params }: Props) {
   const { id } = params;
   const router = useRouter();
+  const { locale } = useLocale();
+  const t = APPEARANCE_STRINGS[locale];
 
   const [theme, setTheme] = useState<AppTheme | null>(null);
   const [name, setName] = useState("");
@@ -306,7 +310,7 @@ export default function EditThemePage({ params }: Props) {
     fetch(`/api/v1/admin/themes`)
       .then((r) => r.json())
       .then((json: { data?: AppTheme[] }) => {
-        const found = json.data?.find((t) => t.id === id) ?? null;
+        const found = json.data?.find((th) => th.id === id) ?? null;
         if (found) {
           setTheme(found);
           setName(found.name);
@@ -315,8 +319,9 @@ export default function EditThemePage({ params }: Props) {
           setTokens(found.tokens);
         }
       })
-      .catch(() => setError("থিম লোড করা যায়নি।"))
+      .catch(() => setError(t.loadThemeFailed))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   function updateLightToken(key: string, value: string) {
@@ -361,7 +366,7 @@ export default function EditThemePage({ params }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: `${name} (কপি)`,
+          name: `${name}${t.copySuffix}`,
           description: description || undefined,
           preview: theme?.preview ?? ["#6366f1", "#8b5cf6", "#ec4899"],
           isActive: false,
@@ -370,13 +375,13 @@ export default function EditThemePage({ params }: Props) {
       });
       const json = (await res.json()) as { data?: { id: string }; error?: { message: string } };
       if (!res.ok) {
-        setError(json.error?.message ?? "থিম ক্লোন করা যায়নি।");
+        setError(json.error?.message ?? t.cloneFailed);
         return;
       }
       router.push("/admin/appearance/themes");
       router.refresh();
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি। আবার চেষ্টা করুন।");
+      setError(t.networkRetry);
     } finally {
       setCloning(false);
     }
@@ -385,7 +390,7 @@ export default function EditThemePage({ params }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
-      setError("থিমের নাম দিন।");
+      setError(t.nameRequired);
       return;
     }
     setSubmitting(true);
@@ -404,31 +409,31 @@ export default function EditThemePage({ params }: Props) {
       });
       const json = (await res.json()) as { error?: { message: string } };
       if (!res.ok) {
-        setError(json.error?.message ?? "সেভ করা যায়নি।");
+        setError(json.error?.message ?? t.saveFailed);
         return;
       }
       setSuccess(true);
       router.refresh();
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি।");
+      setError(t.networkError);
     } finally {
       setSubmitting(false);
     }
   }
 
   async function handleDelete() {
-    if (!confirm("এই থিমটি চিরতরে মুছে দিতে চান?")) return;
+    if (!confirm(t.deleteConfirm)) return;
     setDeleting(true);
     try {
       const res = await fetch(`/api/v1/admin/themes/${id}`, { method: "DELETE" });
       if (!res.ok) {
-        setError("থিম মুছে ফেলা যায়নি।");
+        setError(t.deleteFailed);
         return;
       }
       router.push("/admin/appearance/themes");
       router.refresh();
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি।");
+      setError(t.networkError);
     } finally {
       setDeleting(false);
     }
@@ -437,7 +442,7 @@ export default function EditThemePage({ params }: Props) {
   if (loading) {
     return (
       <main className="mx-auto w-full max-w-7xl px-4 py-8">
-        <p className="text-sm text-text-muted">থিম লোড হচ্ছে…</p>
+        <p className="text-sm text-text-muted">{t.loadingThemes}</p>
       </main>
     );
   }
@@ -447,10 +452,10 @@ export default function EditThemePage({ params }: Props) {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <Link href="/admin/appearance/themes" className="text-sm font-medium text-primary hover:underline">
-            ← থিম তালিকায় ফিরুন
+            {t.backToList}
           </Link>
           <h1 className="mt-1 font-display text-2xl font-bold text-text-main">
-            থিম সম্পাদনা — {name || "Theme"}
+            {interpolate(t.editTitle, { name: name || t.themeFallback })}
           </h1>
         </div>
 
@@ -461,7 +466,7 @@ export default function EditThemePage({ params }: Props) {
             onClick={handleExportJson}
             className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-text-main shadow-sm hover:bg-muted"
           >
-            📤 এক্সপোর্ট JSON
+            {t.exportJson}
           </button>
 
           {/* Clone / Duplicate */}
@@ -471,7 +476,7 @@ export default function EditThemePage({ params }: Props) {
             disabled={cloning}
             className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-text-main shadow-sm hover:bg-muted disabled:opacity-50"
           >
-            {cloning ? "ক্লোন হচ্ছে…" : "📋 ডুপ্লিকেট"}
+            {cloning ? t.cloning : t.duplicate}
           </button>
 
           {/* Delete */}
@@ -481,7 +486,7 @@ export default function EditThemePage({ params }: Props) {
             disabled={deleting}
             className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-50"
           >
-            {deleting ? "মুছে ফেলা হচ্ছে…" : "মুছে ফেলুন"}
+            {deleting ? t.deleting : t.deleteBtn}
           </button>
         </div>
       </div>
@@ -494,7 +499,7 @@ export default function EditThemePage({ params }: Props) {
 
       {success && (
         <div className="mb-6 rounded-xl border border-success/20 bg-success/10 px-5 py-4 text-sm text-success">
-          ✓ পরিবর্তন সফলভাবে সংরক্ষিত হয়েছে।
+          {t.savedNote}
         </div>
       )}
 
@@ -504,11 +509,11 @@ export default function EditThemePage({ params }: Props) {
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* General Info */}
             <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-              <h2 className="mb-4 text-sm font-bold text-text-main">সাধারণ তথ্য</h2>
+              <h2 className="mb-4 text-sm font-bold text-text-main">{t.generalInfo}</h2>
               <div className="space-y-4">
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-text-main">
-                    থিমের নাম <span className="text-destructive">*</span>
+                    {t.themeName} <span className="text-destructive">*</span>
                   </label>
                   <input
                     type="text"
@@ -519,7 +524,7 @@ export default function EditThemePage({ params }: Props) {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-text-main">বিবরণ</label>
+                  <label className="mb-1 block text-xs font-semibold text-text-main">{t.description}</label>
                   <input
                     type="text"
                     value={description}
@@ -536,11 +541,9 @@ export default function EditThemePage({ params }: Props) {
                     className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
                   />
                   <label htmlFor="isActive" className="text-xs font-semibold text-text-main cursor-pointer">
-                    কাস্টমার পছন্দের তালিকায় প্রকাশ করুন (কাস্টমার অ্যাকাউন্ট → পছন্দ থেকে বেছে নিতে পারবে)
+                    {t.publishLabel}
                   </label>
-                  <p className="w-full text-[11px] leading-4 text-text-muted">
-                    স্টোরের সব ভিজিটরের জন্য থিমটি চালু করতে থিম তালিকা থেকে "স্টোরে প্রয়োগ করুন" ব্যবহার করুন।
-                  </p>
+                  <p className="w-full text-[11px] leading-4 text-text-muted">{t.publishNote}</p>
                 </div>
               </div>
             </div>
@@ -549,10 +552,8 @@ export default function EditThemePage({ params }: Props) {
             <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-bold text-primary">🪄 ১-ক্লিক স্মার্ট প্যালেট রি-জেনারেটর</h3>
-                  <p className="text-xs text-text-muted">
-                    নতুন মূল ব্র্যান্ড রঙ বেছে নিয়ে সব টোকেন রিফ্রেশ করতে পারেন।
-                  </p>
+                  <h3 className="text-sm font-bold text-primary">{t.regenTitle}</h3>
+                  <p className="text-xs text-text-muted">{t.regenDesc}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <input
@@ -566,7 +567,7 @@ export default function EditThemePage({ params }: Props) {
                     onClick={handleGeneratePalette}
                     className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-90"
                   >
-                    নতুন কালার জেনারেট
+                    {t.regenBtn}
                   </button>
                 </div>
               </div>
@@ -574,11 +575,11 @@ export default function EditThemePage({ params }: Props) {
 
             {/* Token Groups */}
             <div className="space-y-4">
-              <h2 className="text-sm font-bold text-text-main">CSS ভ্যারিয়েবল বিস্তারিত কাস্টমাইজেশন</h2>
+              <h2 className="text-sm font-bold text-text-main">{t.tokensTitle}</h2>
               {THEME_TOKEN_GROUPS.map((group) => (
                 <div key={group.label} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
                   <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-text-muted">
-                    {group.label}
+                    {TOKEN_GROUP_LABELS[locale][group.label] ?? group.label}
                   </h3>
                   <div className="space-y-3">
                     {group.tokens.map((tokenKey) => {
@@ -589,11 +590,11 @@ export default function EditThemePage({ params }: Props) {
                           className="grid items-center gap-2 sm:grid-cols-12 text-xs border-b border-border/50 pb-2.5 last:border-0"
                         >
                           <div className="sm:col-span-4">
-                            <span className="font-semibold text-text-main">{meta?.label ?? tokenKey}</span>
+                            <span className="font-semibold text-text-main">{meta ? (TOKEN_META_LABELS[locale][meta.label] ?? meta.label) : tokenKey}</span>
                             <span className="block font-mono text-[10px] text-text-muted">{tokenKey}</span>
                           </div>
                           <div className="sm:col-span-4">
-                            <span className="mb-0.5 block text-[10px] text-text-muted font-medium">Light</span>
+                            <span className="mb-0.5 block text-[10px] text-text-muted font-medium">{t.lightLabel}</span>
                             <input
                               type="text"
                               value={tokens.light[tokenKey] ?? ""}
@@ -603,7 +604,7 @@ export default function EditThemePage({ params }: Props) {
                             />
                           </div>
                           <div className="sm:col-span-4">
-                            <span className="mb-0.5 block text-[10px] text-text-muted font-medium">Dark</span>
+                            <span className="mb-0.5 block text-[10px] text-text-muted font-medium">{t.darkLabel}</span>
                             <input
                               type="text"
                               value={tokens.dark[tokenKey] ?? ""}
@@ -625,14 +626,14 @@ export default function EditThemePage({ params }: Props) {
                 href="/admin/appearance/themes"
                 className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-text-main shadow-sm hover:bg-muted"
               >
-                বাতিল
+                {t.cancel}
               </Link>
               <button
                 type="submit"
                 disabled={submitting}
                 className="rounded-xl bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-50"
               >
-                {submitting ? "সংরক্ষণ হচ্ছে…" : "পরিবর্তন সংরক্ষণ করুন"}
+                {submitting ? t.saving : t.saveChanges}
               </button>
             </div>
           </form>
@@ -640,7 +641,7 @@ export default function EditThemePage({ params }: Props) {
           {/* Customizer-lite (S2): package options for this instance.
               A sibling of the token form above — separate save path
               (PUT /options, reason + audit), never nested inside it. */}
-          {theme && <ThemeCustomizerSection themeId={id} />}
+          {theme && <ThemeCustomizerSection themeId={id} t={t} locale={locale} />}
         </div>
 
         {/* Right Live Preview Sticky Panel (5 cols) */}

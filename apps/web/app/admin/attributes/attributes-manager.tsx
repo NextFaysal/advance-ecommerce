@@ -9,6 +9,9 @@ import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
 import { Toast } from "@/components/ui/toast";
 import type { AdminAttributeSet } from "@/catalog/attributes-admin";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { ATTRIBUTES_STRINGS } from "./strings";
 
 // Attribute sets manager (Wave 13-2) — list + create/edit modal +
 // delete against the real /api/v1/admin/attributes API. This manages
@@ -20,14 +23,14 @@ interface ApiErrorBody {
   error?: { code?: string; message?: string };
 }
 
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
+async function api<T>(url: string, init?: RequestInit, fallback?: (status: number) => string): Promise<T> {
   const res = await fetch(url, {
     ...init,
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
   });
   const body = (await res.json().catch(() => ({}))) as ApiErrorBody & { data?: T };
   if (!res.ok) {
-    throw new Error(body.error?.message ?? `অনুরোধ ব্যর্থ হয়েছে (${res.status})`);
+    throw new Error(body.error?.message ?? (fallback ? fallback(res.status) : `Request failed (${res.status})`));
   }
   return body.data as T;
 }
@@ -54,6 +57,10 @@ function parseValues(text: string): string[] {
 }
 
 export function AttributesManager({ initial }: { initial: AdminAttributeSet[] }) {
+  const { locale, t: common } = useLocale();
+  const s = pick(locale, ATTRIBUTES_STRINGS);
+  const apiL = <T,>(url: string, init?: RequestInit): Promise<T> =>
+    api<T>(url, init, (status) => interpolate(s.requestFailed, { status }));
   const [sets, setSets] = useState<AdminAttributeSet[]>(initial);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -62,7 +69,7 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
   const [deleteTarget, setDeleteTarget] = useState<AdminAttributeSet | null>(null);
 
   async function refresh() {
-    const data = await api<{ attributes: AdminAttributeSet[] }>("/api/v1/admin/attributes");
+    const data = await apiL<{ attributes: AdminAttributeSet[] }>("/api/v1/admin/attributes");
     setSets(data.attributes);
   }
 
@@ -92,34 +99,34 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
     };
     try {
       if (editing) {
-        await api(`/api/v1/admin/attributes/${editing.id}`, {
+        await apiL(`/api/v1/admin/attributes/${editing.id}`, {
           method: "PATCH",
           body: JSON.stringify(payload),
         });
-        setNotice({ tone: "success", text: "অ্যাট্রিবিউট সেট আপডেট হয়েছে।" });
+        setNotice({ tone: "success", text: s.updated });
       } else {
-        await api("/api/v1/admin/attributes", {
+        await apiL("/api/v1/admin/attributes", {
           method: "POST",
           body: JSON.stringify(payload),
         });
-        setNotice({ tone: "success", text: "নতুন অ্যাট্রিবিউট সেট তৈরি হয়েছে।" });
+        setNotice({ tone: "success", text: s.created });
       }
       setFormOpen(false);
       await refresh();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "সংরক্ষণ ব্যর্থ হয়েছে।" });
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : s.saveFailed });
     }
   }
 
   async function confirmDelete() {
     if (!deleteTarget) return;
     try {
-      await api(`/api/v1/admin/attributes/${deleteTarget.id}`, { method: "DELETE" });
-      setNotice({ tone: "success", text: "অ্যাট্রিবিউট সেট মুছে ফেলা হয়েছে।" });
+      await apiL(`/api/v1/admin/attributes/${deleteTarget.id}`, { method: "DELETE" });
+      setNotice({ tone: "success", text: s.deleted });
       setDeleteTarget(null);
       await refresh();
     } catch (e) {
-      setNotice({ tone: "error", text: e instanceof Error ? e.message : "মুছে ফেলা যায়নি।" });
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : s.deleteFailed });
       setDeleteTarget(null);
     }
   }
@@ -137,8 +144,7 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
           <Icon name="info" size={17} />
         </span>
         <p className="text-sm leading-relaxed text-sky-900">
-          এই পেজে শুধু অ্যাট্রিবিউট সেটের লাইব্রেরি পরিচালনা হয় — পণ্য এডিটরে এই সেট
-          ব্যবহারের সংযোগ পরের ধাপে আসছে; এখন পণ্যে অ্যাট্রিবিউট আগের মতোই লিখে দিতে হয়।
+          {s.libraryNote}
         </p>
       </div>
 
@@ -147,10 +153,10 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
           <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
             <Icon name="package" size={17} />
           </span>
-          মোট {sets.length}টি অ্যাট্রিবিউট সেট।
+          {interpolate(s.totalLabel, { count: sets.length })}
         </p>
         <Button variant="gradient" onClick={openCreate} className="max-sm:w-full">
-          <Icon name="plus" size={16} /> নতুন সেট
+          <Icon name="plus" size={16} /> {s.newSet}
         </Button>
       </div>
 
@@ -160,7 +166,7 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
             <Icon name="package" size={28} />
           </span>
           <p className="mt-4 text-sm leading-relaxed text-text-muted">
-            এখনো কোনো অ্যাট্রিবিউট সেট নেই — যেমন Size (S/M/L) বা Color দিয়ে প্রথমটি তৈরি করুন।
+            {s.empty}
           </p>
         </div>
       ) : (
@@ -170,10 +176,10 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-surface-2/80 text-left">
-                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">অ্যাট্রিবিউট</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">কী (key)</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">মানসমূহ</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-text-muted">কাজ</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">{s.colAttribute}</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">{s.colKey}</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">{s.colValues}</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-text-muted">{s.colActions}</th>
                 </tr>
               </thead>
               <tbody>
@@ -200,10 +206,10 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
                         <Button size="sm" variant="secondary" onClick={() => openEdit(set)}>
-                          এডিট
+                          {s.edit}
                         </Button>
                         <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(set)}>
-                          মুছুন
+                          {s.deleteBtn}
                         </Button>
                       </div>
                     </td>
@@ -235,10 +241,10 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
                 </span>
                 <div className="mt-3 flex gap-1.5 [&>*]:flex-1">
                   <Button size="sm" variant="secondary" onClick={() => openEdit(set)}>
-                    এডিট
+                    {s.edit}
                   </Button>
                   <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(set)}>
-                    মুছুন
+                    {s.deleteBtn}
                   </Button>
                 </div>
               </li>
@@ -250,51 +256,51 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
       <Drawer
         open={formOpen}
         onClose={() => setFormOpen(false)}
-        title={editing ? "অ্যাট্রিবিউট সেট এডিট" : "নতুন অ্যাট্রিবিউট সেট"}
+        title={editing ? s.editTitle : s.createTitle}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setFormOpen(false)}>বাতিল</Button>
-            <Button variant="gradient" onClick={submitForm}>নিশ্চিত করুন</Button>
+            <Button variant="outline" onClick={() => setFormOpen(false)}>{common.cancel}</Button>
+            <Button variant="gradient" onClick={submitForm}>{s.confirm}</Button>
           </div>
         }
       >
         <div className="grid gap-3">
           <Input
-            label="কী (key)"
+            label={s.keyLabel}
             name="key"
             required
             value={form.key}
             onChange={(e) => setForm({ ...form, key: e.target.value })}
-            placeholder="size"
-            helper="ছোট হাতের ইংরেজি অক্ষর, সংখ্যা, হাইফেন — যেমন: size, color, shoe-size। প্রতিটি সেটের কী আলাদা হতে হবে।"
+            placeholder={s.keyPh}
+            helper={s.keyHelper}
           />
           <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
             <Input
-              label="লেবেল (বাংলা)"
+              label={s.labelBn}
               name="labelBn"
               required
               value={form.labelBn}
               onChange={(e) => setForm({ ...form, labelBn: e.target.value })}
-              placeholder="সাইজ"
+              placeholder={s.labelBnPh}
             />
             <Input
-              label="Label (English)"
+              label={s.labelEn}
               name="labelEn"
               required
               value={form.labelEn}
               onChange={(e) => setForm({ ...form, labelEn: e.target.value })}
-              placeholder="Size"
+              placeholder={s.labelEnPh}
             />
           </div>
           <Textarea
-            label="মানসমূহ (প্রতি লাইনে একটি)"
+            label={s.valuesLabel}
             name="values"
             required
             rows={5}
             value={form.valuesText}
             onChange={(e) => setForm({ ...form, valuesText: e.target.value })}
-            placeholder={"S\nM\nL\nXL"}
-            helper="কমপক্ষে একটি মান দরকার। একই মান দুবার লিখলে একবারই থাকবে।"
+            placeholder={s.valuesPh}
+            helper={s.valuesHelper}
           />
         </div>
       </Drawer>
@@ -302,7 +308,7 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
       <Modal
         open={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
-        title="অ্যাট্রিবিউট সেট মুছে ফেলবেন?"
+        title={s.deleteTitle}
         onConfirm={confirmDelete}
       >
         <div className="flex gap-3">
@@ -310,9 +316,7 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
             <Icon name="alert" size={20} />
           </span>
           <p className="text-sm leading-relaxed text-text-muted">
-            “{deleteTarget?.labelBn}” সেটটি লাইব্রেরি থেকে পুরোপুরি মুছে যাবে। ইতিমধ্যে
-            তৈরি পণ্যের অ্যাট্রিবিউটে কোনো প্রভাব পড়বে না — পণ্যের মান পণ্যের ভেতরেই
-            সংরক্ষিত থাকে।
+            {interpolate(s.deleteBody, { name: deleteTarget?.labelBn ?? "" })}
           </p>
         </div>
       </Modal>

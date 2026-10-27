@@ -16,6 +16,9 @@ import { useCallback, useEffect, useState } from "react";
 import { DispositionChip } from "@/callcenter/components";
 import { isCallDisposition } from "@/callcenter/dispositions";
 import { formatBdt } from "@/checkout/pricing";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { CALL_CENTER_STRINGS } from "../strings";
 import {
   AUTO_OUTCOME_LABEL,
   SOURCE_LABEL,
@@ -33,6 +36,8 @@ export function Customer360Panel({
   taskId: string;
   onOrderMutated: () => void;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, CALL_CENTER_STRINGS);
   const [ctx, setCtx] = useState<TaskContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -53,14 +58,14 @@ export function Customer360Panel({
         const body = await readJson<ContextResponse>(res);
         if (cancelled) return;
         if (!res.ok || !body.data) {
-          setLoadError(body.error?.message ?? `তথ্য লোড হয়নি (${res.status})`);
+          setLoadError(body.error?.message ?? interpolate(s.ctxLoadFailedMsg, { status: res.status }));
           setCtx(null);
           return;
         }
         setCtx(body.data);
       } catch {
         if (!cancelled) {
-          setLoadError("নেটওয়ার্ক ত্রুটি — গ্রাহকের তথ্য লোড হয়নি।");
+          setLoadError(s.ctxNetworkError);
           setCtx(null);
         }
       } finally {
@@ -70,7 +75,8 @@ export function Customer360Panel({
     return () => {
       cancelled = true;
     };
-  }, [taskId, reloadKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId, reloadKey, locale]);
 
   const orderAction = useCallback(
     async (to: "CONFIRMED" | "CANCELLED") => {
@@ -83,7 +89,7 @@ export function Customer360Panel({
         return;
       }
       if (to === "CANCELLED" && !reason.trim()) {
-        setOrderErr("বাতিলের কারণ আবশ্যক — কারণ না লিখলে অর্ডার বাতিল হবে না।");
+        setOrderErr(s.cancelReasonRequired);
         return;
       }
       setOrderBusy(true);
@@ -99,25 +105,26 @@ export function Customer360Panel({
         if (!res.ok || body.error) {
           // The orders API's own verdict, verbatim (its guards decide —
           // a 403 for a missing permission lands here unchanged).
-          setOrderErr(body.error?.message ?? `অর্ডার আপডেট হয়নি (${res.status})`);
+          setOrderErr(body.error?.message ?? interpolate(s.orderUpdateFailed, { status: res.status }));
           return;
         }
         setOrderMsg(
-          to === "CONFIRMED"
-            ? `অর্ডার ${body.data?.orderNo ?? ""} CONFIRMED করা হয়েছে।`
-            : `অর্ডার ${body.data?.orderNo ?? ""} CANCELLED করা হয়েছে।`,
+          interpolate(to === "CONFIRMED" ? s.orderConfirmedMsg : s.orderCancelledMsg, {
+            orderNo: body.data?.orderNo ?? "",
+          }),
         );
         setCancelArmed(false);
         setReason("");
         setReloadKey((k) => k + 1);
         onOrderMutated();
       } catch {
-        setOrderErr("নেটওয়ার্ক ত্রুটি — অর্ডার আপডেট হয়নি। আবার চেষ্টা করুন।");
+        setOrderErr(s.orderNetworkError);
       } finally {
         setOrderBusy(false);
       }
     },
-    [ctx, cancelArmed, reason, onOrderMutated],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ctx, cancelArmed, reason, onOrderMutated, locale],
   );
 
   const order = ctx?.order ?? null;
@@ -130,21 +137,21 @@ export function Customer360Panel({
 
   return (
     <div className="rounded-xl border border-border bg-card p-4">
-      <h3 className="text-base font-semibold">🧾 গ্রাহক ৩৬০ (Customer 360)</h3>
+      <h3 className="text-base font-semibold">{s.customer360Title}</h3>
 
       {loading ? (
-        <p className="mt-2 text-sm text-text-muted">গ্রাহকের তথ্য লোড হচ্ছে…</p>
+        <p className="mt-2 text-sm text-text-muted">{s.ctxLoading}</p>
       ) : loadError ? (
         <div className="mt-2">
           <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            গ্রাহকের তথ্য লোড করা যায়নি: {loadError} — কলটি তবু চালিয়ে যেতে পারবেন।
+            {interpolate(s.ctxBannerFailed, { error: loadError })}
           </p>
           <button
             type="button"
             onClick={() => setReloadKey((k) => k + 1)}
             className="mt-2 rounded-md bg-slate-700 px-3 py-1.5 text-sm text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
-            আবার চেষ্টা করুন
+            {s.tryAgain}
           </button>
         </div>
       ) : ctx ? (
@@ -153,29 +160,29 @@ export function Customer360Panel({
             <>
               <dl className="mt-2 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
                 <div>
-                  <dt className="text-text-muted">অর্ডার</dt>
+                  <dt className="text-text-muted">{s.fieldOrder}</dt>
                   <dd className="font-medium">
                     {order.orderNo} · <span>{order.status}</span>
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-text-muted">পেমেন্ট</dt>
+                  <dt className="text-text-muted">{s.fieldPayment}</dt>
                   <dd>
                     {order.paymentMethod} · {order.paymentStatus}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-text-muted">ফোন (অর্ডারে)</dt>
+                  <dt className="text-text-muted">{s.fieldPhoneOnOrder}</dt>
                   <dd className="font-medium">{order.customerPhone}</dd>
                 </div>
                 <div>
-                  <dt className="text-text-muted">রিস্ক স্কোর</dt>
+                  <dt className="text-text-muted">{s.fieldRiskScore}</dt>
                   <dd>
                     {order.riskScore} ({order.riskBand})
                   </dd>
                 </div>
                 <div className="sm:col-span-2">
-                  <dt className="text-text-muted">ঠিকানা</dt>
+                  <dt className="text-text-muted">{s.fieldAddress}</dt>
                   <dd>
                     {order.address.addressLine}
                     {order.address.union ? `, ${order.address.union}` : ""}, {order.address.upazila},{" "}
@@ -184,7 +191,7 @@ export function Customer360Panel({
                 </div>
               </dl>
 
-              <h4 className="mt-3 text-sm font-semibold">পণ্যসমূহ</h4>
+              <h4 className="mt-3 text-sm font-semibold">{s.itemsTitle}</h4>
               <ul className="mt-1 space-y-1 text-sm">
                 {order.items.map((i, idx) => (
                   <li key={idx} className="flex flex-wrap justify-between gap-2">
@@ -197,34 +204,34 @@ export function Customer360Panel({
               </ul>
               <dl className="mt-2 space-y-0.5 text-sm">
                 <div className="flex justify-between">
-                  <dt className="text-text-muted">সাবটোটাল</dt>
+                  <dt className="text-text-muted">{s.subtotal}</dt>
                   <dd>{formatBdt(order.subtotalPoisha)}</dd>
                 </div>
                 {order.discountPoisha > 0 ? (
                   <div className="flex justify-between">
-                    <dt className="text-text-muted">ছাড়</dt>
+                    <dt className="text-text-muted">{s.discount}</dt>
                     <dd>−{formatBdt(order.discountPoisha)}</dd>
                   </div>
                 ) : null}
                 <div className="flex justify-between">
-                  <dt className="text-text-muted">ডেলিভারি</dt>
+                  <dt className="text-text-muted">{s.delivery}</dt>
                   <dd>{formatBdt(order.shippingPoisha)}</dd>
                 </div>
                 {order.codFeePoisha > 0 ? (
                   <div className="flex justify-between">
-                    <dt className="text-text-muted">COD ফি</dt>
+                    <dt className="text-text-muted">{s.codFee}</dt>
                     <dd>{formatBdt(order.codFeePoisha)}</dd>
                   </div>
                 ) : null}
                 <div className="flex justify-between border-t border-border pt-1 font-semibold">
-                  <dt>মোট</dt>
+                  <dt>{s.total}</dt>
                   <dd>{formatBdt(order.totalPoisha)}</dd>
                 </div>
               </dl>
 
               {/* One-click order actions (existing orders API) */}
               <div className="mt-3 rounded-md bg-surface-2 p-3">
-                <h4 className="text-sm font-semibold">এক ক্লিকে অর্ডার অ্যাকশন</h4>
+                <h4 className="text-sm font-semibold">{s.orderActionsTitle}</h4>
                 {orderMsg ? (
                   <p role="status" className="mt-2 rounded-md bg-emerald-50 px-2.5 py-1.5 text-sm text-emerald-800">
                     {orderMsg}
@@ -237,14 +244,14 @@ export function Customer360Panel({
                 ) : null}
                 {cancelArmed ? (
                   <label className="mt-2 block text-sm">
-                    <span className="text-text-muted">বাতিলের কারণ (আবশ্যক)</span>
+                    <span className="text-text-muted">{s.cancelReasonLabel}</span>
                     <input
                       type="text"
                       value={reason}
                       maxLength={500}
                       onChange={(e) => setReason(e.target.value)}
                       className="mt-1 w-full rounded-md border border-rose-300 px-2.5 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
-                      placeholder="কেন বাতিল হচ্ছে…"
+                      placeholder={s.cancelReasonPlaceholder}
                     />
                   </label>
                 ) : null}
@@ -256,7 +263,7 @@ export function Customer360Panel({
                       onClick={() => void orderAction("CONFIRMED")}
                       className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
-                      ✓ অর্ডার কনফার্ম করুন
+                      {s.confirmOrderBtn}
                     </button>
                   ) : null}
                   {canCancel ? (
@@ -266,12 +273,12 @@ export function Customer360Panel({
                       onClick={() => void orderAction("CANCELLED")}
                       className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
-                      {cancelArmed ? "✕ কারণসহ বাতিল নিশ্চিত করুন" : "✕ অর্ডার বাতিল করুন"}
+                      {cancelArmed ? s.cancelConfirmBtn : s.cancelOrderBtn}
                     </button>
                   ) : null}
                   {order.status !== "PENDING" && !canCancel ? (
                     <p className="text-xs text-text-muted">
-                      এই অবস্থায় ({order.status}) এখান থেকে কনফার্ম/বাতিল করা যায় না।
+                      {interpolate(s.cannotActInState, { status: order.status })}
                     </p>
                   ) : null}
                 </div>
@@ -279,11 +286,11 @@ export function Customer360Panel({
             </>
           ) : (
             <p className="mt-2 text-sm text-text-muted">
-              ম্যানুয়াল টাস্ক — কোনো অর্ডার যুক্ত নেই।
+              {s.manualTaskNoOrder}
               {ctx.task.note ? (
                 <>
                   {" "}
-                  টাস্কের নোট: <span className="font-medium">{ctx.task.note}</span>
+                  {s.taskNoteInline} <span className="font-medium">{ctx.task.note}</span>
                 </>
               ) : null}
             </p>
@@ -292,16 +299,16 @@ export function Customer360Panel({
           {ctx.recentOrders.length > 0 ? (
             <>
               <h4 className="mt-4 text-sm font-semibold">
-                গ্রাহকের আগের অর্ডার (সর্বশেষ {ctx.recentOrders.length}টি)
+                {interpolate(s.recentOrdersTitle, { count: ctx.recentOrders.length })}
               </h4>
               <div className="overflow-x-auto">
                 <table className="mt-1 w-full text-left text-sm">
                   <thead>
                     <tr className="text-text-muted">
-                      <th className="py-1 pr-2 font-medium">অর্ডার</th>
-                      <th className="py-1 pr-2 font-medium">তারিখ</th>
-                      <th className="py-1 pr-2 font-medium">মোট</th>
-                      <th className="py-1 font-medium">অবস্থা</th>
+                      <th className="py-1 pr-2 font-medium">{s.fieldOrder}</th>
+                      <th className="py-1 pr-2 font-medium">{s.colDate}</th>
+                      <th className="py-1 pr-2 font-medium">{s.total}</th>
+                      <th className="py-1 font-medium">{s.colStatus}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -310,10 +317,10 @@ export function Customer360Panel({
                         <td className="py-1 pr-2">
                           {o.orderNo}
                           {order && o.id === order.id ? (
-                            <span className="ml-1 text-xs text-indigo-600">(এই অর্ডার)</span>
+                            <span className="ml-1 text-xs text-indigo-600">{s.thisOrderTag}</span>
                           ) : null}
                         </td>
-                        <td className="py-1 pr-2">{bnDateTime(o.createdAt)}</td>
+                        <td className="py-1 pr-2">{bnDateTime(o.createdAt, locale)}</td>
                         <td className="py-1 pr-2">{formatBdt(o.totalPoisha)}</td>
                         <td className="py-1">{o.status}</td>
                       </tr>
@@ -324,35 +331,35 @@ export function Customer360Panel({
             </>
           ) : null}
 
-          <h4 className="mt-4 text-sm font-semibold">আগের কলসমূহ</h4>
+          <h4 className="mt-4 text-sm font-semibold">{s.pastCallsTitle}</h4>
           {ctx.pastCalls.filter((c) => !String(c.outcome).startsWith("AUTO_")).length > 0 ? (
             <ul className="mt-1 space-y-2 text-sm">
               {ctx.pastCalls
                 .filter((c) => !String(c.outcome).startsWith("AUTO_"))
                 .map((c) => (
                   <li key={c.id} className="rounded-md bg-surface-2 px-3 py-2">
-                    <span className="font-medium">{bnDateTime(c.calledAt)}</span> ·{" "}
-                    {SOURCE_LABEL[c.source]} · ফলাফল: {c.outcome}
+                    <span className="font-medium">{bnDateTime(c.calledAt, locale)}</span> ·{" "}
+                    {SOURCE_LABEL[c.source][locale]} · {s.outcomeInline} {c.outcome}
                     {c.disposition ? (
                       <>
                         {" "}
                         {isCallDisposition(c.disposition) ? (
-                          <DispositionChip disposition={c.disposition} />
+                          <DispositionChip disposition={c.disposition} lang={locale} />
                         ) : (
                           <span className="font-mono">{c.disposition}</span>
                         )}
                       </>
                     ) : null}{" "}
-                    · এজেন্ট:{" "}
+                    · {s.agentInline}{" "}
                     {c.agentName ?? c.agentId}
                     {c.note ? (
-                      <span className="block text-text-muted">নোট: {c.note}</span>
+                      <span className="block text-text-muted">{s.noteInline} {c.note}</span>
                     ) : null}
                   </li>
                 ))}
             </ul>
           ) : (
-            <p className="mt-1 text-sm text-text-muted">এই নম্বরে/অর্ডারে আগের কোনো কল নেই।</p>
+            <p className="mt-1 text-sm text-text-muted">{s.noPastCalls}</p>
           )}
 
           {/* C4 automation timeline — this task's AUTO_* log rows:
@@ -362,14 +369,14 @@ export function Customer360Panel({
             (c) => c.taskId === taskId && String(c.outcome).startsWith("AUTO_"),
           ) ? (
             <>
-              <h4 className="mt-4 text-sm font-semibold">🤖 অটোমেশন টাইমলাইন</h4>
+              <h4 className="mt-4 text-sm font-semibold">{s.automationTimelineTitle}</h4>
               <ul className="mt-1 space-y-2 text-sm">
                 {ctx.pastCalls
                   .filter((c) => c.taskId === taskId && String(c.outcome).startsWith("AUTO_"))
                   .map((c) => (
                     <li key={c.id} className="rounded-md bg-sky-50 px-3 py-2">
-                      <span className="font-medium">{bnDateTime(c.calledAt)}</span> ·{" "}
-                      {AUTO_OUTCOME_LABEL[c.outcome] ?? c.outcome}
+                      <span className="font-medium">{bnDateTime(c.calledAt, locale)}</span> ·{" "}
+                      {AUTO_OUTCOME_LABEL[c.outcome]?.[locale] ?? c.outcome}
                       {c.note ? (
                         <span className="block text-text-muted">{c.note}</span>
                       ) : null}
@@ -377,9 +384,7 @@ export function Customer360Panel({
                   ))}
               </ul>
               <p className="mt-1 text-xs text-text-muted">
-                অটোমেশন (module.call_center_automation) চালু থাকলে ফলাফলের পর SMS ও পুনঃচেষ্টা
-                নিজে নিজে নির্ধারিত হয় — উপরে তার সম্পূর্ণ রেকর্ড। SMS স্যান্ডবক্স অ্যাডাপ্টার
-                দিয়ে গেলে নোটে তা লেখা থাকে; আসল SMS শুধু লাইভ অ্যাডাপ্টার কনফিগার হলেই যায়।
+                {s.automationNote}
               </p>
             </>
           ) : null}

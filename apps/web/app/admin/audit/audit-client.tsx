@@ -16,6 +16,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
 import { Modal } from "@/components/ui/modal";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, type Locale } from "@/i18n/locale";
+import { AUDIT_STRINGS } from "./strings";
 
 interface AuditEntry {
   id: string;
@@ -40,10 +43,10 @@ interface Filters {
 const EMPTY_FILTERS: Filters = { actor: "", action: "", entity: "", from: "", to: "" };
 const PAGE_SIZE = 20;
 
-function formatDhakaTime(iso: string): string {
+function formatDhakaTime(iso: string, locale: Locale): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("bn-BD", {
+  return d.toLocaleString(intlLocale(locale), {
     timeZone: "Asia/Dhaka",
     day: "numeric",
     month: "long",
@@ -67,6 +70,8 @@ function buildQuery(filters: Filters, page: number): string {
 }
 
 export function AuditClient() {
+  const { locale } = useLocale();
+  const t = AUDIT_STRINGS[locale];
   const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
@@ -100,11 +105,11 @@ export function AuditClient() {
     } catch {
       setEntries([]);
       setTotal(0);
-      setError("নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি।");
+      setError(t.networkError);
     } finally {
       setLoading(false);
     }
-  }, [applied, page]);
+  }, [applied, page, t]);
 
   useEffect(() => {
     void load();
@@ -115,12 +120,12 @@ export function AuditClient() {
   const withReasonOnPage = entries.filter((e) => e.reason !== null && e.reason.trim() !== "").length;
 
   const rows = entries.map((e) => ({
-    time: <span className="whitespace-nowrap">{formatDhakaTime(e.createdAt)}</span>,
-    actor: <span className="font-medium">{e.actorLabel ?? e.actorId ?? "সিস্টেম"}</span>,
+    time: <span className="whitespace-nowrap">{formatDhakaTime(e.createdAt, locale)}</span>,
+    actor: <span className="font-medium">{e.actorLabel ?? e.actorId ?? t.systemActor}</span>,
     action: (
       <span className="inline-flex items-center gap-2">
         <span className="font-mono text-xs">{e.action}</span>
-        {e.sensitive ? <Badge tone="warning">সংবেদনশীল</Badge> : null}
+        {e.sensitive ? <Badge tone="warning">{t.sensitiveBadge}</Badge> : null}
       </span>
     ),
     entity: (
@@ -131,12 +136,12 @@ export function AuditClient() {
     ),
     reason: e.sensitive ? (
       <span className="block rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900">
-        কারণ আবশ্যক: {e.reason ?? "—"}
+        {interpolate(t.reasonRequired, { reason: e.reason ?? "—" })}
       </span>
     ) : e.reason !== null ? (
       <span className="text-xs">{e.reason}</span>
     ) : (
-      <span className="text-xs text-text-subtle">প্রযোজ্য নয়</span>
+      <span className="text-xs text-text-subtle">{t.notApplicable}</span>
     ),
   }));
 
@@ -154,7 +159,7 @@ export function AuditClient() {
   async function confirmExport() {
     if (exportBusy) return;
     if (exportReason.trim() === "") {
-      setExportError("এক্সপোর্টের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setExportError(t.exportReasonRequired);
       return;
     }
     setExportBusy(true);
@@ -183,7 +188,7 @@ export function AuditClient() {
         a.download = body.data.filename;
         a.click();
         URL.revokeObjectURL(url);
-        setExportDone(`এক্সপোর্ট তৈরি হয়েছে — ${body.data.rowCount}টি সারি। এই এক্সপোর্টটিও অডিট লগে রেকর্ড হয়েছে।`);
+        setExportDone(interpolate(t.exportDone, { count: body.data.rowCount }));
         setExportOpen(false);
         setExportReason("");
         void load();
@@ -191,7 +196,7 @@ export function AuditClient() {
         setExportError(body?.error ? `${body.error.code}: ${body.error.message}` : `HTTP ${res.status}`);
       }
     } catch {
-      setExportError("নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি।");
+      setExportError(t.networkError);
     } finally {
       setExportBusy(false);
     }
@@ -200,46 +205,46 @@ export function AuditClient() {
   return (
     <>
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="মোট লগ এন্ট্রি" value={String(total)} delta="আসল লগ" icon={<Icon name="info" size={22} />} />
-        <StatCard label="সংবেদনশীল কাজ (এই পৃষ্ঠায়)" value={String(sensitiveOnPage)} delta="কারণ আবশ্যক" deltaTone="down" icon={<Icon name="alert" size={22} />} />
-        <StatCard label="কারণসহ এন্ট্রি (এই পৃষ্ঠায়)" value={String(withReasonOnPage)} delta="সংবেদনশীল কাজে বাধ্যতামূলক" icon={<Icon name="check" size={22} />} />
-        <StatCard label="রিটেনশন" value="স্থায়ী" delta="লগ মুছে ফেলা যায় না" icon={<Icon name="shield" size={22} />} />
+        <StatCard label={t.statTotal} value={String(total)} delta={t.statTotalDelta} icon={<Icon name="info" size={22} />} />
+        <StatCard label={t.statSensitive} value={String(sensitiveOnPage)} delta={t.statSensitiveDelta} deltaTone="down" icon={<Icon name="alert" size={22} />} />
+        <StatCard label={t.statWithReason} value={String(withReasonOnPage)} delta={t.statWithReasonDelta} icon={<Icon name="check" size={22} />} />
+        <StatCard label={t.statRetention} value={t.statRetentionValue} delta={t.statRetentionDelta} icon={<Icon name="shield" size={22} />} />
       </div>
 
       <Card className="mb-6">
-        <p className="mb-3 text-sm font-medium">ফিল্টার</p>
+        <p className="mb-3 text-sm font-medium">{t.filtersTitle}</p>
         <div className="grid gap-4 sm:grid-cols-3">
           <Input
             name="audit-actor"
-            label="কর্মী (নাম / ইমেইল / ID)"
-            placeholder="যেমন: Rahim"
+            label={t.filterActor}
+            placeholder={t.filterActorPlaceholder}
             value={draft.actor}
             onChange={(e) => setDraft((d) => ({ ...d, actor: e.target.value }))}
           />
           <Input
             name="audit-action"
-            label="কাজ (Action)"
-            placeholder="যেমন: payments.refund"
+            label={t.filterAction}
+            placeholder={t.filterActionPlaceholder}
             value={draft.action}
             onChange={(e) => setDraft((d) => ({ ...d, action: e.target.value }))}
           />
           <Input
             name="audit-entity"
-            label="এনটিটি (Entity type)"
-            placeholder="যেমন: Order"
+            label={t.filterEntity}
+            placeholder={t.filterEntityPlaceholder}
             value={draft.entity}
             onChange={(e) => setDraft((d) => ({ ...d, entity: e.target.value }))}
           />
           <Input
             name="audit-from"
-            label="শুরুর তারিখ (From)"
+            label={t.filterFrom}
             type="date"
             value={draft.from}
             onChange={(e) => setDraft((d) => ({ ...d, from: e.target.value }))}
           />
           <Input
             name="audit-to"
-            label="শেষের তারিখ (To)"
+            label={t.filterTo}
             type="date"
             value={draft.to}
             onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value }))}
@@ -247,46 +252,43 @@ export function AuditClient() {
         </div>
         <div className="mt-4 flex gap-2">
           <Button type="button" onClick={applyFilters}>
-            ফিল্টার করুন
+            {t.applyFilters}
           </Button>
           <Button type="button" variant="outline" onClick={resetFilters}>
-            রিসেট
+            {t.reset}
           </Button>
         </div>
       </Card>
 
-      <h2 className="mb-3 text-lg font-semibold">সাম্প্রতিক কার্যকলাপ</h2>
+      <h2 className="mb-3 text-lg font-semibold">{t.recentActivity}</h2>
       {error ? (
         <Card className="border-rose-300 bg-rose-50 text-sm text-rose-900">
-          অডিট লগ পড়া যায়নি: {error}
+          {interpolate(t.readError, { error })}
         </Card>
       ) : loading ? (
         <Card>
-          <p className="text-sm text-text-muted">লোড হচ্ছে…</p>
+          <p className="text-sm text-text-muted">{t.loading}</p>
         </Card>
       ) : entries.length === 0 ? (
         <Card>
-          <p className="text-sm text-text-muted">
-            কোনো অডিট এন্ট্রি পাওয়া যায়নি — এই ফিল্টারে কোনো লগ নেই, অথবা এখনো কোনো লগ সংরক্ষিত
-            হয়নি। সংবেদনশীল কাজ (দাম বদল, রিফান্ড, ফ্ল্যাগ বদল ইত্যাদি) হলেই এখানে এন্ট্রি আসে।
-          </p>
+          <p className="text-sm text-text-muted">{t.empty}</p>
         </Card>
       ) : (
         <>
           <DataTable
-            caption="অডিট লগ — সংবেদনশীল কাজের কারণ হাইলাইট করা; গোপন তথ্য (পাসওয়ার্ড, টোকেন, OTP) লগে কখনো থাকে না — sanitizeAuditJson() সেগুলো [REDACTED] করে"
+            caption={t.tableCaption}
             columns={[
-              { key: "time", header: "সময় (Asia/Dhaka)" },
-              { key: "actor", header: "কে করেছে" },
-              { key: "action", header: "কাজ (Action)" },
-              { key: "entity", header: "এনটিটি" },
-              { key: "reason", header: "কারণ" },
+              { key: "time", header: t.colTime },
+              { key: "actor", header: t.colActor },
+              { key: "action", header: t.colAction },
+              { key: "entity", header: t.colEntity },
+              { key: "reason", header: t.colReason },
             ]}
             rows={rows}
           />
           <div className="mt-4 flex items-center justify-between gap-3">
             <p className="text-sm text-text-muted">
-              মোট {total}টি এন্ট্রি — পৃষ্ঠা {page} / {totalPages}
+              {interpolate(t.pagination, { total, page, pages: totalPages })}
             </p>
             <div className="flex gap-2">
               <Button
@@ -295,7 +297,7 @@ export function AuditClient() {
                 disabled={page <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
-                আগের পৃষ্ঠা
+                {t.prevPage}
               </Button>
               <Button
                 type="button"
@@ -303,7 +305,7 @@ export function AuditClient() {
                 disabled={page >= totalPages}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               >
-                পরের পৃষ্ঠা
+                {t.nextPage}
               </Button>
             </div>
           </div>
@@ -311,12 +313,8 @@ export function AuditClient() {
       )}
 
       <Card className="mt-6">
-        <p className="text-sm font-medium">এক্সপোর্ট নিয়ম</p>
-        <p className="mt-1 text-sm text-text-muted">
-          অডিট লগ এক্সপোর্ট নিজেই একটি সংবেদনশীল কাজ: কারণ লেখা বাধ্যতামূলক, এক্সপোর্টটি নিজেও
-          অডিট লগে রেকর্ড হয়, এবং তৈরি CSV-র হেডারে ওয়াটারমার্ক থাকে — কে এক্সপোর্ট করেছে, কখন
-          (Asia/Dhaka), এবং কারণ। এক্সপোর্টে বর্তমান ফিল্টার প্রযোজ্য হয়।
-        </p>
+        <p className="text-sm font-medium">{t.exportRulesTitle}</p>
+        <p className="mt-1 text-sm text-text-muted">{t.exportRules}</p>
         {exportDone ? (
           <p role="status" className="mt-3 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
             {exportDone}
@@ -324,7 +322,7 @@ export function AuditClient() {
         ) : null}
         <div className="mt-4">
           <Button type="button" variant="outline" onClick={() => setExportOpen(true)}>
-            অডিট লগ এক্সপোর্ট (CSV)
+            {t.exportButton}
           </Button>
         </div>
       </Card>
@@ -334,21 +332,18 @@ export function AuditClient() {
         onClose={() => {
           if (!exportBusy) setExportOpen(false);
         }}
-        title="অডিট লগ এক্সপোর্ট"
+        title={t.exportModalTitle}
         onConfirm={() => void confirmExport()}
       >
-        <p className="text-small leading-relaxed">
-          বর্তমান ফিল্টার অনুযায়ী অডিট লগ CSV আকারে ডাউনলোড হবে। এই এক্সপোর্টটি নিজেও অডিট লগে
-          রেকর্ড হবে।
-        </p>
+        <p className="text-small leading-relaxed">{t.exportModalBody}</p>
         <label className="mb-1.5 mt-4 block text-small font-medium" htmlFor="audit-export-reason">
-          এক্সপোর্টের কারণ (আবশ্যক)
+          {t.exportReasonLabel}
         </label>
         <input
           id="audit-export-reason"
           value={exportReason}
           onChange={(e) => setExportReason(e.target.value)}
-          placeholder="যেমন: মাসিক হিসাব মেলানো"
+          placeholder={t.exportReasonPlaceholder}
           className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
         />
         {exportError && (
@@ -356,7 +351,7 @@ export function AuditClient() {
             {exportError}
           </p>
         )}
-        {exportBusy && <p className="mt-3 text-small text-text-muted">এক্সপোর্ট তৈরি হচ্ছে…</p>}
+        {exportBusy && <p className="mt-3 text-small text-text-muted">{t.exportBusy}</p>}
       </Modal>
     </>
   );

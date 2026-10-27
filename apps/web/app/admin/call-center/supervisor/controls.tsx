@@ -6,6 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import { SourceChip, TaskStatusBadge } from "@/callcenter/components";
 import type { StaffAgentOption, SupervisorTaskView } from "@/callcenter/supervisor-store";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { CALL_CENTER_STRINGS } from "../strings";
 import { ageLabel } from "./board-ui";
 
 // Supervisor task-management controls (C2, CD2 redesign). Renders the
@@ -34,6 +37,8 @@ const btnBase =
 
 export function SupervisorControls({ tasks, agents }: Props) {
   const router = useRouter();
+  const { locale } = useLocale();
+  const s = pick(locale, CALL_CENTER_STRINGS);
   const [selectedAgent, setSelectedAgent] = useState<Record<string, string>>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
@@ -53,20 +58,20 @@ export function SupervisorControls({ tasks, agents }: Props) {
         error?: { message?: string };
       };
       if (!res.ok) {
-        setMessage({ ok: false, text: payload.error?.message ?? `Action failed (HTTP ${res.status}).` });
+        setMessage({ ok: false, text: payload.error?.message ?? interpolate(s.actionFailed, { status: res.status }) });
         return;
       }
-      setMessage({ ok: true, text: payload.data?.note ?? "Done." });
+      setMessage({ ok: true, text: payload.data?.note ?? s.doneDefault });
       router.refresh();
     } catch {
-      setMessage({ ok: false, text: "Network error — the action was not sent." });
+      setMessage({ ok: false, text: s.networkErrorAction });
     } finally {
       setBusyTaskId(null);
     }
   }
 
   if (tasks.length === 0) {
-    return <p className="text-sm text-text-muted">No open tasks right now — nothing to manage.</p>;
+    return <p className="text-sm text-text-muted">{s.noOpenTasksManage}</p>;
   }
 
   return (
@@ -94,8 +99,8 @@ export function SupervisorControls({ tasks, agents }: Props) {
                   <p className="mt-0.5 font-mono text-xs tabular-nums text-text-muted">{t.phoneMasked}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <SourceChip source={t.source} />
-                  <TaskStatusBadge status={t.status} />
+                  <SourceChip source={t.source} lang={locale} />
+                  <TaskStatusBadge status={t.status} lang={locale} />
                   {t.orderNo ? (
                     <Badge tone="neutral" icon={<Icon name="package" size={12} />}>
                       {t.orderNo}
@@ -105,23 +110,23 @@ export function SupervisorControls({ tasks, agents }: Props) {
               </div>
 
               <p className="mt-2.5 text-xs text-text-muted">
-                দায়িত্বে:{" "}
+                {s.assignedToLabel}{" "}
                 <span className="font-medium text-text-main">
-                  {t.assignedAgentName ?? t.assignedAgentId ?? "কেউ নয়"}
+                  {t.assignedAgentName ?? t.assignedAgentId ?? s.nobody}
                 </span>{" "}
-                · বয়স: <span className="font-medium text-text-main">{ageLabel(t.ageMinutes)}</span> · চেষ্টা:{" "}
+                · {s.ageLabelWord} <span className="font-medium text-text-main">{ageLabel(t.ageMinutes, locale)}</span> · {s.attemptsLabelWord}{" "}
                 <span className="font-medium text-text-main">{t.attempts}</span>
               </p>
 
               <div className="mt-3.5 grid gap-2 border-t border-border/60 pt-3.5 sm:grid-cols-[1fr_auto] lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto]">
                 <select
-                  aria-label={`Reassign target for task ${t.id}`}
+                  aria-label={interpolate(s.reassignAria, { id: t.id })}
                   value={chosenAgent}
                   disabled={busy}
                   onChange={(e) => setSelectedAgent((s) => ({ ...s, [t.id]: e.target.value }))}
                   className={inputCls}
                 >
-                  <option value="">Select agent…</option>
+                  <option value="">{s.selectAgent}</option>
                   {agents.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.name ?? a.id}
@@ -135,11 +140,11 @@ export function SupervisorControls({ tasks, agents }: Props) {
                   className={`${btnBase} bg-brand-600 text-white hover:bg-brand-700`}
                 >
                   <Icon name="users" size={15} />
-                  Reassign
+                  {s.reassignBtn}
                 </button>
                 <input
-                  aria-label={`Force-close reason for task ${t.id}`}
-                  placeholder="Force-close reason (required)"
+                  aria-label={interpolate(s.forceCloseReasonAria, { id: t.id })}
+                  placeholder={s.forceClosePlaceholder}
                   value={reason}
                   disabled={busy}
                   onChange={(e) => setReasons((s) => ({ ...s, [t.id]: e.target.value }))}
@@ -153,7 +158,7 @@ export function SupervisorControls({ tasks, agents }: Props) {
                     className={`${btnBase} flex-1 border border-border bg-card text-text-main hover:bg-surface-2 lg:flex-none`}
                   >
                     <Icon name="rotate-ccw" size={15} />
-                    Release
+                    {s.releaseBtn}
                   </button>
                   <button
                     type="button"
@@ -162,7 +167,7 @@ export function SupervisorControls({ tasks, agents }: Props) {
                     className={`${btnBase} flex-1 bg-rose-600 text-white hover:bg-rose-700 lg:flex-none`}
                   >
                     <Icon name="x" size={15} />
-                    Force-close
+                    {s.forceCloseBtn}
                   </button>
                 </div>
               </div>

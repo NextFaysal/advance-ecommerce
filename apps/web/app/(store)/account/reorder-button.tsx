@@ -16,11 +16,15 @@
  * The per-item report (skips + price changes) is shown inline here
  * before the customer moves on, and a copy is stashed in
  * sessionStorage ("advance-ecommerce:reorder-report") so a checkout
- * surface can pick it up later.
+ * surface can pick it up later. Skip reasons arrive from the API as
+ * {reasonBn, reasonEn} pairs and are picked by the active locale.
  */
 import { useState } from "react";
 import { addItemToGuestCart } from "@/cart/components/AddToCartButton";
 import { BdtAmount } from "@/components/ui/numerals";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { ACCOUNT_STRINGS } from "./strings";
 
 interface ReorderAddedItem {
   variantId: string;
@@ -56,6 +60,8 @@ type Phase =
 const REPORT_KEY = "advance-ecommerce:reorder-report";
 
 export default function ReorderButton({ orderId, orderNo }: { orderId: string; orderNo: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ACCOUNT_STRINGS);
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
 
   async function handleReorder() {
@@ -73,8 +79,8 @@ export default function ReorderButton({ orderId, orderNo }: { orderId: string; o
           kind: "error",
           message:
             res.status === 401
-              ? "লগইনের মেয়াদ শেষ হয়ে গেছে — আবার লগইন করে চেষ্টা করুন।"
-              : (body?.error?.message ?? "কিছু সমস্যা হয়েছে, আবার চেষ্টা করুন।"),
+              ? s.reorderSessionExpired
+              : (body?.error?.message ?? s.reorderGenericError),
         });
         return;
       }
@@ -119,7 +125,7 @@ export default function ReorderButton({ orderId, orderNo }: { orderId: string; o
       }
       setPhase({ kind: "done", addedUnits, items, skipped });
     } catch {
-      setPhase({ kind: "error", message: "নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।" });
+      setPhase({ kind: "error", message: s.reorderNetworkError });
     }
   }
 
@@ -130,9 +136,9 @@ export default function ReorderButton({ orderId, orderNo }: { orderId: string; o
         <p className="font-semibold text-text-main">
           {items.length > 0
             ? addedUnits > 0
-              ? `✓ ${addedUnits}টি পণ্য কার্টে যোগ হয়েছে`
-              : "✓ পণ্যগুলো ইতিমধ্যে কার্টে আছে"
-            : "কোনো পণ্যই এখন কার্টে যোগ করা যায়নি"}
+              ? interpolate(s.reorderAdded, { count: addedUnits })
+              : s.reorderAlreadyInCart
+            : s.reorderNoneAdded}
         </p>
         {items.length > 0 ? (
           <ul className="mt-2 space-y-1.5 leading-6 text-text-muted">
@@ -140,12 +146,15 @@ export default function ReorderButton({ orderId, orderNo }: { orderId: string; o
               <li key={item.variantId}>
                 {item.name} × {item.quantity}
                 {item.quantity < item.requestedQuantity ? (
-                  <span> (স্টক অনুযায়ী {item.requestedQuantity}টির বদলে {item.quantity}টি)</span>
+                  <span> {interpolate(s.reorderStockAdjusted, { requested: item.requestedQuantity, quantity: item.quantity })}</span>
                 ) : null}
                 {item.priceChanged ? (
                   <span className="block text-xs">
-                    দাম বদলেছে — আগে <BdtAmount poisha={item.previousUnitPricePoisha} /> → এখন{" "}
-                    <BdtAmount poisha={item.unitPricePoisha} />
+                    {locale === "bn" ? (
+                      <>দাম বদলেছে — আগে <BdtAmount poisha={item.previousUnitPricePoisha} /> → এখন <BdtAmount poisha={item.unitPricePoisha} /></>
+                    ) : (
+                      <>Price changed — was <BdtAmount poisha={item.previousUnitPricePoisha} /> → now <BdtAmount poisha={item.unitPricePoisha} /></>
+                    )}
                   </span>
                 ) : null}
               </li>
@@ -156,7 +165,7 @@ export default function ReorderButton({ orderId, orderNo }: { orderId: string; o
           <ul className="mt-2 space-y-1.5 leading-6 text-text-muted">
             {skipped.map((item) => (
               <li key={item.variantId}>
-                <span className="text-text-main">{item.name}</span> — {item.reasonBn}
+                <span className="text-text-main">{item.name}</span> — {locale === "bn" ? item.reasonBn : item.reasonEn}
               </li>
             ))}
           </ul>
@@ -166,7 +175,7 @@ export default function ReorderButton({ orderId, orderNo }: { orderId: string; o
             href={`/checkout?reorder=${encodeURIComponent(orderNo)}`}
             className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-brand-600 px-4 py-2 font-semibold text-white transition hover:bg-brand-700"
           >
-            চেকআউটে যান →
+            {s.reorderGoCheckout}
           </a>
         ) : null}
       </div>
@@ -181,7 +190,7 @@ export default function ReorderButton({ orderId, orderNo }: { orderId: string; o
         disabled={phase.kind === "loading"}
         className="inline-flex min-h-10 items-center rounded-lg border border-brand-600 px-3.5 py-1.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
       >
-        {phase.kind === "loading" ? "কার্টে যোগ হচ্ছে…" : "আবার অর্ডার করুন"}
+        {phase.kind === "loading" ? s.reorderAdding : s.reorderButton}
       </button>
       {phase.kind === "error" ? (
         <p className="mt-1.5 text-xs leading-5 text-red-600" role="alert">

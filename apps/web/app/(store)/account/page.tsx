@@ -14,6 +14,9 @@
  * Session: the httpOnly `customer_session` cookie, resolved server-side
  * via src/customer-auth. This page never receives or renders a password
  * or a session token.
+ *
+ * Language (doc 30): every UI string comes from ACCOUNT_STRINGS via
+ * getRequestLocale(); order/payment badges receive lang={locale}.
  */
 import type { Metadata } from "next";
 import {
@@ -56,17 +59,25 @@ import {
   PAYMENT_STATUS_VISUAL,
 } from "@/orders/components/labels";
 import type { OrderStatus, PaymentStatus } from "@/orders/types";
+import { getRequestLocale } from "@/i18n/server";
+import { intlLocale, interpolate, pick, type Locale } from "@/i18n/locale";
+import { COMMON_STRINGS } from "@/i18n/dictionaries";
+import { ACCOUNT_STRINGS, type AccountStrings } from "./strings";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "আমার অ্যাকাউন্ট — Advance Ecommerce",
-  description: "লগইন করুন, আপনার অর্ডার ও সংরক্ষিত ঠিকানা দেখুন।",
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getRequestLocale();
+  const s = pick(locale, ACCOUNT_STRINGS);
+  return {
+    title: s.metaTitle,
+    description: s.metaDescription,
+    robots: { index: false, follow: false },
+  };
+}
 
-function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat("bn-BD", { dateStyle: "medium" }).format(new Date(iso));
+function formatDate(iso: string, locale: Locale): string {
+  return new Intl.DateTimeFormat(intlLocale(locale), { dateStyle: "medium" }).format(new Date(iso));
 }
 
 function isOrderStatus(status: string): status is OrderStatus {
@@ -89,9 +100,13 @@ function isPaymentStatus(status: string): status is PaymentStatus {
  */
 function OrderCard({
   order,
+  locale,
+  s,
   warrantyItems = [],
 }: {
   order: AccountOrderSummary;
+  locale: Locale;
+  s: AccountStrings;
   /** ADV-22 (electronics pack): recorded serials + warranty window
    *  per electronics item of this order; empty unless the pack is on
    *  and the order has electronics items. */
@@ -120,24 +135,24 @@ function OrderCard({
               {order.orderNo}
             </a>
             {isOrderStatus(order.status) ? (
-              <OrderStatusBadge status={order.status} />
+              <OrderStatusBadge status={order.status} lang={locale} />
             ) : (
               <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
                 {order.status}
               </span>
             )}
             {isPaymentStatus(order.paymentStatus) && order.paymentStatus !== "PAID" ? (
-              <OrderPaymentBadge status={order.paymentStatus} />
+              <OrderPaymentBadge status={order.paymentStatus} lang={locale} />
             ) : null}
             {order.deliverySlotLabel ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-text-muted">
                 <Icon name="clock" size={12} />
-                ডেলিভারি স্লট: {order.deliverySlotLabel}
+                {interpolate(s.deliverySlot, { label: order.deliverySlotLabel })}
               </span>
             ) : null}
           </div>
           <p className="mt-1 truncate text-xs leading-5 text-text-muted">
-            {formatDate(order.createdAt)} · {order.itemCount}টি পণ্য
+            {formatDate(order.createdAt, locale)} · {interpolate(s.itemsCount, { count: order.itemCount })}
             {order.firstItemName ? ` · ${order.firstItemName}` : ""}
           </p>
         </div>
@@ -150,25 +165,25 @@ function OrderCard({
 
       {warrantyItems.length > 0 ? (
         <div className="mt-3 rounded-lg bg-surface-2 px-3 py-2.5 text-sm leading-6">
-          <p className="font-semibold text-text-main">🛡️ ওয়ারেন্টি কার্ড</p>
+          <p className="font-semibold text-text-main">{s.warrantyCard}</p>
           <ul className="mt-1 space-y-2">
             {warrantyItems.map((item, i) => (
               <li key={i} className="text-text-muted">
                 <span className="font-medium text-text-main">{item.productName}</span>
-                {" — "}ওয়ারেন্টি: {item.warrantyMonths} মাস
+                {" — "}{interpolate(s.warrantyMonths, { months: item.warrantyMonths })}
                 {item.warranty ? (
                   <>
-                    {" "}· মেয়াদ শেষ: {formatDate(item.warranty.expiresOn)}
-                    {item.warranty.isActive ? " (সক্রিয়)" : " (মেয়াদ শেষ)"}
+                    {" "}· {interpolate(s.warrantyExpires, { date: formatDate(item.warranty.expiresOn, locale) })}
+                    {item.warranty.isActive ? ` ${s.warrantyActive}` : ` ${s.warrantyExpired}`}
                   </>
                 ) : (
-                  <> · ডেলিভারির দিন থেকে শুরু হবে</>
+                  <> · {s.warrantyStartsOnDelivery}</>
                 )}
                 {item.serials.length > 0 ? (
                   <>
                     <br />
                     <span className="text-xs">
-                      সিরিয়াল / IMEI:{" "}
+                      {s.serialImei}{" "}
                       <span className="font-mono font-medium text-text-main">
                         {item.serials.join(", ")}
                       </span>
@@ -184,7 +199,7 @@ function OrderCard({
       {codDuePoisha !== null ? (
         <div className="mt-3 flex items-baseline justify-between rounded-lg bg-amber-50 px-3 py-2 text-sm">
           <span className="font-medium text-amber-800">
-            ডেলিভারির সময় বকেয়া (ক্যাশ অন ডেলিভারি)
+            {s.codDue}
           </span>
           <span className="font-semibold text-amber-700">
             <Money poisha={codDuePoisha} />
@@ -204,6 +219,9 @@ export default async function AccountPage({
 }: {
   searchParams: { authError?: string };
 }) {
+  const locale = await getRequestLocale();
+  const s = pick(locale, ACCOUNT_STRINGS);
+  const common = pick(locale, COMMON_STRINGS);
   const customer = await getCurrentCustomer();
 
   if (customer === null) {
@@ -216,28 +234,28 @@ export default async function AccountPage({
     ]);
     return (
       <main className="mx-auto w-full max-w-md px-4 py-8 sm:py-10">
-        <h1 className="font-display text-2xl font-bold text-text-main">আমার অ্যাকাউন্ট</h1>
+        <h1 className="font-display text-2xl font-bold text-text-main">{common.myAccount}</h1>
         <p className="mt-1.5 text-sm leading-6 text-text-muted">
-          মোবাইল নম্বরে OTP কোড দিয়ে লগইন করুন — পাসওয়ার্ডও ব্যবহার করা যাবে।
+          {s.loginIntro}
         </p>
         {searchParams.authError === "facebook_no_email" ? (
           <p role="alert" className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
-            Facebook আপনার ইমেইল শেয়ার করেনি — তাই Facebook দিয়ে অ্যাকাউন্ট তৈরি বা লগইন করা যায়নি। অনুগ্রহ করে মোবাইল নম্বরে OTP অথবা পাসওয়ার্ড দিয়ে লগইন করুন।
+            {s.facebookNoEmail}
           </p>
         ) : searchParams.authError ? (
           <p role="alert" className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
             {searchParams.authError === "facebook"
-              ? "Facebook লগইন সম্পন্ন হয়নি। আবার চেষ্টা করুন, অথবা OTP/পাসওয়ার্ড দিয়ে লগইন করুন।"
-              : "Google লগইন সম্পন্ন হয়নি। আবার চেষ্টা করুন, অথবা OTP/পাসওয়ার্ড দিয়ে লগইন করুন।"}
+              ? s.facebookFailed
+              : s.googleFailed}
           </p>
         ) : null}
         <div className="mt-5">
           <AuthForms googleEnabled={googleEnabled} facebookEnabled={facebookEnabled} />
         </div>
         <p className="mt-4 text-sm leading-6 text-text-muted">
-          অ্যাকাউন্ট ছাড়াও অর্ডার নম্বর ও ফোন নম্বর দিয়ে{" "}
-          <a href="/track" className="font-semibold text-brand-700 hover:underline">অর্ডার ট্র্যাক</a>{" "}
-          করা যায় — অতিথি হিসেবে অর্ডার করা সবসময়ই চালু আছে।
+          {s.guestTrackBefore}{" "}
+          <a href="/track" className="font-semibold text-brand-700 hover:underline">{s.guestTrackLink}</a>{" "}
+          {s.guestTrackAfter}
         </p>
       </main>
     );
@@ -268,56 +286,57 @@ export default async function AccountPage({
     <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold text-text-main">আমার অ্যাকাউন্ট</h1>
+          <h1 className="font-display text-2xl font-bold text-text-main">{common.myAccount}</h1>
           <p className="mt-1.5 text-sm leading-6 text-text-muted">
-            স্বাগতম, <span className="font-semibold text-text-main">{customer.name}</span>
+            {s.welcome}{" "}
+            <span className="font-semibold text-text-main">{customer.name}</span>
           </p>
         </div>
         <LogoutButton />
       </div>
 
-      <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label="প্রোফাইল">
-        <h2 className="text-base font-bold text-text-main">প্রোফাইল</h2>
+      <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label={s.profile}>
+        <h2 className="text-base font-bold text-text-main">{s.profile}</h2>
         <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
           <div>
-            <dt className="text-text-muted">নাম</dt>
+            <dt className="text-text-muted">{common.name}</dt>
             <dd className="mt-0.5 font-semibold text-text-main">{customer.name}</dd>
           </div>
           <div>
-            <dt className="text-text-muted">মোবাইল নম্বর</dt>
+            <dt className="text-text-muted">{s.mobileNumber}</dt>
             <dd className="mt-0.5 font-semibold text-text-main">{customer.phoneMasked}</dd>
           </div>
           <div>
-            <dt className="text-text-muted">ইমেইল</dt>
+            <dt className="text-text-muted">{common.email}</dt>
             <dd className="mt-0.5 font-semibold text-text-main">{customer.email ?? "—"}</dd>
           </div>
           <div>
-            <dt className="text-text-muted">সদস্য হয়েছেন</dt>
-            <dd className="mt-0.5 font-semibold text-text-main">{formatDate(customer.createdAt)}</dd>
+            <dt className="text-text-muted">{s.memberSince}</dt>
+            <dd className="mt-0.5 font-semibold text-text-main">{formatDate(customer.createdAt, locale)}</dd>
           </div>
           <BirthDateField />
         </dl>
       </section>
 
-      <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label="লগইন পদ্ধতি">
-        <h2 className="text-base font-bold text-text-main">লগইন পদ্ধতি</h2>
+      <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label={s.loginMethods}>
+        <h2 className="text-base font-bold text-text-main">{s.loginMethods}</h2>
         <ul className="mt-3 space-y-3 text-sm">
           <li className="flex items-baseline justify-between gap-3">
-            <span className="text-text-muted">মোবাইল OTP</span>
-            <span className="font-semibold text-text-main">{customer.phoneMasked} — সবসময় চালু</span>
+            <span className="text-text-muted">{s.mobileOtp}</span>
+            <span className="font-semibold text-text-main">{customer.phoneMasked} {s.alwaysOnSuffix}</span>
           </li>
           <li className="flex items-baseline justify-between gap-3">
-            <span className="text-text-muted">পাসওয়ার্ড</span>
+            <span className="text-text-muted">{s.passwordLabel}</span>
             <span className="font-semibold text-text-main">
-              {customer.hasPassword ? "সেট করা আছে" : "সেট করা নেই — OTP দিয়ে লগইন করুন"}
+              {customer.hasPassword ? s.passwordSet : s.passwordNotSet}
             </span>
           </li>
           <li className="flex items-baseline justify-between gap-3">
             <span className="text-text-muted">Google</span>
             <span className="font-semibold text-text-main">
               {customer.email
-                ? `${customer.email} — এই ইমেইল দিয়ে সাইন-ইন করা যাবে`
-                : "ইমেইল যোগ করা নেই"}
+                ? interpolate(s.googleSignInWith, { email: customer.email })
+                : s.noEmailAdded}
             </span>
           </li>
         </ul>
@@ -328,7 +347,7 @@ export default async function AccountPage({
       ) : null}
 
       {b2bProfile ? (
-        <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label="B2B পোর্টাল">
+        <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label={s.b2bPortal}>
           <h2 className="flex items-center gap-2.5 text-base font-bold text-text-main">
             <span
               aria-hidden="true"
@@ -336,20 +355,20 @@ export default async function AccountPage({
             >
               <Icon name="store" size={18} />
             </span>
-            B2B পোর্টাল — {b2bProfile.businessName}
+            {interpolate(s.b2bPortalHeading, { name: b2bProfile.businessName })}
           </h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            আপনার কোম্পানির কোটেশন, ক্রেডিট সীমা ও বকেয়ার হিসাব এবং অর্ডারগুলো এক জায়গায় দেখুন।
+            {s.b2bPortalDesc}
           </p>
           <p className="mt-3">
             <a href="/account/b2b" className="font-semibold text-brand-700 hover:underline">
-              B2B পোর্টালে যান →
+              {s.b2bPortalCta}
             </a>
           </p>
         </section>
       ) : null}
 
-      <section className="mt-6 rounded-2xl border border-border bg-card shadow-card" aria-label="আমার অর্ডার">
+      <section className="mt-6 rounded-2xl border border-border bg-card shadow-card" aria-label={s.myOrders}>
         <div className="flex items-center justify-between px-5 pt-5">
           <h2 className="flex items-center gap-2.5 text-base font-bold text-text-main">
             <span
@@ -358,26 +377,25 @@ export default async function AccountPage({
             >
               <Icon name="package" size={18} />
             </span>
-            আমার অর্ডার
+            {s.myOrders}
           </h2>
-          <span className="text-xs font-medium text-text-muted">মোট {total}টি</span>
+          <span className="text-xs font-medium text-text-muted">{interpolate(s.totalOrders, { count: total })}</span>
         </div>
         {orders.length === 0 ? (
           <p className="px-5 py-5 text-sm leading-6 text-text-muted">
-            এখনো কোনো অর্ডার নেই। <a href="/shop" className="font-semibold text-brand-700 hover:underline">কেনাকাটা শুরু করুন</a> —
-            এই নম্বর দিয়ে অতিথি হিসেবে করা অর্ডারও এখানে দেখা যেত।
+            {s.noOrdersBefore} <a href="/shop" className="font-semibold text-brand-700 hover:underline">{s.startShopping}</a> {s.noOrdersAfter}
           </p>
         ) : (
           <ul className="mt-2 divide-y divide-border pb-2">
             {orders.map((o) => (
-              <OrderCard key={o.id} order={o} warrantyItems={warrantyByOrder.get(o.id) ?? []} />
+              <OrderCard key={o.id} order={o} locale={locale} s={s} warrantyItems={warrantyByOrder.get(o.id) ?? []} />
             ))}
           </ul>
         )}
         {total > orders.length ? (
           <p className="px-5 pb-4 text-xs text-text-muted">
-            সাম্প্রতিক {orders.length}টি দেখানো হচ্ছে। নির্দিষ্ট অর্ডারের অবস্থা{" "}
-            <a href="/track" className="font-semibold text-brand-700 hover:underline">ট্র্যাক</a> পেজে দেখুন।
+            {interpolate(s.recentShownBefore, { count: orders.length })}{" "}
+            <a href="/track" className="font-semibold text-brand-700 hover:underline">{s.trackLink}</a> {s.recentShownAfter}
           </p>
         ) : null}
       </section>
@@ -389,7 +407,7 @@ export default async function AccountPage({
       <DownloadsSection />
 
       {myCourses.length > 0 ? (
-        <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label="আমার কোর্স">
+        <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label={s.myCourses}>
           <h2 className="flex items-center gap-2.5 text-base font-bold text-text-main">
             <span
               aria-hidden="true"
@@ -397,35 +415,34 @@ export default async function AccountPage({
             >
               ▶
             </span>
-            আমার কোর্স
+            {s.myCourses}
           </h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            আপনার {myCourses.length}টি কোর্সে অ্যাক্সেস আছে — লেসনগুলো এখান থেকে দেখুন।
+            {interpolate(s.myCoursesDesc, { count: myCourses.length })}
           </p>
           <p className="mt-3">
             <a href="/account/courses" className="font-semibold text-brand-700 hover:underline">
-              আমার কোর্সে যান →
+              {s.myCoursesCta}
             </a>
           </p>
         </section>
       ) : null}
 
-      <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label="সাপোর্ট টিকিট">
-        <h2 className="text-base font-bold text-text-main">সাপোর্ট টিকিট</h2>
+      <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label={s.supportTickets}>
+        <h2 className="text-base font-bold text-text-main">{s.supportTickets}</h2>
         <p className="mt-1.5 text-sm leading-6 text-text-muted">
-          অর্ডার বা কেনাকাটা নিয়ে সমস্যা থাকলে টিকিট খুলুন — আমাদের টিমের উত্তর ও পুরো
-          কথোপকথন এক জায়গায় পাবেন।
+          {s.supportTicketsDesc}
         </p>
         <a
           href="/account/tickets"
           className="mt-3 inline-block rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-text-main transition hover:bg-surface-2"
         >
-          আমার টিকিট দেখুন / নতুন টিকিট খুলুন
+          {s.supportTicketsCta}
         </a>
       </section>
 
-      <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label="সংরক্ষিত ঠিকানা">
-        <h2 className="text-base font-bold text-text-main">সংরক্ষিত ঠিকানা</h2>
+      <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label={s.savedAddresses}>
+        <h2 className="text-base font-bold text-text-main">{s.savedAddresses}</h2>
         <div className="mt-3">
           <AddressManager addresses={addresses} />
         </div>
@@ -445,7 +462,7 @@ export default async function AccountPage({
 
       <ApiTokensSection />
 
-      <section className="mt-6" aria-label="পুশ নোটিফিকেশন">
+      <section className="mt-6" aria-label={s.pushNotifications}>
         <PushSubscribeToggle />
       </section>
     </main>

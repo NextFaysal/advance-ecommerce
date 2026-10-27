@@ -14,9 +14,12 @@
  */
 import { OutcomeBadge, SourceChip } from "@/callcenter/components";
 import { formatBdt } from "@/checkout/pricing";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { CALL_CENTER_STRINGS } from "../strings";
 import {
   DISPOSITIONS,
-  OUTCOME_BUTTONS,
+  outcomeButtons,
   SOURCE_LABEL,
   bnDateTime,
   fillScript,
@@ -52,10 +55,13 @@ export function OutcomeControls({
   onRecordOutcome: (outcome: CallOutcome) => void;
   size?: "lg" | "bar";
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, CALL_CENTER_STRINGS);
+  const buttons = outcomeButtons(locale);
   if (size === "bar") {
     return (
       <div className="flex snap-x gap-2 overflow-x-auto">
-        {OUTCOME_BUTTONS.map((b, i) => (
+        {buttons.map((b, i) => (
           <button
             key={b.key}
             type="button"
@@ -67,9 +73,9 @@ export function OutcomeControls({
             } ${armedOutcome === b.key ? "ring-2 ring-slate-400" : ""}`}
           >
             {b.key === "CALLBACK" && callbackOpen
-              ? "🕐 সময় দিয়ে কলব্যাক নিশ্চিত করুন"
+              ? s.callbackConfirmBtn
               : armedOutcome === b.key
-                ? `${b.label} — নিশ্চিত করুন`
+                ? `${b.label}${s.confirmSuffix}`
                 : b.label}
             <kbd
               aria-hidden="true"
@@ -86,20 +92,20 @@ export function OutcomeControls({
   return (
     <>
       <label className="mt-4 block text-sm">
-        <span className="text-text-muted">নোট (ঐচ্ছিক)</span>
+        <span className="text-text-muted">{s.noteLabel}</span>
         <input
           type="text"
           value={note}
           maxLength={500}
           onChange={(e) => onNoteChange(e.target.value)}
           className="mt-1 w-full rounded-md border border-border px-2.5 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
-          placeholder="কলের সংক্ষিপ্ত নোট…"
+          placeholder={s.notePlaceholder}
         />
       </label>
 
       {callbackOpen ? (
         <label className="mt-3 block text-sm">
-          <span className="text-text-muted">কলব্যাকের সময় (আবশ্যক)</span>
+          <span className="text-text-muted">{s.callbackTimeReqLabel}</span>
           <input
             type="datetime-local"
             value={callbackAt}
@@ -111,28 +117,27 @@ export function OutcomeControls({
 
       {armedOutcome === "CANCELLED" || armedOutcome === "WRONG_NUMBER" ? (
         <label className="mt-3 block text-sm">
-          <span className="text-text-muted">কারণ / ডিসপজিশন (ঐচ্ছিক)</span>
+          <span className="text-text-muted">{s.dispositionLabel}</span>
           <select
             value={disposition}
             onChange={(e) => onDispositionChange(e.target.value)}
             className="mt-1 w-full rounded-md border border-border bg-card px-2.5 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
-            <option value="">— কারণ বেছে দিন (ঐচ্ছিক) —</option>
+            <option value="">{s.dispositionPlaceholder}</option>
             {DISPOSITIONS.map((d) => (
               <option key={d.key} value={d.key}>
-                {d.label}
+                {d.label[locale]}
               </option>
             ))}
           </select>
           <span className="mt-1 block text-xs text-text-muted">
-            বেছে দিলে ফলাফলের সঙ্গে কারণটি কল লগে জমা থাকবে। তারপর নিচের বোতামটি আবার চাপ
-            দিয়ে ফলাফল নিশ্চিত করুন।
+            {s.dispositionHelp}
           </span>
         </label>
       ) : null}
 
       <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {OUTCOME_BUTTONS.map((b, i) => (
+        {buttons.map((b, i) => (
           <button
             key={b.key}
             type="button"
@@ -146,9 +151,9 @@ export function OutcomeControls({
             }`}
           >
             {b.key === "CALLBACK" && callbackOpen
-              ? "🕐 সময় দিয়ে কলব্যাক নিশ্চিত করুন"
+              ? s.callbackConfirmBtn
               : armedOutcome === b.key
-                ? `${b.label} — নিশ্চিত করুন`
+                ? `${b.label}${s.confirmSuffix}`
                 : b.label}
             <kbd
               aria-hidden="true"
@@ -160,12 +165,10 @@ export function OutcomeControls({
         ))}
       </div>
       <p className="mt-2 text-xs text-text-muted">
-        কনফার্ম/বাতিল হলে সংযুক্ত অর্ডারের অবস্থাও আপডেট হয়। ফোন না ধরলে টাস্ক আবার কিউতে ফিরে
-        যায় (সর্বোচ্চ ৩ বার চেষ্টা)।
+        {s.outcomeHelp}
       </p>
       <p className="mt-1.5 text-xs text-text-muted">
-        ⌨️ কীবোর্ড: 1–5 কী দিয়ে ফলাফলের বোতাম চাপ দিন — কলব্যাক/বাতিলের ক্ষেত্রে সময় বা কারণ
-        ঠিক করে Enter চাপ দিয়ে নিশ্চিত করুন। (কোনো ঘরে লিখতে থাকলে শর্টকাট কী কাজ করবে না।)
+        {s.outcomeKeyboardHelp}
       </p>
     </>
   );
@@ -200,20 +203,21 @@ export function CallStage({
   onDispositionChange: (v: string) => void;
   onRecordOutcome: (outcome: CallOutcome) => void;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, CALL_CENTER_STRINGS);
   if (!current) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-surface-2 p-6 text-center">
         <p className="text-4xl" aria-hidden="true">📞</p>
-        <h3 className="mt-2 text-base font-semibold">কোনো কল চলছে না</h3>
+        <h3 className="mt-2 text-base font-semibold">{s.noCallTitle}</h3>
         <p className="mx-auto mt-1 max-w-sm text-sm text-text-muted">
-          কিউ থেকে পরবর্তী কল নিন — টাস্ক এলে গ্রাহকের তথ্য, স্ক্রিপ্ট আর ফলাফলের বোতাম এখানে
-          আসবে।
+          {s.noCallText}
         </p>
       </div>
     );
   }
 
-  const wa = whatsAppUrl(current);
+  const wa = whatsAppUrl(current, locale);
 
   return (
     <div className="rounded-xl border-2 border-indigo-200 bg-indigo-50/50 p-4">
@@ -221,7 +225,7 @@ export function CallStage({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-indigo-900">
-            📞 এখনকার কল
+            {s.currentCall}
           </h3>
           <p className="mt-1 truncate text-2xl font-bold">{current.customerName}</p>
           <p className="mt-0.5 text-lg font-medium">
@@ -233,20 +237,20 @@ export function CallStage({
               <>
                 {current.phoneMasked}
                 <span className="ml-2 align-middle text-xs font-normal text-text-muted">
-                  (সম্পূর্ণ নম্বর দেখার অনুমতি নেই)
+                  {s.noFullPhonePermission}
                 </span>
               </>
             )}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <SourceChip source={current.source} />
-            {current.lastOutcome ? <OutcomeBadge outcome={current.lastOutcome} /> : null}
+            <SourceChip source={current.source} lang={locale} />
+            {current.lastOutcome ? <OutcomeBadge outcome={current.lastOutcome} lang={locale} /> : null}
           </div>
         </div>
         {current.status === "IN_CALL" ? (
           <div className="rounded-lg bg-slate-800 px-3.5 py-2 text-center">
             <p className="text-[11px] font-medium uppercase tracking-wide text-slate-300">
-              কলের সময়
+              {s.callDuration}
             </p>
             <p className="font-mono text-2xl font-bold tabular-nums text-white">
               ⏱ {fmtElapsed(elapsedSec)}
@@ -257,36 +261,36 @@ export function CallStage({
 
       <dl className="mt-3 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
         <div>
-          <dt className="text-text-muted">ধরন</dt>
-          <dd>{SOURCE_LABEL[current.source]}</dd>
+          <dt className="text-text-muted">{s.fieldType}</dt>
+          <dd>{SOURCE_LABEL[current.source][locale]}</dd>
         </div>
         <div>
-          <dt className="text-text-muted">অর্ডার</dt>
+          <dt className="text-text-muted">{s.fieldOrder}</dt>
           <dd>
             {current.orderNo ?? "—"}
-            {current.orderTotalPoisha > 0 ? ` · মোট ${formatBdt(current.orderTotalPoisha)}` : ""}
+            {current.orderTotalPoisha > 0 ? interpolate(s.orderTotalPart, { total: formatBdt(current.orderTotalPoisha) }) : ""}
           </dd>
         </div>
         <div>
-          <dt className="text-text-muted">আগের চেষ্টা</dt>
-          <dd>{current.attempts} বার</dd>
+          <dt className="text-text-muted">{s.prevAttempts}</dt>
+          <dd>{interpolate(s.attemptsText, { n: current.attempts })}</dd>
         </div>
         {current.lastOutcome ? (
           <div>
-            <dt className="text-text-muted">শেষ ফলাফল</dt>
+            <dt className="text-text-muted">{s.lastOutcome}</dt>
             <dd>{current.lastOutcome}</dd>
           </div>
         ) : null}
         {current.note ? (
           <div>
-            <dt className="text-text-muted">টাস্কের নোট</dt>
+            <dt className="text-text-muted">{s.taskNote}</dt>
             <dd>{current.note}</dd>
           </div>
         ) : null}
         {current.nextAttemptAt ? (
           <div>
-            <dt className="text-text-muted">পরবর্তী চেষ্টা (অটোমেশন)</dt>
-            <dd>{bnDateTime(current.nextAttemptAt)}</dd>
+            <dt className="text-text-muted">{s.nextAttemptAuto}</dt>
+            <dd>{bnDateTime(current.nextAttemptAt, locale)}</dd>
           </div>
         ) : null}
       </dl>
@@ -298,7 +302,7 @@ export function CallStage({
           rel="noreferrer"
           className="mt-3 inline-block rounded-md bg-green-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-green-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
-          💬 WhatsApp-এ মেসেজ পাঠান
+          {s.whatsappSend}
         </a>
       ) : null}
 
@@ -306,11 +310,11 @@ export function CallStage({
       {(current.script?.steps ?? script).length > 0 ? (
         <details className="mt-3 rounded-lg border border-indigo-100 bg-card p-3" open>
           <summary className="cursor-pointer rounded-sm text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
-            কথা বলার স্ক্রিপ্ট{current.script ? ` — ${current.script.version}` : ""}
+            {s.scriptCardTitle}{current.script ? ` — ${current.script.version}` : ""}
           </summary>
           <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">
-            {(current.script?.steps ?? script).map((s) => (
-              <li key={s.key}>{fillScript(s.promptBn, current)}</li>
+            {(current.script?.steps ?? script).map((step) => (
+              <li key={step.key}>{fillScript(locale === "en" && step.promptEn ? step.promptEn : step.promptBn, current)}</li>
             ))}
           </ol>
         </details>

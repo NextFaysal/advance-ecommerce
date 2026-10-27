@@ -16,8 +16,12 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   SERVICE_BOOKING_STATUS_LABELS_BN,
+  SERVICE_BOOKING_STATUS_LABELS_EN,
   type ServiceBookingStatus,
 } from "@/services/selection";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { BOOKINGS_STRINGS } from "./strings";
 
 const POLL_MS = 30_000;
 
@@ -58,6 +62,9 @@ const STATUS_BADGE: Record<ServiceBookingStatus, string> = {
 };
 
 export function BookingsBoard() {
+  const { locale } = useLocale();
+  const s = pick(locale, BOOKINGS_STRINGS);
+  const statusLabels = locale === "bn" ? SERVICE_BOOKING_STATUS_LABELS_BN : SERVICE_BOOKING_STATUS_LABELS_EN;
   const [date, setDate] = useState(() => todayDhakaYmd());
   const [board, setBoard] = useState<BoardData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,15 +80,15 @@ export function BookingsBoard() {
         error?: { message?: string };
       } | null;
       if (!res.ok || !json?.data) {
-        setError(json?.error?.message ?? "বুকিং বোর্ড লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.boardLoadFailed);
         return;
       }
       setBoard(json.data);
       setError(null);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — বোর্ড হালনাগাদ করা যায়নি।");
+      setError(s.boardLoadNetwork);
     }
-  }, [date]);
+  }, [date, s]);
 
   useEffect(() => {
     void load();
@@ -100,11 +107,11 @@ export function BookingsBoard() {
       });
       const json = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
       if (!res.ok) {
-        setError(json?.error?.message ?? "বুকিং হালনাগাদ করা যায়নি।");
+        setError(json?.error?.message ?? s.updateFailed);
       }
       await load();
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — বুকিং হালনাগাদ করা যায়নি।");
+      setError(s.updateNetwork);
     } finally {
       setBusyId(null);
     }
@@ -113,10 +120,10 @@ export function BookingsBoard() {
   const total = board ? Object.values(board.counts).reduce((a, b) => a + b, 0) : 0;
 
   return (
-    <section aria-label="বুকিং বোর্ড" className="space-y-3">
+    <section aria-label={s.boardAria} className="space-y-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-text-muted">
         <label className="flex items-center gap-2">
-          <span className="font-medium text-text-main">দিন</span>
+          <span className="font-medium text-text-main">{s.dayLabel}</span>
           <input
             type="date"
             value={date}
@@ -129,28 +136,31 @@ export function BookingsBoard() {
           onClick={() => setDate(todayDhakaYmd())}
           className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-text-main transition hover:bg-surface-2"
         >
-          আজ
+          {s.today}
         </button>
         <span>
-          মোট: <strong className="text-text-main">{total}টি</strong>
+          <strong className="text-text-main">{interpolate(s.totalCount, { count: total })}</strong>
         </span>
         <span>
-          বুক করা: <strong className="text-text-main">{board?.counts.BOOKED ?? 0}টি</strong> · সম্পন্ন:{" "}
-          <strong className="text-text-main">{board?.counts.COMPLETED ?? 0}টি</strong> · আসেননি:{" "}
-          <strong className="text-text-main">{board?.counts.NO_SHOW ?? 0}টি</strong> · বাতিল:{" "}
-          <strong className="text-text-main">{board?.counts.CANCELLED ?? 0}টি</strong>
+          <strong className="text-text-main">{interpolate(s.bookedCount, { count: board?.counts.BOOKED ?? 0 })}</strong>{" "}
+          ·{" "}
+          <strong className="text-text-main">{interpolate(s.completedCount, { count: board?.counts.COMPLETED ?? 0 })}</strong>{" "}
+          ·{" "}
+          <strong className="text-text-main">{interpolate(s.noShowCount, { count: board?.counts.NO_SHOW ?? 0 })}</strong>{" "}
+          ·{" "}
+          <strong className="text-text-main">{interpolate(s.cancelledCount, { count: board?.counts.CANCELLED ?? 0 })}</strong>
         </span>
-        <span>প্রতি ৩০ সেকেন্ডে স্বয়ংক্রিয় হালনাগাদ হয় (polling — live realtime নয়)।</span>
+        <span>{s.pollNote}</span>
       </div>
       {error && (
         <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
           {error}
         </p>
       )}
-      {!board && !error && <p className="text-sm text-text-muted">বুকিং বোর্ড লোড হচ্ছে…</p>}
+      {!board && !error && <p className="text-sm text-text-muted">{s.boardLoading}</p>}
       {board && board.groups.length === 0 && (
         <p className="rounded-2xl border border-border bg-surface-2/50 px-4 py-6 text-sm text-text-muted">
-          এই দিনে কোনো বুকিং নেই।
+          {s.emptyDay}
         </p>
       )}
       <div className="space-y-4">
@@ -159,7 +169,7 @@ export function BookingsBoard() {
             <h3 className="mb-3 flex items-center justify-between px-1 text-sm font-bold text-text-main">
               {group.slotStart} – {group.slotEnd}
               <span className="rounded-full bg-card px-2 py-0.5 text-xs font-semibold text-text-muted">
-                {group.bookings.length}টি বুকিং
+                {interpolate(s.groupBookings, { count: group.bookings.length })}
               </span>
             </h3>
             <div className="space-y-2.5">
@@ -174,7 +184,7 @@ export function BookingsBoard() {
                       <span
                         className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_BADGE[row.status]}`}
                       >
-                        {SERVICE_BOOKING_STATUS_LABELS_BN[row.status]}
+                        {statusLabels[row.status]}
                       </span>
                       {row.staffLabel && (
                         <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-800">
@@ -183,7 +193,7 @@ export function BookingsBoard() {
                       )}
                     </div>
                     <p className="mt-1 text-xs text-text-muted">
-                      {row.customerFirstName} · {row.customerPhoneMasked} · অর্ডার{" "}
+                      {row.customerFirstName} · {row.customerPhoneMasked} · {s.orderWord}{" "}
                       <Link href={`/admin/orders/${row.orderId}`} className="font-semibold text-brand-700 hover:underline">
                         {row.orderNo}
                       </Link>{" "}
@@ -198,7 +208,7 @@ export function BookingsBoard() {
                         onClick={() => void advance(row, "COMPLETED")}
                         className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
                       >
-                        সম্পন্ন
+                        {s.completeBtn}
                       </button>
                       <button
                         type="button"
@@ -206,7 +216,7 @@ export function BookingsBoard() {
                         onClick={() => void advance(row, "NO_SHOW")}
                         className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-text-main transition hover:bg-surface-2 disabled:opacity-50"
                       >
-                        আসেননি
+                        {s.noShowBtn}
                       </button>
                     </div>
                   )}

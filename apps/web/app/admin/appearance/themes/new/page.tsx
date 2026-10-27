@@ -12,9 +12,13 @@ import type { ThemeTokens } from "@/lib/themes";
 import { THEME_PRESETS } from "@/lib/theme-presets";
 import { generateSmartPalette } from "@/lib/theme-palette-generator";
 import { ThemeLivePreview } from "@/components/admin/theme-live-preview";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { APPEARANCE_STRINGS, TOKEN_GROUP_LABELS, TOKEN_META_LABELS } from "../../strings";
 
 export default function NewThemePage() {
   const router = useRouter();
+  const { locale } = useLocale();
+  const t = APPEARANCE_STRINGS[locale];
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [tokens, setTokens] = useState<ThemeTokens>(defaultThemeTokens());
@@ -60,7 +64,7 @@ export default function NewThemePage() {
           setTokens(parsed.tokens);
         }
       } catch {
-        setError("ভুল JSON ফাইল। দয়া করে সঠিক থিম JSON ফাইল দিন।");
+        setError(t.badJson);
       }
     };
     reader.readAsText(file);
@@ -69,7 +73,7 @@ export default function NewThemePage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
-      setError("থিমের নাম দিন।");
+      setError(t.nameRequired);
       return;
     }
     setSubmitting(true);
@@ -92,13 +96,13 @@ export default function NewThemePage() {
       });
       const json = (await res.json()) as { data?: { id: string }; error?: { message: string } };
       if (!res.ok) {
-        setError(json.error?.message ?? "থিম তৈরি করা যায়নি।");
+        setError(json.error?.message ?? t.createFailed);
         return;
       }
       router.push("/admin/appearance/themes");
       router.refresh();
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি। আবার চেষ্টা করুন।");
+      setError(t.networkRetry);
     } finally {
       setSubmitting(false);
     }
@@ -109,17 +113,15 @@ export default function NewThemePage() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <Link href="/admin/appearance/themes" className="text-sm font-medium text-primary hover:underline">
-            ← থিম তালিকায় ফিরুন
+            {t.backToList}
           </Link>
-          <h1 className="mt-1 font-display text-2xl font-bold text-text-main">নতুন থিম তৈরি</h1>
-          <p className="text-sm text-text-muted">
-            স্মার্ট প্যালেট জেনারেটর বা প্রিসেট দিয়ে কয়েক সেকেন্ডে তৈরি করুন।
-          </p>
+          <h1 className="mt-1 font-display text-2xl font-bold text-text-main">{t.newTitle}</h1>
+          <p className="text-sm text-text-muted">{t.newSubtitle}</p>
         </div>
 
         {/* JSON Import button */}
         <label className="cursor-pointer inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3.5 py-2 text-xs font-semibold text-text-main shadow-sm hover:bg-muted">
-          📥 থিম JSON ইমপোর্ট
+          {t.importJson}
           <input type="file" accept=".json" onChange={handleJsonImport} className="hidden" />
         </label>
       </div>
@@ -133,7 +135,7 @@ export default function NewThemePage() {
       {/* Quick Starter Presets Bar */}
       <div className="mb-8 rounded-2xl border border-border bg-card p-5 shadow-sm">
         <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-text-muted">
-          ⚡ দ্রুত স্টার্টার প্রিসেট লোড করুন
+          {t.presetsTitle}
         </h3>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {THEME_PRESETS.map((preset) => (
@@ -165,26 +167,26 @@ export default function NewThemePage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* General Info */}
             <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-              <h2 className="mb-4 text-sm font-bold text-text-main">সাধারণ তথ্য</h2>
+              <h2 className="mb-4 text-sm font-bold text-text-main">{t.generalInfo}</h2>
               <div className="space-y-4">
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-text-main">
-                    থিমের নাম <span className="text-destructive">*</span>
+                    {t.themeName} <span className="text-destructive">*</span>
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Royal Emerald"
+                    placeholder={t.themeNamePlaceholder}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm text-text-main shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-text-main">বিবরণ</label>
+                  <label className="mb-1 block text-xs font-semibold text-text-main">{t.description}</label>
                   <input
                     type="text"
-                    placeholder="থিমের বর্ণনা বা উদ্দেশ্যের নোট"
+                    placeholder={t.descriptionPlaceholder}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm text-text-main shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
@@ -197,10 +199,8 @@ export default function NewThemePage() {
             <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-bold text-primary">🪄 ১-ক্লিক স্মার্ট প্যালেট জেনারেটর</h3>
-                  <p className="text-xs text-text-muted">
-                    ১টি ব্র্যান্ড কালার বেছে নিন, সিস্টেম স্বয়ংক্রিয়ভাবে ব্যালেন্সড লাইট ও ডার্ক প্যালেট তৈরি করবে।
-                  </p>
+                  <h3 className="text-sm font-bold text-primary">{t.generatorTitle}</h3>
+                  <p className="text-xs text-text-muted">{t.generatorDesc}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <input
@@ -214,7 +214,7 @@ export default function NewThemePage() {
                     onClick={handleGeneratePalette}
                     className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-90"
                   >
-                    কালার সেট জেনারেট করুন
+                    {t.generateSet}
                   </button>
                 </div>
               </div>
@@ -222,11 +222,11 @@ export default function NewThemePage() {
 
             {/* Full Token Groups Customizer */}
             <div className="space-y-4">
-              <h2 className="text-sm font-bold text-text-main">CSS ভ্যারিয়েবল বিস্তারিত কাস্টমাইজেশন</h2>
+              <h2 className="text-sm font-bold text-text-main">{t.tokensTitle}</h2>
               {THEME_TOKEN_GROUPS.map((group) => (
                 <div key={group.label} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
                   <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-text-muted">
-                    {group.label}
+                    {TOKEN_GROUP_LABELS[locale][group.label] ?? group.label}
                   </h3>
                   <div className="space-y-3">
                     {group.tokens.map((tokenKey) => {
@@ -237,11 +237,11 @@ export default function NewThemePage() {
                           className="grid items-center gap-2 sm:grid-cols-12 text-xs border-b border-border/50 pb-2.5 last:border-0"
                         >
                           <div className="sm:col-span-4">
-                            <span className="font-semibold text-text-main">{meta?.label ?? tokenKey}</span>
+                            <span className="font-semibold text-text-main">{meta ? (TOKEN_META_LABELS[locale][meta.label] ?? meta.label) : tokenKey}</span>
                             <span className="block font-mono text-[10px] text-text-muted">{tokenKey}</span>
                           </div>
                           <div className="sm:col-span-4">
-                            <span className="mb-0.5 block text-[10px] text-text-muted font-medium">Light</span>
+                            <span className="mb-0.5 block text-[10px] text-text-muted font-medium">{t.lightLabel}</span>
                             <input
                               type="text"
                               value={tokens.light[tokenKey] ?? ""}
@@ -251,7 +251,7 @@ export default function NewThemePage() {
                             />
                           </div>
                           <div className="sm:col-span-4">
-                            <span className="mb-0.5 block text-[10px] text-text-muted font-medium">Dark</span>
+                            <span className="mb-0.5 block text-[10px] text-text-muted font-medium">{t.darkLabel}</span>
                             <input
                               type="text"
                               value={tokens.dark[tokenKey] ?? ""}
@@ -273,14 +273,14 @@ export default function NewThemePage() {
                 href="/admin/appearance/themes"
                 className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-text-main shadow-sm hover:bg-muted"
               >
-                বাতিল
+                {t.cancel}
               </Link>
               <button
                 type="submit"
                 disabled={submitting}
                 className="rounded-xl bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-50"
               >
-                {submitting ? "সংরক্ষণ হচ্ছে…" : "থিম তৈরি করুন"}
+                {submitting ? t.saving : t.createTheme}
               </button>
             </div>
           </form>

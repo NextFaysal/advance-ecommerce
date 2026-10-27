@@ -1,5 +1,8 @@
 import { formatBdt } from "@advance-ecommerce/validators";
 import { getCustomerMembershipState } from "@/marketing/membership-tiers";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
+import { ACCOUNT_STRINGS } from "./strings";
 
 /**
  * Membership tier card (ADV-18A) — server component on the account
@@ -9,31 +12,36 @@ import { getCustomerMembershipState } from "@/marketing/membership-tiers";
  * membership-tiers.getCustomerMembershipState), the progress bar is
  * the exact fraction of the gap to the next tier, and the benefits
  * listed are the tier's configured discount bps / free shipping —
- * the same values the checkout route applies.
+ * the same values the checkout route applies. Tier names are
+ * merchant-configured {labelBn, labelEn} pairs, picked by locale.
  */
 export default async function MembershipTierCard({ customerId }: { customerId: string }) {
+  const locale = await getRequestLocale();
+  const s = pick(locale, ACCOUNT_STRINGS);
   const state = await getCustomerMembershipState(customerId);
   const { tier, nextTier } = state;
   const progressPct = Math.round(state.progressBps / 100);
+  const tierLabel = locale === "bn" ? tier.labelBn : tier.labelEn;
+  const nextTierLabel = nextTier ? (locale === "bn" ? nextTier.labelBn : nextTier.labelEn) : "";
   return (
     <section
       className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card"
-      aria-label="মেম্বারশিপ টিয়ার"
+      aria-label={s.membershipTier}
     >
-      <h2 className="text-base font-bold text-text-main">মেম্বারশিপ টিয়ার</h2>
+      <h2 className="text-base font-bold text-text-main">{s.membershipTier}</h2>
       <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-lg font-bold text-brand-700">{tier.labelBn}</span>
+        <span className="text-lg font-bold text-brand-700">{tierLabel}</span>
         <span className="text-sm text-text-muted">
-          মোট কেনাকাটা (ডেলিভারি সম্পন্ন): {formatBdt(state.lifetimeSpendPoisha)}
+          {interpolate(s.lifetimeSpend, { amount: formatBdt(state.lifetimeSpendPoisha) })}
         </span>
       </div>
       <ul className="mt-3 space-y-1.5 text-sm text-text-main">
         {tier.discountBps > 0 ? (
-          <li>✓ প্রতিটি অর্ডারে পণ্যের মূল্যে {(tier.discountBps / 100).toFixed(tier.discountBps % 100 === 0 ? 0 : 2)}% ছাড়</li>
+          <li>✓ {interpolate(s.tierDiscount, { pct: (tier.discountBps / 100).toFixed(tier.discountBps % 100 === 0 ? 0 : 2) })}</li>
         ) : null}
-        {tier.freeShipping ? <li>✓ সব অর্ডারে ডেলিভারি চার্জ ফ্রি</li> : null}
+        {tier.freeShipping ? <li>✓ {s.tierFreeShipping}</li> : null}
         {tier.discountBps === 0 && !tier.freeShipping ? (
-          <li className="text-text-muted">এই টিয়ারে এখনো কোনো বিশেষ সুবিধা নেই — কেনাকাটা বাড়লে পরের টিয়ারে ছাড় ও ফ্রি ডেলিভারি মিলবে।</li>
+          <li className="text-text-muted">{s.tierNoBenefits}</li>
         ) : null}
       </ul>
       {nextTier ? (
@@ -44,17 +52,19 @@ export default async function MembershipTierCard({ customerId }: { customerId: s
             aria-valuenow={progressPct}
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-label={`${nextTier.labelBn} টিয়ারের অগ্রগতি`}
+            aria-label={interpolate(s.tierProgressAria, { tier: nextTierLabel })}
           >
             <div className="brand-gradient h-full rounded-full" style={{ width: `${progressPct}%` }} />
           </div>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            <span className="font-semibold text-text-main">{nextTier.labelBn}</span> টিয়ারে পৌঁছাতে আরও{" "}
-            {formatBdt(state.toNextTierPoisha)} কেনাকাটা বাকি।
+            {interpolate(s.tierRemaining, {
+              tier: nextTierLabel,
+              amount: formatBdt(state.toNextTierPoisha),
+            })}
           </p>
         </div>
       ) : (
-        <p className="mt-4 text-sm leading-6 text-text-muted">আপনি সর্বোচ্চ টিয়ারে আছেন — ধন্যবাদ!</p>
+        <p className="mt-4 text-sm leading-6 text-text-muted">{s.tierTop}</p>
       )}
     </section>
   );

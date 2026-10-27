@@ -6,6 +6,9 @@
  * (createManual) and passes them down.
  */
 import type { FormEvent } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { CALL_CENTER_STRINGS } from "../strings";
 
 export function ManualTaskForm({
   mName,
@@ -30,17 +33,17 @@ export function ManualTaskForm({
   onNoteChange: (v: string) => void;
   onSubmit: (e: FormEvent) => void;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, CALL_CENTER_STRINGS);
   return (
     <form onSubmit={onSubmit} className="rounded-xl border border-border p-4">
-      <h3 className="text-sm font-semibold">ম্যানুয়াল টাস্ক যোগ করুন</h3>
+      <h3 className="text-sm font-semibold">{s.manualTitle}</h3>
       <p className="mt-1 text-xs text-text-muted">
-        যেমন ফেসবুক কমেন্ট থেকে পাওয়া নম্বর। ম্যানুয়াল টাস্কে নাম, নোট ও নম্বরটি সংরক্ষণ করা
-        হয় যাতে এজেন্ট কল করতে পারে — সম্পূর্ণ নম্বর শুধু অনুমতিপ্রাপ্ত
-        (customers.view_full_phone) ব্যবহারকারীরাই দেখতে পান; বাকি সব জায়গায় মাস্ক করা থাকে।
+        {s.manualHelp}
       </p>
       <div className="mt-3 grid grid-cols-1 gap-3">
         <label className="block text-sm">
-          <span className="text-text-muted">গ্রাহকের নাম *</span>
+          <span className="text-text-muted">{s.customerNameReq}</span>
           <input
             type="text"
             required
@@ -51,7 +54,7 @@ export function ManualTaskForm({
           />
         </label>
         <label className="block text-sm">
-          <span className="text-text-muted">মোবাইল নম্বর *</span>
+          <span className="text-text-muted">{s.mobileReq}</span>
           <input
             type="tel"
             required
@@ -62,7 +65,7 @@ export function ManualTaskForm({
           />
         </label>
         <label className="block text-sm">
-          <span className="text-text-muted">নোট (ঐচ্ছিক)</span>
+          <span className="text-text-muted">{s.noteLabel}</span>
           <input
             type="text"
             maxLength={500}
@@ -87,7 +90,7 @@ export function ManualTaskForm({
         disabled={mBusy}
         className="mt-3 w-full rounded-md bg-slate-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
       >
-        টাস্ক যোগ করুন
+        {s.addTaskBtn}
       </button>
     </form>
   );

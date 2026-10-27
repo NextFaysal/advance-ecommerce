@@ -24,6 +24,9 @@ import {
   type CourierAssignmentOrderFacts,
   type CourierAssignmentStats,
 } from "@/bd/courier-assignment";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { BD_TOOLS_STRINGS } from "./strings";
 
 export interface CourierAssignmentPanelProps {
   stats: CourierAssignmentStats[];
@@ -57,6 +60,8 @@ const inputClass =
   "w-full rounded-[10px] border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100";
 
 export function CourierAssignmentPanel({ stats, shipmentCount, providersWithHistory }: CourierAssignmentPanelProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, BD_TOOLS_STRINGS);
   const [district, setDistrict] = useState<string>("Dhaka");
   const [weight, setWeight] = useState("800");
   const [codTaka, setCodTaka] = useState("1500");
@@ -81,24 +86,22 @@ export function CourierAssignmentPanel({ stats, shipmentCount, providersWithHist
   return (
     <div className="space-y-4">
       <p className="text-sm text-text-muted">
-        অর্ডারের জেলা, ওজন আর COD টাকা দিলেই ইঞ্জিন যোগ্য কুরিয়ারদের র‌্যাংক করে দেবে — হার্ড ফিল্টার
-        (নিষ্ক্রিয় / জোন নেই / ওজন বেশি / COD নেয় না) আগে, তারপর ডেলিভারি হার, রিটার্ন, চার্জ, ETA ও
-        জেলার আগের রেকর্ড দিয়ে স্কোর। কোনো আসল কুরিয়ার API কল হয় না।
+        {s.caIntro}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone="brand">
-          ইতিহাস: ডাটাবেসের {shipmentCount}টি শিপমেন্ট ({providersWithHistory}টি প্রোভাইডার) · সক্ষমতা: প্রোভাইডার ক্যাটালগ
+          {interpolate(s.caHistoryBadge, { shipments: shipmentCount, providers: providersWithHistory })}
         </Badge>
         {result.chosen ? (
-          <Badge tone="success">✓ সুপারিশ: {PROVIDER_LABELS[result.chosen.provider] ?? result.chosen.provider} · স্কোর {result.chosen.score}/১০০</Badge>
+          <Badge tone="success">{interpolate(s.caChosenBadge, { provider: PROVIDER_LABELS[result.chosen.provider] ?? result.chosen.provider, score: result.chosen.score ?? "—" })}</Badge>
         ) : (
-          <Badge tone="danger">⚠ কোনো কুরিয়ার যোগ্য নয়</Badge>
+          <Badge tone="danger">{s.caNoneBadge}</Badge>
         )}
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-text-muted">জেলা (District)</span>
+          <span className="mb-1 block text-xs font-medium text-text-muted">{s.caDistrict}</span>
           <select value={district} onChange={(e) => setDistrict(e.target.value)} className={inputClass}>
             {DISTRICTS.map((d) => (
               <option key={d} value={d}>{d}</option>
@@ -106,26 +109,28 @@ export function CourierAssignmentPanel({ stats, shipmentCount, providersWithHist
           </select>
         </label>
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-text-muted">ওজন (গ্রাম)</span>
+          <span className="mb-1 block text-xs font-medium text-text-muted">{s.caWeight}</span>
           <input type="number" min={1} value={weight} onChange={(e) => setWeight(e.target.value)} className={inputClass} />
         </label>
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-text-muted">COD টাকা (৳) — ০ = প্রিপেইড</span>
+          <span className="mb-1 block text-xs font-medium text-text-muted">{s.caCod}</span>
           <input type="number" min={0} value={codTaka} onChange={(e) => setCodTaka(e.target.value)} className={inputClass} />
         </label>
         <label className="flex items-end gap-2 pb-2 text-sm">
           <input type="checkbox" checked={fragile} onChange={(e) => setFragile(e.target.checked)} />
-          ভঙ্গুর (fragile)
+          {s.caFragile}
         </label>
         <label className="flex items-end gap-2 pb-2 text-sm">
           <input type="checkbox" checked={highValue} onChange={(e) => setHighValue(e.target.checked)} />
-          উচ্চমূল্য (high-value)
+          {s.caHighValue}
         </label>
       </div>
       <p className="text-xs text-text-muted">
-        জোন: <span className="font-mono">{result.order.zone}</span> (জেলা থেকে zoneForDistrict দিয়ে) ·
-        ওজন {result.order.weightGrams} গ্রাম · COD <Money poisha={result.order.codAmountPoisha} />
-        {result.order.fragile || result.order.highValue ? " · যত্ন (care) স্কোর সক্রিয় — রিটার্ন হার বাড়তি গুরুত্ব পাচ্ছে" : ""}
+        {s.caZoneLine1}
+        <span className="font-mono">{result.order.zone}</span>
+        {interpolate(s.caZoneLine2, { weight: result.order.weightGrams })}
+        <Money poisha={result.order.codAmountPoisha} />
+        {result.order.fragile || result.order.highValue ? s.caCareNote : ""}
       </p>
 
       <div className="space-y-2">
@@ -137,20 +142,22 @@ export function CourierAssignmentPanel({ stats, shipmentCount, providersWithHist
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-sm font-semibold">
                 #{i + 1} {PROVIDER_LABELS[r.provider] ?? r.provider}
-                {i === 0 ? <span className="ml-2 text-emerald-700">★ সুপারিশকৃত</span> : null}
+                {i === 0 ? <span className="ml-2 text-emerald-700">{s.caRecommended}</span> : null}
               </span>
               <span className="flex flex-wrap items-center gap-2 text-sm">
-                <Badge tone={i === 0 ? "success" : "info"}>স্কোর {r.score}/১০০</Badge>
-                <span>চার্জ <Money poisha={r.chargePoisha ?? 0} /></span>
-                <span className="text-text-muted">ETA {r.estimatedDays ?? "—"} দিন</span>
+                <Badge tone={i === 0 ? "success" : "info"}>{interpolate(s.caScoreBadge, { score: r.score ?? "—" })}</Badge>
+                <span>{s.caCharge}<Money poisha={r.chargePoisha ?? 0} /></span>
+                <span className="text-text-muted">{interpolate(s.caEta, { days: r.estimatedDays ?? "—" })}</span>
               </span>
             </div>
             <p className="mt-1 text-xs text-text-muted">
-              ডেলিভারি হার {r.deliveryRateBps !== null ? `${(r.deliveryRateBps / 100).toFixed(1)}%` : "—"} ·
-              রিটার্ন হার {r.returnRateBps !== null ? `${(r.returnRateBps / 100).toFixed(1)}%` : "—"}
+              {interpolate(s.caDeliveryRate, {
+                rate: r.deliveryRateBps !== null ? `${(r.deliveryRateBps / 100).toFixed(1)}%` : "—",
+                rate2: r.returnRateBps !== null ? `${(r.returnRateBps / 100).toFixed(1)}%` : "—",
+              })}
             </p>
             <ul className="mt-1 list-inside list-disc text-xs">
-              {r.reasonsBn.map((reason) => (
+              {(locale === "bn" ? r.reasonsBn : r.reasonsEn).map((reason) => (
                 <li key={reason}>{reason}</li>
               ))}
             </ul>
@@ -160,13 +167,13 @@ export function CourierAssignmentPanel({ stats, shipmentCount, providersWithHist
 
       {result.excluded.length > 0 ? (
         <div>
-          <h3 className="mb-2 text-sm font-semibold">বাদ পড়েছে (হার্ড ফিল্টার)</h3>
+          <h3 className="mb-2 text-sm font-semibold">{s.caExcludedTitle}</h3>
           <ul className="space-y-1 text-sm text-text-muted">
             {result.excluded.map((r) => (
               <li key={r.provider}>
                 <span className="font-medium text-text-main">{PROVIDER_LABELS[r.provider] ?? r.provider}</span>
                 {" — "}
-                {r.exclusionReasonsBn.join(" ")}
+                {(locale === "bn" ? r.exclusionReasonsBn : r.exclusionReasonsEn).join(" ")}
               </li>
             ))}
           </ul>
@@ -174,25 +181,20 @@ export function CourierAssignmentPanel({ stats, shipmentCount, providersWithHist
       ) : null}
 
       <details>
-        <summary className="cursor-pointer text-sm font-medium">নিয়মের ট্রেস (প্রতি নিয়মে কী হলো)</summary>
+        <summary className="cursor-pointer text-sm font-medium">{s.caTraceTitle}</summary>
         <ul className="mt-2 space-y-1 font-mono text-xs text-text-muted">
           {result.trace.map((t, i) => (
             <li key={i}>
-              [{t.step}/{t.rule}] {t.provider ?? "—"}: {t.matched ? "✓" : "✗"} {t.messageEn}
+              [{t.step}/{t.rule}] {t.provider ?? "—"}: {t.matched ? "✓" : "✗"} {locale === "bn" ? t.messageBn : t.messageEn}
             </li>
           ))}
         </ul>
       </details>
 
       <p className="text-xs text-text-muted">
-        দ্রষ্টব্য: ডেলিভারি/ফেল/রিটার্ন সংখ্যা, জেলা-ভিত্তিক হার ও গড় ডেলিভারি সময় ডাটাবেসের আসল
-        শিপমেন্ট ইতিহাস থেকে হিসাব করা; জোন/সর্বোচ্চ ওজন/COD/ETA প্রোভাইডার ক্যাটালগ থেকে আসে
-        (সিস্টেমে সক্ষমতার অন্য কোনো উৎস নেই)।
-        {shipmentCount === 0
-          ? " এখনো কোনো শিপমেন্ট ইতিহাস নেই — তাই স্কোর শুধু চার্জ/ETA/ক্যাটালগের ওপর দাঁড়িয়ে; প্রথম শিপমেন্টগুলো ডেলিভারি হলেই ইতিহাস-ভিত্তিক স্কোর চালু হবে।"
-          : ""}
-        {" "}স্টাফ অন্য কুরিয়ার বেছে নিলে সেটা manual override — ইঞ্জিনের সুপারিশ সিদ্ধান্তে পাশাপাশি
-        রেকর্ড থাকে, মুছে যায় না।
+        {s.caNote1}
+        {shipmentCount === 0 ? s.caNoteNoHistory : ""}
+        {s.caNote2}
       </p>
     </div>
   );

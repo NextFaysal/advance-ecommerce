@@ -13,13 +13,16 @@
  * queue is informational only — new blocks stop occurring, and the
  * panel says so instead of implying the gate is live.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, type Locale } from "@/i18n/locale";
+import { APPROVALS_STRINGS, type ApprovalsStrings } from "./strings";
 
 interface ApprovalConfigView {
   enabled: boolean;
@@ -52,11 +55,13 @@ interface ApprovalEntry {
   refundStatus: string | null;
 }
 
-const dateFmt = new Intl.DateTimeFormat("bn-BD", {
-  timeZone: "Asia/Dhaka",
-  dateStyle: "medium",
-  timeStyle: "short",
-});
+function makeDateFmt(locale: Locale): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
+    timeZone: "Asia/Dhaka",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
 
 function pctLabel(bps: number | null): string {
   if (bps === null) return "—";
@@ -68,10 +73,14 @@ function EntryCard({
   entry,
   busy,
   onDecide,
+  t,
+  dateFmt,
 }: {
   entry: ApprovalEntry;
   busy: boolean;
   onDecide: (entry: ApprovalEntry, decision: "APPROVED" | "REJECTED", reason: string) => void;
+  t: ApprovalsStrings;
+  dateFmt: Intl.DateTimeFormat;
 }) {
   const [reason, setReason] = useState("");
   const pending = entry.status === "PENDING";
@@ -81,16 +90,16 @@ function EntryCard({
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={entry.kind === "discount" ? "warning" : "info"}>
-              {entry.kind === "discount" ? "ছাড়ের অনুমোদন" : "রিফান্ডের অনুমোদন"}
+              {entry.kind === "discount" ? t.kindDiscount : t.kindRefund}
             </Badge>
             <Badge
               tone={entry.status === "PENDING" ? "warning" : entry.status === "APPROVED" ? "success" : "danger"}
             >
               {entry.status === "PENDING"
-                ? "অনুমোদনের অপেক্ষায়"
+                ? t.statusPending
                 : entry.status === "APPROVED"
-                  ? "অনুমোদিত"
-                  : "প্রত্যাখ্যাত"}
+                  ? t.statusApproved
+                  : t.statusRejected}
             </Badge>
             {entry.orderNo && (
               <Link href={`/admin/orders/${entry.orderId}`} className="font-medium underline">
@@ -101,31 +110,35 @@ function EntryCard({
           </div>
           {entry.kind === "discount" ? (
             <p className="text-sm">
-              ছাড় {pctLabel(entry.discountBps)}
-              {entry.discountPoisha !== null && entry.subtotalPoisha !== null && (
-                <>
-                  {" "}
-                  ({formatBdt(entry.discountPoisha)} / মোট {formatBdt(entry.subtotalPoisha)})
-                </>
-              )}{" "}
-              — সীমা {pctLabel(entry.thresholdBps)}। অনুমোদন ছাড়া এই অর্ডার নিশ্চিত করা যাবে না।
+              {entry.discountPoisha !== null && entry.subtotalPoisha !== null
+                ? interpolate(t.discountLine, {
+                    pct: pctLabel(entry.discountBps),
+                    discount: formatBdt(entry.discountPoisha),
+                    subtotal: formatBdt(entry.subtotalPoisha),
+                    threshold: pctLabel(entry.thresholdBps),
+                  })
+                : interpolate(t.discountLineShort, {
+                    pct: pctLabel(entry.discountBps),
+                    threshold: pctLabel(entry.thresholdBps),
+                  })}
             </p>
           ) : (
             <p className="text-sm">
-              রিফান্ড {entry.amountPoisha !== null ? formatBdt(entry.amountPoisha) : "—"} — সীমা{" "}
-              {entry.thresholdPoisha !== null ? formatBdt(entry.thresholdPoisha) : "—"}। অনুমোদন ছাড়া এই রিফান্ড
-              পাঠানো যাবে না।
-              {entry.refundStatus && <> বর্তমান অবস্থা: {entry.refundStatus}।</>}
+              {interpolate(t.refundLine, {
+                amount: entry.amountPoisha !== null ? formatBdt(entry.amountPoisha) : "—",
+                threshold: entry.thresholdPoisha !== null ? formatBdt(entry.thresholdPoisha) : "—",
+              })}
+              {entry.refundStatus && <> {interpolate(t.refundStatusNow, { status: entry.refundStatus })}</>}
             </p>
           )}
           <p className="text-xs text-muted-foreground">
-            অনুরোধ: {entry.requestedByName ?? entry.requestedById ?? "—"} · {dateFmt.format(new Date(entry.requestedAt))}
+            {t.requestedBy}: {entry.requestedByName ?? entry.requestedById ?? "—"} · {dateFmt.format(new Date(entry.requestedAt))}
             {entry.decidedAt && (
               <>
                 {" "}
-                · সিদ্ধান্ত: {entry.decidedByName ?? entry.decidedById ?? "—"} ·{" "}
+                · {t.decidedBy}: {entry.decidedByName ?? entry.decidedById ?? "—"} ·{" "}
                 {dateFmt.format(new Date(entry.decidedAt))}
-                {entry.decisionReason && <> · কারণ: {entry.decisionReason}</>}
+                {entry.decisionReason && <> · {t.reasonLabel}: {entry.decisionReason}</>}
               </>
             )}
           </p>
@@ -135,19 +148,19 @@ function EntryCard({
             <Input
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="কারণ (প্রত্যাখ্যানের জন্য আবশ্যক)"
+              placeholder={t.reasonPlaceholder}
               maxLength={500}
             />
             <div className="flex gap-2">
               <Button disabled={busy} onClick={() => onDecide(entry, "APPROVED", reason)}>
-                অনুমোদন দিন
+                {t.approve}
               </Button>
               <Button
                 variant="outline"
                 disabled={busy || reason.trim() === ""}
                 onClick={() => onDecide(entry, "REJECTED", reason)}
               >
-                প্রত্যাখ্যান
+                {t.reject}
               </Button>
             </div>
           </div>
@@ -158,6 +171,9 @@ function EntryCard({
 }
 
 export function ApprovalsPanel() {
+  const { locale } = useLocale();
+  const t = APPROVALS_STRINGS[locale];
+  const dateFmt = useMemo(() => makeDateFmt(locale), [locale]);
   const [config, setConfig] = useState<ApprovalConfigView | null>(null);
   const [entries, setEntries] = useState<ApprovalEntry[]>([]);
   const [loadState, setLoadState] = useState<"loading" | "error" | "ready">("loading");
@@ -174,10 +190,10 @@ export function ApprovalsPanel() {
       setEntries(body.data.entries);
       setLoadState("ready");
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "লোড করা যায়নি।");
+      setMessage(e instanceof Error ? e.message : t.loadFailed);
       setLoadState("error");
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -195,19 +211,15 @@ export function ApprovalsPanel() {
         });
         const body = await res.json().catch(() => null);
         if (!res.ok) throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
-        setMessage(
-          decision === "APPROVED"
-            ? "অনুমোদন দেওয়া হয়েছে — এখন সংশ্লিষ্ট কাজটি আবার চেষ্টা করা যাবে।"
-            : "অনুরোধ প্রত্যাখ্যান করা হয়েছে।",
-        );
+        setMessage(decision === "APPROVED" ? t.approvedNote : t.rejectedNote);
         await load();
       } catch (e) {
-        setMessage(e instanceof Error ? e.message : "সিদ্ধান্ত সংরক্ষণ করা যায়নি।");
+        setMessage(e instanceof Error ? e.message : t.decideFailed);
       } finally {
         setBusyId(null);
       }
     },
-    [load],
+    [load, t],
   );
 
   const pending = entries.filter((e) => e.status === "PENDING");
@@ -219,35 +231,34 @@ export function ApprovalsPanel() {
         <Card className="p-4 text-sm">
           {config.enabled ? (
             <p>
-              অনুমোদন ব্যবস্থা <strong>চালু</strong> আছে: ছাড় {pctLabel(config.discountThresholdBps)} বা তার বেশি
-              হলে অর্ডার নিশ্চিত করতে ম্যানেজারের অনুমোদন লাগে, আর {formatBdt(config.refundThresholdPoisha)}-এর
-              বেশি রিফান্ড পাঠাতে অনুমোদন লাগে। সীমা বদলাতে Settings &gt; Orders (orders.approvals.*) ব্যবহার
-              করুন।
+              {t.configEnabledA}
+              <strong>{t.configEnabledOn}</strong>
+              {interpolate(t.configEnabledB, {
+                pct: pctLabel(config.discountThresholdBps),
+                amount: formatBdt(config.refundThresholdPoisha),
+              })}
             </p>
           ) : (
             <p>
-              অনুমোদন ব্যবস্থা <strong>বন্ধ</strong> আছে (Settings: orders.approvals.enabled) — নতুন কোনো অনুরোধ
-              তৈরি হচ্ছে না; নিচের তালিকাটি আগের রেকর্ড মাত্র।
+              {t.configDisabledA}
+              <strong>{t.configDisabledOff}</strong>
+              {t.configDisabledB}
             </p>
           )}
         </Card>
       )}
       {message && <Card className="p-3 text-sm">{message}</Card>}
-      {loadState === "loading" && <p className="text-sm text-muted-foreground">লোড হচ্ছে…</p>}
-      {loadState === "error" && (
-        <p className="text-sm text-destructive">তালিকা লোড করা যায়নি। আবার চেষ্টা করুন।</p>
-      )}
-      {loadState === "ready" && pending.length === 0 && (
-        <Card className="p-4 text-sm">অপেক্ষমাণ কোনো অনুরোধ নেই।</Card>
-      )}
+      {loadState === "loading" && <p className="text-sm text-muted-foreground">{t.loading}</p>}
+      {loadState === "error" && <p className="text-sm text-destructive">{t.loadError}</p>}
+      {loadState === "ready" && pending.length === 0 && <Card className="p-4 text-sm">{t.noPending}</Card>}
       {pending.map((entry) => (
-        <EntryCard key={entry.id} entry={entry} busy={busyId === entry.id} onDecide={decide} />
+        <EntryCard key={entry.id} entry={entry} busy={busyId === entry.id} onDecide={decide} t={t} dateFmt={dateFmt} />
       ))}
       {decided.length > 0 && (
         <>
-          <h2 className="pt-2 text-base font-semibold">সাম্প্রতিক সিদ্ধান্ত</h2>
+          <h2 className="pt-2 text-base font-semibold">{t.recentDecisions}</h2>
           {decided.map((entry) => (
-            <EntryCard key={entry.id} entry={entry} busy={false} onDecide={decide} />
+            <EntryCard key={entry.id} entry={entry} busy={false} onDecide={decide} t={t} dateFmt={dateFmt} />
           ))}
         </>
       )}

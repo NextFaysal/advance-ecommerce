@@ -19,6 +19,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
+import { BD_TOOLS_STRINGS } from "./strings";
 
 interface DeviceView {
   id: string;
@@ -30,9 +33,9 @@ interface DeviceView {
   status: "active" | "revoked";
 }
 
-function fmtDhaka(iso: string | null): string {
+function fmtDhaka(iso: string | null, locale: Locale): string {
   if (!iso) return "—";
-  return new Intl.DateTimeFormat("bn-BD", {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone: "Asia/Dhaka",
     dateStyle: "medium",
     timeStyle: "short",
@@ -40,6 +43,8 @@ function fmtDhaka(iso: string | null): string {
 }
 
 export function SmsDevicesPanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, BD_TOOLS_STRINGS);
   const [devices, setDevices] = useState<DeviceView[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [label, setLabel] = useState("");
@@ -58,15 +63,15 @@ export function SmsDevicesPanel() {
       const res = await fetch("/api/v1/admin/bd/devices", { cache: "no-store" });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        setLoadError(json?.error?.message ?? `ডিভাইস তালিকা লোড হয়নি (HTTP ${res.status})`);
+        setLoadError(json?.error?.message ?? interpolate(s.devLoadFailedHttp, { status: res.status }));
         return;
       }
       setDevices(json.data.devices as DeviceView[]);
       setLoadError(null);
     } catch {
-      setLoadError("ডিভাইস তালিকা লোড হয়নি (নেটওয়ার্ক ত্রুটি)।");
+      setLoadError(s.devLoadFailedNet);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load();
@@ -74,8 +79,8 @@ export function SmsDevicesPanel() {
 
   const create = async () => {
     setCreateError(null);
-    if (!label.trim()) return setCreateError("ডিভাইসের নাম (লেবেল) দিন।");
-    if (!createReason.trim()) return setCreateError("কারণ লিখুন — টোকেন তৈরি অডিটে থাকে।");
+    if (!label.trim()) return setCreateError(s.devLabelRequired);
+    if (!createReason.trim()) return setCreateError(s.devReasonRequired);
     setCreating(true);
     try {
       const res = await fetch("/api/v1/admin/bd/devices", {
@@ -85,7 +90,7 @@ export function SmsDevicesPanel() {
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        setCreateError(json?.error?.message ?? `তৈরি হয়নি (HTTP ${res.status})`);
+        setCreateError(json?.error?.message ?? interpolate(s.devCreateFailedHttp, { status: res.status }));
         return;
       }
       setFreshToken({ label: json.data.device.label as string, token: json.data.token as string });
@@ -94,7 +99,7 @@ export function SmsDevicesPanel() {
       setCreateReason("");
       await load();
     } catch {
-      setCreateError("তৈরি হয়নি (নেটওয়ার্ক ত্রুটি)।");
+      setCreateError(s.devCreateFailedNet);
     } finally {
       setCreating(false);
     }
@@ -103,7 +108,7 @@ export function SmsDevicesPanel() {
   const revoke = async (device: DeviceView) => {
     setRevokeError(null);
     const reason = (revokeReason[device.id] ?? "").trim();
-    if (!reason) return setRevokeError("বাতিলের কারণ লিখুন — অডিটে থাকে।");
+    if (!reason) return setRevokeError(s.devRevokeReasonRequired);
     try {
       const res = await fetch(`/api/v1/admin/bd/devices/${device.id}/revoke`, {
         method: "POST",
@@ -112,34 +117,31 @@ export function SmsDevicesPanel() {
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        setRevokeError(json?.error?.message ?? `বাতিল হয়নি (HTTP ${res.status})`);
+        setRevokeError(json?.error?.message ?? interpolate(s.devRevokeFailedHttp, { status: res.status }));
         return;
       }
       setConfirmingId(null);
       await load();
     } catch {
-      setRevokeError("বাতিল হয়নি (নেটওয়ার্ক ত্রুটি)।");
+      setRevokeError(s.devRevokeFailedNet);
     }
   };
 
   return (
     <div className="space-y-5">
       <p className="text-sm text-text-muted">
-        SMS ফরওয়ার্ডার ফোনের জন্য আলাদা ডিভাইস টোকেন — স্টাফ সেশন নয়। ফোনটি ইনজেস্ট API-তে{" "}
-        <span className="font-mono text-xs">Authorization: Bearer ae_dev_…</span> পাঠায়; সেশন মেয়াদ
-        (৭ দিন) বা TOTP-র ঝামেলা নেই। সার্ভারে শুধু টোকেনের SHA-256 হ্যাশ থাকে; কোনো ডিভাইস
-        হারালে/বদলালে এখান থেকেই বাতিল করুন — বাতিল পরের অনুরোধ থেকেই কার্যকর। সর্বোচ্চ ২০টি
-        সক্রিয় ডিভাইস।
+        {s.devIntro1}
+        <span className="font-mono text-xs">Authorization: Bearer ae_dev_…</span>
+        {s.devIntro2}
       </p>
 
       {freshToken ? (
         <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4">
           <p className="text-sm font-semibold text-amber-900">
-            “{freshToken.label}” ডিভাইসের টোকেন — শুধু এই একবারই দেখা যাচ্ছে
+            {interpolate(s.devFreshTitle, { label: freshToken.label })}
           </p>
           <p className="mt-1 text-sm text-amber-800">
-            টোকেনটি এখনই কপি করে ফরওয়ার্ডার ফোনে বসান। এই বাক্স বন্ধ করলে টোকেনটি আর কোনোদিন
-            দেখা যাবে না — সার্ভারে শুধু এর হ্যাশ আছে, নতুন করে তৈরি করা ছাড়া উপায় নেই।
+            {s.devFreshText}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <code className="break-all rounded-md bg-white px-3 py-2 font-mono text-sm text-amber-950 ring-1 ring-amber-200">
@@ -153,39 +155,39 @@ export function SmsDevicesPanel() {
                 setCopied(true);
               }}
             >
-              {copied ? "✓ কপি হয়েছে" : "কপি করুন"}
+              {copied ? s.copied : s.copy}
             </Button>
             <Button type="button" onClick={() => setFreshToken(null)}>
-              সংরক্ষণ করেছি — বন্ধ করুন
+              {s.devSavedClose}
             </Button>
           </div>
         </div>
       ) : null}
 
       <div className="rounded-lg border border-border bg-surface-2 p-4">
-        <h3 className="text-sm font-semibold">নতুন ডিভাইস টোকেন</h3>
+        <h3 className="text-sm font-semibold">{s.devNewTitle}</h3>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="block min-w-52 flex-1">
-            <span className="mb-1 block text-xs font-medium text-text-muted">ডিভাইসের নাম *</span>
+            <span className="mb-1 block text-xs font-medium text-text-muted">{s.devNameLabel}</span>
             <input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               maxLength={80}
               className="h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm outline-none focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100"
-              placeholder="যেমন: দোকানের bKash ফোন"
+              placeholder={s.devNamePlaceholder}
             />
           </label>
           <label className="block min-w-52 flex-1">
-            <span className="mb-1 block text-xs font-medium text-text-muted">কারণ *</span>
+            <span className="mb-1 block text-xs font-medium text-text-muted">{s.devReasonLabel}</span>
             <input
               value={createReason}
               onChange={(e) => setCreateReason(e.target.value)}
               className="h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm outline-none focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100"
-              placeholder="কেন এই ডিভাইসটি যোগ হচ্ছে"
+              placeholder={s.devReasonPlaceholder}
             />
           </label>
           <Button type="button" onClick={create} disabled={creating}>
-            {creating ? "তৈরি হচ্ছে…" : "টোকেন তৈরি করুন"}
+            {creating ? s.devCreating : s.devCreate}
           </Button>
         </div>
         {createError ? (
@@ -194,14 +196,14 @@ export function SmsDevicesPanel() {
       </div>
 
       <div>
-        <h3 className="mb-2 text-sm font-semibold">ডিভাইসসমূহ</h3>
+        <h3 className="mb-2 text-sm font-semibold">{s.devListTitle}</h3>
         {loadError ? (
           <p role="alert" className="text-sm text-rose-700">{loadError}</p>
         ) : devices === null ? (
-          <p className="text-sm text-text-muted">লোড হচ্ছে…</p>
+          <p className="text-sm text-text-muted">{s.devLoading}</p>
         ) : devices.length === 0 ? (
           <p className="text-sm text-text-muted">
-            এখনো কোনো ডিভাইস টোকেন নেই — ফরওয়ার্ডার ফোন এখন স্টাফ সেশন দিয়েই চলছে (লেগ্যাসি পথ)।
+            {s.devEmpty}
           </p>
         ) : (
           <ul className="divide-y divide-border rounded-lg border border-border">
@@ -211,42 +213,46 @@ export function SmsDevicesPanel() {
                   <span className="flex items-center gap-2 text-sm font-medium">
                     {device.label}
                     {device.status === "active" ? (
-                      <Badge tone="success">সক্রিয়</Badge>
+                      <Badge tone="success">{s.devActive}</Badge>
                     ) : (
-                      <Badge tone="danger">বাতিল</Badge>
+                      <Badge tone="danger">{s.devRevoked}</Badge>
                     )}
                   </span>
                   <span className="font-mono text-xs text-text-muted">{device.id}</span>
                 </div>
                 <p className="text-xs text-text-muted">
-                  তৈরি: {fmtDhaka(device.createdAt)} · সর্বশেষ দেখা:{" "}
-                  {device.lastSeenAt ? fmtDhaka(device.lastSeenAt) : "এখনো কোনো SMS পাঠায়নি"}
-                  {device.revokedAt ? ` · বাতিল: ${fmtDhaka(device.revokedAt)}` : ""}
+                  {interpolate(s.devMeta, {
+                    created: fmtDhaka(device.createdAt, locale),
+                    lastSeen: device.lastSeenAt ? fmtDhaka(device.lastSeenAt, locale) : s.devNeverSeen,
+                  })}
+                  {device.revokedAt
+                    ? interpolate(s.devRevokedSuffix, { at: fmtDhaka(device.revokedAt, locale) })
+                    : ""}
                 </p>
                 {device.status === "active" ? (
                   confirmingId === device.id ? (
                     <div className="flex flex-wrap items-end gap-2">
                       <label className="block min-w-52 flex-1">
-                        <span className="mb-1 block text-xs font-medium text-text-muted">বাতিলের কারণ *</span>
+                        <span className="mb-1 block text-xs font-medium text-text-muted">{s.devRevokeReasonLabel}</span>
                         <input
                           value={revokeReason[device.id] ?? ""}
                           onChange={(e) =>
                             setRevokeReason((prev) => ({ ...prev, [device.id]: e.target.value }))
                           }
                           className="h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm outline-none focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100"
-                          placeholder="যেমন: ফোন বদল হয়েছে"
+                          placeholder={s.devRevokeReasonPlaceholder}
                         />
                       </label>
                       <Button type="button" variant="destructive" onClick={() => void revoke(device)}>
-                        নিশ্চিত — টোকেন বাতিল করুন
+                        {s.devConfirmRevoke}
                       </Button>
                       <Button type="button" variant="ghost" onClick={() => setConfirmingId(null)}>
-                        ফিরে যান
+                        {s.devBack}
                       </Button>
                     </div>
                   ) : (
                     <Button type="button" variant="secondary" onClick={() => setConfirmingId(device.id)}>
-                      টোকেন বাতিল করুন
+                      {s.devRevoke}
                     </Button>
                   )
                 ) : null}

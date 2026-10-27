@@ -20,18 +20,35 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { parseAddress, type ParsedAddress } from "@/bd/address-parser";
 import { FULL_GEO_DICTIONARY } from "@/bd/geo-dictionary";
-import { MATCHED_BY_LABELS_BN } from "./labels";
+import { matchedByLabels } from "./labels";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { BD_TOOLS_STRINGS, type BdToolsStrings } from "./strings";
 
 const SAMPLE = "House 12, Road 5, Mirpur 10, Dhaka";
 
-function confidenceBadge(confidence: number) {
+function confidenceBadge(confidence: number, s: BdToolsStrings) {
   const pct = `${Math.round(confidence * 100)}%`;
-  if (confidence >= 0.8) return <Badge tone="success">✓ উচ্চ আত্মবিশ্বাস · {pct}</Badge>;
-  if (confidence >= 0.5) return <Badge tone="warning">◐ মাঝারি আত্মবিশ্বাস · {pct}</Badge>;
-  return <Badge tone="danger">⚠ কম আত্মবিশ্বাস · {pct} — স্টাফ নিশ্চিত করুন</Badge>;
+  if (confidence >= 0.8) return <Badge tone="success">{interpolate(s.confHigh, { pct })}</Badge>;
+  if (confidence >= 0.5) return <Badge tone="warning">{interpolate(s.confMedium, { pct })}</Badge>;
+  return <Badge tone="danger">{interpolate(s.confLow, { pct })}</Badge>;
 }
 
-function FieldRow({ label, en, bn, matchedBy }: { label: string; en: string | null; bn?: string | null; matchedBy: string | null }) {
+function FieldRow({
+  label,
+  en,
+  bn,
+  matchedBy,
+  locale,
+  s,
+}: {
+  label: string;
+  en: string | null;
+  bn?: string | null;
+  matchedBy: string | null;
+  locale: Locale;
+  s: BdToolsStrings;
+}) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border py-2 last:border-0">
       <span className="text-xs font-medium text-text-muted">{label}</span>
@@ -41,16 +58,18 @@ function FieldRow({ label, en, bn, matchedBy }: { label: string; en: string | nu
             {en}
             {bn ? <span className="text-text-muted"> ({bn})</span> : null}
           </span>
-          {matchedBy ? <Badge tone="info">{MATCHED_BY_LABELS_BN[matchedBy] ?? matchedBy}</Badge> : null}
+          {matchedBy ? <Badge tone="info">{matchedByLabels(locale)[matchedBy] ?? matchedBy}</Badge> : null}
         </span>
       ) : (
-        <span className="text-sm text-text-muted">পাওয়া যায়নি</span>
+        <span className="text-sm text-text-muted">{s.notFound}</span>
       )}
     </div>
   );
 }
 
 export function AddressParserPanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, BD_TOOLS_STRINGS);
   const [text, setText] = useState(SAMPLE);
   const [result, setResult] = useState<ParsedAddress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +77,7 @@ export function AddressParserPanel() {
   const run = () => {
     const trimmed = text.trim();
     if (trimmed.length < 5) {
-      setError("কমপক্ষে ৫ অক্ষরের ঠিকানা লিখুন।");
+      setError(s.addrTooShort);
       setResult(null);
       return;
     }
@@ -69,47 +88,46 @@ export function AddressParserPanel() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-text-muted">
-        মেসেঞ্জার / হোয়াটসঅ্যাপ / ফোনে পাওয়া যেকোনো ঠিকানা পেস্ট করুন — বাংলা, ইংরেজি বা Banglish।
-        পার্সার Division &gt; District &gt; Upazila &gt; Area বের করে দেবে; যেটা মিলবে না সেটা বাকি ঠিকানা লাইনে থাকবে, কখনো হারাবে না।
+        {s.addrIntro}
       </p>
       <label className="block">
-        <span className="mb-1 block text-xs font-medium text-text-muted">ঠিকানা *</span>
+        <span className="mb-1 block text-xs font-medium text-text-muted">{s.addrLabel}</span>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={3}
           className="w-full rounded-[10px] border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100"
-          placeholder="যেমন: বাসা ৩, সাভার, ঢাকা — অথবা Dacca, Narayangonj"
+          placeholder={s.addrPlaceholder}
         />
       </label>
       {error ? (
         <p role="alert" className="text-sm text-rose-600">⚠ {error}</p>
       ) : null}
-      <Button type="button" onClick={run}>ঠিকানা পার্স করুন</Button>
+      <Button type="button" onClick={run}>{s.addrRun}</Button>
 
       {result ? (
         <div className="rounded-lg border border-border bg-surface-2 p-4">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold">পার্স করা ফলাফল</h3>
-            {confidenceBadge(result.confidence)}
+            <h3 className="text-sm font-semibold">{s.addrResult}</h3>
+            {confidenceBadge(result.confidence, s)}
           </div>
-          <FieldRow label="বিভাগ (Division)" en={result.division} bn={result.divisionBn} matchedBy={result.matchedBy.division} />
-          <FieldRow label="জেলা (District)" en={result.district} bn={result.districtBn} matchedBy={result.matchedBy.district} />
-          <FieldRow label="উপজেলা (Upazila)" en={result.upazila} matchedBy={result.matchedBy.upazila} />
-          <FieldRow label="এলাকা (Area)" en={result.area} matchedBy={result.matchedBy.area} />
+          <FieldRow locale={locale} s={s} label={s.fieldDivision} en={result.division} bn={result.divisionBn} matchedBy={result.matchedBy.division} />
+          <FieldRow locale={locale} s={s} label={s.fieldDistrict} en={result.district} bn={result.districtBn} matchedBy={result.matchedBy.district} />
+          <FieldRow locale={locale} s={s} label={s.fieldUpazila} en={result.upazila} matchedBy={result.matchedBy.upazila} />
+          <FieldRow locale={locale} s={s} label={s.fieldArea} en={result.area} matchedBy={result.matchedBy.area} />
           <div className="pt-2">
-            <span className="text-xs font-medium text-text-muted">বাকি ঠিকানা লাইন (বাসা / রোড / হোল্ডিং)</span>
+            <span className="text-xs font-medium text-text-muted">{s.addrLineLabel}</span>
             <p className="mt-1 text-sm">{result.addressLine}</p>
           </div>
           {result.confidence < 0.5 ? (
             <p className="mt-3 text-sm text-amber-700">
-              ⚠ আত্মবিশ্বাস ৫০%-এর নিচে — কুরিয়ার বুকিংয়ের আগে স্টাফকে ঠিকানা নিশ্চিত করতে হবে।
+              {s.lowConfNote}
             </p>
           ) : null}
         </div>
       ) : null}
       <p className="text-xs text-text-muted">
-        দ্রষ্টব্য: অভিধানটি সাধারণ জায়গার তালিকা (curated), পূর্ণ BBS জিও ডেটাসেট নয় — seed-এর জিও টেবিল যুক্ত হলে একই পার্সারে সেটাই ব্যবহৃত হবে।
+        {s.addrNote}
       </p>
     </div>
   );

@@ -31,7 +31,10 @@ import { Money } from "@/components/ui/money";
 import { DataTable } from "@/components/ui/table";
 import type { DailyCashClosing } from "@/bd/cash-closing";
 import type { DerivedDrawerCash } from "@/bd/cash-closing-derive";
-import { CHANNEL_LABELS_BN, formatDateBn } from "./labels";
+import { channelLabels, formatDate } from "./labels";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { BD_TOOLS_STRINGS, type BdToolsStrings } from "./strings";
 
 export interface StoredClosingView {
   date: string;
@@ -92,6 +95,8 @@ function DrawerBreakdownVisual({
   countedPoisha: number | null;
   variancePoisha: number | null;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, BD_TOOLS_STRINGS);
   const inLines = derived.lines.filter((l) => l.direction === "in");
   const outLines = derived.lines.filter((l) => l.direction === "out");
   const inTotal = inLines.reduce((s, l) => s + l.amountPoisha, 0);
@@ -102,8 +107,8 @@ function DrawerBreakdownVisual({
     <div className="mt-4 space-y-3 border-t border-border pt-3">
       {grossIn > 0 ? (
         <div>
-          <p className="mb-1.5 text-xs font-medium text-text-muted">ড্রয়ারের গঠন — যা যা যোগ হয়েছে</p>
-          <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-card" role="img" aria-label="ড্রয়ারে যোগ হওয়া নগদের গঠন">
+          <p className="mb-1.5 text-xs font-medium text-text-muted">{s.cashDrawerInTitle}</p>
+          <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-card" role="img" aria-label={s.cashDrawerInAria}>
             <span className="bg-slate-400" style={{ width: `${pctOf(derived.openingCashPoisha, grossIn)}%` }} />
             {inLines.map((line, i) => (
               <span
@@ -115,25 +120,25 @@ function DrawerBreakdownVisual({
           </div>
           <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-muted">
             <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden="true" className="h-2 w-2 rounded-full bg-slate-400" /> শুরুর নগদ <Money poisha={derived.openingCashPoisha} />
+              <span aria-hidden="true" className="h-2 w-2 rounded-full bg-slate-400" /> {s.cashOpeningShort} <Money poisha={derived.openingCashPoisha} />
             </span>
             {inLines.map((line, i) => (
               <span key={line.key} className="inline-flex items-center gap-1.5">
                 <span aria-hidden="true" className={`h-2 w-2 rounded-full ${IN_SEGMENT_CLASSES[i % IN_SEGMENT_CLASSES.length]}`} />
-                {line.labelBn} <Money poisha={line.amountPoisha} />
+                {locale === "bn" ? line.labelBn : line.labelEn} <Money poisha={line.amountPoisha} />
               </span>
             ))}
           </div>
           {outTotal > 0 ? (
             <div className="mt-2.5">
-              <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-card" role="img" aria-label="ড্রয়ার থেকে বেরিয়ে যাওয়া নগদ">
+              <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-card" role="img" aria-label={s.cashDrawerOutAria}>
                 <span className="bg-rose-400" style={{ width: `${pctOf(outTotal, grossIn)}%` }} />
               </div>
               <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-muted">
                 {outLines.map((line) => (
                   <span key={line.key} className="inline-flex items-center gap-1.5">
                     <span aria-hidden="true" className="h-2 w-2 rounded-full bg-rose-400" />
-                    {line.labelBn} −<Money poisha={line.amountPoisha} />
+                    {locale === "bn" ? line.labelBn : line.labelEn} −<Money poisha={line.amountPoisha} />
                   </span>
                 ))}
               </div>
@@ -143,17 +148,17 @@ function DrawerBreakdownVisual({
       ) : null}
 
       <div>
-        <p className="mb-1.5 text-xs font-medium text-text-muted">থাকার কথা বনাম গণনা</p>
+        <p className="mb-1.5 text-xs font-medium text-text-muted">{s.cashVsTitle}</p>
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
-            <span className="w-16 shrink-0 text-xs text-text-muted">থাকার কথা</span>
+            <span className="w-16 shrink-0 text-xs text-text-muted">{s.cashExpectedShort}</span>
             <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-card">
               <div className="h-full bg-brand-500" style={{ width: `${pctOf(expectedPoisha, scale)}%` }} />
             </div>
             <span className="shrink-0 text-xs font-medium"><Money poisha={expectedPoisha} /></span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-16 shrink-0 text-xs text-text-muted">গণনা</span>
+            <span className="w-16 shrink-0 text-xs text-text-muted">{s.cashCountedShort}</span>
             <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-card">
               <div
                 className={`h-full ${variancePoisha === null || variancePoisha === 0 ? "bg-emerald-500" : variancePoisha < 0 ? "bg-rose-500" : "bg-sky-500"}`}
@@ -167,7 +172,7 @@ function DrawerBreakdownVisual({
         </div>
         {variancePoisha !== null && variancePoisha !== 0 ? (
           <p className={`mt-1.5 text-xs font-medium ${variancePoisha < 0 ? "text-rose-600" : "text-sky-600"}`}>
-            {variancePoisha < 0 ? "গণনায় কম আছে " : "গণনায় বেশি আছে "}
+            {variancePoisha < 0 ? s.cashCountedLess : s.cashCountedMore}
             <Money poisha={Math.abs(variancePoisha)} />
           </p>
         ) : null}
@@ -200,6 +205,9 @@ function TakaField({
 }
 
 export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialDerived }: CashClosingPanelProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, BD_TOOLS_STRINGS);
+  const CHANNEL_LABELS = channelLabels(locale);
   const router = useRouter();
   const [date, setDate] = useState(todayYmd);
   const [derived, setDerived] = useState<DerivedDrawerCash>(initialDerived);
@@ -278,17 +286,17 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialD
     for (const [key, raw] of fields) {
       const value = takaToPoisha(raw);
       if (value === null) {
-        setError("সব টাকার ঘরে সঠিক সংখ্যা লিখুন (টাকায়, সর্বোচ্চ ২ দশমিক ঘর)।");
+        setError(s.cashErrNumbers);
         return;
       }
       parsed.set(key, value);
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      setError("তারিখ yyyy-mm-dd আকারে লিখুন।");
+      setError(s.cashErrDate);
       return;
     }
     if (noteRequired && !note.trim()) {
-      setError("গণনা করা নগদ হিসাবের সঙ্গে মেলেনি — পার্থক্যের কারণ লিখে নোট দিন, তারপর জমা দিন।");
+      setError(s.cashErrNote);
       return;
     }
     setSubmitting(true);
@@ -312,14 +320,14 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialD
         | { data?: { closing: DailyCashClosing; derived: DerivedDrawerCash }; error?: { message?: string } }
         | null;
       if (!res.ok || !payload?.data) {
-        setError(payload?.error?.message ?? `ক্লোজিং সংরক্ষণ হয়নি (HTTP ${res.status})।`);
+        setError(payload?.error?.message ?? interpolate(s.cashSaveFailedHttp, { status: res.status }));
         return;
       }
       setClosing(payload.data.closing);
       setDerived(payload.data.derived);
       router.refresh();
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — ক্লোজিং পাঠানো যায়নি, আবার চেষ্টা করুন।");
+      setError(s.cashNetwork);
     } finally {
       setSubmitting(false);
     }
@@ -327,14 +335,14 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialD
 
   const resultRows = closing
     ? closing.channels.map((c) => ({
-        channel: CHANNEL_LABELS_BN[c.channel],
+        channel: CHANNEL_LABELS[c.channel],
         expected: <Money poisha={c.expectedPoisha} />,
         actual: <Money poisha={c.actualPoisha} />,
         difference: <Money poisha={c.differencePoisha} />,
         status: c.mismatch ? (
-          <Badge tone="danger">অমিল আছে</Badge>
+          <Badge tone="danger">{s.cashMismatchBadge}</Badge>
         ) : (
-          <Badge tone="success">মিলেছে</Badge>
+          <Badge tone="success">{s.cashMatchedBadge}</Badge>
         ),
       }))
     : [];
@@ -342,28 +350,27 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialD
   return (
     <div className="space-y-5">
       <p className="text-sm text-text-muted">
-        দিনের শেষে ড্রয়ারের আসল গণনা লিখে ক্লোজিং জমা দিন। <strong>নগদের "থাকার কথা" এখন সিস্টেম
-        নিজে হিসাব করে</strong> — দিনের রেকর্ড থেকে: POS নগদ বিক্রয় + রাইডারের হস্তান্তর করা COD −
-        নগদে পাঠানো ফেরত। আগের মতো হাতে লিখে দেওয়া হয় না, তাই গণনার সঙ্গে মিলিয়ে দেখাটা সত্যিকারের
-        যাচাই। হিসাব <span className="font-mono text-xs">buildDailyCashClosing()</span> দিয়ে হয় এবং
-        ফলাফল <span className="font-mono text-xs">daily_cash_closings</span> টেবিলে সংরক্ষিত থাকে (এক
-        তারিখে একটিই ক্লোজিং — আবার জমা দিলে সেই দিনের রেকর্ড সংশোধিত হয়)। অমিল কখনো নিজে থেকে ঠিক
-        করা হয় না; নগদে অমিল থাকলে কারণ লিখে নোট দেওয়া বাধ্যতামূলক। বিকাশ/নগদ "থাকার কথা" ঘরে আজকের
-        রেকর্ডকৃত পেমেন্টের হিসাব আগাম বসানো আছে — এটি সিস্টেমের অনুমান, বদলে দেওয়া যায়।
+        {s.cashIntro1}
+        <strong>{s.cashIntroStrong}</strong>
+        {s.cashIntro2}
+        <span className="font-mono text-xs">buildDailyCashClosing()</span>
+        {s.cashIntro3}
+        <span className="font-mono text-xs">daily_cash_closings</span>
+        {s.cashIntro4}
       </p>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="rounded-lg border border-border bg-surface-2 p-4">
           <h3 className="text-sm font-semibold">
-            সিস্টেমের হিসাব — ড্রয়ারে থাকার কথা ({formatDateBn(derived.date)})
-            {derivedLoading ? <span className="ml-2 text-xs font-normal text-text-muted">হিসাব আসছে…</span> : null}
+            {interpolate(s.cashSystemTitle, { date: formatDate(derived.date, locale) })}
+            {derivedLoading ? <span className="ml-2 text-xs font-normal text-text-muted">{s.cashDeriving}</span> : null}
           </h3>
           <dl className="mt-3 space-y-2 text-sm">
             <div className="flex items-baseline justify-between gap-3">
               <dt className="text-text-muted">
-                শুরুর নগদ{" "}
+                {s.cashOpening}{" "}
                 <span className="text-xs">
-                  ({derived.openingSource === "previous_closing" ? "আগের ক্লোজিংয়ের গণনা থেকে" : "আগের ক্লোজিং নেই — ০ ধরা হয়েছে"})
+                  ({derived.openingSource === "previous_closing" ? s.cashOpeningPrev : s.cashOpeningNone})
                 </span>
               </dt>
               <dd><Money poisha={derived.openingCashPoisha} /></dd>
@@ -372,25 +379,26 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialD
               <div key={line.key} className="flex items-baseline justify-between gap-3">
                 <dt className="text-text-muted">
                   {line.direction === "in" ? "+ " : "− "}
-                  {line.labelBn}{" "}
-                  <span className="text-xs">({line.recordCount}টি রেকর্ড থেকে)</span>
+                  {locale === "bn" ? line.labelBn : line.labelEn}{" "}
+                  <span className="text-xs">{interpolate(s.cashRecordSuffix, { count: line.recordCount })}</span>
                 </dt>
                 <dd><Money poisha={line.amountPoisha} /></dd>
               </div>
             ))}
             <div className="flex items-baseline justify-between gap-3 border-t border-border pt-2 font-medium">
-              <dt>মোট থাকার কথা (Expected)</dt>
+              <dt>{s.cashExpectedTotal}</dt>
               <dd><Money poisha={previewExpected ?? derived.expectedCashPoisha} /></dd>
             </div>
             {previewVariance !== null ? (
               <div className="flex items-baseline justify-between gap-3">
-                <dt className="text-text-muted">গণনার সঙ্গে পার্থক্য</dt>
+                <dt className="text-text-muted">{s.cashVarianceLabel}</dt>
                 <dd>
                   {previewVariance === 0 ? (
-                    <Badge tone="success">মিলেছে</Badge>
+                    <Badge tone="success">{s.cashMatchedBadge}</Badge>
                   ) : (
                     <Badge tone="danger">
-                      পার্থক্য <Money poisha={previewVariance} />
+                      {s.cashDifferencePrefix}
+                      <Money poisha={previewVariance} />
                     </Badge>
                   )}
                 </dd>
@@ -407,111 +415,115 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialD
             {derived.exclusionsBn.map((line) => (
               <li key={line}>{line}</li>
             ))}
-            <li>খরচ বা ব্যাংকে জমার কোনো রেকর্ড সিস্টেমে নেই — এমন কিছু ঘটলে নোটে লিখে রাখুন।</li>
+            <li>{s.cashExclusionExtra}</li>
           </ul>
         </div>
 
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-text-muted">তারিখ (yyyy-mm-dd)</span>
+              <span className="mb-1 block text-xs font-medium text-text-muted">{s.cashDateField}</span>
               <input type="text" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
             </label>
-            <TakaField label="শুরুর নগদ (টাকা) — গণনা, বদলানো যায়" value={opening} onChange={setOpening} />
-            <TakaField label="গণনা করা নগদ (টাকা)" value={counted} onChange={setCounted} />
-            <TakaField label="সহনশীলতা / টলারেন্স (টাকা)" value={tolerance} onChange={setTolerance} />
+            <TakaField label={s.cashOpeningField} value={opening} onChange={setOpening} />
+            <TakaField label={s.cashCountedField} value={counted} onChange={setCounted} />
+            <TakaField label={s.cashToleranceField} value={tolerance} onChange={setTolerance} />
           </div>
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-text-muted">
-              নোট {noteRequired ? <span className="text-rose-600">(অমিল আছে — নোট বাধ্যতামূলক)</span> : "(ঐচ্ছিক)"}
+              {s.cashNoteField}
+              {noteRequired ? <span className="text-rose-600">{s.cashNoteRequired}</span> : s.cashNoteOptional}
             </span>
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
               rows={2}
               className={inputClass}
-              placeholder="পার্থক্যের কারণ বা দিনের উল্লেখযোগ্য নগদ ঘটনা…"
+              placeholder={s.cashNotePlaceholder}
             />
           </label>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <TakaField label="বিকাশ — থাকার কথা (টাকা)" value={bkashExpected} onChange={setBkashExpected} />
-        <TakaField label="বিকাশ — আসলে আছে (টাকা)" value={bkashActual} onChange={setBkashActual} />
-        <TakaField label="নগদ — থাকার কথা (টাকা)" value={nagadExpected} onChange={setNagadExpected} />
-        <TakaField label="নগদ — আসলে আছে (টাকা)" value={nagadActual} onChange={setNagadActual} />
-        <TakaField label="কুরিয়ার COD প্রাপ্য — থাকার কথা (টাকা)" value={codExpected} onChange={setCodExpected} />
-        <TakaField label="কুরিয়ার COD প্রাপ্য — আসলে আছে (টাকা)" value={codActual} onChange={setCodActual} />
-        <TakaField label="গ্রাহকের বকেয়া, মেমো (টাকা)" value={customerDue} onChange={setCustomerDue} />
+        <TakaField label={s.cashBkashExpected} value={bkashExpected} onChange={setBkashExpected} />
+        <TakaField label={s.cashBkashActual} value={bkashActual} onChange={setBkashActual} />
+        <TakaField label={s.cashNagadExpected} value={nagadExpected} onChange={setNagadExpected} />
+        <TakaField label={s.cashNagadActual} value={nagadActual} onChange={setNagadActual} />
+        <TakaField label={s.cashCodExpected} value={codExpected} onChange={setCodExpected} />
+        <TakaField label={s.cashCodActual} value={codActual} onChange={setCodActual} />
+        <TakaField label={s.cashDueField} value={customerDue} onChange={setCustomerDue} />
       </div>
 
       {error ? (
         <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>
       ) : null}
       <Button type="button" onClick={() => void submit()} loading={submitting}>
-        ক্লোজিং হিসাব করে সংরক্ষণ করুন
+        {s.cashSubmit}
       </Button>
 
       {closing ? (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold">সংরক্ষিত ক্লোজিং — দিন: {formatDateBn(closing.date)}</h3>
+            <h3 className="text-sm font-semibold">{interpolate(s.cashSavedTitle, { date: formatDate(closing.date, locale) })}</h3>
             {closing.hasMismatch ? (
               <Badge tone="danger">
-                অমিল আছে — চ্যানেল: {closing.mismatchChannels.map((c) => CHANNEL_LABELS_BN[c]).join(", ")}
+                {interpolate(s.cashMismatchChannels, {
+                  channels: closing.mismatchChannels.map((c) => CHANNEL_LABELS[c]).join(", "),
+                })}
               </Badge>
             ) : (
-              <Badge tone="success">সব চ্যানেল মিলেছে</Badge>
+              <Badge tone="success">{s.cashAllMatched}</Badge>
             )}
           </div>
           <DataTable
             columns={[
-              { key: "channel", header: "চ্যানেল" },
-              { key: "expected", header: "থাকার কথা (Expected)" },
-              { key: "actual", header: "আসলে আছে (Actual)" },
-              { key: "difference", header: "পার্থক্য" },
-              { key: "status", header: "অবস্থা" },
+              { key: "channel", header: s.cashColChannel },
+              { key: "expected", header: s.cashColExpected },
+              { key: "actual", header: s.cashColActual },
+              { key: "difference", header: s.cashColDifference },
+              { key: "status", header: s.cashColStatus },
             ]}
             rows={resultRows}
           />
           <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
             <div className="rounded-lg border border-border bg-surface-2 p-3">
-              <p className="text-xs text-text-muted">সর্বমোট থাকার কথা</p>
+              <p className="text-xs text-text-muted">{s.cashTotalExpected}</p>
               <p className="mt-1"><Money poisha={closing.totalExpectedPoisha} /></p>
             </div>
             <div className="rounded-lg border border-border bg-surface-2 p-3">
-              <p className="text-xs text-text-muted">সর্বমোট আসলে আছে</p>
+              <p className="text-xs text-text-muted">{s.cashTotalActual}</p>
               <p className="mt-1"><Money poisha={closing.totalActualPoisha} /></p>
             </div>
             <div className="rounded-lg border border-border bg-surface-2 p-3">
-              <p className="text-xs text-text-muted">সর্বমোট পার্থক্য</p>
+              <p className="text-xs text-text-muted">{s.cashTotalDifference}</p>
               <p className="mt-1"><Money poisha={closing.totalDifferencePoisha} /></p>
             </div>
           </div>
           <p className="text-sm text-text-muted">
-            মেমো: গ্রাহকের খাতায় বকেয়া <Money poisha={closing.customerDuePoisha} /> — এটি হাতে থাকা টাকা
-            নয়, তাই কোনো মোটে যোগ হয়নি।
+            {s.cashMemo1}
+            <Money poisha={closing.customerDuePoisha} />
+            {s.cashMemo2}
           </p>
         </div>
       ) : null}
 
       <div>
-        <h3 className="mb-2 text-sm font-semibold">আগের সংরক্ষিত ক্লোজিং</h3>
+        <h3 className="mb-2 text-sm font-semibold">{s.cashPrevTitle}</h3>
         {recentClosings.length > 0 ? (
           <DataTable
             columns={[
-              { key: "date", header: "তারিখ" },
-              { key: "status", header: "অবস্থা" },
-              { key: "difference", header: "মোট পার্থক্য" },
-              { key: "savedAt", header: "সংরক্ষণের সময়" },
+              { key: "date", header: s.cashColDate },
+              { key: "status", header: s.cashColStatus },
+              { key: "difference", header: s.cashColTotalDiff },
+              { key: "savedAt", header: s.cashColSavedAt },
             ]}
             rows={recentClosings.map((c) => ({
-              date: formatDateBn(c.date),
+              date: formatDate(c.date, locale),
               status: c.hasMismatch ? (
-                <Badge tone="danger">অমিল আছে</Badge>
+                <Badge tone="danger">{s.cashMismatchBadge}</Badge>
               ) : (
-                <Badge tone="success">মিলেছে</Badge>
+                <Badge tone="success">{s.cashMatchedBadge}</Badge>
               ),
               difference: <Money poisha={c.totalDifferencePoisha} />,
               savedAt: <span className="font-mono text-xs">{c.createdAt.slice(0, 16).replace("T", " ")}</span>,
@@ -519,7 +531,7 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialD
           />
         ) : (
           <p className="text-sm text-text-muted">
-            এখনো কোনো ক্লোজিং সংরক্ষিত হয়নি — ওপরে প্রথম দিনের গণনা জমা দিলেই এখানে তালিকা আসবে।
+            {s.cashPrevEmpty}
           </p>
         )}
       </div>

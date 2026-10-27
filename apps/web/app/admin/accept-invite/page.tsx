@@ -2,6 +2,9 @@ import Link from "next/link";
 import { findPendingInviteByTokenHash } from "../../api/v1/admin/staff/store";
 import { hashStaffInviteToken } from "../../api/v1/admin/staff/invite-token";
 import { AcceptInviteForm } from "./accept-form";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { ACCEPT_INVITE_STRINGS } from "./strings";
 
 // Accept a staff invite — PUBLIC page (middleware allows it, the admin
 // layout renders it bare like login). The token from the link is looked
@@ -11,7 +14,7 @@ import { AcceptInviteForm } from "./accept-form";
 // token is never logged.
 export const dynamic = "force-dynamic";
 
-function BrandPanel() {
+function BrandPanel({ welcome, text }: { welcome: string; text: string }) {
   return (
     <aside className="brand-gradient relative hidden w-[44%] flex-col justify-between overflow-hidden p-10 text-white lg:flex">
       <div className="flex items-center gap-3">
@@ -21,13 +24,8 @@ function BrandPanel() {
         <span className="text-lg font-bold">Advance Ecommerce</span>
       </div>
       <div>
-        <h2 className="max-w-md text-4xl font-extrabold leading-snug">
-          টিমে স্বাগতম!
-        </h2>
-        <p className="mt-4 max-w-md text-sm leading-relaxed text-white/85">
-          আপনাকে এই দোকানের স্টাফ হিসেবে আমন্ত্রণ জানানো হয়েছে। নিজের নাম ও পাসওয়ার্ড সেট করলেই
-          আপনার অ্যাকাউন্ট সক্রিয় হয়ে যাবে — তারপর লগইন করে ড্যাশবোর্ড ব্যবহার করতে পারবেন।
-        </p>
+        <h2 className="max-w-md text-4xl font-extrabold leading-snug">{welcome}</h2>
+        <p className="mt-4 max-w-md text-sm leading-relaxed text-white/85">{text}</p>
       </div>
       <p className="text-xs text-white/70">© 2026 Advance Ecommerce</p>
     </aside>
@@ -39,6 +37,7 @@ export default async function AcceptInvitePage({
 }: {
   searchParams: { token?: string | string[] };
 }) {
+  const s = pick(await getRequestLocale(), ACCEPT_INVITE_STRINGS);
   const rawToken = Array.isArray(searchParams.token) ? searchParams.token[0] : searchParams.token;
   const invite =
     rawToken !== undefined && rawToken.length >= 32
@@ -47,7 +46,7 @@ export default async function AcceptInvitePage({
 
   return (
     <main className="flex min-h-screen">
-      <BrandPanel />
+      <BrandPanel welcome={s.brandWelcome} text={s.brandText} />
       <section className="flex flex-1 items-center justify-center px-6 py-12">
         <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 shadow-lg">
           <div className="mb-6 flex items-center gap-3 lg:hidden">
@@ -56,12 +55,10 @@ export default async function AcceptInvitePage({
             </span>
             <span className="font-bold text-text-main">Advance Ecommerce</span>
           </div>
-          <h1 className="text-2xl font-bold text-text-main">স্টাফ আমন্ত্রণ</h1>
+          <h1 className="text-2xl font-bold text-text-main">{s.title}</h1>
           {invite !== null && rawToken !== undefined ? (
             <>
-              <p className="mt-1 text-sm text-text-muted">
-                আপনার অ্যাকাউন্ট সক্রিয় করতে নাম ও একটি পাসওয়ার্ড সেট করুন।
-              </p>
+              <p className="mt-1 text-sm text-text-muted">{s.subtitle}</p>
               <AcceptInviteForm
                 token={rawToken}
                 invitedName={invite.name}
@@ -72,13 +69,13 @@ export default async function AcceptInvitePage({
           ) : (
             <>
               <p role="alert" className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
-                আমন্ত্রণ লিংকটি অবৈধ বা এর মেয়াদ শেষ হয়ে গেছে। নতুন লিংকের জন্য অ্যাডমিনের সাথে যোগাযোগ করুন।
+                {s.invalidLink}
               </p>
               <Link
                 href="/admin/login"
                 className="mt-6 block text-center text-sm font-medium text-brand-700 hover:underline"
               >
-                লগইন পেজে যান
+                {s.goToLogin}
               </Link>
             </>
           )}

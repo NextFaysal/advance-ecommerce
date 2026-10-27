@@ -43,8 +43,11 @@ import { ThemeBoundary } from "@/themes/theme-boundary";
 import { getShopChromeSlot, AURORA_SHOP_CHROME } from "@/themes/client-shop-registry";
 import { ThemedProductCard } from "@/themes/themed-product-card";
 import type { ShopChromeProps } from "@/themes/slots";
+import { interpolate, pick } from "@/i18n/locale";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { STORE_STRINGS } from "../store-strings";
 
-const SHOP_DEFAULT_TITLE = "দোকান — Advance Ecommerce";
+// Default document title lives in STORE_STRINGS (shopDefaultTitle, doc 30).
 
 /* ------------------------------------------------------------------ */
 /* Public API payload shapes                                           */
@@ -297,6 +300,8 @@ function applyLocalFilters(products: PublicProduct[], attrs: AttrPair[]): Public
 /* ------------------------------------------------------------------ */
 
 export function ShopBrowser() {
+  const { locale, t } = useLocale();
+  const s = pick(locale, STORE_STRINGS);
   const router = useRouter();
   const searchParams = useSearchParams();
   const mainRef = useRef<HTMLElement | null>(null);
@@ -450,14 +455,14 @@ export function ShopBrowser() {
    *  category name, then the shop default) once categories land. ---- */
   useEffect(() => {
     if (!category) {
-      document.title = SHOP_DEFAULT_TITLE;
+      document.title = s.shopDefaultTitle;
       return;
     }
     const cat = categories.find((c) => c.slug === category);
     document.title = cat
-      ? (cat.seoTitle?.bn ?? cat.seoTitle?.en ?? `${cat.name.bn} — Advance Ecommerce`)
-      : SHOP_DEFAULT_TITLE;
-  }, [category, categories]);
+      ? (cat.seoTitle?.[locale] ?? cat.seoTitle?.bn ?? cat.seoTitle?.en ?? interpolate(s.categoryFallbackTitle, { name: cat.name[locale] || cat.name.bn }))
+      : s.shopDefaultTitle;
+  }, [category, categories, locale, s]);
 
   /* ---- Derived render state (same derivations as the server page) - */
   const baseProducts = result?.products ?? [];
@@ -477,7 +482,7 @@ export function ShopBrowser() {
     category || brand || hasPriceFilter || inStockOnly || ratingMin !== undefined || attrPairs.length > 0,
   );
   const priceChipLabel = hasPriceFilter
-    ? `${minPoisha !== undefined ? TakaShort(minPoisha) : "৳০"} – ${maxPoisha !== undefined ? TakaShort(maxPoisha) : "সর্বোচ্চ"}`
+    ? `${minPoisha !== undefined ? TakaShort(minPoisha) : s.priceZeroLabel} – ${maxPoisha !== undefined ? TakaShort(maxPoisha) : s.priceMaxLabel}`
     : null;
 
   // Attribute facets for the CURRENT result scope: keys come from the
@@ -507,10 +512,10 @@ export function ShopBrowser() {
     .filter((facet) => facet.values.length > 0);
 
   const heading = q
-    ? `“${q}” — অনুসন্ধানের ফলাফল`
+    ? interpolate(s.searchResultsHeading, { q })
     : activeCategory
-      ? activeCategory.name.bn
-      : "সব পণ্য";
+      ? activeCategory.name[locale] || activeCategory.name.bn
+      : t.allProducts;
 
   const attrLabel = (pair: AttrPair): string => {
     const set = attributeSets.find((s) => s.key === pair.key);
@@ -518,16 +523,16 @@ export function ShopBrowser() {
   };
 
   const activeChips: Array<{ key: string; label: string; href: string }> = [];
-  if (q) activeChips.push({ key: "q", label: `খোঁজ: ${q}`, href: buildHref(current, { q: undefined }) });
+  if (q) activeChips.push({ key: "q", label: interpolate(s.searchChip, { q }), href: buildHref(current, { q: undefined }) });
   if (activeCategory)
-    activeChips.push({ key: "category", label: activeCategory.name.bn, href: buildHref(current, { category: undefined }) });
+    activeChips.push({ key: "category", label: activeCategory.name[locale] || activeCategory.name.bn, href: buildHref(current, { category: undefined }) });
   if (brand) activeChips.push({ key: "brand", label: brand, href: buildHref(current, { brand: undefined }) });
   if (priceChipLabel)
     activeChips.push({ key: "price", label: priceChipLabel, href: buildHref(current, { min: undefined, max: undefined }) });
   if (inStockOnly)
-    activeChips.push({ key: "instock", label: "শুধু স্টকে আছে", href: buildHref(current, { instock: undefined }) });
+    activeChips.push({ key: "instock", label: s.inStockOnlyChip, href: buildHref(current, { instock: undefined }) });
   if (ratingMin !== undefined)
-    activeChips.push({ key: "rating", label: `${ratingMin}★ ও উপরে`, href: buildHref(current, { rating: undefined }) });
+    activeChips.push({ key: "rating", label: interpolate(s.ratingChip, { rating: ratingMin }), href: buildHref(current, { rating: undefined }) });
   for (const pair of attrPairs) {
     activeChips.push({
       key: `attr-${pairToParam(pair)}`,
@@ -544,7 +549,7 @@ export function ShopBrowser() {
     result === null ? (
       <div
         className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4 xl:gap-5"
-        aria-label="লোড হচ্ছে"
+        aria-label={t.loading}
       >
         {Array.from({ length: 8 }).map((_, i) => (
           <ShopCardSkeleton key={i} />
@@ -554,24 +559,24 @@ export function ShopBrowser() {
       <div className="mt-6">
         {q ? (
           <EmptyState
-            title={`“${q}” দিয়ে কোনো পণ্য পাওয়া যায়নি`}
-            description="বানান ঠিক আছে কিনা দেখুন, অথবা অন্য কোনো নামে খুঁজে দেখুন। চাইলে সব পণ্য ঘুরে দেখতে পারেন।"
+            title={interpolate(s.emptySearchTitle, { q })}
+            description={s.emptySearchDescription}
             ctaHref="/shop"
-            ctaLabel="সব পণ্য দেখুন"
+            ctaLabel={s.emptySearchCta}
           />
         ) : hasAnyFilter ? (
           <EmptyState
-            title="এই ফিল্টারে কোনো পণ্য মিলছে না"
-            description="নির্বাচিত ফিল্টারের সাথে মিলে এমন পণ্য এখন স্টকে নেই। ফিল্টার বদলে বা মুছে আবার দেখুন।"
+            title={s.emptyFilterTitle}
+            description={s.emptyFilterDescription}
             ctaHref="/shop"
-            ctaLabel="সব ফিল্টার মুছুন"
+            ctaLabel={s.emptyFilterCta}
           />
         ) : (
           <EmptyState
-            title="এখনো কোনো পণ্য যোগ হয়নি"
-            description="আমাদের কালেকশন তৈরি হচ্ছে — খুব শীঘ্রই নতুন পণ্য আসছে। ততক্ষণে হোমপেজে ঘুরে দেখুন।"
+            title={s.emptyCatalogTitle}
+            description={s.emptyCatalogDescription}
             ctaHref="/"
-            ctaLabel="হোমপেজে যান"
+            ctaLabel={s.emptyCatalogCta}
           />
         )}
       </div>
@@ -594,7 +599,7 @@ export function ShopBrowser() {
   // component exactly as the inline JSX consumed it; the chrome only
   // arranges the markup.
   const chromeProps: ShopChromeProps = {
-    breadcrumbCategoryLabel: activeCategory ? activeCategory.name.bn : null,
+    breadcrumbCategoryLabel: activeCategory ? activeCategory.name[locale] || activeCategory.name.bn : null,
     heading,
     displayTotal,
     filtersApplied: hasAnyFilter || Boolean(q),

@@ -62,7 +62,13 @@ import { Icon } from "@/components/ui/icon";
 import OrderOtpPanel from "@/storefront-ux/order-otp-panel";
 import { EmiCheckoutNote } from "@/marketing/components/EmiCheckoutNote";
 import { ExperimentConversionPing } from "@/marketing/components/ExperimentConversionPing";
-import { PAYMENT_NOT_LIVE_MESSAGE_BN } from "../../../src/checkout/payment-methods";
+import {
+  PAYMENT_NOT_LIVE_MESSAGE_BN,
+  PAYMENT_NOT_LIVE_MESSAGE_EN,
+} from "../../../src/checkout/payment-methods";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick } from "@/i18n/locale";
+import { CHECKOUT_STRINGS } from "@/checkout/strings";
 import { shiftYmd, todayDhakaYmd } from "@/lib/dhaka-date";
 import { useThemeView } from "@/themes/theme-view";
 import { getCheckoutSkin } from "@/themes/skin-registry";
@@ -164,6 +170,28 @@ type PlacedOrder = {
 
 export default function CheckoutPage() {
   const digits = useDigitText();
+  // Doc 30 (slice L3b): every static UI string on this page comes
+  // from the slice dictionary (src/checkout/strings.ts) in the
+  // visitor's resolved locale — `s` — or the shared COMMON_STRINGS
+  // — `t`. Dynamic checkout-field labels are merchant config: the
+  // page selects labelBn/labelEn by this same locale (fieldLabel).
+  const { locale, t } = useLocale();
+  const s = pick(locale, CHECKOUT_STRINGS);
+  const isBn = locale === "bn";
+  // Format a stored YYYY-MM-DD (booking/rental dates) for display
+  // in the active locale; unparseable values pass through as-is.
+  const formatYmd = (ymd: string): string => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+    if (!m) return ymd;
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return Number.isNaN(d.getTime())
+      ? ymd
+      : d.toLocaleDateString(intlLocale(locale), {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        });
+  };
   // CheckoutSkin (S3b): the field/tile class constants come from the
   // active theme package's skin (plain data via the ThemeView
   // context + the skin registry — no component crosses the RSC
@@ -830,14 +858,18 @@ export default function CheckoutPage() {
     setSuggestion(null);
   }
 
-  // Bangla label for the suggestion chip, from the tree's names.
+  // Label for the suggestion chip, from the tree's names in the
+  // active locale (doc 30): nameBn + জেলা/উপজেলা in Bangla mode,
+  // nameEn + District/Upazila in English mode.
   const suggestionLabel = (() => {
     if (!suggestion || !geoTree) return "";
     const located = findDistrict(geoTree, suggestion.district);
     if (!located) return suggestion.district;
-    const parts = [`${located.district.nameBn} জেলা`];
+    const parts = [
+      `${isBn ? located.district.nameBn : located.district.nameEn} ${s.districtWord}`,
+    ];
     const up = located.district.upazilas.find((u) => u.nameEn === suggestion.upazila);
-    if (up) parts.push(`${up.nameBn} উপজেলা`);
+    if (up) parts.push(`${isBn ? up.nameBn : up.nameEn} ${s.upazilaWord}`);
     return parts.join(", ");
   })();
 
@@ -954,7 +986,7 @@ export default function CheckoutPage() {
     // the order would silently be a plain purchase of what the
     // merchant sells as an appointment.
     if (serviceLine && serviceQty === 1 && !bookingSlotStart) {
-      setErrors(["সেবাটির জন্য একটি তারিখ ও সময় বেছে নিন। / Please pick a date and time for the service."]);
+      setErrors([s.errServiceSlot]);
       return;
     }
     // Rental (ADV-23 vertical 3): a rental line (quantity exactly
@@ -966,11 +998,11 @@ export default function CheckoutPage() {
     // way (a race still lands as a 409 in the error list).
     if (rentalLine && rentalQty === 1) {
       if (!rentalStart || !rentalEnd || rentalEnd < rentalStart) {
-        setErrors(["ভাড়ার জন্য শুরুর ও ফেরতের তারিখ বেছে নিন। / Please pick the rental start and return dates."]);
+        setErrors([s.errRentalDates]);
         return;
       }
       if (rentalAvailability && rentalAvailability.availableUnits <= 0) {
-        setErrors(["এই তারিখের জন্য সব ইউনিট ইতিমধ্যে ভাড়া হয়ে গেছে — অন্য তারিখ বেছে নিন। / All units are already rented for these dates — please choose other dates."]);
+        setErrors([s.rentalAllBooked]);
         return;
       }
     }
@@ -981,12 +1013,12 @@ export default function CheckoutPage() {
     // re-checks it (after sanitising) either way.
     if (podLine) {
       if (podText.trim() === "") {
-        setErrors(["কাস্টম প্রিন্টের জন্য ছাপানোর লেখাটি লিখুন। / Please enter the text to print."]);
+        setErrors([s.errPodText]);
         return;
       }
       if ([...podText.trim()].length > (podConfig?.textMaxChars ?? 20)) {
         setErrors([
-          `ছাপানোর লেখা সর্বোচ্চ ${podConfig?.textMaxChars ?? 20} অক্ষরের হতে পারবে। / The print text can be at most ${podConfig?.textMaxChars ?? 20} characters.`,
+          interpolate(s.errPodTooLong, { max: podConfig?.textMaxChars ?? 20 }),
         ]);
         return;
       }
@@ -1230,18 +1262,16 @@ export default function CheckoutPage() {
         // The key was claimed by an earlier failed attempt in this
         // session (the server keeps failed claims), so this key can
         // never succeed — a fresh page load mints a new key.
-        setErrors([
-          "এই চেকআউট প্রচেষ্টাটি আগেই একবার প্রসেস হয়েছে। নতুন করে অর্ডার করতে পেজটি রিলোড করুন।",
-        ]);
+        setErrors([s.errIdempotency]);
       } else if (apiError?.code === "VALIDATION_ERROR" && Array.isArray(apiError.details)) {
         setErrors(apiError.details.map((d) => String(d)));
       } else if (apiError?.message) {
         setErrors([apiError.message]);
       } else {
-        setErrors(["অর্ডার করা যায়নি। আবার চেষ্টা করুন।"]);
+        setErrors([s.errOrderFailed]);
       }
     } catch {
-      setErrors(["নেটওয়ার্ক সমস্যা — সংযোগ যাচাই করে আবার চেষ্টা করুন।"]);
+      setErrors([s.errNetwork]);
     } finally {
       setSubmitting(false);
     }
@@ -1280,16 +1310,20 @@ export default function CheckoutPage() {
   const divisionDef = fieldByKey(fieldsConfig, "division");
   const districtDef = fieldByKey(fieldsConfig, "district");
   const upazilaDef = fieldByKey(fieldsConfig, "upazila");
-  // Display label: the original form marked required fields with
-  // " *". Config labels don't carry the marker, so append it for
-  // required fields (unless the merchant typed one already). Doc 29:
-  // "required" here is the EFFECTIVE required under the live
-  // context, so the marker follows condition flips. (Cascade defs
-  // never carry conditions — coercion strips them — so for them
-  // this is exactly the static flag, as before.)
+  // Display label: the label TEXT is merchant config (doc 28) —
+  // doc 30 only selects which configured variant renders: labelBn
+  // in Bangla mode, labelEn in English mode (each falling back to
+  // the other when the merchant left it empty). The original form
+  // marked required fields with " *". Config labels don't carry
+  // the marker, so append it for required fields (unless the
+  // merchant typed one already). Doc 29: "required" here is the
+  // EFFECTIVE required under the live context, so the marker
+  // follows condition flips. (Cascade defs never carry conditions
+  // — coercion strips them — so for them this is exactly the
+  // static flag, as before.)
   const fieldLabel = (def?: CheckoutFieldDef): string => {
     if (!def) return "";
-    const label = def.labelBn || def.labelEn || "";
+    const label = isBn ? def.labelBn || def.labelEn || "" : def.labelEn || def.labelBn || "";
     return label + (effectiveRequired(def, conditionCtx) && !label.includes("*") ? " *" : "");
   };
   // Doc 29: native validation attributes from the def's rules.
@@ -1358,9 +1392,9 @@ export default function CheckoutPage() {
   // existing structure and logic verbatim — only the labels and the
   // required attributes come from the field defs.
   function renderCascade() {
-    const divisionLabel = fieldLabel(divisionDef) || "বিভাগ *";
-    const districtLabel = fieldLabel(districtDef) || "জেলা *";
-    const upazilaLabel = fieldLabel(upazilaDef) || "উপজেলা *";
+    const divisionLabel = fieldLabel(divisionDef) || s.divisionFallback;
+    const districtLabel = fieldLabel(districtDef) || s.districtFallback;
+    const upazilaLabel = fieldLabel(upazilaDef) || s.upazilaFallback;
     if (geoTree) {
       return (
         <>
@@ -1373,10 +1407,10 @@ export default function CheckoutPage() {
               onChange={(e) => onDivisionChange(e.target.value)}
               className={INPUT_CLASS}
             >
-              <option value="">বিভাগ বেছে নিন</option>
+              <option value="">{s.chooseDivision}</option>
               {geoTree.map((d) => (
                 <option key={d.nameEn} value={d.nameEn}>
-                  {d.nameBn}
+                  {isBn ? d.nameBn : d.nameEn}
                 </option>
               ))}
             </select>
@@ -1391,10 +1425,10 @@ export default function CheckoutPage() {
               onChange={(e) => onDistrictChange(e.target.value)}
               className={INPUT_CLASS}
             >
-              <option value="">জেলা বেছে নিন</option>
+              <option value="">{s.chooseDistrict}</option>
               {districtsOf(geoTree, division).map((d) => (
                 <option key={d.nameEn} value={d.nameEn}>
-                  {d.nameBn}
+                  {isBn ? d.nameBn : d.nameEn}
                 </option>
               ))}
             </select>
@@ -1409,10 +1443,10 @@ export default function CheckoutPage() {
               onChange={(e) => setUpazila(e.target.value)}
               className={INPUT_CLASS}
             >
-              <option value="">উপজেলা বেছে নিন</option>
+              <option value="">{s.chooseUpazila}</option>
               {upazilasOf(geoTree, division, district).map((u) => (
                 <option key={u.nameEn} value={u.nameEn}>
-                  {u.nameBn}
+                  {isBn ? u.nameBn : u.nameEn}
                 </option>
               ))}
             </select>
@@ -1444,7 +1478,7 @@ export default function CheckoutPage() {
           {divisionLabel} / {districtLabel} / {upazilaLabel}
         </span>
         <select disabled className={INPUT_CLASS}>
-          <option>এলাকার তালিকা লোড হচ্ছে…</option>
+          <option>{s.geoLoading}</option>
         </select>
       </label>
     );
@@ -1523,8 +1557,8 @@ export default function CheckoutPage() {
   if (!loaded) {
     return (
       <main className="mx-auto w-full max-w-[720px] px-4 pb-32 pt-6 sm:px-6 lg:pb-12">
-        <h1 className="font-display text-h1">চেকআউট — এক পেজেই অর্ডার</h1>
-        <p className="mt-4 text-sm text-text-muted">কার্ট লোড হচ্ছে…</p>
+        <h1 className="font-display text-h1">{s.pageTitle}</h1>
+        <p className="mt-4 text-sm text-text-muted">{s.cartLoading}</p>
       </main>
     );
   }
@@ -1532,61 +1566,61 @@ export default function CheckoutPage() {
   if (placedOrder) {
     return (
       <main className="mx-auto w-full max-w-[720px] px-4 pb-32 pt-6 sm:px-6 lg:pb-12">
-        <section className="rounded-2xl border border-border bg-card p-6 text-center shadow-card" aria-label="অর্ডার সফল">
+        <section className="rounded-2xl border border-border bg-card p-6 text-center shadow-card" aria-label={s.orderSuccessAria}>
           <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
             <Icon name="check" size={28} strokeWidth={2} />
           </span>
-          <h1 className="font-display mt-4 text-h1">অর্ডার সফল হয়েছে!</h1>
+          <h1 className="font-display mt-4 text-h1">{s.orderSuccessTitle}</h1>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            ধন্যবাদ! আপনার অর্ডারটি গ্রহণ করা হয়েছে।
+            {s.orderSuccessThanks}
           </p>
           <dl className="mx-auto mt-5 max-w-sm space-y-2 rounded-xl bg-surface-2 px-4 py-3 text-left text-sm">
             <div className="flex justify-between">
-              <dt className="text-text-muted">অর্ডার নম্বর</dt>
+              <dt className="text-text-muted">{s.orderNumber}</dt>
               <dd className="font-semibold tabular-nums">{placedOrder.orderNo}</dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-text-muted">সর্বমোট</dt>
+              <dt className="text-text-muted">{s.grandTotal}</dt>
               <dd className="font-semibold tabular-nums">{digits(formatBdt(placedOrder.totalPoisha))}</dd>
             </div>
             {placedOrder.restaurant ? (
               <div className="flex justify-between gap-3">
-                <dt className="shrink-0 text-text-muted">রান্নাঘর</dt>
+                <dt className="shrink-0 text-text-muted">{s.kitchen}</dt>
                 <dd className="text-right font-semibold">
                   {placedOrder.restaurant.fulfilmentType === "DINE_IN"
-                    ? `ডাইন-ইন${placedOrder.restaurant.tableLabel ? ` • টেবিল: ${placedOrder.restaurant.tableLabel}` : ""}`
-                    : "টেকঅওয়ে"}{" "}
-                  — অপেক্ষমাণ
+                    ? `${s.dineIn}${placedOrder.restaurant.tableLabel ? ` • ${s.tableWord}: ${placedOrder.restaurant.tableLabel}` : ""}`
+                    : s.takeaway}{" "}
+                  — {s.queuedWord}
                 </dd>
               </div>
             ) : null}
             {placedOrder.booking ? (
               <div className="flex justify-between gap-3">
-                <dt className="shrink-0 text-text-muted">বুকিং</dt>
+                <dt className="shrink-0 text-text-muted">{s.bookingLabel}</dt>
                 <dd className="text-right font-semibold">
-                  {placedOrder.booking.date} • {placedOrder.booking.slotStart} – {placedOrder.booking.slotEnd} — বুক করা হয়েছে
+                  {formatYmd(placedOrder.booking.date)} • {placedOrder.booking.slotStart} – {placedOrder.booking.slotEnd} — {s.bookedWord}
                 </dd>
               </div>
             ) : null}
             {placedOrder.rental ? (
               <div className="flex justify-between gap-3">
-                <dt className="shrink-0 text-text-muted">ভাড়া</dt>
+                <dt className="shrink-0 text-text-muted">{s.rentalLabel}</dt>
                 <dd className="text-right font-semibold">
-                  {placedOrder.rental.startDate} → {placedOrder.rental.endDate} ({placedOrder.rental.days} দিন)
+                  {formatYmd(placedOrder.rental.startDate)} → {formatYmd(placedOrder.rental.endDate)} ({interpolate(s.rentalDays, { days: placedOrder.rental.days })})
                   {placedOrder.rental.depositPoisha > 0
-                    ? ` — জামানত ${digits(formatBdt(placedOrder.rental.depositPoisha))} মোটে অন্তর্ভুক্ত (ফেরতে ফেরতযোগ্য)`
+                    ? ` — ${interpolate(s.rentalDepositIncluded, { amount: digits(formatBdt(placedOrder.rental.depositPoisha)) })}`
                     : ""}
                 </dd>
               </div>
             ) : null}
             {placedOrder.pod ? (
               <div className="flex justify-between gap-3">
-                <dt className="shrink-0 text-text-muted">কাস্টম প্রিন্ট</dt>
+                <dt className="shrink-0 text-text-muted">{s.customPrintLabel}</dt>
                 <dd className="text-right font-semibold">
                   «{placedOrder.pod.printText}»
-                  {placedOrder.pod.printColor ? ` • রঙ: ${placedOrder.pod.printColor}` : ""}
+                  {placedOrder.pod.printColor ? ` • ${interpolate(s.printColorPrefix, { color: placedOrder.pod.printColor })}` : ""}
                   {placedOrder.pod.feePoisha > 0
-                    ? ` — প্রিন্ট ফি ${digits(formatBdt(placedOrder.pod.feePoisha))} মোটে অন্তর্ভুক্ত`
+                    ? ` — ${interpolate(s.printFeeIncluded, { amount: digits(formatBdt(placedOrder.pod.feePoisha)) })}`
                     : ""}
                 </dd>
               </div>
@@ -1594,16 +1628,16 @@ export default function CheckoutPage() {
             {placedOrder.pickupPoint ? (
               <>
                 <div className="flex justify-between gap-3">
-                  <dt className="shrink-0 text-text-muted">পিকআপ পয়েন্ট</dt>
+                  <dt className="shrink-0 text-text-muted">{s.pickupPointLabel}</dt>
                   <dd className="text-right font-semibold">{placedOrder.pickupPoint.name}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="shrink-0 text-text-muted">ঠিকানা</dt>
+                  <dt className="shrink-0 text-text-muted">{t.address}</dt>
                   <dd className="text-right">{placedOrder.pickupPoint.address}</dd>
                 </div>
                 {placedOrder.pickupPoint.hours ? (
                   <div className="flex justify-between gap-3">
-                    <dt className="shrink-0 text-text-muted">খোলার সময়</dt>
+                    <dt className="shrink-0 text-text-muted">{s.openingHours}</dt>
                     <dd className="text-right">{placedOrder.pickupPoint.hours}</dd>
                   </div>
                 ) : null}
@@ -1612,16 +1646,16 @@ export default function CheckoutPage() {
           </dl>
           {placedOrder.pharmacyRx?.reviewStatus === "PENDING_REVIEW" ? (
             <p className="mx-auto mt-4 max-w-sm rounded-xl bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800 dark:bg-amber-500/10 dark:text-amber-200" role="status">
-              💊 আপনার প্রেসক্রিপশনের তথ্য গৃহীত হয়েছে — ফার্মাসিস্ট যাচাই করে অনুমোদন দিলে
-              অর্ডারটি নিশ্চিত হবে। যাচাই শেষ হলে আমরা ফোনে জানিয়ে দেব।
+              {s.rxPendingReview}
             </p>
           ) : null}
           {placedOrder.warrantyTerms && placedOrder.warrantyTerms.length > 0 ? (
             <p className="mx-auto mt-4 max-w-sm rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
-              🛡️ ওয়ারেন্টি:{" "}
-              {placedOrder.warrantyTerms.map((t) => `${digits(String(t.months))} মাস`).join(", ")}{" "}
-              — ওয়ারেন্টির মেয়াদ ডেলিভারির দিন থেকে শুরু হবে; পণ্য ডেলিভারির পর সিরিয়াল
-              নম্বরসহ ওয়ারেন্টি কার্ড আপনার অ্যাকাউন্টে দেখা যাবে।
+              {interpolate(s.warrantyNote, {
+                periods: placedOrder.warrantyTerms
+                  .map((w) => interpolate(s.warrantyMonths, { months: digits(String(w.months)) }))
+                  .join(", "),
+              })}
             </p>
           ) : null}
           {placedOrder.paymentMethod === "rocket" ? (
@@ -1636,54 +1670,58 @@ export default function CheckoutPage() {
             />
           ) : placedOrder.paymentMethod === "cod" ? (
             <p className="mt-4 text-sm leading-6 text-text-muted">
-              পণ্য হাতে পেয়ে ডেলিভারি ম্যানকে <strong>{digits(formatBdt(placedOrder.totalPoisha))}</strong> পরিশোধ করুন।
+              {interpolate(s.codPayOnDelivery, {
+                amount: digits(formatBdt(placedOrder.totalPoisha)),
+              })}
             </p>
           ) : placedOrder.paymentInitiation?.status === "initiated" && placedOrder.paymentInitiation.url ? (
             <div className="mt-4">
               <p className="text-sm leading-6 text-text-muted">
-                অনলাইন পেমেন্টের ধাপটি তৈরি — নিচের বোতামে গিয়ে পেমেন্ট সম্পন্ন করুন।
+                {s.onlinePaymentReady}
               </p>
               <a
                 href={placedOrder.paymentInitiation.url}
                 className="brand-gradient mt-3 flex h-12 items-center justify-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition hover:opacity-90"
               >
-                এখনই অনলাইনে পরিশোধ করুন
+                {s.payOnlineNow}
               </a>
             </div>
           ) : placedOrder.paymentInitiation?.status === "not_configured" ? (
             // The picked method has NO working initiation path (an
             // adapter-less method submitted from a stale page or a
             // direct API call, a disabled method, or a mode flipped
-            // ahead of its adapter). Say so plainly in Bangla — never
-            // a raw "not_configured" — and be honest the order stands.
+            // ahead of its adapter). Say so plainly in the visitor's
+            // language (doc 30) — never a raw "not_configured" — and
+            // be honest the order stands.
             <p role="status" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
-              {PAYMENT_NOT_LIVE_MESSAGE_BN}
+              {isBn ? PAYMENT_NOT_LIVE_MESSAGE_BN : PAYMENT_NOT_LIVE_MESSAGE_EN}
             </p>
           ) : placedOrder.paymentInitiation ? (
             <p role="status" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
-              অনলাইন পেমেন্ট এখন শুরু করা যাচ্ছে না — তবে আপনার অর্ডারটি গৃহীত হয়েছে। পেমেন্টের জন্য আমাদের টিম ফোনে যোগাযোগ করবে।
+              {s.onlinePaymentUnavailable}
             </p>
           ) : (
             <p className="mt-4 text-sm leading-6 text-text-muted">
-              অনলাইন পেমেন্ট সম্পন্ন না হলে আমাদের টিম ফোনে যোগাযোগ করে পেমেন্টের ধাপ জানিয়ে দেবে।
+              {s.onlinePaymentFallback}
             </p>
           )}
           {placedOrder.advance?.linkUrl ? (
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-4 text-left">
               <p className="text-sm font-bold text-text-main">
-                অগ্রিম পেমেন্ট প্রয়োজন: {digits(formatBdt(placedOrder.advance.requiredPoisha))}
+                {interpolate(s.advanceRequiredTitle, {
+                  amount: digits(formatBdt(placedOrder.advance.requiredPoisha)),
+                })}
               </p>
               <p className="mt-1 text-sm leading-6 text-text-muted">
-                এই অর্ডারটি নিশ্চিত করতে অগ্রিম{" "}
-                <strong>{digits(formatBdt(placedOrder.advance.requiredPoisha))}</strong>{" "}
-                পরিশোধ করুন। এই একই লিংকটি SMS-এর মাধ্যমে আপনার ফোনে পাঠানোর জন্যও ইস্যু করা
-                হয়েছে — তবে লিংকটি এখানে শুধু এইবারই দেখা যাবে, তাই সংরক্ষণ করে রাখুন।
+                {interpolate(s.advanceLinkNote, {
+                  amount: digits(formatBdt(placedOrder.advance.requiredPoisha)),
+                })}
               </p>
               <a
                 href={placedOrder.advance.linkUrl}
                 className="brand-gradient mt-3 flex h-12 items-center justify-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition hover:opacity-90"
               >
-                এখনই অগ্রিম পরিশোধ করুন
+                {s.payAdvanceNow}
               </a>
               <div className="mt-2.5 flex items-center gap-2">
                 <span className="min-w-0 flex-1 truncate rounded-lg bg-card px-3 py-2 text-xs text-text-muted" title={placedOrder.advance.linkUrl}>
@@ -1699,18 +1737,17 @@ export default function CheckoutPage() {
                   }}
                   className="inline-flex h-9 shrink-0 items-center rounded-lg border border-border bg-card px-3 text-sm font-medium text-text-main transition hover:bg-surface-2"
                 >
-                  {linkCopied ? "কপি হয়েছে ✓" : "লিংক কপি করুন"}
+                  {linkCopied ? s.copied : s.copyLink}
                 </button>
               </div>
             </div>
           ) : placedOrder.advanceRequired ? (
             <p role="status" className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
-              এই অর্ডারে অগ্রিম পেমেন্ট
-              {placedOrder.advance
-                ? ` (${digits(formatBdt(placedOrder.advance.requiredPoisha))})`
-                : ""}{" "}
-              প্রয়োজন — পেমেন্ট লিংকটি এখানে দেখানো যাচ্ছে না, আমাদের টিম ফোনে যোগাযোগ করে লিংকটি
-              পাঠিয়ে দেবে।
+              {interpolate(s.advanceRequiredNoLink, {
+                amountPart: placedOrder.advance
+                  ? ` (${digits(formatBdt(placedOrder.advance.requiredPoisha))})`
+                  : "",
+              })}
             </p>
           ) : null}
           {placedOrder.requiresOtp ? (
@@ -1725,30 +1762,33 @@ export default function CheckoutPage() {
               order — this only reports that the order happened. */}
           <ExperimentConversionPing orderId={placedOrder.id} />
           {placedOrder.couponStatus === "applied" ? (
-            <p className="mt-3 text-sm font-medium text-emerald-700">আপনার কুপনটি প্রয়োগ হয়েছে — ছাড়সহ মোট উপরে দেখানো হয়েছে।</p>
+            <p className="mt-3 text-sm font-medium text-emerald-700">{s.couponApplied}</p>
           ) : null}
           {placedOrder.giftCard?.status === "applied" ? (
             <p className="mt-3 text-sm font-medium text-emerald-700">
-              গিফট কার্ড (…{placedOrder.giftCard.codeLast4}) দিয়ে{" "}
-              {digits(formatBdt(placedOrder.giftCard.appliedPoisha))} পরিশোধ হয়েছে — কার্ডে অবশিষ্ট
-              ব্যালেন্স {digits(formatBdt(placedOrder.giftCard.remainingPoisha))}, পরের অর্ডারে ব্যবহার
-              করা যাবে।
+              {interpolate(s.giftCardApplied, {
+                last4: placedOrder.giftCard.codeLast4,
+                applied: digits(formatBdt(placedOrder.giftCard.appliedPoisha)),
+                remaining: digits(formatBdt(placedOrder.giftCard.remainingPoisha)),
+              })}
             </p>
           ) : placedOrder.giftCard?.status === "rejected" ? (
             <p role="status" className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
-              গিফট কার্ডটি প্রয়োগ করা যায়নি: {placedOrder.giftCard.reasonBn} অর্ডারটি সম্পূর্ণ মূল্যেই
-              সম্পন্ন হয়েছে।
+              {interpolate(s.giftCardRejected, {
+                reason: isBn ? placedOrder.giftCard.reasonBn : placedOrder.giftCard.reasonEn,
+              })}
             </p>
           ) : null}
           {placedOrder.membershipTier &&
           (placedOrder.membershipTier.discountPoisha > 0 ||
             placedOrder.membershipTier.freeShippingApplied) ? (
             <p className="mt-3 text-sm font-medium text-emerald-700">
-              আপনার মেম্বারশিপ টিয়ারের সুবিধা প্রয়োগ হয়েছে
+              {s.membershipApplied}
               {placedOrder.membershipTier.discountPoisha > 0
-                ? ` — পণ্যে ছাড় ${digits(formatBdt(placedOrder.membershipTier.discountPoisha))}`
+                ? ` — ${interpolate(s.membershipDiscountPart, { amount: digits(formatBdt(placedOrder.membershipTier.discountPoisha)) })}`
                 : ""}
-              {placedOrder.membershipTier.freeShippingApplied ? " — ডেলিভারি চার্জ ফ্রি" : ""}।
+              {placedOrder.membershipTier.freeShippingApplied ? ` — ${s.membershipFreeShippingPart}` : ""}
+              {isBn ? "।" : "."}
             </p>
           ) : null}
           <div className="mt-6 flex flex-wrap justify-center gap-2">
@@ -1756,13 +1796,13 @@ export default function CheckoutPage() {
               href="/track"
               className="brand-gradient flex h-12 items-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition hover:opacity-90"
             >
-              অর্ডার ট্র্যাক করুন
+              {t.trackOrder}
             </Link>
             <Link
               href="/shop"
               className="flex h-12 items-center rounded-xl border border-border bg-card px-5 text-sm font-semibold text-text-main transition hover:bg-surface-2"
             >
-              দোকানে যান
+              {s.goToShop}
             </Link>
           </div>
         </section>
@@ -1773,20 +1813,20 @@ export default function CheckoutPage() {
   if (!cart || items.length === 0) {
     return (
       <main className="mx-auto w-full max-w-[720px] px-4 pb-32 pt-6 sm:px-6 lg:pb-12">
-        <h1 className="font-display text-h1">চেকআউট — এক পেজেই অর্ডার</h1>
-        <section className="mt-6 rounded-2xl border border-border bg-card px-4 py-10 text-center shadow-card" aria-label="কার্ট খালি">
+        <h1 className="font-display text-h1">{s.pageTitle}</h1>
+        <section className="mt-6 rounded-2xl border border-border bg-card px-4 py-10 text-center shadow-card" aria-label={s.emptyCartAria}>
           <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 text-brand-600">
             <Icon name="cart" size={26} />
           </span>
-          <p className="mt-4 text-base font-semibold text-text-main">আপনার কার্ট খালি</p>
+          <p className="mt-4 text-base font-semibold text-text-main">{s.emptyCartTitle}</p>
           <p className="mx-auto mt-1 max-w-sm text-sm leading-6 text-text-muted">
-            চেকআউট করতে আগে কার্টে পণ্য যোগ করুন — পছন্দের পণ্য বেছে কার্টে যোগ করলেই এখানে অর্ডার করা যাবে।
+            {s.emptyCartBody}
           </p>
           <Link
             href="/shop"
             className="brand-gradient mt-5 inline-flex h-12 items-center rounded-xl px-6 text-sm font-semibold text-white shadow-md transition hover:opacity-90"
           >
-            দোকানে যান
+            {s.goToShop}
           </Link>
         </section>
       </main>
@@ -1795,31 +1835,34 @@ export default function CheckoutPage() {
 
   return (
     <main className="mx-auto w-full max-w-[720px] px-4 pb-32 pt-6 sm:px-6 lg:max-w-[1080px] lg:pb-12">
-      <h1 className="font-display text-h1">চেকআউট — এক পেজেই অর্ডার</h1>
+      <h1 className="font-display text-h1">{s.pageTitle}</h1>
       <p className="mt-2 text-sm leading-6 text-text-muted">
-        ফোন নম্বর আবশ্যক, ইমেইল ঐচ্ছিক। ঠিকানা দিন ধাপে ধাপে: বিভাগ › জেলা › উপজেলা › ইউনিয়ন (ঐচ্ছিক)।
+        {s.checkoutIntro}
       </p>
 
       {/* Progress header (OD3): the four steps of the single-page
-          form below, as a slim visual rhythm — not links or pages. */}
-      <nav aria-label="চেকআউটের ধাপ" className="mt-5">
+          form below, as a slim visual rhythm — not links or pages.
+          The step numerals stay Bangla digits on purpose: digit
+          script is the separate numerals preference (doc 30), not
+          coupled to the UI locale. */}
+      <nav aria-label={s.stepsAria} className="mt-5">
         <ol className="flex flex-wrap items-center gap-x-2 gap-y-2">
           {(
             [
-              { n: "১", label: "তথ্য", icon: "user" },
-              { n: "২", label: "ঠিকানা", icon: "home" },
-              { n: "৩", label: "ডেলিভারি", icon: "truck" },
-              { n: "৪", label: "পেমেন্ট", icon: "credit-card" },
+              { n: "১", label: s.stepInfo, icon: "user" },
+              { n: "২", label: s.stepAddress, icon: "home" },
+              { n: "৩", label: s.stepDelivery, icon: "truck" },
+              { n: "৪", label: s.stepPayment, icon: "credit-card" },
             ] as const
-          ).map((s, i) => (
-            <li key={s.n} className="flex items-center gap-2">
+          ).map((step, i) => (
+            <li key={step.n} className="flex items-center gap-2">
               {i > 0 && <Icon name="chevron-right" size={14} className="text-text-subtle" />}
               <span className="flex items-center gap-1.5 text-sm font-medium text-text-main">
                 <span aria-hidden="true" className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">
-                  {s.n}
+                  {step.n}
                 </span>
-                <Icon name={s.icon} size={15} className="text-brand-600" />
-                {s.label}
+                <Icon name={step.icon} size={15} className="text-brand-600" />
+                {step.label}
               </span>
             </li>
           ))}
@@ -1830,8 +1873,8 @@ export default function CheckoutPage() {
           above the form; on desktop it becomes the sticky right rail.
           The figures are the page's existing preview computation. */}
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <section className="rounded-2xl border border-border bg-card p-5 shadow-card lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1" aria-label="আপনার কার্ট">
-        <h2 className="text-base font-semibold text-text-main">আপনার কার্ট</h2>
+      <section className="rounded-2xl border border-border bg-card p-5 shadow-card lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1" aria-label={s.yourCart}>
+        <h2 className="text-base font-semibold text-text-main">{s.yourCart}</h2>
         <ul className="mt-3 divide-y divide-border">
           {items.map((item) => (
             <li key={item.variantId} className="flex items-baseline justify-between gap-3 py-2.5 text-sm">
@@ -1845,66 +1888,75 @@ export default function CheckoutPage() {
         </ul>
         <dl className="mt-3 space-y-1.5 border-t border-border pt-3 text-sm">
           <div className="flex justify-between">
-            <dt className="text-text-muted">সাবটোটাল</dt>
+            <dt className="text-text-muted">{t.subtotal}</dt>
             <dd className="tabular-nums">{digits(formatBdt(pricing.subtotalPoisha))}</dd>
           </div>
           <div className="flex justify-between">
             <dt className="text-text-muted">
-              ডেলিভারি চার্জ <span className="text-text-subtle">(আনুমানিক)</span>
+              {t.deliveryCharge} <span className="text-text-subtle">{s.estimatedSuffix}</span>
             </dt>
             <dd className="tabular-nums">{digits(formatBdt(pricing.shippingPoisha))}</dd>
           </div>
           {pricing.rentalDepositPoisha > 0 && (
             <div className="flex justify-between">
-              <dt className="text-text-muted">ভাড়ার জামানত (ফেরতযোগ্য)</dt>
+              <dt className="text-text-muted">{s.rentalDepositLine}</dt>
               <dd className="tabular-nums">{digits(formatBdt(pricing.rentalDepositPoisha))}</dd>
             </div>
           )}
           <div className="flex justify-between pt-1 text-base font-bold text-text-main">
-            <dt>সর্বমোট</dt>
+            <dt>{s.grandTotal}</dt>
             <dd className="tabular-nums">{digits(formatBdt(pricing.grandTotalPoisha))}</dd>
           </div>
         </dl>
         <p className="mt-2 text-xs text-text-subtle">
-          ডেলিভারি চার্জ আনুমানিক — চূড়ান্ত চার্জ সার্ভারে জেলা ও ওজন অনুযায়ী নির্ধারিত হবে।
-          কুপনের ছাড় থাকলে তা অর্ডারের মোটে কমে যাবে।
+          {s.shippingNote}
         </p>
         {/* EMI note (ADV-18B) — display-only; never changes totals. */}
         <EmiCheckoutNote subtotalPoisha={pricing.subtotalPoisha} />
         {stockProblems.length > 0 && (
           <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
-            স্টক সমস্যা: {stockProblems.map((p) => `${p.name} (চেয়েছেন ${p.requested}টি, স্টকে আছে ${p.available}টি)`).join(", ")}
+            {interpolate(s.stockProblem, {
+              items: stockProblems
+                .map((p) =>
+                  interpolate(s.stockProblemItem, {
+                    name: p.name,
+                    requested: p.requested,
+                    available: p.available,
+                  }),
+                )
+                .join(", "),
+            })}
           </p>
         )}
       </section>
 
       <form ref={formRef} id="checkout-form" onSubmit={onSubmit} onChange={(e) => { scheduleCapture(); trackPaymentMethod(e); }} className="grid gap-4 lg:col-start-1 lg:row-start-1">
         {/* Step ১ — তথ্য */}
-        <section aria-label="ধাপ ১: আপনার তথ্য" className="rounded-2xl border border-border bg-card p-5 shadow-card">
+        <section aria-label={s.step1Aria} className="rounded-2xl border border-border bg-card p-5 shadow-card">
           <h2 className="flex items-center gap-2 text-base font-semibold text-text-main">
             <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">১</span>
-            আপনার তথ্য
+            {s.step1Title}
           </h2>
           <div className="mt-4 grid gap-4">
         {infoFieldDefs.map((def) => renderInfoField(def))}
           </div>
         </section>
         {/* Step ২ — ঠিকানা */}
-        <section aria-label="ধাপ ২: ঠিকানা" className="rounded-2xl border border-border bg-card p-5 shadow-card">
+        <section aria-label={s.step2Aria} className="rounded-2xl border border-border bg-card p-5 shadow-card">
           <h2 className="flex items-center gap-2 text-base font-semibold text-text-main">
             <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">২</span>
-            ঠিকানা
+            {t.address}
           </h2>
           <div className="mt-4 grid gap-4">
         {geoTree ? (
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-text-main">
-              সম্পূর্ণ ঠিকানা একসাথে লিখুন (ঐচ্ছিক)
+              {s.pasteAddressLabel}
             </span>
             <input
               value={pasteText}
               onChange={(e) => onPasteChange(e.target.value)}
-              placeholder="যেমন: বাসা ১২, রোড ৫, মিরপুর ১০, ঢাকা"
+              placeholder={s.pasteAddressPlaceholder}
               className={INPUT_CLASS}
             />
           </label>
@@ -1915,21 +1967,21 @@ export default function CheckoutPage() {
             className="flex flex-wrap items-center gap-2 rounded-xl bg-brand-50 px-4 py-3 text-sm text-text-main"
           >
             <span>
-              আপনি কি <strong>{suggestionLabel}</strong> বোঝাতে চেয়েছেন?
+              {interpolate(s.suggestionPrompt, { label: suggestionLabel })}
             </span>
             <button
               type="button"
               onClick={applySuggestion}
               className="inline-flex h-9 items-center rounded-lg bg-brand-600 px-3 text-sm font-semibold text-white transition hover:bg-brand-700"
             >
-              হ্যাঁ, ব্যবহার করুন
+              {s.yesUseIt}
             </button>
             <button
               type="button"
               onClick={() => setSuggestion(null)}
               className="inline-flex h-9 items-center rounded-lg border border-border bg-card px-3 text-sm font-medium text-text-main transition hover:bg-surface-2"
             >
-              না
+              {t.no}
             </button>
           </div>
         ) : null}
@@ -1937,14 +1989,14 @@ export default function CheckoutPage() {
           </div>
         </section>
         {/* Step ৩ — ডেলিভারি */}
-        <section aria-label="ধাপ ৩: ডেলিভারি" className="rounded-2xl border border-border bg-card p-5 shadow-card">
+        <section aria-label={s.step3Aria} className="rounded-2xl border border-border bg-card p-5 shadow-card">
           <h2 className="flex items-center gap-2 text-base font-semibold text-text-main">
             <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">৩</span>
-            ডেলিভারি
+            {s.stepDelivery}
           </h2>
           <div className="mt-4 grid gap-4">
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">ডেলিভারি মাধ্যম</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{s.deliveryMethodLabel}</span>
           <select
             name="shippingMethod"
             value={submittedZone}
@@ -1952,12 +2004,12 @@ export default function CheckoutPage() {
             className={INPUT_CLASS}
           >
             <option value={districtZone}>
-              হোম ডেলিভারি
+              {s.homeDelivery}
               {district
-                ? ` — ${districtZone === "inside_dhaka" ? "ঢাকার ভিতরে" : "ঢাকার বাইরে"} (জেলা অনুযায়ী স্বয়ংক্রিয়)`
+                ? ` — ${districtZone === "inside_dhaka" ? s.insideDhaka : s.outsideDhaka} ${s.zoneAutoSuffix}`
                 : ""}
             </option>
-            <option value="pickup">পিকআপ (নিজে এসে নেবেন)</option>
+            <option value="pickup">{s.pickupOption}</option>
           </select>
         </label>
         {/* Pickup point picker (ADV-19): only for pickup orders and
@@ -1966,7 +2018,7 @@ export default function CheckoutPage() {
             way; the server records the point in the order note. */}
         {deliveryType === "pickup" && pickupPoints.length > 0 && (
           <fieldset className="m-0 border-0 p-0">
-            <legend className="mb-2 text-sm font-medium text-text-main">কোন পয়েন্ট থেকে নেবেন?</legend>
+            <legend className="mb-2 text-sm font-medium text-text-main">{s.pickupPointQuestion}</legend>
             <div className="grid gap-2">
               {pickupPoints.map((p) => (
                 <label key={p.id} className={SLOT_CARD_CLASS}>
@@ -1979,7 +2031,7 @@ export default function CheckoutPage() {
                   <span className="min-w-0">
                     <span className="block text-sm font-semibold text-text-main">{p.name}</span>
                     <span className="block text-xs text-text-muted">{p.address}</span>
-                    {p.hours ? <span className="block text-xs text-text-muted">খোলা: {p.hours}</span> : null}
+                    {p.hours ? <span className="block text-xs text-text-muted">{interpolate(s.openHoursPrefix, { hours: p.hours })}</span> : null}
                   </span>
                 </label>
               ))}
@@ -1988,7 +2040,7 @@ export default function CheckoutPage() {
         )}
         {deliveryType === "pickup" && pickupPoints.length === 0 && (
           <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
-            পিকআপের ঠিকানা ও সময় অর্ডারের পর আমাদের টিম ফোনে জানিয়ে দেবে।
+            {s.pickupNoPoints}
           </p>
         )}
         {/* Restaurant fulfilment (ADV-23, wave 56): rendered ONLY when
@@ -2000,7 +2052,7 @@ export default function CheckoutPage() {
             refused by the server with a bilingual message. */}
         {restaurantConfig?.enabled && (restaurantConfig.dineInEnabled || restaurantConfig.takeawayEnabled) && (
           <fieldset className="m-0 border-0 p-0">
-            <legend className="mb-2 text-sm font-medium text-text-main">খাবার কীভাবে নেবেন?</legend>
+            <legend className="mb-2 text-sm font-medium text-text-main">{s.fulfilmentQuestion}</legend>
             <div className="grid gap-2 sm:grid-cols-2">
               {restaurantConfig.dineInEnabled && (
                 <label className={SLOT_CARD_CLASS}>
@@ -2011,8 +2063,8 @@ export default function CheckoutPage() {
                     className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
                   />
                   <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-text-main">ডাইন-ইন</span>
-                    <span className="block text-xs text-text-muted">রেস্টুরেন্টে বসে খাবেন — টেবিল বেছে নিন</span>
+                    <span className="block text-sm font-semibold text-text-main">{s.dineIn}</span>
+                    <span className="block text-xs text-text-muted">{s.dineInDesc}</span>
                   </span>
                 </label>
               )}

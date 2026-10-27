@@ -16,9 +16,14 @@ import { useDigitText } from "@/components/ui/numerals";
 import { fetchPublicProducts } from "@/catalog/public-client";
 import type { PublicProduct } from "@/catalog/types";
 import { publicPriceRangePoisha } from "@/storefront-ux/quick-view";
+import { interpolate, pick } from "@/i18n/locale";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { STORE_STRINGS } from "../store-strings";
 
 export default function WishlistPage() {
   const digits = useDigitText();
+  const { locale } = useLocale();
+  const s = pick(locale, STORE_STRINGS);
   const [products, setProducts] = useState<PublicProduct[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -42,15 +47,15 @@ export default function WishlistPage() {
 
   return (
     <main className="mx-auto min-w-0 max-w-7xl px-4 py-6">
-      <h1 className="text-xl font-bold">আমার পছন্দের তালিকা</h1>
-      <p className="mt-1 text-xs text-slate-400">পণ্যের তথ্য আসল ক্যাটালগ থেকে আসে; পছন্দের তালিকা শুধু এই ব্রাউজারেই সংরক্ষিত থাকে।</p>
+      <h1 className="text-xl font-bold">{s.wishlistHeading}</h1>
+      <p className="mt-1 text-xs text-slate-400">{s.wishlistNote}</p>
 
       {loaded && products.length === 0 && (
         <div className="mt-8 rounded-xl border bg-surface-2 px-4 py-10 text-center">
-          <p className="font-medium">আপনার পছন্দের তালিকা খালি</p>
-          <p className="mt-1 text-sm text-slate-500">পছন্দের পণ্যে হার্ট চিহ্ন চাপলেই এখানে যোগ হবে।</p>
+          <p className="font-medium">{s.wishlistEmptyTitle}</p>
+          <p className="mt-1 text-sm text-slate-500">{s.wishlistEmptyDescription}</p>
           <Link href="/shop" className="mt-4 inline-block rounded-lg bg-[#4F46E5] px-4 py-2 font-semibold text-white">
-            কেনাকাটা শুরু করুন
+            {s.startShopping}
           </Link>
         </div>
       )}
@@ -60,17 +65,17 @@ export default function WishlistPage() {
           <article key={p.id} className="rounded-xl border bg-card p-3 shadow-sm">
             <Link href={`/product/${p.slug}`} className="block">
               <div className="flex h-32 items-center justify-center rounded-lg bg-bg-app text-sm text-slate-500">
-                {p.title.bn}
+                {p.title[locale] || p.title.bn}
               </div>
-              <h2 className="mt-2 break-words font-medium [overflow-wrap:anywhere]">{p.title.bn}</h2>
-              <p className="mt-1 font-bold text-[#4F46E5]">{digits(formatBdt(publicPriceRangePoisha(p).min))} থেকে</p>
+              <h2 className="mt-2 break-words font-medium [overflow-wrap:anywhere]">{p.title[locale] || p.title.bn}</h2>
+              <p className="mt-1 font-bold text-[#4F46E5]">{interpolate(s.priceFrom, { price: digits(formatBdt(publicPriceRangePoisha(p).min)) })}</p>
             </Link>
             <button
               type="button"
               onClick={() => remove(p.id)}
               className="mt-2 w-full rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600"
             >
-              তালিকা থেকে সরান
+              {s.removeFromList}
             </button>
           </article>
         ))}

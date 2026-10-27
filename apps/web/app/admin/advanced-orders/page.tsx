@@ -1,4 +1,7 @@
 import { PageHeader } from "@/components/ui/page-header";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { ADVANCED_ORDERS_STRINGS } from "./strings";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { AdvancedOrdersClient } from "./advanced-orders-client";
 import { demoAdvancedOrdersFlag, isAdvancedOrdersEnabled } from "./flags";
@@ -25,19 +28,20 @@ import { demoAdvancedOrdersFlag, isAdvancedOrdersEnabled } from "./flags";
 // ensureDbFeatureFlags() below (wave-28 pattern).
 
 export default async function AdvancedOrdersPage() {
+  const locale = await getRequestLocale();
+  const t = pick(locale, ADVANCED_ORDERS_STRINGS);
   await ensureDbFeatureFlags();
   if (!isAdvancedOrdersEnabled()) {
     return (
       <main>
         <PageHeader
-          title="অ্যাডভান্সড অর্ডার"
-          description="স্প্লিট শিপমেন্ট, আংশিক পেমেন্ট/ডেলিভারি, এক্সচেঞ্জ, অর্ডার মার্জ ও প্রি-অর্ডার (ধাপ ৪৮, A9)"
-          breadcrumb="অ্যাডমিন / বিক্রয় / অ্যাডভান্সড অর্ডার"
+          title={t.title}
+          description={t.lockedDesc}
+          breadcrumb={t.breadcrumb}
         />
         <p role="status">
-          🔒 এই মডিউলটি এই ইনস্টলের জন্য লক করা আছে। অ্যাডভান্সড অর্ডার একটি পেইড অ্যাড-অন —
-          আনলক করতে Admin &gt; Settings &gt; Feature Flags-এ <code>{demoAdvancedOrdersFlag.key}</code> চালু করুন।
-          ({demoAdvancedOrdersFlag.note})
+          {t.lockedPrefix} <code>{demoAdvancedOrdersFlag.key}</code> {t.lockedSuffix}
+          ({pick(locale, demoAdvancedOrdersFlag.note)})
         </p>
       </main>
     );
@@ -46,9 +50,9 @@ export default async function AdvancedOrdersPage() {
   return (
     <div>
       <PageHeader
-        title="অ্যাডভান্সড অর্ডার"
-        description="স্প্লিট শিপমেন্ট প্ল্যান, পেমেন্ট অবস্থা, এক্সচেঞ্জ হিসাব, স্টক ট্রান্সফার ও প্রি-অর্ডার — সবই আসল API ও ডাটাবেস থেকে।"
-        breadcrumb="অ্যাডমিন / বিক্রয় / অ্যাডভান্সড অর্ডার"
+        title={t.title}
+        description={t.desc}
+        breadcrumb={t.breadcrumb}
       />
       <AdvancedOrdersClient />
     </div>

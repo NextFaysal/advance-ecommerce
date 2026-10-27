@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick } from "@/i18n/locale";
+import { CALL_CENTER_STRINGS } from "../strings";
 
 /**
  * Lightweight board refresh: re-runs the server component every 20s
@@ -18,6 +21,8 @@ import { Icon } from "@/components/ui/icon";
  */
 export function AutoRefresh({ generatedAt }: { generatedAt: string }) {
   const router = useRouter();
+  const { locale } = useLocale();
+  const s = pick(locale, CALL_CENTER_STRINGS);
   const [secondsLeft, setSecondsLeft] = useState(20);
   const [justUpdated, setJustUpdated] = useState(false);
 
@@ -48,7 +53,7 @@ export function AutoRefresh({ generatedAt }: { generatedAt: string }) {
     return () => clearInterval(tick);
   }, []);
 
-  const updatedAt = new Date(generatedAt).toLocaleTimeString("en-GB", {
+  const updatedAt = new Date(generatedAt).toLocaleTimeString(intlLocale(locale), {
     timeZone: "Asia/Dhaka",
     hour12: false,
   });
@@ -57,15 +62,15 @@ export function AutoRefresh({ generatedAt }: { generatedAt: string }) {
     <p role="status" className="inline-flex flex-wrap items-center gap-1.5 text-xs text-text-muted">
       <Icon name="refresh-ccw" size={13} className="text-brand-600" />
       <span>
-        শেষ আপডেট{" "}
+        {interpolate(s.lastUpdatedLine, { time: updatedAt, sec: secondsLeft }).split(updatedAt)[0]}
         <span
           className={`rounded px-1 font-mono tabular-nums transition-colors duration-700 ${
             justUpdated ? "bg-brand-100 text-brand-700" : ""
           }`}
         >
           {updatedAt}
-        </span>{" "}
-        (ঢাকা) · প্রতি ২০ সেকেন্ডে রিফ্রেশ — আর {secondsLeft} সেকেন্ড · পোলিং, রিয়েলটাইম নয়
+        </span>
+        {interpolate(s.lastUpdatedLine, { time: updatedAt, sec: secondsLeft }).split(updatedAt)[1]}
       </span>
     </p>
   );

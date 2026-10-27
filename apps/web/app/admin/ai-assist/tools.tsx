@@ -15,6 +15,9 @@ import type {
   SeoSuggestion,
 } from "@/ai/types";
 import type { Locale } from "@/catalog/types";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { AI_ASSIST_STRINGS, type AiAssistStrings } from "./strings";
 
 /**
  * AI Assist tools — Agent 45. CLIENT STATE ONLY (demo).
@@ -46,24 +49,38 @@ interface GeneratedCopy {
 
 const CUSTOM_ID = "__custom__";
 
-const SAMPLE_REVIEWS: { label: string; text: string }[] = [
-  { label: "নমুনা: ইতিবাচক (বাংলা)", text: "খুব ভালো প্রোডাক্ট, ডেলিভারি সময়মতো পেয়েছি। ধন্যবাদ!" },
-  { label: "নমুনা: নেতিবাচক (English)", text: "Very bad quality, totally disappointed. The stitching is poor." },
-  { label: "নমুনা: স্প্যাম (English)", text: "WINNER!! claim your prize, free money — click here http://x.example" },
+// Sample review TEXTS are content (deliberately mixed-language samples);
+// only their labels localize.
+const SAMPLE_REVIEW_TEXTS: string[] = [
+  "খুব ভালো প্রোডাক্ট, ডেলিভারি সময়মতো পেয়েছি। ধন্যবাদ!",
+  "Very bad quality, totally disappointed. The stitching is poor.",
+  "WINNER!! claim your prize, free money — click here http://x.example",
 ];
+
+function sampleReviews(s: AiAssistStrings): { label: string; text: string }[] {
+  return [
+    { label: s.samplePositive, text: SAMPLE_REVIEW_TEXTS[0]! },
+    { label: s.sampleNegative, text: SAMPLE_REVIEW_TEXTS[1]! },
+    { label: s.sampleSpam, text: SAMPLE_REVIEW_TEXTS[2]! },
+  ];
+}
 
 /** The honesty stamp rendered on every generated block, built from the
  *  result's own meta so it can never drift from what the engine reports. */
 function TemplateStamp({ engine, requiresReview }: { engine: string; requiresReview: boolean }) {
+  const { locale } = useLocale();
+  const s = pick(locale, AI_ASSIST_STRINGS);
   return (
     <Badge tone="warning">
       ⚠ {engine}
-      {requiresReview ? " — মানুষের রিভিউ লাগবে" : ""}
+      {requiresReview ? s.stampReviewSuffix : ""}
     </Badge>
   );
 }
 
-function CopyButton({ text, label = "কপি করুন" }: { text: string; label?: string }) {
+function CopyButton({ text, label }: { text: string; label?: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, AI_ASSIST_STRINGS);
   const [copied, setCopied] = useState(false);
   async function copy() {
     try {
@@ -76,7 +93,7 @@ function CopyButton({ text, label = "কপি করুন" }: { text: string; 
   }
   return (
     <Button type="button" variant="outline" size="sm" onClick={copy}>
-      {copied ? "✓ কপি হয়েছে" : label}
+      {copied ? s.copied : (label ?? s.copy)}
     </Button>
   );
 }
@@ -113,6 +130,8 @@ function parseAttributes(raw: string): Record<string, string[]> {
 }
 
 function DescriptionTool({ samples }: { samples: SampleProductOption[] }) {
+  const { locale: uiLocale } = useLocale();
+  const s = pick(uiLocale, AI_ASSIST_STRINGS);
   const [selectedId, setSelectedId] = useState<string>(samples[0]?.id ?? CUSTOM_ID);
   const [nameBn, setNameBn] = useState("");
   const [nameEn, setNameEn] = useState("");
@@ -134,11 +153,11 @@ function DescriptionTool({ samples }: { samples: SampleProductOption[] }) {
     }
     const price = Number(priceTaka);
     if (nameBn.trim() === "" || nameEn.trim() === "" || categoryBn.trim() === "" || categoryEn.trim() === "") {
-      setError("কাস্টম পণ্যের নাম (বাংলা ও English) এবং ক্যাটাগরি (বাংলা ও English) আবশ্যক।");
+      setError(s.errCustomRequired);
       return null;
     }
     if (!Number.isFinite(price) || price < 0) {
-      setError("দাম টাকায় লিখুন (০ বা তার বেশি)।");
+      setError(s.errPrice);
       return null;
     }
     const poisha = Math.round(price * 100);
@@ -174,15 +193,16 @@ function DescriptionTool({ samples }: { samples: SampleProductOption[] }) {
 
   return (
     <Card className="p-4">
-      <h3 className="text-base font-semibold">পণ্যের বর্ণনা তৈরি (টেমপ্লেট)</h3>
+      <h3 className="text-base font-semibold">{s.descToolTitle}</h3>
       <p className="mt-1 text-sm text-text-muted">
-        নমুনা পণ্য বেছে নিন অথবা নিজে নাম/ক্যাটাগরি/বৈশিষ্ট্য লিখুন — আউটপুট আসল{" "}
-        <code>src/ai</code> জেনারেটর থেকেই আসে (টেমপ্লেট-ভিত্তিক, কোনো AI মডেল নয়)।
+        {s.descToolText1}
+        <code>src/ai</code>
+        {s.descToolText2}
       </p>
 
       <div className="mt-4 space-y-3">
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-text-muted">নমুনা পণ্য</span>
+          <span className="mb-1 block text-xs font-medium text-text-muted">{s.sampleProduct}</span>
           <select
             value={selectedId}
             onChange={(e) => setSelectedId(e.target.value)}
@@ -193,22 +213,22 @@ function DescriptionTool({ samples }: { samples: SampleProductOption[] }) {
                 {s.label}
               </option>
             ))}
-            <option value={CUSTOM_ID}>✎ নিজে লিখুন (কাস্টম)</option>
+            <option value={CUSTOM_ID}>{s.customOption}</option>
           </select>
         </label>
 
         {isCustom ? (
           <div className="grid gap-3 sm:grid-cols-2">
-            <Input label="পণ্যের নাম (বাংলা)" value={nameBn} onChange={(e) => setNameBn(e.target.value)} required />
-            <Input label="Product name (English)" value={nameEn} onChange={(e) => setNameEn(e.target.value)} required />
-            <Input label="ক্যাটাগরি (বাংলা)" value={categoryBn} onChange={(e) => setCategoryBn(e.target.value)} required />
-            <Input label="Category (English)" value={categoryEn} onChange={(e) => setCategoryEn(e.target.value)} required />
-            <Input label="ব্র্যান্ড (ঐচ্ছিক)" value={brandName} onChange={(e) => setBrandName(e.target.value)} />
-            <Input label="দাম (টাকা)" inputMode="decimal" value={priceTaka} onChange={(e) => setPriceTaka(e.target.value)} required />
-            <Input label="ট্যাগ (কমা দিয়ে, ঐচ্ছিক)" value={tagsRaw} onChange={(e) => setTagsRaw(e.target.value)} />
+            <Input label={s.nameBnLabel} value={nameBn} onChange={(e) => setNameBn(e.target.value)} required />
+            <Input label={s.nameEnLabel} value={nameEn} onChange={(e) => setNameEn(e.target.value)} required />
+            <Input label={s.categoryBnLabel} value={categoryBn} onChange={(e) => setCategoryBn(e.target.value)} required />
+            <Input label={s.categoryEnLabel} value={categoryEn} onChange={(e) => setCategoryEn(e.target.value)} required />
+            <Input label={s.brandLabel} value={brandName} onChange={(e) => setBrandName(e.target.value)} />
+            <Input label={s.priceLabel} inputMode="decimal" value={priceTaka} onChange={(e) => setPriceTaka(e.target.value)} required />
+            <Input label={s.tagsLabel} value={tagsRaw} onChange={(e) => setTagsRaw(e.target.value)} />
             <label className="block sm:col-span-2">
               <span className="mb-1 block text-xs font-medium text-text-muted">
-                বৈশিষ্ট্য — প্রতি লাইনে একটি: <code>material: Cotton, Silk</code>
+                {s.attributesLabel}<code>material: Cotton, Silk</code>
               </span>
               <textarea
                 value={attributesRaw}
@@ -227,45 +247,46 @@ function DescriptionTool({ samples }: { samples: SampleProductOption[] }) {
         ) : null}
 
         <Button type="button" variant="gradient" onClick={run}>
-          খসড়া তৈরি করুন
+          {s.generate}
         </Button>
       </div>
 
       {result ? (
         <div className="mt-5 space-y-3">
           <OutputBlock
-            title="বর্ণনা (বাংলা)"
+            title={s.outDescBn}
             text={[result.bn.description, ...result.bn.bullets.map((b) => `• ${b}`)].join("\n")}
             engine={result.bn.meta.engine}
             requiresReview={result.bn.meta.requiresReview}
           />
           <OutputBlock
-            title="Description (English)"
+            title={s.outDescEn}
             text={[result.en.description, ...result.en.bullets.map((b) => `• ${b}`)].join("\n")}
             engine={result.en.meta.engine}
             requiresReview={result.en.meta.requiresReview}
           />
           <OutputBlock
-            title="SEO শিরোনাম ও মেটা (বাংলা)"
-            text={`শিরোনাম: ${result.seoBn.title}\nমেটা বর্ণনা: ${result.seoBn.metaDescription}\nকীওয়ার্ড: ${result.seoBn.keywords.join(", ")}`}
+            title={s.outSeoBn}
+            text={`${s.prefixTitle}: ${result.seoBn.title}\n${s.prefixMeta}: ${result.seoBn.metaDescription}\n${s.prefixKeywords}: ${result.seoBn.keywords.join(", ")}`}
             engine={result.seoBn.meta.engine}
             requiresReview={result.seoBn.meta.requiresReview}
           />
           <OutputBlock
-            title="SEO title & meta (English)"
-            text={`Title: ${result.seoEn.title}\nMeta description: ${result.seoEn.metaDescription}\nKeywords: ${result.seoEn.keywords.join(", ")}`}
+            title={s.outSeoEn}
+            text={`${s.prefixTitle}: ${result.seoEn.title}\n${s.prefixMeta}: ${result.seoEn.metaDescription}\n${s.prefixKeywords}: ${result.seoEn.keywords.join(", ")}`}
             engine={result.seoEn.meta.engine}
             requiresReview={result.seoEn.meta.requiresReview}
           />
           <OutputBlock
-            title="ছবির Alt text"
-            text={`বাংলা: ${result.alt.altBn}\nEnglish: ${result.alt.altEn}`}
+            title={s.outAlt}
+            text={`${s.prefixBn}: ${result.alt.altBn}\n${s.prefixEn}: ${result.alt.altEn}`}
             engine={result.alt.meta.engine}
             requiresReview={result.alt.meta.requiresReview}
           />
           <p className="text-xs text-text-muted">
-            প্রতিটি আউটপুটেই <strong>template-fallback — মানুষের রিভিউ লাগবে</strong> স্ট্যাম্প আছে: এগুলো টেমপ্লেট থেকে
-            সাজানো খসড়া, প্রকাশের আগে অবশ্যই মানুষের যাচাই লাগবে। কপি করা পর্যন্তই এই পেজের কাজ — কিছুই পণ্যে সেভ হয় না।
+            {s.stampNote1}
+            <strong>{s.stampNoteStrong}</strong>
+            {s.stampNote2}
           </p>
         </div>
       ) : null}
@@ -273,19 +294,30 @@ function DescriptionTool({ samples }: { samples: SampleProductOption[] }) {
   );
 }
 
-const SENTIMENT_TEXT: Record<ClassifyResult["sentiment"], { label: string; tone: "success" | "neutral" | "danger" }> = {
-  positive: { label: "ইতিবাচক (positive)", tone: "success" },
-  neutral: { label: "নিরপেক্ষ (neutral)", tone: "neutral" },
-  negative: { label: "নেতিবাচক (negative)", tone: "danger" },
-};
+function sentimentText(
+  s: AiAssistStrings,
+): Record<ClassifyResult["sentiment"], { label: string; tone: "success" | "neutral" | "danger" }> {
+  return {
+    positive: { label: s.sentimentPositive, tone: "success" },
+    neutral: { label: s.sentimentNeutral, tone: "neutral" },
+    negative: { label: s.sentimentNegative, tone: "danger" },
+  };
+}
 
-const SPAM_TEXT: Record<ClassifyResult["spam"], { label: string; tone: "success" | "warning" | "danger" }> = {
-  ham: { label: "স্বাভাবিক (ham)", tone: "success" },
-  suspect: { label: "সন্দেহজনক (suspect)", tone: "warning" },
-  spam: { label: "স্প্যাম (spam)", tone: "danger" },
-};
+function spamText(
+  s: AiAssistStrings,
+): Record<ClassifyResult["spam"], { label: string; tone: "success" | "warning" | "danger" }> {
+  return {
+    ham: { label: s.spamHam, tone: "success" },
+    suspect: { label: s.spamSuspect, tone: "warning" },
+    spam: { label: s.spamSpam, tone: "danger" },
+  };
+}
 
 function ReviewTool() {
+  const { locale } = useLocale();
+  const s = pick(locale, AI_ASSIST_STRINGS);
+  const SAMPLE_REVIEWS = sampleReviews(s);
   const [text, setText] = useState("");
   const [result, setResult] = useState<ClassifyResult | null>(null);
 
@@ -297,15 +329,16 @@ function ReviewTool() {
     setResult(classifyText(text));
   }
 
-  const sentiment = result ? SENTIMENT_TEXT[result.sentiment] : null;
-  const spam = result ? SPAM_TEXT[result.spam] : null;
+  const sentiment = result ? sentimentText(s)[result.sentiment] : null;
+  const spam = result ? spamText(s)[result.spam] : null;
 
   return (
     <Card className="p-4">
-      <h3 className="text-base font-semibold">রিভিউ সহায়ক (কিওয়ার্ড শ্রেণিবিন্যাস)</h3>
+      <h3 className="text-base font-semibold">{s.reviewToolTitle}</h3>
       <p className="mt-1 text-sm text-text-muted">
-        একটি নমুনা রিভিউ লিখুন বা পেস্ট করুন — আসল <code>classifyText()</code> কিওয়ার্ড তালিকা দিয়ে অনুভূতি ও স্প্যাম
-        সন্দেহ যাচাই করবে। এটি ML নয়; ব্যঙ্গ বা মিশ্র ভাষা ধরতে নাও পারে।
+        {s.reviewToolText1}
+        <code>classifyText()</code>
+        {s.reviewToolText2}
       </p>
 
       <div className="mt-4 space-y-3">
@@ -317,39 +350,39 @@ function ReviewTool() {
           ))}
         </div>
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-text-muted">রিভিউ লেখা</span>
+          <span className="mb-1 block text-xs font-medium text-text-muted">{s.reviewTextLabel}</span>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={4}
-            placeholder="যেমন: খুব ভালো প্রোডাক্ট, ধন্যবাদ"
+            placeholder={s.reviewPlaceholder}
             className="w-full rounded-[10px] border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand-500"
           />
         </label>
         <Button type="button" variant="gradient" onClick={run} disabled={text.trim() === ""}>
-          যাচাই করুন
+          {s.check}
         </Button>
       </div>
 
       {result && sentiment && spam ? (
         <div className="mt-5 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium">অনুভূতি:</span>
+            <span className="text-sm font-medium">{s.sentimentLabel}</span>
             <Badge tone={sentiment.tone}>{sentiment.label}</Badge>
-            <span className="text-sm font-medium">স্প্যাম রায়:</span>
+            <span className="text-sm font-medium">{s.spamLabel}</span>
             <Badge tone={spam.tone}>{spam.label}</Badge>
             <TemplateStamp engine={result.meta.engine} requiresReview={result.meta.requiresReview} />
           </div>
           {result.matchedKeywords.length > 0 ? (
             <p className="text-sm">
-              <span className="font-medium">যে কিওয়ার্ড মিলেছে:</span> {result.matchedKeywords.join(", ")}
+              <span className="font-medium">{s.matchedKeywords}</span> {result.matchedKeywords.join(", ")}
             </p>
           ) : (
-            <p className="text-sm text-text-muted">কোনো কিওয়ার্ড মেলেনি — তাই নিরপেক্ষ/স্বাভাবিক রায় এসেছে।</p>
+            <p className="text-sm text-text-muted">{s.noKeywords}</p>
           )}
           <p role="note" className="rounded-lg border border-border bg-surface-2 p-3 text-sm">
-            ℹ️ <strong>শুধু পরামর্শ:</strong> এই রায় দেখে রিভিউ কখনোই অটো-ডিলিট হয় না। স্প্যাম রায় এলেও চূড়ান্ত
-            সিদ্ধান্ত মানুষের — স্টাফ কিওয়ার্ডগুলো দেখে নিজে সিদ্ধান্ত নেবেন।
+            ℹ️ <strong>{s.adviceStrong}</strong>
+            {s.adviceText}
           </p>
         </div>
       ) : null}

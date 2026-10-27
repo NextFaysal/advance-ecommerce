@@ -2,7 +2,10 @@ import { PageHeader } from "@/components/ui/page-header";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { listEffectiveScripts } from "@/callcenter/scripts-store";
+import { pick } from "@/i18n/locale";
+import { getRequestLocale } from "@/i18n/server";
 import { CallCenterTabs } from "../tabs";
+import { CALL_CENTER_STRINGS } from "../strings";
 import { ScriptsEditor, type ScriptSourceData } from "./scripts-editor";
 
 // Call-center scripts editor — C3. Per-source scripts are versioned
@@ -15,15 +18,15 @@ import { ScriptsEditor, type ScriptSourceData } from "./scripts-editor";
 export const dynamic = "force-dynamic";
 
 export default async function AdminCallCenterScriptsPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, CALL_CENTER_STRINGS);
   await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
       <main>
-        <PageHeader title="কল স্ক্রিপ্ট" description="Call Scripts (module.call_center)" breadcrumb="Admin / Call Center" />
+        <PageHeader title={s.scriptsTitle} description={s.scriptsDescShort} breadcrumb={s.breadcrumb} />
         <p role="status">
-          🔒 এই মডিউলটি এই ইনস্টলে লক করা আছে। Call Center একটি পেইড অ্যাড-অন —
-          খুলতে Admin &gt; Settings থেকে <code>module.call_center</code> ফিচার ফ্ল্যাগ চালু করুন।
-          (This module is locked — enable the <code>module.call_center</code> feature flag to unlock it.)
+          {s.lockedA} <code>module.call_center</code> {s.lockedB}
         </p>
       </main>
     );
@@ -32,13 +35,13 @@ export default async function AdminCallCenterScriptsPage() {
   let scripts: ScriptSourceData[] | null = null;
   try {
     const effective = await listEffectiveScripts();
-    scripts = effective.map((s) => ({
-      source: s.source,
-      version: s.version,
-      versionLabel: s.versionLabel,
-      isDefault: s.isDefault,
-      steps: s.steps.map((st) => ({ key: st.key, promptBn: st.promptBn, promptEn: st.promptEn ?? "" })),
-      updatedAt: s.updatedAt ?? null,
+    scripts = effective.map((sc) => ({
+      source: sc.source,
+      version: sc.version,
+      versionLabel: sc.versionLabel,
+      isDefault: sc.isDefault,
+      steps: sc.steps.map((st) => ({ key: st.key, promptBn: st.promptBn, promptEn: st.promptEn ?? "" })),
+      updatedAt: sc.updatedAt ?? null,
     }));
   } catch {
     scripts = null;
@@ -47,15 +50,14 @@ export default async function AdminCallCenterScriptsPage() {
   return (
     <main>
       <PageHeader
-        title="কল স্ক্রিপ্ট"
-        description="প্রতিটি টাস্কের ধরন অনুযায়ী এজেন্টের বলার স্ক্রিপ্ট। সেভ করলে সংস্করণ বাড়ে (বিল্ট-ইন = v1); কল লগে কোন সংস্করণ ব্যবহার হয়েছে তা ছাপ থাকে। (Call Scripts — per-source, versioned)"
-        breadcrumb="Admin / Call Center"
+        title={s.scriptsTitle}
+        description={s.scriptsDescLong}
+        breadcrumb={s.breadcrumb}
       />
       <CallCenterTabs active="scripts" />
       {scripts === null ? (
         <p role="alert" className="rounded-md bg-rose-50 px-3.5 py-2.5 text-small leading-relaxed text-rose-700">
-          ডাটাবেস থেকে স্ক্রিপ্ট পড়া যায়নি — কোনো স্ক্রিপ্ট দেখানো হচ্ছে না। (Could not
-          read scripts from the database; nothing is shown.)
+          {s.scriptsReadError}
         </p>
       ) : (
         <ScriptsEditor initialScripts={scripts} />

@@ -1,12 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { CALL_CENTER_STRINGS } from "../strings";
 
 // CSV export for the call-center report — small client leaf (plain
 // serializable props only). The API requires a reason and audit-logs the
 // export, mirroring the audit-log export; this leaf collects the reason,
 // downloads the returned CSV, and surfaces server errors verbatim.
 export function ReportsExportButton({ from, to }: { from: string; to: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, CALL_CENTER_STRINGS);
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -16,7 +21,7 @@ export function ReportsExportButton({ from, to }: { from: string; to: string }) 
   async function run() {
     const trimmed = reason.trim();
     if (!trimmed) {
-      setError("কারণ লেখা বাধ্যতামূলক। (A reason is required.)");
+      setError(s.reasonRequired);
       return;
     }
     setBusy(true);
@@ -30,7 +35,7 @@ export function ReportsExportButton({ from, to }: { from: string; to: string }) 
         | { data?: { csv: string; filename: string }; error?: { message?: string } }
         | null;
       if (!res.ok || !body?.data) {
-        setError(body?.error?.message ?? `Export failed (${res.status}).`);
+        setError(body?.error?.message ?? interpolate(s.exportFailed, { status: res.status }));
         return;
       }
       const blob = new Blob([body.data.csv], { type: "text/csv" });
@@ -40,11 +45,11 @@ export function ReportsExportButton({ from, to }: { from: string; to: string }) 
       a.download = body.data.filename;
       a.click();
       URL.revokeObjectURL(url);
-      setMessage("এক্সপোর্ট ডাউনলোড হয়েছে — অডিট লগে নথিভুক্ত। (Exported; recorded in the audit log.)");
+      setMessage(s.exportedMsg);
       setOpen(false);
       setReason("");
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন। (Network error.)");
+      setError(s.networkErrorRetry);
     } finally {
       setBusy(false);
     }
@@ -58,9 +63,9 @@ export function ReportsExportButton({ from, to }: { from: string; to: string }) 
             type="text"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="এক্সপোর্টের কারণ (বাধ্যতামূলক)"
+            placeholder={s.exportReasonPlaceholder}
             className="h-10 w-full rounded-md border border-border bg-surface px-3 text-sm sm:w-64 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
-            aria-label="Export reason"
+            aria-label={s.exportReasonAria}
           />
           <button
             type="button"
@@ -68,14 +73,14 @@ export function ReportsExportButton({ from, to }: { from: string; to: string }) 
             disabled={busy}
             className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
-            {busy ? "হচ্ছে…" : "ডাউনলোড"}
+            {busy ? s.downloadingText : s.downloadBtn}
           </button>
           <button
             type="button"
             onClick={() => setOpen(false)}
             className="h-10 rounded-md border border-border px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
-            বাতিল
+            {s.cancelBtn}
           </button>
         </div>
       ) : (
@@ -84,7 +89,7 @@ export function ReportsExportButton({ from, to }: { from: string; to: string }) 
           onClick={() => setOpen(true)}
           className="h-10 rounded-md border border-border px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
-          CSV এক্সপোর্ট
+          {s.csvExportBtn}
         </button>
       )}
       {message ? <p className="text-xs text-emerald-600">{message}</p> : null}

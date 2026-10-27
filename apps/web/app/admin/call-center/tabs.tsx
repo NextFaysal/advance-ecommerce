@@ -1,4 +1,9 @@
+"use client";
+
 import Link from "next/link";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { CALL_CENTER_STRINGS } from "./strings";
 
 /**
  * Call Center section tabs — the module has ONE sidebar entry
@@ -8,18 +13,19 @@ import Link from "next/link";
  */
 export type CallCenterTabId = "workbench" | "supervisor" | "scripts" | "qa" | "reports";
 
-const TABS: { id: CallCenterTabId; href: string; label: string }[] = [
-  { id: "workbench", href: "/admin/call-center", label: "ওয়ার্কবেঞ্চ · Workbench" },
-  { id: "supervisor", href: "/admin/call-center/supervisor", label: "সুপারভাইজার · Supervisor" },
-  { id: "scripts", href: "/admin/call-center/scripts", label: "স্ক্রিপ্ট · Scripts" },
-  { id: "qa", href: "/admin/call-center/qa", label: "QA" },
-  { id: "reports", href: "/admin/call-center/reports", label: "রিপোর্ট · Reports" },
-];
-
 export function CallCenterTabs({ active }: { active: CallCenterTabId }) {
+  const { locale } = useLocale();
+  const s = pick(locale, CALL_CENTER_STRINGS);
+  const tabs: { id: CallCenterTabId; href: string; label: string }[] = [
+    { id: "workbench", href: "/admin/call-center", label: s.tabWorkbench },
+    { id: "supervisor", href: "/admin/call-center/supervisor", label: s.tabSupervisor },
+    { id: "scripts", href: "/admin/call-center/scripts", label: s.tabScripts },
+    { id: "qa", href: "/admin/call-center/qa", label: s.tabQa },
+    { id: "reports", href: "/admin/call-center/reports", label: s.tabReports },
+  ];
   return (
-    <nav aria-label="Call Center sections" className="mb-5 flex gap-1 overflow-x-auto border-b border-border">
-      {TABS.map((t) => {
+    <nav aria-label={s.tabsAria} className="mb-5 flex gap-1 overflow-x-auto border-b border-border">
+      {tabs.map((t) => {
         const isActive = t.id === active;
         return (
           <Link

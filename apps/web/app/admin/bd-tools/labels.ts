@@ -1,5 +1,5 @@
 /**
- * BD Tools admin page — shared Bangla labels (Agent 41).
+ * BD Tools admin page — shared labels (doc 30 unified language system).
  *
  * Client-safe: pure data + type-only imports from src/bd/* (the pure
  * service modules themselves are NOT imported here, so this file can be
@@ -8,91 +8,117 @@
  * Labels only — every computation stays in src/bd/* (Agent 11). The
  * customer-facing payment-link status labels live in
  * src/storefront-ux/pay-link-view.ts (PAYMENT_LINK_STATUS_LABELS_BN);
- * the wording below is the staff-facing variant.
+ * the wording below is the staff-facing variant. All label maps are
+ * functions of the active locale — callers pass the locale they got
+ * from useLocale() / getRequestLocale().
  */
 import type { CashChannelName } from "@/bd/cash-closing";
 import type { ReconciliationStatus } from "@/bd/courier-reconciliation";
 import type { PaymentLinkStatus } from "@/bd/payment-link";
 import type { ParseMerchantSmsResult } from "@/bd/sms-autoverify";
+import { intlLocale, pick, type Locale } from "@/i18n/locale";
+import { BD_TOOLS_STRINGS, type BdToolsStrings } from "./strings";
 
-export const CHANNEL_LABELS_BN: Record<CashChannelName, string> = {
-  cash: "নগদ (ক্যাশ ড্রয়ার)",
-  bkash: "বিকাশ (bKash)",
-  nagad: "নগদ (Nagad)",
-  courier_cod: "কুরিয়ার COD প্রাপ্য",
-};
+function s(locale: Locale): BdToolsStrings {
+  return pick(locale, BD_TOOLS_STRINGS);
+}
 
-export const RECONCILIATION_STATUS_LABELS_BN: Record<ReconciliationStatus, string> = {
-  matched: "মিলেছে",
-  amount_mismatch: "COD টাকার অমিল",
-  charge_mismatch: "চার্জের অমিল",
-  missing_in_invoice: "ইনভয়েসে নেই",
-  extra_in_invoice: "ইনভয়েসে অতিরিক্ত",
-  tracking_mismatch: "ট্র্যাকিং আইডির অমিল",
-};
+export function channelLabels(locale: Locale): Record<CashChannelName, string> {
+  const t = s(locale);
+  return {
+    cash: t.channelCash,
+    bkash: t.channelBkash,
+    nagad: t.channelNagad,
+    courier_cod: t.channelCourierCod,
+  };
+}
 
-/** Dispute reason codes from src/bd/courier-reconciliation.ts -> Bangla.
+export function reconciliationStatusLabels(locale: Locale): Record<ReconciliationStatus, string> {
+  const t = s(locale);
+  return {
+    matched: t.reconMatched,
+    amount_mismatch: t.reconAmountMismatch,
+    charge_mismatch: t.reconChargeMismatch,
+    missing_in_invoice: t.reconMissing,
+    extra_in_invoice: t.reconExtra,
+    tracking_mismatch: t.reconTrackingMismatch,
+  };
+}
+
+/** Dispute reason codes from src/bd/courier-reconciliation.ts, localized.
  *  Reasons carry values after a ":" — the prefix is translated and the
  *  original code is still shown in mono next to it, never hidden. */
-export function reconciliationReasonBn(reason: string): string {
+export function reconciliationReason(reason: string, locale: Locale): string {
+  const t = s(locale);
   const prefix = reason.split(":")[0] ?? reason;
   switch (prefix) {
     case "cod_collected_differs":
-      return "সংগ্রহ করা COD মিলছে না";
+      return t.reasonCodDiffers;
     case "a_charge_differs":
-      return "ডেলিভারি / COD ফি / রিটার্ন চার্জের যেকোনো একটি মিলছে না";
+      return t.reasonChargeDiffers;
     case "payable_differs":
-      return "পরিশোধযোগ্য টাকা মিলছে না";
+      return t.reasonPayableDiffers;
     case "tracking_id_differs":
-      return "ট্র্যাকিং আইডি আলাদা";
+      return t.reasonTrackingDiffers;
     case "shipment_not_billed_by_courier":
-      return "আমরা পাঠিয়েছি, কুরিয়ার বিল করেনি";
+      return t.reasonNotBilled;
     case "courier_billed_unknown_shipment":
-      return "কুরিয়ার এমন শিপমেন্টের বিল করেছে যা আমাদের কাছে নেই";
+      return t.reasonUnknownShipment;
     default:
       return reason;
   }
 }
 
-export const PAYMENT_LINK_STATUS_LABELS_BN: Record<PaymentLinkStatus, string> = {
-  active: "সক্রিয়",
-  paid: "পরিশোধিত",
-  expired: "মেয়াদ শেষ",
-  cancelled: "বাতিল",
-};
+export function paymentLinkStatusLabels(locale: Locale): Record<PaymentLinkStatus, string> {
+  const t = s(locale);
+  return {
+    active: t.paylinkActive,
+    paid: t.paylinkPaid,
+    expired: t.paylinkExpired,
+    cancelled: t.paylinkCancelled,
+  };
+}
 
-export const PAYMENT_LINK_PURPOSES: readonly { value: string; labelBn: string }[] = [
-  { value: "cod_advance", labelBn: "COD অগ্রিম" },
-  { value: "partial", labelBn: "আংশিক পেমেন্ট" },
-  { value: "due", labelBn: "বকেয়া আদায়" },
-];
+export function paymentLinkPurposes(locale: Locale): readonly { value: string; label: string }[] {
+  const t = s(locale);
+  return [
+    { value: "cod_advance", label: t.purposeCodAdvance },
+    { value: "partial", label: t.purposePartial },
+    { value: "due", label: t.purposeDue },
+  ];
+}
 
-export function paymentLinkPurposeBn(purpose: string): string {
-  return PAYMENT_LINK_PURPOSES.find((p) => p.value === purpose)?.labelBn ?? purpose;
+export function paymentLinkPurpose(purpose: string, locale: Locale): string {
+  return paymentLinkPurposes(locale).find((p) => p.value === purpose)?.label ?? purpose;
 }
 
 type SmsRejectReason = Extract<ParseMerchantSmsResult, { ok: false }>["reason"];
 
-export const SMS_REJECT_REASON_LABELS_BN: Record<SmsRejectReason, string> = {
-  empty: "মেসেজ খালি — কিছু পেস্ট করুন",
-  no_provider: "প্রোভাইডার চেনা যায়নি — মেসেজে bKash/Nagad-এর উল্লেখ নেই",
-  no_trxid:
-    "কোনো TrxID পাওয়া যায়নি — OTP-শুধু মেসেজ কখনো পেমেন্ট হিসেবে ধরা হয় না",
-  no_amount: "টাকার পরিমাণ (Tk/Taka/৳) পাওয়া যায়নি",
-};
+export function smsRejectReasonLabels(locale: Locale): Record<SmsRejectReason, string> {
+  const t = s(locale);
+  return {
+    empty: t.smsEmpty,
+    no_provider: t.smsNoProvider,
+    no_trxid: t.smsNoTrxid,
+    no_amount: t.smsNoAmount,
+  };
+}
 
-export const MATCHED_BY_LABELS_BN: Record<string, string> = {
-  bangla: "বাংলা নামে মিলেছে",
-  latin: "ইংরেজি নামে মিলেছে",
-  typo: "বানান সংশোধন করে মিলেছে",
-  implied: "অন্য অংশ থেকে অনুমিত",
-};
+export function matchedByLabels(locale: Locale): Record<string, string> {
+  const t = s(locale);
+  return {
+    bangla: t.matchedBangla,
+    latin: t.matchedLatin,
+    typo: t.matchedTypo,
+    implied: t.matchedImplied,
+  };
+}
 
-/** Asia/Dhaka date-time for ISO strings, Bangla locale. Display only. */
-export function formatDateTimeBn(iso: string): string {
+/** Asia/Dhaka date-time for ISO strings, in the active locale. Display only. */
+export function formatDateTime(iso: string, locale: Locale): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("bn-BD", {
+  return d.toLocaleString(intlLocale(locale), {
     timeZone: "Asia/Dhaka",
     year: "numeric",
     month: "short",
@@ -102,10 +128,10 @@ export function formatDateTimeBn(iso: string): string {
   });
 }
 
-export function formatDateBn(isoDate: string): string {
+export function formatDate(isoDate: string, locale: Locale): string {
   const d = new Date(`${isoDate}T00:00:00+06:00`);
   if (Number.isNaN(d.getTime())) return isoDate;
-  return d.toLocaleDateString("bn-BD", {
+  return d.toLocaleDateString(intlLocale(locale), {
     timeZone: "Asia/Dhaka",
     year: "numeric",
     month: "long",
