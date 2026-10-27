@@ -42,6 +42,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { useDigitText } from "@/components/ui/numerals";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { CIRCUIT_STRINGS } from "./strings";
 import { Icon } from "@/components/ui/icon";
 import type { PublicProduct } from "@/catalog/types";
 import { minVariantPricePoisha } from "@/catalog/types";
@@ -99,12 +102,14 @@ function SavingPill({
   pct: number;
   digits: (t: string) => string;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, CIRCUIT_STRINGS);
   return (
     <span
       className="rounded-full px-2.5 py-1 text-[11px] font-bold text-white shadow-sm"
       style={{ backgroundColor: CIRCUIT_COLORS.savePurple }}
     >
-      {digits(`সাশ্রয় ${formatBdt(savePoisha)} (−${pct}%)`)}
+      {digits(interpolate(s.saveLine, { amount: formatBdt(savePoisha), pct }))}
     </span>
   );
 }
@@ -153,6 +158,8 @@ function CircuitAddButton({
   data: CardData;
   className?: string;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, CIRCUIT_STRINGS);
   const [justAdded, setJustAdded] = useState(false);
   const { defaultVariant, inStock } = data;
   if (!defaultVariant || data.priceOnRequest) return null;
@@ -191,15 +198,17 @@ function CircuitAddButton({
       } ${className}`}
     >
       <Icon name="cart" size={16} />
-      {!inStock ? "স্টক শেষ" : justAdded ? "যোগ হয়েছে ✓" : "কার্টে যোগ করুন"}
+      {!inStock ? s.outOfStock : justAdded ? s.addedCheck : s.addToCart}
     </button>
   );
 }
 
 function PriceRow({ data, digits }: { data: CardData; digits: (t: string) => string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, CIRCUIT_STRINGS);
   if (data.priceOnRequest) {
     return (
-      <p className="text-[15px] font-extrabold text-destructive">দামের জন্য যোগাযোগ করুন</p>
+      <p className="text-[15px] font-extrabold text-destructive">{s.priceOnRequest}</p>
     );
   }
   return (
@@ -218,6 +227,8 @@ function PriceRow({ data, digits }: { data: CardData; digits: (t: string) => str
 
 /** Standard (vertical) card — the ProductCard slot implementation. */
 export function CircuitProductCard({ product }: ThemeProductCardProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, CIRCUIT_STRINGS);
   const digits = useDigitText();
   const data = useCardData(product);
 
@@ -253,7 +264,7 @@ export function CircuitProductCard({ product }: ThemeProductCardProps) {
           ) : null}
           {!data.inStock ? (
             <span className="absolute bottom-2.5 left-2.5 rounded-full bg-text-main/85 px-2 py-0.5 text-[11px] font-semibold text-white">
-              স্টক শেষ
+              {s.outOfStock}
             </span>
           ) : null}
         </div>
@@ -288,6 +299,8 @@ export function CircuitProductCard({ product }: ThemeProductCardProps) {
 export function CircuitProductCardHorizontal({
   product,
 }: ThemeProductCardProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, CIRCUIT_STRINGS);
   const digits = useDigitText();
   const data = useCardData(product);
 
@@ -340,7 +353,7 @@ export function CircuitProductCardHorizontal({
             <PriceRow data={data} digits={digits} />
           </div>
           {!data.inStock ? (
-            <p className="mt-1 text-xs font-medium text-destructive">স্টক শেষ</p>
+            <p className="mt-1 text-xs font-medium text-destructive">{s.outOfStock}</p>
           ) : null}
         </Link>
         <div className="mt-auto pt-3">

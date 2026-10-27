@@ -15,16 +15,21 @@
  * With no branded products, the section renders nothing.
  */
 import Link from "next/link";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { SHOBJI_STRINGS } from "./strings";
 
 export default function ShobjiHomeBrands({ brands }: { brands: string[] }) {
+  const { locale } = useLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   if (brands.length === 0) return null;
 
   return (
-    <section className="mt-12" aria-label="আমাদের ব্র্যান্ড">
+    <section className="mt-12" aria-label={s.ourBrands}>
       <div className="flex items-end justify-between gap-3">
         <div>
           <h2 className="font-display text-xl font-extrabold text-text-main sm:text-2xl">
-            আমাদের ব্র্যান্ড
+            {s.ourBrands}
           </h2>
           <span aria-hidden="true" className="mt-1.5 block h-[3px] w-10 rounded-full bg-primary" />
         </div>
@@ -32,7 +37,7 @@ export default function ShobjiHomeBrands({ brands }: { brands: string[] }) {
           href="/shop"
           className="shrink-0 text-sm font-bold text-primary hover:underline"
         >
-          সব দেখুন →
+          {s.viewAllArrow}
         </Link>
       </div>
       <div className="scrollbar-none -mx-4 mt-5 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">

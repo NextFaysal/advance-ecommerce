@@ -37,20 +37,25 @@ import NeelHomeHero from "./home-hero";
 import NeelHomeCategories from "./home-categories";
 import NeelHomeTopSelling from "./home-top-selling";
 import NeelHomeTestimonials from "./home-testimonials";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { NEEL_STRINGS, type NeelStrings } from "./strings";
 
 /* Our own generic service points (icon + line), drawn from the
    platform's real storefront promises — COD, nationwide delivery,
    easy returns, tracked orders. Copy is ours. */
-const TRUST_ITEMS = [
-  { icon: "banknote", title: "ক্যাশ অন ডেলিভারি", text: "পণ্য হাতে পেয়ে মূল্য পরিশোধ" },
-  { icon: "truck", title: "দেশজুড়ে ডেলিভারি", text: "জেলা-উপজেলায় হোম ডেলিভারি" },
-  { icon: "package", title: "অর্ডার ট্র্যাকিং", text: "যেকোনো সময় অর্ডারের অবস্থা দেখুন" },
-  { icon: "rotate-ccw", title: "সহজ রিটার্ন", text: "সমস্যা থাকলে সহজ শর্তে রিটার্ন" },
-] as const;
+function trustItems(s: NeelStrings) {
+  return [
+    { icon: "banknote", title: s.trustCodTitle, text: s.trustCodText },
+    { icon: "truck", title: s.trustDeliveryTitle, text: s.trustDeliveryText },
+    { icon: "package", title: s.trustTrackingTitle, text: s.trustTrackingText },
+    { icon: "rotate-ccw", title: s.trustReturnTitle, text: s.trustReturnText },
+  ] as const;
+}
 
 /** Rail section heading: title left with a short blue underline,
  *  "সব দেখুন →" right. */
-function RailHeading({ title, href }: { title: string; href: string }) {
+function RailHeading({ title, href, s }: { title: string; href: string; s: NeelStrings }) {
   return (
     <div className="flex items-end justify-between gap-3">
       <div>
@@ -58,13 +63,13 @@ function RailHeading({ title, href }: { title: string; href: string }) {
         <span aria-hidden="true" className="mt-1.5 block h-[3px] w-10 rounded-full bg-primary" />
       </div>
       <Link href={href} className="shrink-0 text-sm font-bold text-primary hover:underline">
-        সব দেখুন →
+        {s.viewAllLink}
       </Link>
     </div>
   );
 }
 
-export default function NeelHomeSections({
+export default async function NeelHomeSections({
   products,
   categories,
   heroSlides,
@@ -72,6 +77,8 @@ export default function NeelHomeSections({
   mechanicsOn,
   heroStats,
 }: HomeSectionsProps) {
+  const s = pick(await getRequestLocale(), NEEL_STRINGS);
+  const TRUST_ITEMS = trustItems(s);
   // Per-category rails from the REAL categorySlug on each fetched
   // product; categories keep the catalog's own order, capped at 3.
   const byCategory = new Map<string, typeof products>();
@@ -100,7 +107,7 @@ export default function NeelHomeSections({
       {heroStats ? <div className="mt-4">{heroStats}</div> : null}
 
       {/* ---------- Trust strip (our own generic service points) ---------- */}
-      <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="আমাদের সুবিধা">
+      <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={s.benefitsAria}>
         {TRUST_ITEMS.map((item) => (
           <div
             key={item.title}
@@ -130,7 +137,7 @@ export default function NeelHomeSections({
       {/* ---------- Category rails (real membership only) ---------- */}
       {rails.map(({ category, items }) => (
         <section key={category.slug} className="mt-12" aria-label={category.name.bn}>
-          <RailHeading title={category.name.bn} href={`/shop?category=${category.slug}`} />
+          <RailHeading s={s} title={category.name.bn} href={`/shop?category=${category.slug}`} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {items.map((p) => (
               <ThemedProductCard key={p.id} product={p} />
@@ -188,8 +195,8 @@ export default function NeelHomeSections({
 
       {/* ---------- Product grid + LOAD MORE ---------- */}
       {products.length > 0 ? (
-        <section className="mt-12" aria-label="আপনার জন্য বাছাই">
-          <RailHeading title="আপনার জন্য বাছাই" href="/shop" />
+        <section className="mt-12" aria-label={s.pickedForYou}>
+          <RailHeading title={s.pickedForYou} href="/shop" s={s} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {products.map((p) => (
               <ThemedProductCard key={p.id} product={p} />
@@ -200,7 +207,7 @@ export default function NeelHomeSections({
               href="/shop"
               className="inline-flex h-12 items-center rounded-md border border-primary bg-card px-8 text-sm font-bold text-primary shadow-card transition hover:bg-primary hover:text-white"
             >
-              LOAD MORE
+              {s.loadMore}
             </Link>
           </div>
         </section>

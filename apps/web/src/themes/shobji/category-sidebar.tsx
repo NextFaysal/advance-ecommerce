@@ -26,7 +26,10 @@
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
 import { useThemeView } from "../theme-view";
+import { SHOBJI_STRINGS } from "./strings";
 
 export interface ShobjiSidebarCategory {
   slug: string;
@@ -43,6 +46,8 @@ export default function ShobjiCategorySidebar({
   activeCategorySlug?: string;
 }) {
   const digits = useDigitText();
+  const { locale } = useLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   const themeView = useThemeView();
   if (themeView.options.showSidebar === false) return null;
   if (categories.length === 0) return null;
@@ -51,13 +56,13 @@ export default function ShobjiCategorySidebar({
 
   return (
     <nav
-      aria-label="ক্যাটাগরি সাইডবার"
+      aria-label={s.categorySidebarAria}
       className="hidden w-[220px] shrink-0 lg:block xl:w-[240px]"
     >
       <div className="sticky top-[5.5rem] overflow-hidden rounded-lg border border-border bg-card shadow-card">
         <p className="flex items-center gap-2 bg-secondary px-4 py-3 text-sm font-extrabold text-secondary-foreground">
           <Icon name="grid" size={16} />
-          ক্যাটাগরি
+          {s.categories}
         </p>
         <ul className="max-h-[70vh] overflow-y-auto py-1.5">
           <li>
@@ -70,7 +75,7 @@ export default function ShobjiCategorySidebar({
                   : "text-text-muted hover:bg-muted hover:text-text-main"
               }`}
             >
-              <span className="min-w-0 flex-1 truncate">সব পণ্য</span>
+              <span className="min-w-0 flex-1 truncate">{s.allProducts}</span>
             </Link>
           </li>
           {categories.map((c) => {

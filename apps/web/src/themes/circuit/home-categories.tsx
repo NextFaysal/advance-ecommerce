@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Circuit "জনপ্রিয় ক্যাটাগরি" row (doc 27 T-D) — client island:
+ * Circuit "{s.categoriesHeading}" row (doc 27 T-D) — client island:
  * a horizontally scrollable row of rounded white tiles under a
  * CENTRED heading (this package's section-heading style), with
  * navy circular arrow buttons.
@@ -15,6 +15,9 @@ import { useRef } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { CIRCUIT_STRINGS } from "./strings";
 import type { Category } from "@/catalog/types";
 import { CIRCUIT_COLORS } from "./tokens";
 
@@ -33,6 +36,8 @@ export default function CircuitHomeCategories({
 }: {
   categories: Category[];
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, CIRCUIT_STRINGS);
   const digits = useDigitText();
   const trackRef = useRef<HTMLDivElement>(null);
 
@@ -45,11 +50,11 @@ export default function CircuitHomeCategories({
   };
 
   return (
-    <section className="mt-12" aria-label="জনপ্রিয় ক্যাটাগরি">
+    <section className="mt-12" aria-label={s.categoriesAria}>
       <div className="relative flex items-center justify-center">
         <div className="text-center">
           <h2 className="font-display text-xl font-extrabold text-text-main sm:text-2xl">
-            জনপ্রিয় ক্যাটাগরি
+            {s.categoriesHeading}
           </h2>
           <span aria-hidden="true" className="mx-auto mt-1.5 block h-[3px] w-10 rounded-full bg-primary" />
         </div>
@@ -57,7 +62,7 @@ export default function CircuitHomeCategories({
           <button
             type="button"
             onClick={() => scrollBy(-1)}
-            aria-label="আগের ক্যাটাগরি"
+            aria-label={s.prevCategories}
             className="flex h-10 w-10 items-center justify-center rounded-full text-white shadow-card transition hover:opacity-90"
             style={{ backgroundColor: CIRCUIT_COLORS.navy }}
           >
@@ -66,7 +71,7 @@ export default function CircuitHomeCategories({
           <button
             type="button"
             onClick={() => scrollBy(1)}
-            aria-label="পরের ক্যাটাগরি"
+            aria-label={s.nextCategories}
             className="flex h-10 w-10 items-center justify-center rounded-full text-white shadow-card transition hover:opacity-90"
             style={{ backgroundColor: CIRCUIT_COLORS.navy }}
           >
@@ -107,7 +112,7 @@ export default function CircuitHomeCategories({
               {c.name.bn}
             </span>
             <span className="block text-center text-[11px] text-text-subtle">
-              {digits(`${c.productCount}টি পণ্য`)}
+              {digits(interpolate(s.productCount, { count: c.productCount }))}
             </span>
           </Link>
         ))}

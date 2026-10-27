@@ -16,12 +16,17 @@ import { useRef } from "react";
 import { Icon } from "@/components/ui/icon";
 import type { PublicProduct } from "@/catalog/types";
 import { ShobjiProductCardHorizontal } from "./product-card";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { SHOBJI_STRINGS } from "./strings";
 
 export default function ShobjiHomeTopSelling({
   products,
 }: {
   products: PublicProduct[];
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   const trackRef = useRef<HTMLDivElement>(null);
 
   if (products.length === 0) return null;
@@ -33,11 +38,11 @@ export default function ShobjiHomeTopSelling({
   };
 
   return (
-    <section className="mt-12" aria-label="ক্রেতাদের পছন্দ">
+    <section className="mt-12" aria-label={s.customersChoice}>
       <div className="flex items-end justify-between gap-3">
         <div>
           <h2 className="font-display text-xl font-extrabold text-text-main sm:text-2xl">
-            ক্রেতাদের পছন্দ
+            {s.customersChoice}
           </h2>
           <span aria-hidden="true" className="mt-1.5 block h-[3px] w-10 rounded-full bg-primary" />
         </div>
@@ -45,7 +50,7 @@ export default function ShobjiHomeTopSelling({
           <button
             type="button"
             onClick={() => scrollBy(-1)}
-            aria-label="আগের পণ্য"
+            aria-label={s.prevProductsAria}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} className="rotate-180" />
@@ -53,7 +58,7 @@ export default function ShobjiHomeTopSelling({
           <button
             type="button"
             onClick={() => scrollBy(1)}
-            aria-label="পরের পণ্য"
+            aria-label={s.nextProductsAria}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} />

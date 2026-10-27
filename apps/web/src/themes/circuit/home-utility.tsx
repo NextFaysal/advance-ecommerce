@@ -17,15 +17,15 @@
  */
 import { Icon } from "@/components/ui/icon";
 import { useThemeView } from "../theme-view";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { CIRCUIT_STRINGS, CIRCUIT_UTILITY_ITEMS } from "./strings";
 
-const UTILITY_ITEMS = [
-  { icon: "banknote", title: "ক্যাশ অন ডেলিভারি", text: "পণ্য হাতে পেয়ে মূল্য পরিশোধ করুন" },
-  { icon: "truck", title: "সারাদেশে হোম ডেলিভারি", text: "জেলা-উপজেলার ঠিকানায় পৌঁছে দিই" },
-  { icon: "rotate-ccw", title: "সহজ রিটার্ন", text: "পণ্যে সমস্যা থাকলে সহজ শর্তে রিটার্ন" },
-  { icon: "shield", title: "পণ্যে ওয়ারেন্টি তথ্য", text: "ওয়ারেন্টি থাকলে পণ্যের পেজেই বিস্তারিত" },
-] as const;
+const UTILITY_ITEMS = CIRCUIT_UTILITY_ITEMS;
 
 export default function CircuitHomeUtility() {
+  const { locale } = useLocale();
+  const s = pick(locale, CIRCUIT_STRINGS);
   const themeView = useThemeView();
   const showUtilityCards = themeView.options.showUtilityCards !== false;
 
@@ -37,15 +37,14 @@ export default function CircuitHomeUtility() {
           <Icon name="info" size={18} />
         </span>
         <p className="min-w-0 break-words text-sm leading-6 text-text-main">
-          সারাদেশে ক্যাশ অন ডেলিভারি চালু আছে — অর্ডার করুন, পণ্য হাতে পেয়ে
-          নিশ্চিন্তে মূল্য পরিশোধ করুন।
+          {s.codBannerText}
         </p>
       </div>
 
       {/* Utility cards — white cards, orange circular icons. */}
       {showUtilityCards ? (
-        <section className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="আমাদের সুবিধা">
-          {UTILITY_ITEMS.map((item) => (
+        <section className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={s.benefitsAria}>
+          {pick(locale, UTILITY_ITEMS).map((item) => (
             <div
               key={item.title}
               className="flex items-center gap-3 rounded-lg border border-border bg-card p-4 shadow-card"

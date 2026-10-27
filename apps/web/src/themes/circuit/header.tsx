@@ -40,6 +40,9 @@ import { DEFAULT_HEADER_MENU } from "@/cms/site-content-types";
 import { useThemeView } from "../theme-view";
 import { openCartDrawer } from "../cart-drawer-events";
 import { CIRCUIT_COLORS } from "./tokens";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { CIRCUIT_STRINGS } from "./strings";
 import type { ThemeHeaderProps } from "../slots";
 
 function CountBadge({ count }: { count: number }) {
@@ -60,6 +63,8 @@ export default function CircuitHeader({
   const themeView = useThemeView();
   const showFloatingActions = themeView.options.showFloatingActions !== false;
 
+  const { locale } = useLocale();
+  const s = pick(locale, CIRCUIT_STRINGS);
   const [localCartCount, setLocalCartCount] = useState(0);
 
   // Guest-cart count — SiteHeader's exact data path. The compare
@@ -116,13 +121,13 @@ export default function CircuitHeader({
                 <input
                   type="search"
                   name="q"
-                  placeholder="পণ্য খুঁজুন… যেমন: ল্যাপটপ, মনিটর, রাউটার, হেডফোন"
-                  aria-label="পণ্য খুঁজুন"
+                  placeholder={s.searchPlaceholder}
+                  aria-label={s.searchAria}
                   className="h-11 w-full rounded-lg border border-white/20 bg-white pl-4 pr-12 text-sm text-[#1B2A36] shadow-sm transition placeholder:text-[#7A8C9C] focus:outline-none focus:ring-2 focus:ring-primary/60"
                 />
                 <button
                   type="submit"
-                  aria-label="খুঁজুন"
+                  aria-label={s.searchButtonAria}
                   className="absolute right-1 top-1 flex h-9 w-10 items-center justify-center rounded-md bg-primary text-white transition hover:opacity-90"
                 >
                   <Icon name="search" size={18} />
@@ -137,20 +142,20 @@ export default function CircuitHeader({
                 className="flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-white/85 transition hover:text-white"
               >
                 <Icon name="tag" size={22} />
-                <span className="text-[11px] font-medium leading-none">অফার</span>
+                <span className="text-[11px] font-medium leading-none">{s.offersLabel}</span>
               </Link>
               <Link
                 href="/account"
                 className="flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-white/85 transition hover:text-white"
               >
                 <Icon name="user" size={22} />
-                <span className="text-[11px] font-medium leading-none">অ্যাকাউন্ট</span>
+                <span className="text-[11px] font-medium leading-none">{s.accountLabel}</span>
               </Link>
               <Link
                 href="/shop"
                 className="brand-gradient ml-1 inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg px-4 text-sm font-bold text-white shadow-md transition hover:opacity-95"
               >
-                সব অফার
+                {s.allOffersCta}
                 <Icon name="arrow-right" size={16} />
               </Link>
             </div>
@@ -158,14 +163,14 @@ export default function CircuitHeader({
         </div>
 
         {/* Tier 2 — white single-row category bar */}
-        <nav aria-label="ক্যাটাগরি" className="border-b border-border bg-card">
+        <nav aria-label={s.navCategoriesAria} className="border-b border-border bg-card">
           <div className="scrollbar-none mx-auto flex max-w-[1440px] items-center gap-1 overflow-x-auto px-4 sm:px-6">
             <Link
               href="/shop"
               className="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-sm font-bold text-text-main transition hover:text-primary"
             >
               <Icon name="grid" size={16} />
-              সব ক্যাটাগরি
+              {s.allCategories}
             </Link>
             {(categories ?? []).map((c) => (
               <Link
@@ -199,7 +204,7 @@ export default function CircuitHeader({
           <button
             type="button"
             onClick={openCartDrawer}
-            aria-label={`কার্ট${effectiveCartCount > 0 ? `, ${effectiveCartCount}টি পণ্য` : ""} — ড্রয়ার খুলুন`}
+            aria-label={effectiveCartCount > 0 ? interpolate(s.cartAriaCount, { count: effectiveCartCount }) : s.cartAria}
             className="relative flex h-12 w-12 items-center justify-center rounded-l-xl text-white shadow-pop transition hover:opacity-95"
             style={{ backgroundColor: CIRCUIT_COLORS.navy }}
           >
@@ -208,7 +213,7 @@ export default function CircuitHeader({
           </button>
           <Link
             href="/compare"
-            aria-label="পণ্য তুলনা করুন"
+            aria-label={s.compareAria}
             className="relative flex h-12 w-12 items-center justify-center rounded-l-xl text-white shadow-pop transition hover:opacity-95"
             style={{ backgroundColor: CIRCUIT_COLORS.navy }}
           >

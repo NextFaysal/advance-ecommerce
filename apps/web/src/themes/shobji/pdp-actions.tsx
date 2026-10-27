@@ -24,7 +24,10 @@
  * prefilled order text.
  */
 import { Icon } from "@/components/ui/icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
 import { SHOBJI_COLORS } from "./tokens";
+import { SHOBJI_STRINGS } from "./strings";
 
 export interface ShobjiPdpActionsProps {
   /** Add the selected variant + quantity to the guest cart. */
@@ -60,9 +63,11 @@ export default function ShobjiPdpActions({
   callNumber,
   productTitleBn,
 }: ShobjiPdpActionsProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   const waDigits = whatsappNumber ? whatsappNumber.replace(/[^0-9]/g, "") : "";
   const waText = encodeURIComponent(
-    `আমি এই পণ্যটি অর্ডার করতে চাই: ${productTitleBn}`,
+    interpolate(s.whatsappPrefill, { title: productTitleBn }),
   );
 
   return (
@@ -74,7 +79,7 @@ export default function ShobjiPdpActions({
         className={`${BTN} bg-primary hover:opacity-90`}
       >
         <Icon name="cart" size={18} />
-        {outOfStock ? (unavailableLabel ?? "স্টক শেষ") : (ctaLabel ?? "Add To Cart")}
+        {outOfStock ? (unavailableLabel ?? s.outOfStock) : (ctaLabel ?? s.addToCart)}
       </button>
       <button
         type="button"
@@ -83,7 +88,7 @@ export default function ShobjiPdpActions({
         className={`${BTN} hover:opacity-90`}
         style={{ backgroundColor: SHOBJI_COLORS.primaryDeep }}
       >
-        {buyNowLabel ?? "Buy Now"}
+        {buyNowLabel ?? s.buyNow}
       </button>
       {waDigits ? (
         <a
@@ -94,7 +99,7 @@ export default function ShobjiPdpActions({
           style={{ backgroundColor: SHOBJI_COLORS.whatsappGreen }}
         >
           <Icon name="info" size={18} />
-          Order On WhatsApp
+          {s.orderOnWhatsApp}
         </a>
       ) : null}
       {callNumber ? (
@@ -104,7 +109,7 @@ export default function ShobjiPdpActions({
           style={{ backgroundColor: SHOBJI_COLORS.callPlum }}
         >
           <Icon name="phone" size={18} />
-          Call For Order
+          {s.callForOrder}
         </a>
       ) : null}
     </div>

@@ -24,10 +24,15 @@ import { cartItemCount, cartSubtotalPoisha } from "@/cart/types";
 import { CART_UPDATED_EVENT } from "@/cart/components/AddToCartButton";
 import { Icon } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
 import { useThemeView } from "../theme-view";
+import { SHOBJI_STRINGS } from "./strings";
 import { openCartDrawer } from "../cart-drawer-events";
 
 export default function ShobjiFloatingCart() {
+  const { locale } = useLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   const digits = useDigitText();
   const themeView = useThemeView();
   const showFloatingCart = themeView.options.showFloatingCart !== false;
@@ -61,12 +66,12 @@ export default function ShobjiFloatingCart() {
     <button
       type="button"
       onClick={openCartDrawer}
-      aria-label={`কার্ট খুলুন — ${count}টি পণ্য, মোট ${formatBdt(totalPoisha)}`}
+      aria-label={interpolate(s.floatingCartAria, { count, total: formatBdt(totalPoisha) })}
       className="fixed right-0 top-1/3 z-40 flex flex-col items-center gap-0.5 rounded-l-xl bg-primary px-2.5 py-3 text-white shadow-pop transition hover:opacity-95"
     >
       <Icon name="cart" size={20} />
       <span className="text-[11px] font-bold leading-tight">
-        {digits(`${count}টি`)}
+        {digits(interpolate(s.itemCountShort, { count }))}
       </span>
       <span className="text-[11px] font-semibold leading-tight">
         {digits(formatBdt(totalPoisha))}

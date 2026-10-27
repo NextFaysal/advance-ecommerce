@@ -38,32 +38,36 @@ import Link from "next/link";
 import { VisitorIdBootstrap } from "@/marketing/components/VisitorIdBootstrap";
 import { ThemedProductCard } from "../themed-product-card";
 import type { HomeSectionsProps } from "../slots";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { HAAT_STRINGS, type HaatStrings } from "./strings";
 import HaatHomeHero from "./home-hero";
 import HaatHomeFlashRail from "./home-flash-rail";
 import HaatHomeCategories from "./home-categories";
 
 /** Rail section heading: title with an orange left bar, an
  *  "all items" link right — this package's rail anatomy. */
-function RailHeading({ title, href }: { title: string; href: string }) {
+function RailHeading({ title, href, s }: { title: string; href: string; s: HaatStrings }) {
   return (
     <div className="flex items-end justify-between gap-3">
       <h2 className="border-l-4 border-primary pl-3 font-display text-xl font-extrabold text-text-main sm:text-2xl">
         {title}
       </h2>
       <Link href={href} className="shrink-0 text-sm font-bold text-primary hover:underline">
-        সবগুলো দেখুন →
+        {s.viewAllLink}
       </Link>
     </div>
   );
 }
 
-export default function HaatHomeSections({
+export default async function HaatHomeSections({
   products,
   categories,
   heroSlides,
   mechanicsOn,
   heroStats,
 }: HomeSectionsProps) {
+  const s = pick(await getRequestLocale(), HAAT_STRINGS);
   // Per-category rails from the REAL categorySlug on each fetched
   // product; categories keep the catalog's own order, capped at 3.
   const byCategory = new Map<string, typeof products>();
@@ -96,7 +100,7 @@ export default function HaatHomeSections({
       {/* ---------- Category rails (real membership only) ---------- */}
       {rails.map(({ category, items }) => (
         <section key={category.slug} className="mt-12" aria-label={category.name.bn}>
-          <RailHeading title={category.name.bn} href={`/shop?category=${category.slug}`} />
+          <RailHeading title={category.name.bn} href={`/shop?category=${category.slug}`} s={s} />
           <div className="mt-5 grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-6">
             {items.map((p) => (
               <ThemedProductCard key={p.id} product={p} />
@@ -107,8 +111,8 @@ export default function HaatHomeSections({
 
       {/* ---------- Closing grid: the full fetched list ---------- */}
       {products.length > 0 ? (
-        <section className="mt-12" aria-label="আপনার জন্য বাছাই">
-          <RailHeading title="আপনার জন্য বাছাই" href="/shop" />
+        <section className="mt-12" aria-label={s.pickedForYou}>
+          <RailHeading title={s.pickedForYou} href="/shop" s={s} />
           <div className="mt-5 grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-6">
             {products.map((p) => (
               <ThemedProductCard key={p.id} product={p} />
@@ -119,7 +123,7 @@ export default function HaatHomeSections({
               href="/shop"
               className="inline-flex h-12 items-center rounded bg-primary px-8 text-sm font-bold text-white shadow-card transition hover:opacity-90"
             >
-              আরও পণ্য দেখুন
+              {s.moreProducts}
             </Link>
           </div>
         </section>

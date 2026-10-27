@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Neel Footer (doc 27 T-E) — ThemeFooterProps.
  *
@@ -29,32 +31,33 @@ import {
   type FooterMenuGroup,
   type FooterMenuLink,
 } from "@/cms/site-content-types";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { NEEL_STRINGS, type NeelStrings } from "./strings";
 import { NEEL_COLORS } from "./tokens";
 import type { ThemeFooterProps } from "../slots";
 
 const COLUMN_DEFS: ReadonlyArray<{
-  headingBn: string;
-  headingEn: string;
+  /** Dictionary key for this column's heading (both locales). */
+  headingKey: keyof NeelStrings;
   /** English-heading keywords that claim a CMS group for this column. */
   keywords: readonly string[];
 }> = [
-  { headingBn: "তথ্য", headingEn: "Information", keywords: ["information", "about", "company", "info"] },
-  { headingBn: "কেনাকাটা", headingEn: "Shop By", keywords: ["shop", "store", "categor", "product"] },
-  { headingBn: "সাপোর্ট", headingEn: "Support", keywords: ["support", "help", "customer", "service"] },
-  { headingBn: "ভোক্তা নীতি", headingEn: "Consumer Policy", keywords: ["policy", "consumer", "terms", "privacy", "refund", "return"] },
+  { headingKey: "footerColInformation", keywords: ["information", "about", "company", "info"] },
+  { headingKey: "footerColShopBy", keywords: ["shop", "store", "categor", "product"] },
+  { headingKey: "footerColSupport", keywords: ["support", "help", "customer", "service"] },
+  { headingKey: "footerColPolicy", keywords: ["policy", "consumer", "terms", "privacy", "refund", "return"] },
 ];
 
 interface FooterColumn {
-  headingBn: string;
-  headingEn: string;
+  headingKey: keyof NeelStrings;
   links: FooterMenuLink[];
 }
 
 /** Distribute CMS groups into the four fixed columns (see header). */
 function distributeColumns(groups: ReadonlyArray<FooterMenuGroup>): FooterColumn[] {
   const columns: FooterColumn[] = COLUMN_DEFS.map((d) => ({
-    headingBn: d.headingBn,
-    headingEn: d.headingEn,
+    headingKey: d.headingKey,
     links: [],
   }));
   const claimed = new Array<boolean>(columns.length).fill(false);
@@ -91,6 +94,8 @@ export default function NeelFooter({
   showPoweredBy = false,
   footerMenu,
 }: ThemeFooterProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, NEEL_STRINGS);
   const year = new Date().getFullYear();
   const groups: ReadonlyArray<FooterMenuGroup> =
     footerMenu && footerMenu.length > 0 ? footerMenu : DEFAULT_FOOTER_MENU;
@@ -110,28 +115,27 @@ export default function NeelFooter({
               <span className="text-base font-bold text-white">{brandName}</span>
             </a>
             <p className="mt-3 max-w-xs break-words text-sm leading-6 text-white/75">
-              পছন্দের পণ্য ঘরে বসেই — এক জায়গায় হাজারো পণ্য, পরিষ্কার দাম আর
-              দেশজুড়ে যত্নে ডেলিভারি।
+              {s.footerIntro}
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               <a
                 href="/track"
                 className="inline-block rounded-md bg-white px-3.5 py-2 text-sm font-semibold text-primary transition hover:opacity-90"
               >
-                অর্ডার ট্র্যাক করুন
+                {s.footerTrackOrder}
               </a>
               <a
                 href="/contact"
                 className="inline-block rounded-md border border-white/40 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
               >
-                যোগাযোগ করুন
+                {s.footerContact}
               </a>
             </div>
           </div>
 
           {columns.map((col) => (
-            <nav key={col.headingEn} aria-label={col.headingBn}>
-              <p className="text-sm font-bold text-white">{col.headingBn}</p>
+            <nav key={col.headingKey} aria-label={s[col.headingKey]}>
+              <p className="text-sm font-bold text-white">{s[col.headingKey]}</p>
               <span aria-hidden="true" className="mt-2 block h-0.5 w-8 rounded-full bg-accent" />
               <ul className="mt-3.5 space-y-2.5">
                 {col.links.map((link) => (
@@ -140,7 +144,7 @@ export default function NeelFooter({
                       href={link.href}
                       className="text-sm text-white/75 transition hover:text-white"
                     >
-                      {link.labelBn}
+                      {locale === "bn" ? link.labelBn : link.labelEn}
                     </a>
                   </li>
                 ))}
@@ -156,24 +160,24 @@ export default function NeelFooter({
           className="mt-10 space-y-3 border-t border-white/15 pt-6"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-white/70">পেমেন্ট:</span>
+            <span className="text-xs font-medium text-white/70">{s.paymentLabel}</span>
             <PaymentMarks />
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-white/70">ডেলিভারি পার্টনার:</span>
+            <span className="text-xs font-medium text-white/70">{s.deliveryPartnerLabel}</span>
             <CourierMarks />
           </div>
         </div>
 
         <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/15 pt-6 text-xs text-white/60">
           <span>
-            © {year} {brandName} — সর্বস্বত্ব সংরক্ষিত।
+            © {year} {brandName} — {s.rightsReserved}
           </span>
           <a href="/contact" className="hover:text-white">
-            যোগাযোগের জন্য এখানে দেখুন
+            {s.contactPrompt}
           </a>
           {showPoweredBy ? (
-            <span className="ml-auto">Powered by Advance Ecommerce</span>
+            <span className="ml-auto">{s.poweredBy}</span>
           ) : null}
         </div>
       </div>

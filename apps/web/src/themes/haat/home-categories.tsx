@@ -11,6 +11,9 @@
  */
 import Link from "next/link";
 import { DigitText } from "@/components/ui/numerals";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
+import { HAAT_STRINGS } from "./strings";
 import type { Category } from "@/catalog/types";
 
 /* Tile tints for image-less categories (our own palette). */
@@ -25,24 +28,25 @@ const TILE_TINTS: ReadonlyArray<string> = [
   "bg-[#E2F4F1] text-[#0F6B5C]",
 ];
 
-export default function HaatHomeCategories({
+export default async function HaatHomeCategories({
   categories,
 }: {
   categories: Category[];
 }) {
+  const s = pick(await getRequestLocale(), HAAT_STRINGS);
   if (categories.length === 0) return null;
 
   return (
-    <section className="mt-10" aria-label="ক্যাটাগরি">
+    <section className="mt-10" aria-label={s.categoriesAria}>
       <div className="flex items-end justify-between gap-3">
         <h2 className="border-l-4 border-primary pl-3 font-display text-xl font-extrabold text-text-main sm:text-2xl">
-          ক্যাটাগরি ধরে কিনুন
+          {s.shopByCategory}
         </h2>
         <Link
           href="/shop"
           className="shrink-0 text-sm font-bold text-primary hover:underline"
         >
-          সব ক্যাটাগরি →
+          {s.allCategoriesLink}
         </Link>
       </div>
 
@@ -75,7 +79,7 @@ export default function HaatHomeCategories({
               {c.name.bn}
             </span>
             <span className="block text-center text-[11px] text-text-subtle">
-              <DigitText text={`${c.productCount}টি পণ্য`} />
+              <DigitText text={interpolate(s.productsCount, { count: c.productCount })} />
             </span>
           </Link>
         ))}

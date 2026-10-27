@@ -44,6 +44,9 @@ import { DEFAULT_HEADER_MENU } from "@/cms/site-content-types";
 import { useThemeView } from "../theme-view";
 import { openCartDrawer } from "../cart-drawer-events";
 import { BOIGHOR_COLORS } from "./tokens";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { BOIGHOR_STRINGS, pickLocalized } from "./strings";
 import type { ThemeHeaderProps } from "../slots";
 
 function BlueBadge({ count }: { count: number }) {
@@ -64,6 +67,8 @@ export default function BoighorHeader({
   const themeView = useThemeView();
   const showFacetRow = themeView.options.showFacetRow !== false;
 
+  const { locale } = useLocale();
+  const s = pick(locale, BOIGHOR_STRINGS);
   const [localCartCount, setLocalCartCount] = useState(0);
   const [wishlistCount, setWishlistCount] = useState(0);
 
@@ -106,21 +111,21 @@ export default function BoighorHeader({
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-0.5 px-4 py-1.5 text-[13px] sm:px-6">
           <p className="flex items-center gap-1.5 font-medium">
             <Icon name="truck" size={15} />
-            সারাদেশে হোম ডেলিভারি — পণ্য হাতে পেয়ে মূল্য পরিশোধ করুন
+            {s.deliveryLine}
           </p>
-          <nav aria-label="দ্রুত লিংক" className="ml-auto flex items-center gap-1">
+          <nav aria-label={s.quickLinksAria} className="ml-auto flex items-center gap-1">
             <Link
               href="/track"
               className="rounded px-2 py-1 font-medium text-white/90 transition hover:bg-white/10 hover:text-white"
             >
-              Track Order
+              {s.trackOrder}
             </Link>
             <span aria-hidden="true" className="h-4 w-px bg-white/25" />
             <Link
               href="/account"
               className="rounded px-2 py-1 font-medium text-white/90 transition hover:bg-white/10 hover:text-white"
             >
-              Sign In
+              {s.signIn}
             </Link>
           </nav>
         </div>
@@ -152,13 +157,13 @@ export default function BoighorHeader({
               <input
                 type="search"
                 name="q"
-                placeholder="বই বা পণ্য খুঁজুন… নাম, লেখক বা বিষয় লিখুন"
-                aria-label="পণ্য খুঁজুন"
+                placeholder={s.searchPlaceholder}
+                aria-label={s.searchAria}
                 className="h-12 w-full rounded-full border border-input bg-card pl-5 pr-14 text-sm text-text-main shadow-sm transition placeholder:text-text-subtle focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
               />
               <button
                 type="submit"
-                aria-label="খুঁজুন"
+                aria-label={s.searchButtonAria}
                 className="absolute right-1 top-1 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white transition hover:opacity-90"
               >
                 <Icon name="search" size={18} />
@@ -173,7 +178,7 @@ export default function BoighorHeader({
               className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-lg px-1.5 py-1 text-text-muted transition hover:text-primary"
             >
               <Icon name="user" size={23} />
-              <span className="text-[11px] font-medium leading-none">অ্যাকাউন্ট</span>
+              <span className="text-[11px] font-medium leading-none">{s.account}</span>
             </Link>
             <Link
               href="/wishlist"
@@ -183,33 +188,33 @@ export default function BoighorHeader({
                 <Icon name="heart" size={23} />
                 <BlueBadge count={wishlistCount} />
               </span>
-              <span className="text-[11px] font-medium leading-none">পছন্দের তালিকা</span>
+              <span className="text-[11px] font-medium leading-none">{s.wishlist}</span>
             </Link>
             <button
               type="button"
               onClick={openCartDrawer}
-              aria-label={`কার্ট${effectiveCartCount > 0 ? `, ${effectiveCartCount}টি পণ্য` : ""} — ড্রয়ার খুলুন`}
+              aria-label={effectiveCartCount > 0 ? interpolate(s.cartAriaCount, { count: effectiveCartCount }) : s.cartAria}
               className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-lg px-1.5 py-1 text-text-muted transition hover:text-primary"
             >
               <span className="relative">
                 <Icon name="cart" size={23} />
                 <BlueBadge count={effectiveCartCount} />
               </span>
-              <span className="text-[11px] font-medium leading-none">কার্ট</span>
+              <span className="text-[11px] font-medium leading-none">{s.cart}</span>
             </button>
           </div>
         </div>
       </div>
 
       {/* Tier 3 — category row (real categories + CMS menu) */}
-      <nav aria-label="ক্যাটাগরি" className="border-t border-border bg-card">
+      <nav aria-label={s.categoriesAria} className="border-t border-border bg-card">
         <div className="scrollbar-none mx-auto flex max-w-[1440px] items-center gap-1 overflow-x-auto px-4 sm:px-6">
           <Link
             href="/shop"
             className="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-sm font-bold text-primary transition hover:bg-muted"
           >
             <Icon name="grid" size={16} />
-            সব ক্যাটাগরি
+            {s.allCategories}
           </Link>
           {cats.map((c) => (
             <Link
@@ -239,37 +244,37 @@ export default function BoighorHeader({
           working link. Gated by the showFacetRow option. */}
       {showFacetRow ? (
         <nav
-          aria-label="দ্রুত ফিল্টার"
+          aria-label={s.quickFiltersAria}
           className="border-t border-border"
           style={{ backgroundColor: BOIGHOR_COLORS.paleBlue }}
         >
           <div className="scrollbar-none mx-auto flex max-w-[1440px] items-center gap-1 overflow-x-auto px-4 py-1.5 sm:px-6">
             <span className="shrink-0 pr-1 text-[13px] font-bold text-text-main">
-              দ্রুত দেখুন:
+              {s.quickView}
             </span>
             <Link
               href="/shop"
               className="shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[13px] font-medium text-primary transition hover:bg-white"
             >
-              সব পণ্য
+              {s.allProducts}
             </Link>
             <Link
               href="/shop?sort=newest"
               className="shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[13px] font-medium text-primary transition hover:bg-white"
             >
-              নতুন এসেছে
+              {s.newestArrivals}
             </Link>
             <Link
               href="/shop?sort=price-asc"
               className="shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[13px] font-medium text-primary transition hover:bg-white"
             >
-              কম দাম আগে
+              {s.lowestPriceFirst}
             </Link>
             <Link
               href="/shop?sort=rating"
               className="shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[13px] font-medium text-primary transition hover:bg-white"
             >
-              বেশি রেটিং
+              {s.highestRated}
             </Link>
             {facetCats.length > 0 ? (
               <span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-primary/20" />

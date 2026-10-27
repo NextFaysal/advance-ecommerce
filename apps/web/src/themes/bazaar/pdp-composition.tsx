@@ -32,7 +32,10 @@
  * directory by relative path, as Aurora's composition does.
  */
 import Link from "next/link";
-import { fromPoisha } from "@advance-ecommerce/validators";
+import { formatBdt, fromPoisha } from "@advance-ecommerce/validators";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
+import { BAZAAR_STRINGS, type BazaarStrings } from "./strings";
 import { renderDescriptionHtml } from "@/catalog/description";
 import { formatFileSize } from "@/catalog/product-type-contract";
 import { WishlistToggleButton } from "@/catalog/WishlistToggleButton";
@@ -62,13 +65,16 @@ import BazaarPdpBuySection from "./pdp-buy-section";
 import BazaarPdpTabs from "./pdp-tabs";
 
 /* Compact trust rows under the buy box (our own copy, same
-   promises the platform makes everywhere). */
-const TRUST_ROWS = [
-  { icon: "🚚", text: "দ্রুত ডেলিভারি — ঢাকার ভেতরে ২৪–৪৮ ঘণ্টা, সারাদেশে ২–৫ দিন" },
-  { icon: "💵", text: "ক্যাশ অন ডেলিভারি — পণ্য হাতে পেয়ে টাকা পরিশোধ করুন" },
-  { icon: "↩️", text: "সহজ রিটার্ন — পণ্যে সমস্যা থাকলে সহজ শর্তে রিটার্ন" },
-  { icon: "🛡️", text: "আসল পণ্য — প্রতিটি পণ্য বিক্রেতা-যাচাইকৃত" },
-];
+   promises the platform makes everywhere — text from the theme
+   dictionary, doc 30). */
+function trustRows(s: BazaarStrings) {
+  return [
+    { icon: "🚚", text: s.trustFastDelivery },
+    { icon: "💵", text: s.trustCodRow },
+    { icon: "↩️", text: s.trustEasyReturn },
+    { icon: "🛡️", text: s.trustGenuine },
+  ];
+}
 
 function StarRow({ rating }: { rating: number }) {
   return (
@@ -88,7 +94,7 @@ function StarRow({ rating }: { rating: number }) {
   );
 }
 
-export default function BazaarPdpComposition({
+export default async function BazaarPdpComposition({
   product,
   productType,
   digitalFiles,
@@ -122,6 +128,8 @@ export default function BazaarPdpComposition({
   recentlyViewedEntry,
   jsonLd,
 }: PdpCompositionProps) {
+  const s = pick(await getRequestLocale(), BAZAAR_STRINGS);
+  const TRUST_ROWS = trustRows(s);
   return (
     <main className="bg-surface-2">
       <RecordRecentlyViewed entry={recentlyViewedEntry} />
@@ -133,12 +141,12 @@ export default function BazaarPdpComposition({
       <div className="mx-auto min-w-0 max-w-[1440px] px-4 py-5 sm:px-6 lg:py-7">
         {/* Breadcrumb */}
         <nav
-          aria-label="ব্রেডক্রাম্ব"
+          aria-label={s.breadcrumbAria}
           className="flex flex-wrap items-center gap-1.5 text-sm text-text-subtle"
         >
-          <Link href="/" className="py-1 transition hover:text-primary">হোম</Link>
+          <Link href="/" className="py-1 transition hover:text-primary">{s.homeCrumb}</Link>
           <span aria-hidden="true" className="text-border">/</span>
-          <Link href="/shop" className="py-1 transition hover:text-primary">দোকান</Link>
+          <Link href="/shop" className="py-1 transition hover:text-primary">{s.shopCrumb}</Link>
           <span aria-hidden="true" className="text-border">/</span>
           <Link
             href={`/shop?category=${product.categorySlug}`}
@@ -178,7 +186,7 @@ export default function BazaarPdpComposition({
             <div className="min-w-0">
               {productType === "PREORDER" && preorder ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/15 px-3 py-1 text-xs font-bold text-warning">
-                  ⏳ প্রি-অর্ডার চলছে
+                  {s.preorderBadge}
                 </span>
               ) : null}
               <h1 className="mt-2 break-words font-display text-[26px] font-extrabold leading-snug text-text-main [overflow-wrap:anywhere] sm:text-[32px]">
@@ -196,12 +204,12 @@ export default function BazaarPdpComposition({
                     {product.ratingAverage ?? "—"}
                   </span>
                   <span className="text-text-subtle">
-                    (<DigitText text={`${product.reviewCount}টি রিভিউ`} />)
+                    (<DigitText text={interpolate(s.reviewsCount, { count: product.reviewCount })} />)
                   </span>
                 </span>
                 {product.brandName ? (
                   <span className="text-text-muted">
-                    ব্র্যান্ড: <span className="font-semibold text-text-main">{product.brandName}</span>
+                    {s.brandLabel} <span className="font-semibold text-text-main">{product.brandName}</span>
                   </span>
                 ) : null}
                 <span
@@ -213,7 +221,7 @@ export default function BazaarPdpComposition({
                     aria-hidden="true"
                     className={`h-2 w-2 rounded-full ${displayInStock ? "bg-success" : "bg-destructive"}`}
                   />
-                  {displayInStock ? "স্টকে আছে" : "স্টক শেষ"}
+                  {displayInStock ? s.inStock : s.outOfStock}
                 </span>
               </div>
 
@@ -230,7 +238,7 @@ export default function BazaarPdpComposition({
                         className="rounded-md border border-border bg-muted px-2.5 py-1.5 text-xs font-medium text-text-muted"
                       >
                         {label} — <BdtAmount poisha={v.pricePoisha} />
-                        {v.stock <= 0 ? " (স্টক শেষ)" : ""}
+                        {v.stock <= 0 ? s.soldOutSuffix : ""}
                       </span>
                     );
                   })}
@@ -241,13 +249,13 @@ export default function BazaarPdpComposition({
                   Aurora's range / best-discount context. */}
               {hasPriceRange ? (
                 <p className="mt-4 text-sm text-text-muted">
-                  দামের পরিসর:{" "}
+                  {s.priceRangeLabel}{" "}
                   <span className="font-bold text-text-main">
                     <BdtAmount poisha={minPrice} /> – <BdtAmount poisha={maxPrice} />
                   </span>
                   {showDiscount ? (
                     <span className="ml-2 font-semibold text-success">
-                      সর্বোচ্চ <DigitText text={`${discountPct}%`} /> ছাড়
+                      <DigitText text={interpolate(s.maxDiscount, { pct: discountPct })} />
                     </span>
                   ) : null}
                 </p>
@@ -256,11 +264,8 @@ export default function BazaarPdpComposition({
               {/* Digital delivery notice */}
               {productType === "DIGITAL" ? (
                 <div className="mt-4 rounded-lg border border-info/25 bg-info/10 px-4 py-3 text-sm leading-6 text-text-main">
-                  <p className="font-bold">📥 ডিজিটাল পণ্য — ফাইল ডেলিভারি</p>
-                  <p className="mt-0.5 text-text-muted">
-                    পেমেন্ট সম্পন্ন হলে ডাউনলোড লিংক আপনার অ্যাকাউন্টে পৌঁছে যাবে — কোনো
-                    শিপিং চার্জ নেই।
-                  </p>
+                  <p className="font-bold">{s.digitalTitle}</p>
+                  <p className="mt-0.5 text-text-muted">{s.digitalText}</p>
                   {digitalFiles.length > 0 ? (
                     <ul className="mt-2 space-y-1 text-[13px] text-text-muted">
                       {digitalFiles.map((file, i) => (
@@ -278,22 +283,23 @@ export default function BazaarPdpComposition({
                   the page actually derived that value. */}
               {productType === "PREORDER" && preorder ? (
                 <div className="mt-4 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm leading-6 text-text-main">
-                  <p className="font-bold">⏳ প্রি-অর্ডারের শর্ত</p>
+                  <p className="font-bold">{s.preorderTermsTitle}</p>
                   <ul className="mt-1 space-y-0.5 text-text-muted">
                     {preorderExpectedLabel ? (
-                      <li>সম্ভাব্য ডেলিভারি: {preorderExpectedLabel}</li>
+                      <li>{interpolate(s.expectedDelivery, { label: preorderExpectedLabel })}</li>
                     ) : null}
                     {preorder.depositPercent != null ? (
                       <li>
-                        বুকিং কনফার্ম করতে অগ্রিম{" "}
-                        <DigitText text={`${preorder.depositPercent}%`} /> দিতে হবে — বাকি
-                        টাকা ডেলিভারির সময়।
+                        <DigitText
+                          text={interpolate(s.preorderDeposit, { pct: preorder.depositPercent })}
+                        />
                       </li>
                     ) : null}
                     {preorder.maxUnits != null ? (
                       <li>
-                        সীমিত প্রি-অর্ডার: সর্বোচ্চ{" "}
-                        <DigitText text={`${preorder.maxUnits}টি`} /> পর্যন্ত
+                        <DigitText
+                          text={interpolate(s.preorderMaxUnits, { count: preorder.maxUnits })}
+                        />
                       </li>
                     ) : null}
                   </ul>
@@ -306,7 +312,7 @@ export default function BazaarPdpComposition({
                   role="alert"
                   className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive"
                 >
-                  এই বান্ডলের একটি উপাদান স্টকে নেই — বান্ডলটি এখন কেনা যাবে না।
+                  {s.bundleUnavailableAlert}
                 </p>
               ) : null}
 
@@ -317,17 +323,16 @@ export default function BazaarPdpComposition({
                 {priceOnRequest ? (
                   <div className="rounded-lg border border-border bg-muted px-4 py-4">
                     <p className="font-display text-lg font-extrabold text-text-main">
-                      দামের জন্য যোগাযোগ করুন
+                      {s.priceOnRequest}
                     </p>
                     <p className="mt-1 text-sm leading-6 text-text-muted">
-                      এই পণ্যের দাম অর্ডারের সময় নিশ্চিত করা হয়। অর্ডার করতে কল করুন অথবা
-                      যোগাযোগ পেজ থেকে বার্তা পাঠান।
+                      {s.priceOnRequestText}
                     </p>
                     <Link
                       href="/contact"
                       className="mt-3 inline-flex h-11 items-center rounded-md bg-primary px-5 text-sm font-bold text-white shadow-sm transition hover:opacity-90"
                     >
-                      যোগাযোগ করুন
+                      {s.contactButton}
                     </Link>
                   </div>
                 ) : (
@@ -342,10 +347,10 @@ export default function BazaarPdpComposition({
                           : product.variants
                       }
                       {...(productType === "PREORDER"
-                        ? { ctaLabel: "প্রি-অর্ডার করুন", buyNowLabel: "এখনই প্রি-অর্ডার করুন" }
+                        ? { ctaLabel: s.preorderCta, buyNowLabel: s.preorderBuyNow }
                         : {})}
                       {...(bundleUnavailable
-                        ? { forceUnavailable: true, unavailableLabel: "বান্ডল স্টকে নেই" }
+                        ? { forceUnavailable: true, unavailableLabel: s.bundleUnavailableLabel }
                         : {})}
                       lowStockThreshold={lowStockThreshold}
                       {...(weightedInfos.length > 0
@@ -374,14 +379,14 @@ export default function BazaarPdpComposition({
                     checkout, and this says so before the add. */}
                 {podPdpNote ? (
                   <aside className="mt-4 rounded-lg border border-primary/25 bg-primary/10 px-4 py-3 text-sm leading-6 text-text-main">
-                    <p className="font-bold">🎨 কাস্টম প্রিন্ট পণ্য</p>
+                    <p className="font-bold">{s.podTitle}</p>
                     <p className="mt-0.5 text-text-muted">
-                      এই পণ্যে আপনার নিজের লেখা ছাপানো যাবে (সর্বোচ্চ{" "}
-                      {podPdpNote.textMaxChars} অক্ষর
-                      {podPdpNote.hasColors ? ", রঙও বেছে নেওয়া যাবে" : ""}) — লেখাটি
-                      চেকআউটে দিতে হবে।
+                      {interpolate(s.podText, {
+                        max: podPdpNote.textMaxChars,
+                        colors: podPdpNote.hasColors ? s.podColorsSuffix : "",
+                      })}
                       {podPdpNote.printFeePoisha > 0
-                        ? ` প্রিন্ট ফি প্রতি আইটেমে ${fromPoisha(podPdpNote.printFeePoisha)} টাকা, অর্ডারের মোটে যোগ হবে।`
+                        ? interpolate(s.podFeeSuffix, { fee: fromPoisha(podPdpNote.printFeePoisha) })
                         : ""}
                     </p>
                   </aside>
@@ -399,7 +404,7 @@ export default function BazaarPdpComposition({
                 <BoxSubscribeSection
                   variants={product.variants.map((v) => ({
                     id: v.id,
-                    label: Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড",
+                    label: Object.values(v.attributes).join(" / ") || s.standardVariant,
                     pricePoisha: v.pricePoisha,
                     stock: v.stock,
                   }))}
@@ -409,7 +414,7 @@ export default function BazaarPdpComposition({
                 <SubscribeSaveSection
                   variants={product.variants.map((v) => ({
                     id: v.id,
-                    label: Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড",
+                    label: Object.values(v.attributes).join(" / ") || s.standardVariant,
                     pricePoisha: v.pricePoisha,
                     stock: v.stock,
                   }))}
@@ -421,9 +426,7 @@ export default function BazaarPdpComposition({
                   equals the recorded variant price (inSync). */}
               {weightedInfos.length > 0 && !priceOnRequest ? (
                 <aside className="mt-4 rounded-lg border border-border bg-muted px-4 py-3 text-sm leading-6 text-text-main">
-                  <p className="font-semibold">
-                    ⚖️ ওজন অনুযায়ী দাম — প্যাকের ভগ্নাংশেও কেনা যায় (ওজনের ধাপ অনুযায়ী)
-                  </p>
+                  <p className="font-semibold">{s.weightedTitle}</p>
                   <ul className="mt-2 space-y-1.5 text-text-muted">
                     {weightedInfos.map((info) => {
                       const variant = product.variants.find((v) => v.id === info.variantId);
@@ -433,16 +436,21 @@ export default function BazaarPdpComposition({
                       return (
                         <li key={info.variantId}>
                           <span className="font-medium text-text-main">{label}</span>
-                          {" — "}প্যাক: <DigitText text={`${info.packGrams}`} /> গ্রাম · প্রতি
-                          কেজি <BdtAmount poisha={info.pricePerKgPoisha} />
+                          {" — "}
+                          <DigitText
+                            text={interpolate(s.weightedPackLine, {
+                              grams: info.packGrams,
+                              price: formatBdt(info.pricePerKgPoisha),
+                            })}
+                          />
                           {info.inSync ? (
-                            <>
-                              {" "}· প্যাকের দাম <BdtAmount poisha={info.derivedPricePoisha} />
-                            </>
+                            <DigitText
+                              text={interpolate(s.weightedPackPrice, {
+                                price: formatBdt(info.derivedPricePoisha),
+                              })}
+                            />
                           ) : (
-                            <span className="text-text-subtle">
-                              {" "}· (হার অনুযায়ী দাম হালনাগাদ বাকি — উপরে দেখানো দামই প্রযোজ্য)
-                            </span>
+                            <span className="text-text-subtle">{s.weightedOutdatedNote}</span>
                           )}
                         </li>
                       );
@@ -491,7 +499,7 @@ export default function BazaarPdpComposition({
               />
             ) : (
               <p className="mt-6 rounded-lg border border-dashed border-border bg-card px-5 py-6 text-sm text-text-muted">
-                এই পণ্যের বিবরণ এখনো যোগ করা হয়নি।
+                {s.descriptionMissing}
               </p>
             )
           }
@@ -513,7 +521,7 @@ export default function BazaarPdpComposition({
         {/* Specifications */}
         {specRows.length > 0 ? (
           <section className="mt-10 rounded-lg border border-border bg-card p-5 shadow-card sm:p-6">
-            <h2 className="font-display text-lg font-extrabold text-text-main">স্পেসিফিকেশন</h2>
+            <h2 className="font-display text-lg font-extrabold text-text-main">{s.specificationsTitle}</h2>
             <span aria-hidden="true" className="mt-1.5 block h-[3px] w-8 rounded-full bg-primary" />
             <dl className="mt-4 divide-y divide-border">
               {specRows.map((row) => (
@@ -532,8 +540,7 @@ export default function BazaarPdpComposition({
             <SizeChartSection chart={displaySizeChart} />
             {packSizeChart ? (
               <p className="mt-2 text-[13px] text-text-subtle">
-                এই ভ্যারিয়েন্টের প্যাক অনুযায়ী মাপের টেবিল থাকতে পারে — ভ্যারিয়েন্ট বেছে
-                সাইজ চার্ট বোতামে দেখুন।
+                {s.sizeChartPackNote}
               </p>
             ) : null}
           </div>
@@ -543,7 +550,7 @@ export default function BazaarPdpComposition({
         {faqItems.length > 0 ? (
           <section className="mt-10 rounded-lg border border-border bg-card p-5 shadow-card sm:p-6">
             <h2 className="font-display text-lg font-extrabold text-text-main">
-              সাধারণ জিজ্ঞাসা
+              {s.faqTitle}
             </h2>
             <span aria-hidden="true" className="mt-1.5 block h-[3px] w-8 rounded-full bg-primary" />
             <div className="mt-3 divide-y divide-border">
@@ -568,7 +575,7 @@ export default function BazaarPdpComposition({
         {productType === "BUNDLE" && bundleComponents.length > 0 ? (
           <section className="mt-10 rounded-lg border border-border bg-card p-5 shadow-card sm:p-6">
             <h2 className="font-display text-lg font-extrabold text-text-main">
-              বান্ডলে যা যা আছে
+              {s.bundleContentsTitle}
             </h2>
             <span aria-hidden="true" className="mt-1.5 block h-[3px] w-8 rounded-full bg-primary" />
             <ul className="mt-3 divide-y divide-border">
@@ -593,7 +600,7 @@ export default function BazaarPdpComposition({
                         </Link>
                       ) : (
                         <span className="font-semibold text-text-main">
-                          {title || "কম্পোনেন্ট পণ্য"}
+                          {title || s.componentProductFallback}
                         </span>
                       )}
                       {component.variantLabel ? (
@@ -621,13 +628,17 @@ export default function BazaarPdpComposition({
             {bundleComponentsTotal !== null && !priceOnRequest ? (
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-sm">
                 <span className="text-text-muted">
-                  উপাদানগুলোর মোট: <BdtAmount poisha={bundleComponentsTotal} />
+                  {s.componentsTotalLabel} <BdtAmount poisha={bundleComponentsTotal} />
                 </span>
                 <span className="font-bold text-text-main">
-                  বান্ডল মূল্য: <BdtAmount poisha={minPrice} />
+                  {s.bundlePriceLabel} <BdtAmount poisha={minPrice} />
                   {bundleComponentsTotal > minPrice ? (
                     <span className="ml-2 font-semibold text-success">
-                      সাশ্রয় <BdtAmount poisha={bundleComponentsTotal - minPrice} />
+                      <DigitText
+                        text={interpolate(s.saveAmount, {
+                          amount: formatBdt(bundleComponentsTotal - minPrice),
+                        })}
+                      />
                     </span>
                   ) : null}
                 </span>
@@ -635,7 +646,7 @@ export default function BazaarPdpComposition({
             ) : null}
             {bundleUnavailable ? (
               <p className="mt-3 text-sm font-medium text-destructive">
-                আপাতত বান্ডলটি স্টকে নেই — কম্পোনেন্টগুলো আলাদাভাবে কিনতে উপরের লিংকগুলো দেখুন।
+                {s.bundleOutOfStockNote}
               </p>
             ) : null}
           </section>
@@ -644,10 +655,10 @@ export default function BazaarPdpComposition({
         {/* Related products */}
         {related.length > 0 ? (
           <Reveal>
-            <section className="mt-14" aria-label="সম্পর্কিত পণ্য">
+            <section className="mt-14" aria-label={s.relatedAria}>
               <div>
                 <h2 className="font-display text-xl font-extrabold text-text-main sm:text-2xl">
-                  সম্পর্কিত পণ্য
+                  {s.relatedTitle}
                 </h2>
                 <span aria-hidden="true" className="mt-1.5 block h-[3px] w-10 rounded-full bg-primary" />
               </div>

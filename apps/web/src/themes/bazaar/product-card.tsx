@@ -53,7 +53,10 @@ import {
   type PublicProductWithTypeFields,
 } from "@/catalog/product-type-contract";
 import { addItemToGuestCart } from "@/cart/components/AddToCartButton";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
 import { useThemeView } from "../theme-view";
+import { BAZAAR_STRINGS } from "./strings";
 import { openCartDrawer } from "../cart-drawer-events";
 import { BAZAAR_COLORS } from "./tokens";
 import type { ThemeProductCardProps } from "../slots";
@@ -90,12 +93,14 @@ function useCardData(product: PublicProduct) {
 type CardData = ReturnType<typeof useCardData>;
 
 function SavingBadge({ pct, digits }: { pct: number; digits: (t: string) => string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, BAZAAR_STRINGS);
   return (
     <span
       className="rounded-sm px-1.5 py-0.5 text-[11px] font-bold text-white shadow-sm"
       style={{ backgroundColor: BAZAAR_COLORS.savingGreen }}
     >
-      {digits(`সাশ্রয় ${pct}%`)}
+      {digits(interpolate(s.savingBadge, { pct }))}
     </span>
   );
 }
@@ -142,6 +147,8 @@ function BazaarAddButton({
   className?: string;
 }) {
   const [justAdded, setJustAdded] = useState(false);
+  const { locale } = useLocale();
+  const s = pick(locale, BAZAAR_STRINGS);
   const { defaultVariant, inStock } = data;
   if (!defaultVariant || data.priceOnRequest) return null;
 
@@ -179,15 +186,17 @@ function BazaarAddButton({
       } ${className}`}
     >
       <Icon name="cart" size={16} />
-      {!inStock ? "স্টক শেষ" : justAdded ? "যোগ হয়েছে ✓" : "Add To Cart"}
+      {!inStock ? s.outOfStock : justAdded ? s.addedToCart : s.addToCartButton}
     </button>
   );
 }
 
 function PriceRow({ data, digits }: { data: CardData; digits: (t: string) => string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, BAZAAR_STRINGS);
   if (data.priceOnRequest) {
     return (
-      <p className="text-[15px] font-extrabold text-primary">দামের জন্য যোগাযোগ করুন</p>
+      <p className="text-[15px] font-extrabold text-primary">{s.priceOnRequest}</p>
     );
   }
   return (
@@ -207,6 +216,8 @@ function PriceRow({ data, digits }: { data: CardData; digits: (t: string) => str
 /** Standard (vertical) card — the ProductCard slot implementation. */
 export function BazaarProductCard({ product }: ThemeProductCardProps) {
   const digits = useDigitText();
+  const { locale } = useLocale();
+  const s = pick(locale, BAZAAR_STRINGS);
   // cardStyle is consumed here as S4a's branch point: "classic" is
   // the only style this wave ships (single declared choice); S4b
   // variants will branch on this value.
@@ -246,7 +257,7 @@ export function BazaarProductCard({ product }: ThemeProductCardProps) {
           ) : null}
           {!data.inStock ? (
             <span className="absolute bottom-2 left-2 rounded-sm bg-text-main/85 px-2 py-0.5 text-[11px] font-semibold text-white">
-              স্টক শেষ
+              {s.outOfStock}
             </span>
           ) : null}
         </div>
@@ -282,6 +293,8 @@ export function BazaarProductCardHorizontal({
   product,
 }: ThemeProductCardProps) {
   const digits = useDigitText();
+  const { locale } = useLocale();
+  const s = pick(locale, BAZAAR_STRINGS);
   const data = useCardData(product);
 
   return (
@@ -333,7 +346,7 @@ export function BazaarProductCardHorizontal({
             <PriceRow data={data} digits={digits} />
           </div>
           {!data.inStock ? (
-            <p className="mt-1 text-xs font-medium text-destructive">স্টক শেষ</p>
+            <p className="mt-1 text-xs font-medium text-destructive">{s.outOfStock}</p>
           ) : null}
         </Link>
         <div className="mt-auto pt-2.5">

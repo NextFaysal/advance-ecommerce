@@ -15,18 +15,23 @@
 import Link from "next/link";
 import { Stars } from "@/reviews/components/Stars";
 import type { HomepageReview } from "@/reviews/store";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { BOIGHOR_STRINGS } from "./strings";
 
 export default function BoighorHomeTestimonials({
   reviews,
 }: {
   reviews: HomepageReview[];
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, BOIGHOR_STRINGS);
   if (reviews.length === 0) return null;
 
   return (
-    <section className="mt-12" aria-label="পাঠকদের মতামত">
+    <section className="mt-12" aria-label={s.testimonialsAria}>
       <h2 className="text-center font-display text-xl font-extrabold text-text-main sm:text-2xl">
-        পাঠকরা যা বলছেন
+        {s.testimonialsHeading}
       </h2>
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         {reviews.slice(0, 3).map((r) => (
@@ -54,7 +59,7 @@ export default function BoighorHomeTestimonials({
               “{r.body}”
             </blockquote>
             <p className="mt-3 text-xs text-text-subtle">
-              পণ্য:{" "}
+              {s.productLabel}{" "}
               <Link
                 href={`/product/${r.productSlug}`}
                 className="font-semibold text-primary hover:underline"

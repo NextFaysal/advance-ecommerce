@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Shobji Footer (doc 27 theme T-B) — ThemeFooterProps.
  *
@@ -31,6 +33,9 @@ import {
   type FooterMenuGroup,
   type FooterMenuLink,
 } from "@/cms/site-content-types";
+import { pick } from "@/i18n/locale";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { SHOBJI_STRINGS } from "./strings";
 import type { ThemeFooterProps } from "../slots";
 
 const COLUMN_DEFS: ReadonlyArray<{
@@ -92,6 +97,8 @@ export default function ShobjiFooter({
   showPoweredBy = false,
   footerMenu,
 }: ThemeFooterProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   const year = new Date().getFullYear();
   const groups: ReadonlyArray<FooterMenuGroup> =
     footerMenu && footerMenu.length > 0 ? footerMenu : DEFAULT_FOOTER_MENU;
@@ -111,28 +118,27 @@ export default function ShobjiFooter({
               <span className="text-base font-bold text-text-main">{brandName}</span>
             </a>
             <p className="mt-3 max-w-xs break-words text-sm leading-6 text-text-muted">
-              বাজারের টাটকা সবজি, ফল আর নিত্যপণ্য এখন দরজায় — যত্নে বাছাই করা
-              পণ্য, সঠিক ওজন আর দ্রুত হোম ডেলিভারি।
+              {s.footerIntro}
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               <a
                 href="/track"
                 className="inline-block rounded-md bg-secondary px-3.5 py-2 text-sm font-semibold text-secondary-foreground transition hover:opacity-90"
               >
-                অর্ডার ট্র্যাক করুন
+                {s.trackOrder}
               </a>
               <a
                 href="/contact"
                 className="inline-block rounded-md border border-border px-3.5 py-2 text-sm font-semibold text-text-main transition hover:bg-muted"
               >
-                যোগাযোগ করুন
+                {s.contactUsBtn}
               </a>
             </div>
           </div>
 
           {columns.map((col) => (
-            <nav key={col.headingEn} aria-label={col.headingBn}>
-              <p className="text-sm font-bold text-text-main">{col.headingBn}</p>
+            <nav key={col.headingEn} aria-label={locale === "bn" ? col.headingBn : col.headingEn}>
+              <p className="text-sm font-bold text-text-main">{locale === "bn" ? col.headingBn : col.headingEn}</p>
               <span aria-hidden="true" className="mt-2 block h-0.5 w-8 rounded-full bg-primary" />
               <ul className="mt-3.5 space-y-2.5">
                 {col.links.map((link) => (
@@ -141,7 +147,7 @@ export default function ShobjiFooter({
                       href={link.href}
                       className="text-sm text-text-muted transition hover:text-primary"
                     >
-                      {link.labelBn}
+                      {locale === "bn" ? link.labelBn : link.labelEn}
                     </a>
                   </li>
                 ))}
@@ -157,21 +163,21 @@ export default function ShobjiFooter({
           className="mt-10 space-y-3 border-t border-border pt-6"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-text-muted">পেমেন্ট:</span>
+            <span className="text-xs font-medium text-text-muted">{s.paymentLabel}</span>
             <PaymentMarks />
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-text-muted">ডেলিভারি পার্টনার:</span>
+            <span className="text-xs font-medium text-text-muted">{s.deliveryPartnerLabel}</span>
             <CourierMarks />
           </div>
         </div>
 
         <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-6 text-xs text-text-subtle">
           <span>
-            © {year} {brandName} — সর্বস্বত্ব সংরক্ষিত।
+            © {year} {brandName} — {s.allRightsReserved}
           </span>
           <a href="/contact" className="hover:text-primary">
-            যোগাযোগের জন্য এখানে দেখুন
+            {s.contactPrompt}
           </a>
           {showPoweredBy ? (
             <span className="ml-auto">Powered by Advance Ecommerce</span>

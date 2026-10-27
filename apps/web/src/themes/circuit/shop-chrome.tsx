@@ -36,29 +36,19 @@ import type { ReactNode } from "react";
 import { useDigitText } from "@/components/ui/numerals";
 import type { ShopChromeAttrPair, ShopChromeProps } from "../slots";
 import { MobileFilterDrawer } from "../../../app/(store)/shop/MobileFilterDrawer";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import {
+  CIRCUIT_PRICE_RANGES,
+  CIRCUIT_RATING_OPTIONS,
+  CIRCUIT_SORT_OPTIONS,
+  CIRCUIT_STRINGS,
+} from "./strings";
 
 /* Same preset ranges + sort options the other chromes offer —
  * ShopBrowser's URL contract values, unchanged. */
-const PRICE_RANGES: ReadonlyArray<{ label: string; min?: number; max?: number }> = [
-  { label: "৫০০ টাকার কম", max: 50000 },
-  { label: "৫০০ – ১,০০০ টাকা", min: 50000, max: 100000 },
-  { label: "১,০০০ – ৩,০০০ টাকা", min: 100000, max: 300000 },
-  { label: "৩,০০০ টাকার বেশি", min: 300000 },
-];
 
-const SORT_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: "relevance", label: "জনপ্রিয়তা" },
-  { value: "newest", label: "নতুন আগে" },
-  { value: "price-asc", label: "দাম: কম থেকে বেশি" },
-  { value: "price-desc", label: "দাম: বেশি থেকে কম" },
-  { value: "rating", label: "রেটিং" },
-];
 
-const RATING_OPTIONS: ReadonlyArray<{ value?: number; label: string }> = [
-  { value: undefined, label: "সব রেটিং" },
-  { value: 4, label: "৪★ ও উপরে" },
-  { value: 3, label: "৩★ ও উপরে" },
-];
 
 /* ------------------------------------------------------------------ */
 /* Sidebar pieces — stacked white cards, orange-underline headings.    */
@@ -187,6 +177,11 @@ export default function CircuitShopChrome({
   pairToParam,
   children,
 }: ShopChromeProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, CIRCUIT_STRINGS);
+  const PRICE_RANGES = pick(locale, CIRCUIT_PRICE_RANGES);
+  const SORT_OPTIONS = pick(locale, CIRCUIT_SORT_OPTIONS);
+  const RATING_OPTIONS = pick(locale, CIRCUIT_RATING_OPTIONS);
   const digits = useDigitText();
 
   // The stacked-card filter panel — built once, placed in the
@@ -194,9 +189,9 @@ export default function CircuitShopChrome({
   // hrefs in both).
   const filterPanel = (
     <div className="space-y-3">
-      <SidebarCard title="Filter by Category">
+      <SidebarCard title={s.filterCategoryTitle}>
         <CheckLink href={buildHref(current, { category: undefined })} active={!category}>
-          সব ক্যাটাগরি
+          {s.allCategories}
         </CheckLink>
         {categories.map((c) => (
           <CheckLink
@@ -210,9 +205,9 @@ export default function CircuitShopChrome({
         ))}
       </SidebarCard>
 
-      <SidebarCard title="Price Range">
+      <SidebarCard title={s.priceRangeTitle}>
         <RadioLink href={buildHref(current, { min: undefined, max: undefined })} active={!hasPriceFilter}>
-          সব দাম
+          {s.allPrices}
         </RadioLink>
         {PRICE_RANGES.map((range) => {
           const active = minPoisha === range.min && maxPoisha === range.max && hasPriceFilter;
@@ -232,9 +227,9 @@ export default function CircuitShopChrome({
       </SidebarCard>
 
       {brands.length > 0 ? (
-        <SidebarCard title="Brands">
+        <SidebarCard title={s.brandTitle}>
           <CheckLink href={buildHref(current, { brand: undefined })} active={!brand}>
-            সব ব্র্যান্ড
+            {s.allBrands}
           </CheckLink>
           {brands.map((b) => (
             <CheckLink
@@ -263,7 +258,7 @@ export default function CircuitShopChrome({
         </SidebarCard>
       ))}
 
-      <SidebarCard title="Rating & Availability">
+      <SidebarCard title={s.ratingAvailabilityTitle}>
         {RATING_OPTIONS.map((option) => (
           <RadioLink
             key={option.label}
@@ -275,10 +270,10 @@ export default function CircuitShopChrome({
         ))}
         <div className="border-t border-border pt-1">
           <CheckLink href={buildHref(current, { instock: undefined })} active={!inStockOnly}>
-            সব পণ্য
+            {s.allProducts}
           </CheckLink>
           <CheckLink href={buildHref(current, { instock: "1" })} active={inStockOnly}>
-            শুধু স্টকে আছে
+            {s.inStockOnly}
           </CheckLink>
         </div>
       </SidebarCard>
@@ -286,10 +281,10 @@ export default function CircuitShopChrome({
   );
 
   const breadcrumb = (
-    <nav aria-label="ব্রেডক্রাম্ব" className="flex flex-wrap items-center gap-1.5 text-sm text-text-subtle">
-      <Link href="/" className="py-1 transition hover:text-primary">হোম</Link>
+    <nav aria-label={s.breadcrumbAria} className="flex flex-wrap items-center gap-1.5 text-sm text-text-subtle">
+      <Link href="/" className="py-1 transition hover:text-primary">{s.home}</Link>
       <span aria-hidden="true" className="text-border">/</span>
-      <Link href="/shop" className="py-1 transition hover:text-primary">দোকান</Link>
+      <Link href="/shop" className="py-1 transition hover:text-primary">{s.shop}</Link>
       {breadcrumbCategoryLabel ? (
         <>
           <span aria-hidden="true" className="text-border">/</span>
@@ -328,11 +323,11 @@ export default function CircuitShopChrome({
               <p className="text-sm text-text-muted" aria-live="polite">
                 {digits(
                   displayTotal === null
-                    ? "পণ্য লোড হচ্ছে…"
-                    : `Showing ${displayTotal} of ${displayTotal} products`,
+                    ? s.loadingProducts
+                    : interpolate(s.showingResults, { total: displayTotal }),
                 )}
                 {filtersApplied ? (
-                  <span className="text-text-subtle"> — ফিল্টার প্রয়োগ করা হয়েছে</span>
+                  <span className="text-text-subtle">{s.filtersAppliedSuffix}</span>
                 ) : null}
               </p>
 
@@ -346,13 +341,13 @@ export default function CircuitShopChrome({
                 </div>
                 {chips.length > 0 ? (
                   <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[13px] font-semibold text-primary lg:hidden">
-                    {digits(`${chips.length}টি ফিল্টার সক্রিয়`)}
+                    {digits(interpolate(s.activeFiltersCount, { count: chips.length }))}
                   </span>
                 ) : null}
 
                 <div className="flex flex-wrap items-center gap-2">
                   <label htmlFor="shop-sort" className="hidden text-sm text-text-muted min-[420px]:block">
-                    Sort By:
+                    {s.sortBy}
                   </label>
                   <select
                     id="shop-sort"
@@ -377,7 +372,7 @@ export default function CircuitShopChrome({
                   <Link
                     key={chip.key}
                     href={chip.href}
-                    aria-label={`${chip.label} ফিল্টার সরান`}
+                    aria-label={interpolate(s.removeFilterAria, { label: chip.label })}
                     className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 py-1.5 pl-3.5 pr-2 text-[13px] font-medium text-primary transition duration-200 hover:bg-primary/20 active:scale-[0.97]"
                   >
                     {chip.label}
@@ -393,7 +388,7 @@ export default function CircuitShopChrome({
                   href="/shop"
                   className="inline-flex min-h-[36px] items-center px-1 text-[13px] font-semibold text-text-muted underline-offset-2 transition hover:text-primary hover:underline"
                 >
-                  সব ফিল্টার মুছুন
+                  {s.clearAllFilters}
                 </Link>
               </div>
             ) : null}

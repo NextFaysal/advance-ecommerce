@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Circuit Footer (doc 27 T-D) — ThemeFooterProps.
  *
@@ -33,6 +35,10 @@ import {
 } from "@/cms/site-content-types";
 import { CIRCUIT_COLORS } from "./tokens";
 import type { ThemeFooterProps } from "../slots";
+import { interpolate, pick } from "@/i18n/locale";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { DigitText } from "@/components/ui/numerals";
+import { CIRCUIT_STRINGS } from "./strings";
 
 const COLUMN_DEFS: ReadonlyArray<{
   headingBn: string;
@@ -93,6 +99,8 @@ export default function CircuitFooter({
   showPoweredBy = false,
   footerMenu,
 }: ThemeFooterProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, CIRCUIT_STRINGS);
   const year = new Date().getFullYear();
   const groups: ReadonlyArray<FooterMenuGroup> =
     footerMenu && footerMenu.length > 0 ? footerMenu : DEFAULT_FOOTER_MENU;
@@ -112,28 +120,27 @@ export default function CircuitFooter({
               <span className="text-base font-bold text-white">{brandName}</span>
             </a>
             <p className="mt-3 max-w-xs break-words text-sm leading-6 text-white/70">
-              ল্যাপটপ, গ্যাজেট আর কম্পিউটার সরঞ্জাম — যাচাই করা আসল পণ্য,
-              স্বচ্ছ দাম আর সারাদেশে নির্ভরযোগ্য হোম ডেলিভারি।
+              {s.footerIntro}
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               <a
                 href="/track"
                 className="inline-block rounded-md bg-white/10 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
               >
-                অর্ডার ট্র্যাক করুন
+                {s.footerTrackOrder}
               </a>
               <a
                 href="/contact"
                 className="inline-block rounded-md border border-white/25 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
               >
-                যোগাযোগ করুন
+                {s.footerContact}
               </a>
             </div>
           </div>
 
           {columns.map((col) => (
-            <nav key={col.headingEn} aria-label={col.headingBn}>
-              <p className="text-sm font-bold text-white">{col.headingBn}</p>
+            <nav key={col.headingEn} aria-label={locale === "bn" ? col.headingBn : col.headingEn}>
+              <p className="text-sm font-bold text-white">{locale === "bn" ? col.headingBn : col.headingEn}</p>
               <span aria-hidden="true" className="mt-2 block h-0.5 w-8 rounded-full bg-primary" />
               <ul className="mt-3.5 space-y-2.5">
                 {col.links.map((link) => (
@@ -142,7 +149,7 @@ export default function CircuitFooter({
                       href={link.href}
                       className="text-sm text-white/65 transition hover:text-primary"
                     >
-                      {link.labelBn}
+                      {locale === "bn" ? link.labelBn : link.labelEn}
                     </a>
                   </li>
                 ))}
@@ -158,21 +165,21 @@ export default function CircuitFooter({
           className="mt-10 space-y-3 border-t border-white/10 pt-6"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-white/60">পেমেন্ট:</span>
+            <span className="text-xs font-medium text-white/60">{s.paymentLabel}</span>
             <PaymentMarks />
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-white/60">ডেলিভারি পার্টনার:</span>
+            <span className="text-xs font-medium text-white/60">{s.deliveryPartnersLabel}</span>
             <CourierMarks />
           </div>
         </div>
 
         <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/10 pt-6 text-xs text-white/50">
           <span>
-            © {year} {brandName} — সর্বস্বত্ব সংরক্ষিত।
+            <DigitText text={interpolate(s.copyrightLine, { year, brand: brandName })} />
           </span>
           <a href="/contact" className="hover:text-primary">
-            যোগাযোগের জন্য এখানে দেখুন
+            {s.footerContactHint}
           </a>
           {showPoweredBy ? (
             <span className="ml-auto">Powered by Advance Ecommerce</span>

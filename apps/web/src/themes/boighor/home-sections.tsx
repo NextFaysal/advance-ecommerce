@@ -34,6 +34,14 @@ import { Icon } from "@/components/ui/icon";
 import { VisitorIdBootstrap } from "@/marketing/components/VisitorIdBootstrap";
 import { ThemedProductCard } from "../themed-product-card";
 import type { HomeSectionsProps } from "../slots";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
+import {
+  BOIGHOR_FALLBACK_TILES,
+  BOIGHOR_STRINGS,
+  BOIGHOR_TRUST_ITEMS,
+  type BoighorStrings,
+} from "./strings";
 import BoighorHomeHero from "./home-hero";
 import BoighorHomeCategories from "./home-categories";
 import BoighorHomeTestimonials from "./home-testimonials";
@@ -41,26 +49,17 @@ import BoighorHomeTestimonials from "./home-testimonials";
 /* Our own generic service points (icon + line), drawn from the
    platform's real storefront promises — COD, nationwide delivery,
    easy returns, verified quality. Copy is ours. */
-const TRUST_ITEMS = [
-  { icon: "banknote", title: "ক্যাশ অন ডেলিভারি", text: "পণ্য হাতে পেয়ে মূল্য পরিশোধ" },
-  { icon: "truck", title: "সারাদেশে ডেলিভারি", text: "জেলা-উপজেলায় হোম ডেলিভারি" },
-  { icon: "rotate-ccw", title: "সহজ রিটার্ন", text: "সমস্যা থাকলে সহজ শর্তে রিটার্ন" },
-  { icon: "shield", title: "যাচাই করা মান", text: "প্রতিটি পণ্য যাচাই করে পাঠাই" },
-] as const;
+const TRUST_ITEMS = BOIGHOR_TRUST_ITEMS;
 
 /* Fallback shortcut tiles while the catalogue has no categories:
    real shop sorts, so the row is never decorative. */
-const FALLBACK_TILES = [
-  { icon: "grid", title: "সব পণ্য", text: "পুরো সংগ্রহ একসাথে দেখুন", href: "/shop" },
-  { icon: "star", title: "নতুন এসেছে", text: "সবচেয়ে নতুন সংগ্রহ আগে", href: "/shop?sort=newest" },
-  { icon: "tag", title: "কম দামে", text: "কম দামের পণ্য আগে সাজানো", href: "/shop?sort=price-asc" },
-] as const;
+const FALLBACK_TILES = BOIGHOR_FALLBACK_TILES;
 
 const TILE_ICONS = ["package", "star", "tag"] as const;
 
 /** Rail section heading: title left with a short blue underline,
  *  "সব দেখুন →" right. */
-function RailHeading({ title, href }: { title: string; href: string }) {
+function RailHeading({ title, href, s }: { title: string; href: string; s: BoighorStrings }) {
   return (
     <div className="flex items-end justify-between gap-3">
       <div>
@@ -68,13 +67,13 @@ function RailHeading({ title, href }: { title: string; href: string }) {
         <span aria-hidden="true" className="mt-1.5 block h-[3px] w-10 rounded-full bg-primary" />
       </div>
       <Link href={href} className="shrink-0 text-sm font-bold text-primary hover:underline">
-        সব দেখুন →
+        {s.viewAll}
       </Link>
     </div>
   );
 }
 
-export default function BoighorHomeSections({
+export default async function BoighorHomeSections({
   products,
   categories,
   heroSlides,
@@ -97,6 +96,8 @@ export default function BoighorHomeSections({
 
   // Full-width banner slot: a third CMS slide, when the merchant
   // has one, sits between the rails and the closing grid.
+  const locale = await getRequestLocale();
+  const s = pick(locale, BOIGHOR_STRINGS);
   const bannerSlide = heroSlides.length >= 3 ? heroSlides[2]! : null;
 
   // Shortcut tiles: the first three REAL categories, or the
@@ -106,10 +107,10 @@ export default function BoighorHomeSections({
       ? categories.slice(0, 3).map((c, i) => ({
           icon: TILE_ICONS[i % TILE_ICONS.length]!,
           title: c.name.bn,
-          text: `${c.productCount}টি পণ্যের সংগ্রহ`,
+          text: interpolate(s.productsCollectionCount, { count: c.productCount }),
           href: `/shop?category=${c.slug}`,
         }))
-      : FALLBACK_TILES.map((t) => ({ ...t }));
+      : pick(locale, FALLBACK_TILES).map((t) => ({ ...t }));
 
   return (
     <main className="mx-auto min-w-0 max-w-[1440px] px-4 sm:px-6">
@@ -125,7 +126,7 @@ export default function BoighorHomeSections({
       <BoighorHomeCategories categories={categories} />
 
       {/* ---------- Three white shortcut tiles (real links) ---------- */}
-      <section className="mt-10 grid gap-3 sm:grid-cols-3" aria-label="শর্টকাট">
+      <section className="mt-10 grid gap-3 sm:grid-cols-3" aria-label={s.shortcutsAria}>
         {shortcutTiles.map((tile) => (
           <Link
             key={tile.href + tile.title}
@@ -153,7 +154,7 @@ export default function BoighorHomeSections({
       {/* ---------- Category rails (real membership only) ---------- */}
       {rails.map(({ category, items }) => (
         <section key={category.slug} className="mt-12" aria-label={category.name.bn}>
-          <RailHeading title={category.name.bn} href={`/shop?category=${category.slug}`} />
+          <RailHeading title={category.name.bn} href={`/shop?category=${category.slug}`} s={s} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {items.map((p) => (
               <ThemedProductCard key={p.id} product={p} />
@@ -211,8 +212,8 @@ export default function BoighorHomeSections({
 
       {/* ---------- Just For You: the full fetched list ---------- */}
       {products.length > 0 ? (
-        <section className="mt-12" aria-label="আপনার জন্য">
-          <RailHeading title="আপনার জন্য বাছাই" href="/shop" />
+        <section className="mt-12" aria-label={s.justForYouAria}>
+          <RailHeading title={s.justForYouTitle} href="/shop" s={s} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {products.map((p) => (
               <ThemedProductCard key={p.id} product={p} />
@@ -223,7 +224,7 @@ export default function BoighorHomeSections({
               href="/shop"
               className="inline-flex h-12 items-center rounded-lg border border-primary bg-card px-8 text-sm font-bold text-primary shadow-card transition hover:bg-primary hover:text-white"
             >
-              আরও দেখুন
+              {s.loadMore}
             </Link>
           </div>
         </section>
@@ -233,8 +234,8 @@ export default function BoighorHomeSections({
       <BoighorHomeTestimonials reviews={customerReviews} />
 
       {/* ---------- Trust strip (our own generic service points) ---------- */}
-      <section className="mt-12 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="আমাদের সুবিধা">
-        {TRUST_ITEMS.map((item) => (
+      <section className="mt-12 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={s.benefitsAria}>
+        {pick(locale, TRUST_ITEMS).map((item) => (
           <div
             key={item.title}
             className="flex items-center gap-3 rounded-lg border border-border bg-card p-3.5 shadow-card"

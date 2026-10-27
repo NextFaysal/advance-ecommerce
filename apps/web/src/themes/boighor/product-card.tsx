@@ -38,6 +38,9 @@
  * add-to-cart (same gate as Aurora's card).
  */
 import { useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { BOIGHOR_STRINGS } from "./strings";
 import Link from "next/link";
 import Image from "next/image";
 import { formatBdt } from "@advance-ecommerce/validators";
@@ -95,13 +98,15 @@ type CardData = ReturnType<typeof useCardData>;
 
 /** The signature red discount DISC — circular, top-right. */
 function DiscountDisc({ pct, digits }: { pct: number; digits: (t: string) => string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, BOIGHOR_STRINGS);
   return (
     <span
       className="flex h-11 w-11 flex-col items-center justify-center rounded-full text-white shadow-pop"
       style={{ backgroundColor: BOIGHOR_COLORS.saleRed }}
     >
       <span className="text-[12px] font-extrabold leading-none">{digits(`-${pct}%`)}</span>
-      <span className="mt-0.5 text-[8px] font-bold uppercase leading-none">ছাড়</span>
+      <span className="mt-0.5 text-[8px] font-bold uppercase leading-none">{s.discountOff}</span>
     </span>
   );
 }
@@ -146,6 +151,8 @@ function BoighorAddButton({
   product: PublicProduct;
   data: CardData;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, BOIGHOR_STRINGS);
   const [justAdded, setJustAdded] = useState(false);
   const { defaultVariant, inStock } = data;
   if (!defaultVariant || data.priceOnRequest) return null;
@@ -184,13 +191,15 @@ function BoighorAddButton({
       }`}
     >
       <Icon name="cart" size={16} />
-      {!inStock ? "স্টক শেষ" : justAdded ? "যোগ হয়েছে ✓" : "Add to Cart"}
+      {!inStock ? s.outOfStock : justAdded ? s.addedCheck : s.addToCart}
     </button>
   );
 }
 
 /** Standard (vertical, portrait) card — the ProductCard slot. */
 export function BoighorProductCard({ product }: ThemeProductCardProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, BOIGHOR_STRINGS);
   const digits = useDigitText();
   // cardStyle is consumed here as the branch point: "classic" is
   // the only style this package ships (single declared choice).
@@ -256,16 +265,16 @@ export function BoighorProductCard({ product }: ThemeProductCardProps) {
           {data.inStock ? (
             <p className="mt-1.5 flex items-center justify-center gap-1.5 text-xs font-semibold text-success">
               <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-success" />
-              স্টকে আছে
+              {s.inStock}
             </p>
           ) : (
-            <p className="mt-1.5 text-xs font-semibold text-destructive">স্টক শেষ</p>
+            <p className="mt-1.5 text-xs font-semibold text-destructive">{s.outOfStock}</p>
           )}
 
           <div className="mt-2">
             {data.priceOnRequest ? (
               <p className="text-[15px] font-extrabold text-primary">
-                দামের জন্য যোগাযোগ করুন
+                {s.priceOnRequest}
               </p>
             ) : (
               <p className="flex flex-wrap items-baseline justify-center gap-x-2">
@@ -289,7 +298,7 @@ export function BoighorProductCard({ product }: ThemeProductCardProps) {
           href={`/product/${product.slug}`}
           className="mt-1.5 flex min-h-[32px] items-center justify-center text-[13px] font-semibold text-primary transition hover:underline"
         >
-          বিস্তারিত দেখুন
+          {s.viewDetails}
         </Link>
       </div>
     </article>

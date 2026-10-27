@@ -14,6 +14,9 @@
  */
 import { useState } from "react";
 import type { ReactNode } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { HAAT_STRINGS } from "./strings";
 
 export default function HaatPdpTabs({
   description,
@@ -22,13 +25,15 @@ export default function HaatPdpTabs({
   description: ReactNode;
   reviews: ReactNode;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, HAAT_STRINGS);
   const [tab, setTab] = useState<"description" | "reviews">("description");
 
   return (
     <div className="mt-8">
       <div
         role="tablist"
-        aria-label="পণ্যের তথ্য"
+        aria-label={s.tabsAria}
         className="flex max-w-full gap-2 overflow-x-auto border-b-2 border-border"
       >
         <button
@@ -42,7 +47,7 @@ export default function HaatPdpTabs({
               : "border-transparent text-text-muted hover:text-text-main"
           }`}
         >
-          Description
+          {s.tabDescription}
         </button>
         <button
           type="button"
@@ -55,7 +60,7 @@ export default function HaatPdpTabs({
               : "border-transparent text-text-muted hover:text-text-main"
           }`}
         >
-          Customer Reviews
+          {s.tabReviews}
         </button>
       </div>
 

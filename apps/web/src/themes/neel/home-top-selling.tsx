@@ -14,6 +14,9 @@
  * card anatomy uses.
  */
 import { useRef } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { NEEL_STRINGS } from "./strings";
 import { Icon } from "@/components/ui/icon";
 import type { PublicProduct } from "@/catalog/types";
 import { NeelProductCardHorizontal } from "./product-card";
@@ -23,6 +26,8 @@ export default function NeelHomeTopSelling({
 }: {
   products: PublicProduct[];
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, NEEL_STRINGS);
   const trackRef = useRef<HTMLDivElement>(null);
 
   if (products.length === 0) return null;
@@ -34,11 +39,11 @@ export default function NeelHomeTopSelling({
   };
 
   return (
-    <section className="mt-12" aria-label="নির্বাচিত পণ্য">
+    <section className="mt-12" aria-label={s.featuredProducts}>
       <div className="flex items-end justify-between gap-3">
         <div>
           <h2 className="font-display text-xl font-extrabold text-text-main sm:text-2xl">
-            নির্বাচিত পণ্য
+            {s.featuredProducts}
           </h2>
           <span aria-hidden="true" className="mt-1.5 block h-[3px] w-10 rounded-full bg-primary" />
         </div>
@@ -46,7 +51,7 @@ export default function NeelHomeTopSelling({
           <button
             type="button"
             onClick={() => scrollBy(-1)}
-            aria-label="আগের পণ্য"
+            aria-label={s.prevProducts}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} className="rotate-180" />
@@ -54,7 +59,7 @@ export default function NeelHomeTopSelling({
           <button
             type="button"
             onClick={() => scrollBy(1)}
-            aria-label="পরের পণ্য"
+            aria-label={s.nextProducts}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} />

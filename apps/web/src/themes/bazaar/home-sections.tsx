@@ -42,20 +42,18 @@ import BazaarHomeCategories from "./home-categories";
 import BazaarHomeTopSelling from "./home-top-selling";
 import BazaarHomeBrands from "./home-brands";
 import BazaarHomeTestimonials from "./home-testimonials";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { BAZAAR_STRINGS } from "./strings";
 
 /* Our own generic service points (icon + line), drawn from the
    platform's real storefront promises — COD, nationwide delivery,
-   easy returns, verified quality. Copy is ours. */
-const TRUST_ITEMS = [
-  { icon: "banknote", title: "ক্যাশ অন ডেলিভারি", text: "পণ্য হাতে পেয়ে মূল্য পরিশোধ" },
-  { icon: "truck", title: "সারাদেশে ডেলিভারি", text: "জেলা-উপজেলায় হোম ডেলিভারি" },
-  { icon: "rotate-ccw", title: "সহজ রিটার্ন", text: "সমস্যা থাকলে সহজ শর্তে রিটার্ন" },
-  { icon: "shield", title: "যাচাই করা মান", text: "প্রতিটি পণ্য যাচাই করে পাঠাই" },
-] as const;
+   easy returns, verified quality. Copy comes from BAZAAR_STRINGS
+   (doc 30) and is assembled inside the component per locale. */
 
 /** Rail section heading: title left with a short orange underline,
  *  "VIEW ALL ITEMS →" right — the reference rail anatomy. */
-function RailHeading({ title, href }: { title: string; href: string }) {
+function RailHeading({ title, href, viewAllLabel }: { title: string; href: string; viewAllLabel: string }) {
   return (
     <div className="flex items-end justify-between gap-3">
       <div>
@@ -63,13 +61,13 @@ function RailHeading({ title, href }: { title: string; href: string }) {
         <span aria-hidden="true" className="mt-1.5 block h-[3px] w-10 rounded-full bg-primary" />
       </div>
       <Link href={href} className="shrink-0 text-sm font-bold text-primary hover:underline">
-        VIEW ALL ITEMS →
+        {viewAllLabel}
       </Link>
     </div>
   );
 }
 
-export default function BazaarHomeSections({
+export default async function BazaarHomeSections({
   products,
   categories,
   heroSlides,
@@ -77,6 +75,14 @@ export default function BazaarHomeSections({
   mechanicsOn,
   heroStats,
 }: HomeSectionsProps) {
+  const locale = await getRequestLocale();
+  const s = pick(locale, BAZAAR_STRINGS);
+  const TRUST_ITEMS = [
+    { icon: "banknote", title: s.trustCodTitle, text: s.trustCodText },
+    { icon: "truck", title: s.trustDeliveryTitle, text: s.trustDeliveryText },
+    { icon: "rotate-ccw", title: s.trustReturnTitle, text: s.trustReturnText },
+    { icon: "shield", title: s.trustQualityTitle, text: s.trustQualityText },
+  ] as const;
   // Per-category rails from the REAL categorySlug on each fetched
   // product; categories keep the catalog's own order, capped at 3.
   const byCategory = new Map<string, typeof products>();
@@ -110,7 +116,7 @@ export default function BazaarHomeSections({
       {heroStats ? <div className="mt-4">{heroStats}</div> : null}
 
       {/* ---------- Trust strip (our own generic service points) ---------- */}
-      <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="আমাদের সুবিধা">
+      <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={s.ourBenefitsAria}>
         {TRUST_ITEMS.map((item) => (
           <div
             key={item.title}
@@ -143,7 +149,7 @@ export default function BazaarHomeSections({
       {/* ---------- Category rails (real membership only) ---------- */}
       {rails.map(({ category, items }) => (
         <section key={category.slug} className="mt-12" aria-label={category.name.bn}>
-          <RailHeading title={category.name.bn} href={`/shop?category=${category.slug}`} />
+          <RailHeading title={category.name.bn} href={`/shop?category=${category.slug}`} viewAllLabel={s.viewAllItems} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {items.map((p) => (
               <ThemedProductCard key={p.id} product={p} />
@@ -201,8 +207,8 @@ export default function BazaarHomeSections({
 
       {/* ---------- Just For You: the full fetched list ---------- */}
       {products.length > 0 ? (
-        <section className="mt-12" aria-label="আপনার জন্য">
-          <RailHeading title="Just For You" href="/shop" />
+        <section className="mt-12" aria-label={s.justForYouAria}>
+          <RailHeading title={s.justForYou} href="/shop" viewAllLabel={s.viewAllItems} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {products.map((p) => (
               <ThemedProductCard key={p.id} product={p} />
@@ -213,7 +219,7 @@ export default function BazaarHomeSections({
               href="/shop"
               className="inline-flex h-12 items-center rounded-md border border-primary bg-card px-8 text-sm font-bold text-primary shadow-card transition hover:bg-primary hover:text-white"
             >
-              LOAD MORE
+              {s.loadMore}
             </Link>
           </div>
         </section>

@@ -37,6 +37,9 @@
  * pdp-actions.tsx).
  */
 import { useEffect, useMemo, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { CIRCUIT_STRINGS } from "./strings";
 import { useRouter } from "next/navigation";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { addQty, subQty, qtyToString, qtyToMilli } from "@/lib/quantity";
@@ -70,6 +73,8 @@ export default function CircuitPdpBuySection({
   whatsappNumber,
   callNumber,
 }: CircuitPdpBuySectionProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, CIRCUIT_STRINGS);
   const router = useRouter();
   const digits = useDigitText();
   const activeVariants = useMemo(() => variants.filter((v) => v.isActive), [variants]);
@@ -144,13 +149,13 @@ export default function CircuitPdpBuySection({
       allowFractional: stepInfo !== undefined,
     });
     if (result.addedQuantity <= 0) {
-      setNotice("স্টকে আর নেই — কার্টে যোগ করা যায়নি।");
+      setNotice(s.noticeOutOfStock);
       return false;
     }
     setNotice(
       result.capped
-        ? "কার্টে যোগ হয়েছে — স্টকে যা ছিল সব নেওয়া হয়েছে।"
-        : "কার্টে যোগ হয়েছে ✓",
+        ? s.noticeAddedCapped
+        : s.noticeAdded,
     );
     return true;
   }
@@ -185,7 +190,7 @@ export default function CircuitPdpBuySection({
                       } ${soldOut ? "opacity-55" : ""}`}
                     >
                       {value}
-                      {soldOut ? " (স্টক শেষ)" : ""}
+                      {soldOut ? s.soldOutSuffix : ""}
                     </button>
                   );
                 })}
@@ -210,7 +215,7 @@ export default function CircuitPdpBuySection({
                 } ${v.stock <= 0 ? "opacity-55" : ""}`}
               >
                 {v.sku}
-                {v.stock <= 0 ? " (স্টক শেষ)" : ""}
+                {v.stock <= 0 ? s.soldOutSuffix : ""}
               </button>
             );
           })}
@@ -232,7 +237,7 @@ export default function CircuitPdpBuySection({
               className="rounded-full px-2.5 py-1 text-xs font-bold text-white"
               style={{ backgroundColor: CIRCUIT_COLORS.savePurple }}
             >
-              {digits(`সাশ্রয় ${formatBdt(savePoisha)} (−${savePct}%)`)}
+              {digits(interpolate(s.saveLine, { amount: formatBdt(savePoisha), pct: savePct }))}
             </span>
           </>
         ) : null}
@@ -240,7 +245,7 @@ export default function CircuitPdpBuySection({
       {lowStock ? (
         <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-semibold text-warning">
           <Icon name="alert" size={14} />
-          {digits(`মাত্র ${selected.stock}টি বাকি — দ্রুত অর্ডার করুন`)}
+          {digits(interpolate(s.lowStockLine, { count: selected.stock }))}
         </p>
       ) : null}
 
@@ -249,7 +254,7 @@ export default function CircuitPdpBuySection({
       {/* Quantity */}
       <div>
         <span id="circuit-qty-label" className="text-sm font-bold text-text-main">
-          পরিমাণ
+          {s.quantityLabel}
         </span>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <div className="flex h-11 items-stretch overflow-hidden rounded-lg border border-input bg-card">
@@ -257,7 +262,7 @@ export default function CircuitPdpBuySection({
               type="button"
               onClick={() => setQuantity((q) => Math.max(qtyMin, subQty(q, qtyStep)))}
               disabled={outOfStock || quantity <= qtyMin}
-              aria-label="পরিমাণ কমান"
+              aria-label={s.decreaseQty}
               className="flex w-11 items-center justify-center text-text-main transition hover:bg-muted disabled:opacity-40"
             >
               <Icon name="minus" size={16} />
@@ -272,7 +277,7 @@ export default function CircuitPdpBuySection({
               type="button"
               onClick={() => setQuantity((q) => addQty(q, qtyStep))}
               disabled={outOfStock || quantity >= Math.max(qtyMin, stockCap)}
-              aria-label="পরিমাণ বাড়ান"
+              aria-label={s.increaseQty}
               className="flex w-11 items-center justify-center text-text-main transition hover:bg-muted disabled:opacity-40"
             >
               <Icon name="plus" size={16} />
@@ -281,7 +286,7 @@ export default function CircuitPdpBuySection({
           {stepInfo ? (
             <p className="text-[13px] text-text-muted">
               {digits(
-                `≈ ${Math.round((qtyToMilli(quantity) * stepInfo.packGrams) / 1000)} গ্রাম (প্রতি ধাপ ${stepInfo.packGrams} গ্রাম)`,
+                interpolate(s.weightApproxLine, { grams: Math.round((qtyToMilli(quantity) * stepInfo.packGrams) / 1000), step: stepInfo.packGrams }),
               )}
             </p>
           ) : null}

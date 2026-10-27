@@ -14,6 +14,9 @@ import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
 import type { Category } from "@/catalog/types";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SHOBJI_STRINGS } from "./strings";
 
 /* Soft tile tints for image-less categories (our own palette). */
 const TILE_TINTS: ReadonlyArray<string> = [
@@ -30,6 +33,8 @@ export default function ShobjiHomeCategories({
 }: {
   categories: Category[];
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   const digits = useDigitText();
   const trackRef = useRef<HTMLDivElement>(null);
 
@@ -42,16 +47,16 @@ export default function ShobjiHomeCategories({
   };
 
   return (
-    <section className="mt-10" aria-label="জনপ্রিয় ক্যাটাগরি">
+    <section className="mt-10" aria-label={s.popularCategories}>
       <div className="relative flex items-center justify-center">
         <h2 className="text-center font-display text-xl font-extrabold text-text-main sm:text-2xl">
-          জনপ্রিয় ক্যাটাগরি
+          {s.popularCategories}
         </h2>
         <div className="absolute right-0 hidden gap-2 sm:flex">
           <button
             type="button"
             onClick={() => scrollBy(-1)}
-            aria-label="আগের ক্যাটাগরি"
+            aria-label={s.prevCategoriesAria}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} className="rotate-180" />
@@ -59,7 +64,7 @@ export default function ShobjiHomeCategories({
           <button
             type="button"
             onClick={() => scrollBy(1)}
-            aria-label="পরের ক্যাটাগরি"
+            aria-label={s.nextCategoriesAria}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} />
@@ -99,7 +104,7 @@ export default function ShobjiHomeCategories({
               {c.name.bn}
             </span>
             <span className="block text-center text-[11px] text-text-subtle">
-              {digits(`${c.productCount}টি পণ্য`)}
+              {digits(interpolate(s.productsCount, { count: c.productCount }))}
             </span>
           </Link>
         ))}

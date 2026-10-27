@@ -26,6 +26,9 @@ import { useDigitText } from "@/components/ui/numerals";
 import type { Category } from "@/catalog/types";
 import type { HeroSlide } from "@/cms/site-content-types";
 import { useThemeView } from "../theme-view";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { NEEL_STRINGS } from "./strings";
 
 function SlidePanel({
   slide,
@@ -90,22 +93,24 @@ function SlidePanel({
 /** Static fallback panel — our own copy, shown only while the
  *  store has no active CMS hero slides. */
 function StaticPanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, NEEL_STRINGS);
   return (
     <div className="brand-soft-gradient relative block h-full min-h-[240px] w-full overflow-hidden rounded-2xl shadow-card sm:min-h-[320px]">
       <span aria-hidden="true" className="absolute -right-10 -top-10 h-44 w-44 rounded-full bg-primary/10" />
       <span aria-hidden="true" className="absolute -bottom-14 -left-8 h-52 w-52 rounded-full bg-primary/5" />
       <span className="absolute inset-x-0 bottom-0 block p-5 sm:p-7">
         <span className="block max-w-lg font-display text-xl font-extrabold leading-snug text-text-main sm:text-3xl">
-          যা দরকার, সব এক ছাদের নিচে
+          {s.heroStaticHeadline}
         </span>
         <span className="mt-1.5 block max-w-md text-sm leading-6 text-text-muted">
-          ফ্যাশন, ইলেকট্রনিক্স, ঘরোয়া পণ্য — পরিষ্কার দামে, সারাদেশে ডেলিভারিসহ।
+          {s.heroStaticSubtext}
         </span>
         <Link
           href="/shop"
           className="mt-4 inline-flex h-11 items-center rounded-md bg-primary px-5 text-sm font-bold text-white shadow-md transition hover:opacity-90"
         >
-          সব পণ্য দেখুন
+          {s.viewAllProductsBtn}
         </Link>
       </span>
     </div>
@@ -114,6 +119,8 @@ function StaticPanel() {
 
 /** One promo tile: a real category (image or initial tile). */
 function CategoryTile({ category }: { category: Category }) {
+  const { locale } = useLocale();
+  const s = pick(locale, NEEL_STRINGS);
   const digits = useDigitText();
   return (
     <Link
@@ -147,7 +154,7 @@ function CategoryTile({ category }: { category: Category }) {
         <span
           className={`mt-0.5 block text-[11px] ${category.imageUrl ? "text-white/85" : "text-text-muted"}`}
         >
-          {digits(`${category.productCount}টি পণ্য`)} — দেখুন →
+          {interpolate(s.categoryTileMeta, { count: digits(`${category.productCount}`) })}
         </span>
       </span>
     </Link>
@@ -202,6 +209,8 @@ export default function NeelHomeHero({
   slides: HeroSlide[];
   categories: Category[];
 }) {
+  const { locale } = useLocale();
+  const str = pick(locale, NEEL_STRINGS);
   const themeView = useThemeView();
   const showPromoTiles = themeView.options.showPromoTiles !== false;
   const [index, setIndex] = useState(0);
@@ -244,7 +253,7 @@ export default function NeelHomeHero({
 
   return (
     <section
-      aria-label="হাইলাইট"
+      aria-label={str.highlightAria}
       className={`mt-4 grid gap-3 ${showPromoTiles && tiles.length > 0 ? "lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]" : ""}`}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
@@ -258,14 +267,14 @@ export default function NeelHomeHero({
           <StaticPanel />
         )}
         {slides.length > 1 ? (
-          <div className="absolute bottom-4 right-5 flex items-center gap-1.5" role="tablist" aria-label="ব্যানার বেছে নিন">
+          <div className="absolute bottom-4 right-5 flex items-center gap-1.5" role="tablist" aria-label={str.bannerPickerAria}>
             {slides.map((s, i) => (
               <button
                 key={s.id}
                 type="button"
                 role="tab"
                 aria-selected={i === index}
-                aria-label={`ব্যানার ${i + 1}`}
+                aria-label={interpolate(str.bannerAria, { n: i + 1 })}
                 onClick={() => goTo(i)}
                 className="flex h-8 w-6 items-center justify-center"
               >
@@ -298,10 +307,10 @@ export default function NeelHomeHero({
             >
               <span className="absolute inset-x-0 bottom-0 block p-3">
                 <span className="block font-display text-[15px] font-extrabold leading-snug text-text-main">
-                  সব ক্যাটাগরি
+                  {str.allCategories}
                 </span>
                 <span className="mt-0.5 block text-[11px] text-text-muted">
-                  দোকানের সব পণ্য একসাথে দেখুন →
+                  {str.allCategoriesSub}
                 </span>
               </span>
             </Link>

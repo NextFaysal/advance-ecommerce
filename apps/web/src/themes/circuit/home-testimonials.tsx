@@ -17,6 +17,9 @@
 import Link from "next/link";
 import { Stars } from "@/reviews/components/Stars";
 import type { HomepageReview } from "@/reviews/store";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { CIRCUIT_STRINGS } from "./strings";
 import { CIRCUIT_COLORS } from "./tokens";
 
 export default function CircuitHomeTestimonials({
@@ -24,13 +27,15 @@ export default function CircuitHomeTestimonials({
 }: {
   reviews: HomepageReview[];
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, CIRCUIT_STRINGS);
   if (reviews.length === 0) return null;
 
   return (
-    <section className="mt-12" aria-label="কাস্টমারদের মতামত">
+    <section className="mt-12" aria-label={s.testimonialsAria}>
       <div className="text-center">
         <h2 className="font-display text-xl font-extrabold text-text-main sm:text-2xl">
-          কাস্টমাররা যা বলছেন
+          {s.testimonialsHeading}
         </h2>
         <span aria-hidden="true" className="mx-auto mt-1.5 block h-[3px] w-10 rounded-full bg-primary" />
       </div>
@@ -61,7 +66,7 @@ export default function CircuitHomeTestimonials({
               “{r.body}”
             </blockquote>
             <p className="mt-3 text-xs text-text-subtle">
-              পণ্য:{" "}
+              {s.productLabel}{" "}
               <Link
                 href={`/product/${r.productSlug}`}
                 className="font-semibold text-primary hover:underline"

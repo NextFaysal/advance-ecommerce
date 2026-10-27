@@ -42,6 +42,9 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { formatBdt } from "@advance-ecommerce/validators";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { SHOBJI_STRINGS } from "./strings";
 import { useDigitText } from "@/components/ui/numerals";
 import { Icon } from "@/components/ui/icon";
 import type { PublicProduct } from "@/catalog/types";
@@ -140,6 +143,8 @@ function ShobjiAddButton({
   data: CardData;
   className?: string;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   const [justAdded, setJustAdded] = useState(false);
   const { defaultVariant, inStock } = data;
   if (!defaultVariant || data.priceOnRequest) return null;
@@ -178,15 +183,17 @@ function ShobjiAddButton({
       } ${className}`}
     >
       <Icon name="cart" size={16} />
-      {!inStock ? "স্টক শেষ" : justAdded ? "যোগ হয়েছে ✓" : "কার্টে যোগ করুন"}
+      {!inStock ? s.outOfStock : justAdded ? s.addedToCart : s.addToCart}
     </button>
   );
 }
 
 function PriceRow({ data, digits }: { data: CardData; digits: (t: string) => string }) {
+  const { locale } = useLocale();
+  const priceOnRequestLabel = pick(locale, SHOBJI_STRINGS).priceOnRequest;
   if (data.priceOnRequest) {
     return (
-      <p className="text-[15px] font-extrabold text-primary">দামের জন্য যোগাযোগ করুন</p>
+      <p className="text-[15px] font-extrabold text-primary">{priceOnRequestLabel}</p>
     );
   }
   return (
@@ -205,6 +212,8 @@ function PriceRow({ data, digits }: { data: CardData; digits: (t: string) => str
 
 /** Standard (vertical) card — the ProductCard slot implementation. */
 export function ShobjiProductCard({ product }: ThemeProductCardProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   const digits = useDigitText();
   const data = useCardData(product);
 
@@ -240,7 +249,7 @@ export function ShobjiProductCard({ product }: ThemeProductCardProps) {
           ) : null}
           {!data.inStock ? (
             <span className="absolute bottom-2 left-2 rounded-full bg-text-main/85 px-2 py-0.5 text-[11px] font-semibold text-white">
-              স্টক শেষ
+              {s.outOfStock}
             </span>
           ) : null}
         </div>
@@ -275,6 +284,8 @@ export function ShobjiProductCard({ product }: ThemeProductCardProps) {
 export function ShobjiProductCardHorizontal({
   product,
 }: ThemeProductCardProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   const digits = useDigitText();
   const data = useCardData(product);
 
@@ -327,7 +338,7 @@ export function ShobjiProductCardHorizontal({
             <PriceRow data={data} digits={digits} />
           </div>
           {!data.inStock ? (
-            <p className="mt-1 text-xs font-medium text-destructive">স্টক শেষ</p>
+            <p className="mt-1 text-xs font-medium text-destructive">{s.outOfStock}</p>
           ) : null}
         </Link>
         <div className="mt-auto pt-2.5">

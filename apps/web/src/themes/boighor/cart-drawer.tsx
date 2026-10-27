@@ -42,6 +42,9 @@ import { formatBdt } from "@advance-ecommerce/validators";
 import { Drawer } from "@/components/ui/drawer";
 import { Icon } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { BOIGHOR_STRINGS } from "./strings";
 import {
   addQty,
   subQty,
@@ -81,6 +84,8 @@ function EmptyCartMark() {
 }
 
 export default function BoighorCartDrawer({ open, onClose }: ThemeCartDrawerProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, BOIGHOR_STRINGS);
   const digits = useDigitText();
   const [cart, setCart] = useState<Cart | null>(null);
   const [suggestions, setSuggestions] = useState<PublicProduct[]>([]);
@@ -203,34 +208,34 @@ export default function BoighorCartDrawer({ open, onClose }: ThemeCartDrawerProp
   };
 
   return (
-    <Drawer open={open} onClose={onClose} title="আপনার কার্ট"
+    <Drawer open={open} onClose={onClose} title={s.yourCart}
       footer={
         items.length > 0 ? (
           <div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-text-muted">
-                মোট ({digits(`${count}টি পণ্য`)})
+                {interpolate(s.totalWithCount, { count: digits(`${count}`) })}
               </span>
               <span className="font-display text-lg font-extrabold text-text-main">
                 {digits(formatBdt(subtotal))}
               </span>
             </div>
             <p className="mt-1 text-xs text-text-subtle">
-              ডেলিভারি চার্জ চেকআউটে হিসাব হবে।
+              {s.deliveryChargeNote}
             </p>
             <Link
               href="/checkout"
               onClick={onClose}
               className="mt-3 flex h-12 items-center justify-center rounded-lg bg-primary text-sm font-bold uppercase tracking-wide text-white shadow-sm transition hover:opacity-90"
             >
-              Checkout
+              {s.checkout}
             </Link>
             <Link
               href="/cart"
               onClick={onClose}
               className="mt-2 flex h-10 items-center justify-center text-sm font-semibold text-primary hover:underline"
             >
-              কার্ট পেজে যান
+              {s.goToCartPage}
             </Link>
           </div>
         ) : undefined
@@ -243,17 +248,17 @@ export default function BoighorCartDrawer({ open, onClose }: ThemeCartDrawerProp
             <EmptyCartMark />
           </span>
           <p className="mt-4 font-display text-lg font-extrabold text-text-main">
-            আপনার কার্ট খালি
+            {s.cartEmptyTitle}
           </p>
           <p className="mt-1 max-w-[260px] text-sm leading-6 text-text-muted">
-            এখনো কোনো পণ্য যোগ করা হয়নি — পছন্দের পণ্য যোগ করে কেনাকাটা শুরু করুন।
+            {s.cartEmptyText}
           </p>
           <Link
             href="/shop"
             onClick={onClose}
             className="mt-5 inline-flex h-11 items-center rounded-lg bg-primary px-6 text-sm font-bold text-white shadow-sm transition hover:opacity-90"
           >
-            কেনাকাটা শুরু করুন
+            {s.startShopping}
           </Link>
         </div>
       ) : (
@@ -299,7 +304,7 @@ export default function BoighorCartDrawer({ open, onClose }: ThemeCartDrawerProp
                       <button
                         type="button"
                         onClick={() => removeLine(item.variantId)}
-                        aria-label={`${item.name} সরান`}
+                        aria-label={interpolate(s.removeItemAria, { name: item.name })}
                         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-subtle transition hover:bg-destructive/10 hover:text-destructive"
                       >
                         <Icon name="x" size={15} />
@@ -315,7 +320,7 @@ export default function BoighorCartDrawer({ open, onClose }: ThemeCartDrawerProp
                         <button
                           type="button"
                           onClick={() => changeQuantity(item.variantId, -1)}
-                          aria-label="পরিমাণ কমান"
+                          aria-label={s.decreaseQty}
                           className="flex w-9 items-center justify-center text-text-main transition hover:bg-muted"
                         >
                           <Icon name="minus" size={14} />
@@ -327,7 +332,7 @@ export default function BoighorCartDrawer({ open, onClose }: ThemeCartDrawerProp
                           type="button"
                           onClick={() => changeQuantity(item.variantId, 1)}
                           disabled={item.quantity >= Math.max(step, item.availableStock)}
-                          aria-label="পরিমাণ বাড়ান"
+                          aria-label={s.increaseQty}
                           className="flex w-9 items-center justify-center text-text-main transition hover:bg-muted disabled:opacity-40"
                         >
                           <Icon name="plus" size={14} />
@@ -351,9 +356,9 @@ export default function BoighorCartDrawer({ open, onClose }: ThemeCartDrawerProp
 
           {/* ---------- You May Also Like ---------- */}
           {likeProducts.length > 0 ? (
-            <section className="mt-5" aria-label="আপনার ভালো লাগতে পারে">
+            <section className="mt-5" aria-label={s.youMayAlsoLike}>
               <h3 className="font-display text-[15px] font-extrabold text-text-main">
-                You May Also Like
+                {s.youMayAlsoLike}
               </h3>
               <div className="scrollbar-none -mx-1 mt-3 flex gap-2.5 overflow-x-auto px-1 pb-1">
                 {likeProducts.map((p) => {
@@ -400,7 +405,7 @@ export default function BoighorCartDrawer({ open, onClose }: ThemeCartDrawerProp
                         className="mt-1.5 flex h-8 w-full items-center justify-center gap-1 rounded-full bg-primary text-xs font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Icon name="plus" size={13} />
-                        {addable ? "Add" : "স্টক শেষ"}
+                        {addable ? s.addShort : s.outOfStock}
                       </button>
                     </div>
                   );

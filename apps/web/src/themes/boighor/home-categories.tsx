@@ -13,6 +13,9 @@
  */
 import { useRef } from "react";
 import Link from "next/link";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { BOIGHOR_STRINGS } from "./strings";
 import { Icon } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
 import type { Category } from "@/catalog/types";
@@ -32,6 +35,8 @@ export default function BoighorHomeCategories({
 }: {
   categories: Category[];
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, BOIGHOR_STRINGS);
   const digits = useDigitText();
   const trackRef = useRef<HTMLDivElement>(null);
 
@@ -44,16 +49,16 @@ export default function BoighorHomeCategories({
   };
 
   return (
-    <section className="mt-10" aria-label="ক্যাটাগরি">
+    <section className="mt-10" aria-label={s.categoriesAria}>
       <div className="relative flex items-center justify-center">
         <h2 className="text-center font-display text-xl font-extrabold text-text-main sm:text-2xl">
-          বিষয় অনুযায়ী বেছে নিন
+          {s.categoriesHeading}
         </h2>
         <div className="absolute right-0 hidden gap-2 sm:flex">
           <button
             type="button"
             onClick={() => scrollBy(-1)}
-            aria-label="আগের ক্যাটাগরি"
+            aria-label={s.prevCategories}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} className="rotate-180" />
@@ -61,7 +66,7 @@ export default function BoighorHomeCategories({
           <button
             type="button"
             onClick={() => scrollBy(1)}
-            aria-label="পরের ক্যাটাগরি"
+            aria-label={s.nextCategories}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} />
@@ -103,7 +108,7 @@ export default function BoighorHomeCategories({
               {c.name.bn}
             </span>
             <span className="block text-[11px] text-text-subtle">
-              {digits(`${c.productCount}টি পণ্য`)}
+              {digits(interpolate(s.productCount, { count: c.productCount }))}
             </span>
           </Link>
         ))}

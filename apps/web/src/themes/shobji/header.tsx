@@ -33,6 +33,9 @@ import { cartItemCount } from "@/cart/types";
 import { CART_UPDATED_EVENT } from "@/cart/components/AddToCartButton";
 import { Icon } from "@/components/ui/icon";
 import { useThemeView } from "../theme-view";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SHOBJI_STRINGS } from "./strings";
 import { openCartDrawer } from "../cart-drawer-events";
 import ShobjiFloatingCart from "./floating-cart";
 import { SHOBJI_COLORS } from "./tokens";
@@ -52,6 +55,8 @@ export default function ShobjiHeader({
   cartCount,
   categories,
 }: ThemeHeaderProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   const themeView = useThemeView();
   const showSidebar = themeView.options.showSidebar !== false;
 
@@ -111,13 +116,13 @@ export default function ShobjiHeader({
             <input
               type="search"
               name="q"
-              placeholder="পণ্য খুঁজুন… যেমন: টাটকা সবজি, ফল, মাছ, মাংস"
-              aria-label="পণ্য খুঁজুন"
+              placeholder={s.searchPlaceholderLong}
+              aria-label={s.searchProductsAria}
               className="h-11 w-full rounded-full border border-input bg-muted pl-4 pr-12 text-sm text-text-main shadow-sm transition placeholder:text-text-subtle focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
             />
             <button
               type="submit"
-              aria-label="খুঁজুন"
+              aria-label={s.searchSubmitAria}
               className="absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white transition hover:opacity-90"
             >
               <Icon name="search" size={18} />
@@ -133,7 +138,7 @@ export default function ShobjiHeader({
             className="relative hidden min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary min-[420px]:flex"
           >
             <Icon name="package" size={23} />
-            <span className="text-[11px] font-medium leading-none">Track Order</span>
+            <span className="text-[11px] font-medium leading-none">{s.trackOrder}</span>
           </Link>
           <Link
             href="/wishlist"
@@ -143,7 +148,7 @@ export default function ShobjiHeader({
               <Icon name="heart" size={23} />
               <PurpleBadge count={wishlistCount} />
             </span>
-            <span className="text-[11px] font-medium leading-none">Wishlist</span>
+            <span className="text-[11px] font-medium leading-none">{s.wishlist}</span>
           </Link>
           <Link
             href="/account"
@@ -151,19 +156,19 @@ export default function ShobjiHeader({
             style={{ backgroundColor: SHOBJI_COLORS.primary }}
           >
             <Icon name="user" size={17} />
-            লগইন
+            {s.login}
           </Link>
           <button
             type="button"
             onClick={openCartDrawer}
-            aria-label={`কার্ট${effectiveCartCount > 0 ? `, ${effectiveCartCount}টি পণ্য` : ""} — ড্রয়ার খুলুন`}
+            aria-label={effectiveCartCount > 0 ? interpolate(s.cartDrawerAriaWithCount, { count: effectiveCartCount }) : s.cartDrawerAria}
             className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary"
           >
             <span className="relative">
               <Icon name="cart" size={23} />
               <PurpleBadge count={effectiveCartCount} />
             </span>
-            <span className="text-[11px] font-medium leading-none">Cart</span>
+            <span className="text-[11px] font-medium leading-none">{s.cart}</span>
           </button>
         </div>
       </div>
@@ -172,13 +177,13 @@ export default function ShobjiHeader({
           screens (CSS-only collapse of the same real links). The
           desktop sidebar lives in HomeSections / ShopChrome. */}
       {showSidebar && roots.length > 0 ? (
-        <nav aria-label="ক্যাটাগরি" className="border-t border-border lg:hidden">
+        <nav aria-label={s.categories} className="border-t border-border lg:hidden">
           <div className="scrollbar-none flex items-center gap-1 overflow-x-auto px-4 py-1.5 sm:px-6">
             <Link
               href="/shop"
               className="shrink-0 whitespace-nowrap rounded-full bg-secondary px-3 py-1.5 text-[13px] font-bold text-secondary-foreground"
             >
-              সব পণ্য
+              {s.allProducts}
             </Link>
             {roots.map((c) => (
               <Link

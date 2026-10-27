@@ -38,6 +38,9 @@ import { GUEST_CART_KEY, loadGuestCart } from "@/cart/persistence";
 import { cartItemCount } from "@/cart/types";
 import { CART_UPDATED_EVENT } from "@/cart/components/AddToCartButton";
 import { Icon } from "@/components/ui/icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { NEEL_STRINGS } from "./strings";
 import { openCartDrawer } from "../cart-drawer-events";
 import { NEEL_HEADER_GRADIENT } from "./tokens";
 import type { ThemeHeaderProps } from "../slots";
@@ -51,18 +54,19 @@ function WhiteBadge({ count }: { count: number }) {
   );
 }
 
-const STRIP_LINKS: ReadonlyArray<{ href: string; label: string }> = [
-  { href: "/about", label: "আমাদের সম্পর্কে" },
-  { href: "/track", label: "Track Order" },
-  { href: "/account", label: "Sign In" },
-  { href: "/account", label: "Register" },
-  { href: "/kb", label: "সাহায্য" },
-];
-
 export default function NeelHeader({
   brandName = "Advance Ecommerce",
   cartCount,
 }: ThemeHeaderProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, NEEL_STRINGS);
+  const stripLinks: ReadonlyArray<{ href: string; label: string }> = [
+    { href: "/about", label: s.aboutUs },
+    { href: "/track", label: s.trackOrder },
+    { href: "/account", label: s.signIn },
+    { href: "/account", label: s.register },
+    { href: "/kb", label: s.help },
+  ];
   const [localCartCount, setLocalCartCount] = useState(0);
   const [wishlistCount, setWishlistCount] = useState(0);
 
@@ -97,10 +101,10 @@ export default function NeelHeader({
       <div className="bg-surface-2 text-text-muted">
         <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4 px-4 py-1.5 text-xs sm:px-6">
           <span className="hidden truncate font-medium sm:block">
-            সারা দেশে হোম ডেলিভারি — অর্ডার করুন ঘরে বসেই
+            {s.stripDelivery}
           </span>
-          <nav aria-label="দ্রুত লিংক" className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            {STRIP_LINKS.map((l) => (
+          <nav aria-label={s.quickLinksAria} className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {stripLinks.map((l) => (
               <Link
                 key={l.label}
                 href={l.href}
@@ -135,13 +139,13 @@ export default function NeelHeader({
               <input
                 type="search"
                 name="q"
-                placeholder="পণ্য খুঁজুন… যেমন: শাড়ি, মোবাইল, জুতা"
-                aria-label="পণ্য খুঁজুন"
+                placeholder={s.searchPlaceholder}
+                aria-label={s.searchAria}
                 className="h-11 w-full rounded-md border border-white/40 bg-white pl-4 pr-12 text-sm text-text-main shadow-sm transition placeholder:text-text-subtle focus:outline-none focus:ring-2 focus:ring-white/60"
               />
               <button
                 type="submit"
-                aria-label="খুঁজুন"
+                aria-label={s.searchSubmitAria}
                 className="absolute right-1 top-1 flex h-9 w-10 items-center justify-center rounded-sm bg-accent text-white transition hover:opacity-90"
               >
                 <Icon name="search" size={18} />
@@ -153,42 +157,42 @@ export default function NeelHeader({
           <div className="order-2 ml-auto flex shrink-0 items-center gap-1 sm:gap-2 lg:order-3 lg:ml-0">
             <div className="mr-1 hidden flex-col items-end leading-tight md:flex">
               <Link href="/account" className="text-[13px] font-bold text-white transition hover:underline">
-                Sign In
+                {s.signIn}
               </Link>
               <Link href="/account" className="text-[11px] font-medium text-white/75 transition hover:text-white hover:underline">
-                Register
+                {s.register}
               </Link>
             </div>
             <Link
               href="/wishlist"
-              aria-label={`উইশলিস্ট${wishlistCount > 0 ? `, ${wishlistCount}টি পণ্য` : ""}`}
+              aria-label={wishlistCount > 0 ? interpolate(s.wishlistAriaCount, { count: wishlistCount }) : s.wishlistAria}
               className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-white/90 transition hover:bg-white/10 hover:text-white"
             >
               <span className="relative">
                 <Icon name="heart" size={23} />
                 <WhiteBadge count={wishlistCount} />
               </span>
-              <span className="text-[11px] font-medium leading-none">Wishlist</span>
+              <span className="text-[11px] font-medium leading-none">{s.wishlistLabel}</span>
             </Link>
             <Link
               href="/compare"
-              aria-label="তুলনা দেখুন"
+              aria-label={s.compareAria}
               className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-white/90 transition hover:bg-white/10 hover:text-white"
             >
               <Icon name="refresh-ccw" size={23} />
-              <span className="text-[11px] font-medium leading-none">Compare</span>
+              <span className="text-[11px] font-medium leading-none">{s.compareLabel}</span>
             </Link>
             <button
               type="button"
               onClick={openCartDrawer}
-              aria-label={`কার্ট${effectiveCartCount > 0 ? `, ${effectiveCartCount}টি পণ্য` : ""} — ড্রয়ার খুলুন`}
+              aria-label={effectiveCartCount > 0 ? interpolate(s.cartAriaCount, { count: effectiveCartCount }) : s.cartAria}
               className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-white/90 transition hover:bg-white/10 hover:text-white"
             >
               <span className="relative">
                 <Icon name="cart" size={23} />
                 <WhiteBadge count={effectiveCartCount} />
               </span>
-              <span className="text-[11px] font-medium leading-none">Cart</span>
+              <span className="text-[11px] font-medium leading-none">{s.cartLabel}</span>
             </button>
           </div>
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Circuit "ফিচার্ড পণ্য" rail (doc 27 T-D) — client island:
+ * Circuit "{s.featuredHeading}" rail (doc 27 T-D) — client island:
  * horizontal cards (CircuitProductCardHorizontal) in a scrollable
  * rail under a CENTRED heading (this package's section style),
  * with navy circular arrow buttons.
@@ -17,12 +17,17 @@ import { Icon } from "@/components/ui/icon";
 import type { PublicProduct } from "@/catalog/types";
 import { CircuitProductCardHorizontal } from "./product-card";
 import { CIRCUIT_COLORS } from "./tokens";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { CIRCUIT_STRINGS } from "./strings";
 
 export default function CircuitHomeFeatured({
   products,
 }: {
   products: PublicProduct[];
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, CIRCUIT_STRINGS);
   const trackRef = useRef<HTMLDivElement>(null);
 
   if (products.length === 0) return null;
@@ -34,11 +39,11 @@ export default function CircuitHomeFeatured({
   };
 
   return (
-    <section className="mt-12" aria-label="ফিচার্ড পণ্য">
+    <section className="mt-12" aria-label={s.featuredAria}>
       <div className="relative flex items-center justify-center">
         <div className="text-center">
           <h2 className="font-display text-xl font-extrabold text-text-main sm:text-2xl">
-            ফিচার্ড পণ্য
+            {s.featuredHeading}
           </h2>
           <span aria-hidden="true" className="mx-auto mt-1.5 block h-[3px] w-10 rounded-full bg-primary" />
         </div>
@@ -46,7 +51,7 @@ export default function CircuitHomeFeatured({
           <button
             type="button"
             onClick={() => scrollBy(-1)}
-            aria-label="আগের পণ্য"
+            aria-label={s.prevProducts}
             className="flex h-10 w-10 items-center justify-center rounded-full text-white shadow-card transition hover:opacity-90"
             style={{ backgroundColor: CIRCUIT_COLORS.navy }}
           >
@@ -55,7 +60,7 @@ export default function CircuitHomeFeatured({
           <button
             type="button"
             onClick={() => scrollBy(1)}
-            aria-label="পরের পণ্য"
+            aria-label={s.nextProducts}
             className="flex h-10 w-10 items-center justify-center rounded-full text-white shadow-card transition hover:opacity-90"
             style={{ backgroundColor: CIRCUIT_COLORS.navy }}
           >

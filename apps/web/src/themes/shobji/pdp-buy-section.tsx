@@ -44,6 +44,9 @@ import type { BuyBoxActionsProps } from "@/cart/components/BuyBoxActions";
 import { addItemToGuestCart } from "@/cart/components/AddToCartButton";
 import { openCartDrawer } from "../cart-drawer-events";
 import { SHOBJI_COLORS } from "./tokens";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SHOBJI_STRINGS } from "./strings";
 import ShobjiPdpActions from "./pdp-actions";
 
 export interface ShobjiPdpBuySectionProps extends BuyBoxActionsProps {
@@ -69,6 +72,8 @@ export default function ShobjiPdpBuySection({
   callNumber,
 }: ShobjiPdpBuySectionProps) {
   const router = useRouter();
+  const { locale } = useLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   const digits = useDigitText();
   const activeVariants = useMemo(() => variants.filter((v) => v.isActive), [variants]);
   const defaultVariant = useMemo(
@@ -142,13 +147,11 @@ export default function ShobjiPdpBuySection({
       allowFractional: stepInfo !== undefined,
     });
     if (result.addedQuantity <= 0) {
-      setNotice("স্টকে আর নেই — কার্টে যোগ করা যায়নি।");
+      setNotice(s.noticeOutOfStock);
       return false;
     }
     setNotice(
-      result.capped
-        ? "কার্টে যোগ হয়েছে — স্টকে যা ছিল সব নেওয়া হয়েছে।"
-        : "কার্টে যোগ হয়েছে ✓",
+      result.capped ? s.noticeCapped : s.noticeAdded,
     );
     return true;
   }
@@ -186,7 +189,7 @@ export default function ShobjiPdpBuySection({
                       className={chipCls(isActive, soldOut)}
                     >
                       {value}
-                      {soldOut ? " (স্টক শেষ)" : ""}
+                      {soldOut ? s.soldOutSuffix : ""}
                     </button>
                   );
                 })}
@@ -207,7 +210,7 @@ export default function ShobjiPdpBuySection({
                 className={chipCls(isActive, v.stock <= 0)}
               >
                 {v.sku}
-                {v.stock <= 0 ? " (স্টক শেষ)" : ""}
+                {v.stock <= 0 ? s.soldOutSuffix : ""}
               </button>
             );
           })}
@@ -228,7 +231,7 @@ export default function ShobjiPdpBuySection({
               className="rounded-full px-2.5 py-1 text-xs font-bold text-white"
               style={{ backgroundColor: SHOBJI_COLORS.savingGreen }}
             >
-              {digits(`Save ${formatBdt(savePoisha)} (${savePct}%)`)}
+              {digits(interpolate(s.savePill, { amount: formatBdt(savePoisha), pct: savePct }))}
             </span>
           </>
         ) : null}
@@ -236,7 +239,7 @@ export default function ShobjiPdpBuySection({
       {lowStock ? (
         <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-semibold text-warning">
           <Icon name="alert" size={14} />
-          {digits(`মাত্র ${selected.stock}টি বাকি — দ্রুত অর্ডার করুন`)}
+          {digits(interpolate(s.lowStockLine, { stock: selected.stock }))}
         </p>
       ) : null}
 
@@ -245,7 +248,7 @@ export default function ShobjiPdpBuySection({
       {/* Quantity */}
       <div>
         <span id="shobji-qty-label" className="text-sm font-bold text-text-main">
-          পরিমাণ
+          {s.quantityLabel}
         </span>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <div className="flex h-11 items-stretch overflow-hidden rounded-full border border-input bg-card">
@@ -253,7 +256,7 @@ export default function ShobjiPdpBuySection({
               type="button"
               onClick={() => setQuantity((q) => Math.max(qtyMin, subQty(q, qtyStep)))}
               disabled={outOfStock || quantity <= qtyMin}
-              aria-label="পরিমাণ কমান"
+              aria-label={s.decreaseQtyAria}
               className="flex w-11 items-center justify-center text-text-main transition hover:bg-muted disabled:opacity-40"
             >
               <Icon name="minus" size={16} />
@@ -268,7 +271,7 @@ export default function ShobjiPdpBuySection({
               type="button"
               onClick={() => setQuantity((q) => addQty(q, qtyStep))}
               disabled={outOfStock || quantity >= Math.max(qtyMin, stockCap)}
-              aria-label="পরিমাণ বাড়ান"
+              aria-label={s.increaseQtyAria}
               className="flex w-11 items-center justify-center text-text-main transition hover:bg-muted disabled:opacity-40"
             >
               <Icon name="plus" size={16} />
@@ -277,7 +280,7 @@ export default function ShobjiPdpBuySection({
           {stepInfo ? (
             <p className="text-[13px] text-text-muted">
               {digits(
-                `≈ ${Math.round((qtyToMilli(quantity) * stepInfo.packGrams) / 1000)} গ্রাম (প্রতি ধাপ ${stepInfo.packGrams} গ্রাম)`,
+                interpolate(s.weightApprox, { grams: Math.round((qtyToMilli(quantity) * stepInfo.packGrams) / 1000), step: stepInfo.packGrams }),
               )}
             </p>
           ) : null}

@@ -49,6 +49,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { formatBdt } from "@advance-ecommerce/validators";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { NEEL_STRINGS } from "./strings";
 import { useDigitText } from "@/components/ui/numerals";
 import { Icon } from "@/components/ui/icon";
 import { Stars } from "@/reviews/components/Stars";
@@ -106,12 +109,14 @@ function useCardData(product: PublicProduct) {
 type CardData = ReturnType<typeof useCardData>;
 
 function OffBadge({ pct, digits }: { pct: number; digits: (t: string) => string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, NEEL_STRINGS);
   return (
     <span
       className="rounded-sm px-1.5 py-0.5 text-[11px] font-bold text-white shadow-sm"
       style={{ backgroundColor: NEEL_COLORS.accentOrange }}
     >
-      {digits(`-${pct}% ছাড়`)}
+      {digits(interpolate(s.offBadge, { pct }))}
     </span>
   );
 }
@@ -148,6 +153,8 @@ function BagPlaceholder() {
 /** The real wishlist heart — toggles the platform's wishlist list
  *  and stays in sync with toggles made anywhere else. */
 function WishlistHeart({ productId, titleBn }: { productId: string; titleBn: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, NEEL_STRINGS);
   const [wishlisted, setWishlisted] = useState(false);
 
   useEffect(() => {
@@ -164,7 +171,7 @@ function WishlistHeart({ productId, titleBn }: { productId: string; titleBn: str
   return (
     <button
       type="button"
-      aria-label={wishlisted ? `${titleBn} উইশলিস্ট থেকে সরান` : `${titleBn} উইশলিস্টে রাখুন`}
+      aria-label={wishlisted ? interpolate(s.wishlistRemoveAria, { title: titleBn }) : interpolate(s.wishlistAddAria, { title: titleBn })}
       aria-pressed={wishlisted}
       onClick={() => {
         toggleWishlistId(productId);
@@ -227,6 +234,8 @@ function ActionRow({
   product: PublicProduct;
   data: CardData;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, NEEL_STRINGS);
   const { addToCart, buyNow, justAdded } = useAddActions(product, data);
   if (!data.defaultVariant || data.priceOnRequest) return null;
   return (
@@ -243,7 +252,7 @@ function ActionRow({
         }`}
       >
         <Icon name="cart" size={15} />
-        {!data.inStock ? "স্টক শেষ" : justAdded ? "যোগ হয়েছে ✓" : "Add To Cart"}
+        {!data.inStock ? s.outOfStock : justAdded ? s.addedShort : s.addToCartLabel}
       </button>
       <button
         type="button"
@@ -251,7 +260,7 @@ function ActionRow({
         disabled={!data.inStock}
         className="flex min-h-[40px] flex-1 items-center justify-center rounded-md bg-accent px-2 py-2 text-[13px] font-bold text-white transition hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
       >
-        Buy Now
+        {s.buyNowLabel}
       </button>
     </div>
   );
@@ -270,9 +279,11 @@ function RatingRow({ data }: { data: CardData }) {
 }
 
 function PriceRow({ data, digits }: { data: CardData; digits: (t: string) => string }) {
+  const { locale } = useLocale();
+  const priceOnRequestLabel = pick(locale, NEEL_STRINGS).priceOnRequest;
   if (data.priceOnRequest) {
     return (
-      <p className="text-[15px] font-extrabold text-primary">দামের জন্য যোগাযোগ করুন</p>
+      <p className="text-[15px] font-extrabold text-primary">{priceOnRequestLabel}</p>
     );
   }
   return (
@@ -293,6 +304,8 @@ function PriceRow({ data, digits }: { data: CardData; digits: (t: string) => str
 
 /** Standard (vertical) card — the ProductCard slot implementation. */
 export function NeelProductCard({ product }: ThemeProductCardProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, NEEL_STRINGS);
   const digits = useDigitText();
   const data = useCardData(product);
 
@@ -319,7 +332,7 @@ export function NeelProductCard({ product }: ThemeProductCardProps) {
             )}
             {!data.inStock ? (
               <span className="absolute bottom-2 left-2 rounded-sm bg-text-main/85 px-2 py-0.5 text-[11px] font-semibold text-white">
-                স্টক শেষ
+                {s.outOfStock}
               </span>
             ) : null}
           </div>
@@ -366,6 +379,8 @@ export function NeelProductCard({ product }: ThemeProductCardProps) {
  * and actions as the standard card.
  */
 export function NeelProductCardHorizontal({ product }: ThemeProductCardProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, NEEL_STRINGS);
   const digits = useDigitText();
   const data = useCardData(product);
 
@@ -418,7 +433,7 @@ export function NeelProductCardHorizontal({ product }: ThemeProductCardProps) {
             <PriceRow data={data} digits={digits} />
           </div>
           {!data.inStock ? (
-            <p className="mt-1 text-xs font-medium text-destructive">স্টক শেষ</p>
+            <p className="mt-1 text-xs font-medium text-destructive">{s.outOfStock}</p>
           ) : null}
         </Link>
         <div className="mt-auto pt-2.5">

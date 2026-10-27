@@ -38,6 +38,9 @@ import Link from "next/link";
 import { VisitorIdBootstrap } from "@/marketing/components/VisitorIdBootstrap";
 import { ThemedProductCard } from "../themed-product-card";
 import type { HomeSectionsProps } from "../slots";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { CIRCUIT_STRINGS, type CircuitStrings } from "./strings";
 import CircuitHomeHero from "./home-hero";
 import CircuitHomeUtility from "./home-utility";
 import CircuitHomeCategories from "./home-categories";
@@ -47,7 +50,7 @@ import CircuitHomeTestimonials from "./home-testimonials";
 /** Centred section heading — this package's heading anatomy:
  *  title centred with a short orange underline, and an optional
  *  "সব দেখুন →" link pinned to the right on wider screens. */
-function CenterHeading({ title, href }: { title: string; href?: string }) {
+function CenterHeading({ title, href, s }: { title: string; href?: string; s: CircuitStrings }) {
   return (
     <div className="relative flex items-center justify-center">
       <div className="text-center">
@@ -59,14 +62,14 @@ function CenterHeading({ title, href }: { title: string; href?: string }) {
           href={href}
           className="absolute right-0 hidden shrink-0 text-sm font-bold text-primary hover:underline sm:block"
         >
-          সব দেখুন →
+          {s.viewAll}
         </Link>
       ) : null}
     </div>
   );
 }
 
-export default function CircuitHomeSections({
+export default async function CircuitHomeSections({
   products,
   categories,
   heroSlides,
@@ -74,6 +77,8 @@ export default function CircuitHomeSections({
   mechanicsOn,
   heroStats,
 }: HomeSectionsProps) {
+  const locale = await getRequestLocale();
+  const s = pick(locale, CIRCUIT_STRINGS);
   // Per-category rails from the REAL categorySlug on each fetched
   // product; categories keep the catalog's own order, capped at 3.
   const byCategory = new Map<string, typeof products>();
@@ -114,7 +119,7 @@ export default function CircuitHomeSections({
       {/* ---------- Category rails (real membership only) ---------- */}
       {rails.map(({ category, items }) => (
         <section key={category.slug} className="mt-12" aria-label={category.name.bn}>
-          <CenterHeading title={category.name.bn} href={`/shop?category=${category.slug}`} />
+          <CenterHeading title={category.name.bn} href={`/shop?category=${category.slug}`} s={s} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {items.map((p) => (
               <ThemedProductCard key={p.id} product={p} />
@@ -172,8 +177,8 @@ export default function CircuitHomeSections({
 
       {/* ---------- Closing grid: the full fetched list ---------- */}
       {products.length > 0 ? (
-        <section className="mt-12" aria-label="আপনার জন্য বাছাই">
-          <CenterHeading title="আপনার জন্য বাছাই" href="/shop" />
+        <section className="mt-12" aria-label={s.justForYouAria}>
+          <CenterHeading title={s.justForYouTitle} href="/shop" s={s} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {products.map((p) => (
               <ThemedProductCard key={p.id} product={p} />
@@ -184,7 +189,7 @@ export default function CircuitHomeSections({
               href="/shop"
               className="inline-flex h-12 items-center rounded-lg bg-primary px-8 text-sm font-bold text-white shadow-card transition hover:opacity-90"
             >
-              সব পণ্য দেখুন
+              {s.viewAllProducts}
             </Link>
           </div>
         </section>

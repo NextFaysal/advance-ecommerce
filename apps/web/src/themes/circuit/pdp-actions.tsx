@@ -27,6 +27,9 @@
  */
 import { Icon } from "@/components/ui/icon";
 import { CIRCUIT_COLORS } from "./tokens";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { CIRCUIT_STRINGS } from "./strings";
 
 export interface CircuitPdpActionsProps {
   /** Add the selected variant + quantity to the guest cart. */
@@ -62,9 +65,11 @@ export default function CircuitPdpActions({
   callNumber,
   productTitleBn,
 }: CircuitPdpActionsProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, CIRCUIT_STRINGS);
   const waDigits = whatsappNumber ? whatsappNumber.replace(/[^0-9]/g, "") : "";
   const waText = encodeURIComponent(
-    `আমি এই পণ্যটি অর্ডার করতে চাই: ${productTitleBn}`,
+    interpolate(s.whatsappPrefill, { title: productTitleBn }),
   );
 
   return (
@@ -76,7 +81,7 @@ export default function CircuitPdpActions({
         className={`${BTN} bg-primary hover:opacity-90`}
       >
         <Icon name="cart" size={18} />
-        {outOfStock ? (unavailableLabel ?? "স্টক শেষ") : (ctaLabel ?? "Add To Cart")}
+        {outOfStock ? (unavailableLabel ?? s.outOfStock) : (ctaLabel ?? s.addToCart)}
       </button>
       <button
         type="button"
@@ -85,7 +90,7 @@ export default function CircuitPdpActions({
         className={`${BTN} hover:opacity-90`}
         style={{ backgroundColor: CIRCUIT_COLORS.navy }}
       >
-        {buyNowLabel ?? "Buy Now"}
+        {buyNowLabel ?? s.buyNow}
       </button>
       {waDigits ? (
         <a
@@ -96,7 +101,7 @@ export default function CircuitPdpActions({
           style={{ backgroundColor: CIRCUIT_COLORS.whatsappGreen }}
         >
           <Icon name="info" size={18} />
-          Order On WhatsApp
+          {s.orderOnWhatsApp}
         </a>
       ) : null}
       {callNumber ? (
@@ -106,7 +111,7 @@ export default function CircuitPdpActions({
           style={{ backgroundColor: CIRCUIT_COLORS.callNavy }}
         >
           <Icon name="phone" size={18} />
-          Call For Order
+          {s.callForOrder}
         </a>
       ) : null}
     </div>

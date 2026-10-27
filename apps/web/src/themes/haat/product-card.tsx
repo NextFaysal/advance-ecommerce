@@ -46,7 +46,10 @@ import {
   type PublicProductWithTypeFields,
 } from "@/catalog/product-type-contract";
 import { addItemToGuestCart } from "@/cart/components/AddToCartButton";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
 import { openCartDrawer } from "../cart-drawer-events";
+import { HAAT_STRINGS } from "./strings";
 import type { ThemeProductCardProps } from "../slots";
 
 /** The display values the card derives (the platform's derivations). */
@@ -112,6 +115,8 @@ function HaatAddButton({
   product: PublicProduct;
   data: CardData;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, HAAT_STRINGS);
   const [justAdded, setJustAdded] = useState(false);
   const { defaultVariant, inStock } = data;
   if (!defaultVariant || data.priceOnRequest) return null;
@@ -150,13 +155,15 @@ function HaatAddButton({
       }`}
     >
       <Icon name="cart" size={16} />
-      {!inStock ? "স্টক শেষ" : justAdded ? "যোগ হয়েছে ✓" : "কার্টে যোগ করুন"}
+      {!inStock ? s.outOfStock : justAdded ? s.addedShort : s.addToCartLabel}
     </button>
   );
 }
 
 /** The ProductCard slot implementation. */
 export function HaatProductCard({ product }: ThemeProductCardProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, HAAT_STRINGS);
   const digits = useDigitText();
   const data = useCardData(product);
 
@@ -193,7 +200,7 @@ export function HaatProductCard({ product }: ThemeProductCardProps) {
           ) : null}
           {!data.inStock ? (
             <span className="absolute bottom-2 left-2 rounded-sm bg-text-main/85 px-2 py-0.5 text-[11px] font-semibold text-white">
-              স্টক শেষ
+              {s.outOfStock}
             </span>
           ) : null}
         </div>
@@ -210,7 +217,7 @@ export function HaatProductCard({ product }: ThemeProductCardProps) {
           <div className="mt-1.5">
             {data.priceOnRequest ? (
               <p className="text-[15px] font-extrabold text-primary">
-                দামের জন্য যোগাযোগ করুন
+                {s.priceOnRequest}
               </p>
             ) : (
               <p className="flex flex-wrap items-baseline gap-x-2">

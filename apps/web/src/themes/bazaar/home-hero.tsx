@@ -21,6 +21,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Category } from "@/catalog/types";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { BAZAAR_STRINGS } from "./strings";
 import type { HeroSlide } from "@/cms/site-content-types";
 
 function SlidePanel({
@@ -86,22 +89,24 @@ function SlidePanel({
 /** Static fallback panel — our own copy, shown only while the store
  *  has no active CMS hero slides. */
 function StaticPanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, BAZAAR_STRINGS);
   return (
     <div className="brand-soft-gradient relative block h-full min-h-[240px] w-full overflow-hidden rounded-2xl shadow-card sm:min-h-[320px]">
       <span aria-hidden="true" className="absolute -right-10 -top-10 h-44 w-44 rounded-full bg-primary/10" />
       <span aria-hidden="true" className="absolute -bottom-14 -left-8 h-52 w-52 rounded-full bg-primary/5" />
       <span className="absolute inset-x-0 bottom-0 block p-5 sm:p-7">
         <span className="block max-w-lg font-display text-xl font-extrabold leading-snug text-text-main sm:text-3xl">
-          খাঁটি ও প্রাকৃতিক পণ্য, প্রতিদিনের বাজার
+          {s.heroStaticHeadline}
         </span>
         <span className="mt-1.5 block max-w-md text-sm leading-6 text-text-muted">
-          মধু, খেজুর, ঘি, তেল ও মসলা — যাচাই করা মানের পণ্য ক্যাশ অন ডেলিভারিতে সারাদেশে।
+          {s.heroStaticSubtext}
         </span>
         <Link
           href="/shop"
           className="mt-4 inline-flex h-11 items-center rounded-md bg-primary px-5 text-sm font-bold text-white shadow-md transition hover:opacity-90"
         >
-          কেনাকাটা শুরু করুন
+          {s.startShopping}
         </Link>
       </span>
     </div>
@@ -116,6 +121,8 @@ function SideSlot({
   slide: HeroSlide | null;
   category: Category | null;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, BAZAAR_STRINGS);
   if (slide) {
     return (
       <div className="relative min-h-[160px] overflow-hidden rounded-2xl shadow-card lg:min-h-full">
@@ -147,7 +154,7 @@ function SideSlot({
             {category.name.bn}
           </span>
           <span className="mt-0.5 block text-xs text-white/85">
-            {category.productCount}টি পণ্য — সব দেখুন →
+            {interpolate(s.heroCategoryCountLine, { count: category.productCount })}
           </span>
         </span>
       </Link>
@@ -160,15 +167,16 @@ function SideSlot({
     >
       <span className="absolute inset-x-0 bottom-0 block p-4">
         <span className="block font-display text-lg font-extrabold leading-snug text-text-main">
-          সব ক্যাটাগরি
+          {s.allCategories}
         </span>
-        <span className="mt-0.5 block text-xs text-text-muted">দোকানের সব পণ্য একসাথে দেখুন →</span>
+        <span className="mt-0.5 block text-xs text-text-muted">{s.allCategoriesSub}</span>
       </span>
     </Link>
   );
 }
 
 export default function BazaarHomeHero({
+  /* locale for section aria labels */
   slides,
   firstCategory,
 }: {
@@ -178,6 +186,8 @@ export default function BazaarHomeHero({
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { locale } = useLocale();
+  const s = pick(locale, BAZAAR_STRINGS);
 
   const goTo = useCallback(
     (i: number) => {
@@ -201,7 +211,7 @@ export default function BazaarHomeHero({
 
   return (
     <section
-      aria-label="হাইলাইট"
+      aria-label={s.highlightsAria}
       className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
@@ -215,14 +225,14 @@ export default function BazaarHomeHero({
           <StaticPanel />
         )}
         {slides.length > 1 ? (
-          <div className="absolute bottom-4 right-5 flex items-center gap-1.5" role="tablist" aria-label="ব্যানার বেছে নিন">
-            {slides.map((s, i) => (
+          <div className="absolute bottom-4 right-5 flex items-center gap-1.5" role="tablist" aria-label={s.bannerPickerAria}>
+            {slides.map((slide, i) => (
               <button
-                key={s.id}
+                key={slide.id}
                 type="button"
                 role="tab"
                 aria-selected={i === index}
-                aria-label={`ব্যানার ${i + 1}`}
+                aria-label={interpolate(s.bannerNumberAria, { n: i + 1 })}
                 onClick={() => goTo(i)}
                 className="flex h-8 w-6 items-center justify-center"
               >

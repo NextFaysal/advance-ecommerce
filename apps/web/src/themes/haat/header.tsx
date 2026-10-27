@@ -37,6 +37,9 @@ import { Icon } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
 import { openCartDrawer } from "../cart-drawer-events";
 import { HAAT_COLORS } from "./tokens";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { HAAT_STRINGS } from "./strings";
 import type { ThemeHeaderProps } from "../slots";
 
 function CountBadge({ count, digits }: { count: number; digits: (t: string) => string }) {
@@ -48,17 +51,18 @@ function CountBadge({ count, digits }: { count: number; digits: (t: string) => s
   );
 }
 
-const UTILITY_LINKS: ReadonlyArray<{ href: string; label: string; hideOnMobile?: boolean }> = [
-  { href: "/track", label: "Track Order" },
-  { href: "/account", label: "Sign In" },
-  { href: "/account", label: "Register", hideOnMobile: true },
-  { href: "/cart", label: "Cart" },
-];
-
 export default function HaatHeader({
   brandName = "Advance Ecommerce",
   cartCount,
 }: ThemeHeaderProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, HAAT_STRINGS);
+  const utilityLinks: ReadonlyArray<{ href: string; label: string; hideOnMobile?: boolean }> = [
+    { href: "/track", label: s.trackOrderLink },
+    { href: "/account", label: s.signInLink },
+    { href: "/account", label: s.registerLink, hideOnMobile: true },
+    { href: "/cart", label: s.cartLink },
+  ];
   const digits = useDigitText();
   const [localCartCount, setLocalCartCount] = useState(0);
 
@@ -90,10 +94,10 @@ export default function HaatHeader({
       <div className="text-white" style={{ backgroundColor: HAAT_COLORS.deepOrange }}>
         <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4 px-4 py-1.5 sm:px-6">
           <p className="hidden truncate text-xs font-medium text-white/90 md:block">
-            ঘরে বসে অর্ডার করুন — সারাদেশে হোম ডেলিভারি
+            {s.utilityTagline}
           </p>
-          <nav aria-label="দ্রুত লিংক" className="ml-auto flex items-center gap-1">
-            {UTILITY_LINKS.map((link, i) => (
+          <nav aria-label={s.quickLinksAria} className="ml-auto flex items-center gap-1">
+            {utilityLinks.map((link, i) => (
               <span key={`${link.label}-${link.href}`} className="flex items-center gap-1">
                 {i > 0 ? (
                   <span aria-hidden="true" className="h-3 w-px bg-white/30" />
@@ -138,13 +142,13 @@ export default function HaatHeader({
               <input
                 type="search"
                 name="q"
-                placeholder="হাটে খুঁজুন… পণ্যের নাম লিখুন"
-                aria-label="পণ্য খুঁজুন"
+                placeholder={s.searchPlaceholder}
+                aria-label={s.searchProductAria}
                 className="h-11 w-full rounded bg-white pl-4 pr-12 text-sm text-text-main shadow-sm transition placeholder:text-text-subtle focus:outline-none focus:ring-2 focus:ring-white/70"
               />
               <button
                 type="submit"
-                aria-label="খুঁজুন"
+                aria-label={s.searchSubmitAria}
                 className="absolute right-1 top-1 flex h-9 w-10 items-center justify-center rounded text-white transition hover:opacity-90"
                 style={{ backgroundColor: HAAT_COLORS.deepOrange }}
               >
@@ -157,14 +161,18 @@ export default function HaatHeader({
           <button
             type="button"
             onClick={openCartDrawer}
-            aria-label={`কার্ট${effectiveCartCount > 0 ? `, ${effectiveCartCount}টি পণ্য` : ""} — ড্রয়ার খুলুন`}
+            aria-label={
+              effectiveCartCount > 0
+                ? interpolate(s.cartAriaWithCount, { count: effectiveCartCount })
+                : s.cartAriaEmpty
+            }
             className="order-2 ml-auto flex shrink-0 flex-col items-center gap-0.5 rounded px-2 py-1 text-white transition hover:bg-white/10 lg:order-3 lg:ml-0"
           >
             <span className="relative">
               <Icon name="cart" size={24} />
               <CountBadge count={effectiveCartCount} digits={digits} />
             </span>
-            <span className="text-[11px] font-semibold leading-none">কার্ট</span>
+            <span className="text-[11px] font-semibold leading-none">{s.cartLabel}</span>
           </button>
         </div>
       </div>

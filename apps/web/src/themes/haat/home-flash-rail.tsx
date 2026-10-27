@@ -24,12 +24,17 @@ import { Icon } from "@/components/ui/icon";
 import type { PublicProduct } from "@/catalog/types";
 import { useThemeView } from "../theme-view";
 import { HaatProductCard } from "./product-card";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { HAAT_STRINGS } from "./strings";
 
 export default function HaatHomeFlashRail({
   products,
 }: {
   products: PublicProduct[];
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, HAAT_STRINGS);
   const themeView = useThemeView();
   const trackRef = useRef<HTMLDivElement>(null);
 
@@ -43,25 +48,25 @@ export default function HaatHomeFlashRail({
   };
 
   return (
-    <section className="mt-8" aria-label="আজকের অফার">
+    <section className="mt-8" aria-label={s.flashAria}>
       {/* Orange band heading — the rail's marketplace signature */}
       <div className="flex items-center justify-between gap-3 rounded-t bg-primary px-4 py-2.5 text-white shadow-card">
         <h2 className="flex items-center gap-2 font-display text-lg font-extrabold sm:text-xl">
           <Icon name="tag" size={20} />
-          আজকের অফার
+          {s.flashTitle}
         </h2>
         <div className="flex items-center gap-2">
           <Link
             href="/shop"
             className="hidden text-sm font-bold text-white hover:underline sm:block"
           >
-            সব অফার দেখুন →
+            {s.flashViewAll}
           </Link>
           <div className="hidden gap-1.5 md:flex">
             <button
               type="button"
               onClick={() => scrollBy(-1)}
-              aria-label="আগের পণ্য"
+              aria-label={s.prevProduct}
               className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
             >
               <Icon name="chevron-right" size={16} className="rotate-180" />
@@ -69,7 +74,7 @@ export default function HaatHomeFlashRail({
             <button
               type="button"
               onClick={() => scrollBy(1)}
-              aria-label="পরের পণ্য"
+              aria-label={s.nextProduct}
               className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
             >
               <Icon name="chevron-right" size={16} />

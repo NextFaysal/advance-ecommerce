@@ -15,18 +15,23 @@
 import Link from "next/link";
 import { Stars } from "@/reviews/components/Stars";
 import type { HomepageReview } from "@/reviews/store";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { NEEL_STRINGS } from "./strings";
 
 export default function NeelHomeTestimonials({
   reviews,
 }: {
   reviews: HomepageReview[];
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, NEEL_STRINGS);
   if (reviews.length === 0) return null;
 
   return (
-    <section className="mt-12" aria-label="ক্রেতাদের অভিজ্ঞতা">
+    <section className="mt-12" aria-label={s.testimonialsAria}>
       <h2 className="text-center font-display text-xl font-extrabold text-text-main sm:text-2xl">
-        ক্রেতারা যা বললেন
+        {s.testimonialsHeading}
       </h2>
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         {reviews.slice(0, 3).map((r) => (
@@ -54,7 +59,7 @@ export default function NeelHomeTestimonials({
               “{r.body}”
             </blockquote>
             <p className="mt-3 text-xs text-text-subtle">
-              পণ্য:{" "}
+              {s.productPrefix}{" "}
               <Link
                 href={`/product/${r.productSlug}`}
                 className="font-semibold text-primary hover:underline"

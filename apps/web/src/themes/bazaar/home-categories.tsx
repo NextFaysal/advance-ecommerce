@@ -16,6 +16,9 @@ import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
 import type { Category } from "@/catalog/types";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { BAZAAR_STRINGS } from "./strings";
 
 /* Warm tile tints for image-less categories (our own palette). */
 const TILE_TINTS: ReadonlyArray<string> = [
@@ -33,6 +36,8 @@ export default function BazaarHomeCategories({
   categories: Category[];
 }) {
   const digits = useDigitText();
+  const { locale } = useLocale();
+  const s = pick(locale, BAZAAR_STRINGS);
   const trackRef = useRef<HTMLDivElement>(null);
 
   if (categories.length === 0) return null;
@@ -44,16 +49,16 @@ export default function BazaarHomeCategories({
   };
 
   return (
-    <section className="mt-10" aria-label="ফিচার্ড ক্যাটাগরি">
+    <section className="mt-10" aria-label={s.featuredCategoriesAria}>
       <div className="relative flex items-center justify-center">
         <h2 className="text-center font-display text-xl font-extrabold text-text-main sm:text-2xl">
-          Featured Categories
+          {s.featuredCategories}
         </h2>
         <div className="absolute right-0 hidden gap-2 sm:flex">
           <button
             type="button"
             onClick={() => scrollBy(-1)}
-            aria-label="আগের ক্যাটাগরি"
+            aria-label={s.prevCategoriesAria}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} className="rotate-180" />
@@ -61,7 +66,7 @@ export default function BazaarHomeCategories({
           <button
             type="button"
             onClick={() => scrollBy(1)}
-            aria-label="পরের ক্যাটাগরি"
+            aria-label={s.nextCategoriesAria}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} />
@@ -101,7 +106,7 @@ export default function BazaarHomeCategories({
               {c.name.bn}
             </span>
             <span className="block text-center text-[11px] text-text-subtle">
-              {digits(`${c.productCount}টি পণ্য`)}
+              {digits(interpolate(s.productCountLine, { count: c.productCount }))}
             </span>
           </Link>
         ))}

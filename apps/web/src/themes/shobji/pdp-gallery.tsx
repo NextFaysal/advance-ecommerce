@@ -15,6 +15,9 @@
  */
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SHOBJI_STRINGS } from "./strings";
 
 export interface ShobjiGalleryImage {
   url: string;
@@ -48,6 +51,8 @@ export default function ShobjiPdpGallery({
   images: ShobjiGalleryImage[];
   titleBn: string;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   const [selected, setSelected] = useState(0);
   const current = images[selected] ?? images[0];
 
@@ -70,7 +75,7 @@ export default function ShobjiPdpGallery({
         <div
           className="flex gap-2 overflow-x-auto sm:max-h-[520px] sm:w-[76px] sm:shrink-0 sm:flex-col sm:overflow-y-auto sm:overflow-x-hidden"
           role="tablist"
-          aria-label="পণ্যের ছবি বেছে নিন"
+          aria-label={s.galleryAria}
         >
           {images.map((img, i) => (
             <button
@@ -78,7 +83,7 @@ export default function ShobjiPdpGallery({
               type="button"
               role="tab"
               aria-selected={i === selected}
-              aria-label={`ছবি ${i + 1} দেখুন`}
+              aria-label={interpolate(s.viewImageAria, { n: i + 1 })}
               onClick={() => setSelected(i)}
               className={`h-[68px] w-[68px] shrink-0 overflow-hidden rounded-lg border-2 bg-card transition duration-200 ${
                 i === selected
@@ -106,7 +111,7 @@ export default function ShobjiPdpGallery({
             <button
               type="button"
               onClick={() => go(-1)}
-              aria-label="আগের ছবি"
+              aria-label={s.prevImageAria}
               className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-card/95 text-text-main shadow-pop transition hover:bg-card hover:text-primary"
             >
               <Icon name="chevron-right" size={18} className="rotate-180" />
@@ -114,7 +119,7 @@ export default function ShobjiPdpGallery({
             <button
               type="button"
               onClick={() => go(1)}
-              aria-label="পরের ছবি"
+              aria-label={s.nextImageAria}
               className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-card/95 text-text-main shadow-pop transition hover:bg-card hover:text-primary"
             >
               <Icon name="chevron-right" size={18} />

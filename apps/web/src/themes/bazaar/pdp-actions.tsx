@@ -26,7 +26,10 @@
  * WhatsApp one carrying our own prefilled order text.
  */
 import { Icon } from "@/components/ui/icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
 import { BAZAAR_COLORS } from "./tokens";
+import { BAZAAR_STRINGS } from "./strings";
 
 export interface BazaarPdpActionsProps {
   /** Add the selected variant + quantity to the guest cart. */
@@ -62,9 +65,11 @@ export default function BazaarPdpActions({
   callNumber,
   productTitleBn,
 }: BazaarPdpActionsProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, BAZAAR_STRINGS);
   const waDigits = whatsappNumber ? whatsappNumber.replace(/[^0-9]/g, "") : "";
   const waText = encodeURIComponent(
-    `আমি এই পণ্যটি অর্ডার করতে চাই: ${productTitleBn}`,
+    interpolate(s.whatsappOrderText, { title: productTitleBn }),
   );
 
   return (
@@ -76,7 +81,7 @@ export default function BazaarPdpActions({
         className={`${BTN} bg-primary hover:opacity-90`}
       >
         <Icon name="cart" size={18} />
-        {outOfStock ? (unavailableLabel ?? "স্টক শেষ") : (ctaLabel ?? "Add To Cart")}
+        {outOfStock ? (unavailableLabel ?? s.outOfStock) : (ctaLabel ?? s.addToCartButton)}
       </button>
       <button
         type="button"
@@ -85,7 +90,7 @@ export default function BazaarPdpActions({
         className={`${BTN} hover:opacity-90`}
         style={{ backgroundColor: BAZAAR_COLORS.navGreen }}
       >
-        {buyNowLabel ?? "Buy Now"}
+        {buyNowLabel ?? s.buyNowButton}
       </button>
       {waDigits ? (
         <a
@@ -96,7 +101,7 @@ export default function BazaarPdpActions({
           style={{ backgroundColor: BAZAAR_COLORS.whatsappGreen }}
         >
           <Icon name="info" size={18} />
-          Order On WhatsApp
+          {s.orderOnWhatsapp}
         </a>
       ) : null}
       {callNumber ? (
@@ -106,7 +111,7 @@ export default function BazaarPdpActions({
           style={{ backgroundColor: BAZAAR_COLORS.callNavy }}
         >
           <Icon name="phone" size={18} />
-          Call For Order
+          {s.callForOrder}
         </a>
       ) : null}
     </div>

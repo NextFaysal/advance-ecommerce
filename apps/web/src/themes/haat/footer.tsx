@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Haat Footer (doc 27 theme T-A) — ThemeFooterProps.
  *
@@ -30,18 +32,23 @@ import {
   type FooterMenuGroup,
   type FooterMenuLink,
 } from "@/cms/site-content-types";
+import { interpolate, pick } from "@/i18n/locale";
+import { useLocale } from "@/i18n/LocaleProvider";
 import { HAAT_COLORS } from "./tokens";
+import { HAAT_STRINGS, type HaatStrings } from "./strings";
 import type { ThemeFooterProps } from "../slots";
 
 /* Our own generic service points (icon + line) — the same real
    platform promises the home trust language uses, in this
    package's own words. */
-const SERVICE_ITEMS = [
-  { icon: "banknote", title: "ক্যাশ অন ডেলিভারি", text: "পণ্য হাতে পেয়ে দাম পরিশোধ" },
-  { icon: "truck", title: "সারাদেশে পৌঁছে দিই", text: "শহর থেকে উপজেলা — হোম ডেলিভারি" },
-  { icon: "rotate-ccw", title: "ঝামেলাহীন রিটার্ন", text: "পণ্যে ত্রুটি থাকলে ফেরতের সুযোগ" },
-  { icon: "shield", title: "নিরাপদ লেনদেন", text: "যাচাই করা বিক্রেতা ও সুরক্ষিত পেমেন্ট" },
+function serviceItems(S: HaatStrings) {
+  return [
+  { icon: "banknote", title: S.serviceCodTitle, text: S.serviceCodText },
+  { icon: "truck", title: S.serviceDeliveryTitle, text: S.serviceDeliveryText },
+  { icon: "rotate-ccw", title: S.serviceReturnTitle, text: S.serviceReturnText },
+  { icon: "shield", title: S.serviceSafeTitle, text: S.serviceSafeText },
 ] as const;
+}
 
 const COLUMN_DEFS: ReadonlyArray<{
   headingBn: string;
@@ -102,6 +109,9 @@ export default function HaatFooter({
   showPoweredBy = false,
   footerMenu,
 }: ThemeFooterProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, HAAT_STRINGS);
+  const SERVICE_ITEMS = serviceItems(s);
   const year = new Date().getFullYear();
   const groups: ReadonlyArray<FooterMenuGroup> =
     footerMenu && footerMenu.length > 0 ? footerMenu : DEFAULT_FOOTER_MENU;
@@ -142,28 +152,27 @@ export default function HaatFooter({
               <span className="text-base font-extrabold text-text-main">{brandName}</span>
             </a>
             <p className="mt-3 max-w-xs break-words text-sm leading-6 text-text-muted">
-              হাটের আনন্দ এখন ঘরে বসেই — যাচাই করা পণ্য, পরিষ্কার দাম আর
-              দ্রুত ডেলিভারিতে প্রতিদিনের সব কেনাকাটা এক ঠিকানায়।
+              {s.footerIntro}
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               <a
                 href="/track"
                 className="inline-block rounded bg-primary px-3.5 py-2 text-sm font-semibold text-white transition hover:opacity-90"
               >
-                অর্ডার ট্র্যাক করুন
+                {s.footerTrackOrder}
               </a>
               <a
                 href="/contact"
                 className="inline-block rounded border border-border px-3.5 py-2 text-sm font-semibold text-text-main transition hover:bg-muted"
               >
-                যোগাযোগ করুন
+                {s.footerContact}
               </a>
             </div>
           </div>
 
           {columns.map((col) => (
-            <nav key={col.headingEn} aria-label={col.headingBn}>
-              <p className="text-sm font-bold text-text-main">{col.headingBn}</p>
+            <nav key={col.headingEn} aria-label={locale === "bn" ? col.headingBn : col.headingEn}>
+              <p className="text-sm font-bold text-text-main">{locale === "bn" ? col.headingBn : col.headingEn}</p>
               <span aria-hidden="true" className="mt-2 block h-0.5 w-8 rounded-full bg-primary" />
               <ul className="mt-3.5 space-y-2.5">
                 {col.links.map((link) => (
@@ -172,7 +181,7 @@ export default function HaatFooter({
                       href={link.href}
                       className="text-sm text-text-muted transition hover:text-primary"
                     >
-                      {link.labelBn}
+                      {locale === "bn" ? link.labelBn : link.labelEn}
                     </a>
                   </li>
                 ))}
@@ -188,11 +197,11 @@ export default function HaatFooter({
           className="mt-10 space-y-3 border-t border-border pt-6"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-text-muted">পেমেন্ট:</span>
+            <span className="text-xs font-medium text-text-muted">{s.paymentLabel}</span>
             <PaymentMarks />
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-text-muted">ডেলিভারি পার্টনার:</span>
+            <span className="text-xs font-medium text-text-muted">{s.deliveryPartnerLabel}</span>
             <CourierMarks />
           </div>
         </div>
@@ -202,10 +211,10 @@ export default function HaatFooter({
       <div className="text-white" style={{ backgroundColor: HAAT_COLORS.charcoal }}>
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4 text-xs text-white/75 sm:px-6">
           <span>
-            © {year} {brandName} — সর্বস্বত্ব সংরক্ষিত।
+            {interpolate(s.copyrightLine, { year, brand: brandName })}
           </span>
           <a href="/contact" className="hover:text-white hover:underline">
-            যোগাযোগের জন্য এখানে দেখুন
+            {s.contactHint}
           </a>
           {showPoweredBy ? (
             <span className="ml-auto">Powered by Advance Ecommerce</span>

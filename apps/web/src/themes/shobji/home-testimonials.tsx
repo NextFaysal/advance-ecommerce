@@ -17,18 +17,23 @@
 import Link from "next/link";
 import { Stars } from "@/reviews/components/Stars";
 import type { HomepageReview } from "@/reviews/store";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { SHOBJI_STRINGS } from "./strings";
 
 export default function ShobjiHomeTestimonials({
   reviews,
 }: {
   reviews: HomepageReview[];
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   if (reviews.length === 0) return null;
 
   return (
-    <section className="mt-12" aria-label="কাস্টমারদের মতামত">
+    <section className="mt-12" aria-label={s.customerOpinionsAria}>
       <h2 className="text-center font-display text-xl font-extrabold text-text-main sm:text-2xl">
-        কাস্টমাররা যা বলছেন
+        {s.customersSayTitle}
       </h2>
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         {reviews.slice(0, 3).map((r) => (
@@ -56,7 +61,7 @@ export default function ShobjiHomeTestimonials({
               “{r.body}”
             </blockquote>
             <p className="mt-3 text-xs text-text-subtle">
-              পণ্য:{" "}
+              {s.productLabelColon}{" "}
               <Link
                 href={`/product/${r.productSlug}`}
                 className="font-semibold text-primary hover:underline"

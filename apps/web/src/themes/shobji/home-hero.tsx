@@ -24,21 +24,26 @@ import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import type { Category } from "@/catalog/types";
 import type { HeroSlide } from "@/cms/site-content-types";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SHOBJI_STRINGS } from "./strings";
 
 function BigSearch() {
+  const { locale } = useLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   return (
     <form action="/search" role="search" className="mt-5 max-w-xl">
       <div className="relative">
         <input
           type="search"
           name="q"
-          placeholder="কী খুঁজছেন? যেমন: আলু, পেঁয়াজ, টমেটো…"
-          aria-label="পণ্য খুঁজুন"
+          placeholder={s.heroSearchPlaceholder}
+          aria-label={s.searchProductsAria}
           className="w-full rounded-full border border-input bg-card py-3.5 pl-5 pr-14 text-[15px] text-text-main shadow-card transition placeholder:text-text-subtle focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
         />
         <button
           type="submit"
-          aria-label="খুঁজুন"
+          aria-label={s.searchSubmitAria}
           className="absolute right-1.5 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-white transition hover:opacity-90"
         >
           <Icon name="search" size={19} />
@@ -57,6 +62,8 @@ function VisualSlot({
   slide: HeroSlide | null;
   category: Category | null;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, SHOBJI_STRINGS);
   if (slide?.imageUrl) {
     const img = (
       // eslint-disable-next-line @next/next/no-img-element
@@ -103,7 +110,7 @@ function VisualSlot({
             {category.name.bn}
           </span>
           <span className="mt-0.5 block text-xs text-white/85">
-            {category.productCount}টি পণ্য — সব দেখুন →
+            {interpolate(s.heroCategoryLine, { count: category.productCount })}
           </span>
         </span>
       </Link>
@@ -124,6 +131,8 @@ export default function ShobjiHomeHero({
   slides: HeroSlide[];
   firstCategory: Category | null;
 }) {
+  const { locale } = useLocale();
+  const str = pick(locale, SHOBJI_STRINGS);
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -150,7 +159,7 @@ export default function ShobjiHomeHero({
 
   return (
     <section
-      aria-label="হাইলাইট"
+      aria-label={str.heroAria}
       className="mt-4"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
@@ -175,11 +184,10 @@ export default function ShobjiHomeHero({
           ) : (
             <>
               <h1 className="max-w-xl font-display text-2xl font-extrabold leading-snug text-text-main sm:text-[34px] sm:leading-tight">
-                আজকের টাটকা বাজার, সরাসরি আপনার দরজায়
+                {str.heroFallbackHeadline}
               </h1>
               <p className="mt-2 max-w-lg text-sm leading-6 text-text-muted sm:text-[15px]">
-                সবজি, ফল, মাছ-মাংস আর নিত্যপ্রয়োজনীয় সবকিছু — যত্নে বাছাই করে
-                দ্রুত পৌঁছে দিই আপনার বাসায়।
+                {str.heroFallbackSubtext}
               </p>
             </>
           )}
@@ -193,14 +201,14 @@ export default function ShobjiHomeHero({
             </Link>
           ) : null}
           {slides.length > 1 ? (
-            <div className="mt-5 flex items-center gap-1.5" role="tablist" aria-label="ব্যানার বেছে নিন">
+            <div className="mt-5 flex items-center gap-1.5" role="tablist" aria-label={str.bannerPickerAria}>
               {slides.map((s, i) => (
                 <button
                   key={s.id}
                   type="button"
                   role="tab"
                   aria-selected={i === index}
-                  aria-label={`ব্যানার ${i + 1}`}
+                  aria-label={interpolate(str.bannerNumberAria, { n: i + 1 })}
                   onClick={() => goTo(i)}
                   className="flex h-8 w-6 items-center justify-center"
                 >

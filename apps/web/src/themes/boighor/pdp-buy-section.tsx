@@ -35,6 +35,9 @@
  * pdp-actions.tsx).
  */
 import { useEffect, useMemo, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { BOIGHOR_STRINGS } from "./strings";
 import { useRouter } from "next/navigation";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { addQty, subQty, qtyToString, qtyToMilli } from "@/lib/quantity";
@@ -75,6 +78,8 @@ export default function BoighorPdpBuySection({
     () => activeVariants.find((v) => v.stock > 0) ?? activeVariants[0] ?? null,
     [activeVariants],
   );
+  const { locale } = useLocale();
+  const s = pick(locale, BOIGHOR_STRINGS);
   const [selectedId, setSelectedId] = useState<string | null>(defaultVariant?.id ?? null);
   const selected = activeVariants.find((v) => v.id === selectedId) ?? defaultVariant;
   const stockCap = selected ? Math.max(0, selected.stock) : 0;
@@ -142,13 +147,13 @@ export default function BoighorPdpBuySection({
       allowFractional: stepInfo !== undefined,
     });
     if (result.addedQuantity <= 0) {
-      setNotice("স্টকে আর নেই — কার্টে যোগ করা যায়নি।");
+      setNotice(s.noticeOutOfStock);
       return false;
     }
     setNotice(
       result.capped
-        ? "কার্টে যোগ হয়েছে — স্টকে যা ছিল সব নেওয়া হয়েছে।"
-        : "কার্টে যোগ হয়েছে ✓",
+        ? s.noticeAddedCapped
+        : s.noticeAdded,
     );
     return true;
   }
@@ -183,7 +188,7 @@ export default function BoighorPdpBuySection({
                       } ${soldOut ? "opacity-55" : ""}`}
                     >
                       {value}
-                      {soldOut ? " (স্টক শেষ)" : ""}
+                      {soldOut ? s.outOfStockParenthetical : ""}
                     </button>
                   );
                 })}
@@ -208,7 +213,7 @@ export default function BoighorPdpBuySection({
                 } ${v.stock <= 0 ? "opacity-55" : ""}`}
               >
                 {v.sku}
-                {v.stock <= 0 ? " (স্টক শেষ)" : ""}
+                {v.stock <= 0 ? s.outOfStockParenthetical : ""}
               </button>
             );
           })}
@@ -237,7 +242,7 @@ export default function BoighorPdpBuySection({
       {lowStock ? (
         <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-semibold text-warning">
           <Icon name="alert" size={14} />
-          {digits(`মাত্র ${selected.stock}টি বাকি — দ্রুত অর্ডার করুন`)}
+          {digits(interpolate(s.lowStockWarning, { count: selected.stock }))}
         </p>
       ) : null}
 
@@ -246,7 +251,7 @@ export default function BoighorPdpBuySection({
       {/* Quantity */}
       <div>
         <span id="boighor-qty-label" className="text-sm font-bold text-text-main">
-          পরিমাণ
+          {s.quantityLabel}
         </span>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <div className="flex h-11 items-stretch overflow-hidden rounded-lg border border-input bg-card">
@@ -254,7 +259,7 @@ export default function BoighorPdpBuySection({
               type="button"
               onClick={() => setQuantity((q) => Math.max(qtyMin, subQty(q, qtyStep)))}
               disabled={outOfStock || quantity <= qtyMin}
-              aria-label="পরিমাণ কমান"
+              aria-label={s.decreaseQty}
               className="flex w-11 items-center justify-center text-text-main transition hover:bg-muted disabled:opacity-40"
             >
               <Icon name="minus" size={16} />
@@ -269,7 +274,7 @@ export default function BoighorPdpBuySection({
               type="button"
               onClick={() => setQuantity((q) => addQty(q, qtyStep))}
               disabled={outOfStock || quantity >= Math.max(qtyMin, stockCap)}
-              aria-label="পরিমাণ বাড়ান"
+              aria-label={s.increaseQty}
               className="flex w-11 items-center justify-center text-text-main transition hover:bg-muted disabled:opacity-40"
             >
               <Icon name="plus" size={16} />
@@ -278,7 +283,7 @@ export default function BoighorPdpBuySection({
           {stepInfo ? (
             <p className="text-[13px] text-text-muted">
               {digits(
-                `≈ ${Math.round((qtyToMilli(quantity) * stepInfo.packGrams) / 1000)} গ্রাম (প্রতি ধাপ ${stepInfo.packGrams} গ্রাম)`,
+                interpolate(s.weightApprox, { grams: Math.round((qtyToMilli(quantity) * stepInfo.packGrams) / 1000), step: stepInfo.packGrams }),
               )}
             </p>
           ) : null}
