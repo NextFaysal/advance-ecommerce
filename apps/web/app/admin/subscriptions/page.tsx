@@ -2,6 +2,9 @@ import { cookies } from "next/headers";
 import { PageHeader } from "@/components/ui/page-header";
 import { validateSessionToken } from "@/lib/auth";
 import { SubscriptionsList } from "@/components/admin/subscriptions-list";
+import { pick } from "@/i18n/locale";
+import { getRequestLocale } from "@/i18n/server";
+import { SUBSCRIPTIONS_ADMIN_STRINGS } from "./strings";
 
 // Customer subscriptions (ADV-18 remainder) — staff oversight list.
 // The list itself is a self-fetching client component (no props cross
@@ -11,19 +14,16 @@ import { SubscriptionsList } from "@/components/admin/subscriptions-list";
 export const dynamic = "force-dynamic";
 
 export default async function AdminSubscriptionsPage() {
+  const s = pick(await getRequestLocale(), SUBSCRIPTIONS_ADMIN_STRINGS);
   const token = cookies().get("admin_session")?.value;
   const session = token ? await validateSessionToken(token) : null;
 
   if (!session) {
     return (
       <main>
-        <PageHeader
-          title="সাবস্ক্রিপশন"
-          description="কাস্টমার সাবস্ক্রিপশন ও অটো-রিপ্লেনিশ অর্ডার"
-          breadcrumb="Admin / Sales"
-        />
+        <PageHeader title={s.title} description={s.loginDescription} breadcrumb={s.breadcrumb} />
         <p role="status" className="text-sm text-text-muted">
-          এই পেজ দেখতে আগে লগইন করুন।
+          {s.loginPrompt}
         </p>
       </main>
     );
@@ -31,11 +31,7 @@ export default async function AdminSubscriptionsPage() {
 
   return (
     <main>
-      <PageHeader
-        title="সাবস্ক্রিপশন"
-        description="কাস্টমার সাবস্ক্রিপশন — কোনটি কখন অর্ডার তৈরি করবে, কোনটি ব্যর্থ হয়েছে"
-        breadcrumb="Admin / Sales"
-      />
+      <PageHeader title={s.title} description={s.description} breadcrumb={s.breadcrumb} />
       <SubscriptionsList />
     </main>
   );

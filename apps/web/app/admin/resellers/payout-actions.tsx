@@ -9,6 +9,9 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { RESELLERS_STRINGS } from "./strings";
 
 export default function PayoutActions({
   payoutId,
@@ -17,6 +20,8 @@ export default function PayoutActions({
   payoutId: string;
   status: string;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, RESELLERS_STRINGS);
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,12 +39,12 @@ export default function PayoutActions({
       });
       const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
       if (!res.ok) {
-        setError(body.error?.message ?? "সিদ্ধান্ত সংরক্ষণ করা যায়নি।");
+        setError(body.error?.message ?? s.decisionFailed);
         return;
       }
       router.refresh();
     } catch {
-      setError("সিদ্ধান্ত সংরক্ষণ করা যায়নি।");
+      setError(s.decisionFailed);
     } finally {
       setBusy(null);
     }
@@ -49,16 +54,16 @@ export default function PayoutActions({
     <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
       {status === "PENDING" ? (
         <button type="button" disabled={busy !== null} onClick={() => decide("APPROVED")}>
-          {busy === "APPROVED" ? "…" : "Approve"}
+          {busy === "APPROVED" ? "…" : s.approve}
         </button>
       ) : null}
       {status === "APPROVED" ? (
         <button type="button" disabled={busy !== null} onClick={() => decide("PAID")}>
-          {busy === "PAID" ? "…" : "Mark PAID (paid externally)"}
+          {busy === "PAID" ? "…" : s.markPaid}
         </button>
       ) : null}
       <button type="button" disabled={busy !== null} onClick={() => decide("REJECTED")}>
-        {busy === "REJECTED" ? "…" : "Reject"}
+        {busy === "REJECTED" ? "…" : s.reject}
       </button>
       {error ? (
         <span role="alert" style={{ color: "crimson" }}>

@@ -21,6 +21,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { formatPoisha } from "@/components/ui/money";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { TEAM_STRINGS } from "./strings";
 
 interface StaffMember {
   id: string;
@@ -51,9 +54,10 @@ function currentMonth(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dhaka", year: "numeric", month: "2-digit" }).format(new Date());
 }
 
-function Bar({ actual, target, format }: { actual: number; target?: number; format: (n: number) => string }) {
+function Bar({ actual, target, format, locale }: { actual: number; target?: number; format: (n: number) => string; locale: Locale }) {
+  const s = pick(locale, TEAM_STRINGS);
   if (target === undefined || target <= 0) {
-    return <span className="text-caption text-text-subtle">টার্গেট নেই · প্রকৃত: {format(actual)}</span>;
+    return <span className="text-caption text-text-subtle">{interpolate(s.noTargetActual, { actual: format(actual) })}</span>;
   }
   const pct = Math.min(100, Math.round((actual / target) * 100));
   return (
@@ -69,6 +73,8 @@ function Bar({ actual, target, format }: { actual: number; target?: number; form
 }
 
 export function TargetsPanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, TEAM_STRINGS);
   const [month, setMonth] = useState(currentMonth());
   const [data, setData] = useState<TargetsData | null>(null);
   const [attribution, setAttribution] = useState("");
@@ -88,7 +94,7 @@ export function TargetsPanel() {
         error?: { message: string };
       };
       if (!res.ok || !json.data) {
-        setError(json.error?.message ?? "টার্গেটের তথ্য আনা যায়নি।");
+        setError(json.error?.message ?? s.targetsLoadFailed);
         return;
       }
       setData(json.data);
@@ -103,9 +109,9 @@ export function TargetsPanel() {
       setOrdersInputs(orders);
       setRevenueInputs(revenue);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি।");
+      setError(s.networkError);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load(month);
@@ -135,13 +141,13 @@ export function TargetsPanel() {
       });
       const json = (await res.json()) as { error?: { message: string } };
       if (!res.ok) {
-        setSaveNote(json.error?.message ?? "সংরক্ষণ হয়নি।");
+        setSaveNote(json.error?.message ?? s.targetsSaveFailed);
         return;
       }
-      setSaveNote("টার্গেট সংরক্ষিত হয়েছে।");
+      setSaveNote(s.targetsSaved);
       void load(month);
     } catch {
-      setSaveNote("নেটওয়ার্ক ত্রুটি।");
+      setSaveNote(s.networkError);
     } finally {
       setBusy(false);
     }
@@ -150,9 +156,9 @@ export function TargetsPanel() {
   return (
     <Card className="mt-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-h3">মাসিক টার্গেট ও অগ্রগতি</h2>
+        <h2 className="text-h3">{s.targetsTitle}</h2>
         <label className="flex items-center gap-2 text-small">
-          মাস
+          {s.monthLabel}
           <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-44" />
         </label>
       </div>
@@ -163,11 +169,11 @@ export function TargetsPanel() {
             <table className="w-full border-collapse text-small">
               <thead>
                 <tr className="border-b border-border text-left">
-                  <th className="px-2 py-2 font-semibold">স্টাফ</th>
-                  <th className="px-2 py-2 font-semibold">অর্ডার টার্গেট</th>
-                  <th className="px-2 py-2 font-semibold">অগ্রগতি (কনফার্ম করা অর্ডার)</th>
-                  <th className="px-2 py-2 font-semibold">রাজস্ব টার্গেট (৳)</th>
-                  <th className="px-2 py-2 font-semibold">অগ্রগতি (ডেলিভারি করা রাজস্ব)</th>
+                  <th className="px-2 py-2 font-semibold">{s.colStaff}</th>
+                  <th className="px-2 py-2 font-semibold">{s.colOrdersTarget}</th>
+                  <th className="px-2 py-2 font-semibold">{s.colOrdersProgress}</th>
+                  <th className="px-2 py-2 font-semibold">{s.colRevenueTarget}</th>
+                  <th className="px-2 py-2 font-semibold">{s.colRevenueProgress}</th>
                 </tr>
               </thead>
               <tbody>
@@ -193,7 +199,8 @@ export function TargetsPanel() {
                         <Bar
                           actual={progress?.handledOrders ?? 0}
                           target={target?.ordersTarget}
-                          format={(n) => `${n}টি অর্ডার`}
+                          format={(n) => interpolate(s.ordersFormat, { n })}
+                          locale={locale}
                         />
                       </td>
                       <td className="px-2 py-2">
@@ -210,9 +217,10 @@ export function TargetsPanel() {
                           actual={progress?.deliveredRevenuePoisha ?? 0}
                           target={target?.revenueTargetPoisha}
                           format={(n) => formatPoisha(n)}
+                          locale={locale}
                         />
                         <span className="text-caption text-text-subtle">
-                          ডেলিভারি: {progress?.deliveredOrders ?? 0}টি অর্ডার
+                          {s.deliveredPrefix}{interpolate(s.ordersFormat, { n: progress?.deliveredOrders ?? 0 })}
                         </span>
                       </td>
                     </tr>
@@ -223,11 +231,11 @@ export function TargetsPanel() {
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <Button onClick={() => void save()} disabled={busy} className="min-h-[44px]">
-              টার্গেট সংরক্ষণ করুন
+              {s.saveTargetsBtn}
             </Button>
             {saveNote !== "" && <span className="text-small font-medium">{saveNote}</span>}
             <span className="text-caption text-text-subtle">
-              সংরক্ষণে পুরো মাসের তালিকা একসাথে যায় — ফাঁকা রাখা স্টাফের টার্গেট মুছে যাবে।
+              {s.replaceAllNote}
             </span>
           </div>
           {attribution !== "" && (

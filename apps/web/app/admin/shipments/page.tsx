@@ -1,6 +1,9 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { getShipmentsBoard } from "@/shipments/board";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
 import { ShipmentsBoard } from "./shipments-board";
+import { SHIPMENTS_STRINGS } from "./strings";
 
 // Admin > Shipments — real cross-order board (doc 21 W0-C, G3-7a).
 // This page used to be a TEMPORARY DEMO over ./demo-data.ts with
@@ -17,14 +20,13 @@ import { ShipmentsBoard } from "./shipments-board";
 export const dynamic = "force-dynamic";
 
 export default async function ShipmentsPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, SHIPMENTS_STRINGS);
   const board = await getShipmentsBoard();
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="শিপমেন্ট"
-        description="আসল শিপমেন্ট রেকর্ড — সব অর্ডারের বুকিং এক জায়গায়। বুকিং ও অবস্থা বদলের কাজ প্রতিটি অর্ডারের ওয়ার্কস্পেসে হয়; এই বোর্ড থেকে সরাসরি সেখানে যাওয়া যায়। কুরিয়ার অ্যাডাপ্টর আপাতত sandbox — SBX ট্র্যাকিং আইডি মানেই কোনো আসল কুরিয়ার কল হয়নি।"
-      />
+      <PageHeader title={s.pageTitle} description={s.pageDescription} />
       <ShipmentsBoard rows={board.rows} summary={board.summary} />
     </div>
   );

@@ -16,6 +16,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick } from "@/i18n/locale";
+import { TEAM_STRINGS } from "./strings";
 
 interface ChatMessage {
   id: string;
@@ -32,10 +35,10 @@ interface ChatData {
 
 const POLL_MS = 15_000;
 
-function formatSentAt(iso: string): string {
+function formatSentAt(iso: string, localeTag: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return new Intl.DateTimeFormat("en-GB", {
+  return new Intl.DateTimeFormat(localeTag, {
     timeZone: "Asia/Dhaka",
     day: "2-digit",
     month: "short",
@@ -46,6 +49,8 @@ function formatSentAt(iso: string): string {
 }
 
 export function ChatPanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, TEAM_STRINGS);
   const [meId, setMeId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -59,16 +64,16 @@ export function ChatPanel() {
       const res = await fetch("/api/v1/admin/team/chat", { cache: "no-store" });
       const json = (await res.json()) as { data?: ChatData; error?: { message: string } };
       if (!res.ok || !json.data) {
-        setError(json.error?.message ?? "বার্তা আনা যায়নি।");
+        setError(json.error?.message ?? s.chatLoadFailed);
         return;
       }
       setMeId(json.data.me.id);
       setMessages(json.data.messages);
       setError("");
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি।");
+      setError(s.networkError);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load();
@@ -107,7 +112,7 @@ export function ChatPanel() {
         error?: { message: string };
       };
       if (!res.ok || !json.data) {
-        setError(json.error?.message ?? "বার্তা পাঠানো যায়নি।");
+        setError(json.error?.message ?? s.chatSendFailed);
         return;
       }
       setDraft("");
@@ -117,7 +122,7 @@ export function ChatPanel() {
         prev.some((m) => m.id === json.data!.message.id) ? prev : [...prev, json.data!.message],
       );
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি।");
+      setError(s.networkError);
     } finally {
       setBusy(false);
     }
@@ -126,11 +131,9 @@ export function ChatPanel() {
   return (
     <Card className="mt-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-h3">টিম চ্যাট</h2>
+        <h2 className="text-h3">{s.chatTitle}</h2>
         <p className="text-caption text-text-subtle">
-          প্রতি ১৫ সেকেন্ডে হালনাগাদ হয় (polling — realtime নয়)। সর্বশেষ ১০০টি বার্তা দেখানো হচ্ছে;
-          প্রতি মাসে সর্বোচ্চ ১,০০০টি বার্তা থাকে, পুরনোগুলো মুছে যায় — স্থায়ী রেকর্ডের জন্য অর্ডার
-          নোট/টিকিট ব্যবহার করুন।
+          {s.chatNote}
         </p>
       </div>
       {error !== "" && <p className="mb-2 text-small font-medium text-rose-600">{error}</p>}
@@ -140,15 +143,15 @@ export function ChatPanel() {
         className="mb-4 max-h-96 space-y-3 overflow-y-auto rounded-md bg-surface-2 p-4"
       >
         {messages.length === 0 && (
-          <p className="text-small text-text-subtle">এখনো কোনো বার্তা নেই — প্রথম বার্তাটি লিখুন।</p>
+          <p className="text-small text-text-subtle">{s.chatEmpty}</p>
         )}
         {messages.map((m) => {
           const mine = meId !== null && m.userId === meId;
           return (
             <div key={m.id} className={mine ? "text-right" : "text-left"}>
               <p className="text-caption text-text-subtle">
-                <span className="font-semibold text-text">{mine ? "আপনি" : m.userName || "স্টাফ"}</span>{" "}
-                · {formatSentAt(m.sentAt)}
+                <span className="font-semibold text-text">{mine ? s.chatYou : m.userName || s.chatStaffFallback}</span>{" "}
+                · {formatSentAt(m.sentAt, intlLocale(locale))}
               </p>
               <p className="inline-block max-w-[85%] whitespace-pre-wrap rounded-md bg-card px-3 py-2 text-left text-small leading-relaxed">
                 {m.body}
@@ -165,16 +168,16 @@ export function ChatPanel() {
         className="flex items-end gap-2"
       >
         <textarea
-          aria-label="চ্যাট বার্তা"
+          aria-label={s.chatInputLabel}
           className="min-h-11 flex-1 rounded-md border border-border bg-card p-3 text-small"
           rows={2}
           maxLength={1000}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="টিমের জন্য বার্তা লিখুন…"
+          placeholder={s.chatPlaceholder}
         />
         <Button type="submit" disabled={busy || draft.trim() === ""} className="min-h-[44px]">
-          পাঠান
+          {s.chatSendBtn}
         </Button>
       </form>
     </Card>

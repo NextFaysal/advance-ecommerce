@@ -21,6 +21,17 @@
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
 import type { SmsProviderName } from "@/integrations/sms";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SETTINGS_B_STRINGS, type SettingsBStrings } from "../strings-b";
+
+type SKey = keyof SettingsBStrings;
+
+/** Localized label for a provider field def (labels are UI copy). */
+function fieldLabel(def: { key: string; label: string }, s: SettingsBStrings): string {
+  if (def.key === "sender_id") return s.smsFieldSenderProvider;
+  return def.label; // API Key / API Token / SID — technical names, same in both locales
+}
 
 export const SMS_FIELD_DEFS: Record<
   SmsProviderName,
@@ -28,7 +39,7 @@ export const SMS_FIELD_DEFS: Record<
 > = {
   bulksmsbd: [
     { key: "api_key", label: "API Key", secret: true },
-    { key: "sender_id", label: "Sender ID (শুধু এই প্রোভাইডারের জন্য)", secret: false },
+    { key: "sender_id", label: "sender_id", secret: false },
   ],
   sslwireless: [
     { key: "api_token", label: "API Token", secret: true },
@@ -78,6 +89,8 @@ function providerConfigured(
 }
 
 export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_B_STRINGS);
   const [activeProvider, setActiveProvider] = useState(initial.activeProvider);
   const [fallbackProvider, setFallbackProvider] = useState(initial.fallbackProvider);
   const [senderId, setSenderId] = useState(initial.senderId);
@@ -111,10 +124,10 @@ export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
       present: initial.providers[fallbackProvider as SmsProviderName].present,
     });
   const routingLabel = activeConfigured
-    ? `আসল গেটওয়ে: ${PROVIDER_LABELS[effectiveActive]} দিয়ে SMS যাবে।`
+    ? interpolate(s.smsRouteActive, { provider: PROVIDER_LABELS[effectiveActive] })
     : fallbackConfigured
-      ? `সক্রিয় প্রোভাইডার প্রস্তুত নয় — ফলব্যাক ${PROVIDER_LABELS[fallbackProvider as SmsProviderName]} দিয়ে আসল SMS যাবে।`
-      : "কোনো গেটওয়ে প্রস্তুত নয় — SMS sandbox simulator দিয়ে যাবে (simulated হিসেবে চিহ্নিত থাকবে)।";
+      ? interpolate(s.smsRouteFallback, { provider: PROVIDER_LABELS[fallbackProvider as SmsProviderName] })
+      : s.smsRouteSandbox;
 
   function fieldId(name: SmsProviderName, key: string): string {
     return `${name}.${key}`;
@@ -128,14 +141,14 @@ export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
     });
     if (res.ok) return null;
     const data = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-    return data.error?.message ?? `সেভ করা যায়নি (${res.status})`;
+    return data.error?.message ?? interpolate(s.saveFailedStatus, { status: res.status });
   }
 
   async function handleSave() {
     setStatus("");
     if (reason.trim() === "") {
       setStatusOk(false);
-      setStatus("পরিবর্তনের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setStatus(s.reasonRequired);
       return;
     }
     const writes: { key: string; value: string }[] = [];
@@ -166,7 +179,7 @@ export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
     }
     if (writes.length === 0) {
       setStatusOk(true);
-      setStatus("কোনো পরিবর্তন নেই — সব মান আগের মতোই আছে, কিছুই সেভ করা হয়নি।");
+      setStatus(s.noChanges);
       return;
     }
     setSaving(true);
@@ -178,17 +191,15 @@ export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
           setStatusOk(false);
           setStatus(
             savedKeys.length > 0
-              ? `${w.key} সেভ করা যায়নি: ${failure} — তবে আগের ${savedKeys.length}টি পরিবর্তন সেভ হয়ে গেছে (${savedKeys.join(", ")})।`
-              : `${w.key} সেভ করা যায়নি: ${failure}`,
+              ? interpolate(s.partialSave, { key: w.key, failure, count: savedKeys.length, keys: savedKeys.join(", ") })
+              : interpolate(s.singleSaveFailed, { key: w.key, failure }),
           );
           return;
         }
         savedKeys.push(w.key);
       }
       setStatusOk(true);
-      setStatus(
-        `সেভ হয়েছে — ${savedKeys.length}টি সেটিং বদলেছে। নতুন মান পরের SMS পাঠানোর মুহূর্ত থেকেই কার্যকর। ক্রেডেনশিয়াল ঘরগুলো নিরাপত্তার জন্য খালি দেখানো হচ্ছে; পেজ আবার লোড করলে কোন প্রোভাইডার প্রস্তুত তা দেখা যাবে।`,
-      );
+      setStatus(interpolate(s.smsSavedMany, { count: savedKeys.length }));
       setFieldInputs((prev) => {
         const next = { ...prev };
         for (const name of PROVIDER_NAMES) {
@@ -200,7 +211,7 @@ export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
       });
     } catch {
       setStatusOk(false);
-      setStatus("সার্ভারের সঙ্গে যোগাযোগ করা যায়নি — কোন সেটিং সেভ হয়েছে তা নিশ্চিত নয়; পেজটি আবার লোড করে যাচাই করুন।");
+      setStatus(s.networkUncertainSettings);
     } finally {
       setSaving(false);
     }
@@ -225,16 +236,16 @@ export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
             : "?";
         setTestResults((prev) => ({
           ...prev,
-          [name]: `সংযোগ সফল — বর্তমান ব্যালেন্স ৳${taka} (আসল প্রোভাইডার কল)।`,
+          [name]: interpolate(s.smsBalanceOk, { taka }),
         }));
       } else {
         setTestResults((prev) => ({
           ...prev,
-          [name]: data.error?.message ?? `যাচাই করা যায়নি (${res.status})`,
+          [name]: data.error?.message ?? interpolate(s.smsTestFailed, { status: res.status }),
         }));
       }
     } catch {
-      setTestResults((prev) => ({ ...prev, [name]: "সার্ভারের সঙ্গে যোগাযোগ করা যায়নি।" }));
+      setTestResults((prev) => ({ ...prev, [name]: s.networkOnly }));
     } finally {
       setTesting(null);
     }
@@ -252,34 +263,28 @@ export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
           <span aria-hidden="true" className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
             <Icon name="phone" size={20} />
           </span>
-          <h2 className="font-display text-base font-semibold text-text-main">SMS গেটওয়ে</h2>
+          <h2 className="font-display text-base font-semibold text-text-main">{s.smsTitle}</h2>
         </div>
 
         <div className="mt-4 rounded-xl border border-border bg-surface-2 px-4 py-3.5 text-sm">
           <p className="leading-relaxed">
-            সংরক্ষিত অবস্থা অনুযায়ী বর্তমান রাউটিং: <strong>{routingLabel}</strong>
+            {s.smsRoutingPrefix}
+            <strong>{routingLabel}</strong>
           </p>
-          {!dbReady && (
-            <span className="mt-1.5 block leading-relaxed text-rose-600">
-              সতর্কতা: ডাটাবেস থেকে বর্তমান মান পড়া যায়নি — খালি/ডিফল্ট অবস্থা দেখানো হচ্ছে। সেভ করলে সার্ভার ত্রুটি দেখালে কিছুই বদলাবে না।
-            </span>
-          )}
-          <span className="mt-1.5 block leading-relaxed text-text-muted">
-            প্রোভাইডার তখনই &quot;প্রস্তুত&quot; যখন সেটি চালু (enabled) থাকে এবং সব ক্রেডেনশিয়াল ঘর পূর্ণ থাকে।
-            পাঠাতে ব্যর্থ হলে SMS queue-তে retry হয় এবং শেষ পর্যন্ত dead-letter-এ যায় — নীরবে হারিয়ে যায় না।
-          </span>
+          {!dbReady && <span className="mt-1.5 block leading-relaxed text-rose-600">{s.smsDbWarning}</span>}
+          <span className="mt-1.5 block leading-relaxed text-text-muted">{s.smsReadyExplain}</span>
         </div>
 
         <div className="mt-6 grid gap-5 md:grid-cols-3">
           <label className="block">
-            <span className="text-sm font-medium">সক্রিয় প্রোভাইডার</span>
+            <span className="text-sm font-medium">{s.smsActiveProvider}</span>
             <select
               value={activeProvider}
               onChange={(e) => setActiveProvider(e.target.value)}
               disabled={saving}
               className={selectClass}
             >
-              <option value="">— সেট করা নেই (ডিফল্ট BulkSMSBD)</option>
+              <option value="">{s.smsNoProvider}</option>
               {PROVIDER_NAMES.map((name) => (
                 <option key={name} value={name}>
                   {PROVIDER_LABELS[name]}
@@ -288,37 +293,33 @@ export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
             </select>
           </label>
           <label className="block">
-            <span className="text-sm font-medium">ফলব্যাক প্রোভাইডার</span>
+            <span className="text-sm font-medium">{s.smsFallbackProvider}</span>
             <select
               value={fallbackProvider}
               onChange={(e) => setFallbackProvider(e.target.value)}
               disabled={saving}
               className={selectClass}
             >
-              <option value="">— নেই</option>
+              <option value="">{s.smsNone}</option>
               {PROVIDER_NAMES.map((name) => (
                 <option key={name} value={name}>
                   {PROVIDER_LABELS[name]}
                 </option>
               ))}
             </select>
-            <span className="mt-1 block text-xs leading-relaxed text-text-muted">
-              সক্রিয় প্রোভাইডার প্রস্তুত না থাকলে প্রস্তুত ফলব্যাক দিয়ে যাবে।
-            </span>
+            <span className="mt-1 block text-xs leading-relaxed text-text-muted">{s.smsFallbackHelp}</span>
           </label>
           <label className="block">
-            <span className="text-sm font-medium">সাধারণ Sender ID</span>
+            <span className="text-sm font-medium">{s.smsSenderId}</span>
             <input
               type="text"
               value={senderId}
               onChange={(e) => setSenderId(e.target.value)}
               disabled={saving}
-              placeholder="যেমন: 8809612XXXXXX বা ব্র্যান্ড নাম"
+              placeholder={s.smsSenderPlaceholder}
               className={inputClass}
             />
-            <span className="mt-1 block text-xs leading-relaxed text-text-muted">
-              প্রোভাইডার-নির্দিষ্ট Sender ID না থাকলে এটি ব্যবহৃত হয় (BulkSMSBD)।
-            </span>
+            <span className="mt-1 block text-xs leading-relaxed text-text-muted">{s.smsSenderHelp}</span>
           </label>
         </div>
 
@@ -339,7 +340,7 @@ export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
                       : "bg-amber-100 text-amber-800"
                   }`}
                 >
-                  {configuredNow ? "প্রস্তুত (আসল গেটওয়ে)" : "প্রস্তুত নয়"}
+                  {configuredNow ? s.readyReal : s.notReady}
                 </span>
               </legend>
               <label className="mt-2 flex min-h-[44px] items-center gap-2.5 text-sm">
@@ -352,7 +353,7 @@ export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
                   disabled={saving}
                   className="h-5 w-5"
                 />
-                <span>এই প্রোভাইডার চালু রাখুন (enabled)</span>
+                <span>{s.enabledLabel}</span>
               </label>
               <div className="mt-3 grid gap-5 md:grid-cols-2">
                 {SMS_FIELD_DEFS[name].map((def) => {
@@ -361,14 +362,12 @@ export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
                   return (
                     <label key={def.key} className="block">
                       <span className="text-sm font-medium">
-                        {def.label}
+                        {fieldLabel(def, s)}
                         {def.secret && present && (
-                          <span className="ml-2 text-xs font-normal text-emerald-700">
-                            সেট আছে — বদলাতে চাইলে নতুন মান লিখুন
-                          </span>
+                          <span className="ml-2 text-xs font-normal text-emerald-700">{s.secretSet}</span>
                         )}
                         {def.secret && !present && (
-                          <span className="ml-2 text-xs font-normal text-rose-600">সেট নেই</span>
+                          <span className="ml-2 text-xs font-normal text-rose-600">{s.secretNotSet}</span>
                         )}
                       </span>
                       <input
@@ -383,9 +382,7 @@ export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
                         className={inputClass}
                       />
                       {def.secret && (
-                        <span className="mt-1 block text-xs leading-relaxed text-text-muted">
-                          মান কখনো দেখানো হয় না; খালি রাখলে আগের মানই থাকবে।
-                        </span>
+                        <span className="mt-1 block text-xs leading-relaxed text-text-muted">{s.secretNeverShown}</span>
                       )}
                     </label>
                   );
@@ -398,7 +395,7 @@ export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
                   disabled={testing !== null}
                   className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition motion-fast hover:border-brand-300 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {testing === name ? "যাচাই হচ্ছে…" : "ব্যালেন্স যাচাই করুন (আসল কল)"}
+                  {testing === name ? s.smsTesting : s.smsTestBalance}
                 </button>
                 {testResults[name] && (
                   <span role="status" className="text-sm leading-relaxed text-text-muted">
@@ -412,10 +409,10 @@ export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
 
         <div className="mt-6 flex flex-wrap items-end gap-3">
           <label className="block grow basis-56">
-            <span className="text-sm font-medium">পরিবর্তনের কারণ (অডিটের জন্য আবশ্যিক)</span>
+            <span className="text-sm font-medium">{s.reasonRequiredShort}</span>
             <input
               type="text"
-              placeholder="যেমন: BulkSMSBD লাইভ অ্যাকাউন্টের API key বসানো হলো"
+              placeholder={s.smsReasonPlaceholder}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               disabled={saving}
@@ -428,7 +425,7 @@ export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
             disabled={saving}
             className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {saving ? "সেভ হচ্ছে…" : "সেটিংস সেভ করুন"}
+            {saving ? s.saving : s.saveSettings}
           </button>
         </div>
 

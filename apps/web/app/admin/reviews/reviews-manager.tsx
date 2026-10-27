@@ -10,6 +10,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Stars } from "@/reviews/components/Stars";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
+import { REVIEWS_ADMIN_STRINGS, type ReviewsAdminStrings } from "./strings";
 
 /** Row shape of GET /api/v1/admin/reviews — defined locally (the
  *  staff-list pattern) so this client bundle never imports the
@@ -41,23 +44,29 @@ interface ReviewsResponse {
   error?: { code: string; message: string };
 }
 
-const TABS: Array<{ key: TabKey; label: string }> = [
-  { key: "PENDING", label: "অপেক্ষমাণ" },
-  { key: "APPROVED", label: "অনুমোদিত" },
-  { key: "REJECTED", label: "প্রত্যাখ্যাত" },
-  { key: "ALL", label: "সব" },
-];
+function tabs(s: ReviewsAdminStrings): Array<{ key: TabKey; label: string }> {
+  return [
+    { key: "PENDING", label: s.tabPending },
+    { key: "APPROVED", label: s.tabApproved },
+    { key: "REJECTED", label: s.tabRejected },
+    { key: "ALL", label: s.tabAll },
+  ];
+}
 
-const STATUS_BADGE: Record<ReviewStatus, { label: string; tone: "success" | "warning" | "danger" }> = {
-  PENDING: { label: "অপেক্ষমাণ (PENDING)", tone: "warning" },
-  APPROVED: { label: "অনুমোদিত (APPROVED)", tone: "success" },
-  REJECTED: { label: "প্রত্যাখ্যাত (REJECTED)", tone: "danger" },
-};
+function statusBadge(
+  s: ReviewsAdminStrings,
+): Record<ReviewStatus, { label: string; tone: "success" | "warning" | "danger" }> {
+  return {
+    PENDING: { label: s.badgePending, tone: "warning" },
+    APPROVED: { label: s.badgeApproved, tone: "success" },
+    REJECTED: { label: s.badgeRejected, tone: "danger" },
+  };
+}
 
 type LoadState = "loading" | "ready" | "error";
 
-function bnDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("bn-BD", {
+function fmtDate(iso: string, locale: Locale): string {
+  return new Date(iso).toLocaleDateString(intlLocale(locale), {
     timeZone: "Asia/Dhaka",
     day: "numeric",
     month: "long",
@@ -66,6 +75,10 @@ function bnDate(iso: string): string {
 }
 
 export function ReviewsManager() {
+  const { locale } = useLocale();
+  const s = pick(locale, REVIEWS_ADMIN_STRINGS);
+  const TABS = tabs(s);
+  const STATUS_BADGE = statusBadge(s);
   const [tab, setTab] = useState<TabKey>("PENDING");
   const [reviews, setReviews] = useState<AdminReview[]>([]);
   const [counts, setCounts] = useState<Record<ReviewStatus, number>>({ PENDING: 0, APPROVED: 0, REJECTED: 0 });
@@ -89,10 +102,10 @@ export function ReviewsManager() {
         setLoadState("error");
       }
     } catch {
-      setLoadError("নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি।");
+      setLoadError(s.networkError);
       setLoadState("error");
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load(tab);
@@ -114,7 +127,7 @@ export function ReviewsManager() {
       }
       await load(tab);
     } catch {
-      setRowError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।");
+      setRowError(s.networkRetry);
     } finally {
       setBusyId(null);
     }
@@ -122,7 +135,7 @@ export function ReviewsManager() {
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="রিভিউ স্ট্যাটাস">
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label={s.tabsAria}>
         {TABS.map((t) => {
           const count = t.key === "ALL" ? counts.PENDING + counts.APPROVED + counts.REJECTED : counts[t.key];
           const active = tab === t.key;
@@ -151,14 +164,14 @@ export function ReviewsManager() {
       ) : null}
 
       {loadState === "loading" ? (
-        <p className="mt-6 text-sm text-text-muted">লোড হচ্ছে…</p>
+        <p className="mt-6 text-sm text-text-muted">{s.loading}</p>
       ) : loadState === "error" ? (
         <p role="alert" className="mt-6 text-sm font-medium text-rose-600">
-          রিভিউ লোড করা যায়নি — {loadError}
+          {interpolate(s.loadFailed, { error: loadError })}
         </p>
       ) : reviews.length === 0 ? (
         <p className="mt-6 text-sm text-text-muted">
-          এই তালিকায় কোনো রিভিউ নেই। নতুন রিভিউ এলে এখানে মডারেশনের জন্য দেখা যাবে।
+          {s.empty}
         </p>
       ) : (
         <ul className="mt-6 space-y-4">
@@ -171,15 +184,15 @@ export function ReviewsManager() {
                       <span className="font-bold text-text-main">{r.authorName}</span>
                       {r.verifiedPurchase ? (
                         <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
-                          যাচাইকৃত ক্রেতা
+                          {s.verifiedBuyer}
                         </span>
                       ) : null}
                       <span className="text-xs text-text-subtle">
-                        {r.phoneMasked} · {bnDate(r.createdAt)}
+                        {r.phoneMasked} · {fmtDate(r.createdAt, locale)}
                       </span>
                     </div>
                     <p className="mt-1 text-sm text-text-muted">
-                      পণ্য:{" "}
+                      {s.productLabel}{" "}
                       <a
                         href={`/product/${r.productSlug}`}
                         target="_blank"
@@ -208,7 +221,7 @@ export function ReviewsManager() {
                       onClick={() => void setStatus(r, "APPROVED")}
                       className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-60"
                     >
-                      অনুমোদন করুন
+                      {s.approve}
                     </button>
                   ) : null}
                   {r.status !== "REJECTED" ? (
@@ -218,7 +231,7 @@ export function ReviewsManager() {
                       onClick={() => void setStatus(r, "REJECTED")}
                       className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-wait disabled:opacity-60"
                     >
-                      প্রত্যাখ্যান করুন
+                      {s.reject}
                     </button>
                   ) : null}
                   {r.status !== "PENDING" ? (
@@ -228,7 +241,7 @@ export function ReviewsManager() {
                       onClick={() => void setStatus(r, "PENDING")}
                       className="rounded-xl border border-border bg-surface px-4 py-2 text-sm font-bold text-text-main shadow-sm transition hover:bg-surface-2 disabled:cursor-wait disabled:opacity-60"
                     >
-                      আবার অপেক্ষমাণ করুন
+                      {s.backToPending}
                     </button>
                   ) : null}
                 </div>

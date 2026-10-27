@@ -14,7 +14,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { intlLocale, interpolate, pick, type Locale } from "@/i18n/locale";
 import { CannedReplyPicker } from "./support-tools";
+import { TICKETS_STRINGS } from "./strings";
 
 type TicketStatus = "OPEN" | "PENDING" | "CLOSED";
 
@@ -29,11 +32,17 @@ interface TicketSla {
   state: TicketSlaState;
 }
 
-const SLA_BADGE: Record<TicketSlaState, { label: string; tone: "success" | "warning" | "danger" }> = {
-  OK: { label: "SLA ঠিক আছে", tone: "success" },
-  AT_RISK: { label: "SLA ঝুঁকিতে", tone: "warning" },
-  BREACHED: { label: "SLA ভেঙেছে", tone: "danger" },
-};
+type BadgeTone = "success" | "warning" | "danger";
+
+function slaBadge(locale: Locale, state: TicketSlaState): { label: string; tone: BadgeTone } {
+  const s = pick(locale, TICKETS_STRINGS);
+  const map: Record<TicketSlaState, { label: string; tone: BadgeTone }> = {
+    OK: { label: s.slaOk, tone: "success" },
+    AT_RISK: { label: s.slaAtRisk, tone: "warning" },
+    BREACHED: { label: s.slaBreached, tone: "danger" },
+  };
+  return map[state];
+}
 
 interface TicketMessage {
   id: string;
@@ -70,23 +79,20 @@ interface DetailResponse {
   error?: { code: string; message: string };
 }
 
-const TABS: Array<{ key: TabKey; label: string }> = [
-  { key: "OPEN", label: "খোলা" },
-  { key: "PENDING", label: "স্টাফ উত্তর দিয়েছেন" },
-  { key: "CLOSED", label: "বন্ধ" },
-  { key: "ALL", label: "সব" },
-];
-
-const STATUS_BADGE: Record<TicketStatus, { label: string; tone: "success" | "warning" | "danger" }> = {
-  OPEN: { label: "খোলা (OPEN)", tone: "warning" },
-  PENDING: { label: "উত্তর দেওয়া (PENDING)", tone: "success" },
-  CLOSED: { label: "বন্ধ (CLOSED)", tone: "danger" },
-};
+function statusBadge(locale: Locale, status: TicketStatus): { label: string; tone: BadgeTone } {
+  const s = pick(locale, TICKETS_STRINGS);
+  const map: Record<TicketStatus, { label: string; tone: BadgeTone }> = {
+    OPEN: { label: s.statusOpen, tone: "warning" },
+    PENDING: { label: s.statusPending, tone: "success" },
+    CLOSED: { label: s.statusClosed, tone: "danger" },
+  };
+  return map[status];
+}
 
 type LoadState = "loading" | "ready" | "error";
 
-function bnDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("bn-BD", {
+function fmtDateTime(locale: Locale, iso: string): string {
+  return new Date(iso).toLocaleString(intlLocale(locale), {
     timeZone: "Asia/Dhaka",
     day: "numeric",
     month: "short",
@@ -99,6 +105,14 @@ const inputClass =
   "w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-text-main outline-none focus:border-brand-500";
 
 export function TicketsManager() {
+  const { locale, t } = useLocale();
+  const s = pick(locale, TICKETS_STRINGS);
+  const tabs: Array<{ key: TabKey; label: string }> = [
+    { key: "OPEN", label: s.tabOpen },
+    { key: "PENDING", label: s.tabPending },
+    { key: "CLOSED", label: s.tabClosed },
+    { key: "ALL", label: s.tabAll },
+  ];
   const [tab, setTab] = useState<TabKey>("OPEN");
   const [slaOnly, setSlaOnly] = useState(false);
   const [tickets, setTickets] = useState<AdminTicket[]>([]);
@@ -122,7 +136,7 @@ export function TicketsManager() {
       const json = (await res.json().catch(() => null)) as ListResponse | null;
       if (!res.ok || !json?.data) {
         setLoadState("error");
-        setLoadError(json?.error?.message ?? "টিকিট লোড করা যায়নি।");
+        setLoadError(json?.error?.message ?? s.loadFailed);
         return;
       }
       setTickets(json.data.tickets);
@@ -130,9 +144,9 @@ export function TicketsManager() {
       setLoadState("ready");
     } catch {
       setLoadState("error");
-      setLoadError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+      setLoadError(s.networkError);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load(tab, slaOnly);
@@ -146,16 +160,16 @@ export function TicketsManager() {
       const res = await fetch(`/api/v1/admin/tickets/${id}`);
       const json = (await res.json().catch(() => null)) as DetailResponse | null;
       if (!res.ok || !json?.data) {
-        setActionError(json?.error?.message ?? "টিকিট খোলা যায়নি।");
+        setActionError(json?.error?.message ?? s.openFailed);
         return;
       }
       setSelected(json.data.ticket);
     } catch {
-      setActionError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+      setActionError(s.networkError);
     } finally {
       setDetailLoading(false);
     }
-  }, []);
+  }, [s]);
 
   async function sendReply() {
     if (!selected || !replyBody.trim()) return;
@@ -169,14 +183,14 @@ export function TicketsManager() {
       });
       const json = (await res.json().catch(() => null)) as DetailResponse | null;
       if (!res.ok || !json?.data) {
-        setActionError(json?.error?.message ?? "উত্তর পাঠানো যায়নি।");
+        setActionError(json?.error?.message ?? s.replyFailed);
         return;
       }
       setSelected(json.data.ticket);
       setReplyBody("");
       void load(tab, slaOnly);
     } catch {
-      setActionError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+      setActionError(s.networkError);
     } finally {
       setBusy(false);
     }
@@ -194,13 +208,13 @@ export function TicketsManager() {
       });
       const json = (await res.json().catch(() => null)) as DetailResponse | null;
       if (!res.ok || !json?.data) {
-        setActionError(json?.error?.message ?? "স্ট্যাটাস বদলানো যায়নি।");
+        setActionError(json?.error?.message ?? s.statusFailed);
         return;
       }
       setSelected(json.data.ticket);
       void load(tab, slaOnly);
     } catch {
-      setActionError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+      setActionError(s.networkError);
     } finally {
       setBusy(false);
     }
@@ -208,21 +222,21 @@ export function TicketsManager() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="টিকিটের স্ট্যাটাস">
-        {TABS.map((t) => (
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label={s.tablistLabel}>
+        {tabs.map((tb) => (
           <button
-            key={t.key}
+            key={tb.key}
             role="tab"
-            aria-selected={tab === t.key}
-            onClick={() => setTab(t.key)}
+            aria-selected={tab === tb.key}
+            onClick={() => setTab(tb.key)}
             className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-              tab === t.key
+              tab === tb.key
                 ? "brand-gradient text-white shadow"
                 : "border border-border bg-card text-text-muted hover:text-text-main"
             }`}
           >
-            {t.label}
-            {t.key !== "ALL" ? ` (${counts[t.key]})` : ""}
+            {tb.label}
+            {tb.key !== "ALL" ? ` (${counts[tb.key]})` : ""}
           </button>
         ))}
         <button
@@ -234,9 +248,9 @@ export function TicketsManager() {
               ? "bg-rose-600 text-white shadow"
               : "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
           }`}
-          title="শুধু যেসব টিকিটের SLA সময়সীমা পেরিয়ে গেছে"
+          title={s.slaOnlyTitle}
         >
-          শুধু SLA-ভাঙা টিকিট
+          {s.slaOnlyFilter}
         </button>
       </div>
 
@@ -249,37 +263,38 @@ export function TicketsManager() {
       <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <Card className="p-0">
           {loadState === "loading" ? (
-            <p className="p-5 text-sm text-text-muted">লোড হচ্ছে…</p>
+            <p className="p-5 text-sm text-text-muted">{t.loading}</p>
           ) : loadState === "error" ? (
             <p className="p-5 text-sm font-medium text-rose-600">{loadError}</p>
           ) : tickets.length === 0 ? (
-            <p className="p-5 text-sm text-text-muted">এই তালিকায় কোনো টিকিট নেই।</p>
+            <p className="p-5 text-sm text-text-muted">{s.emptyList}</p>
           ) : (
             <ul className="divide-y divide-border">
-              {tickets.map((t) => (
-                <li key={t.id}>
+              {tickets.map((tk) => (
+                <li key={tk.id}>
                   <button
                     type="button"
-                    onClick={() => void openTicket(t.id)}
+                    onClick={() => void openTicket(tk.id)}
                     className={`block w-full px-5 py-4 text-left transition hover:bg-surface-2 ${
-                      selected?.id === t.id ? "bg-surface-2" : ""
+                      selected?.id === tk.id ? "bg-surface-2" : ""
                     }`}
                   >
                     <span className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-bold text-text-main">{t.subject}</span>
-                      <Badge tone={STATUS_BADGE[t.status].tone}>{STATUS_BADGE[t.status].label}</Badge>
-                      {t.sla ? (
-                        <Badge tone={SLA_BADGE[t.sla.state].tone}>{SLA_BADGE[t.sla.state].label}</Badge>
+                      <span className="text-sm font-bold text-text-main">{tk.subject}</span>
+                      <Badge tone={statusBadge(locale, tk.status).tone}>{statusBadge(locale, tk.status).label}</Badge>
+                      {tk.sla ? (
+                        <Badge tone={slaBadge(locale, tk.sla.state).tone}>{slaBadge(locale, tk.sla.state).label}</Badge>
                       ) : null}
                     </span>
                     <span className="mt-1 block text-xs text-text-muted">
-                      {t.customerName} · {t.customerPhoneMasked}
-                      {t.orderNo ? ` · অর্ডার ${t.orderNo}` : ""} · {t.messageCount}টি বার্তা ·{" "}
-                      {bnDateTime(t.updatedAt)}
+                      {tk.customerName} · {tk.customerPhoneMasked}
+                      {tk.orderNo ? ` · ${interpolate(s.orderInline, { no: tk.orderNo })}` : ""} ·{" "}
+                      {interpolate(s.metaMessages, { count: tk.messageCount })} ·{" "}
+                      {fmtDateTime(locale, tk.updatedAt)}
                     </span>
-                    {t.lastMessagePreview ? (
+                    {tk.lastMessagePreview ? (
                       <span className="mt-1 line-clamp-1 block text-xs text-text-subtle">
-                        {t.lastMessagePreview}
+                        {tk.lastMessagePreview}
                       </span>
                     ) : null}
                   </button>
@@ -291,40 +306,39 @@ export function TicketsManager() {
 
         <Card>
           {detailLoading ? (
-            <p className="text-sm text-text-muted">থ্রেড লোড হচ্ছে…</p>
+            <p className="text-sm text-text-muted">{s.threadLoading}</p>
           ) : !selected ? (
             <p className="text-sm leading-6 text-text-muted">
-              বাম থেকে একটি টিকিট বেছে নিন — পুরো কথোপকথন, উত্তর দেওয়ার ঘর ও স্ট্যাটাস বদলের
-              বোতাম এখানে আসবে।
+              {s.detailPlaceholder}
             </p>
           ) : (
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base font-bold text-text-main">{selected.subject}</h3>
-                <Badge tone={STATUS_BADGE[selected.status].tone}>
-                  {STATUS_BADGE[selected.status].label}
+                <Badge tone={statusBadge(locale, selected.status).tone}>
+                  {statusBadge(locale, selected.status).label}
                 </Badge>
                 {selected.sla ? (
-                  <Badge tone={SLA_BADGE[selected.sla.state].tone}>
-                    {SLA_BADGE[selected.sla.state].label}
+                  <Badge tone={slaBadge(locale, selected.sla.state).tone}>
+                    {slaBadge(locale, selected.sla.state).label}
                   </Badge>
                 ) : null}
               </div>
               <p className="mt-1 text-xs text-text-muted">
-                গ্রাহক: {selected.customerName} · {selected.customerPhoneMasked}
-                {selected.orderNo ? ` · অর্ডার: ${selected.orderNo}` : ""} · খোলা{" "}
-                {bnDateTime(selected.createdAt)}
+                {s.customerLabel} {selected.customerName} · {selected.customerPhoneMasked}
+                {selected.orderNo ? ` · ${interpolate(s.orderDetail, { no: selected.orderNo })}` : ""} · {s.openedLabel}{" "}
+                {fmtDateTime(locale, selected.createdAt)}
               </p>
               {selected.sla ? (
                 <div className="mt-3 rounded-xl bg-surface-2 px-3.5 py-2.5 text-xs leading-5 text-text-muted">
-                  <span className="font-bold text-text-main">SLA সময়সীমা</span> (খোলার সময় থেকে
-                  হিসাব করা): প্রথম উত্তরের শেষ সময় {bnDateTime(selected.sla.firstResponseDueAt)}
+                  <span className="font-bold text-text-main">{s.slaHeading}</span> {s.slaIntro}{" "}
+                  {interpolate(s.slaFirstDue, { date: fmtDateTime(locale, selected.sla.firstResponseDueAt) })}
                   {selected.sla.firstResponseAt
-                    ? ` — উত্তর দেওয়া হয়েছে ${bnDateTime(selected.sla.firstResponseAt)}`
-                    : " — এখনো স্টাফের উত্তর হয়নি"}
-                  {selected.sla.firstResponseBreached ? " (সময়সীমা পেরিয়েছিল)" : ""} · সমাধানের শেষ
-                  সময় {bnDateTime(selected.sla.resolutionDueAt)}
-                  {selected.sla.resolutionBreached ? " (সময়সীমা পেরিয়েছে)" : ""}
+                    ? ` — ${interpolate(s.slaResponded, { date: fmtDateTime(locale, selected.sla.firstResponseAt) })}`
+                    : ` — ${s.slaNotResponded}`}
+                  {selected.sla.firstResponseBreached ? ` ${s.slaBreachedPast}` : ""} ·{" "}
+                  {interpolate(s.slaResolutionDue, { date: fmtDateTime(locale, selected.sla.resolutionDueAt) })}
+                  {selected.sla.resolutionBreached ? ` ${s.slaBreachedNow}` : ""}
                 </div>
               ) : null}
 
@@ -337,8 +351,8 @@ export function TicketsManager() {
                     }`}
                   >
                     <p className="text-xs font-bold text-text-main">
-                      {m.authorType === "STAFF" ? "সাপোর্ট টিম" : selected.customerName}
-                      <span className="ml-2 font-medium text-text-subtle">{bnDateTime(m.createdAt)}</span>
+                      {m.authorType === "STAFF" ? s.supportTeam : selected.customerName}
+                      <span className="ml-2 font-medium text-text-subtle">{fmtDateTime(locale, m.createdAt)}</span>
                     </p>
                     <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-text-main [overflow-wrap:anywhere]">
                       {m.body}
@@ -349,7 +363,7 @@ export function TicketsManager() {
 
               <div className="mt-5 border-t border-border pt-4">
                 <label className="mb-1.5 block text-sm font-medium text-text-main" htmlFor="admin-ticket-reply">
-                  উত্তর লিখুন (পাঠালে স্ট্যাটাস PENDING হবে)
+                  {s.replyLabel}
                 </label>
                 <CannedReplyPicker
                   onInsert={(body) =>
@@ -365,7 +379,7 @@ export function TicketsManager() {
                   onChange={(e) => setReplyBody(e.target.value)}
                   rows={3}
                   maxLength={5000}
-                  placeholder="গ্রাহকের উদ্দেশে উত্তর লিখুন…"
+                  placeholder={s.replyPlaceholder}
                   className={inputClass}
                 />
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -375,7 +389,7 @@ export function TicketsManager() {
                     disabled={busy || !replyBody.trim()}
                     className="brand-gradient h-10 rounded-xl px-4 text-sm font-bold text-white shadow transition hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
                   >
-                    {busy ? "পাঠানো হচ্ছে…" : "উত্তর পাঠান"}
+                    {busy ? s.sending : s.sendReply}
                   </button>
                   {selected.status !== "CLOSED" ? (
                     <button
@@ -384,7 +398,7 @@ export function TicketsManager() {
                       disabled={busy}
                       className="h-10 rounded-xl border border-border bg-card px-4 text-sm font-semibold text-text-main transition hover:bg-surface-2 disabled:opacity-60"
                     >
-                      টিকিট বন্ধ করুন
+                      {s.closeTicket}
                     </button>
                   ) : (
                     <button
@@ -393,7 +407,7 @@ export function TicketsManager() {
                       disabled={busy}
                       className="h-10 rounded-xl border border-border bg-card px-4 text-sm font-semibold text-text-main transition hover:bg-surface-2 disabled:opacity-60"
                     >
-                      আবার খুলুন
+                      {s.reopenTicket}
                     </button>
                   )}
                 </div>

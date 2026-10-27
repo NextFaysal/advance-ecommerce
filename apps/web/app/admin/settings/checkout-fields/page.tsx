@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { SETTINGS_STRINGS } from "../strings";
 import { CheckoutFieldsPanel } from "./checkout-fields-panel";
 
 // Admin > Settings > Checkout Fields (doc 28). The storefront
@@ -13,19 +16,21 @@ import { CheckoutFieldsPanel } from "./checkout-fields-panel";
 // saved change is what the customer sees on the next page load.
 export const dynamic = "force-dynamic";
 
-export default function CheckoutFieldsSettingsPage() {
+export default async function CheckoutFieldsSettingsPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, SETTINGS_STRINGS);
   return (
     <main className="min-w-0">
       <PageHeader
-        title="চেকআউট ফিল্ড"
-        description="স্টোরফ্রন্ট চেকআউট ফর্মের ফিল্ড সাজানো, লেবেল বদলানো, ফিল্ড লুকানো বা আবশ্যক করা এবং নিজের অতিরিক্ত ফিল্ড যোগ করা — সব এই পেজ থেকে। প্রতিটি পরিবর্তন কারণসহ অডিট লগে থাকে।"
-        breadcrumb="সেটিংস / চেকআউট ফিল্ড"
+        title={s.chfPageTitle}
+        description={s.chfPageDesc}
+        breadcrumb={s.chfBreadcrumb}
         actions={
           <Link
             href="/admin/settings"
             className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition motion-fast hover:border-brand-300"
           >
-            ← সব সেটিংস
+            {s.allSettings}
           </Link>
         }
       />

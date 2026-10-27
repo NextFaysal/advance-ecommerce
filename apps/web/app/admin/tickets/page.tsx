@@ -1,6 +1,9 @@
 import { PageHeader } from "@/components/ui/page-header";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
 import { TicketsManager } from "./tickets-manager";
 import { CannedRepliesEditor, KbArticlesEditor } from "./support-tools";
+import { TICKETS_STRINGS } from "./strings";
 
 // Support ticket queue (ADV-16b) — real SupportTicket rows written
 // by signed-in customers from /account/tickets. Staff reply moves a
@@ -12,17 +15,19 @@ import { CannedRepliesEditor, KbArticlesEditor } from "./support-tools";
 // permission exists in PERMISSIONS.
 export const dynamic = "force-dynamic";
 
-export default function AdminTicketsPage() {
+export default async function AdminTicketsPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, TICKETS_STRINGS);
   return (
     <main>
       <PageHeader
-        title="সাপোর্ট টিকিট"
-        description="গ্রাহকদের খোলা সাপোর্ট টিকিটের কিউ। উত্তর দিলে টিকিট PENDING হয়, গ্রাহক আবার লিখলে OPEN হয়ে যায়; সমাধান হলে বন্ধ করে দিন। ফোন নম্বর এখানে মাস্ক করা দেখানো হয়। (Support Tickets — customers.view / customers.edit)"
-        breadcrumb="Admin / Customers"
+        title={s.pageTitle}
+        description={s.pageDescription}
+        breadcrumb={s.pageBreadcrumb}
       />
       <TicketsManager />
-      <section className="mt-8 space-y-5" aria-label="সাপোর্ট টুলস">
-        <h2 className="text-base font-bold text-text-main">সাপোর্ট টুলস</h2>
+      <section className="mt-8 space-y-5" aria-label={s.toolsLabel}>
+        <h2 className="text-base font-bold text-text-main">{s.toolsHeading}</h2>
         <CannedRepliesEditor />
         <KbArticlesEditor />
       </section>

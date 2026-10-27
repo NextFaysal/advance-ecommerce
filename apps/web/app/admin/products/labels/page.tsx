@@ -4,6 +4,9 @@ import { Icon } from "@/components/ui/icon";
 import { featureFlags } from "@/lib/feature-flags";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { LabelsPanel } from "./labels-panel";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { PRODUCTS_STRINGS } from "../strings";
 
 export const dynamic = "force-dynamic";
 
@@ -15,14 +18,16 @@ export const dynamic = "force-dynamic";
 // stripes. The print stylesheet isolates the sheet so only labels
 // come out of the printer.
 export default async function ProductLabelsPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, PRODUCTS_STRINGS);
   await ensureDbFeatureFlags();
   const enabled = featureFlags.isFeatureEnabled("module.product_extras");
   return (
     <main>
       <PageHeader
-        title="বারকোড লেবেল"
-        description="ভ্যারিয়েন্ট বেছে লেবেল ছাপুন (Barcode Labels — module.product_extras)"
-        breadcrumb="Admin / Products / Labels"
+        title={s.labelsTitle}
+        description={s.labelsDesc}
+        breadcrumb={s.labelsBreadcrumb}
       />
       {!enabled ? (
         <Card className="overflow-hidden">
@@ -32,10 +37,9 @@ export default async function ProductLabelsPage() {
               <Icon name="shield" size={26} />
             </span>
             <p role="status" className="text-sm leading-relaxed">
-              প্রোডাক্ট এক্সট্রা মডিউল বন্ধ আছে (<code>module.product_extras</code> OFF) — এটি একটি পেইড অ্যাড-অন।
-              খুলতে Admin &gt; Settings &gt; Feature Flags থেকে <code>module.product_extras</code> চালু করুন।
+              {s.labelsLockedPre}<code>module.product_extras</code> OFF{s.labelsLockedMid} <code>module.product_extras</code> {s.labelsLockedPost}
               <span className="mt-1 block text-text-subtle">
-                (This module is locked — enable the <code>module.product_extras</code> feature flag to unlock it.)
+                {s.labelsLockedNote}
               </span>
             </p>
           </div>

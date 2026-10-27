@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { RESELLERS_STRINGS } from "./strings";
 
 // Danger zone: revoke ALL reseller portal sessions (doc 23 wave 54-7
 // follow-up UI). POSTs to /api/v1/admin/resellers/revoke-sessions
@@ -14,6 +17,8 @@ import { useState } from "react";
 // staff without resellers.manage) surface verbatim from the API.
 // Styled plainly to match this legacy page.
 export function RevokeResellerSessions() {
+  const { locale } = useLocale();
+  const s = pick(locale, RESELLERS_STRINGS);
   const [reason, setReason] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -47,11 +52,11 @@ export function RevokeResellerSessions() {
         setError(
           body?.error
             ? `${body.error.code}: ${body.error.message}`
-            : `HTTP ${res.status} — সেশন বাতিল করা যায়নি।`,
+            : interpolate(s.revokeFailed, { status: res.status }),
         );
       }
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন। (Network error — try again.)");
+      setError(s.networkError);
     } finally {
       setBusy(false);
     }
@@ -61,17 +66,11 @@ export function RevokeResellerSessions() {
     <section
       style={{ border: "1px solid #fecaca", background: "#fef2f2", borderRadius: 8, padding: 16, margin: "16px 0" }}
     >
-      <h2 style={{ marginTop: 0, fontSize: 17, color: "#991b1b" }}>
-        বিপজ্জনক এলাকা / Danger zone — সব পোর্টাল সেশন বাতিল
-      </h2>
-      <p style={{ color: "#475569", fontSize: 13, marginTop: 4 }}>
-        সব রিসেলারের পোর্টাল সেশন সঙ্গে সঙ্গে বাতিল হয়ে যাবে — পরের অনুরোধেই তাদের আবার
-        লগইন করতে হবে। জরুরি পরিস্থিতিতে (যেমন সেশন টোকেন ফাঁসের সন্দেহে) ব্যবহার করুন।
-        কাজটি অডিট লগে থাকে। (Revokes every reseller portal session; audited.)
-      </p>
+      <h2 style={{ marginTop: 0, fontSize: 17, color: "#991b1b" }}>{s.dangerTitle}</h2>
+      <p style={{ color: "#475569", fontSize: 13, marginTop: 4 }}>{s.dangerDesc}</p>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <label style={{ flex: "1 1 320px", fontSize: 13, fontWeight: 600 }}>
-          কারণ / Reason (আবশ্যক)
+          {s.reasonLabel}
           <input
             style={{
               display: "block",
@@ -84,7 +83,7 @@ export function RevokeResellerSessions() {
             }}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="কেন সব সেশন বাতিল করা হচ্ছে"
+            placeholder={s.reasonPlaceholder}
             maxLength={500}
           />
         </label>
@@ -104,12 +103,12 @@ export function RevokeResellerSessions() {
               cursor: reason.trim().length === 0 ? "not-allowed" : "pointer",
             }}
           >
-            সব পোর্টাল সেশন বাতিল
+            {s.revokeBtn}
           </button>
         ) : (
           <>
             <span style={{ fontSize: 13, fontWeight: 600, color: "#991b1b" }}>
-              নিশ্চিত তো? সব রিসেলার লগআউট হয়ে যাবে।
+              {s.confirmQ}
             </span>
             <button
               type="button"
@@ -126,7 +125,7 @@ export function RevokeResellerSessions() {
                 cursor: busy ? "wait" : "pointer",
               }}
             >
-              {busy ? "বাতিল হচ্ছে…" : "হ্যাঁ, বাতিল করুন"}
+              {busy ? s.revoking : s.yesRevoke}
             </button>
             <button
               type="button"
@@ -142,7 +141,7 @@ export function RevokeResellerSessions() {
                 cursor: "pointer",
               }}
             >
-              ফিরে যান
+              {s.goBack}
             </button>
           </>
         )}
@@ -154,9 +153,7 @@ export function RevokeResellerSessions() {
       )}
       {done && (
         <p role="status" style={{ color: "#166534", fontSize: 13, marginBottom: 0 }}>
-          সম্পন্ন হয়েছে — পোর্টাল টোকেন সংস্করণ {done.previousVersion} থেকে{" "}
-          <strong>{done.currentVersion}</strong>-এ উন্নীত। সব বিদ্যমান রিসেলার সেশন এখন
-          অবৈধ; রিসেলারদের আবার লগইন করতে হবে।
+          {interpolate(s.doneMsg, { prev: done.previousVersion, curr: done.currentVersion })}
         </p>
       )}
     </section>

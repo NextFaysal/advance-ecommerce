@@ -5,6 +5,9 @@ import { hasPermission } from "@/lib/rbac";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProductsTable } from "./products-table";
 import { ProductsExportButton } from "./export-button";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { PRODUCTS_STRINGS } from "./strings";
 
 // Admin product list — staff view of the real catalog DB, ALL statuses
 // (admins legitimately see DRAFT/ARCHIVED here; the public read path
@@ -30,6 +33,8 @@ async function viewerPermissions(): Promise<string[]> {
 }
 
 export default async function AdminProductsPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, PRODUCTS_STRINGS);
   const permissions = await viewerPermissions();
   const canDelete = hasPermission(permissions, "products.delete");
   const canEdit = hasPermission(permissions, "products.edit");
@@ -38,9 +43,9 @@ export default async function AdminProductsPage() {
   return (
     <main className="min-w-0">
       <PageHeader
-        eyebrow="ক্যাটালগ"
-        title="পণ্য"
-        description="আসল ক্যাটালগ ডাটাবেস থেকে — সব স্ট্যাটাস (খসড়া ও আর্কাইভসহ) এখানে দেখা যায়, পৃষ্ঠা অনুযায়ী লোড হয়।"
+        eyebrow={s.listEyebrow}
+        title={s.listTitle}
+        description={s.listDesc}
         actions={
           <>
             {canExport ? <ProductsExportButton status="ALL" /> : null}
@@ -53,7 +58,7 @@ export default async function AdminProductsPage() {
                 <path d="m8 10 4 4 4-4" />
                 <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
               </svg>
-              ইমপোর্ট
+              {s.listImport}
             </Link>
             <Link
               href="/admin/products/new"
@@ -62,7 +67,7 @@ export default async function AdminProductsPage() {
               <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="h-4 w-4">
                 <path d="M12 5v14M5 12h14" />
               </svg>
-              নতুন পণ্য
+              {s.listNew}
             </Link>
           </>
         }
@@ -70,11 +75,7 @@ export default async function AdminProductsPage() {
 
       <ProductsTable canDelete={canDelete} canEdit={canEdit} canCreate={canCreate} />
       <p className="mt-4 rounded-lg border border-border/70 bg-surface-2/60 px-4 py-3 text-caption leading-relaxed text-text-subtle">
-        ডেটা আসল ক্যাটালগ ডাটাবেস থেকে সার্ভার-পেজিনেশনে আসে (প্রতি পৃষ্ঠায় ২৫টি)। তালিকা থেকে পণ্য
-        এডিট, কপি ও মুছে ফেলা যায়; দাম/স্টক/স্ট্যাটাস দ্রুত বদলানো যায়; একাধিক পণ্য বেছে বাল্ক
-        স্ট্যাটাস, দাম সমন্বয় (কারণসহ) ও মুছে ফেলার কাজ করা যায় — প্রতিটি কাজ অডিট লগে নথিভুক্ত হয়।
-        এই পেজ থেকেই CSV export নেওয়া যায় (কারণসহ), আর "ইমপোর্ট" থেকে CSV ফাইল দিয়ে বাল্ক পণ্য
-        তোলা যায়।
+        {s.listFooter}
       </p>
     </main>
   );

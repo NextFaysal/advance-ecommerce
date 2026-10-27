@@ -5,6 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, type Locale } from "@/i18n/locale";
+import { STAFF_STRINGS, type StaffStrings } from "./strings";
 
 /**
  * Staff invites — REAL wiring (staff invite flow).
@@ -23,14 +26,6 @@ import { Badge } from "@/components/ui/badge";
  * invalidates the previous one — and copies it. "বাতিল করুন" revokes
  * the invite (token cleared, row soft-deleted).
  */
-const ROLE_OPTIONS = [
-  { value: "Manager", label: "Manager — ম্যানেজার" },
-  { value: "Order Processor", label: "Order Processor — অর্ডার প্রসেসর" },
-  { value: "Inventory", label: "Inventory — ইনভেন্টরি" },
-  { value: "Support", label: "Support — সাপোর্ট" },
-  { value: "Accountant", label: "Accountant — হিসাবরক্ষক" },
-  { value: "Content Editor", label: "Content Editor — কন্টেন্ট এডিটর" },
-];
 
 interface InviteResponse {
   data?: {
@@ -50,11 +45,11 @@ interface PendingMember {
   invitePending: boolean;
 }
 
-function formatBnDate(iso: string | null): string {
+function formatDate(iso: string | null, locale: Locale): string {
   if (iso === null) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat("bn-BD", {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: "Asia/Dhaka",
@@ -70,14 +65,14 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-function OneTimeLink({ link, expiresAt }: { link: string; expiresAt?: string }) {
+function OneTimeLink({ link, expiresAt, t, locale }: { link: string; expiresAt?: string; t: StaffStrings; locale: Locale }) {
   const [copied, setCopied] = useState(false);
   return (
     <div role="status" className="rounded-md bg-emerald-50 px-3 py-3 text-sm text-emerald-900">
-      <p className="font-medium">আমন্ত্রণ তৈরি হয়েছে। নিচের লিংকটি কপি করে নিজে শেয়ার করুন।</p>
+      <p className="font-medium">{t.linkCreatedTitle}</p>
       <p className="mt-1 text-xs">
-        কোনো ইমেইল পাঠানো হয়নি — লিংকটি শুধু এই একবারই দেখানো হচ্ছে (সার্ভারে শুধু এর হ্যাশ থাকে)।
-        {expiresAt ? ` মেয়াদ: ${formatBnDate(expiresAt)} পর্যন্ত।` : ""}
+        {t.linkCreatedNote}
+        {expiresAt ? interpolate(t.linkExpiry, { date: formatDate(expiresAt, locale) }) : ""}
       </p>
       <div className="mt-2 flex flex-col gap-2 sm:flex-row">
         <input
@@ -85,7 +80,7 @@ function OneTimeLink({ link, expiresAt }: { link: string; expiresAt?: string }) 
           value={link}
           onFocus={(e) => e.target.select()}
           className="h-10 min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-3 font-mono text-xs text-text-main"
-          aria-label="আমন্ত্রণ লিংক"
+          aria-label={t.inviteLinkAria}
         />
         <Button
           type="button"
@@ -94,7 +89,7 @@ function OneTimeLink({ link, expiresAt }: { link: string; expiresAt?: string }) 
             setCopied(await copyText(link));
           }}
         >
-          {copied ? "কপি হয়েছে ✓" : "লিংক কপি করুন"}
+          {copied ? t.copied : t.copyLink}
         </Button>
       </div>
     </div>
@@ -102,6 +97,16 @@ function OneTimeLink({ link, expiresAt }: { link: string; expiresAt?: string }) 
 }
 
 export function InviteForm() {
+  const { locale } = useLocale();
+  const t = STAFF_STRINGS[locale];
+  const roleOptions = [
+    { value: "Manager", label: t.roleOptManager },
+    { value: "Order Processor", label: t.roleOptOrderProcessor },
+    { value: "Inventory", label: t.roleOptInventory },
+    { value: "Support", label: t.roleOptSupport },
+    { value: "Accountant", label: t.roleOptAccountant },
+    { value: "Content Editor", label: t.roleOptContentEditor },
+  ];
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -116,7 +121,7 @@ export function InviteForm() {
     setError(null);
     setIssued(null);
     if (email.trim() === "" && phone.trim() === "") {
-      setError("ইমেইল বা ফোন — যেকোনো একটি দিতেই হবে।");
+      setError(t.needContact);
       return;
     }
     setSubmitting(true);
@@ -134,7 +139,7 @@ export function InviteForm() {
       });
       const json = (await res.json().catch(() => null)) as InviteResponse | null;
       if (!res.ok || json?.data?.invite?.link === undefined) {
-        setError(json?.error?.message ?? "আমন্ত্রণ তৈরি করা যায়নি। আবার চেষ্টা করুন।");
+        setError(json?.error?.message ?? t.inviteFailed);
         setSubmitting(false);
         return;
       }
@@ -144,7 +149,7 @@ export function InviteForm() {
       setPhone("");
       setRefreshKey((k) => k + 1);
     } catch {
-      setError("সার্ভারে সংযোগ করা যায়নি। আবার চেষ্টা করুন।");
+      setError(t.connectRetry);
     }
     setSubmitting(false);
   }
@@ -154,8 +159,8 @@ export function InviteForm() {
       <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-3">
         <Input
           name="invite-name"
-          label="নাম (Name)"
-          placeholder="নতুন স্টাফের নাম"
+          label={t.fName}
+          placeholder={t.fNamePlaceholder}
           autoComplete="off"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -163,7 +168,7 @@ export function InviteForm() {
         />
         <Input
           name="invite-email"
-          label="ইমেইল (Email)"
+          label={t.fEmail}
           placeholder="staff@your-shop.com"
           type="email"
           autoComplete="off"
@@ -172,23 +177,19 @@ export function InviteForm() {
         />
         <Input
           name="invite-phone"
-          label="ফোন (Phone)"
+          label={t.fPhone}
           placeholder="01XXXXXXXXX"
           type="tel"
           autoComplete="off"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
         />
-        <Combobox label="ভূমিকা (Role)" options={ROLE_OPTIONS} value={role} onChange={setRole} placeholder="ভূমিকা খুঁজুন…" />
+        <Combobox label={t.fRole} options={roleOptions} value={role} onChange={setRole} placeholder={t.fRolePlaceholder} />
         <div className="sm:col-span-2">
           <Button type="submit" variant="secondary" disabled={submitting}>
-            {submitting ? "অপেক্ষা করুন…" : "আমন্ত্রণ তৈরি করুন"}
+            {submitting ? t.submitWait : t.submit}
           </Button>
-          <p className="mt-2 text-xs text-text-muted">
-            ইমেইল বা ফোন — যেকোনো একটি দিলেই হবে। আমন্ত্রিত স্টাফ লিংক খুলে নিজে পাসওয়ার্ড সেট করবেন —
-            এখানে কোনো পাসওয়ার্ড তৈরি বা দেখানো হয় না। আমন্ত্রণে কোনো ইমেইল যায় না; তৈরি হওয়া
-            লিংকটি আপনাকে নিজে শেয়ার করতে হবে।
-          </p>
+          <p className="mt-2 text-xs text-text-muted">{t.formNote}</p>
         </div>
         {error ? (
           <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700 sm:col-span-3">
@@ -197,7 +198,7 @@ export function InviteForm() {
         ) : null}
         {issued ? (
           <div className="sm:col-span-3">
-            <OneTimeLink link={issued.link} expiresAt={issued.expiresAt} />
+            <OneTimeLink link={issued.link} expiresAt={issued.expiresAt} t={t} locale={locale} />
           </div>
         ) : null}
       </form>
@@ -207,6 +208,8 @@ export function InviteForm() {
 }
 
 export function PendingInvites({ refreshKey = 0 }: { refreshKey?: number }) {
+  const { locale } = useLocale();
+  const t = STAFF_STRINGS[locale];
   const [members, setMembers] = useState<PendingMember[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -221,16 +224,16 @@ export function PendingInvites({ refreshKey = 0 }: { refreshKey?: number }) {
         | { data?: { staff?: PendingMember[] }; error?: { message?: string } }
         | null;
       if (!res.ok || json?.data?.staff === undefined) {
-        setLoadError(json?.error?.message ?? "তালিকা লোড করা যায়নি।");
+        setLoadError(json?.error?.message ?? t.listLoadFailed);
         setMembers([]);
         return;
       }
       setMembers(json.data.staff.filter((m) => m.invitePending));
     } catch {
-      setLoadError("সার্ভারে সংযোগ করা যায়নি।");
+      setLoadError(t.connectError);
       setMembers([]);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -244,54 +247,49 @@ export function PendingInvites({ refreshKey = 0 }: { refreshKey?: number }) {
       const res = await fetch(`/api/v1/admin/staff/${member.id}/resend-invite`, { method: "POST" });
       const json = (await res.json().catch(() => null)) as InviteResponse | null;
       if (!res.ok || json?.data?.invite?.link === undefined) {
-        setRowError(json?.error?.message ?? "নতুন লিংক তৈরি করা যায়নি।");
+        setRowError(json?.error?.message ?? t.resendFailed);
       } else {
         setFreshLink({ id: member.id, link: json.data.invite.link, expiresAt: json.data.invite.expiresAt });
         await copyText(json.data.invite.link);
         setReload((k) => k + 1);
       }
     } catch {
-      setRowError("সার্ভারে সংযোগ করা যায়নি।");
+      setRowError(t.connectError);
     }
     setBusyId(null);
   }
 
   async function handleRevoke(member: PendingMember) {
-    if (!window.confirm(`"${member.name}"-এর আমন্ত্রণ বাতিল করবেন? লিংকটি সাথে সাথে অকার্যকর হয়ে যাবে।`)) return;
+    if (!window.confirm(interpolate(t.revokeConfirm, { name: member.name }))) return;
     setRowError(null);
     setBusyId(member.id);
     try {
       const res = await fetch(`/api/v1/admin/staff/${member.id}/revoke-invite`, { method: "POST" });
       const json = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
       if (!res.ok) {
-        setRowError(json?.error?.message ?? "আমন্ত্রণ বাতিল করা যায়নি।");
+        setRowError(json?.error?.message ?? t.revokeFailed);
       } else {
         setReload((k) => k + 1);
       }
     } catch {
-      setRowError("সার্ভারে সংযোগ করা যায়নি।");
+      setRowError(t.connectError);
     }
     setBusyId(null);
   }
 
   return (
     <div className="mt-8">
-      <h3 className="text-base font-semibold text-text-main">অপেক্ষমাণ আমন্ত্রণ</h3>
-      <p className="mt-1 text-xs text-text-muted">
-        আগের লিংক আবার দেখা যায় না (শুধু হ্যাশ সংরক্ষিত) — "নতুন লিংক কপি করুন" চাপলে নতুন লিংক তৈরি হয়ে
-        কপি হবে এবং আগের লিংক বাতিল হয়ে যাবে।
-      </p>
+      <h3 className="text-base font-semibold text-text-main">{t.pendingTitle}</h3>
+      <p className="mt-1 text-xs text-text-muted">{t.pendingNote}</p>
       {loadError ? (
         <p role="alert" className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {loadError}
         </p>
       ) : null}
       {members === null ? (
-        <p className="mt-3 text-sm text-text-muted">লোড হচ্ছে…</p>
+        <p className="mt-3 text-sm text-text-muted">{t.loadingShort}</p>
       ) : members.length === 0 ? (
-        <p className="mt-3 rounded-md bg-surface-2 px-3 py-2 text-sm text-text-muted">
-          কোনো অপেক্ষমাণ আমন্ত্রণ নেই।
-        </p>
+        <p className="mt-3 rounded-md bg-surface-2 px-3 py-2 text-sm text-text-muted">{t.noPending}</p>
       ) : (
         <ul className="mt-3 divide-y divide-border rounded-xl border border-border">
           {members.map((m) => (
@@ -300,23 +298,23 @@ export function PendingInvites({ refreshKey = 0 }: { refreshKey?: number }) {
                 <span className="font-medium text-text-main">{m.name}</span>
                 <span className="font-mono text-xs text-text-muted">{m.email !== "" ? m.email : m.phone}</span>
                 <Badge tone="brand">{m.role}</Badge>
-                <Badge tone="warning">আমন্ত্রিত</Badge>
+                <Badge tone="warning">{t.invitedBadge}</Badge>
                 <span className="text-xs text-text-muted">
-                  মেয়াদ: {formatBnDate(m.inviteExpiresAt)}
-                  {m.invitedBy ? ` · আমন্ত্রণকারী: ${m.invitedBy}` : ""}
+                  {interpolate(t.expiryLabel, { date: formatDate(m.inviteExpiresAt, locale) })}
+                  {m.invitedBy ? interpolate(t.invitedByLabel, { name: m.invitedBy }) : ""}
                 </span>
                 <span className="ml-auto flex gap-2">
                   <Button type="button" variant="secondary" disabled={busyId === m.id} onClick={() => void handleResend(m)}>
-                    নতুন লিংক কপি করুন
+                    {t.copyNewLink}
                   </Button>
                   <Button type="button" variant="destructive" disabled={busyId === m.id} onClick={() => void handleRevoke(m)}>
-                    বাতিল করুন
+                    {t.revoke}
                   </Button>
                 </span>
               </div>
               {freshLink?.id === m.id ? (
                 <div className="mt-3">
-                  <OneTimeLink link={freshLink.link} expiresAt={freshLink.expiresAt} />
+                  <OneTimeLink link={freshLink.link} expiresAt={freshLink.expiresAt} t={t} locale={locale} />
                 </div>
               ) : null}
             </li>

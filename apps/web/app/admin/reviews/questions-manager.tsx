@@ -13,6 +13,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
+import { REVIEWS_ADMIN_STRINGS, type ReviewsAdminStrings } from "./strings";
 
 type QuestionStatus = "PENDING" | "ANSWERED" | "HIDDEN";
 
@@ -44,23 +47,29 @@ interface PatchResponse {
   error?: { code: string; message: string };
 }
 
-const TABS: Array<{ key: TabKey; label: string }> = [
-  { key: "PENDING", label: "উত্তর বাকি" },
-  { key: "ANSWERED", label: "উত্তর দেওয়া" },
-  { key: "HIDDEN", label: "লুকানো" },
-  { key: "ALL", label: "সব" },
-];
+function tabs(s: ReviewsAdminStrings): Array<{ key: TabKey; label: string }> {
+  return [
+    { key: "PENDING", label: s.qTabPending },
+    { key: "ANSWERED", label: s.qTabAnswered },
+    { key: "HIDDEN", label: s.qTabHidden },
+    { key: "ALL", label: s.qTabAll },
+  ];
+}
 
-const STATUS_BADGE: Record<QuestionStatus, { label: string; tone: "success" | "warning" | "danger" }> = {
-  PENDING: { label: "উত্তর বাকি (PENDING)", tone: "warning" },
-  ANSWERED: { label: "প্রকাশিত (ANSWERED)", tone: "success" },
-  HIDDEN: { label: "লুকানো (HIDDEN)", tone: "danger" },
-};
+function statusBadge(
+  s: ReviewsAdminStrings,
+): Record<QuestionStatus, { label: string; tone: "success" | "warning" | "danger" }> {
+  return {
+    PENDING: { label: s.qBadgePending, tone: "warning" },
+    ANSWERED: { label: s.qBadgeAnswered, tone: "success" },
+    HIDDEN: { label: s.qBadgeHidden, tone: "danger" },
+  };
+}
 
 type LoadState = "loading" | "ready" | "error";
 
-function bnDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("bn-BD", {
+function fmtDate(iso: string, locale: Locale): string {
+  return new Date(iso).toLocaleDateString(intlLocale(locale), {
     timeZone: "Asia/Dhaka",
     day: "numeric",
     month: "long",
@@ -69,6 +78,10 @@ function bnDate(iso: string): string {
 }
 
 export function QuestionsManager() {
+  const { locale } = useLocale();
+  const s = pick(locale, REVIEWS_ADMIN_STRINGS);
+  const TABS = tabs(s);
+  const STATUS_BADGE = statusBadge(s);
   const [tab, setTab] = useState<TabKey>("PENDING");
   const [questions, setQuestions] = useState<AdminQuestion[]>([]);
   const [counts, setCounts] = useState<Record<QuestionStatus, number>>({ PENDING: 0, ANSWERED: 0, HIDDEN: 0 });
@@ -86,7 +99,7 @@ export function QuestionsManager() {
       const json = (await res.json().catch(() => null)) as QuestionsResponse | null;
       if (!res.ok || !json?.data) {
         setLoadState("error");
-        setLoadError(json?.error?.message ?? "প্রশ্ন লোড করা যায়নি।");
+        setLoadError(json?.error?.message ?? s.qLoadFailed);
         return;
       }
       setQuestions(json.data.questions);
@@ -94,9 +107,9 @@ export function QuestionsManager() {
       setLoadState("ready");
     } catch {
       setLoadState("error");
-      setLoadError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+      setLoadError(s.qNetworkError);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load(tab);
@@ -113,12 +126,12 @@ export function QuestionsManager() {
       });
       const json = (await res.json().catch(() => null)) as PatchResponse | null;
       if (!res.ok || !json?.data) {
-        setRowError(json?.error?.message ?? "কাজটি করা যায়নি।");
+        setRowError(json?.error?.message ?? s.qActionFailed);
         return;
       }
       void load(tab);
     } catch {
-      setRowError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+      setRowError(s.qNetworkError);
     } finally {
       setBusyId(null);
     }
@@ -126,7 +139,7 @@ export function QuestionsManager() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="প্রশ্নের স্ট্যাটাস">
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label={s.qTabsAria}>
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -152,12 +165,12 @@ export function QuestionsManager() {
       ) : null}
 
       {loadState === "loading" ? (
-        <p className="text-sm text-text-muted">লোড হচ্ছে…</p>
+        <p className="text-sm text-text-muted">{s.loading}</p>
       ) : loadState === "error" ? (
         <p className="text-sm font-medium text-rose-600">{loadError}</p>
       ) : questions.length === 0 ? (
         <Card>
-          <p className="text-sm text-text-muted">এই তালিকায় কোনো প্রশ্ন নেই।</p>
+          <p className="text-sm text-text-muted">{s.qEmpty}</p>
         </Card>
       ) : (
         <ul className="space-y-4">
@@ -167,15 +180,15 @@ export function QuestionsManager() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-bold text-text-main">{q.productTitleBn}</span>
                   <Badge tone={STATUS_BADGE[q.status].tone}>{STATUS_BADGE[q.status].label}</Badge>
-                  <span className="text-xs text-text-subtle">{bnDate(q.createdAt)}</span>
+                  <span className="text-xs text-text-subtle">{fmtDate(q.createdAt, locale)}</span>
                 </div>
                 <p className="mt-2 text-sm font-semibold text-text-main">
-                  প্র: {q.question}
+                  {interpolate(s.qPrefix, { question: q.question })}
                 </p>
-                <p className="mt-0.5 text-xs text-text-muted">প্রশ্নকারী: {q.authorName}</p>
+                <p className="mt-0.5 text-xs text-text-muted">{interpolate(s.qAsker, { name: q.authorName })}</p>
                 {q.answer ? (
                   <p className="mt-2 break-words text-sm leading-6 text-text-muted [overflow-wrap:anywhere]">
-                    <span className="font-bold text-text-main">উ:</span> {q.answer}
+                    <span className="font-bold text-text-main">{s.qAnswerPrefix}</span> {q.answer}
                   </p>
                 ) : null}
 
@@ -185,7 +198,7 @@ export function QuestionsManager() {
                     onChange={(e) => setDrafts((d) => ({ ...d, [q.id]: e.target.value }))}
                     rows={2}
                     maxLength={5000}
-                    placeholder="উত্তর লিখুন…"
+                    placeholder={s.qAnswerPlaceholder}
                     className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-text-main outline-none focus:border-brand-500"
                   />
                   <div className="flex flex-wrap gap-2">
@@ -200,7 +213,7 @@ export function QuestionsManager() {
                       }
                       className="brand-gradient h-9 rounded-lg px-3.5 text-xs font-bold text-white shadow transition hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
                     >
-                      {q.status === "ANSWERED" ? "উত্তর আপডেট করুন" : "উত্তর দিয়ে প্রকাশ করুন"}
+                      {q.status === "ANSWERED" ? s.qUpdateAnswer : s.qAnswerPublish}
                     </button>
                     {q.status !== "HIDDEN" ? (
                       <button
@@ -209,7 +222,7 @@ export function QuestionsManager() {
                         onClick={() => void patch(q.id, { action: "hide" })}
                         className="h-9 rounded-lg border border-border bg-card px-3.5 text-xs font-semibold text-text-main transition hover:bg-surface-2 disabled:opacity-60"
                       >
-                        লুকান
+                        {s.qHide}
                       </button>
                     ) : (
                       <button
@@ -218,7 +231,7 @@ export function QuestionsManager() {
                         onClick={() => void patch(q.id, { action: "restore" })}
                         className="h-9 rounded-lg border border-border bg-card px-3.5 text-xs font-semibold text-text-main transition hover:bg-surface-2 disabled:opacity-60"
                       >
-                        ফিরিয়ে আনুন
+                        {s.qRestore}
                       </button>
                     )}
                   </div>

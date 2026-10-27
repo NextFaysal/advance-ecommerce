@@ -7,8 +7,14 @@
 // GA4 / TikTok TOKENS are write-only secrets: password fields, never
 // prefilled, never read back — status shows only "Configured / Not
 // configured" booleans from GET /api/v1/admin/tracking.
+// UI copy: doc-30 dictionary (../strings-b).
 import { useEffect, useState } from "react";
 import { TRACKING_SETTING_KEYS } from "@/tracking/settings";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SETTINGS_B_STRINGS, type SettingsBStrings } from "../strings-b";
+
+type SKey = keyof SettingsBStrings;
 
 interface TrackingStatus {
   metaPixelConfigured: boolean;
@@ -21,31 +27,30 @@ interface TrackingStatus {
   clarityConfigured?: boolean;
 }
 
-const META_FIELDS = [
-  { key: TRACKING_SETTING_KEYS.metaPixelId, label: "Primary Meta Pixel ID", secret: false, placeholder: "e.g. 123456789012345" },
-  { key: TRACKING_SETTING_KEYS.metaCapiEnabled, label: "Meta CAPI enabled (true/false)", secret: false, placeholder: "false" },
-  { key: TRACKING_SETTING_KEYS.metaTestEventCode, label: "Meta Test Event Code (optional)", secret: false, placeholder: "TEST12345" },
-  { key: TRACKING_SETTING_KEYS.metaAccessToken, label: "Primary Meta CAPI Access Token (secret)", secret: true, placeholder: "Write-only — stored encrypted" },
-  { key: TRACKING_SETTING_KEYS.metaBackupPixelId, label: "Backup / Secondary Meta Pixel ID", secret: false, placeholder: "e.g. 987654321098765" },
-  { key: TRACKING_SETTING_KEYS.metaBackupAccessToken, label: "Backup Meta CAPI Access Token (secret)", secret: true, placeholder: "Write-only — stored encrypted" },
-] as const;
+interface FieldDef { key: string; labelKey: SKey; secret: boolean; placeholder: string; placeholderKey?: SKey }
 
-const CLARITY_FIELDS = [
-  { key: TRACKING_SETTING_KEYS.clarityProjectId, label: "Microsoft Clarity Project ID", secret: false, placeholder: "e.g. k9x3abcd12 (from clarity.microsoft.com)" },
-] as const;
+const META_FIELDS: FieldDef[] = [
+  { key: TRACKING_SETTING_KEYS.metaPixelId, labelKey: "trackFLMetaPixel", secret: false, placeholder: "e.g. 123456789012345" },
+  { key: TRACKING_SETTING_KEYS.metaCapiEnabled, labelKey: "trackFLMetaCapi", secret: false, placeholder: "false" },
+  { key: TRACKING_SETTING_KEYS.metaTestEventCode, labelKey: "trackFLMetaTest", secret: false, placeholder: "TEST12345" },
+  { key: TRACKING_SETTING_KEYS.metaAccessToken, labelKey: "trackFLMetaToken", secret: true, placeholder: "", placeholderKey: "trackWriteOnly" },
+  { key: TRACKING_SETTING_KEYS.metaBackupPixelId, labelKey: "trackFLBackupPixel", secret: false, placeholder: "e.g. 987654321098765" },
+  { key: TRACKING_SETTING_KEYS.metaBackupAccessToken, labelKey: "trackFLBackupToken", secret: true, placeholder: "", placeholderKey: "trackWriteOnly" },
+];
+const CLARITY_FIELDS: FieldDef[] = [
+  { key: TRACKING_SETTING_KEYS.clarityProjectId, labelKey: "trackFLClarity", secret: false, placeholder: "", placeholderKey: "trackFLClarityPh" },
+];
+const GOOGLE_FIELDS: FieldDef[] = [
+  { key: TRACKING_SETTING_KEYS.ga4MeasurementId, labelKey: "trackFLGa4", secret: false, placeholder: "G-XXXXXXXXXX" },
+  { key: TRACKING_SETTING_KEYS.ga4ApiSecret, labelKey: "trackFLGa4Secret", secret: true, placeholder: "", placeholderKey: "trackWriteOnly" },
+  { key: TRACKING_SETTING_KEYS.gtmContainerId, labelKey: "trackFLGtm", secret: false, placeholder: "GTM-XXXXXXX" },
+];
+const TIKTOK_FIELDS: FieldDef[] = [
+  { key: TRACKING_SETTING_KEYS.tiktokPixelId, labelKey: "trackFLTiktok", secret: false, placeholder: "CXXXXXXXXXXXXXXX" },
+  { key: TRACKING_SETTING_KEYS.tiktokAccessToken, labelKey: "trackFLTiktokToken", secret: true, placeholder: "", placeholderKey: "trackWriteOnly" },
+];
 
-const GOOGLE_FIELDS = [
-  { key: TRACKING_SETTING_KEYS.ga4MeasurementId, label: "GA4 Measurement ID", secret: false, placeholder: "G-XXXXXXXXXX" },
-  { key: TRACKING_SETTING_KEYS.ga4ApiSecret, label: "GA4 API Secret (secret)", secret: true, placeholder: "Write-only — stored encrypted" },
-  { key: TRACKING_SETTING_KEYS.gtmContainerId, label: "GTM Container ID", secret: false, placeholder: "GTM-XXXXXXX" },
-] as const;
-
-const TIKTOK_FIELDS = [
-  { key: TRACKING_SETTING_KEYS.tiktokPixelId, label: "TikTok Pixel Code", secret: false, placeholder: "CXXXXXXXXXXXXXXX" },
-  { key: TRACKING_SETTING_KEYS.tiktokAccessToken, label: "TikTok Access Token (secret)", secret: true, placeholder: "Write-only — stored encrypted" },
-] as const;
-
-async function postSetting(key: string, value: string, reason: string): Promise<{ ok: boolean; message: string }> {
+async function postSetting(key: string, value: string, reason: string, s: SettingsBStrings): Promise<{ ok: boolean; message: string }> {
   try {
     const res = await fetch("/api/v1/admin/settings", {
       method: "POST",
@@ -53,38 +58,40 @@ async function postSetting(key: string, value: string, reason: string): Promise<
       body: JSON.stringify({ key, value, reason }),
     });
     const data = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-    if (!res.ok) return { ok: false, message: data.error?.message ?? `Save failed (${res.status}).` };
-    return { ok: true, message: "Saved." };
+    if (!res.ok) return { ok: false, message: data.error?.message ?? interpolate(s.trackSaveFailed, { status: res.status }) };
+    return { ok: true, message: s.trackSaved };
   } catch {
-    return { ok: false, message: "Network error — nothing was saved." };
+    return { ok: false, message: s.trackNetworkError };
   }
 }
 
-function FieldRow({ settingKey, label, secret, placeholder }: { settingKey: string; label: string; secret: boolean; placeholder: string }) {
+function FieldRow({ settingKey, labelKey, secret, placeholder, placeholderKey, s }: Omit<FieldDef, "key"> & { settingKey: string; s: SettingsBStrings }) {
   const [value, setValue] = useState("");
   const [reason, setReason] = useState("");
   const [status, setStatus] = useState("");
+  const label = s[labelKey];
+  const ph = placeholderKey ? s[placeholderKey] : placeholder;
 
   const save = async () => {
-    if (value.trim() === "") return setStatus("Value is required.");
-    if (reason.trim() === "") return setStatus("A reason is required (audit log).");
-    const result = await postSetting(settingKey, value.trim(), reason.trim());
+    if (value.trim() === "") return setStatus(s.trackValueRequired);
+    if (reason.trim() === "") return setStatus(s.trackReasonRequired);
+    const result = await postSetting(settingKey, value.trim(), reason.trim(), s);
     setStatus(result.message);
-    if (result.ok && secret) setValue(""); // never keep a secret on screen after save
+    if (result.ok && secret) setValue("");
   };
 
   return (
     <div style={{ border: "1px solid #E6E8F2", borderRadius: 6, padding: 16, marginBottom: 12, backgroundColor: "#FAFAFC" }}>
       <h3 style={{ fontSize: 14, fontWeight: 600, margin: "0 0 4px 0" }}>{label}</h3>
       <p style={{ fontSize: 12, color: "#666", margin: "0 0 10px 0" }}>
-        Key: <code>{settingKey}</code>
-        {secret ? " — secret: encrypted in Settings with AES-256-GCM, never displayed again." : ""}
+        {s.trackKeyLabel} <code>{settingKey}</code>
+        {secret ? s.trackSecretNote : ""}
       </p>
       <input
         type={secret ? "password" : "text"}
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder={placeholder}
+        placeholder={ph}
         autoComplete="off"
         style={{ display: "block", width: "100%", maxWidth: 440, marginBottom: 8, padding: 8, border: "1px solid #D1D5DB", borderRadius: 4 }}
       />
@@ -92,7 +99,7 @@ function FieldRow({ settingKey, label, secret, placeholder }: { settingKey: stri
         type="text"
         value={reason}
         onChange={(e) => setReason(e.target.value)}
-        placeholder="Reason for change (required for audit log)"
+        placeholder={s.trackReasonPlaceholder}
         style={{ display: "block", width: "100%", maxWidth: 440, marginBottom: 8, padding: 8, border: "1px solid #D1D5DB", borderRadius: 4 }}
       />
       <button
@@ -100,14 +107,16 @@ function FieldRow({ settingKey, label, secret, placeholder }: { settingKey: stri
         onClick={save}
         style={{ padding: "6px 14px", backgroundColor: "#111827", color: "#FFF", borderRadius: 4, cursor: "pointer", border: "none" }}
       >
-        Save
+        {s.save}
       </button>
-      {status && <span style={{ marginLeft: 12, fontSize: 13, color: status === "Saved." ? "#059669" : "#DC2626" }}>{status}</span>}
+      {status && <span style={{ marginLeft: 12, fontSize: 13, color: status === s.trackSaved ? "#059669" : "#DC2626" }}>{status}</span>}
     </div>
   );
 }
 
 export default function TrackingSettingsPage() {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_B_STRINGS);
   const [status, setStatus] = useState<TrackingStatus | null>(null);
   const [statusError, setStatusError] = useState("");
 
@@ -116,101 +125,97 @@ export default function TrackingSettingsPage() {
       try {
         const res = await fetch("/api/v1/admin/tracking");
         const json = (await res.json().catch(() => ({}))) as { data?: { status?: TrackingStatus }; error?: { message?: string } };
-        if (!res.ok) return setStatusError(json.error?.message ?? `Status unavailable (${res.status}).`);
+        if (!res.ok) return setStatusError(json.error?.message ?? interpolate(s.trackStatusUnavailable, { status: res.status }));
         setStatus(json.data?.status ?? null);
       } catch {
-        setStatusError("Status unavailable — network error.");
+        setStatusError(s.trackStatusNetwork);
       }
     })();
+    // Status copy is resolved at fetch time; locale changes re-render labels.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const yn = (v: boolean | undefined) => (v === undefined ? "—" : v ? "Configured / On" : "Not configured / Off");
+  const yn = (v: boolean | undefined) => (v === undefined ? "—" : v ? s.trackConfiguredOn : s.trackNotConfiguredOff);
 
   return (
     <main style={{ maxWidth: 860, margin: "0 auto", padding: "24px 16px" }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Settings — Tracking & Analytics</h1>
-      <p style={{ color: "#4B5563", marginBottom: 20 }}>
-        Configure Multi-Pixel tracking, Meta Conversions API (CAPI), Microsoft Clarity Heatmaps & Recordings, Google Analytics 4, and TikTok Pixel.
-      </p>
+      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>{s.trackTitle}</h1>
+      <p style={{ color: "#4B5563", marginBottom: 20 }}>{s.trackDesc}</p>
 
-      {/* Resolution note (ADV-9): this page's DB settings ARE the live
-          source of truth for pixel + CAPI; server env is fallback only. */}
       <div
         style={{ border: "1px solid #34D399", backgroundColor: "#ECFDF5", color: "#065F46", borderRadius: 8, padding: "12px 16px", marginBottom: 24, fontSize: 14, lineHeight: 1.7 }}
       >
-        <strong>✅ Live:</strong> এই পেজে সেভ করা সেটিংসই এখন live pixel/CAPI চালায় — runtime প্রথমে
-        ডাটাবেসের মান পড়ে (<code>seo.meta.pixel_id</code>, <code>seo.meta.access_token</code> ইত্যাদি);
-        সার্ভার env (<code>NEXT_PUBLIC_META_PIXEL_ID</code>, <code>META_ACCESS_TOKEN</code>) শুধু
-        fallback — DB-তে মান খালি থাকলেই কেবল env প্রযোজ্য। সেভ করার পর পরিবর্তন সর্বোচ্চ ~১ মিনিটের
-        মধ্যে কার্যকর হয় (server cache)। Access token সবসময় server-side থাকে — browser-এ কখনো পাঠানো হয় না।
+        <strong>✅ {s.trackLiveA}</strong>
+        {s.trackLiveBody}
+        <code>seo.meta.pixel_id</code>
+        {s.trackLiveBody2}
+        <code>seo.meta.access_token</code>
+        {s.trackLiveBody3}
+        <code>NEXT_PUBLIC_META_PIXEL_ID</code>
+        {s.trackLiveBody4}
+        <code>META_ACCESS_TOKEN</code>
+        {s.trackLiveBody5}
       </div>
 
-      {/* Live Status Card */}
       <section style={{ border: "1px solid #E5E7EB", borderRadius: 8, padding: 18, marginBottom: 24, backgroundColor: "#F9FAFB" }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 10px 0" }}>Current Status (Safe Booleans)</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 10px 0" }}>{s.trackStatusTitle}</h2>
         {statusError && <p style={{ fontSize: 13, color: "#DC2626" }}>{statusError}</p>}
         {status && (
           <ul style={{ fontSize: 14, lineHeight: 2, margin: 0, paddingLeft: 20 }}>
-            <li><strong>Primary Meta Pixel:</strong> {yn(status.metaPixelConfigured)}</li>
-            <li><strong>Backup Meta Pixel:</strong> {yn(status.metaBackupPixelConfigured)}</li>
-            <li><strong>Meta CAPI:</strong> {yn(status.metaCapiEnabled)} · Primary Token: {yn(status.metaAccessTokenConfigured)} · Backup Token: {yn(status.metaBackupAccessTokenConfigured)}</li>
-            <li><strong>Microsoft Clarity:</strong> {yn(status.clarityConfigured)} (Heatmaps & Session Recordings)</li>
+            <li><strong>{s.trackPrimaryPixel}</strong> {yn(status.metaPixelConfigured)}</li>
+            <li><strong>{s.trackBackupPixel}</strong> {yn(status.metaBackupPixelConfigured)}</li>
+            <li><strong>{s.trackMetaCapi}</strong> {yn(status.metaCapiEnabled)} · {s.trackPrimaryToken} {yn(status.metaAccessTokenConfigured)} · {s.trackBackupToken} {yn(status.metaBackupAccessTokenConfigured)}</li>
+            <li><strong>{s.trackClarityStatus}</strong> {yn(status.clarityConfigured)} {s.trackClaritySuffix}</li>
             <li><strong>GA4:</strong> {yn(status.ga4Configured)}</li>
             <li><strong>TikTok:</strong> {yn(status.tiktokConfigured)}</li>
           </ul>
         )}
-        {!status && !statusError && <p style={{ fontSize: 13, color: "#6B7280" }}>Loading status…</p>}
+        {!status && !statusError && <p style={{ fontSize: 13, color: "#6B7280" }}>{s.trackLoadingStatus}</p>}
       </section>
 
-      {/* 1. Meta (Facebook) Tracking */}
       <section style={{ marginBottom: 32 }}>
         <h2 style={{ fontSize: 18, fontWeight: 600, borderBottom: "1px solid #E5E7EB", paddingBottom: 6, marginBottom: 14 }}>
-          1. Meta (Facebook) — Multi-Pixel & Conversions API (CAPI)
+          {s.trackMetaHeading}
         </h2>
-        <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 12 }}>
-          You can configure both a Primary Pixel and a Backup/Agency Pixel. Server CAPI events share the exact same <code>eventId</code> to ensure deduplication.
-        </p>
+        <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 12 }}>{s.trackMetaDesc}</p>
         {META_FIELDS.map((f) => (
-          <FieldRow key={f.key} settingKey={f.key} label={f.label} secret={f.secret} placeholder={f.placeholder} />
+          <FieldRow key={f.key} settingKey={f.key} labelKey={f.labelKey} secret={f.secret} placeholder={f.placeholder} placeholderKey={f.placeholderKey} s={s} />
         ))}
       </section>
 
-      {/* 2. Microsoft Clarity */}
       <section style={{ marginBottom: 32 }}>
         <h2 style={{ fontSize: 18, fontWeight: 600, borderBottom: "1px solid #E5E7EB", paddingBottom: 6, marginBottom: 14 }}>
-          2. Microsoft Clarity — Heatmaps & Session Recordings (Free)
+          {s.trackClarityHeading}
         </h2>
         <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 12 }}>
-          Watch visitor mouse movements, checkout rage-clicks, and scroll depth recordings without traffic limits. Get your Project ID from <code>clarity.microsoft.com</code>.
+          {s.trackClarityDesc}
+          <code>clarity.microsoft.com</code>
+          {s.trackClarityDesc2}
         </p>
         {CLARITY_FIELDS.map((f) => (
-          <FieldRow key={f.key} settingKey={f.key} label={f.label} secret={f.secret} placeholder={f.placeholder} />
+          <FieldRow key={f.key} settingKey={f.key} labelKey={f.labelKey} secret={f.secret} placeholder={f.placeholder} placeholderKey={f.placeholderKey} s={s} />
         ))}
       </section>
 
-      {/* 3. Google Analytics & GTM */}
       <section style={{ marginBottom: 32 }}>
         <h2 style={{ fontSize: 18, fontWeight: 600, borderBottom: "1px solid #E5E7EB", paddingBottom: 6, marginBottom: 14 }}>
-          3. Google Analytics 4 & Tag Manager
+          {s.trackGoogleHeading}
         </h2>
         {GOOGLE_FIELDS.map((f) => (
-          <FieldRow key={f.key} settingKey={f.key} label={f.label} secret={f.secret} placeholder={f.placeholder} />
+          <FieldRow key={f.key} settingKey={f.key} labelKey={f.labelKey} secret={f.secret} placeholder={f.placeholder} placeholderKey={f.placeholderKey} s={s} />
         ))}
       </section>
 
-      {/* 4. TikTok Pixel */}
       <section style={{ marginBottom: 32 }}>
         <h2 style={{ fontSize: 18, fontWeight: 600, borderBottom: "1px solid #E5E7EB", paddingBottom: 6, marginBottom: 14 }}>
-          4. TikTok Pixel & Events API
+          {s.trackTiktokHeading}
         </h2>
         {TIKTOK_FIELDS.map((f) => (
-          <FieldRow key={f.key} settingKey={f.key} label={f.label} secret={f.secret} placeholder={f.placeholder} />
+          <FieldRow key={f.key} settingKey={f.key} labelKey={f.labelKey} secret={f.secret} placeholder={f.placeholder} placeholderKey={f.placeholderKey} s={s} />
         ))}
       </section>
 
-      <p style={{ fontSize: 12, color: "#9CA3AF" }}>
-        Note: Access tokens are stored with AES-256-GCM encryption in the database and never shown on screen.
-      </p>
+      <p style={{ fontSize: 12, color: "#9CA3AF" }}>{s.trackFooterNote}</p>
     </main>
   );
 }

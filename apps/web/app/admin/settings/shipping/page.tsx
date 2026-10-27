@@ -12,6 +12,9 @@
 // Zones: Inside Dhaka / Outside Dhaka / district.
 import { useState } from "react";
 import { liveModeGuardMessage } from "../../../../src/integrations/sandbox/live-guard";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SETTINGS_STRINGS, type SettingsStrings } from "../strings";
 
 const PROVIDERS = [
   { key: "steadfast", label: "Steadfast" },
@@ -23,11 +26,11 @@ const PROVIDERS = [
 
 type ProviderKey = (typeof PROVIDERS)[number]["key"];
 
-const ZONES = [
-  { key: "inside_dhaka", label: "Inside Dhaka" },
-  { key: "outside_dhaka", label: "Outside Dhaka" },
-  { key: "district", label: "District-wise" },
-] as const;
+const ZONE_KEYS = ["inside_dhaka", "outside_dhaka", "district"] as const;
+
+function zoneLabel(s: SettingsStrings, key: (typeof ZONE_KEYS)[number]): string {
+  return { inside_dhaka: s.shipZoneInside, outside_dhaka: s.shipZoneOutside, district: s.shipZoneDistrict }[key];
+}
 
 interface ProviderState {
   enabled: boolean;
@@ -36,7 +39,7 @@ interface ProviderState {
   status: string;
 }
 
-async function postJson(url: string, body: Record<string, string>): Promise<{ ok: boolean; message: string }> {
+async function postJson(url: string, body: Record<string, string>, s: SettingsStrings): Promise<{ ok: boolean; message: string }> {
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -52,23 +55,26 @@ async function postJson(url: string, body: Record<string, string>): Promise<{ ok
         ok: false,
         message:
           res.status === 404
-            ? "Settings API is not available yet (route missing) — nothing was saved."
-            : (data.error?.message ?? `Save failed (${res.status}).`),
+            ? s.shipApiMissing
+            : (data.error?.message ?? interpolate(s.shipSaveFailed, { status: res.status })),
       };
     }
-    return { ok: true, message: data.data?.message ?? "Saved." };
+    return { ok: true, message: data.data?.message ?? s.shipSavedDot };
   } catch {
-    return { ok: false, message: "Network error — nothing was saved." };
+    return { ok: false, message: s.shipNetwork };
   }
 }
 
 function ProviderSection({ providerKey, label }: { providerKey: ProviderKey; label: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_STRINGS);
   const [state, setState] = useState<ProviderState>({
     enabled: false,
     mode: "sandbox",
     credentialRef: "",
-    status: "Not connected",
+    status: "",
   });
+  const status = state.status === "" ? s.shipNotConnected : state.status;
   const set = (patch: Partial<ProviderState>) => setState((s) => ({ ...s, ...patch }));
 
   async function handleSave() {
@@ -89,33 +95,33 @@ function ProviderSection({ providerKey, label }: { providerKey: ProviderKey; lab
       const result = await postJson("/api/v1/admin/settings", {
         key,
         value,
-        reason: `Update courier ${providerKey} from Settings UI`,
-      });
+        reason: interpolate(s.shipReasonCourier, { provider: providerKey }),
+      }, s);
       if (!result.ok) {
         set({ status: result.message });
         return;
       }
     }
-    set({ status: "Saved via Settings API." });
+    set({ status: s.shipSaved });
   }
 
   async function handleTest() {
     const result = await postJson("/api/v1/admin/settings/test", {
       category: "courier",
       provider: providerKey,
-    });
-    set({ status: result.ok ? "Test passed via Settings API (sandbox is simulated)." : result.message });
+    }, s);
+    set({ status: result.ok ? s.shipTestPassed : result.message });
   }
 
   return (
     <section style={{ border: "1px solid #E6E8F2", padding: 16, marginBottom: 12 }}>
       <h2>{label}</h2>
       <label>
-        Enabled{" "}
+        {s.shipEnabled}{" "}
         <input type="checkbox" checked={state.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
       </label>{" "}
       <label>
-        Mode{" "}
+        {s.shipMode}{" "}
         <select value={state.mode} onChange={(e) => set({ mode: e.target.value as ProviderState["mode"] })}>
           <option value="sandbox">sandbox</option>
           <option value="live">live</option>
@@ -123,7 +129,7 @@ function ProviderSection({ providerKey, label }: { providerKey: ProviderKey; lab
       </label>
       <div>
         <label>
-          Credential reference (encrypted, never shown){" "}
+          {s.shipCredential}{" "}
           <input
             type="password"
             placeholder="••••••••"
@@ -133,32 +139,35 @@ function ProviderSection({ providerKey, label }: { providerKey: ProviderKey; lab
           />
         </label>
       </div>
-      <p>Status: {state.status}</p>
+      <p>{s.shipStatusPrefix}{status}</p>
       <button type="button" onClick={handleSave}>
-        Save
+        {s.shipSave}
       </button>{" "}
       <button type="button" onClick={handleTest}>
-        Test connection
+        {s.shipTest}
       </button>
     </section>
   );
 }
 
 function ZonesSection() {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_STRINGS);
   const [charges, setCharges] = useState<Record<string, string>>({});
   const [thresholds, setThresholds] = useState<Record<string, string>>({});
   const [status, setStatus] = useState("");
 
   async function handleSave() {
-    for (const zone of ZONES) {
+    for (const zoneKey of ZONE_KEYS) {
+      const zone = { key: zoneKey };
       const charge = charges[zone.key] ?? "";
       const freeAbove = thresholds[zone.key] ?? "";
       if (charge !== "") {
         const result = await postJson("/api/v1/admin/settings", {
           key: `courier.${zone.key}.charge_poisha`,
           value: charge,
-          reason: "Update shipping zone charge from Settings UI",
-        });
+          reason: s.shipReasonCharge,
+        }, s);
         if (!result.ok) {
           setStatus(result.message);
           return;
@@ -168,30 +177,32 @@ function ZonesSection() {
         const result = await postJson("/api/v1/admin/settings", {
           key: `courier.${zone.key}.free_above_poisha`,
           value: freeAbove,
-          reason: "Update shipping free-above threshold from Settings UI",
-        });
+          reason: s.shipReasonFree,
+        }, s);
         if (!result.ok) {
           setStatus(result.message);
           return;
         }
       }
     }
-    setStatus("Saved via Settings API.");
+    setStatus(s.shipSaved);
   }
 
   return (
     <section style={{ border: "1px solid #E6E8F2", padding: 16 }}>
-      <h2>Zones &amp; rates</h2>
-      {ZONES.map((zone) => (
+      <h2>{s.shipZonesTitle}</h2>
+      {ZONE_KEYS.map((zoneKey) => {
+        const zone = { key: zoneKey, label: zoneLabel(s, zoneKey) };
+        return (
         <div key={zone.key}>
-          {zone.label}: charge (poisha){" "}
+          {zone.label}: {s.shipCharge}{" "}
           <input
             type="number"
             placeholder="0"
             value={charges[zone.key] ?? ""}
             onChange={(e) => setCharges((c) => ({ ...c, [zone.key]: e.target.value }))}
           />{" "}
-          — free above (poisha){" "}
+          — {s.shipFreeAbove}{" "}
           <input
             type="number"
             placeholder="—"
@@ -199,29 +210,24 @@ function ZonesSection() {
             onChange={(e) => setThresholds((t) => ({ ...t, [zone.key]: e.target.value }))}
           />
         </div>
-      ))}
+        );
+      })}
       <button type="button" onClick={handleSave} style={{ marginTop: 8 }}>
-        Save zones
+        {s.shipSaveZones}
       </button>
-      {status !== "" && <p>Status: {status}</p>}
-      <p>
-        COD settlement outline: courier-collected cash minus courier charge is reconciled
-        in the admin COD settlement report (Step 22, sandbox route:
-        /api/v1/admin/payments/cod-settlement). If a courier API is down, bookings
-        queue with auto-retry and manual booking + manual tracking ID is the fallback.
-      </p>
+      {status !== "" && <p>{s.shipStatusPrefix}{status}</p>}
+      <p>{s.shipCodNote}</p>
     </section>
   );
 }
 
 export default function ShippingSettingsPage() {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_STRINGS);
   return (
     <main>
-      <h1>Settings — Shipping</h1>
-      <p>
-        Admin-configurable: per-courier on/off, sandbox/live, credential reference
-        (encrypted, never shown), zone rates, weight rules and free-shipping threshold.
-      </p>
+      <h1>{s.shipTitle}</h1>
+      <p>{s.shipIntro}</p>
       {PROVIDERS.map((provider) => (
         <ProviderSection key={provider.key} providerKey={provider.key} label={provider.label} />
       ))}

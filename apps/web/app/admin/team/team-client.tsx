@@ -18,6 +18,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { TEAM_STRINGS } from "./strings";
 
 interface StaffMember {
   id: string;
@@ -67,14 +70,17 @@ function hoursShort(minutes: number): string {
   return h >= 10 ? String(Math.round(h)) : h.toFixed(1).replace(/\.0$/, "");
 }
 
-function hoursLong(minutes: number): string {
+function hoursLong(minutes: number, locale: Locale): string {
+  const s = pick(locale, TEAM_STRINGS);
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  if (h === 0) return `${m} মিনিট`;
-  return m > 0 ? `${h}ঘ ${m}মি` : `${h} ঘণ্টা`;
+  if (h === 0) return interpolate(s.minutesOnly, { m });
+  return m > 0 ? interpolate(s.hoursMinutes, { h, m }) : interpolate(s.hoursOnly, { h });
 }
 
 export function TeamClient() {
+  const { locale } = useLocale();
+  const s = pick(locale, TEAM_STRINGS);
   const [month, setMonth] = useState(currentMonth());
   const [data, setData] = useState<AttendanceData | null>(null);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -93,15 +99,15 @@ export function TeamClient() {
       const res = await fetch(`/api/v1/admin/team/attendance?month=${m}`, { cache: "no-store" });
       const json = (await res.json()) as { data?: AttendanceData; error?: { message: string } };
       if (!res.ok || !json.data) {
-        setError(json.error?.message ?? "তথ্য আনা যায়নি।");
+        setError(json.error?.message ?? s.loadFailed);
         return;
       }
       setData(json.data);
       setError("");
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি।");
+      setError(s.networkError);
     }
-  }, []);
+  }, [s]);
 
   const loadShifts = useCallback(async () => {
     try {
@@ -160,7 +166,7 @@ export function TeamClient() {
       );
       const json = (await res.json()) as { error?: { message: string } };
       if (!res.ok) {
-        setShiftError(json.error?.message ?? "শিফট সংরক্ষণ হয়নি।");
+        setShiftError(json.error?.message ?? s.shiftSaveFailed);
         return;
       }
       setForm({ name: "", startHHMM: "09:00", endHHMM: "18:00" });
@@ -168,7 +174,7 @@ export function TeamClient() {
       setEditingId(null);
       void loadShifts();
     } catch {
-      setShiftError("নেটওয়ার্ক ত্রুটি।");
+      setShiftError(s.networkError);
     } finally {
       setBusy(false);
     }
@@ -194,9 +200,9 @@ export function TeamClient() {
     <div className="space-y-6">
       <Card>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-h3">উপস্থিতি — মাসের সারসংক্ষেপ</h2>
+          <h2 className="text-h3">{s.attendanceTitle}</h2>
           <label className="flex items-center gap-2 text-small">
-            মাস
+            {s.monthLabel}
             <Input
               type="month"
               value={month}
@@ -211,14 +217,14 @@ export function TeamClient() {
             <table className="w-full border-collapse text-caption">
               <thead>
                 <tr className="border-b border-border text-left">
-                  <th className="sticky left-0 bg-white px-2 py-2 font-semibold">স্টাফ</th>
+                  <th className="sticky left-0 bg-white px-2 py-2 font-semibold">{s.colStaff}</th>
                   {dayNumbers.map((d) => (
                     <th key={d} className="px-1 py-2 text-center font-medium text-text-subtle">
                       {d}
                     </th>
                   ))}
-                  <th className="px-2 py-2 text-right font-semibold">দিন</th>
-                  <th className="px-2 py-2 text-right font-semibold">মোট সময়</th>
+                  <th className="px-2 py-2 text-right font-semibold">{s.colDays}</th>
+                  <th className="px-2 py-2 text-right font-semibold">{s.colTotalTime}</th>
                 </tr>
               </thead>
               <tbody>
@@ -239,8 +245,8 @@ export function TeamClient() {
                             className="px-1 py-1.5 text-center tabular-nums"
                             title={
                               day
-                                ? `${day.sessions}টি সেশন · ${hoursLong(day.minutes)}${day.open ? " · এখনো খোলা" : ""}${day.shiftNames.length ? ` · ${day.shiftNames.join(", ")}` : ""}`
-                                : "অনুপস্থিত"
+                                ? `${interpolate(s.cellTitle, { sessions: day.sessions, duration: hoursLong(day.minutes, locale) })}${day.open ? s.cellOpenSuffix : ""}${day.shiftNames.length ? ` · ${day.shiftNames.join(", ")}` : ""}`
+                                : s.cellAbsent
                             }
                           >
                             {day === undefined ? (
@@ -257,10 +263,10 @@ export function TeamClient() {
                         {summary?.presentDays ?? 0}
                       </td>
                       <td className="px-2 py-1.5 text-right tabular-nums">
-                        {hoursLong(summary?.totalMinutes ?? 0)}
+                        {hoursLong(summary?.totalMinutes ?? 0, locale)}
                         {(summary?.openSessions ?? 0) > 0 && (
                           <span className="ml-1">
-                            <Badge tone="warning">খোলা {summary?.openSessions}</Badge>
+                            <Badge tone="warning">{interpolate(s.openBadge, { count: summary?.openSessions ?? 0 })}</Badge>
                           </span>
                         )}
                       </td>
@@ -270,18 +276,16 @@ export function TeamClient() {
               </tbody>
             </table>
             <p className="mt-3 text-caption text-text-subtle">
-              ঘরের সংখ্যা = ঐ দিনের কাজের ঘণ্টা (বন্ধ হওয়া চেক-ইন/চেক-আউট জোড়া থেকে)। ● = সেশন এখনো খোলা
-              (বন্ধ না হওয়া পর্যন্ত সময় ০ ধরা হয়)। ফাঁকা = কোনো এন্ট্রি নেই।
+              {s.gridNote}
             </p>
           </div>
         )}
       </Card>
 
       <Card>
-        <h2 className="mb-1 text-h3">শিফট</h2>
+        <h2 className="mb-1 text-h3">{s.shiftsTitle}</h2>
         <p className="mb-4 text-small text-text-subtle">
-          শিফট শুধু তথ্যের জন্য — কারো চেক-ইন তার শিফটের সময়ের মধ্যে পড়লে এন্ট্রিতে শিফটের নাম recorded
-          থাকে। বেতন/লেট-জরিমানার কোনো হিসাব এখানে করা হয় না।
+          {s.shiftsNote}
         </p>
         {shifts.length > 0 && (
           <ul className="mb-5 space-y-2">
@@ -295,14 +299,14 @@ export function TeamClient() {
                   <span className="tabular-nums text-text-subtle">
                     {shift.startHHMM} – {shift.endHHMM}
                   </span>{" "}
-                  <span className="text-text-subtle">· {shift.userIds.length} জন স্টাফ</span>
+                  <span className="text-text-subtle">{interpolate(s.shiftStaffCount, { count: shift.userIds.length })}</span>
                 </span>
                 <span className="flex gap-2">
                   <Button variant="secondary" onClick={() => startEdit(shift)} disabled={busy}>
-                    সম্পাদনা
+                    {s.editBtn}
                   </Button>
                   <Button variant="destructive" onClick={() => void removeShift(shift.id)} disabled={busy}>
-                    মুছুন
+                    {s.deleteBtn}
                   </Button>
                 </span>
               </li>
@@ -311,15 +315,15 @@ export function TeamClient() {
         )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <label className="text-small">
-            শিফটের নাম
+            {s.shiftNameLabel}
             <Input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="সকালের শিফট"
+              placeholder={s.shiftNamePlaceholder}
             />
           </label>
           <label className="text-small">
-            শুরু
+            {s.shiftStartLabel}
             <Input
               type="time"
               value={form.startHHMM}
@@ -327,7 +331,7 @@ export function TeamClient() {
             />
           </label>
           <label className="text-small">
-            শেষ
+            {s.shiftEndLabel}
             <Input
               type="time"
               value={form.endHHMM}
@@ -336,12 +340,12 @@ export function TeamClient() {
           </label>
           <div className="flex items-end">
             <Button onClick={() => void saveShift()} disabled={busy || form.name.trim() === ""} className="min-h-[44px]">
-              {editingId ? "শিফট আপডেট করুন" : "শিফট যোগ করুন"}
+              {editingId ? s.shiftUpdateBtn : s.shiftAddBtn}
             </Button>
           </div>
         </div>
         <fieldset className="mt-3">
-          <legend className="text-small font-medium">এই শিফটে যারা আছেন</legend>
+          <legend className="text-small font-medium">{s.rosterLegend}</legend>
           <div className="mt-2 flex flex-wrap gap-2">
             {staff.map((member) => (
               <label

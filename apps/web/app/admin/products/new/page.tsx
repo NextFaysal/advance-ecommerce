@@ -10,10 +10,15 @@ import { listAttributeSetsAdmin, type AdminAttributeSet } from "@/catalog/attrib
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProductEditor, type AttributeSetOption, type CategoryOption } from "../product-editor";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { PRODUCTS_STRINGS } from "../strings";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewProductPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, PRODUCTS_STRINGS);
   const [categories, brandNames, attributeSetsRaw] = await Promise.all([
     listCategories(),
     listBrandNames(),
@@ -39,9 +44,9 @@ export default async function NewProductPage() {
   return (
     <main className="min-w-0">
       <PageHeader
-        title="নতুন পণ্য"
-        description="সব তথ্য দিয়ে সেভ করুন — স্ট্যাটাস খসড়া (DRAFT) রাখলে স্টোরে দেখা যাবে না, প্রকাশ (ACTIVE) করলেই লাইভ হবে। সেভ হলে পণ্যটির এডিট পেজে নিয়ে যাওয়া হবে।"
-        breadcrumb="পণ্য / নতুন পণ্য"
+        title={s.newTitle}
+        description={s.newDesc}
+        breadcrumb={s.newBreadcrumb}
       />
       <ProductEditor
         mode="create"

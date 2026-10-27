@@ -14,8 +14,15 @@ import {
   VENDOR_DOCUMENT_STATUS_BN,
   type VendorDocumentView,
 } from "@/vendors/documents";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { VENDORS_STRINGS } from "./strings";
 
 export default function VendorDocumentsControl({ vendorId }: { vendorId: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, VENDORS_STRINGS);
+  const KIND_LABEL: Record<string, string> = { TRADE_LICENSE: s.kindTrade, NID: s.kindNid, TIN: s.kindTin, OTHER: s.kindOther };
+  const DOC_STATUS_LABEL: Record<string, string> = { PENDING: s.docStatusPending, VERIFIED: s.docStatusVerified, REJECTED: s.docStatusRejected };
   const [docs, setDocs] = useState<VendorDocumentView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [kind, setKind] = useState("TRADE_LICENSE");
@@ -31,12 +38,12 @@ export default function VendorDocumentsControl({ vendorId }: { vendorId: string 
         error?: { message?: string };
       };
       if (!res.ok) {
-        setError(body.error?.message ?? "কাগজপত্রের তালিকা লোড করা যায়নি।");
+        setError(body.error?.message ?? s.docsLoadFailed);
         return;
       }
       setDocs(body.data?.documents ?? []);
     } catch {
-      setError("কাগজপত্রের তালিকা লোড করা যায়নি।");
+      setError(s.docsLoadFailed);
     }
   }, [vendorId]);
 
@@ -56,14 +63,14 @@ export default function VendorDocumentsControl({ vendorId }: { vendorId: string 
         body: JSON.stringify({ kind, fileName: fileName.trim(), note: note.trim() || undefined }),
       });
       const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-      if (!res.ok) setError(body.error?.message ?? "কাগজপত্র রেকর্ড করা যায়নি।");
+      if (!res.ok) setError(body.error?.message ?? s.docsRecordFailed);
       else {
         setFileName("");
         setNote("");
         await load();
       }
     } catch {
-      setError("কাগজপত্র রেকর্ড করা যায়নি।");
+      setError(s.docsRecordFailed);
     } finally {
       setBusy(false);
     }
@@ -79,10 +86,10 @@ export default function VendorDocumentsControl({ vendorId }: { vendorId: string 
         body: JSON.stringify({ documentId: doc.id, status }),
       });
       const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-      if (!res.ok) setError(body.error?.message ?? "অবস্থা আপডেট করা যায়নি।");
+      if (!res.ok) setError(body.error?.message ?? s.docsUpdateFailed);
       else await load();
     } catch {
-      setError("অবস্থা আপডেট করা যায়নি।");
+      setError(s.docsUpdateFailed);
     } finally {
       setBusy(false);
     }
@@ -92,25 +99,23 @@ export default function VendorDocumentsControl({ vendorId }: { vendorId: string 
 
   return (
     <div>
-      <p className="text-sm font-medium text-text-main">রেকর্ডকৃত কাগজপত্র (মেটাডেটা মাত্র)</p>
+      <p className="text-sm font-medium text-text-main">{s.docsTitle}</p>
       <p className="mt-0.5 text-xs leading-5 text-text-muted">
-        ভেন্ডরের কাছ থেকে যেভাবেই পাওয়া হোক (সরাসরি/ইমেইল), কাগজপত্র এখানে রেকর্ড করুন — ভেন্ডর
-        পোর্টালে একই তালিকা দেখতে পাবেন। কোনো ফাইল আপলোড হয় না; আপলোডের ব্যবস্থা স্টোরেজ
-        কনফিগার হওয়ার পর আসবে।
+        {s.docsDesc}
       </p>
       {error ? (
         <p role="alert" className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       ) : null}
       {docs.length === 0 ? (
-        <p className="mt-2 text-xs text-text-muted">এখনো কোনো কাগজপত্র রেকর্ড করা হয়নি।</p>
+        <p className="mt-2 text-xs text-text-muted">{s.noDocs}</p>
       ) : (
         <ul className="mt-2 space-y-1.5 text-sm">
           {docs.map((doc) => (
             <li key={doc.id} className="flex flex-wrap items-center justify-between gap-2">
               <span className="min-w-0 text-text-main">
-                {VENDOR_DOCUMENT_KIND_BN[doc.kind]} — {doc.fileName}
+                {locale === "bn" ? VENDOR_DOCUMENT_KIND_BN[doc.kind] : (KIND_LABEL[doc.kind] ?? doc.kind)} — {doc.fileName}
                 <span className="block text-xs text-text-muted">
-                  {VENDOR_DOCUMENT_STATUS_BN[doc.status]}
+                  {locale === "bn" ? VENDOR_DOCUMENT_STATUS_BN[doc.status] : (DOC_STATUS_LABEL[doc.status] ?? doc.status)}
                   {doc.note ? ` · ${doc.note}` : ""}
                 </span>
               </span>
@@ -121,7 +126,7 @@ export default function VendorDocumentsControl({ vendorId }: { vendorId: string 
                   onClick={() => void decide(doc, "VERIFIED")}
                   className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                 >
-                  যাচাই সম্পন্ন
+                  {s.verify}
                 </button>
                 <button
                   type="button"
@@ -129,7 +134,7 @@ export default function VendorDocumentsControl({ vendorId }: { vendorId: string 
                   onClick={() => void decide(doc, "REJECTED")}
                   className="rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                 >
-                  প্রত্যাখ্যান
+                  {s.reject}
                 </button>
               </span>
             </li>
@@ -138,31 +143,31 @@ export default function VendorDocumentsControl({ vendorId }: { vendorId: string 
       )}
       <form onSubmit={record} className="mt-3 flex flex-wrap items-end gap-2">
         <label className="block">
-          <span className="text-xs font-medium text-text-main">ধরন</span>
+          <span className="text-xs font-medium text-text-main">{s.kindLabel}</span>
           <select value={kind} onChange={(e) => setKind(e.target.value)} className={`mt-1 block ${inputCls}`}>
-            <option value="TRADE_LICENSE">ট্রেড লাইসেন্স</option>
+            <option value="TRADE_LICENSE">{s.kindTrade}</option>
             <option value="NID">NID</option>
             <option value="TIN">TIN</option>
-            <option value="OTHER">অন্যান্য</option>
+            <option value="OTHER">{s.kindOther}</option>
           </select>
         </label>
         <label className="block flex-1">
-          <span className="text-xs font-medium text-text-main">ফাইলের নাম</span>
+          <span className="text-xs font-medium text-text-main">{s.fileNameLabel}</span>
           <input
             value={fileName}
             onChange={(e) => setFileName(e.target.value)}
-            placeholder="যেমন: trade-license-2026.pdf"
+            placeholder={s.fileNamePlaceholder}
             maxLength={200}
             required
             className={`mt-1 block w-full ${inputCls}`}
           />
         </label>
         <label className="block flex-1">
-          <span className="text-xs font-medium text-text-main">নোট (ঐচ্ছিক)</span>
+          <span className="text-xs font-medium text-text-main">{s.noteOptional}</span>
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="যেমন: দোকানে সরাসরি জমা"
+            placeholder={s.notePlaceholderDoc}
             maxLength={500}
             className={`mt-1 block w-full ${inputCls}`}
           />
@@ -172,7 +177,7 @@ export default function VendorDocumentsControl({ vendorId }: { vendorId: string 
           disabled={busy}
           className="rounded-xl bg-brand-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
         >
-          রেকর্ড করুন
+          {s.recordBtn}
         </button>
       </form>
     </div>

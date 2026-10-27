@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { RESELLERS_STRINGS } from "./strings";
 
 // Create-reseller form (wave 7) — the write half of /admin/resellers.
 // Posts to POST /api/v1/admin/resellers (the no-resellerId branch,
@@ -11,6 +14,8 @@ import { useRouter } from "next/navigation";
 // but states plainly that the link attributes orders only once the
 // reseller is ACTIVE. Styled plainly to match this legacy page.
 export function CreateResellerForm() {
+  const { locale } = useLocale();
+  const s = pick(locale, RESELLERS_STRINGS);
   const router = useRouter();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -47,11 +52,11 @@ export function CreateResellerForm() {
         setError(
           body?.error
             ? `${body.error.code}: ${body.error.message}`
-            : `HTTP ${res.status} — রিসেলার তৈরি হয়নি।`,
+            : interpolate(s.createFailed, { status: res.status }),
         );
       }
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন। (Network error — try again.)");
+      setError(s.networkError);
     } finally {
       setBusy(false);
     }
@@ -69,27 +74,22 @@ export function CreateResellerForm() {
 
   return (
     <section style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 16, margin: "16px 0" }}>
-      <h2 style={{ marginTop: 0, fontSize: 17 }}>নতুন রিসেলার যোগ করুন / Add a reseller</h2>
-      <p style={{ color: "#475569", fontSize: 13, marginTop: 4 }}>
-        তৈরি হলেই রিসেলার একটি ?ref= অ্যাট্রিবিউশন কোড পায়, কিন্তু অবস্থা থাকে{" "}
-        <strong>PENDING_APPROVAL</strong> — অনুমোদন (ACTIVE) না হওয়া পর্যন্ত তার লিংকের
-        অর্ডার অ্যাট্রিবিউট হয় না। (The attribution code is generated at create; orders
-        attribute only once the reseller is ACTIVE.)
-      </p>
+      <h2 style={{ marginTop: 0, fontSize: 17 }}>{s.createTitle}</h2>
+      <p style={{ color: "#475569", fontSize: 13, marginTop: 4 }}>{s.createDesc}</p>
       <form onSubmit={onSubmit} style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <label style={{ flex: "1 1 220px", fontSize: 13, fontWeight: 600 }}>
-          নাম / Name
+          {s.nameLabel}
           <input
             style={inputStyle}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="রিসেলারের নাম"
+            placeholder={s.namePlaceholder}
             required
             minLength={2}
           />
         </label>
         <label style={{ flex: "1 1 220px", fontSize: 13, fontWeight: 600 }}>
-          ফোন / Phone
+          {s.phoneLabel}
           <input
             style={inputStyle}
             value={phone}
@@ -113,7 +113,7 @@ export function CreateResellerForm() {
             cursor: busy ? "wait" : "pointer",
           }}
         >
-          {busy ? "তৈরি হচ্ছে…" : "রিসেলার তৈরি করুন / Create"}
+          {busy ? s.creating : s.createBtn}
         </button>
       </form>
       {error && (
@@ -123,14 +123,8 @@ export function CreateResellerForm() {
       )}
       {created && (
         <p role="status" style={{ color: "#166534", fontSize: 13, marginBottom: 0 }}>
-          তৈরি হয়েছে: <strong>{created.name}</strong> — অবস্থা PENDING_APPROVAL।
-          {created.code ? (
-            <>
-              {" "}
-              কোড <code>{created.code}</code>, শেয়ার লিংক{" "}
-              <code>{`${appBaseUrl}/?ref=${created.code}`}</code> (ACTIVE হলেই লিংকটি কাজ করবে)।
-            </>
-          ) : null}
+          {interpolate(s.createdMsg, { name: created.name })}
+          {created.code ? <> {interpolate(s.createdCode, { code: created.code, link: `${appBaseUrl}/?ref=${created.code}` })}</> : null}
         </p>
       )}
     </section>

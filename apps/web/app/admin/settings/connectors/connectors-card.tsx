@@ -20,6 +20,11 @@
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
 import type { AttemptRecord, ConnectorChannel } from "@/connectors/types";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { intlLocale, interpolate, pick } from "@/i18n/locale";
+import { SETTINGS_B_STRINGS, type SettingsBStrings } from "../strings-b";
+
+type SKey = keyof SettingsBStrings;
 
 export interface ConnectorChannelInitial {
   enabled: boolean;
@@ -42,12 +47,12 @@ export interface ConnectorsInitial {
   attempts: AttemptRecord[];
 }
 
-const EVENT_DEFS = [
-  { name: "order.created", label: "নতুন অর্ডার · order.created" },
-  { name: "order.status_changed", label: "স্ট্যাটাস বদল · order.status_changed" },
-  { name: "payment.succeeded", label: "পেমেন্ট সফল · payment.succeeded" },
-  { name: "stock.low", label: "স্টক কম · stock.low" },
-] as const;
+const EVENT_DEFS: { name: string; labelKey: SKey }[] = [
+  { name: "order.created", labelKey: "connEvOrderCreated" },
+  { name: "order.status_changed", labelKey: "connEvStatus" },
+  { name: "payment.succeeded", labelKey: "connEvPayment" },
+  { name: "stock.low", labelKey: "connEvStock" },
+];
 
 type EventName = (typeof EVENT_DEFS)[number]["name"];
 
@@ -90,6 +95,8 @@ interface ConnectorsCardProps {
 }
 
 export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_B_STRINGS);
   const [enabled, setEnabled] = useState<Record<ConnectorChannel, boolean>>({
     slack: initial.slack.enabled,
     telegram: initial.telegram.enabled,
@@ -126,14 +133,14 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
     });
     if (res.ok) return null;
     const data = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-    return data.error?.message ?? `সেভ করা যায়নি (${res.status})`;
+    return data.error?.message ?? interpolate(s.saveFailedStatus, { status: res.status });
   }
 
   async function handleSave() {
     setStatus("");
     if (reason.trim() === "") {
       setStatusOk(false);
-      setStatus("পরিবর্তনের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setStatus(s.reasonRequired);
       return;
     }
     const writes: { key: string; value: string }[] = [];
@@ -176,7 +183,7 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
 
     if (writes.length === 0) {
       setStatusOk(true);
-      setStatus("কোনো পরিবর্তন নেই — সব মান আগের মতোই আছে, কিছুই সেভ করা হয়নি।");
+      setStatus(s.noChanges);
       return;
     }
     setSaving(true);
@@ -188,17 +195,15 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
           setStatusOk(false);
           setStatus(
             savedKeys.length > 0
-              ? `${w.key} সেভ করা যায়নি: ${failure} — তবে আগের ${savedKeys.length}টি পরিবর্তন সেভ হয়ে গেছে (${savedKeys.join(", ")})।`
-              : `${w.key} সেভ করা যায়নি: ${failure}`,
+              ? interpolate(s.partialSave, { key: w.key, failure, count: savedKeys.length, keys: savedKeys.join(", ") })
+              : interpolate(s.singleSaveFailed, { key: w.key, failure }),
           );
           return;
         }
         savedKeys.push(w.key);
       }
       setStatusOk(true);
-      setStatus(
-        `সেভ হয়েছে — ${savedKeys.length}টি সেটিং বদলেছে। নতুন মান পরের ইভেন্ট থেকেই কার্যকর। ক্রেডেনশিয়াল ঘরগুলো নিরাপত্তার জন্য খালি দেখানো হচ্ছে; পেজ আবার লোড করলে কোন চ্যানেল প্রস্তুত তা দেখা যাবে।`,
-      );
+      setStatus(interpolate(s.connSavedMany, { count: savedKeys.length }));
       setSecretInputs({
         "slack.webhook_url": "",
         "telegram.bot_token": "",
@@ -206,7 +211,7 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
       });
     } catch {
       setStatusOk(false);
-      setStatus("সার্ভারের সঙ্গে যোগাযোগ করা যায়নি — কোন সেটিং সেভ হয়েছে তা নিশ্চিত নয়; পেজটি আবার লোড করে যাচাই করুন।");
+      setStatus(s.networkUncertainSettings);
     } finally {
       setSaving(false);
     }
@@ -225,8 +230,8 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
         error?: { code?: string; message?: string };
       };
       const message = res.ok
-        ? (data.data?.message ?? "টেস্ট পাঠানো হয়েছে।")
-        : (data.error?.message ?? `টেস্ট ব্যর্থ (${res.status})`);
+        ? (data.data?.message ?? s.connTestSent)
+        : (data.error?.message ?? interpolate(s.connTestFailed, { status: res.status }));
       setTestResults((prev) => ({ ...prev, [channel]: message }));
       setAttempts((prev) =>
         [
@@ -248,7 +253,7 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
         ].slice(0, 15),
       );
     } catch {
-      setTestResults((prev) => ({ ...prev, [channel]: "সার্ভারের সঙ্গে যোগাযোগ করা যায়নি।" }));
+      setTestResults((prev) => ({ ...prev, [channel]: s.networkOnly }));
     } finally {
       setTesting(null);
     }
@@ -270,11 +275,9 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
         <span className="text-sm font-medium">
           {label}
           {present ? (
-            <span className="ml-2 text-xs font-normal text-emerald-700">
-              সেট আছে — বদলাতে চাইলে নতুন মান লিখুন
-            </span>
+            <span className="ml-2 text-xs font-normal text-emerald-700">{s.secretSet}</span>
           ) : (
-            <span className="ml-2 text-xs font-normal text-rose-600">সেট নেই</span>
+            <span className="ml-2 text-xs font-normal text-rose-600">{s.secretNotSet}</span>
           )}
         </span>
         <input
@@ -314,7 +317,7 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
   function eventsFieldset(channel: "slack" | "telegram") {
     return (
       <fieldset className="mt-4">
-        <legend className="text-sm font-medium">কোন ইভেন্টে পাঠানো হবে</legend>
+        <legend className="text-sm font-medium">{s.connEventsLegend}</legend>
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           {EVENT_DEFS.map((def) => (
             <label key={def.name} className="flex min-h-[44px] items-center gap-2.5 text-sm">
@@ -332,7 +335,7 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
                 disabled={saving}
                 className="h-5 w-5"
               />
-              <span>{def.label}</span>
+              <span>{s[def.labelKey]} · {def.name}</span>
             </label>
           ))}
         </div>
@@ -351,7 +354,7 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
               configuredNow ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
             }`}
           >
-            {configuredNow ? "প্রস্তুত (আসল সংযোগ)" : "প্রস্তুত নয়"}
+            {configuredNow ? s.readyRealConn : s.notReady}
           </span>
         </legend>
         <label className="mt-2 flex min-h-[44px] items-center gap-2.5 text-sm">
@@ -362,7 +365,7 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
             disabled={saving}
             className="h-5 w-5"
           />
-          <span>এই চ্যানেল চালু রাখুন (enabled)</span>
+          <span>{s.connEnabledChannel}</span>
         </label>
         {children}
         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -372,7 +375,7 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
             disabled={testing !== null}
             className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition motion-fast hover:border-brand-300 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {testing === channel ? "টেস্ট পাঠানো হচ্ছে…" : "টেস্ট পাঠান (আসল কল)"}
+            {testing === channel ? s.connTesting : s.connTest}
           </button>
           {testResults[channel] && (
             <span role="status" className="text-sm leading-relaxed text-text-muted">
@@ -392,21 +395,12 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
           <span aria-hidden="true" className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
             <Icon name="bell" size={20} />
           </span>
-          <h2 className="font-display text-base font-semibold text-text-main">আউটবাউন্ড কানেক্টর</h2>
+          <h2 className="font-display text-base font-semibold text-text-main">{s.connCardTitle}</h2>
         </div>
 
         <div className="mt-4 rounded-xl border border-border bg-surface-2 px-4 py-3.5 text-sm">
-          <p className="leading-relaxed">
-            প্রতিটি চ্যানেল আলাদাভাবে কনফিগার হয়। চ্যানেল তখনই &quot;প্রস্তুত&quot; যখন সেটি চালু
-            (enabled) থাকে এবং সব ক্রেডেনশিয়াল ঘর পূর্ণ থাকে। প্রস্তুত না থাকলে ইভেন্টের সময়
-            NOT_CONFIGURED হিসেবে লেজারে রেকর্ড হয় — কোনো বার্তা পাঠানো হয়েছে বলে দাবি করা হয় না।
-            ফোন নম্বর সবসময় মাস্ক করে পাঠানো হয়; ঠিকানা কখনো পাঠানো হয় না।
-          </p>
-          {!dbReady && (
-            <span className="mt-1.5 block leading-relaxed text-rose-600">
-              সতর্কতা: ডাটাবেস থেকে বর্তমান মান পড়া যায়নি — খালি/ডিফল্ট অবস্থা দেখানো হচ্ছে। সেভ করলে সার্ভার ত্রুটি দেখালে কিছুই বদলাবে না।
-            </span>
-          )}
+          <p className="leading-relaxed">{s.connIntro}</p>
+          {!dbReady && <span className="mt-1.5 block leading-relaxed text-rose-600">{s.dbWarning}</span>}
         </div>
 
         {channelShell(
@@ -417,7 +411,7 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
                 "slack",
                 "webhook_url",
                 "Incoming Webhook URL",
-                "Slack অ্যাপের Incoming Webhooks থেকে পাওয়া URL। URL-টাই ক্রেডেনশিয়াল — এনক্রিপ্ট হয়ে থাকে, কখনো দেখানো হয় না; খালি রাখলে আগের মানই থাকবে।",
+                s.connSlackHelp,
               )}
             </div>
             {eventsFieldset("slack")}
@@ -432,19 +426,19 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
                 "telegram",
                 "bot_token",
                 "Bot Token",
-                "@BotFather থেকে পাওয়া টোকেন। এনক্রিপ্ট হয়ে থাকে, লগে বা রিপোর্টে কখনো লেখা হয় না; খালি রাখলে আগের মানই থাকবে।",
+                s.connBotHelp,
               )}
               {plainField(
                 "telegram",
                 "chat_id",
                 "Chat ID",
-                "যে চ্যাট/গ্রুপে বার্তা যাবে তার আইডি (যেমন: -1001234567890)। বটকে আগে ওই চ্যাটে যোগ করতে হবে।",
+                s.connChatHelp,
               )}
               {plainField(
                 "telegram",
                 "api_base",
-                "API Base (অ্যাডভান্সড)",
-                "সাধারণত https://api.telegram.org — নিজস্ব Bot API সার্ভার বা টেস্টের জন্য বদলানো যায়।",
+                "API Base",
+                s.connApiBaseHelp,
               )}
             </div>
             {eventsFieldset("telegram")}
@@ -455,15 +449,15 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
           "sheets",
           <>
             <p className="mt-2 text-sm leading-relaxed text-text-muted">
-              Google Sheets শুধু <strong>নতুন অর্ডারে (order.created)</strong> একটি সারি যোগ করে —
-              শিটটি অর্ডার লগ; স্ট্যাটাস বদলের চ্যাট-বার্তা Slack/Telegram-এ যায়। সার্ভিস
-              অ্যাকাউন্টটিকে আগে স্প্রেডশিটে Editor হিসেবে শেয়ার করতে হবে।
+              {s.connSheetsIntroA}
+              <strong>{s.connSheetsIntroStrong}</strong>
+              {s.connSheetsIntroB}
               {initial.sheets.serviceAccountEmail && (
                 <>
-                  {" "}
-                  সংরক্ষিত সার্ভিস অ্যাকাউন্ট: <code>{initial.sheets.serviceAccountEmail}</code>
+                  {s.connSheetsAccount}
+                  <code>{initial.sheets.serviceAccountEmail}</code>
                   {initial.sheets.serviceAccountValid === false && (
-                    <span className="text-rose-600"> (JSON-টি পড়া যাচ্ছে না — নতুন করে বসান)</span>
+                    <span className="text-rose-600">{s.connSheetsInvalid}</span>
                   )}
                 </>
               )}
@@ -473,11 +467,9 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
                 <span className="text-sm font-medium">
                   Service Account JSON
                   {initial.sheets.present.service_account_json ? (
-                    <span className="ml-2 text-xs font-normal text-emerald-700">
-                      সেট আছে — বদলাতে চাইলে নতুন JSON বসান
-                    </span>
+                    <span className="ml-2 text-xs font-normal text-emerald-700">{s.connServiceJsonSet}</span>
                   ) : (
-                    <span className="ml-2 text-xs font-normal text-rose-600">সেট নেই</span>
+                    <span className="ml-2 text-xs font-normal text-rose-600">{s.secretNotSet}</span>
                   )}
                 </span>
                 <textarea
@@ -494,32 +486,25 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
                   placeholder='{"type":"service_account","client_email":"...","private_key":"..."}'
                   className={`${inputClass} font-mono text-xs`}
                 />
-                <span className="mt-1 block text-xs leading-relaxed text-text-muted">
-                  পুরো JSON ফাইলটি বসান — প্রাইভেট কীসহ এনক্রিপ্ট হয়ে থাকে, কখনো দেখানো হয় না;
-                  খালি রাখলে আগের মানই থাকবে।
-                </span>
+                <span className="mt-1 block text-xs leading-relaxed text-text-muted">{s.connServiceJsonHelp}</span>
               </label>
               <div className="grid gap-5">
-                {plainField("sheets", "spreadsheet_id", "Spreadsheet ID", "শিটের URL-এর মাঝের দীর্ঘ আইডি অংশটি।")}
-                {plainField("sheets", "sheet_name", "Sheet-এর নাম", "যেমন: Orders — এই ট্যাবে সারি যোগ হবে।")}
+                {plainField("sheets", "spreadsheet_id", "Spreadsheet ID", s.connSpreadsheetHelp)}
+                {plainField("sheets", "sheet_name", "Sheet Name", s.connSheetNameHelp)}
               </div>
             </div>
           </>,
         )}
 
         <div className="mt-8 rounded-xl border border-border bg-surface-2 px-4 py-3.5 text-sm leading-relaxed">
-          <strong>Zapier / Make:</strong> এদের জন্য আলাদা কানেক্টর লাগে না — এরা generic
-          ওয়েবহুক (webhook) ব্যবহার করে। ওয়েবহুক সেটিংস থেকে ইভেন্ট সাবস্ক্রাইব করে
-          Zapier/Make-এর দেওয়া webhook URL বসালেই অর্ডার ইভেন্ট সরাসরি সেখানে পৌঁছাবে।
+          <strong>{s.connZapierA}</strong>
+          {s.connZapierB}
         </div>
 
         <div className="mt-6">
-          <h3 className="text-sm font-semibold text-text-main">সাম্প্রতিক প্রচেষ্টা (লেজার)</h3>
+          <h3 className="text-sm font-semibold text-text-main">{s.connLedgerTitle}</h3>
           {attempts.length === 0 ? (
-            <p className="mt-2 text-sm text-text-muted">
-              এখনো কোনো প্রচেষ্টা রেকর্ড হয়নি — চ্যানেল চালু করে টেস্ট পাঠালে বা অর্ডার ইভেন্ট
-              ঘটলে এখানে দেখা যাবে।
-            </p>
+            <p className="mt-2 text-sm text-text-muted">{s.connLedgerEmpty}</p>
           ) : (
             <ul className="mt-2 divide-y divide-border rounded-xl border border-border">
               {attempts.map((a, i) => (
@@ -538,7 +523,7 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
                   <span className="font-medium">{CHANNEL_TITLES[a.channel]}</span>
                   <span className="text-text-muted">{a.event}</span>
                   <span className="text-xs text-text-muted">
-                    {new Date(a.at).toLocaleString("bn-BD", { timeZone: "Asia/Dhaka" })}
+                    {new Date(a.at).toLocaleString(intlLocale(locale), { timeZone: "Asia/Dhaka" })}
                   </span>
                   {a.errorCode && <code className="text-xs text-rose-700">{a.errorCode}</code>}
                   {a.detail && <span className="w-full text-xs leading-relaxed text-text-muted">{a.detail}</span>}
@@ -550,10 +535,10 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
 
         <div className="mt-6 flex flex-wrap items-end gap-3">
           <label className="block grow basis-56">
-            <span className="text-sm font-medium">পরিবর্তনের কারণ (অডিটের জন্য আবশ্যিক)</span>
+            <span className="text-sm font-medium">{s.reasonRequiredShort}</span>
             <input
               type="text"
-              placeholder="যেমন: টিমের Slack চ্যানেলে অর্ডার অ্যালার্ট চালু করা হলো"
+              placeholder={s.connReasonPlaceholder}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               disabled={saving}
@@ -566,7 +551,7 @@ export function ConnectorsCard({ initial, dbReady }: ConnectorsCardProps) {
             disabled={saving}
             className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {saving ? "সেভ হচ্ছে…" : "সেটিংস সেভ করুন"}
+            {saving ? s.saving : s.saveSettings}
           </button>
         </div>
 

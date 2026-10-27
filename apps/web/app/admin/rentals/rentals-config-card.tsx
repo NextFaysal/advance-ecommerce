@@ -13,6 +13,9 @@
  * and the deposit refund on return is manual.
  */
 import { useCallback, useEffect, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { RENTALS_STRINGS } from "./strings";
 
 interface RentalConfig {
   rentalVariantIds: string[];
@@ -46,6 +49,8 @@ function takaInputToPoisha(text: string): number | null {
 }
 
 export function RentalsConfigCard() {
+  const { locale } = useLocale();
+  const s = pick(locale, RENTALS_STRINGS);
   const [data, setData] = useState<ConfigData | null>(null);
   const [variantIdsText, setVariantIdsText] = useState("");
   const [maxRentalDays, setMaxRentalDays] = useState(30);
@@ -66,7 +71,7 @@ export function RentalsConfigCard() {
         error?: { message?: string };
       } | null;
       if (!res.ok || !json?.data) {
-        setError(json?.error?.message ?? "কনফিগ লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.configLoadFailed);
         return;
       }
       const cfg = json.data.config;
@@ -79,9 +84,9 @@ export function RentalsConfigCard() {
       setLateFeeTaka(poishaToTakaInput(cfg.lateFeePerDayPoisha));
       setError(null);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — কনফিগ লোড করা যায়নি।");
+      setError(s.configLoadNetwork);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load();
@@ -90,18 +95,18 @@ export function RentalsConfigCard() {
   async function save() {
     if (busy) return;
     if (!reason.trim()) {
-      setError("পরিবর্তনের কারণ লিখুন (অডিটের জন্য আবশ্যক)।");
+      setError(s.reasonRequired);
       return;
     }
     const depositFixedPoisha = takaInputToPoisha(depositFixedTaka);
     const lateFeePerDayPoisha = takaInputToPoisha(lateFeeTaka);
     const percentValue = Number(depositPercent);
     if (depositFixedPoisha === null || lateFeePerDayPoisha === null) {
-      setError("টাকার পরিমাণগুলো সঠিক সংখ্যা হতে হবে (ঋণাত্মক নয়)।");
+      setError(s.amountsInvalid);
       return;
     }
     if (!Number.isFinite(percentValue) || percentValue < 0 || percentValue > 100) {
-      setError("জামানতের শতকরা হার ০–১০০-এর মধ্যে হতে হবে।");
+      setError(s.percentInvalid);
       return;
     }
     const rentalVariantIds = variantIdsText
@@ -130,40 +135,38 @@ export function RentalsConfigCard() {
       } | null;
       if (!res.ok || !json?.data) {
         setError(
-          json?.error?.details?.join("; ") ?? json?.error?.message ?? "কনফিগ সংরক্ষণ করা যায়নি।",
+          json?.error?.details?.join("; ") ?? json?.error?.message ?? s.configSaveFailed,
         );
         return;
       }
       setData(json.data);
       setReason("");
-      setNotice("কনফিগ সংরক্ষিত হয়েছে।");
+      setNotice(s.configSaved);
       setError(null);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — কনফিগ সংরক্ষণ করা যায়নি।");
+      setError(s.configSaveNetwork);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <section aria-label="ভাড়া কনফিগ" className="rounded-2xl border border-border bg-card p-5 shadow-card">
-      <h2 className="text-base font-bold text-text-main">ভাড়া কনফিগ</h2>
+    <section aria-label={s.configAria} className="rounded-2xl border border-border bg-card p-5 shadow-card">
+      <h2 className="text-base font-bold text-text-main">{s.configTitle}</h2>
       <p className="mt-1 text-sm text-text-muted">
-        কোন ভ্যারিয়েন্ট ভাড়া দেওয়া যাবে, সর্বোচ্চ কত দিন, আর জামানতের নিয়ম — সব এখান থেকে।
-        জামানত বদলালে শুধু নতুন অর্ডারে প্রযোজ্য হয়; চলমান ভাড়ার জামানত অর্ডারের সময়েই নির্ধারিত (frozen) থাকে।
+        {s.configIntro}
         {data && (
           <>
             {" "}
-            উৎস: <strong className="text-text-main">{data.source === "saved" ? "সংরক্ষিত" : "ডিফল্ট"}</strong>
-            {!data.moduleEnabled && (
-              <> · মডিউল এখন বন্ধ (module.rental) — কনফিগ আগে থেকে তৈরি রাখা যায়।</>
-            )}
+            {s.sourceLabel}{" "}
+            <strong className="text-text-main">{data.source === "saved" ? s.sourceSaved : s.sourceDefault}</strong>
+            {!data.moduleEnabled && <> · {s.moduleOffNote}</>}
           </>
         )}
       </p>
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">সর্বোচ্চ ভাড়ার মেয়াদ (দিন)</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{s.maxRentalDays}</span>
           <input
             type="number"
             min={1}
@@ -174,20 +177,20 @@ export function RentalsConfigCard() {
           />
         </label>
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">জামানতের ধরন</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{s.depositType}</span>
           <select
             value={depositMode}
             onChange={(e) => setDepositMode(e.target.value as "none" | "fixed" | "percent")}
             className={INPUT_CLASS}
           >
-            <option value="none">জামানত নেই</option>
-            <option value="fixed">নির্দিষ্ট পরিমাণ (প্রতি ভাড়ায়)</option>
-            <option value="percent">পণ্যের দামের শতকরা অংশ</option>
+            <option value="none">{s.depositNone}</option>
+            <option value="fixed">{s.depositFixed}</option>
+            <option value="percent">{s.depositPercent}</option>
           </select>
         </label>
         {depositMode === "fixed" && (
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-text-main">জামানতের পরিমাণ (টাকা)</span>
+            <span className="mb-1.5 block text-sm font-medium text-text-main">{s.depositAmount}</span>
             <input
               type="number"
               min={0}
@@ -200,7 +203,7 @@ export function RentalsConfigCard() {
         )}
         {depositMode === "percent" && (
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-text-main">জামানতের হার (দামের %)</span>
+            <span className="mb-1.5 block text-sm font-medium text-text-main">{s.depositRate}</span>
             <input
               type="number"
               min={0}
@@ -213,7 +216,7 @@ export function RentalsConfigCard() {
           </label>
         )}
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">বিলম্ব ফি (টাকা / দিন)</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{s.lateFeeLabel}</span>
           <input
             type="number"
             min={0}
@@ -222,15 +225,11 @@ export function RentalsConfigCard() {
             onChange={(e) => setLateFeeTaka(e.target.value)}
             className={INPUT_CLASS}
           />
-          <span className="mt-1 block text-xs text-text-muted">
-            শুধু চুক্তির হার — সিস্টেম নিজে থেকে এই ফি কাটে না; মেয়াদোত্তীর্ণ ফেরতে ম্যানুয়ালি হিসাব করুন।
-          </span>
+          <span className="mt-1 block text-xs text-text-muted">{s.lateFeeHelp}</span>
         </label>
       </div>
       <label className="mt-4 block">
-        <span className="mb-1.5 block text-sm font-medium text-text-main">
-          ভাড়াযোগ্য ভ্যারিয়েন্ট ID (প্রতি লাইনে একটি)
-        </span>
+        <span className="mb-1.5 block text-sm font-medium text-text-main">{s.variantIdsLabel}</span>
         <textarea
           value={variantIdsText}
           onChange={(e) => setVariantIdsText(e.target.value)}
@@ -238,17 +237,14 @@ export function RentalsConfigCard() {
           placeholder={"variant-id-1\nvariant-id-2"}
           className={`${INPUT_CLASS} font-mono text-xs`}
         />
-        <span className="mt-1 block text-xs text-text-muted">
-          তালিকার বাইরের কোনো ভ্যারিয়েন্ট ভাড়া দেওয়া হবে না। প্রতিটি ভ্যারিয়েন্টের stock-ই তার মোট ইউনিট সংখ্যা —
-          ভাড়া চলাকালীন stock কমে না, তারিখের ওভারল্যাপ দিয়েই প্রাপ্যতা হিসাব হয়। ভ্যারিয়েন্ট ID পণ্যের সম্পাদনা পেজে পাওয়া যায়।
-        </span>
+        <span className="mt-1 block text-xs text-text-muted">{s.variantIdsHelp}</span>
       </label>
       <label className="mt-4 block">
-        <span className="mb-1.5 block text-sm font-medium text-text-main">পরিবর্তনের কারণ (আবশ্যক)</span>
+        <span className="mb-1.5 block text-sm font-medium text-text-main">{s.reasonLabel}</span>
         <input
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="যেমন: নতুন ভাড়ার পণ্য যোগ করা হলো"
+          placeholder={s.reasonPlaceholder}
           className={INPUT_CLASS}
         />
       </label>
@@ -269,7 +265,7 @@ export function RentalsConfigCard() {
           onClick={() => void save()}
           className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
         >
-          {busy ? "সংরক্ষণ হচ্ছে…" : "কনফিগ সংরক্ষণ করুন"}
+          {busy ? s.saving : s.saveConfig}
         </button>
       </div>
     </section>

@@ -18,6 +18,9 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { TICKETS_STRINGS } from "./strings";
 
 interface CannedReply {
   id: string;
@@ -67,6 +70,8 @@ function detailsText(details: unknown): string {
 /* ------------------------- canned reply picker ------------------------ */
 
 export function CannedReplyPicker({ onInsert }: { onInsert: (body: string) => void }) {
+  const { locale } = useLocale();
+  const s = pick(locale, TICKETS_STRINGS);
   const [replies, setReplies] = useState<CannedReply[]>([]);
   const [picked, setPicked] = useState("");
 
@@ -91,7 +96,7 @@ export function CannedReplyPicker({ onInsert }: { onInsert: (body: string) => vo
   return (
     <div className="mb-2 flex flex-wrap items-center gap-2">
       <label className="text-xs font-semibold text-text-muted" htmlFor="canned-reply-picker">
-        তৈরি উত্তর:
+        {s.pickerLabel}
       </label>
       <select
         id="canned-reply-picker"
@@ -99,7 +104,7 @@ export function CannedReplyPicker({ onInsert }: { onInsert: (body: string) => vo
         onChange={(e) => setPicked(e.target.value)}
         className="h-9 rounded-lg border border-border bg-surface px-2.5 text-sm text-text-main outline-none focus:border-brand-500"
       >
-        <option value="">বেছে নিন…</option>
+        <option value="">{s.pickerPlaceholder}</option>
         {replies.map((r) => (
           <option key={r.id} value={r.id}>
             {r.title}
@@ -116,7 +121,7 @@ export function CannedReplyPicker({ onInsert }: { onInsert: (body: string) => vo
         }}
         className="h-9 rounded-lg border border-border bg-card px-3 text-sm font-semibold text-text-main transition hover:bg-surface-2 disabled:opacity-50"
       >
-        উত্তরে বসান
+        {s.pickerInsert}
       </button>
     </div>
   );
@@ -138,6 +143,8 @@ function useDocEditor<T>(url: string) {
 /* ------------------------- canned replies editor ---------------------- */
 
 export function CannedRepliesEditor() {
+  const { locale, t } = useLocale();
+  const s = pick(locale, TICKETS_STRINGS);
   const ed = useDocEditor<CannedReply>("/api/v1/admin/support/canned-replies");
   const { setItems, setLoading, setError } = ed;
 
@@ -147,16 +154,16 @@ export function CannedRepliesEditor() {
       const res = await fetch("/api/v1/admin/support/canned-replies");
       const json = (await res.json().catch(() => null)) as ListResponse<{ replies: CannedReply[] }> | null;
       if (!res.ok || !json?.data) {
-        setError(json?.error?.message ?? "তৈরি উত্তর লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.cannedLoadFailed);
         return;
       }
       setItems(json.data.replies);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+      setError(s.networkError);
     } finally {
       setLoading(false);
     }
-  }, [setError, setItems, setLoading]);
+  }, [setError, setItems, setLoading, s]);
 
   useEffect(() => {
     void load();
@@ -175,14 +182,14 @@ export function CannedRepliesEditor() {
       const json = (await res.json().catch(() => null)) as ListResponse<{ replies: CannedReply[] }> | null;
       if (!res.ok || !json?.data) {
         const extra = detailsText(json?.error?.details);
-        ed.setError((json?.error?.message ?? "সংরক্ষণ করা যায়নি।") + (extra ? ` (${extra})` : ""));
+        ed.setError((json?.error?.message ?? s.saveFailed) + (extra ? ` (${extra})` : ""));
         return;
       }
       ed.setItems(json.data.replies);
       ed.setReason("");
-      ed.setMessage("তৈরি উত্তর সংরক্ষণ হয়েছে।");
+      ed.setMessage(s.cannedSaved);
     } catch {
-      ed.setError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+      ed.setError(s.networkError);
     } finally {
       ed.setBusy(false);
     }
@@ -190,31 +197,31 @@ export function CannedRepliesEditor() {
 
   return (
     <Card>
-      <h3 className="text-base font-bold text-text-main">তৈরি উত্তর (Canned Replies)</h3>
+      <h3 className="text-base font-bold text-text-main">{s.cannedTitle}</h3>
       <p className="mt-1 text-xs leading-5 text-text-muted">
-        টিকিটের উত্তর বাক্সে এক ক্লিকে বসানো যায় এমন তৈরি উত্তর। বসানোর পরও পাঠানোর আগে লেখা বদলানো যায়।
+        {s.cannedDesc}
       </p>
       {ed.error ? (
         <p role="alert" className="mt-3 text-sm font-medium text-rose-600">{ed.error}</p>
       ) : null}
       {ed.message ? <p className="mt-3 text-sm font-medium text-emerald-600">{ed.message}</p> : null}
       {ed.loading ? (
-        <p className="mt-4 text-sm text-text-muted">লোড হচ্ছে…</p>
+        <p className="mt-4 text-sm text-text-muted">{t.loading}</p>
       ) : (
         <div className="mt-4 space-y-4">
           {ed.items.map((r, i) => (
             <div key={r.id} className="rounded-xl border border-border p-3.5">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold text-text-muted">উত্তর {i + 1}</span>
+                <span className="text-xs font-bold text-text-muted">{interpolate(s.replyN, { n: i + 1 })}</span>
                 <button
                   type="button"
                   onClick={() => ed.setItems(ed.items.filter((x) => x.id !== r.id))}
                   className="text-xs font-semibold text-rose-600 hover:underline"
                 >
-                  মুছে ফেলুন
+                  {t.delete}
                 </button>
               </div>
-              <label className={`${labelClass} mt-2`}>শিরোনাম</label>
+              <label className={`${labelClass} mt-2`}>{s.cannedTitleLabel}</label>
               <input
                 value={r.title}
                 maxLength={120}
@@ -222,9 +229,9 @@ export function CannedRepliesEditor() {
                   ed.setItems(ed.items.map((x) => (x.id === r.id ? { ...x, title: e.target.value } : x)))
                 }
                 className={inputClass}
-                placeholder="যেমন: ডেলিভারি বিলম্বের জন্য দুঃখিত"
+                placeholder={s.cannedTitlePlaceholder}
               />
-              <label className={`${labelClass} mt-2`}>উত্তরের লেখা</label>
+              <label className={`${labelClass} mt-2`}>{s.cannedBodyLabel}</label>
               <textarea
                 value={r.body}
                 rows={3}
@@ -243,16 +250,16 @@ export function CannedRepliesEditor() {
             }
             className="h-10 rounded-xl border border-border bg-card px-4 text-sm font-semibold text-text-main transition hover:bg-surface-2"
           >
-            + নতুন তৈরি উত্তর
+            {s.addCanned}
           </button>
           <div>
-            <label className={labelClass} htmlFor="canned-replies-reason">পরিবর্তনের কারণ (আবশ্যক)</label>
+            <label className={labelClass} htmlFor="canned-replies-reason">{s.reasonLabel}</label>
             <input
               id="canned-replies-reason"
               value={ed.reason}
               onChange={(e) => ed.setReason(e.target.value)}
               className={inputClass}
-              placeholder="কেন বদলাচ্ছেন?"
+              placeholder={s.reasonPlaceholder}
             />
           </div>
           <button
@@ -261,7 +268,7 @@ export function CannedRepliesEditor() {
             disabled={ed.busy || !ed.reason.trim()}
             className="brand-gradient h-10 rounded-xl px-4 text-sm font-bold text-white shadow transition hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
           >
-            {ed.busy ? "সংরক্ষণ হচ্ছে…" : "তৈরি উত্তর সংরক্ষণ করুন"}
+            {ed.busy ? s.saving : s.saveCanned}
           </button>
         </div>
       )}
@@ -272,6 +279,8 @@ export function CannedRepliesEditor() {
 /* ----------------------------- KB editor ------------------------------ */
 
 export function KbArticlesEditor() {
+  const { locale, t } = useLocale();
+  const s = pick(locale, TICKETS_STRINGS);
   const ed = useDocEditor<KbArticle>("/api/v1/admin/support/kb-articles");
   const { setItems, setLoading, setError } = ed;
 
@@ -281,16 +290,16 @@ export function KbArticlesEditor() {
       const res = await fetch("/api/v1/admin/support/kb-articles");
       const json = (await res.json().catch(() => null)) as ListResponse<{ articles: KbArticle[] }> | null;
       if (!res.ok || !json?.data) {
-        setError(json?.error?.message ?? "আর্টিকেল লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.kbLoadFailed);
         return;
       }
       setItems(json.data.articles);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+      setError(s.networkError);
     } finally {
       setLoading(false);
     }
-  }, [setError, setItems, setLoading]);
+  }, [setError, setItems, setLoading, s]);
 
   useEffect(() => {
     void load();
@@ -309,14 +318,14 @@ export function KbArticlesEditor() {
       const json = (await res.json().catch(() => null)) as ListResponse<{ articles: KbArticle[] }> | null;
       if (!res.ok || !json?.data) {
         const extra = detailsText(json?.error?.details);
-        ed.setError((json?.error?.message ?? "সংরক্ষণ করা যায়নি।") + (extra ? ` (${extra})` : ""));
+        ed.setError((json?.error?.message ?? s.saveFailed) + (extra ? ` (${extra})` : ""));
         return;
       }
       ed.setItems(json.data.articles);
       ed.setReason("");
-      ed.setMessage("আর্টিকেল সংরক্ষণ হয়েছে — প্রকাশিতগুলো /kb পেজে দেখা যাবে।");
+      ed.setMessage(s.kbSaved);
     } catch {
-      ed.setError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+      ed.setError(s.networkError);
     } finally {
       ed.setBusy(false);
     }
@@ -328,23 +337,22 @@ export function KbArticlesEditor() {
 
   return (
     <Card>
-      <h3 className="text-base font-bold text-text-main">সাহায্য কেন্দ্রের আর্টিকেল (Knowledge Base)</h3>
+      <h3 className="text-base font-bold text-text-main">{s.kbTitle}</h3>
       <p className="mt-1 text-xs leading-5 text-text-muted">
-        শুধু &quot;প্রকাশিত&quot; আর্টিকেলগুলোই গ্রাহকদের /kb পেজে দেখা যায়। Slug হতে হবে ছোট হাতের ইংরেজি
-        অক্ষর, সংখ্যা ও হাইফেন (যেমন: <span className="font-mono">delivery-charge</span>) — একই slug দুইবার চলবে না।
+        {s.kbDescA} <span className="font-mono">delivery-charge</span>{s.kbDescB}
       </p>
       {ed.error ? (
         <p role="alert" className="mt-3 text-sm font-medium text-rose-600">{ed.error}</p>
       ) : null}
       {ed.message ? <p className="mt-3 text-sm font-medium text-emerald-600">{ed.message}</p> : null}
       {ed.loading ? (
-        <p className="mt-4 text-sm text-text-muted">লোড হচ্ছে…</p>
+        <p className="mt-4 text-sm text-text-muted">{t.loading}</p>
       ) : (
         <div className="mt-4 space-y-4">
           {ed.items.map((a, i) => (
             <div key={a.id} className="rounded-xl border border-border p-3.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-bold text-text-muted">আর্টিকেল {i + 1}</span>
+                <span className="text-xs font-bold text-text-muted">{interpolate(s.articleN, { n: i + 1 })}</span>
                 <span className="flex items-center gap-3">
                   <label className="flex items-center gap-1.5 text-xs font-semibold text-text-main">
                     <input
@@ -352,20 +360,20 @@ export function KbArticlesEditor() {
                       checked={a.published}
                       onChange={(e) => patch(a.id, { published: e.target.checked })}
                     />
-                    প্রকাশিত
+                    {s.publishedLabel}
                   </label>
                   <button
                     type="button"
                     onClick={() => ed.setItems(ed.items.filter((x) => x.id !== a.id))}
                     className="text-xs font-semibold text-rose-600 hover:underline"
                   >
-                    মুছে ফেলুন
+                    {t.delete}
                   </button>
                 </span>
               </div>
               <div className="mt-2 grid gap-3 sm:grid-cols-2">
                 <div>
-                  <label className={labelClass}>Slug (URL)</label>
+                  <label className={labelClass}>{s.slugLabel}</label>
                   <input
                     value={a.slug}
                     maxLength={80}
@@ -375,7 +383,7 @@ export function KbArticlesEditor() {
                   />
                 </div>
                 <div>
-                  <label className={labelClass}>শিরোনাম (বাংলা)</label>
+                  <label className={labelClass}>{s.kbTitleBnLabel}</label>
                   <input
                     value={a.titleBn}
                     maxLength={200}
@@ -384,14 +392,14 @@ export function KbArticlesEditor() {
                   />
                 </div>
               </div>
-              <label className={`${labelClass} mt-2`}>শিরোনাম (English, ঐচ্ছিক)</label>
+              <label className={`${labelClass} mt-2`}>{s.kbTitleEnLabel}</label>
               <input
                 value={a.titleEn}
                 maxLength={200}
                 onChange={(e) => patch(a.id, { titleEn: e.target.value })}
                 className={inputClass}
               />
-              <label className={`${labelClass} mt-2`}>লেখা (বাংলা)</label>
+              <label className={`${labelClass} mt-2`}>{s.kbBodyBnLabel}</label>
               <textarea
                 value={a.bodyBn}
                 rows={4}
@@ -399,7 +407,7 @@ export function KbArticlesEditor() {
                 onChange={(e) => patch(a.id, { bodyBn: e.target.value })}
                 className={inputClass}
               />
-              <label className={`${labelClass} mt-2`}>লেখা (English, ঐচ্ছিক)</label>
+              <label className={`${labelClass} mt-2`}>{s.kbBodyEnLabel}</label>
               <textarea
                 value={a.bodyEn}
                 rows={3}
@@ -419,16 +427,16 @@ export function KbArticlesEditor() {
             }
             className="h-10 rounded-xl border border-border bg-card px-4 text-sm font-semibold text-text-main transition hover:bg-surface-2"
           >
-            + নতুন আর্টিকেল
+            {s.addArticle}
           </button>
           <div>
-            <label className={labelClass} htmlFor="kb-articles-reason">পরিবর্তনের কারণ (আবশ্যক)</label>
+            <label className={labelClass} htmlFor="kb-articles-reason">{s.reasonLabel}</label>
             <input
               id="kb-articles-reason"
               value={ed.reason}
               onChange={(e) => ed.setReason(e.target.value)}
               className={inputClass}
-              placeholder="কেন বদলাচ্ছেন?"
+              placeholder={s.reasonPlaceholder}
             />
           </div>
           <button
@@ -437,7 +445,7 @@ export function KbArticlesEditor() {
             disabled={ed.busy || !ed.reason.trim()}
             className="brand-gradient h-10 rounded-xl px-4 text-sm font-bold text-white shadow transition hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
           >
-            {ed.busy ? "সংরক্ষণ হচ্ছে…" : "আর্টিকেল সংরক্ষণ করুন"}
+            {ed.busy ? s.saving : s.saveArticles}
           </button>
         </div>
       )}

@@ -6,6 +6,9 @@ import { isAdapterlessGatewayMethod } from "@/checkout/payment-methods";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SETUP_STRINGS, type SetupStrings } from "./strings";
 import {
   BD_LOCKED_DEFAULTS,
   COURIER_PROVIDERS,
@@ -34,26 +37,30 @@ import {
  * API keys are NEVER asked for here — they belong in Admin > Settings.
  */
 
-const PAYMENT_LABELS: Record<PaymentProvider, string> = {
-  cod: "ক্যাশ অন ডেলিভারি (COD)",
-  bkash: "বিকাশ",
-  nagad: "নগদ",
-  rocket: "রকেট",
-  upay: "উপায়",
-  sslcommerz: "SSLCommerz",
-  aamarpay: "AamarPay",
-  shurjopay: "ShurjoPay",
-  stripe: "Stripe",
-  paypal: "PayPal",
-};
+function paymentLabels(s: SetupStrings): Record<PaymentProvider, string> {
+  return {
+    cod: s.payCod,
+    bkash: s.payBkash,
+    nagad: s.payNagad,
+    rocket: s.payRocket,
+    upay: s.payUpay,
+    sslcommerz: s.paySslcommerz,
+    aamarpay: s.payAamarpay,
+    shurjopay: s.payShurjopay,
+    stripe: s.payStripe,
+    paypal: s.payPaypal,
+  };
+}
 
-const COURIER_LABELS: Record<CourierProvider, string> = {
-  steadfast: "স্টেডফাস্ট",
-  pathao: "পাঠাও",
-  redx: "রেডএক্স",
-  paperfly: "পেপারফ্লাই",
-  ecourier: "ইকুরিয়ার",
-};
+function courierLabels(s: SetupStrings): Record<CourierProvider, string> {
+  return {
+    steadfast: s.courierSteadfast,
+    pathao: s.courierPathao,
+    redx: s.courierRedx,
+    paperfly: s.courierPaperfly,
+    ecourier: s.courierEcourier,
+  };
+}
 
 interface SubmitResult {
   ok: boolean;
@@ -71,13 +78,15 @@ function ToggleRow({
   on: boolean;
   onToggle: () => void;
 }) {
+  const { locale: toggleLocale } = useLocale();
+  const toggleS = pick(toggleLocale, SETUP_STRINGS);
   return (
     <li className="flex flex-wrap items-center gap-3 py-3">
       <div className="min-w-[220px] flex-1">
         <p className="text-sm font-medium">{label}</p>
         {hint ? <p className="mt-0.5 text-xs text-text-muted">{hint}</p> : null}
       </div>
-      <Badge tone={on ? "success" : "neutral"}>{on ? "চালু" : "বন্ধ"}</Badge>
+      <Badge tone={on ? "success" : "neutral"}>{on ? toggleS.on : toggleS.off}</Badge>
       <button
         type="button"
         role="switch"
@@ -95,6 +104,10 @@ function ToggleRow({
 }
 
 export function SetupWizard() {
+  const { locale } = useLocale();
+  const s = pick(locale, SETUP_STRINGS);
+  const PAYMENT_LABELS = paymentLabels(s);
+  const COURIER_LABELS = courierLabels(s);
   const [state, setState] = useState<SetupState>(() => initialSetupState());
   const [stepIndex, setStepIndex] = useState(0);
   const [hydrated, setHydrated] = useState(false);
@@ -150,13 +163,13 @@ export function SetupWizard() {
           ok: true,
           message:
             body.meta?.note ??
-            "সেটআপ সংরক্ষিত হয়েছে (ডাটাবেসে, persisted: true)।",
+            s.savedFallback,
         });
       } else {
-        setResult({ ok: false, message: body.error?.message ?? `জমা ব্যর্থ হয়েছে (HTTP ${res.status})।` });
+        setResult({ ok: false, message: body.error?.message ?? interpolate(s.submitFailed, { status: res.status }) });
       }
     } catch {
-      setResult({ ok: false, message: "নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।" });
+      setResult({ ok: false, message: s.networkError });
     } finally {
       setSubmitting(false);
     }
@@ -177,7 +190,7 @@ export function SetupWizard() {
                     : "bg-slate-100 text-slate-600"
               }`}
             >
-              {i + 1}. {s.labelBn}
+              {i + 1}. {locale === "bn" ? s.labelBn : s.labelEn}
             </span>
           </li>
         ))}
@@ -186,53 +199,52 @@ export function SetupWizard() {
       <Card>
         {step.id === "store" && (
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold">দোকানের তথ্য</h2>
+            <h2 className="text-lg font-semibold">{s.storeInfo}</h2>
             <Input
-              label="দোকানের নাম"
+              label={s.storeName}
               name="storeName"
               required
               value={state.storeName}
               onChange={(e) => setState({ ...state, storeName: e.target.value })}
-              placeholder="যেমন: ঢাকা ফ্যাশন হাউস"
+              placeholder={s.storeNamePlaceholder}
             />
             <Input
-              label="মোবাইল নম্বর"
+              label={s.storePhone}
               name="storePhone"
               required
               value={state.storePhone}
               onChange={(e) => setState({ ...state, storePhone: e.target.value })}
               placeholder="01XXXXXXXXX"
-              helper="অর্ডার ও ডেলিভারির জন্য এই নম্বরে যোগাযোগ করা হবে।"
+              helper={s.storePhoneHelper}
             />
             <Input
-              label="দোকানের ঠিকানা"
+              label={s.storeAddress}
               name="storeAddress"
               required
               value={state.storeAddress}
               onChange={(e) => setState({ ...state, storeAddress: e.target.value })}
-              placeholder="বাসা/রোড, এলাকা, জেলা"
+              placeholder={s.storeAddressPlaceholder}
             />
           </div>
         )}
 
         {step.id === "defaults" && (
           <div className="space-y-3">
-            <h2 className="text-lg font-semibold">ভাষা ও মুদ্রা (লক করা)</h2>
+            <h2 className="text-lg font-semibold">{s.defaultsTitle}</h2>
             <p className="text-sm text-text-muted">
-              এই প্ল্যাটফর্ম বাংলাদেশ-প্রথম: ডিফল্ট ভাষা বাংলা, মুদ্রা টাকা (BDT) এবং সময় অঞ্চল
-              Asia/Dhaka — এগুলো উইজার্ড থেকে বদলানো যায় না।
+              {s.defaultsText}
             </p>
             <dl className="grid gap-2 text-sm sm:grid-cols-3">
               <div className="rounded-md bg-surface-2 p-3">
-                <dt className="text-text-muted">ভাষা</dt>
-                <dd className="font-medium">বাংলা ({BD_LOCKED_DEFAULTS.locale}) · fallback English</dd>
+                <dt className="text-text-muted">{s.language}</dt>
+                <dd className="font-medium">{interpolate(s.languageValue, { locale: BD_LOCKED_DEFAULTS.locale })}</dd>
               </div>
               <div className="rounded-md bg-surface-2 p-3">
-                <dt className="text-text-muted">মুদ্রা</dt>
+                <dt className="text-text-muted">{s.currency}</dt>
                 <dd className="font-medium">{BD_LOCKED_DEFAULTS.currency} (৳)</dd>
               </div>
               <div className="rounded-md bg-surface-2 p-3">
-                <dt className="text-text-muted">সময় অঞ্চল</dt>
+                <dt className="text-text-muted">{s.timezone}</dt>
                 <dd className="font-medium">{BD_LOCKED_DEFAULTS.timezone}</dd>
               </div>
             </dl>
@@ -241,10 +253,9 @@ export function SetupWizard() {
 
         {step.id === "payments" && (
           <div>
-            <h2 className="text-lg font-semibold">পেমেন্ট পদ্ধতি চালু করুন</h2>
+            <h2 className="text-lg font-semibold">{s.paymentsTitle}</h2>
             <p className="mt-1 text-sm text-text-muted">
-              এখানে শুধু কোন পদ্ধতি চালু থাকবে তা বেছে নিন। API key / মার্চেন্ট তথ্য পরে
-              সেটিংস থেকে দিতে হবে — উইজার্ডে কোনো key চাওয়া হয় না।
+              {s.paymentsText}
             </p>
             <ul className="divide-y divide-border">
               {PAYMENT_PROVIDERS.map((p) => (
@@ -252,14 +263,14 @@ export function SetupWizard() {
                   key={p}
                   label={
                     isAdapterlessGatewayMethod(p)
-                      ? `${PAYMENT_LABELS[p]} (অ্যাডাপ্টার তৈরি হয়নি)`
+                      ? `${PAYMENT_LABELS[p]}${s.adapterNotBuiltSuffix}`
                       : PAYMENT_LABELS[p]
                   }
                   hint={
                     p === "cod"
-                      ? "ডিফল্ট চালু"
+                      ? s.defaultOn
                       : isAdapterlessGatewayMethod(p)
-                        ? "অ্যাডাপ্টার তৈরি না হওয়া পর্যন্ত checkout-এ দেখাবে না"
+                        ? s.adapterHint
                         : undefined
                   }
                   on={state.paymentMethods[p]}
@@ -274,9 +285,9 @@ export function SetupWizard() {
 
         {step.id === "couriers" && (
           <div>
-            <h2 className="text-lg font-semibold">কুরিয়ার চালু করুন</h2>
+            <h2 className="text-lg font-semibold">{s.couriersTitle}</h2>
             <p className="mt-1 text-sm text-text-muted">
-              কমপক্ষে একটি কুরিয়ার চালু করুন। অ্যাকাউন্টের credential পরে সেটিংস থেকে দিতে হবে।
+              {s.couriersText}
             </p>
             <ul className="divide-y divide-border">
               {COURIER_PROVIDERS.map((c) => (
@@ -295,56 +306,55 @@ export function SetupWizard() {
 
         {step.id === "integrations" && (
           <div className="space-y-3">
-            <h2 className="text-lg font-semibold">ইন্টিগ্রেশন ও API key</h2>
+            <h2 className="text-lg font-semibold">{s.integrationsTitle}</h2>
             <p className="text-sm text-text-muted">
-              পেমেন্ট, কুরিয়ার, SMS, ইমেইল ও স্টোরেজের API key বা credential{" "}
-              <strong>কখনোই এই উইজার্ডে দেওয়া হয় না</strong>। সেটআপ শেষে{" "}
+              {s.integrationsText1}
+              <strong>{s.integrationsTextStrong}</strong>
+              {s.integrationsText2}
               <a href="/admin/settings" className="font-medium text-brand-700 hover:underline">
-                অ্যাডমিন → সেটিংস
-              </a>{" "}
-              থেকে প্রতিটি প্রোভাইডারের তথ্য দিন — সেগুলো এনক্রিপ্ট করে সংরক্ষণ করা হয় এবং
-              env শুধু ডিফল্ট/fallback হিসেবে থাকে।
+                {s.integrationsLink}
+              </a>
+              {s.integrationsText3}
             </p>
-            <Badge tone="info">Key ছাড়াই উইজার্ড শেষ করা যাবে</Badge>
+            <Badge tone="info">{s.integrationsBadge}</Badge>
           </div>
         )}
 
         {step.id === "finish" && (
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold">সারসংক্ষেপ ও শেষ করুন</h2>
+            <h2 className="text-lg font-semibold">{s.finishTitle}</h2>
             <dl className="space-y-2 text-sm">
               <div className="flex flex-wrap gap-2">
-                <dt className="w-36 text-text-muted">দোকান</dt>
+                <dt className="w-36 text-text-muted">{s.sumStore}</dt>
                 <dd className="font-medium">{state.storeName || "—"}</dd>
               </div>
               <div className="flex flex-wrap gap-2">
-                <dt className="w-36 text-text-muted">মোবাইল</dt>
+                <dt className="w-36 text-text-muted">{s.sumPhone}</dt>
                 <dd className="font-medium">{state.storePhone || "—"}</dd>
               </div>
               <div className="flex flex-wrap gap-2">
-                <dt className="w-36 text-text-muted">ঠিকানা</dt>
+                <dt className="w-36 text-text-muted">{s.sumAddress}</dt>
                 <dd className="font-medium">{state.storeAddress || "—"}</dd>
               </div>
               <div className="flex flex-wrap gap-2">
-                <dt className="w-36 text-text-muted">পেমেন্ট</dt>
+                <dt className="w-36 text-text-muted">{s.sumPayments}</dt>
                 <dd className="font-medium">
                   {enabledPaymentMethods(state).map((p) => PAYMENT_LABELS[p]).join(", ") || "—"}
                 </dd>
               </div>
               <div className="flex flex-wrap gap-2">
-                <dt className="w-36 text-text-muted">কুরিয়ার</dt>
+                <dt className="w-36 text-text-muted">{s.sumCouriers}</dt>
                 <dd className="font-medium">
                   {enabledCourierProviders(state).map((c) => COURIER_LABELS[c]).join(", ") || "—"}
                 </dd>
               </div>
               <div className="flex flex-wrap gap-2">
-                <dt className="w-36 text-text-muted">সেটিংস এন্ট্রি</dt>
-                <dd className="font-medium">{buildSetupSettingsPayload(state).length}টি (key, value, category আকারে)</dd>
+                <dt className="w-36 text-text-muted">{s.sumSettings}</dt>
+                <dd className="font-medium">{interpolate(s.sumSettingsValue, { count: buildSetupSettingsPayload(state).length })}</dd>
               </div>
             </dl>
             <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-700">
-              জমা দিলে তথ্য ডাটাবেসের Settings টেবিলে সংরক্ষিত হবে (অডিটসহ)।
-              API key/secret এখানে নেওয়া হয় না — সেগুলো Settings পেজে এনক্রিপ্ট করে রাখতে হয়।
+              {s.finishNote}
             </p>
             {result ? (
               <p className={`rounded-md p-3 text-sm ${result.ok ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
@@ -373,14 +383,14 @@ export function SetupWizard() {
               setStepIndex((i) => Math.max(i - 1, 0));
             }}
           >
-            পেছনে
+            {s.back}
           </Button>
           {isLast ? (
             <Button variant="gradient" loading={submitting} onClick={submit}>
-              সেটআপ শেষ করুন
+              {s.finish}
             </Button>
           ) : (
-            <Button onClick={goNext}>পরবর্তী ধাপ</Button>
+            <Button onClick={goNext}>{s.next}</Button>
           )}
         </div>
       </Card>

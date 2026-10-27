@@ -27,7 +27,11 @@ import { loadOrderRules } from "@/checkout/order-rules";
 import { loadDeliverySlots } from "@/checkout/delivery-slots";
 import { getEmailTransportStatus } from "@/email/config";
 import { getMaintenanceConfig } from "@/privacy/maintenance";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { SETTINGS_STRINGS, type SettingsStrings } from "./strings";
 import { StoreNameCard } from "./store-name-card";
+import { DefaultLanguageCard, parseDefaultLocale } from "./default-language-card";
 
 // Settings index — landing page for Admin > Settings.
 // The card statuses are REAL (2026-10-25; previously labelled demo
@@ -37,7 +41,7 @@ import { StoreNameCard } from "./store-name-card";
 // NEVER read onto this page), Settings values for tracking IDs, and
 // mere env PRESENCE for infra keys (REDIS_URL, MEILISEARCH_HOST,
 // WEB_PUSH_VAPID_*) — presence only, values never exposed. A probe
-// that cannot run (e.g. DB unreachable) renders "যাচাই করা যায়নি"
+// that cannot run (e.g. DB unreachable) renders the unverifiable label
 // instead of a fake tick.
 
 export const dynamic = "force-dynamic";
@@ -50,11 +54,9 @@ interface CardStatus {
   detail: string;
 }
 
-const UNVERIFIABLE: CardStatus = {
-  tone: "neutral",
-  label: "যাচাই করা যায়নি",
-  detail: "ডাটাবেস পাওয়া যাচ্ছে না — অবস্থা পড়া যায়নি।",
-};
+function unverifiable(s: SettingsStrings): CardStatus {
+  return { tone: "neutral", label: s.stUnverifiable, detail: s.stUnverifiableDetail };
+}
 
 /** bps -> percent text without trailing zeros: 1500 -> "15", 1550 -> "15.5", 1505 -> "15.05". */
 function formatBpsAsPercent(bps: number): string {
@@ -77,27 +79,32 @@ function providerSummary(statuses: IntegrationStatus[], exclude: string[] = []):
   };
 }
 
-function providerStatus(statuses: IntegrationStatus[], exclude: string[] = []): CardStatus {
+function providerStatus(statuses: IntegrationStatus[], s: SettingsStrings, exclude: string[] = []): CardStatus {
   const { configured, enabled, total } = providerSummary(statuses, exclude);
   if (configured.length === 0) {
     return {
       tone: "warning",
-      label: "কনফিগার হয়নি",
-      detail: `কোনো প্রোভাইডারের ক্রেডেনশিয়াল সংরক্ষিত নেই (মোট ${total}টি প্রোভাইডার)।`,
+      label: s.stNotConfigured,
+      detail: interpolate(s.provNoneDetail, { total }),
     };
   }
   return {
     tone: "success",
-    label: "কনফিগার হয়েছে",
-    detail: `ক্রেডেনশিয়াল আছে: ${configured.join(", ")} · চালু: ${enabled.length > 0 ? enabled.join(", ") : "কোনোটিই নয়"} (${total}টির মধ্যে ${configured.length}টি কনফিগার)।`,
+    label: s.stConfigured,
+    detail: interpolate(s.provDetail, {
+      configured: configured.join(", "),
+      enabled: enabled.length > 0 ? enabled.join(", ") : s.stNoneAtAll,
+      total,
+      count: configured.length,
+    }),
   };
 }
 
-async function probe(fn: () => Promise<CardStatus>): Promise<CardStatus> {
+async function probe(fn: () => Promise<CardStatus>, s: SettingsStrings): Promise<CardStatus> {
   try {
     return await fn();
   } catch {
-    return UNVERIFIABLE;
+    return unverifiable(s);
   }
 }
 
@@ -109,13 +116,14 @@ function envPresent(name: string): boolean {
 interface SettingsCardInfo {
   href: string;
   icon: ReactNode;
-  titleBn: string;
-  titleEn: string;
+  title: string;
   description: string;
   status: CardStatus;
 }
 
 export default async function AdminSettingsPage() {
+  const reqLocale: Locale = await getRequestLocale();
+  const s = pick(reqLocale, SETTINGS_STRINGS);
   // General summary: real public settings (DB values over defaults),
   // with the same fallback the Settings API GET uses when the DB is
   // unreachable — defaults are then labelled as defaults, not DB data.
@@ -129,7 +137,7 @@ export default async function AdminSettingsPage() {
       if (def.isPublic) publicSettings[key] = def.value;
     }
   }
-  const locale = publicSettings["general.locale"] ?? SETTING_DEFAULTS["general.locale"]!.value;
+  const storeLocale = publicSettings["general.locale"] ?? SETTING_DEFAULTS["general.locale"]!.value;
   const currency = publicSettings["general.currency"] ?? SETTING_DEFAULTS["general.currency"]!.value;
   const timezone = publicSettings["general.timezone"] ?? SETTING_DEFAULTS["general.timezone"]!.value;
   const storeName = publicSettings["general.store_name"] ?? SETTING_DEFAULTS["general.store_name"]!.value;
@@ -138,34 +146,38 @@ export default async function AdminSettingsPage() {
     const statuses = await getIntegrationStatus("payment", PAYMENT_PROVIDERS);
     // COD needs no credential, so it is excluded from the credential
     // count and noted in the detail instead of skewing the verdict.
-    const base = providerStatus(statuses, ["cod"]);
-    return { ...base, detail: `${base.detail} COD-তে ক্রেডেনশিয়াল লাগে না।` };
-  });
+    const base = providerStatus(statuses, s, ["cod"]);
+    return { ...base, detail: `${base.detail}${s.payCodNote}` };
+  }, s);
 
   const courier = await probe(async () =>
-    providerStatus(await getIntegrationStatus("courier", COURIER_PROVIDERS)),
-  );
+    providerStatus(await getIntegrationStatus("courier", COURIER_PROVIDERS), s),
+  s);
 
   const notifications = await probe(async () => {
     const sms = providerSummary(await getIntegrationStatus("sms", SMS_PROVIDERS));
     const email = providerSummary(await getIntegrationStatus("email", EMAIL_PROVIDERS));
     const anyConfigured = sms.configured.length + email.configured.length > 0;
-    const fmt = (label: string, s: typeof sms) =>
-      `${label}: ক্রেডেনশিয়াল ${s.configured.length > 0 ? s.configured.join(", ") : "নেই"} · চালু ${s.enabled.length > 0 ? s.enabled.join(", ") : "নেই"}`;
+    const fmt = (label: string, sum: typeof sms) =>
+      interpolate(s.notifFmt, {
+        label,
+        configured: sum.configured.length > 0 ? sum.configured.join(", ") : s.stNone,
+        enabled: sum.enabled.length > 0 ? sum.enabled.join(", ") : s.stNone,
+      });
     // ADV-3: the email TRANSPORT verdict is stricter than a credential
     // row existing — it is exactly what src/email/config.ts resolves
     // at send time (provider + api_key + from_address). Booleans and a
     // machine reason only; no credential value is read onto this page.
     const transport = await getEmailTransportStatus();
     const transportText = transport.configured
-      ? `ইমেইল ট্রান্সপোর্ট (${transport.provider}): প্রস্তুত — অর্ডার নিশ্চিতকরণ ও স্টাফ আমন্ত্রণ ইমেইল কিউ থেকে পাঠানো যাবে (ওয়ার্কার চালু থাকলে)।`
-      : `ইমেইল ট্রান্সপোর্ট (${transport.provider}): প্রস্তুত নয় — ${transport.reason ?? "unknown"}। কিউতে থাকা ইমেইল SKIP হবে, পাঠানো হয়েছে বলে দেখানো হবে না।`;
+      ? interpolate(s.transportReady, { provider: transport.provider })
+      : interpolate(s.transportNotReady, { provider: transport.provider, reason: transport.reason ?? "unknown" });
     return {
       tone: anyConfigured ? "success" : "warning",
-      label: anyConfigured ? "কনফিগার হয়েছে" : "কনফিগার হয়নি",
-      detail: `${fmt("SMS", sms)}। ${fmt("ইমেইল", email)}। ${transportText}`,
+      label: anyConfigured ? s.stConfigured : s.stNotConfigured,
+      detail: `${fmt("SMS", sms)}। ${fmt(s.idxEmailLabel, email)}। ${transportText}`,
     } satisfies CardStatus;
-  });
+  }, s);
 
   const integrations = await probe(async () => {
     const storage = providerSummary(await getIntegrationStatus("storage", STORAGE_PROVIDERS));
@@ -176,14 +188,15 @@ export default async function AdminSettingsPage() {
     const storageConfigured = storage.configured.length > 0;
     return {
       tone: storageConfigured ? "success" : "warning",
-      label: storageConfigured ? "স্টোরেজ কনফিগার হয়েছে" : "স্টোরেজ কনফিগার হয়নি",
-      detail:
-        `স্টোরেজ (R2/S3) ক্রেডেনশিয়াল: ${storage.configured.length > 0 ? storage.configured.join(", ") : "নেই"} · ` +
-        `Redis (env REDIS_URL): ${redis ? "সেট আছে" : "সেট নেই"} · ` +
-        `Meilisearch (env MEILISEARCH_HOST): ${meili ? "সেট আছে" : "সেট নেই"} · ` +
-        `Web Push (env VAPID key): ${push ? "সেট আছে" : "সেট নেই"}। env মান কখনো দেখানো হয় না — শুধু আছে/নেই।`,
+      label: storageConfigured ? s.stStorageConfigured : s.stStorageNotConfigured,
+      detail: interpolate(s.storageDetail, {
+        storage: storage.configured.length > 0 ? storage.configured.join(", ") : s.stNone,
+        redis: redis ? s.stSet : s.stNotSet,
+        meili: meili ? s.stSet : s.stNotSet,
+        push: push ? s.stSet : s.stNotSet,
+      }),
     } satisfies CardStatus;
-  });
+  }, s);
 
   const tracking = await probe(async () => {
     const ids: { name: string; value: string | null }[] = [
@@ -203,16 +216,19 @@ export default async function AdminSettingsPage() {
     if (setIds.length === 0 && !capiToken) {
       return {
         tone: "warning",
-        label: "কনফিগার হয়নি",
-        detail: "কোনো পিক্সেল আইডি (Meta/GA4/TikTok/GTM) বা CAPI টোকেন সংরক্ষিত নেই।",
+        label: s.stNotConfigured,
+        detail: s.trackingNoneDetail,
       } satisfies CardStatus;
     }
     return {
       tone: "success",
-      label: "কনফিগার হয়েছে",
-      detail: `আইডি আছে: ${setIds.length > 0 ? setIds.join(", ") : "নেই"} · Meta CAPI টোকেন: ${capiToken ? "আছে (এনক্রিপ্ট করা)" : "নেই"}।`,
+      label: s.stConfigured,
+      detail: interpolate(s.trackingDetail, {
+        ids: setIds.length > 0 ? setIds.join(", ") : s.stNone,
+        token: capiToken ? s.tokenPresent : s.stNone,
+      }),
     } satisfies CardStatus;
-  });
+  }, s);
 
   // Accounting / VAT: the effective rate, parsed with the same rule
   // the order flow uses — blank/invalid means no VAT split is recorded.
@@ -221,24 +237,24 @@ export default async function AdminSettingsPage() {
     if (raw === null || raw.trim() === "") {
       return {
         tone: "neutral",
-        label: "VAT বন্ধ",
-        detail: "কোনো VAT হার সেট করা নেই — নতুন অর্ডারে VAT বিভাজন সংরক্ষিত হয় না। হার সেট করতে কার্ডটি খুলুন।",
+        label: s.vatOffLabel,
+        detail: s.vatOffDetail,
       } satisfies CardStatus;
     }
     const bps = Number.parseInt(raw, 10);
     if (Number.isInteger(bps) && bps > 0 && bps <= 10000) {
       return {
         tone: "success",
-        label: "VAT চালু",
-        detail: `বর্তমান হার ${formatBpsAsPercent(bps)}% (${bps} bps) — প্রতিটি নতুন অর্ডারে VAT বিভাজন সংরক্ষিত হয়; মাসিক রিপোর্ট ERP পেজে।`,
+        label: s.vatOnLabel,
+        detail: interpolate(s.vatOnDetail, { pct: formatBpsAsPercent(bps), bps }),
       } satisfies CardStatus;
     }
     return {
       tone: "warning",
-      label: "হার অবৈধ",
-      detail: "সেভ করা মানটি বৈধ VAT হার নয় — বন্ধ হিসেবে ধরা হচ্ছে। কার্ডটি খুলে সঠিক হার সেভ করুন।",
+      label: s.vatInvalidLabel,
+      detail: s.vatInvalidDetail,
     } satisfies CardStatus;
-  });
+  }, s);
 
   // Order rules + delivery slots (doc 18 F2-1): the effective state is
   // what the checkout loaders compute — the same fail-open parse the
@@ -253,12 +269,16 @@ export default async function AdminSettingsPage() {
       (rules.codDisabledCategories.length > 0 ? 1 : 0);
     return {
       tone: activeRules > 0 ? "success" : "neutral",
-      label: activeRules > 0 ? `${activeRules}টি নিয়ম চালু` : "সব নিয়ম বন্ধ",
-      detail:
-        `সর্বনিম্ন অর্ডার ${rules.minOrderPoisha > 0 ? "চালু" : "বন্ধ"} · অগ্রিম নিয়ম ${rules.advanceRequiredAbovePoisha > 0 ? "চালু" : "বন্ধ"} · ` +
-        `COD বন্ধ: জেলা ${rules.codDisabledDistricts.length}টি, ক্যাটাগরি ${rules.codDisabledCategories.length}টি · ডেলিভারি স্লট ${slots.length}টি।`,
+      label: activeRules > 0 ? interpolate(s.ordersActiveLabel, { count: activeRules }) : s.ordersNoneLabel,
+      detail: interpolate(s.ordersDetail, {
+        min: rules.minOrderPoisha > 0 ? s.stOn : s.stOff,
+        adv: rules.advanceRequiredAbovePoisha > 0 ? s.stOn : s.stOff,
+        districts: rules.codDisabledDistricts.length,
+        categories: rules.codDisabledCategories.length,
+        slots: slots.length,
+      }),
     } satisfies CardStatus;
-  });
+  }, s);
 
   // Checkout fields (doc 28): whether the merchant has saved a
   // custom field config in the Setting doc `checkout.fields`. No
@@ -269,15 +289,15 @@ export default async function AdminSettingsPage() {
     return saved
       ? {
           tone: "success",
-          label: "কাস্টমাইজ করা",
-          detail: "নিজের সাজানো ফিল্ড কনফিগ সংরক্ষিত আছে — স্টোরফ্রন্ট চেকআউট সেটাই চালাচ্ছে।",
+          label: s.cfCustomLabel,
+          detail: s.cfCustomDetail,
         } satisfies CardStatus
       : {
           tone: "neutral",
-          label: "ডিফল্ট ফর্ম",
-          detail: "কোনো কাস্টম কনফিগ নেই — চেকআউটে প্ল্যাটফর্মের ডিফল্ট ফিল্ড সাজানোই চলছে।",
+          label: s.cfDefaultLabel,
+          detail: s.cfDefaultDetail,
         } satisfies CardStatus;
-  });
+  }, s);
 
   // Call-center timings (doc 21, G3-17): the effective values of the
   // seven call_center.* keys — getSetting() resolves DB row -> env ->
@@ -299,10 +319,10 @@ export default async function AdminSettingsPage() {
     ]);
     return {
       tone: "neutral",
-      label: "সম্পাদনাযোগ্য",
-      detail: `SLA: কনফার্ম ${slaConfirm} মিনিট · রেসকিউ ${slaRescue} মিনিট · কলিং উইন্ডো ${startHour}:00–${endHour}:00 (ঢাকা) · কল-লগ সংরক্ষণ ${retention} মাস।`,
+      label: s.ccLabel,
+      detail: interpolate(s.ccDetail, { confirm: slaConfirm, rescue: slaRescue, start: startHour, end: endHour, retention }),
     } satisfies CardStatus;
-  });
+  }, s);
 
   // Privacy & maintenance (ADV-29): the effective maintenance state
   // through the same reader the storefront gate resolves with.
@@ -311,15 +331,15 @@ export default async function AdminSettingsPage() {
     return cfg.enabled
       ? {
           tone: "warning",
-          label: "মেইনটেন্যান্স চালু",
-          detail: "স্টোরফ্রন্টে 503 পেজ দেখাচ্ছে; অ্যাডমিন প্যানেল চালু আছে। বন্ধ করতে কার্ডটি খুলুন।",
+          label: s.privOnLabel,
+          detail: s.privOnDetail,
         } satisfies CardStatus
       : {
           tone: "success",
-          label: "মেইনটেন্যান্স বন্ধ",
-          detail: "স্টোরফ্রন্ট সবার জন্য খোলা। সম্মতি লগ, ডেটা এক্সপোর্ট ও অ্যাকাউন্ট মুছে ফেলার লেজার কার্ডের ভেতরে।",
+          label: s.privOffLabel,
+          detail: s.privOffDetail,
         } satisfies CardStatus;
-  });
+  }, s);
 
   // Outbound connectors (ADV-25 part 2): per-channel enabled +
   // credential presence, resolved exactly as the fan-out resolves
@@ -351,13 +371,13 @@ export default async function AdminSettingsPage() {
     ];
     const live = channels.filter((c) => c.enabled && c.ready).map((c) => c.name);
     const fmt = (c: (typeof channels)[number]) =>
-      `${c.name}: ${c.enabled ? "চালু" : "বন্ধ"} · ক্রেডেনশিয়াল ${c.ready ? "আছে" : "নেই"}`;
+      interpolate(s.connFmt, { name: c.name, state: c.enabled ? s.stOn : s.stOff, ready: c.ready ? s.connPresent : s.stNone });
     return {
       tone: live.length > 0 ? "success" : "neutral",
-      label: live.length > 0 ? `${live.join(", ")} লাইভ` : "কোনো চ্যানেল লাইভ নয়",
+      label: live.length > 0 ? interpolate(s.connLiveLabel, { names: live.join(", ") }) : s.connNoneLabel,
       detail: `${channels.map(fmt).join(" · ")}।`,
     } satisfies CardStatus;
-  });
+  }, s);
 
   // Template designer (ADV-29): how many of the four override
   // documents (invoice + 3 email keys) actually carry merchant
@@ -371,108 +391,97 @@ export default async function AdminSettingsPage() {
     const custom = (invoice !== null ? 1 : 0) + emailCount;
     return {
       tone: custom > 0 ? "success" : "neutral",
-      label: custom > 0 ? `${custom}টি টেমপ্লেটে কাস্টম লেখা` : "সব বিল্ট-ইন লেখা",
-      detail:
-        `ইনভয়েস (শিরোনাম নোট/শর্ত/পাদটীকা): ${invoice !== null ? "কাস্টম" : "বিল্ট-ইন"} · ` +
-        `ইমেইল বিষয়/ভূমিকা: ৩টির মধ্যে ${emailCount}টিতে কাস্টম। খালি স্লট মানেই বিল্ট-ইন লেখা ছাপা/পাঠানো হয়।`,
+      label: custom > 0 ? interpolate(s.tplCustomLabel, { count: custom }) : s.tplDefaultLabel,
+      detail: interpolate(s.tplDetail, {
+        invoice: invoice !== null ? s.stCustom : s.stBuiltin,
+        count: emailCount,
+      }),
     } satisfies CardStatus;
-  });
+  }, s);
 
   const cards: SettingsCardInfo[] = [
     {
       href: "/admin/settings/payments",
       icon: <Icon name="credit-card" size={22} />,
-      titleBn: "পেমেন্ট",
-      titleEn: "Payments",
-      description: "COD, bKash, Nagad, Rocket, Upay, SSLCommerz, AamarPay, ShurjoPay — পদ্ধতি চালু/বন্ধ, sandbox/live মোড।",
+      title: s.cardPaymentsTitle,
+      description: s.cardPaymentsDesc,
       status: payments,
     },
     {
       href: "/admin/settings/shipping",
       icon: <Icon name="truck" size={22} />,
-      titleBn: "কুরিয়ার / শিপিং",
-      titleEn: "Courier / Shipping",
-      description: "Steadfast, Pathao, RedX, Paperfly, eCourier — জোন ও চার্জ, কুরিয়ার অ্যাকাউন্ট সংযোগ।",
+      title: s.cardShippingTitle,
+      description: s.cardShippingDesc,
       status: courier,
     },
     {
       href: "/admin/settings/notifications",
       icon: <Icon name="bell" size={22} />,
-      titleBn: "নোটিফিকেশন",
-      titleEn: "Notifications",
-      description: "SMS (BulkSMSBD, SSL Wireless, Greenweb) ও ইমেইল (Resend + SMTP) প্রোভাইডার এবং টেমপ্লেট।",
+      title: s.cardNotificationsTitle,
+      description: s.cardNotificationsDesc,
       status: notifications,
     },
     {
       href: "/admin/settings/integrations",
       icon: <Icon name="settings" size={22} />,
-      titleBn: "ইন্টিগ্রেশন",
-      titleEn: "Integrations",
-      description: "স্টোরেজ (Cloudflare R2), সার্চ (Meilisearch), Redis ও Web Push — সংযোগ অবস্থা (env আছে/নেই)।",
+      title: s.cardIntegrationsTitle,
+      description: s.cardIntegrationsDesc,
       status: integrations,
     },
     {
       href: "/admin/settings/connectors",
       icon: <Icon name="sparkles" size={22} />,
-      titleBn: "কানেক্টর",
-      titleEn: "Connectors",
-      description: "Slack, Telegram ও Google Sheets — অর্ডার/স্টক ইভেন্টের আউটবাউন্ড অ্যালার্ট ও Sheets অর্ডার লগ (connectors.*)।",
+      title: s.cardConnectorsTitle,
+      description: s.cardConnectorsDesc,
       status: connectors,
     },
     {
       href: "/admin/settings/tracking",
       icon: <Icon name="chart" size={22} />,
-      titleBn: "ট্র্যাকিং",
-      titleEn: "Tracking",
-      description: "Meta Pixel + CAPI, GA4, TikTok — পিক্সেল আইডি ও সার্ভার-সাইড ইভেন্ট সেটিংস।",
+      title: s.cardTrackingTitle,
+      description: s.cardTrackingDesc,
       status: tracking,
     },
     {
       href: "/admin/settings/accounting",
       icon: <Icon name="banknote" size={22} />,
-      titleBn: "হিসাব / VAT",
-      titleEn: "Accounting / VAT",
-      description: "বিক্রয়ের VAT হার (accounting.vat_rate_bps) — সেট থাকলে প্রতিটি অর্ডারে VAT বিভাজন সংরক্ষিত হয়; রিপোর্ট ERP পেজে।",
+      title: s.cardAccountingTitle,
+      description: s.cardAccountingDesc,
       status: accounting,
     },
     {
       href: "/admin/settings/orders",
       icon: <Icon name="cart" size={22} />,
-      titleBn: "অর্ডার নিয়ম ও স্লট",
-      titleEn: "Order Rules & Slots",
-      description: "সর্বনিম্ন অর্ডার, অগ্রিমের সীমা ও হার, COD বন্ধের জেলা/ক্যাটাগরি (orders.rules.*) এবং ডেলিভারি স্লট (orders.delivery_slots)।",
+      title: s.cardOrdersTitle,
+      description: s.cardOrdersDesc,
       status: orders,
     },
     {
       href: "/admin/settings/checkout-fields",
       icon: <Icon name="package" size={22} />,
-      titleBn: "চেকআউট ফিল্ড",
-      titleEn: "Checkout Fields",
-      description: "চেকআউট ফর্মের ফিল্ডের লেবেল, ক্রম, দৃশ্যমানতা ও আবশ্যকতা এবং নিজের যোগ করা অতিরিক্ত ফিল্ড (checkout.fields)।",
+      title: s.cardCheckoutTitle,
+      description: s.cardCheckoutDesc,
       status: checkoutFields,
     },
     {
       href: "/admin/settings/call-center",
       icon: <Icon name="phone" size={22} />,
-      titleBn: "কল সেন্টার",
-      titleEn: "Call Center",
-      description: "সুপারভাইজার SLA সীমা, ফলো-আপ অটোমেশন SMS-এর সময়, কলিং উইন্ডো ও কল-লগ সংরক্ষণের মেয়াদ (call_center.*)।",
+      title: s.cardCallCenterTitle,
+      description: s.cardCallCenterDesc,
       status: callCenter,
     },
     {
       href: "/admin/settings/privacy",
       icon: <Icon name="shield" size={22} />,
-      titleBn: "গোপনীয়তা ও মেইনটেন্যান্স",
-      titleEn: "Privacy & Maintenance",
-      description: "কাস্টমার ডেটা এক্সপোর্ট/মুছে ফেলার লেজার, মার্কেটিং সম্মতির লগ এবং স্টোরফ্রন্ট মেইনটেন্যান্স মোড (site.maintenance)।",
+      title: s.cardPrivacyTitle,
+      description: s.cardPrivacyDesc,
       status: privacy,
     },
     {
       href: "/admin/settings/templates",
       icon: <Icon name="tag" size={22} />,
-      titleBn: "টেমপ্লেট ডিজাইনার",
-      titleEn: "Template Designer",
-      description: "ইনভয়েসের শিরোনাম নোট/শর্ত/পাদটীকা এবং অর্ডার নিশ্চিতকরণ, স্টাফ আমন্ত্রণ ও নির্ধারিত রিপোর্ট ইমেইলের বিষয়/ভূমিকা (templates.*)। লেআউট বা হিসাব বদলায় না।",
+      title: s.cardTemplatesTitle,
+      description: s.cardTemplatesDesc,
       status: templates,
     },
   ];
@@ -480,49 +489,50 @@ export default async function AdminSettingsPage() {
   return (
     <main>
       <PageHeader
-        title="সেটিংস"
-        description="সব ইন্টিগ্রেশন অ্যাডমিন থেকেই কনফিগার করা যায়: env শুধু ডিফল্ট/ফলব্যাক, DB-তে এনক্রিপ্ট করা Settings মানই চূড়ান্ত (override)। (Settings)"
-        breadcrumb="Admin / System"
+        title={s.idxTitle}
+        description={s.idxDesc}
+        breadcrumb={s.idxBreadcrumb}
       />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="ভাষা (ডিফল্ট)" value={locale === "bn" ? "বাংলা (bn)" : locale} delta="fallback: English" icon={<span className="text-base font-bold">বাং</span>} />
-        <StatCard label="মুদ্রা" value={`${currency} (৳)`} delta="পয়সা (integer) হিসাব" icon={<Icon name="banknote" size={22} />} />
-        <StatCard label="সময় অঞ্চল" value={timezone} delta="সব তারিখ/সময়" icon={<Icon name="clock" size={22} />} />
-        <StatCard label="সাব-পেজ" value={String(cards.length)} delta="নিচে কার্ড আকারে" icon={<Icon name="grid" size={22} />} />
+        <StatCard label={s.idxStatLang} value={storeLocale === "bn" ? s.idxStatLangBn : storeLocale} delta={s.idxStatLangDelta} icon={<span className="text-base font-bold">{reqLocale === "bn" ? "বাং" : "En"}</span>} />
+        <StatCard label={s.idxStatCurrency} value={`${currency} (৳)`} delta={s.idxStatCurrencyDelta} icon={<Icon name="banknote" size={22} />} />
+        <StatCard label={s.idxStatTz} value={timezone} delta={s.idxStatTzDelta} icon={<Icon name="clock" size={22} />} />
+        <StatCard label={s.idxStatSubpages} value={String(cards.length)} delta={s.idxStatSubpagesDelta} icon={<Icon name="grid" size={22} />} />
       </div>
 
       <Card className="mb-6">
-        <h2 className="mb-1 font-semibold">সাধারণ সেটিংস সারাংশ</h2>
+        <h2 className="mb-1 font-semibold">{s.idxSummaryTitle}</h2>
         <dl className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <dt className="text-text-muted">স্টোরের নাম — <code>general.store_name</code></dt>
-            <dd className="font-semibold">{storeName.trim() !== "" ? storeName : "সেট হয়নি (ইনভয়েস/পে পেজে নাম দেখায় না)"}</dd>
+            <dt className="text-text-muted">{s.idxStoreNameKey} — <code>general.store_name</code></dt>
+            <dd className="font-semibold">{storeName.trim() !== "" ? storeName : s.idxStoreNameUnset}</dd>
           </div>
           <div>
-            <dt className="text-text-muted">ডিফল্ট ভাষা — <code>general.locale</code></dt>
-            <dd className="font-semibold">{locale === "bn" ? "bn (বাংলা), fallback en" : locale}</dd>
+            <dt className="text-text-muted">{s.idxDefaultLangKey} — <code>general.locale</code></dt>
+            <dd className="font-semibold">{storeLocale === "bn" ? s.idxDefaultLangBn : storeLocale}</dd>
           </div>
           <div>
-            <dt className="text-text-muted">মুদ্রা — <code>general.currency</code></dt>
-            <dd className="font-semibold">{currency} — সব টাকা integer পয়সায় সংরক্ষিত</dd>
+            <dt className="text-text-muted">{s.idxCurrencyKey} — <code>general.currency</code></dt>
+            <dd className="font-semibold">{interpolate(s.idxCurrencyDetail, { currency })}</dd>
           </div>
           <div>
-            <dt className="text-text-muted">সময় অঞ্চল — <code>general.timezone</code></dt>
+            <dt className="text-text-muted">{s.idxTzKey} — <code>general.timezone</code></dt>
             <dd className="font-semibold">{timezone}</dd>
           </div>
         </dl>
         <p className="mt-3 text-sm text-text-muted">
-          {dbReady
-            ? "উপরের মানগুলো আসল Settings স্টোর থেকে পড়া (DB মান না থাকলে বিল্ট-ইন ডিফল্ট)। "
-            : "ডাটাবেস পাওয়া যাচ্ছে না — উপরে বিল্ট-ইন ডিফল্ট দেখানো হচ্ছে, DB-র মান নয়। "}
-          গোপন মান (API key, পাসওয়ার্ড) কখনো এই পেজে দেখানো হয় না — কার্ডগুলোতে শুধু
-          কনফিগার হয়েছে/হয়নি (boolean) অবস্থা থাকে।
+          {dbReady ? s.idxSummaryDbReady : s.idxSummaryDbDown}
+          {s.idxSummarySecret}
         </p>
       </Card>
 
       <div className="mb-6">
         <StoreNameCard initial={storeName} dbReady={dbReady} />
+      </div>
+
+      <div className="mb-6">
+        <DefaultLanguageCard initial={parseDefaultLocale(storeLocale)} dbReady={dbReady} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -534,22 +544,18 @@ export default async function AdminSettingsPage() {
               </span>
               <Badge tone={card.status.tone}>{card.status.label}</Badge>
             </div>
-            <h3 className="mt-3 font-semibold">
-              {card.titleBn} <span className="text-sm font-normal text-text-muted">· {card.titleEn}</span>
-            </h3>
+            <h3 className="mt-3 font-semibold">{card.title}</h3>
             <p className="mt-1 text-sm text-text-muted">{card.description}</p>
             <p className="mt-2 text-sm text-text-muted">{card.status.detail}</p>
             <a href={card.href} className="mt-3 inline-block text-sm font-medium text-brand-700">
-              খুলুন →
+              {s.idxOpen}
             </a>
           </Card>
         ))}
       </div>
 
       <p className="mt-6 text-sm text-text-muted">
-        নোট: কার্ডের অবস্থা এখন আসল — Settings স্টোরে ক্রেডেনশিয়াল সারি আছে কিনা এবং
-        সার্ভার env-তে চাবি আছে কিনা দেখে নির্ধারিত (শুধু boolean; কোনো credential মান
-        কখনো এই পেজে আসে না)। "চালু" মানে সংশ্লিষ্ট <code>enabled</code> সেটিং true।
+        {s.idxFooterA}<code>enabled</code>{s.idxFooterB}
       </p>
     </main>
   );

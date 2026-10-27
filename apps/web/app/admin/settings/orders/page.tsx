@@ -16,6 +16,9 @@ import { DeliverySlotsCard } from "./delivery-slots-card";
 import { PickupPointsCard } from "./pickup-points-card";
 import { WorkflowStagesCard } from "./workflow-stages-card";
 import { isWorkflowStagesEnabled, loadWorkflowStagesConfig } from "@/orders/stages";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { SETTINGS_STRINGS } from "../strings";
 
 // Admin > Settings > Orders — order rules + delivery slots (doc 18,
 // F2-1). Until now the `orders.rules.*` keys (wave 20) and
@@ -44,6 +47,8 @@ function buildDistrictGroups(): DistrictGroup[] {
 }
 
 export default async function OrderSettingsPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, SETTINGS_STRINGS);
   let dbReady = true;
   let workflowStages: Awaited<ReturnType<typeof loadWorkflowStagesConfig>> = {
     config: { stages: [] },
@@ -100,15 +105,15 @@ export default async function OrderSettingsPage() {
   return (
     <main className="min-w-0">
       <PageHeader
-        title="অর্ডার — নিয়ম ও ডেলিভারি স্লট"
-        description="চেকআউটে কোন নিয়ম চলবে (সর্বনিম্ন অর্ডার, অগ্রিম, COD বন্ধের তালিকা) আর ক্রেতা কোন কোন ডেলিভারি সময় বেছে নিতে পারবেন — সব এই পেজ থেকে। প্রতিটি পরিবর্তন কারণসহ অডিট লগে থাকে।"
-        breadcrumb="সেটিংস / অর্ডার"
+        title={s.ordTitle}
+        description={s.ordDesc}
+        breadcrumb={s.ordBreadcrumb}
         actions={
           <Link
             href="/admin/settings"
             className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition motion-fast hover:border-brand-300"
           >
-            ← সব সেটিংস
+            {s.allSettings}
           </Link>
         }
       />
@@ -118,7 +123,7 @@ export default async function OrderSettingsPage() {
           <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
             <Icon name="info" size={17} />
           </span>
-          এই পেজের নিয়মগুলো দিয়ে কী হয়?
+          {s.ordWhatTitle}
         </h2>
         <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-text-muted">
           <li className="flex gap-2.5">
@@ -126,8 +131,7 @@ export default async function OrderSettingsPage() {
               <Icon name="check" size={12} />
             </span>
             <span>
-              <strong>সর্বনিম্ন অর্ডার:</strong> পণ্যের উপমোট এর কম হলে পাবলিক চেকআউটে অর্ডার নেওয়া হয় না।
-              খালি/0 মানে নিয়ম বন্ধ — যেকোনো পরিমাণের অর্ডার চলবে।
+              <strong>{s.ordWhat1Bold}</strong>{s.ordWhat1}
             </span>
           </li>
           <li className="flex gap-2.5">
@@ -135,9 +139,7 @@ export default async function OrderSettingsPage() {
               <Icon name="check" size={12} />
             </span>
             <span>
-              <strong>অগ্রিম নিয়ম:</strong> COD অর্ডারের মোট দাম সীমার বেশি হলে মোটের নির্ধারিত শতকরা অংশ
-              অগ্রিম হিসেবে চিহ্নিত হয় — অগ্রিম সংগ্রহ ও কনফার্ম-গেট অগ্রিম ব্যবস্থা (পেমেন্ট লিংক/OTP) দিয়ে হয়,
-              এই পেজ শুধু সীমা ও হার ঠিক করে।
+              <strong>{s.ordWhat2Bold}</strong>{s.ordWhat2}
             </span>
           </li>
           <li className="flex gap-2.5">
@@ -145,8 +147,7 @@ export default async function OrderSettingsPage() {
               <Icon name="check" size={12} />
             </span>
             <span>
-              <strong>COD বন্ধের তালিকা:</strong> নির্বাচিত জেলার ঠিকানায়, অথবা নির্বাচিত ক্যাটাগরির পণ্য
-              থাকলে, ক্যাশ অন ডেলিভারি দেওয়া হয় না — ক্রেতাকে আগাম পেমেন্ট করতে হয়।
+              <strong>{s.ordWhat3Bold}</strong>{s.ordWhat3}
             </span>
           </li>
           <li className="flex gap-2.5">
@@ -154,9 +155,7 @@ export default async function OrderSettingsPage() {
               <Icon name="check" size={12} />
             </span>
             <span>
-              <strong>ডেলিভারি স্লট:</strong> অর্ডারে স্লটের আইডি সংরক্ষিত থাকে, লেবেল দেখানো হয় বর্তমান
-              তালিকা থেকে — তাই লেবেল বদলালে পুরনো অর্ডারেও নতুন লেবেল দেখাবে, কিন্তু আইডি বদলালে পুরনো
-              অর্ডারের স্লট মিলবে না (এ কারণেই সংরক্ষিত আইডি এখানে বদলানো যায় না)।
+              <strong>{s.ordWhat4Bold}</strong>{s.ordWhat4}
             </span>
           </li>
           <li className="flex gap-2.5">
@@ -164,8 +163,7 @@ export default async function OrderSettingsPage() {
               <Icon name="check" size={12} />
             </span>
             <span>
-              সব নিয়মই <strong>বন্ধ রাখা যায়</strong> — কিছু সেট না করলে চেকআউট আগের মতোই চলবে। সেটিংস পড়া
-              না গেলেও চেকআউট কখনো আটকায় না (নিয়মগুলো fail-open)।
+              {s.ordWhat5A}<strong>{s.ordWhat5Bold}</strong>{s.ordWhat5B}
             </span>
           </li>
         </ul>
@@ -196,8 +194,8 @@ export default async function OrderSettingsPage() {
       <div className="mt-4">
         <PickupPointsCard
           settingKey="stores.pickup_points"
-          title="পিকআপ পয়েন্ট (ক্লিক অ্যান্ড কালেক্ট)"
-          description="চেকআউটে ক্রেতা পিকআপ বেছে নিলে এই পয়েন্টগুলো থেকে একটি বেছে নিতে পারবেন; পছন্দটি অর্ডারের নোটে পয়েন্টের নাম-ঠিকানাসহ সংরক্ষিত থাকে। এই পয়েন্টগুলো /stores পেজেও দেখানো হয়।"
+          title={s.ordPickupTitle}
+          description={s.ordPickupDesc}
           initialPoints={pickupPoints}
           storedConfigured={pickupConfigured}
           dbReady={dbReady}
@@ -219,8 +217,8 @@ export default async function OrderSettingsPage() {
       <div className="mt-4">
         <PickupPointsCard
           settingKey="stores.retail_locations"
-          title="স্টোর লোকেশন (/stores পেজ)"
-          description="শুধু /stores পেজে দেখানোর জন্য — এই লোকেশনগুলো চেকআউটে পিকআপ পয়েন্ট হিসেবে দেওয়া হয় না।"
+          title={s.ordRetailTitle}
+          description={s.ordRetailDesc}
           initialPoints={retailLocations}
           storedConfigured={retailConfigured}
           dbReady={dbReady}
@@ -228,14 +226,13 @@ export default async function OrderSettingsPage() {
       </div>
 
       <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-text-muted">
-        সেটিং কী:
+        {s.ordFooterA}
         <code className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs ring-1 ring-inset ring-black/5">orders.rules.*</code>
         <code className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs ring-1 ring-inset ring-black/5">orders.delivery_slots</code>
         <code className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs ring-1 ring-inset ring-black/5">stores.pickup_points</code>
         <code className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs ring-1 ring-inset ring-black/5">stores.retail_locations</code>
         <code className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs ring-1 ring-inset ring-black/5">orders.workflow_stages</code>
-        — টাকার মান পয়সায় (integer), জেলা/ক্যাটাগরি তালিকা কমা দিয়ে আলাদা করে, স্লট JSON আকারে সংরক্ষিত হয়।
-        প্রতিটি পরিবর্তন কারণসহ অডিট লগে (<span className="font-mono text-xs">settings.update</span>) লেখা থাকে।
+        {s.ordFooterB}<span className="font-mono text-xs">settings.update</span>{s.ordFooterC}
       </p>
     </main>
   );

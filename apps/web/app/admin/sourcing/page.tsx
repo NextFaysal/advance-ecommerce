@@ -6,6 +6,9 @@ import { featureFlags } from "@/lib/feature-flags";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { SourcingPanel } from "./sourcing-panel";
 import { LandedCostPanel } from "./landed-cost-panel";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { SOURCING_STRINGS } from "./strings";
 
 export const dynamic = "force-dynamic";
 
@@ -25,15 +28,13 @@ export const dynamic = "force-dynamic";
 //     with a margin table and a one-click "set as variant cost"
 //     (PATCH through the products API, reason attached).
 export default async function AdminSourcingPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, SOURCING_STRINGS);
   await ensureDbFeatureFlags();
   const enabled = featureFlags.isFeatureEnabled("module.sourcing");
   return (
     <main>
-      <PageHeader
-        title="সোর্সিং"
-        description="বিদেশি শপের লিংক থেকে পণ্য আনা ও ল্যান্ডেড খরচ হিসাব (Sourcing — module.sourcing)"
-        breadcrumb="Admin / Sourcing"
-      />
+      <PageHeader title={s.title} description={s.description} breadcrumb={s.breadcrumb} />
       {!enabled ? (
         <Card className="overflow-hidden">
           <div className="brand-gradient -mx-5 -mt-5 mb-5 h-1.5" aria-hidden="true" />
@@ -42,11 +43,7 @@ export default async function AdminSourcingPage() {
               <Icon name="shield" size={26} />
             </span>
             <p role="status" className="text-sm leading-relaxed">
-              সোর্সিং মডিউল বন্ধ আছে (<code>module.sourcing</code> OFF) — এটি একটি পেইড অ্যাড-অন।
-              খুলতে Admin &gt; Settings &gt; Feature Flags থেকে <code>module.sourcing</code> চালু করুন।
-              <span className="mt-1 block text-text-subtle">
-                (This module is locked — enable the <code>module.sourcing</code> feature flag to unlock it.)
-              </span>
+              {s.locked}
             </p>
           </div>
         </Card>
@@ -54,8 +51,8 @@ export default async function AdminSourcingPage() {
         <Tabs
           defaultId="import"
           tabs={[
-            { id: "import", label: "পণ্য ইমপোর্ট (লিংক থেকে)", content: <SourcingPanel /> },
-            { id: "landed", label: "ল্যান্ডেড কস্ট ক্যালকুলেটর", content: <LandedCostPanel /> },
+            { id: "import", label: s.tabImport, content: <SourcingPanel /> },
+            { id: "landed", label: s.tabLanded, content: <LandedCostPanel /> },
           ]}
         />
       )}

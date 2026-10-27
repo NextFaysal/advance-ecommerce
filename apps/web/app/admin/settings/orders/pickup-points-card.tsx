@@ -15,6 +15,9 @@
 // rewrites history — the lock only protects the id lookup.
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/ui/icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { SETTINGS_STRINGS } from "../strings";
 import type { PickupPoint } from "@/checkout/pickup-points";
 
 interface EditorRow extends PickupPoint {
@@ -33,16 +36,17 @@ interface PickupPointsCardProps {
 
 const ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 
-function validateRows(rows: EditorRow[]): { value: string } | { error: string } {
+function validateRows(rows: EditorRow[], locale: Locale): { value: string } | { error: string } {
+  const s = pick(locale, SETTINGS_STRINGS);
   const seen = new Set<string>();
   for (const row of rows) {
     if (!ID_PATTERN.test(row.id.trim())) {
-      return { error: `আইডি সঠিক নয়: "${row.id}" — শুধু ইংরেজি অক্ষর, সংখ্যা, ., _, - (সর্বোচ্চ ৬৪) ব্যবহার করুন।` };
+      return { error: interpolate(s.pickIdError, { id: row.id }) };
     }
-    if (seen.has(row.id.trim())) return { error: `একই আইডি দুবার আছে: ${row.id}` };
+    if (seen.has(row.id.trim())) return { error: interpolate(s.pickIdDup, { id: row.id }) };
     seen.add(row.id.trim());
-    if (row.name.trim() === "") return { error: `${row.id}: নাম খালি রাখা যাবে না।` };
-    if (row.address.trim() === "") return { error: `${row.id}: ঠিকানা খালি রাখা যাবে না।` };
+    if (row.name.trim() === "") return { error: interpolate(s.pickNameEmpty, { id: row.id }) };
+    if (row.address.trim() === "") return { error: interpolate(s.pickAddressEmpty, { id: row.id }) };
   }
   const value = JSON.stringify(
     rows.map((r) => ({ id: r.id.trim(), name: r.name.trim(), address: r.address.trim(), hours: r.hours.trim() })),
@@ -51,6 +55,8 @@ function validateRows(rows: EditorRow[]): { value: string } | { error: string } 
 }
 
 export function PickupPointsCard({ settingKey, title, description, initialPoints, storedConfigured, dbReady }: PickupPointsCardProps) {
+  const { locale, t: common } = useLocale();
+  const s = pick(locale, SETTINGS_STRINGS);
   const [rows, setRows] = useState<EditorRow[]>(() =>
     initialPoints.map((p) => ({ ...p, isNew: false })),
   );
@@ -63,7 +69,7 @@ export function PickupPointsCard({ settingKey, title, description, initialPoints
     () => JSON.stringify(initialPoints.map((p) => ({ id: p.id, name: p.name, address: p.address, hours: p.hours }))),
     [initialPoints],
   );
-  const validation = useMemo(() => validateRows(rows), [rows]);
+  const validation = useMemo(() => validateRows(rows, locale), [rows, locale]);
   const changed = "value" in validation && validation.value !== initialSerialized;
 
   function updateRow(index: number, patch: Partial<EditorRow>) {
@@ -82,7 +88,7 @@ export function PickupPointsCard({ settingKey, title, description, initialPoints
     setStatus("");
     if (reason.trim() === "") {
       setStatusOk(false);
-      setStatus("পরিবর্তনের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setStatus(s.reasonRequired);
       return;
     }
     if (!("value" in validation)) {
@@ -92,7 +98,7 @@ export function PickupPointsCard({ settingKey, title, description, initialPoints
     }
     if (!changed) {
       setStatusOk(true);
-      setStatus("কোনো পরিবর্তন নেই — তালিকা আগের মতোই আছে, কিছুই সেভ করা হয়নি।");
+      setStatus(s.pickNoChange);
       return;
     }
     setSaving(true);
@@ -105,15 +111,15 @@ export function PickupPointsCard({ settingKey, title, description, initialPoints
       const data = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
       if (!res.ok) {
         setStatusOk(false);
-        setStatus(data.error?.message ?? `সেভ করা যায়নি (${res.status})।`);
+        setStatus(data.error?.message ?? interpolate(s.saveFailedDot, { status: res.status }));
         return;
       }
       setRows((prev) => prev.map((r) => ({ ...r, isNew: false })));
       setStatusOk(true);
-      setStatus(`সেভ হয়েছে — এখন ${rows.length}টি লোকেশন কার্যকর।`);
+      setStatus(interpolate(s.pickSaved, { count: rows.length }));
     } catch {
       setStatusOk(false);
-      setStatus("সার্ভারের সঙ্গে যোগাযোগ করা যায়নি — কিছুই সেভ হয়নি।");
+      setStatus(s.networkNothingSaved);
     } finally {
       setSaving(false);
     }
@@ -135,13 +141,13 @@ export function PickupPointsCard({ settingKey, title, description, initialPoints
 
         <div className="mt-4 rounded-xl border border-border bg-surface-2 px-4 py-3.5 text-sm">
           <p className="leading-relaxed">
-            বর্তমানে কার্যকর: <strong>{initialPoints.length}টি লোকেশন</strong>
-            {storedConfigured ? " — সংরক্ষিত তালিকা চলছে।" : " — এখনো কোনো তালিকা সংরক্ষণ করা হয়নি।"}
+            {s.currentlyEffective} <strong>{interpolate(s.pickSummaryCount, { count: initialPoints.length })}</strong>
+            {storedConfigured ? s.pickConfigured : s.pickNotConfigured}
             {" "}{description}
           </p>
           {!dbReady && (
             <span className="mt-1.5 block leading-relaxed text-rose-600">
-              সতর্কতা: ডাটাবেস থেকে বর্তমান মান পড়া যায়নি — উপরের অবস্থা নির্ভরযোগ্য নয়।
+              {s.dbWarningPickup}
             </span>
           )}
         </div>
@@ -151,51 +157,51 @@ export function PickupPointsCard({ settingKey, title, description, initialPoints
             <div key={index} className="rounded-lg border border-border/70 p-3.5">
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="block">
-                  <span className="text-xs font-medium text-text-muted">আইডি</span>
+                  <span className="text-xs font-medium text-text-muted">{s.idLabel}</span>
                   <input
                     type="text"
                     value={row.id}
                     disabled={!row.isNew || saving}
                     onChange={(e) => updateRow(index, { id: e.target.value })}
-                    placeholder="যেমন: dhanmondi-branch"
+                    placeholder={s.pickIdPlaceholder}
                     className={`${inputClass} font-mono`}
                   />
                   {!row.isNew && (
                     <span className="mt-1 block text-[11px] leading-relaxed text-text-muted">
-                      আইডি বদলানো যাবে না — অর্ডারে এই আইডিই সংরক্ষিত থাকে।
+                      {s.idLockedNote}
                     </span>
                   )}
                 </label>
                 <label className="block">
-                  <span className="text-xs font-medium text-text-muted">নাম</span>
+                  <span className="text-xs font-medium text-text-muted">{s.pickNameLabel}</span>
                   <input
                     type="text"
                     value={row.name}
                     disabled={saving}
                     onChange={(e) => updateRow(index, { name: e.target.value })}
-                    placeholder="যেমন: ধানমন্ডি শাখা"
+                    placeholder={s.pickNamePlaceholder}
                     className={inputClass}
                   />
                 </label>
                 <label className="block md:col-span-2">
-                  <span className="text-xs font-medium text-text-muted">ঠিকানা</span>
+                  <span className="text-xs font-medium text-text-muted">{s.pickAddressLabel}</span>
                   <input
                     type="text"
                     value={row.address}
                     disabled={saving}
                     onChange={(e) => updateRow(index, { address: e.target.value })}
-                    placeholder="যেমন: বাড়ি ১২, রোড ৫, ধানমন্ডি, ঢাকা"
+                    placeholder={s.pickAddressPlaceholder}
                     className={inputClass}
                   />
                 </label>
                 <label className="block">
-                  <span className="text-xs font-medium text-text-muted">খোলার সময় (ঐচ্ছিক)</span>
+                  <span className="text-xs font-medium text-text-muted">{s.pickHoursLabel}</span>
                   <input
                     type="text"
                     value={row.hours}
                     disabled={saving}
                     onChange={(e) => updateRow(index, { hours: e.target.value })}
-                    placeholder="যেমন: সকাল ৯টা – রাত ৯টা"
+                    placeholder={s.pickHoursPlaceholder}
                     className={inputClass}
                   />
                 </label>
@@ -206,14 +212,14 @@ export function PickupPointsCard({ settingKey, title, description, initialPoints
                     onClick={() => removeRow(index)}
                     className="inline-flex min-h-[40px] items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium text-rose-700 transition motion-fast hover:border-rose-300 hover:bg-rose-50 disabled:opacity-50"
                   >
-                    <Icon name="x" size={14} /> সরান
+                    <Icon name="x" size={14} /> {s.remove}
                   </button>
                 </div>
               </div>
             </div>
           ))}
           {rows.length === 0 && (
-            <p className="text-sm text-text-muted">কোনো লোকেশন নেই — “নতুন লোকেশন যোগ করুন” দিয়ে শুরু করুন।</p>
+            <p className="text-sm text-text-muted">{s.pickEmpty}</p>
           )}
         </div>
 
@@ -228,13 +234,13 @@ export function PickupPointsCard({ settingKey, title, description, initialPoints
             disabled={saving}
             className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md border border-border bg-card px-4 text-sm font-medium transition motion-fast hover:border-brand-300 disabled:opacity-50"
           >
-            <Icon name="plus" size={15} /> নতুন লোকেশন যোগ করুন
+            <Icon name="plus" size={15} /> {s.pickAdd}
           </button>
           <label className="block grow basis-56">
-            <span className="text-sm font-medium">পরিবর্তনের কারণ (অডিটের জন্য আবশ্যিক)</span>
+            <span className="text-sm font-medium">{s.reasonLabel}</span>
             <input
               type="text"
-              placeholder="যেমন: ধানমন্ডি পিকআপ পয়েন্ট চালু হলো"
+              placeholder={s.pickReasonPlaceholder}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               disabled={saving}
@@ -247,7 +253,7 @@ export function PickupPointsCard({ settingKey, title, description, initialPoints
             disabled={saving}
             className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {saving ? "সেভ হচ্ছে…" : "সেভ করুন"}
+            {saving ? common.saving : s.pickSave}
           </button>
         </div>
 

@@ -21,7 +21,10 @@
 // rewrites history because orders store only the id.
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
-import { ORDER_STATUS_BN } from "@/orders/components/labels";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { SETTINGS_STRINGS, type SettingsStrings } from "../strings";
+import { ORDER_STATUS_VISUAL } from "@/orders/components/labels";
 import type { OrderStatus } from "@/orders/types";
 
 export interface WorkflowStageRow {
@@ -47,32 +50,28 @@ interface WorkflowStagesCardProps {
   dbReady: boolean;
 }
 
-const STATUSES = Object.keys(ORDER_STATUS_BN) as OrderStatus[];
+const STATUSES = Object.keys(ORDER_STATUS_VISUAL) as OrderStatus[];
 const TONES = ["brand", "success", "warning", "danger", "info", "neutral"] as const;
-const TONE_LABEL_BN: Record<(typeof TONES)[number], string> = {
-  brand: "ব্র্যান্ড",
-  success: "সবুজ",
-  warning: "হলুদ",
-  danger: "লাল",
-  info: "নীল",
-  neutral: "ধূসর",
-};
+function toneLabel(s: SettingsStrings, tone: (typeof TONES)[number]): string {
+  return { brand: s.wfToneBrand, success: s.wfToneSuccess, warning: s.wfToneWarning, danger: s.wfToneDanger, info: s.wfToneInfo, neutral: s.wfToneNeutral }[tone];
+}
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_STAGES = 20;
 
-function validateRows(rows: EditorRow[]): { stages: WorkflowStageRow[] } | { error: string } {
-  if (rows.length > MAX_STAGES) return { error: `সর্বোচ্চ ${MAX_STAGES}টি ধাপ রাখা যাবে।` };
+function validateRows(rows: EditorRow[], locale: Locale): { stages: WorkflowStageRow[] } | { error: string } {
+  const s = pick(locale, SETTINGS_STRINGS);
+  if (rows.length > MAX_STAGES) return { error: interpolate(s.wfMaxError, { max: MAX_STAGES }) };
   const seen = new Set<string>();
   const stages: WorkflowStageRow[] = [];
   for (const row of rows) {
     const id = row.id.trim();
     if (!ID_PATTERN.test(id) || id.length > 40) {
-      return { error: `ধাপের আইডি সঠিক নয়: "${row.id}" — ছোট হাতের ইংরেজি অক্ষর, সংখ্যা ও একক হাইফেন (সর্বোচ্চ ৪০).` };
+      return { error: interpolate(s.wfIdError, { id: row.id }) };
     }
-    if (seen.has(id)) return { error: `একই আইডি দুবার আছে: ${id}` };
+    if (seen.has(id)) return { error: interpolate(s.wfIdDup, { id }) };
     seen.add(id);
-    if (row.labelBn.trim() === "") return { error: `${id}: বাংলা লেবেল খালি রাখা যাবে না।` };
-    if (row.labelEn.trim() === "") return { error: `${id}: ইংরেজি লেবেল খালি রাখা যাবে না।` };
+    if (row.labelBn.trim() === "") return { error: interpolate(s.wfBnEmpty, { id }) };
+    if (row.labelEn.trim() === "") return { error: interpolate(s.wfEnEmpty, { id }) };
     stages.push({
       id,
       labelBn: row.labelBn.trim(),
@@ -89,6 +88,8 @@ const inputCls =
   "min-h-[40px] w-full rounded-[9px] border border-border bg-card px-2.5 text-small text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300";
 
 export function WorkflowStagesCard({ initialStages, storedConfigured, moduleEnabled, dbReady }: WorkflowStagesCardProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_STRINGS);
   const [rows, setRows] = useState<EditorRow[]>(() => initialStages.map((s) => ({ ...s, isNew: false })));
   const [reason, setReason] = useState("");
   const [status, setStatus] = useState("");
@@ -99,14 +100,14 @@ export function WorkflowStagesCard({ initialStages, storedConfigured, moduleEnab
     setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
 
   const save = async () => {
-    const validated = validateRows(rows);
+    const validated = validateRows(rows, locale);
     if ("error" in validated) {
       setStatus(validated.error);
       setStatusOk(false);
       return;
     }
     if (reason.trim() === "") {
-      setStatus("সংরক্ষণ করতে কারণ লিখুন — পরিবর্তনটি অডিট লগে কারণসহ থাকে।");
+      setStatus(s.wfReasonRequired);
       setStatusOk(false);
       return;
     }
@@ -124,7 +125,7 @@ export function WorkflowStagesCard({ initialStages, storedConfigured, moduleEnab
       if (res.ok && body?.data) {
         setRows(body.data.config.stages.map((s) => ({ ...s, isNew: false })));
         setReason("");
-        setStatus("সংরক্ষণ হয়েছে — ধাপের তালিকা হালনাগাদ।");
+        setStatus(s.wfSaved);
         setStatusOk(true);
       } else {
         const detail = body?.error?.details?.length ? ` (${body.error.details.join("; ")})` : "";
@@ -134,7 +135,7 @@ export function WorkflowStagesCard({ initialStages, storedConfigured, moduleEnab
         setStatusOk(false);
       }
     } catch {
-      setStatus("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।");
+      setStatus(s.wfNetwork);
       setStatusOk(false);
     } finally {
       setSaving(false);
@@ -147,22 +148,18 @@ export function WorkflowStagesCard({ initialStages, storedConfigured, moduleEnab
         <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
           <Icon name="tag" size={17} />
         </span>
-        ওয়ার্কফ্লো ধাপ (কাস্টম অর্ডার ধাপ)
+        {s.wfTitle}
       </h2>
       <p className="mt-2 text-sm leading-relaxed text-text-muted">
-        প্রতিটি ধাপ একটি ক্যানোনিকাল স্ট্যাটাসের <strong>ভেতরের লেবেল</strong> — যেমন CONFIRMED-এর ভেতরে
-        "মান যাচাই"। ধাপ অর্ডারের স্ট্যাটাস বদলায় না, কোনো গেট/স্টক/পেমেন্টে হাত দেয় না; অ্যাডমিন তালিকা ও
-        বিস্তারিত পেজে স্ট্যাটাস ব্যাজের পাশে চিপ হিসেবে এবং ক্রেতার ট্র্যাকিং পেজে বর্তমান ধাপ হিসেবে দেখায়।
-        স্ট্যাটাস বদলে গেলে অ্যাংকর না মেলা ধাপ নিজে থেকে সরে যায়।
+        {s.wfDescA}<strong>{s.wfDescBold}</strong>{s.wfDescB}
       </p>
       {!moduleEnabled ? (
         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-small text-amber-800">
-          মডিউল <code className="font-mono text-xs">module.workflow_stages</code> এখন বন্ধ — ধাপগুলো এখানে
-          তৈরি করে রাখা যাবে, কিন্তু ফিচার ফ্ল্যাগ চালু না করা পর্যন্ত কোথাও দেখাবে না ও বসানো যাবে না।
+          {s.wfModuleOffA}<code className="font-mono text-xs">module.workflow_stages</code>{s.wfModuleOffB}
         </p>
       ) : null}
       {!storedConfigured ? (
-        <p className="mt-2 text-small text-text-subtle">এখনো কোনো কাস্টম ধাপ সংরক্ষিত নেই।</p>
+        <p className="mt-2 text-small text-text-subtle">{s.wfNoneSaved}</p>
       ) : null}
 
       <div className="mt-4 space-y-3">
@@ -170,7 +167,7 @@ export function WorkflowStagesCard({ initialStages, storedConfigured, moduleEnab
           <div key={idx} className="rounded-lg border border-border p-3">
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               <label className="block">
-                <span className="mb-1 block text-caption font-semibold text-text-muted">আইডি (slug)</span>
+                <span className="mb-1 block text-caption font-semibold text-text-muted">{s.wfIdLabel}</span>
                 <input
                   className={inputCls}
                   value={row.id}
@@ -180,7 +177,7 @@ export function WorkflowStagesCard({ initialStages, storedConfigured, moduleEnab
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-caption font-semibold text-text-muted">অ্যাংকর স্ট্যাটাস</span>
+                <span className="mb-1 block text-caption font-semibold text-text-muted">{s.wfAnchorLabel}</span>
                 <select
                   className={inputCls}
                   value={row.anchorStatus}
@@ -188,13 +185,13 @@ export function WorkflowStagesCard({ initialStages, storedConfigured, moduleEnab
                 >
                   {STATUSES.map((s) => (
                     <option key={s} value={s}>
-                      {ORDER_STATUS_BN[s]} ({s})
+                      {locale === "bn" ? ORDER_STATUS_VISUAL[s].labelBn : ORDER_STATUS_VISUAL[s].labelEn} ({s})
                     </option>
                   ))}
                 </select>
               </label>
               <label className="block">
-                <span className="mb-1 block text-caption font-semibold text-text-muted">রঙ</span>
+                <span className="mb-1 block text-caption font-semibold text-text-muted">{s.wfColorLabel}</span>
                 <select
                   className={inputCls}
                   value={row.color ?? ""}
@@ -204,34 +201,34 @@ export function WorkflowStagesCard({ initialStages, storedConfigured, moduleEnab
                     })
                   }
                 >
-                  <option value="">স্বয়ংক্রিয় (ধূসর)</option>
+                  <option value="">{s.wfColorAuto}</option>
                   {TONES.map((t) => (
                     <option key={t} value={t}>
-                      {TONE_LABEL_BN[t]}
+                      {toneLabel(s, t)}
                     </option>
                   ))}
                 </select>
               </label>
               <label className="block">
-                <span className="mb-1 block text-caption font-semibold text-text-muted">লেবেল (বাংলা)</span>
+                <span className="mb-1 block text-caption font-semibold text-text-muted">{s.wfLabelBn}</span>
                 <input
                   className={inputCls}
                   value={row.labelBn}
                   onChange={(e) => patchRow(idx, { labelBn: e.target.value })}
-                  placeholder="মান যাচাই চলছে"
+                  placeholder={s.wfLabelBnPlaceholder}
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-caption font-semibold text-text-muted">লেবেল (English)</span>
+                <span className="mb-1 block text-caption font-semibold text-text-muted">{s.wfLabelEn}</span>
                 <input
                   className={inputCls}
                   value={row.labelEn}
                   onChange={(e) => patchRow(idx, { labelEn: e.target.value })}
-                  placeholder="Quality check"
+                  placeholder={s.wfLabelEnPlaceholder}
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-caption font-semibold text-text-muted">ক্রম</span>
+                <span className="mb-1 block text-caption font-semibold text-text-muted">{s.wfSortLabel}</span>
                 <input
                   className={inputCls}
                   type="number"
@@ -246,7 +243,7 @@ export function WorkflowStagesCard({ initialStages, storedConfigured, moduleEnab
                 onClick={() => setRows((prev) => prev.filter((_, i) => i !== idx))}
                 className="text-caption font-semibold text-rose-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
               >
-                ধাপটি মুছুন
+                {s.wfDelete}
               </button>
             </div>
           </div>
@@ -265,18 +262,18 @@ export function WorkflowStagesCard({ initialStages, storedConfigured, moduleEnab
           }
           className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3 text-sm font-semibold text-text-main transition motion-fast hover:border-brand-300 disabled:opacity-50"
         >
-          + নতুন ধাপ
+          {s.wfAdd}
         </button>
       </div>
 
       <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-border pt-4">
         <label className="block min-w-[240px] flex-1">
-          <span className="mb-1 block text-caption font-semibold text-text-muted">পরিবর্তনের কারণ (অডিটের জন্য আবশ্যক)</span>
+          <span className="mb-1 block text-caption font-semibold text-text-muted">{s.wfReasonLabel}</span>
           <input
             className={inputCls}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="যেমন: গুদামের মান-যাচাই ধাপ যোগ"
+            placeholder={s.wfReasonPlaceholder}
           />
         </label>
         <button
@@ -285,7 +282,7 @@ export function WorkflowStagesCard({ initialStages, storedConfigured, moduleEnab
           onClick={() => void save()}
           className="inline-flex min-h-[40px] items-center rounded-md bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition motion-fast hover:bg-brand-700 disabled:opacity-50"
         >
-          {saving ? "সংরক্ষণ হচ্ছে…" : "সংরক্ষণ করুন"}
+          {saving ? s.wfSaving : s.wfSave}
         </button>
       </div>
       {status ? (

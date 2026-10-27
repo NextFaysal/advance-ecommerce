@@ -11,6 +11,9 @@
 // card copy says so, so no operator mistakes this for a KYC gate.
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SETTINGS_B_STRINGS } from "../strings-b";
 
 const AGE_RESTRICTIONS_KEY = "catalog.age_restricted_categories";
 
@@ -26,6 +29,8 @@ interface AgeGateCardProps {
 }
 
 export function AgeGateCard({ initialRestrictions, categorySlugs, dbReady }: AgeGateCardProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_B_STRINGS);
   const [rows, setRows] = useState<RestrictionRow[]>(initialRestrictions);
   const [reason, setReason] = useState("");
   const [status, setStatus] = useState("");
@@ -40,7 +45,7 @@ export function AgeGateCard({ initialRestrictions, categorySlugs, dbReady }: Age
     setStatus("");
     if (reason.trim() === "") {
       setStatusOk(false);
-      setStatus("পরিবর্তনের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setStatus(s.reasonRequired);
       return;
     }
     const cleaned: RestrictionRow[] = [];
@@ -50,7 +55,7 @@ export function AgeGateCard({ initialRestrictions, categorySlugs, dbReady }: Age
       if (slug === "") continue;
       if (seen.has(slug)) {
         setStatusOk(false);
-        setStatus(`একই ক্যাটাগরি দুবার আছে: ${slug} — একটি রাখুন।`);
+        setStatus(interpolate(s.ageDuplicate, { slug }));
         return;
       }
       seen.add(slug);
@@ -68,19 +73,15 @@ export function AgeGateCard({ initialRestrictions, categorySlugs, dbReady }: Age
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
         setStatusOk(false);
-        setStatus(`সেভ করা যায়নি: ${data.error?.message ?? `সেভ করা যায়নি (${res.status})`}`);
+        setStatus(interpolate(s.saveFailedWith, { message: data.error?.message ?? interpolate(s.saveFailedStatus, { status: res.status }) }));
         return;
       }
       setRows(cleaned);
       setStatusOk(true);
-      setStatus(
-        cleaned.length === 0
-          ? "সেভ হয়েছে — এখন কোনো ক্যাটাগরিই বয়স-সীমাবদ্ধ নয়।"
-          : `সেভ হয়েছে — ${cleaned.length}টি ক্যাটাগরিতে বয়স নিশ্চিতকরণ লাগবে। PDP ও চেকআউটে সঙ্গে সঙ্গে কার্যকর।`,
-      );
+      setStatus(cleaned.length === 0 ? s.ageSavedNone : interpolate(s.ageSavedMany, { count: cleaned.length }));
     } catch {
       setStatusOk(false);
-      setStatus("সার্ভারের সঙ্গে যোগাযোগ করা যায়নি — সেভ হয়েছে কিনা নিশ্চিত নয়; পেজটি আবার লোড করে যাচাই করুন।");
+      setStatus(s.networkUncertain);
     } finally {
       setSaving(false);
     }
@@ -97,43 +98,36 @@ export function AgeGateCard({ initialRestrictions, categorySlugs, dbReady }: Age
           <span aria-hidden="true" className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
             <Icon name="shield" size={20} />
           </span>
-          <h2 className="font-display text-base font-semibold text-text-main">
-            বয়স-সীমাবদ্ধ ক্যাটাগরি (Age Gate)
-          </h2>
+          <h2 className="font-display text-base font-semibold text-text-main">{s.ageTitle}</h2>
         </div>
 
         <p className="mt-3 text-sm leading-relaxed text-text-muted">
-          নিচের ক্যাটাগরিগুলোর পণ্য কিনতে ক্রেতাকে চেকআউটে বয়স নিশ্চিত করতে হবে (PDP-তেও
-          নিশ্চিতকরণ দেখায়)। নিশ্চিতকরণটি অর্ডারের নোটে রেকর্ড থাকে।{" "}
-          <strong className="text-text-main">এটি একটি স্ব-ঘোষণা — পরিচয় বা বয়স যাচাই নয়</strong>;
-          কোনো ডকুমেন্ট সংগ্রহ করা হয় না। সেটিং কী{" "}
-          <code className="font-mono text-xs">catalog.age_restricted_categories</code>।
-          {!dbReady && (
-            <span className="mt-1.5 block text-rose-600">
-              সতর্কতা: ডাটাবেস থেকে বর্তমান মান পড়া যায়নি — উপরে ডিফল্ট (খালি) দেখানো হচ্ছে।
-            </span>
-          )}
+          {s.ageDescA}
+          <strong className="text-text-main">{s.ageDescStrong}</strong>
+          {s.ageDescB}
+          <code className="font-mono text-xs">catalog.age_restricted_categories</code>.
+          {!dbReady && <span className="mt-1.5 block text-rose-600">{s.ageDbWarning}</span>}
         </p>
 
         <div className="mt-4 space-y-2">
           {rows.length === 0 ? (
-            <p className="text-sm text-text-muted">কোনো ক্যাটাগরি যোগ করা হয়নি — বয়স গেট বন্ধ।</p>
+            <p className="text-sm text-text-muted">{s.ageEmpty}</p>
           ) : (
             rows.map((row, i) => (
               <div key={i} className="flex flex-wrap items-end gap-2">
                 <label className="min-w-52 flex-1">
-                  <span className="text-sm font-medium">ক্যাটাগরি স্লাগ</span>
+                  <span className="text-sm font-medium">{s.ageSlugLabel}</span>
                   <input
                     className={inputCls}
                     value={row.slug}
                     list="age-gate-category-slugs"
-                    placeholder="যেমন: vape-and-accessories"
+                    placeholder={s.ageSlugPlaceholder}
                     onChange={(e) => updateRow(i, { slug: e.target.value })}
                     disabled={saving}
                   />
                 </label>
                 <label className="w-32">
-                  <span className="text-sm font-medium">সর্বনিম্ন বয়স</span>
+                  <span className="text-sm font-medium">{s.ageMinLabel}</span>
                   <input
                     className={inputCls}
                     type="number"
@@ -150,7 +144,7 @@ export function AgeGateCard({ initialRestrictions, categorySlugs, dbReady }: Age
                   disabled={saving}
                   className="min-h-[44px] rounded-lg border border-border px-3 text-sm font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
                 >
-                  সরান
+                  {s.ageRemove}
                 </button>
               </div>
             ))
@@ -166,17 +160,17 @@ export function AgeGateCard({ initialRestrictions, categorySlugs, dbReady }: Age
             disabled={saving}
             className="min-h-[44px] rounded-lg border border-border px-3 text-sm font-medium transition hover:bg-surface-2 disabled:opacity-50"
           >
-            + ক্যাটাগরি যোগ করুন
+            {s.ageAdd}
           </button>
         </div>
 
         <label className="mt-4 block">
-          <span className="text-sm font-medium">পরিবর্তনের কারণ (অডিট লগে থাকবে)</span>
+          <span className="text-sm font-medium">{s.ageReasonLabel}</span>
           <input
             className={inputCls}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="যেমন: আইনি বাধ্যবাধকতায় ভেপ ক্যাটাগরিতে ১৮+ গেট"
+            placeholder={s.ageReasonPlaceholder}
             disabled={saving}
           />
         </label>
@@ -188,7 +182,7 @@ export function AgeGateCard({ initialRestrictions, categorySlugs, dbReady }: Age
             disabled={saving}
             className="brand-gradient min-h-[44px] rounded-lg px-5 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-50"
           >
-            {saving ? "সেভ হচ্ছে…" : "সেভ করুন"}
+            {saving ? s.saving : s.save}
           </button>
           {status !== "" && (
             <p className={`text-sm ${statusOk ? "text-emerald-600" : "text-rose-600"}`} role="status">

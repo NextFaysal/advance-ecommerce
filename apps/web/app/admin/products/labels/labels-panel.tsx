@@ -13,6 +13,9 @@ import JsBarcode from "jsbarcode";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { formatPoisha } from "@/components/ui/money";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { PRODUCTS_STRINGS } from "../strings";
 
 const inputCls =
   "min-h-[44px] w-full rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-sm outline-none transition motion-fast focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100";
@@ -52,6 +55,8 @@ function attrsText(v: VariantView): string {
 }
 
 function BarcodeSvg({ value }: { value: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, PRODUCTS_STRINGS);
   const ref = useRef<SVGSVGElement>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -71,12 +76,14 @@ function BarcodeSvg({ value }: { value: string }) {
     }
   }, [value]);
   if (failed) {
-    return <p className="text-center font-mono text-[10px] leading-tight">{value} (বারকোড আঁকা যায়নি)</p>;
+    return <p className="text-center font-mono text-[10px] leading-tight">{interpolate(s.barcodeFallback, { value })}</p>;
   }
-  return <svg ref={ref} className="h-[42px] w-full" role="img" aria-label={`বারকোড ${value}`} />;
+  return <svg ref={ref} className="h-[42px] w-full" role="img" aria-label={interpolate(s.barcodeAria, { value })} />;
 }
 
 export function LabelsPanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, PRODUCTS_STRINGS);
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,12 +99,12 @@ export function LabelsPanel() {
     setSearching(true);
     try {
       const res = await fetch(`/api/v1/admin/products?q=${encodeURIComponent(query)}&pageSize=50&status=ALL`);
-      if (!res.ok) throw new Error(await readError(res, "পণ্য খোঁজা যায়নি।"));
+      if (!res.ok) throw new Error(await readError(res, s.labelsSearchFail));
       const body = (await res.json()) as { data: ProductView[] };
       setProducts(body.data);
       setSearched(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "পণ্য খোঁজা যায়নি।");
+      setError(e instanceof Error ? e.message : s.labelsSearchFail);
     } finally {
       setSearching(false);
     }
@@ -145,8 +152,8 @@ export function LabelsPanel() {
             <Icon name="tag" size={20} />
           </span>
           <div className="min-w-0">
-            <h2 className="font-display text-base font-semibold text-text-main">ভ্যারিয়েন্ট বাছাই করুন</h2>
-            <p className="text-xs text-text-subtle">বারকোডওয়ালা ভ্যারিয়েন্টে টিক দিন, কপি ঠিক করুন</p>
+            <h2 className="font-display text-base font-semibold text-text-main">{s.labelsPickTitle}</h2>
+            <p className="text-xs text-text-subtle">{s.labelsPickSub}</p>
           </div>
         </div>
         <div className="flex flex-col gap-2 min-[420px]:flex-row lg:flex-col min-[1100px]:flex-row">
@@ -156,7 +163,7 @@ export function LabelsPanel() {
             onKeyDown={(e) => {
               if (e.key === "Enter") void search();
             }}
-            placeholder="পণ্যের নাম বা SKU দিয়ে খুঁজুন (খালি রাখলে সাম্প্রতিক ৫০টি)"
+            placeholder={s.labelsSearchPh}
             className={`${inputCls} flex-1`}
           />
           <button
@@ -166,14 +173,13 @@ export function LabelsPanel() {
             className="brand-gradient inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105 disabled:opacity-50"
           >
             <Icon name="search" size={16} />
-            {searching ? "খোঁজা হচ্ছে…" : "খুঁজুন"}
+            {searching ? s.labelsSearching : s.labelsSearchBtn}
           </button>
         </div>
         <p className="flex gap-2 text-xs leading-relaxed text-text-subtle">
           <Icon name="info" size={14} className="mt-0.5 shrink-0" />
           <span>
-            শুধু যেসব ভ্যারিয়েন্টে বারকোড আছে সেগুলোরই লেবেল হয় — বারকোড ছাড়া ভ্যারিয়েন্ট নিষ্ক্রিয় দেখাবে;
-            আগে পণ্য এডিটরে গিয়ে বারকোড বসান।
+            {s.labelsBarcodeNote}
           </span>
         </p>
         {error ? (
@@ -184,7 +190,7 @@ export function LabelsPanel() {
             <p className="leading-relaxed">{error}</p>
           </div>
         ) : null}
-        {searched && products.length === 0 ? <p className="text-sm text-text-subtle">কোনো পণ্য মেলেনি।</p> : null}
+        {searched && products.length === 0 ? <p className="text-sm text-text-subtle">{s.labelsNoMatch}</p> : null}
         {products.length > 0 ? (
           <div className="space-y-3">
             {products.map((p) => (
@@ -194,7 +200,7 @@ export function LabelsPanel() {
                     {p.titleBn} <span className="font-mono text-xs font-normal text-text-subtle">{p.slug}</span>
                   </span>
                   <span className="inline-flex h-6 shrink-0 items-center rounded-full bg-card px-2.5 text-xs text-text-muted ring-1 ring-inset ring-black/5">
-                    {p.variants.length}টি ভ্যারিয়েন্ট
+                    {interpolate(s.labelsVariantCount, { count: p.variants.length })}
                   </span>
                 </p>
                 <ul className="divide-y divide-border/60">
@@ -213,22 +219,22 @@ export function LabelsPanel() {
                           checked={isPicked}
                           disabled={!hasBarcode}
                           onChange={() => toggle(p, v)}
-                          aria-label={`${v.sku} লেবেলের জন্য বাছাই`}
+                          aria-label={interpolate(s.labelsSelectAria, { sku: v.sku })}
                           className="h-5 w-5 shrink-0 accent-brand-600 disabled:opacity-40"
                         />
                         <span className="font-mono font-medium">{v.sku}</span>
                         {attrsText(v) ? <span className="text-text-muted">{attrsText(v)}</span> : null}
                         <span className="font-mono tabular-nums">{formatPoisha(v.pricePoisha)}</span>
                         {hasBarcode ? (
-                          <span className="font-mono text-xs text-text-subtle">বারকোড: {v.barcode}</span>
+                          <span className="font-mono text-xs text-text-subtle">{interpolate(s.labelsBarcodeText, { code: v.barcode ?? "" })}</span>
                         ) : (
                           <span className="inline-flex h-6 items-center rounded-full bg-amber-50 px-2.5 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-200">
-                            বারকোড নেই — লেবেল হবে না
+                            {s.labelsNoBarcode}
                           </span>
                         )}
                         {isPicked ? (
                           <label className="ml-auto flex items-center gap-2 text-xs font-medium text-text-muted">
-                            কপি
+                            {s.labelsCopies}
                             <input
                               type="number"
                               min={1}
@@ -254,32 +260,32 @@ export function LabelsPanel() {
           <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 ring-1 ring-brand-100">
             <Icon name="settings" size={20} />
           </span>
-          <h2 className="font-display text-base font-semibold text-text-main">লেবেলের সেটিং</h2>
+          <h2 className="font-display text-base font-semibold text-text-main">{s.labelsSettingsTitle}</h2>
         </div>
         <div className="grid gap-2 text-sm">
           <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-lg border border-border bg-card px-3.5 transition motion-fast hover:bg-surface-2">
             <input type="checkbox" checked={showPrice} onChange={(e) => setShowPrice(e.target.checked)} className="h-5 w-5 shrink-0 accent-brand-600" />
-            দাম দেখান
+            {s.labelsShowPrice}
           </label>
           <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-lg border border-border bg-card px-3.5 transition motion-fast hover:bg-surface-2">
             <input type="checkbox" checked={showShopName} onChange={(e) => setShowShopName(e.target.checked)} className="h-5 w-5 shrink-0 accent-brand-600" />
-            দোকানের নাম দেখান
+            {s.labelsShowShop}
           </label>
           {showShopName ? (
             <input
               value={shopName}
               onChange={(e) => setShopName(e.target.value)}
-              placeholder="দোকানের নাম"
+              placeholder={s.labelsShopNamePh}
               className={inputCls}
             />
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 text-xs text-text-muted ring-1 ring-inset ring-black/5">
-            {selections.length}টি ভ্যারিয়েন্ট বাছাই হয়েছে
+            {interpolate(s.labelsSelectedCount, { count: selections.length })}
           </span>
           <span className="inline-flex h-6 items-center rounded-full bg-brand-50 px-2.5 text-xs font-semibold text-brand-700 ring-1 ring-inset ring-brand-100">
-            মোট {totalLabels}টি লেবেল
+            {interpolate(s.labelsTotalCount, { count: totalLabels })}
           </span>
         </div>
         <button
@@ -289,18 +295,18 @@ export function LabelsPanel() {
           className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-base font-semibold text-white shadow-md transition motion-fast hover:bg-emerald-700 hover:shadow-lift disabled:opacity-50"
         >
           <Icon name="check" size={18} />
-          লেবেল ছাপুন ({totalLabels}টি)
+          {interpolate(s.labelsPrintBtn, { count: totalLabels })}
         </button>
-        {totalLabels === 0 ? <p className="text-xs leading-relaxed text-text-subtle">ছাপতে অন্তত একটি বারকোডওয়ালা ভ্যারিয়েন্ট বেছে নিন।</p> : null}
+        {totalLabels === 0 ? <p className="text-xs leading-relaxed text-text-subtle">{s.labelsPrintHint}</p> : null}
       </Card>
       </div>
 
       {totalLabels > 0 ? (
         <Card className="min-w-0">
           <div className="mb-4 flex flex-wrap items-center gap-2">
-            <h2 className="font-display text-base font-semibold text-text-main">ছাপার শিট — প্রিভিউ</h2>
+            <h2 className="font-display text-base font-semibold text-text-main">{s.labelsSheetTitle}</h2>
             <span className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs text-text-muted ring-1 ring-inset ring-black/5">
-              লেবেল 58mm × 40mm
+              {s.labelsSheetSize}
             </span>
           </div>
           <div className="overflow-x-auto rounded-xl bg-surface-2/70 p-3">
@@ -335,9 +341,9 @@ export function LabelsPanel() {
           <span aria-hidden="true" className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 text-brand-500">
             <Icon name="tag" size={28} />
           </span>
-          <h2 className="mt-4 font-display text-base font-semibold text-text-main">ছাপার শিট — প্রিভিউ</h2>
+          <h2 className="mt-4 font-display text-base font-semibold text-text-main">{s.labelsSheetTitle}</h2>
           <p className="mx-auto mt-1 max-w-sm text-sm leading-relaxed text-text-muted">
-            ভ্যারিয়েন্ট বাছাই করলেই এখানে ছাপার শিটের লাইভ প্রিভিউ দেখা যাবে — যেভাবে দেখছেন, ঠিক সেভাবেই ছাপা হবে।
+            {s.labelsPreviewEmptyDesc}
           </p>
         </div>
       )}

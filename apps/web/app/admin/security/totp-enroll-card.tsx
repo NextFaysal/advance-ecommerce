@@ -18,6 +18,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { SECURITY_STRINGS } from "./strings";
 
 interface EnrollResponse {
   data?: { secretBase32: string; otpauthUrl: string; account: string };
@@ -34,6 +37,8 @@ export default function TotpEnrollCard({
   accountLabel: string;
 }) {
   const router = useRouter();
+  const { locale } = useLocale();
+  const s = pick(locale, SECURITY_STRINGS);
   const [secret, setSecret] = useState<string | null>(null);
   const [otpauthUrl, setOtpauthUrl] = useState<string | null>(null);
   const [code, setCode] = useState("");
@@ -49,14 +54,14 @@ export default function TotpEnrollCard({
       const res = await fetch("/api/v1/admin/auth/2fa/enroll", { method: "POST" });
       const body = (await res.json().catch(() => ({}))) as EnrollResponse;
       if (!res.ok || !body.data) {
-        setError(body.error?.message ?? "সেটআপ শুরু করা যায়নি — আবার চেষ্টা করুন।");
+        setError(body.error?.message ?? s.totpSetupFailed);
         return;
       }
       setSecret(body.data.secretBase32);
       setOtpauthUrl(body.data.otpauthUrl);
       setCode("");
     } catch {
-      setError("সার্ভারে পৌঁছানো যাচ্ছে না — নেটওয়ার্ক দেখে আবার চেষ্টা করুন।");
+      setError(s.totpNetworkError);
     } finally {
       setBusy(false);
     }
@@ -64,7 +69,7 @@ export default function TotpEnrollCard({
 
   async function confirmEnrolment() {
     if (!/^\d{6}$/.test(code)) {
-      setError("অথেনটিকেটর অ্যাপের ৬ সংখ্যার কোডটি লিখুন।");
+      setError(s.totpCodePrompt);
       return;
     }
     setBusy(true);
@@ -76,16 +81,16 @@ export default function TotpEnrollCard({
         body: JSON.stringify({ code }),
       });
       if (!res.ok) {
-        setError("কোডটি মেলেনি — অ্যাপে দেখানো বর্তমান কোডটি আবার লিখুন।");
+        setError(s.totpCodeMismatch);
         return;
       }
       setSecret(null);
       setOtpauthUrl(null);
       setCode("");
-      setMessage("2FA চালু হয়েছে। পরের লগইন থেকে পাসওয়ার্ডের পর কোড লাগবে।");
+      setMessage(s.totpEnabledMsg);
       router.refresh();
     } catch {
-      setError("সার্ভারে পৌঁছানো যাচ্ছে না — নেটওয়ার্ক দেখে আবার চেষ্টা করুন।");
+      setError(s.totpNetworkError);
     } finally {
       setBusy(false);
     }
@@ -94,18 +99,17 @@ export default function TotpEnrollCard({
   return (
     <Card className="p-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">দুই-ধাপ যাচাই (TOTP 2FA)</h2>
+        <h2 className="text-lg font-semibold">{s.totpTitle}</h2>
         {totpEnabled ? (
-          <Badge tone="success">চালু আছে</Badge>
+          <Badge tone="success">{s.totpOn}</Badge>
         ) : enrolmentPending ? (
-          <Badge tone="warning">সেটআপ অসম্পূর্ণ</Badge>
+          <Badge tone="warning">{s.totpPending}</Badge>
         ) : (
-          <Badge tone="warning">বন্ধ আছে</Badge>
+          <Badge tone="warning">{s.totpOff}</Badge>
         )}
       </div>
       <p className="mt-2 text-sm text-text-muted">
-        অ্যাকাউন্ট: <span className="font-medium text-text-main">{accountLabel}</span>। Google Authenticator / Microsoft
-        Authenticator-এর মতো অ্যাপ দিয়ে লগইনের সময় ৬ সংখ্যার কোড লাগবে — পাসওয়ার্ড ফাঁস হলেও অ্যাকাউন্ট সুরক্ষিত থাকবে।
+        {s.totpAccountPrefix}: <span className="font-medium text-text-main">{accountLabel}</span>{s.totpIntro}
       </p>
 
       {message ? (
@@ -118,23 +122,22 @@ export default function TotpEnrollCard({
       {secret ? (
         <div className="mt-4 space-y-3">
           <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            এই গোপন কীটি <strong>শুধু একবারই</strong> দেখানো হচ্ছে। এখনই অথেনটিকেটর অ্যাপে যোগ করুন — এই পেজ ছাড়লে এটি আর
-            দেখা যাবে না, তখন নতুন করে সেটআপ শুরু করতে হবে।
+            {s.totpOnceWarningBefore}<strong>{s.totpOnceWarningStrong}</strong>{s.totpOnceWarningAfter}
           </p>
           <div>
-            <span className="mb-1 block text-xs font-medium text-text-muted">গোপন কী (হাতে লিখুন)</span>
+            <span className="mb-1 block text-xs font-medium text-text-muted">{s.totpSecretLabel}</span>
             <code className="block break-all rounded-md bg-surface-2 px-3 py-2 font-mono text-sm">{secret}</code>
           </div>
           {otpauthUrl ? (
             <div>
-              <span className="mb-1 block text-xs font-medium text-text-muted">otpauth লিংক (QR-এর বদলে কপি করে অ্যাপে নিন)</span>
+              <span className="mb-1 block text-xs font-medium text-text-muted">{s.totpOtpauthLabel}</span>
               <code className="block break-all rounded-md bg-surface-2 px-3 py-2 font-mono text-xs">{otpauthUrl}</code>
             </div>
           ) : null}
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-44 flex-1">
               <Input
-                label="অ্যাপের ৬ সংখ্যার কোড"
+                label={s.totpCodeLabel}
                 placeholder="123456"
                 inputMode="numeric"
                 value={code}
@@ -142,7 +145,7 @@ export default function TotpEnrollCard({
               />
             </div>
             <Button onClick={confirmEnrolment} disabled={busy}>
-              {busy ? "যাচাই হচ্ছে…" : "কোড দিয়ে চালু করুন"}
+              {busy ? s.totpVerifying : s.totpConfirmBtn}
             </Button>
           </div>
         </div>
@@ -150,16 +153,15 @@ export default function TotpEnrollCard({
         <div className="mt-4 space-y-2">
           {enrolmentPending && !totpEnabled ? (
             <p className="text-sm text-text-muted">
-              আগের সেটআপের গোপন কী আবার দেখা সম্ভব নয় (নিরাপত্তার কারণে শুধু একবারই দেখানো হয়) — নতুন করে শুরু করুন।
+              {s.totpPendingNote}
             </p>
           ) : null}
           <Button onClick={startEnrolment} disabled={busy}>
-            {busy ? "হচ্ছে…" : totpEnabled ? "2FA আবার সেটআপ করুন (রিসেট)" : "2FA সেটআপ শুরু করুন"}
+            {busy ? s.totpWorking : totpEnabled ? s.totpResetBtn : s.totpStartBtn}
           </Button>
           {totpEnabled ? (
             <p className="text-sm text-rose-600">
-              সতর্কতা: নতুন সেটআপ শুরু করলেই পুরনো অ্যাপের কোড কাজ করা বন্ধ করে দেবে — নতুন কী অ্যাপে যোগ করে কোড দিয়ে
-              নিশ্চিত না করা পর্যন্ত 2FA সম্পূর্ণ হবে না।
+              {s.totpResetWarning}
             </p>
           ) : null}
         </div>

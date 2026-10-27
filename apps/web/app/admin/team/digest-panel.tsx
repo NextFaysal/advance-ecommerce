@@ -16,6 +16,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { TEAM_STRINGS } from "./strings";
 
 interface DigestData {
   textBn: string;
@@ -33,6 +36,8 @@ function todayDhaka(): string {
 }
 
 export function DigestPanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, TEAM_STRINGS);
   const [date, setDate] = useState(todayDhaka());
   const [text, setText] = useState("");
   const [recipientsText, setRecipientsText] = useState("");
@@ -46,16 +51,16 @@ export function DigestPanel() {
       const res = await fetch(`/api/v1/admin/team/digest?date=${d}`, { cache: "no-store" });
       const json = (await res.json()) as { data?: DigestData; error?: { message: string } };
       if (!res.ok || !json.data) {
-        setError(json.error?.message ?? "ডাইজেস্ট আনা যায়নি।");
+        setError(json.error?.message ?? s.digestLoadFailed);
         return;
       }
       setText(json.data.textBn);
       setRecipientsText(json.data.recipients.join("\n"));
       setError("");
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি।");
+      setError(s.networkError);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load(date);
@@ -72,9 +77,9 @@ export function DigestPanel() {
         body: JSON.stringify({ emails }),
       });
       const json = (await res.json()) as { error?: { message: string } };
-      setNote(res.ok ? "প্রাপকের তালিকা সংরক্ষিত হয়েছে।" : (json.error?.message ?? "সংরক্ষণ হয়নি।"));
+      setNote(res.ok ? s.recipientsSaved : (json.error?.message ?? s.digestSaveFailed));
     } catch {
-      setNote("নেটওয়ার্ক ত্রুটি।");
+      setNote(s.networkError);
     } finally {
       setBusy(false);
     }
@@ -91,12 +96,12 @@ export function DigestPanel() {
       });
       const json = (await res.json()) as { data?: SendResult; error?: { message: string } };
       if (!res.ok || !json.data) {
-        setNote(json.error?.message ?? "পাঠানোর চেষ্টা ব্যর্থ হয়েছে।");
+        setNote(json.error?.message ?? s.sendFailed);
         return;
       }
       setSendResult(json.data);
     } catch {
-      setNote("নেটওয়ার্ক ত্রুটি।");
+      setNote(s.networkError);
     } finally {
       setBusy(false);
     }
@@ -105,9 +110,9 @@ export function DigestPanel() {
   return (
     <Card className="mt-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-h3">দৈনিক ডাইজেস্ট (ইমেইল)</h2>
+        <h2 className="text-h3">{s.digestTitle}</h2>
         <label className="flex items-center gap-2 text-small">
-          তারিখ
+          {s.dateLabel}
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-44" />
         </label>
       </div>
@@ -120,7 +125,7 @@ export function DigestPanel() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div>
           <label className="text-small font-medium" htmlFor="digest-recipients">
-            প্রাপকদের ইমেইল (প্রতি লাইনে একটি)
+            {s.recipientsLabel}
           </label>
           <textarea
             id="digest-recipients"
@@ -130,29 +135,26 @@ export function DigestPanel() {
             placeholder="owner@example.com"
           />
           <Button variant="secondary" onClick={() => void saveRecipients()} disabled={busy} className="mt-2">
-            প্রাপক সংরক্ষণ করুন
+            {s.saveRecipientsBtn}
           </Button>
         </div>
         <div>
           <p className="text-small leading-relaxed text-text-subtle">
-            পাঠানো মানে ইমেইল কিউতে (Redis) জব জমা দেওয়া — <strong>queued মানে পাঠানো হয়েছে নয়</strong>।
-            আসল ডেলিভারির জন্য worker প্রসেস ও কনফিগার করা email transport দরকার (production-এ worker এখনো
-            চালু হয়নি)। Telegram/Slack চ্যানেল এখানে নেই — codebase-এ কোনো notify service নেই, তাই ভুয়া
-            অপশন দেখানো হয়নি।
+            {s.digestHonestyBefore}<strong>{s.digestHonestyStrong}</strong>{s.digestHonestyAfter}
           </p>
           <Button onClick={() => void send()} disabled={busy} className="mt-3 min-h-[44px]">
-            এখন পাঠান (কিউতে)
+            {s.sendNowBtn}
           </Button>
           {note !== "" && <p className="mt-2 text-small font-medium">{note}</p>}
           {sendResult !== null && (
             <div className="mt-3 rounded-md border border-border p-3 text-small">
               <p className="font-semibold">
-                ফলাফল:{" "}
+                {s.resultLabel}
                 {sendResult.delivery === "queued"
-                  ? "সব প্রাপকের জন্য কিউতে জমা হয়েছে (পাঠানো হয়নি)"
+                  ? s.resultQueued
                   : sendResult.delivery === "no_recipients"
-                    ? "কোনো প্রাপক নেই — আগে প্রাপক যোগ করুন"
-                    : "কিউতে জমা দেওয়া যায়নি"}
+                    ? s.resultNoRecipients
+                    : s.resultNotQueued}
               </p>
               <ul className="mt-2 space-y-1">
                 {sendResult.results.map((r) => (

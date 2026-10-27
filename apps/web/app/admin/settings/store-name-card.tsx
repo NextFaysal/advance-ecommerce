@@ -13,6 +13,9 @@
 // every other settings write. Saving the unchanged name is a no-op.
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SETTINGS_STRINGS } from "./strings";
 
 const STORE_NAME_KEY = "general.store_name";
 const MAX_LENGTH = 120;
@@ -25,6 +28,8 @@ interface StoreNameCardProps {
 }
 
 export function StoreNameCard({ initial, dbReady }: StoreNameCardProps) {
+  const { locale, t } = useLocale();
+  const s = pick(locale, SETTINGS_STRINGS);
   const [name, setName] = useState(initial);
   const [reason, setReason] = useState("");
   const [status, setStatus] = useState("");
@@ -36,17 +41,17 @@ export function StoreNameCard({ initial, dbReady }: StoreNameCardProps) {
     const value = name.trim();
     if (reason.trim() === "") {
       setStatusOk(false);
-      setStatus("পরিবর্তনের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setStatus(s.reasonRequired);
       return;
     }
     if (value.length > MAX_LENGTH) {
       setStatusOk(false);
-      setStatus(`স্টোরের নাম সর্বোচ্চ ${MAX_LENGTH} অক্ষরের হতে পারে।`);
+      setStatus(interpolate(s.snTooLong, { max: MAX_LENGTH }));
       return;
     }
     if (value === initial.trim()) {
       setStatusOk(true);
-      setStatus("কোনো পরিবর্তন নেই — নাম আগের মতোই আছে, কিছুই সেভ করা হয়নি।");
+      setStatus(s.snNoChange);
       return;
     }
 
@@ -60,18 +65,14 @@ export function StoreNameCard({ initial, dbReady }: StoreNameCardProps) {
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
         setStatusOk(false);
-        setStatus(`${STORE_NAME_KEY} সেভ করা যায়নি: ${data.error?.message ?? `সেভ করা যায়নি (${res.status})`}`);
+        setStatus(interpolate(s.snSaveFailed, { key: STORE_NAME_KEY, message: data.error?.message ?? interpolate(s.saveFailedStatus, { status: res.status }) }));
         return;
       }
       setStatusOk(true);
-      setStatus(
-        value === ""
-          ? "সেভ হয়েছে — স্টোরের নাম মুছে ফেলা হয়েছে; এখন থেকে ইনভয়েস ও পেমেন্ট পেজে নাম দেখানো হবে না।"
-          : `সেভ হয়েছে — স্টোরের নাম এখন "${value}"। প্রিন্ট ইনভয়েস ও পেমেন্ট লিংক পেজে এই নামই দেখাবে।`,
-      );
+      setStatus(value === "" ? s.snSavedCleared : interpolate(s.snSaved, { value }));
     } catch {
       setStatusOk(false);
-      setStatus("সার্ভারের সঙ্গে যোগাযোগ করা যায়নি — নাম সেভ হয়েছে কিনা নিশ্চিত নয়; পেজটি আবার লোড করে যাচাই করুন।");
+      setStatus(s.snNetwork);
     } finally {
       setSaving(false);
     }
@@ -85,26 +86,24 @@ export function StoreNameCard({ initial, dbReady }: StoreNameCardProps) {
           <span aria-hidden="true" className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
             <Icon name="store" size={20} />
           </span>
-          <h2 className="font-display text-base font-semibold text-text-main">স্টোরের নাম (Store Name)</h2>
+          <h2 className="font-display text-base font-semibold text-text-main">{s.snTitle}</h2>
         </div>
 
         <p className="mt-3 text-sm leading-relaxed text-text-muted">
-          এই নামটি অর্ডার প্রিন্ট ইনভয়েসের শিরোনামে এবং পেমেন্ট লিংক পেজে (<code>/pay/[token]</code>) দেখায়
-          — সেটিং কী <code className="font-mono text-xs">general.store_name</code>। এখন পর্যন্ত নামটি শুধু
-          সেটআপ উইজার্ড থেকেই দেওয়া যেত; এখন থেকে এখান থেকেও বদলানো যাবে। খালি রাখলে নাম দেখানো হয় না।
+          {s.snDescA}<code>/pay/[token]</code>{s.snDescB}<code className="font-mono text-xs">general.store_name</code>{s.snDescC}
           {!dbReady && (
             <span className="mt-1.5 block text-rose-600">
-              সতর্কতা: ডাটাবেস থেকে বর্তমান মান পড়া যায়নি — উপরে বিল্ট-ইন ডিফল্ট (খালি) দেখানো হচ্ছে।
+              {s.snDbWarning}
             </span>
           )}
         </p>
 
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="block grow basis-64">
-            <span className="text-sm font-medium">স্টোরের নাম</span>
+            <span className="text-sm font-medium">{s.snNameLabel}</span>
             <input
               type="text"
-              placeholder="যেমন: আমার দোকান"
+              placeholder={s.snNamePlaceholder}
               maxLength={MAX_LENGTH + 20}
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -113,10 +112,10 @@ export function StoreNameCard({ initial, dbReady }: StoreNameCardProps) {
             />
           </label>
           <label className="block grow basis-56">
-            <span className="text-sm font-medium">পরিবর্তনের কারণ (অডিটের জন্য আবশ্যিক)</span>
+            <span className="text-sm font-medium">{s.reasonLabel}</span>
             <input
               type="text"
-              placeholder="যেমন: আসল ব্যবসার নামে ব্র্যান্ডিং ঠিক করা হলো"
+              placeholder={s.snReasonPlaceholder}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               disabled={saving}
@@ -129,7 +128,7 @@ export function StoreNameCard({ initial, dbReady }: StoreNameCardProps) {
             disabled={saving}
             className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {saving ? "সেভ হচ্ছে…" : "নাম সেভ করুন"}
+            {saving ? t.saving : s.snSave}
           </button>
         </div>
 

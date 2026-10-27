@@ -3,6 +3,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Icon } from "@/components/ui/icon";
 import { SETTING_DEFAULTS, getSetting } from "@/lib/settings";
 import { CallCenterSettingsCard, type CallCenterSettingsInitial } from "./call-center-settings-card";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { SETTINGS_B_STRINGS } from "../strings-b";
 
 // Admin > Settings > Call Center — SLA thresholds, automation SMS
 // timings, calling window, log retention (doc 21, G3-17). Until now
@@ -41,6 +44,8 @@ function effectiveInt(key: string, raw: string | null): number {
 }
 
 export default async function CallCenterSettingsPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, SETTINGS_B_STRINGS);
   let dbReady = true;
   const initial = {} as CallCenterSettingsInitial;
   try {
@@ -56,15 +61,15 @@ export default async function CallCenterSettingsPage() {
   return (
     <main className="min-w-0">
       <PageHeader
-        title="কল সেন্টার — SLA, অটোমেশন সময় ও সংরক্ষণ"
-        description="সুপারভাইজার বোর্ডের SLA সীমা, ফলো-আপ অটোমেশন SMS-এর সময়, বৈধ কলিং উইন্ডো এবং কল-লগ সংরক্ষণের মেয়াদ — সব এই পেজ থেকে। প্রতিটি পরিবর্তন কারণসহ অডিট লগে থাকে।"
-        breadcrumb="সেটিংস / কল সেন্টার"
+        title={s.ccTitle}
+        description={s.ccDesc}
+        breadcrumb={s.ccBreadcrumb}
         actions={
           <Link
             href="/admin/settings"
             className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition motion-fast hover:border-brand-300"
           >
-            ← সব সেটিংস
+            {s.allSettings}
           </Link>
         }
       />
@@ -74,7 +79,7 @@ export default async function CallCenterSettingsPage() {
           <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
             <Icon name="info" size={17} />
           </span>
-          এই পেজের মানগুলো দিয়ে কী হয়?
+          {s.ccWhatTitle}
         </h2>
         <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-text-muted">
           <li className="flex gap-2.5">
@@ -82,9 +87,8 @@ export default async function CallCenterSettingsPage() {
               <Icon name="check" size={12} />
             </span>
             <span>
-              <strong>SLA সীমা:</strong> সুপারভাইজার বোর্ড প্রতিটি খোলা টাস্কের বয়স এই সীমার সঙ্গে তুলনা
-              করে — কনফার্মেশন (PENDING_ORDER) ও রেসকিউ (FAILED_DELIVERY) টাস্কের জন্য আলাদা সীমা। মান দুটি
-              বোর্ড প্রতিবার পড়ে, তাই বদলালেই পরের লোড থেকে কার্যকর।
+              <strong>{s.ccSlaStrong}</strong>
+              {s.ccSlaBody}
             </span>
           </li>
           <li className="flex gap-2.5">
@@ -92,10 +96,12 @@ export default async function CallCenterSettingsPage() {
               <Icon name="check" size={12} />
             </span>
             <span>
-              <strong>অটোমেশন SMS-এর সময়:</strong> NO_ANSWER-এর পর ফলো-আপ SMS কতক্ষণ পরে যাবে এবং
-              কলব্যাকের কতক্ষণ আগে রিমাইন্ডার যাবে। সতর্কতা: এই অটোমেশন শুধু তখনই চলে যখন{" "}
-              <code>module.call_center_automation</code> kill-switch চালু থাকে <strong>এবং</strong> worker
-              প্রসেস চলমান থাকে (doc 21, G2) — মান বদলালেই SMS পাঠানো শুরু হবে না।
+              <strong>{s.ccAutoStrong}</strong>
+              {s.ccAutoBodyA}
+              <code>module.call_center_automation</code>
+              {s.ccAutoBodyB}
+              <strong>{s.ccAutoBodyStrong}</strong>
+              {s.ccAutoBodyC}
             </span>
           </li>
           <li className="flex gap-2.5">
@@ -103,8 +109,8 @@ export default async function CallCenterSettingsPage() {
               <Icon name="check" size={12} />
             </span>
             <span>
-              <strong>কলিং উইন্ডো:</strong> অটোমেশন রিট্রাই শুধু এই সময়সীমার (ঢাকা সময়) মধ্যেই নির্ধারিত
-              হয় — বাইরের সময় পরের উইন্ডো খোলা পর্যন্ত পিছিয়ে যায়।
+              <strong>{s.ccWindowStrong}</strong>
+              {s.ccWindowBody}
             </span>
           </li>
           <li className="flex gap-2.5">
@@ -112,8 +118,8 @@ export default async function CallCenterSettingsPage() {
               <Icon name="check" size={12} />
             </span>
             <span>
-              <strong>সংরক্ষণের মেয়াদ:</strong> retention job চালালে এর চেয়ে পুরনো কল-লগের ব্যক্তিগত তথ্য
-              বেনামি করা হয় — রিপোর্টের সংখ্যা (ফলাফল, স্কোর, সময়) থেকে যায়।
+              <strong>{s.ccRetentionStrong}</strong>
+              {s.ccRetentionBody}
             </span>
           </li>
           <li className="flex gap-2.5">
@@ -121,8 +127,9 @@ export default async function CallCenterSettingsPage() {
               <Icon name="check" size={12} />
             </span>
             <span>
-              সব মানই <strong>সেভ করার মুহূর্ত থেকে</strong> পড়া হয় — কোনো মান অবৈধ হলে সংশ্লিষ্ট পাঠক
-              নিজের ডিফল্টে ফিরে যায় (fail-safe), কিছুই আটকে থাকে না।
+              {s.ccFailSafeA}
+              <strong>{s.ccFailSafeStrong}</strong>
+              {s.ccFailSafeB}
             </span>
           </li>
         </ul>
@@ -133,7 +140,7 @@ export default async function CallCenterSettingsPage() {
       </div>
 
       <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-text-muted">
-        সেটিং কী:
+        {s.ccKeysPrefix}
         {KEY_DEFS.map((d) => (
           <code
             key={d.key}
@@ -142,8 +149,9 @@ export default async function CallCenterSettingsPage() {
             {d.key}
           </code>
         ))}
-        — সব মান পূর্ণ সংখ্যা হিসেবে সংরক্ষিত হয়। প্রতিটি পরিবর্তন কারণসহ অডিট লগে (
-        <span className="font-mono text-xs">settings.update</span>) লেখা থাকে।
+        {s.ccKeysSuffix}
+        <span className="font-mono text-xs">settings.update</span>
+        {s.ccKeysSuffix2}
       </p>
     </main>
   );

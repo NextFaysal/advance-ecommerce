@@ -11,6 +11,9 @@
 // rebuilt and attached by the worker at send time, so delivery
 // needs the worker host + a configured email transport.
 import { useCallback, useEffect, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { REPORTS_STRINGS } from "./strings";
 
 interface ScheduleView {
   id: string;
@@ -30,9 +33,10 @@ interface SavedReportLite {
   name: string;
 }
 
-const WEEKDAYS = ["রবিবার (Sun)", "সোমবার (Mon)", "মঙ্গলবার (Tue)", "বুধবার (Wed)", "বৃহস্পতিবার (Thu)", "শুক্রবার (Fri)", "শনিবার (Sat)"];
-
 export function ReportSchedulesPanel() {
+  const { locale } = useLocale();
+  const str = pick(locale, REPORTS_STRINGS);
+  const WEEKDAYS = [str.weekday0, str.weekday1, str.weekday2, str.weekday3, str.weekday4, str.weekday5, str.weekday6];
   const [schedules, setSchedules] = useState<ScheduleView[]>([]);
   const [saved, setSaved] = useState<SavedReportLite[]>([]);
   const [reason, setReason] = useState("");
@@ -65,7 +69,7 @@ export function ReportSchedulesPanel() {
   function addSchedule() {
     const list = newRecipients.split(",").map((v) => v.trim()).filter((v) => v !== "");
     if (newReportId === "" || list.length === 0) {
-      setError("সময়সূচির জন্য সংরক্ষিত রিপোর্ট ও অন্তত একটি ইমেইল দিন। (Pick a saved report and at least one email.)");
+      setError(str.schNeedReportEmail);
       return;
     }
     setError("");
@@ -89,7 +93,7 @@ export function ReportSchedulesPanel() {
 
   async function saveAll() {
     if (reason.trim() === "") {
-      setError("সংরক্ষণের জন্য কারণ আবশ্যক। (A reason is required to save schedules.)");
+      setError(str.schReasonRequired);
       return;
     }
     setBusy(true); setError(""); setNotice("");
@@ -114,10 +118,10 @@ export function ReportSchedulesPanel() {
         }),
       });
       const json = await res.json().catch(() => null);
-      if (!res.ok) { setError(json?.error?.message ?? "Save failed"); return; }
+      if (!res.ok) { setError(json?.error?.message ?? str.schSaveFailed); return; }
       if (json?.data?.schedules) setSchedules(json.data.schedules as ScheduleView[]);
       setReason("");
-      setNotice("সংরক্ষিত হয়েছে। (Saved.)");
+      setNotice(str.schSavedNotice);
     } finally { setBusy(false); }
   }
 
@@ -126,20 +130,17 @@ export function ReportSchedulesPanel() {
     try {
       const res = await fetch("/api/v1/admin/reports/builder/schedules/run-due", { method: "POST" });
       const json = await res.json().catch(() => null);
-      if (!res.ok) { setRunResult(json?.error?.message ?? "Run failed"); return; }
+      if (!res.ok) { setRunResult(json?.error?.message ?? str.schRunFailed); return; }
       const outcomes = (json?.data?.outcomes ?? []) as { outcome: string; detail: string }[];
-      setRunResult(outcomes.length === 0 ? "কোনো সময়সূচি নেই।" : outcomes.map((o) => `${o.outcome}: ${o.detail}`).join(" · "));
+      setRunResult(outcomes.length === 0 ? str.schNoSchedulesOutcome : outcomes.map((o) => `${o.outcome}: ${o.detail}`).join(" · "));
       await refresh();
     } finally { setBusy(false); }
   }
 
   return (
     <section className="mt-6 rounded-xl border p-4">
-      <h2 className="font-semibold">নির্ধারিত রিপোর্ট ডেলিভারি (Scheduled report delivery)</h2>
-      <p className="mt-1 text-sm text-slate-500">
-        সংরক্ষিত রিপোর্ট প্রতিদিন/প্রতি সপ্তাহে (ঢাকা সময়) ইমেইলে CSV সংযুক্তি হিসেবে যায়। Due চালালে শুধু ইমেইল job queue হয় —
-        প্রকৃত পাঠানো worker host ও email transport-এর উপর নির্ভরশীল (queued ≠ sent)। Format: CSV only।
-      </p>
+      <h2 className="font-semibold">{str.schTitle}</h2>
+      <p className="mt-1 text-sm text-slate-500">{str.schDesc}</p>
 
       <ul className="mt-3 space-y-2 text-sm">
         {schedules.map((s) => (
@@ -153,29 +154,29 @@ export function ReportSchedulesPanel() {
               <span>{s.name !== "" ? s.name : s.reportId}</span>
             </label>
             <span className="text-slate-500">
-              {s.cadence}{s.cadence === "weekly" ? ` (${WEEKDAYS[s.weekday ?? 0]})` : ""} · {s.time} · {s.recipients.join(", ")} ·
-              শেষ পাঠানো: {s.lastSentAt ?? "কখনো না"}{s.lastPeriodKey ? ` (${s.lastPeriodKey})` : ""}
+              {s.cadence === "weekly" ? str.schWeeklyOpt : str.schDailyOpt}{s.cadence === "weekly" ? ` (${WEEKDAYS[s.weekday ?? 0]})` : ""} · {s.time} · {s.recipients.join(", ")} ·
+              {str.schLastSent} {s.lastSentAt ?? str.schNever}{s.lastPeriodKey ? ` (${s.lastPeriodKey})` : ""}
             </span>
             <button
               type="button"
               className="rounded border px-2 py-0.5"
               onClick={() => setSchedules((prev) => prev.filter((x) => x.id !== s.id))}
             >
-              মুছুন
+              {str.schDelete}
             </button>
           </li>
         ))}
-        {schedules.length === 0 && <li className="text-slate-500">কোনো সময়সূচি নেই।</li>}
+        {schedules.length === 0 && <li className="text-slate-500">{str.schNoSchedulesList}</li>}
       </ul>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
         <select className="rounded border p-1.5" value={newReportId} onChange={(e) => setNewReportId(e.target.value)}>
-          <option value="">সংরক্ষিত রিপোর্ট বেছে নিন</option>
+          <option value="">{str.schPickSavedReport}</option>
           {saved.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
         </select>
         <select className="rounded border p-1.5" value={newCadence} onChange={(e) => setNewCadence(e.target.value as "daily" | "weekly")}>
-          <option value="daily">প্রতিদিন (Daily)</option>
-          <option value="weekly">সাপ্তাহিক (Weekly)</option>
+          <option value="daily">{str.schDailyOpt}</option>
+          <option value="weekly">{str.schWeeklyOpt}</option>
         </select>
         {newCadence === "weekly" && (
           <select className="rounded border p-1.5" value={newWeekday} onChange={(e) => setNewWeekday(Number(e.target.value))}>
@@ -187,14 +188,14 @@ export function ReportSchedulesPanel() {
           className="min-w-64 rounded border p-2"
           value={newRecipients}
           onChange={(e) => setNewRecipients(e.target.value)}
-          placeholder="ইমেইল (কমা দিয়ে একাধিক)"
+          placeholder={str.schEmailPlaceholder}
         />
         <button type="button" disabled={busy} onClick={addSchedule} className="rounded-md border px-4 py-2 font-medium disabled:opacity-50">
-          সময়সূচি যোগ করুন
+          {str.schAddSchedule}
         </button>
       </div>
       {saved.length === 0 && (
-        <p className="mt-2 text-xs text-slate-500">আগে রিপোর্ট বিল্ডারে একটি রিপোর্ট সংরক্ষণ করুন — সময়সূচি শুধু সংরক্ষিত রিপোর্টেই দেওয়া যায়।</p>
+        <p className="mt-2 text-xs text-slate-500">{str.schSaveFirstNote}</p>
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
@@ -202,13 +203,13 @@ export function ReportSchedulesPanel() {
           className="min-w-64 rounded border p-2"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="পরিবর্তনের কারণ (আবশ্যক) — Reason (required)"
+          placeholder={str.schReasonPlaceholder}
         />
         <button type="button" disabled={busy} onClick={saveAll} className="rounded-md border px-4 py-2 font-medium disabled:opacity-50">
-          সব সংরক্ষণ করুন
+          {str.schSaveAll}
         </button>
         <button type="button" disabled={busy} onClick={runDue} className="rounded-md border px-4 py-2 font-medium disabled:opacity-50">
-          এখন due সময়সূচি চালান
+          {str.schRunDue}
         </button>
         {notice !== "" && <span>{notice}</span>}
         {runResult !== "" && <span>{runResult}</span>}

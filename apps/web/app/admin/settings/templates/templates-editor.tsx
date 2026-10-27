@@ -26,6 +26,11 @@
  * API's clearly-labelled sample instead.
  */
 import { useCallback, useEffect, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { SETTINGS_B_STRINGS, type SettingsBStrings } from "../strings-b";
+
+type SKey = keyof SettingsBStrings;
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
@@ -68,43 +73,16 @@ interface TemplatesPayload {
 type EmailKey = "order_confirmation" | "staff_invite" | "report_delivery";
 type InvoiceSlotName = "headerNote" | "footerNote" | "termsLine";
 
-const EMAIL_LABELS: Record<EmailKey, { bn: string; en: string; note: string }> = {
-  order_confirmation: {
-    bn: "অর্ডার নিশ্চিতকরণ",
-    en: "Order confirmation",
-    note: "অর্ডার নম্বর, মোট টাকা ও পেমেন্ট পদ্ধতির লাইন কোড দিয়েই আসে — শুধু বিষয় ও ভূমিকার লাইন বদলানো যায়।",
-  },
-  staff_invite: {
-    bn: "স্টাফ আমন্ত্রণ",
-    en: "Staff invite",
-    note: "আমন্ত্রণের লিংক, মেয়াদ ও নিরাপত্তা লাইন কখনো বদলানো যায় না — শুধু বিষয় ও ভূমিকার লাইন বদলানো যায়।",
-  },
-  report_delivery: {
-    bn: "নির্ধারিত রিপোর্ট",
-    en: "Scheduled report",
-    note: "সময়কাল, সারির সংখ্যা ও CSV সংযুক্তি কোড দিয়েই আসে — শুধু বিষয় ও প্রথম লাইন বদলানো যায়।",
-  },
+const EMAIL_LABELS: Record<EmailKey, { bn: string; en: string; noteKey: SKey }> = {
+  order_confirmation: { bn: "অর্ডার নিশ্চিতকরণ", en: "Order confirmation", noteKey: "tplOrderConfNote" },
+  staff_invite: { bn: "স্টাফ আমন্ত্রণ", en: "Staff invite", noteKey: "tplStaffInviteNote" },
+  report_delivery: { bn: "নির্ধারিত রিপোর্ট", en: "Scheduled report", noteKey: "tplReportNote" },
 };
 
-const INVOICE_SLOTS: { name: InvoiceSlotName; labelBn: string; labelEn: string; hint: string }[] = [
-  {
-    name: "headerNote",
-    labelBn: "শিরোনাম নোট",
-    labelEn: "Header note",
-    hint: "ইনভয়েসের শিরোনামের নিচে ছাপা হয়। খালি রাখলে কিছুই ছাপা হয় না।",
-  },
-  {
-    name: "termsLine",
-    labelBn: "শর্তাবলীর লাইন",
-    labelEn: "Terms line",
-    hint: "ইনভয়েসের নিচে, পাদটীকার উপরে ছাপা হয় (যেমন: ফেরতের শর্ত)। খালি রাখলে কিছুই ছাপা হয় না।",
-  },
-  {
-    name: "footerNote",
-    labelBn: "পাদটীকা",
-    labelEn: "Footer note",
-    hint: "ইনভয়েসের সবশেষ লাইন। খালি রাখলে বিল্ট-ইন ধন্যবাদ-লাইনটি ছাপা হয়।",
-  },
+const INVOICE_SLOTS: { name: InvoiceSlotName; labelKey: SKey; hintKey: SKey }[] = [
+  { name: "headerNote", labelKey: "tplHeaderNote", hintKey: "tplHeaderHint" },
+  { name: "termsLine", labelKey: "tplTermsLine", hintKey: "tplTermsHint" },
+  { name: "footerNote", labelKey: "tplFooterNote", hintKey: "tplFooterHint" },
 ];
 
 const inputCls =
@@ -121,6 +99,9 @@ function errorMessage(body: unknown, fallback: string): string {
 }
 
 export function TemplatesEditor() {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_B_STRINGS);
+  const isBn = locale === "bn";
   const [payload, setPayload] = useState<TemplatesPayload | null>(null);
   const [loadError, setLoadError] = useState("");
 
@@ -133,12 +114,14 @@ export function TemplatesEditor() {
   const [preview, setPreview] = useState<{ invoice: InvoiceData; sample: boolean } | null>(null);
   const [previewError, setPreviewError] = useState("");
 
+  const sRef = { current: s };
+  sRef.current = s;
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/v1/admin/settings/templates");
       const body = await res.json().catch(() => null);
       if (!res.ok) {
-        setLoadError(errorMessage(body, "টেমপ্লেট লোড হয়নি।"));
+        setLoadError(errorMessage(body, sRef.current.tplLoadFailed));
         return;
       }
       const data = (body as { data: TemplatesPayload }).data;
@@ -146,7 +129,7 @@ export function TemplatesEditor() {
       setInvoiceDoc(data.invoice.doc);
       setLoadError("");
     } catch {
-      setLoadError("টেমপ্লেট লোড হয়নি — নেটওয়ার্ক সমস্যা।");
+      setLoadError(sRef.current.tplLoadNetwork);
     }
   }, []);
 
@@ -155,14 +138,14 @@ export function TemplatesEditor() {
       const res = await fetch("/api/v1/admin/settings/templates/preview");
       const body = await res.json().catch(() => null);
       if (!res.ok) {
-        setPreviewError(errorMessage(body, "প্রিভিউ লোড হয়নি।"));
+        setPreviewError(errorMessage(body, sRef.current.tplPreviewFailed));
         return;
       }
       const data = (body as { data: { invoice: InvoiceData; sample: boolean } }).data;
       setPreview(data);
       setPreviewError("");
     } catch {
-      setPreviewError("প্রিভিউ লোড হয়নি — নেটওয়ার্ক সমস্যা।");
+      setPreviewError(sRef.current.tplPreviewNetwork);
     }
   }, []);
 
@@ -175,7 +158,7 @@ export function TemplatesEditor() {
     if (invoiceDoc === null) return;
     if (invoiceReason.trim() === "") {
       setInvoiceOk(false);
-      setInvoiceStatus("পরিবর্তনের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setInvoiceStatus(s.tplReasonRequired);
       return;
     }
     setInvoiceBusy(true);
@@ -189,17 +172,17 @@ export function TemplatesEditor() {
       const body = await res.json().catch(() => null);
       if (!res.ok) {
         setInvoiceOk(false);
-        setInvoiceStatus(errorMessage(body, "সেভ হয়নি।"));
+        setInvoiceStatus(errorMessage(body, s.tplSaveFailed));
         return;
       }
       setInvoiceOk(true);
-      setInvoiceStatus("সেভ হয়েছে — নতুন ইনভয়েসে এই লেখা ছাপা হবে।");
+      setInvoiceStatus(s.tplInvoiceSaved);
       setInvoiceReason("");
       await load();
       await loadPreview();
     } catch {
       setInvoiceOk(false);
-      setInvoiceStatus("সেভ হয়নি — নেটওয়ার্ক সমস্যা।");
+      setInvoiceStatus(s.tplSaveNetwork);
     } finally {
       setInvoiceBusy(false);
     }
@@ -208,7 +191,7 @@ export function TemplatesEditor() {
   async function resetInvoiceSlot(slot: InvoiceSlotName) {
     if (invoiceReason.trim() === "") {
       setInvoiceOk(false);
-      setInvoiceStatus("রিসেটের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setInvoiceStatus(s.tplResetReasonRequired);
       return;
     }
     setInvoiceBusy(true);
@@ -222,17 +205,17 @@ export function TemplatesEditor() {
       const body = await res.json().catch(() => null);
       if (!res.ok) {
         setInvoiceOk(false);
-        setInvoiceStatus(errorMessage(body, "রিসেট হয়নি।"));
+        setInvoiceStatus(errorMessage(body, s.tplResetFailed));
         return;
       }
       setInvoiceOk(true);
-      setInvoiceStatus("স্লটটি বিল্ট-ইন ডিফল্টে ফিরিয়ে দেওয়া হয়েছে।");
+      setInvoiceStatus(s.tplSlotReset);
       setInvoiceReason("");
       await load();
       await loadPreview();
     } catch {
       setInvoiceOk(false);
-      setInvoiceStatus("রিসেট হয়নি — নেটওয়ার্ক সমস্যা।");
+      setInvoiceStatus(s.tplResetNetwork);
     } finally {
       setInvoiceBusy(false);
     }
@@ -256,7 +239,7 @@ export function TemplatesEditor() {
   if (payload === null || invoiceDoc === null) {
     return (
       <Card>
-        <p className="text-sm text-text-muted">লোড হচ্ছে…</p>
+        <p className="text-sm text-text-muted">{s.tplLoading}</p>
       </Card>
     );
   }
@@ -267,26 +250,21 @@ export function TemplatesEditor() {
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <h2 className="font-semibold">ইনভয়েস টেমপ্লেট · Invoice</h2>
-            <p className="mt-1 text-sm text-text-muted">
-              PDF ইনভয়েস ও প্রিন্ট সেন্টার — দুটোতেই একই লেখা ছাপা হয়। প্রতিটি স্লটে বাংলা ও ইংরেজি
-              দুটো অংশই দিলে &ldquo;বাংলা / English&rdquo; আকারে ছাপা হয়; একটা দিলে শুধু সেটাই।
-            </p>
+            <h2 className="font-semibold">{s.tplInvoiceTitle}</h2>
+            <p className="mt-1 text-sm text-text-muted">{s.tplInvoiceDesc}</p>
           </div>
           <Badge tone={payload.invoice.configured ? "success" : "neutral"}>
-            {payload.invoice.configured ? "কাস্টম লেখা চালু" : "বিল্ট-ইন লেখা"}
+            {payload.invoice.configured ? s.configuredCustom : s.builtInCopy}
           </Badge>
         </div>
 
         <div className="mt-5 space-y-6">
           {INVOICE_SLOTS.map((slot) => (
             <fieldset key={slot.name} className="space-y-2">
-              <legend className="text-sm font-medium">
-                {slot.labelBn} · {slot.labelEn}
-              </legend>
+              <legend className="text-sm font-medium">{s[slot.labelKey]}</legend>
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="block">
-                  <span className="text-xs text-text-muted">বাংলা</span>
+                  <span className="text-xs text-text-muted">{s.tplBnLabel}</span>
                   <textarea
                     className={areaCls}
                     rows={2}
@@ -303,7 +281,7 @@ export function TemplatesEditor() {
                   />
                 </label>
                 <label className="block">
-                  <span className="text-xs text-text-muted">English</span>
+                  <span className="text-xs text-text-muted">{s.tplEnLabel}</span>
                   <textarea
                     className={areaCls}
                     rows={2}
@@ -322,8 +300,8 @@ export function TemplatesEditor() {
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <p className="text-xs text-text-muted">
-                  {slot.hint}
-                  {invoiceDirty ? " রিসেট করতে আগে সেভ করুন (অসেভ করা বদল আছে)।" : ""}
+                  {s[slot.hintKey]}
+                  {invoiceDirty ? s.tplResetFirstSave : ""}
                 </p>
                 <button
                   type="button"
@@ -335,7 +313,7 @@ export function TemplatesEditor() {
                   }
                   onClick={() => void resetInvoiceSlot(slot.name)}
                 >
-                  ডিফল্টে ফেরত
+                  {s.tplResetDefault}
                 </button>
               </div>
             </fieldset>
@@ -344,16 +322,16 @@ export function TemplatesEditor() {
 
         <div className="mt-6 flex flex-wrap items-end gap-3 border-t border-border pt-4">
           <label className="block min-w-64 flex-1">
-            <span className="text-sm font-medium">পরিবর্তনের কারণ (আবশ্যক)</span>
+            <span className="text-sm font-medium">{s.tplReasonLabel}</span>
             <input
               className={inputCls}
               value={invoiceReason}
               onChange={(e) => setInvoiceReason(e.target.value)}
-              placeholder="যেমন: ফেরত নীতি বদলেছে"
+              placeholder={s.tplReasonPlaceholder}
             />
           </label>
           <button type="button" className={primaryBtnCls} disabled={invoiceBusy} onClick={() => void saveInvoice()}>
-            ইনভয়েস টেমপ্লেট সেভ করুন
+            {s.tplSaveInvoice}
           </button>
         </div>
         {invoiceStatus !== "" && (
@@ -367,20 +345,17 @@ export function TemplatesEditor() {
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <h2 className="font-semibold">ইনভয়েস প্রিভিউ · Preview</h2>
-            <p className="mt-1 text-sm text-text-muted">
-              সেভ করা টেমপ্লেট, সবচেয়ে সাম্প্রতিক আসল অর্ডারের ডেটায় (ফোন মাস্ক করা)। PDF-এ ঠিক
-              এই লেখাগুলোই যাবে।
-            </p>
+            <h2 className="font-semibold">{s.tplPreviewTitle}</h2>
+            <p className="mt-1 text-sm text-text-muted">{s.tplPreviewDesc}</p>
           </div>
           <button type="button" className={ghostBtnCls} onClick={() => void loadPreview()}>
-            <Icon name="refresh-ccw" size={14} /> রিফ্রেশ
+            <Icon name="refresh-ccw" size={14} /> {s.tplRefresh}
           </button>
         </div>
         {previewError !== "" ? (
           <p role="alert" className="mt-3 text-sm text-rose-600">{previewError}</p>
         ) : preview === null ? (
-          <p className="mt-3 text-sm text-text-muted">প্রিভিউ লোড হচ্ছে…</p>
+          <p className="mt-3 text-sm text-text-muted">{s.tplPreviewLoading}</p>
         ) : (
           <InvoicePreview invoice={preview.invoice} sample={preview.sample} />
         )}
@@ -403,37 +378,35 @@ export function TemplatesEditor() {
       })}
 
       <Card>
-        <h2 className="font-semibold">যা এখানে বদলানো যায় না</h2>
-        <p className="mt-1 text-sm leading-relaxed text-text-muted">
-          দৈনিক ডাইজেস্ট (daily digest) ইমেইলটি কোনো কপি-টেমপ্লেট নয় — এটি দলের দৈনিক হিসাবের
-          ডেটা রিপোর্ট, তাই এখানে নেই। এছাড়া কোনো ইমেইলেরই হিসাবের লাইন (মোট টাকা, অর্ডার নম্বর,
-          সময়কাল) বা স্টাফ আমন্ত্রণের লিংক ও নিরাপত্তা লাইন এই ডিজাইনার দিয়ে বদলানো যায় না —
-          ওগুলো সবসময় সিস্টেমের আসল ডেটা দিয়েই তৈরি হয়।
-        </p>
+        <h2 className="font-semibold">{s.tplNotEditableTitle}</h2>
+        <p className="mt-1 text-sm leading-relaxed text-text-muted">{s.tplNotEditableBody}</p>
       </Card>
     </div>
   );
 }
 
 function InvoicePreview({ invoice, sample }: { invoice: InvoiceData; sample: boolean }) {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_B_STRINGS);
+  const isBn = locale === "bn";
   return (
     <div className="mt-4 rounded-lg border border-border bg-white p-5 text-text-main">
       {sample && (
         <p className="mb-3 inline-block rounded-md bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900">
-          নমুনা / SAMPLE — দোকানে এখনো কোনো অর্ডার নেই, তাই এটি বানানো নমুনা ডেটা
+          {s.tplSample}
         </p>
       )}
       <div className="flex flex-wrap items-start justify-between gap-2 border-b-2 border-brand-600 pb-3">
         <div>
-          <p className="text-lg font-bold">{invoice.storeName !== "" ? invoice.storeName : "ইনভয়েস"}</p>
+          <p className="text-lg font-bold">{invoice.storeName !== "" ? invoice.storeName : s.tplInvoiceWord}</p>
           {invoice.storeAddress !== "" && <p className="text-xs text-text-muted">{invoice.storeAddress}</p>}
           {invoice.storeBin !== "" && <p className="text-xs text-text-muted">BIN: {invoice.storeBin}</p>}
         </div>
-        <p className="font-semibold text-brand-700">ইনভয়েস / INVOICE</p>
+        <p className="font-semibold text-brand-700">{s.tplInvoiceSlash}</p>
       </div>
       {invoice.headerNote && <p className="mt-2 text-xs text-text-muted">{invoice.headerNote}</p>}
       <div className="mt-3 flex flex-wrap justify-between gap-2 text-sm">
-        <p className="font-semibold">অর্ডার / Order: {invoice.orderNo}</p>
+        <p className="font-semibold">{s.tplOrderWord}: {invoice.orderNo}</p>
         <p className="text-text-muted">
           {invoice.status} · {invoice.paymentMethodLabel} · {invoice.paymentStatus}
         </p>
@@ -446,9 +419,9 @@ function InvoicePreview({ invoice, sample }: { invoice: InvoiceData; sample: boo
       <table className="mt-4 w-full text-left text-sm">
         <thead>
           <tr className="border-b border-border text-text-muted">
-            <th scope="col" className="py-1.5 font-medium">পণ্য / Item</th>
-            <th scope="col" className="py-1.5 text-right font-medium">পরিমাণ</th>
-            <th scope="col" className="py-1.5 text-right font-medium">মোট</th>
+            <th scope="col" className="py-1.5 font-medium">{s.tplColItem}</th>
+            <th scope="col" className="py-1.5 text-right font-medium">{s.tplColQty}</th>
+            <th scope="col" className="py-1.5 text-right font-medium">{s.tplColTotal}</th>
           </tr>
         </thead>
         <tbody>
@@ -466,7 +439,7 @@ function InvoicePreview({ invoice, sample }: { invoice: InvoiceData; sample: boo
       <dl className="ml-auto mt-4 max-w-xs space-y-1 text-sm">
         {invoice.moneyRows.map((row, i) => (
           <div key={i} className={`flex justify-between ${row.emphasis ? "border-t border-border pt-1 font-bold" : ""}`}>
-            <dt className="text-text-muted">{row.labelBn} / {row.labelEn}</dt>
+            <dt className="text-text-muted">{isBn ? row.labelBn : row.labelEn}</dt>
             <dd className="tabular-nums">{row.poisha < 0 ? `−${formatBdt(-row.poisha)}` : formatBdt(row.poisha)}</dd>
           </div>
         ))}
@@ -478,9 +451,7 @@ function InvoicePreview({ invoice, sample }: { invoice: InvoiceData; sample: boo
         </div>
       )}
       {!invoice.footerNote && (
-        <p className="mt-4 text-xs text-text-muted">
-          (পাদটীকায় বিল্ট-ইন ধন্যবাদ-লাইনটি PDF-এ ছাপা হবে — উপরের ফুটার স্লট খালি আছে।)
-        </p>
+        <p className="mt-4 text-xs text-text-muted">{s.tplFooterFallback}</p>
       )}
     </div>
   );
@@ -494,11 +465,14 @@ function EmailTemplateCard({
   placeholders,
 }: {
   templateKey: EmailKey;
-  label: { bn: string; en: string; note: string };
+  label: { bn: string; en: string; noteKey: SKey };
   initial: EmailDoc;
   configured: boolean;
   placeholders: string[];
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_B_STRINGS);
+  const isBn = locale === "bn";
   const [doc, setDoc] = useState<EmailDoc>(initial);
   const [reason, setReason] = useState("");
   const [status, setStatus] = useState("");
@@ -513,7 +487,7 @@ function EmailTemplateCard({
   async function save() {
     if (reason.trim() === "") {
       setOk(false);
-      setStatus("পরিবর্তনের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setStatus(s.tplReasonRequired);
       return;
     }
     setBusy(true);
@@ -527,11 +501,11 @@ function EmailTemplateCard({
       const body = await res.json().catch(() => null);
       if (!res.ok) {
         setOk(false);
-        setStatus(errorMessage(body, "সেভ হয়নি।"));
+        setStatus(errorMessage(body, s.tplSaveFailed));
         return;
       }
       setOk(true);
-      setStatus("সেভ হয়েছে — পরের ইমেইলগুলোতে এই লেখা যাবে।");
+      setStatus(s.tplEmailSaved);
       setSavedDoc(doc);
       setIsConfigured(
         doc.bn.subject !== "" || doc.bn.intro !== "" || doc.en.subject !== "" || doc.en.intro !== "",
@@ -539,7 +513,7 @@ function EmailTemplateCard({
       setReason("");
     } catch {
       setOk(false);
-      setStatus("সেভ হয়নি — নেটওয়ার্ক সমস্যা।");
+      setStatus(s.tplSaveNetwork);
     } finally {
       setBusy(false);
     }
@@ -548,7 +522,7 @@ function EmailTemplateCard({
   async function resetField(locale: "bn" | "en", field: "subject" | "intro") {
     if (reason.trim() === "") {
       setOk(false);
-      setStatus("রিসেটের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setStatus(s.tplResetReasonRequired);
       return;
     }
     setBusy(true);
@@ -562,7 +536,7 @@ function EmailTemplateCard({
       const body = await res.json().catch(() => null);
       if (!res.ok) {
         setOk(false);
-        setStatus(errorMessage(body, "রিসেট হয়নি।"));
+        setStatus(errorMessage(body, s.tplResetFailed));
         return;
       }
       const next = { ...doc, [locale]: { ...doc[locale], [field]: "" } };
@@ -572,11 +546,11 @@ function EmailTemplateCard({
         next.bn.subject !== "" || next.bn.intro !== "" || next.en.subject !== "" || next.en.intro !== "",
       );
       setOk(true);
-      setStatus("ঘরটি বিল্ট-ইন লেখায় ফিরিয়ে দেওয়া হয়েছে।");
+      setStatus(s.tplFieldReset);
       setReason("");
     } catch {
       setOk(false);
-      setStatus("রিসেট হয়নি — নেটওয়ার্ক সমস্যা।");
+      setStatus(s.tplResetNetwork);
     } finally {
       setBusy(false);
     }
@@ -587,26 +561,27 @@ function EmailTemplateCard({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="font-semibold">
-            ইমেইল: {label.bn} · {label.en}
+            {s.tplEmailPrefix} {isBn ? label.bn : label.en}
           </h2>
-          <p className="mt-1 text-sm text-text-muted">{label.note}</p>
+          <p className="mt-1 text-sm text-text-muted">{s[label.noteKey]}</p>
           <p className="mt-1 text-xs text-text-muted">
-            ব্যবহারযোগ্য টোকেন: {placeholders.map((p) => `{${p}}`).join("  ")} — অজানা টোকেন যেমন আছে
-            তেমনই থেকে যাবে।
-            {dirty ? " অসেভ করা বদল আছে — রিসেট করতে আগে সেভ করুন।" : ""}
+            {s.tplTokensPrefix}
+            {placeholders.map((p) => `{${p}}`).join("  ")}
+            {s.tplTokensSuffix}
+            {dirty ? s.tplDirtyNote : ""}
           </p>
         </div>
         <Badge tone={isConfigured ? "success" : "neutral"}>
-          {isConfigured ? "কাস্টম লেখা চালু" : "বিল্ট-ইন লেখা"}
+          {isConfigured ? s.configuredCustom : s.builtInCopy}
         </Badge>
       </div>
 
       <div className="mt-5 grid gap-6 lg:grid-cols-2">
         {(["bn", "en"] as const).map((locale) => (
           <fieldset key={locale} className="space-y-3">
-            <legend className="text-sm font-medium">{locale === "bn" ? "বাংলা (bn)" : "English (en)"}</legend>
+            <legend className="text-sm font-medium">{locale === "bn" ? s.tplBnLegend : s.tplEnLegend}</legend>
             <label className="block">
-              <span className="text-xs text-text-muted">বিষয় / Subject</span>
+              <span className="text-xs text-text-muted">{s.tplSubjectLabel}</span>
               <input
                 className={inputCls}
                 maxLength={200}
@@ -621,11 +596,11 @@ function EmailTemplateCard({
                 disabled={busy || dirty || savedDoc[locale].subject === ""}
                 onClick={() => void resetField(locale, "subject")}
               >
-                বিষয় ডিফল্টে ফেরত
+                {s.tplSubjectReset}
               </button>
             </div>
             <label className="block">
-              <span className="text-xs text-text-muted">ভূমিকা / Intro line</span>
+              <span className="text-xs text-text-muted">{s.tplIntroLabel}</span>
               <textarea
                 className={areaCls}
                 rows={3}
@@ -641,7 +616,7 @@ function EmailTemplateCard({
                 disabled={busy || dirty || savedDoc[locale].intro === ""}
                 onClick={() => void resetField(locale, "intro")}
               >
-                ভূমিকা ডিফল্টে ফেরত
+                {s.tplIntroReset}
               </button>
             </div>
           </fieldset>
@@ -650,16 +625,16 @@ function EmailTemplateCard({
 
       <div className="mt-6 flex flex-wrap items-end gap-3 border-t border-border pt-4">
         <label className="block min-w-64 flex-1">
-          <span className="text-sm font-medium">পরিবর্তনের কারণ (আবশ্যক)</span>
+          <span className="text-sm font-medium">{s.tplReasonLabel}</span>
           <input
             className={inputCls}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="যেমন: নতুন ব্র্যান্ড টোন"
+            placeholder={s.tplEmailReasonPlaceholder}
           />
         </label>
         <button type="button" className={primaryBtnCls} disabled={busy} onClick={() => void save()}>
-          সেভ করুন
+          {s.save}
         </button>
       </div>
       {status !== "" && (

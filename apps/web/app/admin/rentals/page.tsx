@@ -1,5 +1,8 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { isRentalEnabled } from "@/rental/flags";
+import { pick } from "@/i18n/locale";
+import { getRequestLocale } from "@/i18n/server";
+import { RENTALS_STRINGS } from "./strings";
 import { RentalsBoard } from "./rentals-board";
 import { RentalsConfigCard } from "./rentals-config-card";
 
@@ -17,14 +20,14 @@ import { RentalsConfigCard } from "./rentals-config-card";
 
 export const dynamic = "force-dynamic";
 
-export default function RentalsPage() {
+export default async function RentalsPage() {
+  const s = pick(await getRequestLocale(), RENTALS_STRINGS);
   if (!isRentalEnabled()) {
     return (
       <main style={{ padding: 24, fontFamily: "system-ui" }}>
-        <h1>ভাড়া</h1>
+        <h1>{s.title}</h1>
         <p role="status">
-          🔒 This module is locked for this install. Rental is a paid add-on —
-          enable <code>module.rental</code> in Admin &gt; Settings &gt; Feature Flags to unlock it.
+          {s.lockedPrefix} <code>module.rental</code> {s.lockedSuffix}
         </p>
       </main>
     );
@@ -32,10 +35,7 @@ export default function RentalsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="ভাড়া"
-        description="চলমান ভাড়ার বোর্ড — ফেরতের তারিখ অনুযায়ী সাজানো। মেয়াদ পেরিয়ে গেলে ভাড়া নিজে থেকেই ‘মেয়াদোত্তীর্ণ’ দেখায় (আলাদা cron নেই)। বোর্ডটি প্রতি ৩০ সেকেন্ডে নিজে হালনাগাদ হয় (polling — live realtime নয়)। ফেরত নিলে জামানত গ্রাহককে ম্যানুয়ালি ফেরত দিন — সিস্টেম নিজে থেকে টাকা ফেরত দেয় না।"
-      />
+      <PageHeader title={s.title} description={s.description} />
       <RentalsBoard />
       <RentalsConfigCard />
     </div>

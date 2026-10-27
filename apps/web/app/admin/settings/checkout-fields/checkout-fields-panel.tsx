@@ -18,6 +18,9 @@
  * ride the order and land on the order's note.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SETTINGS_STRINGS } from "../strings";
 import {
   CHECKOUT_FIELD_GROUPS,
   LOCKED_REQUIRED,
@@ -60,18 +63,20 @@ function mayValidate(def: CheckoutFieldDef): boolean {
 
 type ConditionSource = "" | "paymentMethod" | "shippingMethod" | "division" | "cartTotal";
 
-const CONDITION_SOURCE_OPTIONS: { value: ConditionSource; label: string }[] = [
-  { value: "", label: "সবসময়" },
-  { value: "paymentMethod", label: "পেমেন্ট মেথড" },
-  { value: "shippingMethod", label: "শিপিং মেথড" },
-  { value: "division", label: "বিভাগ" },
-  { value: "cartTotal", label: "কার্টের মোট (৳)" },
-];
+function conditionSourceOptions(s: { chfCondAlways: string; chfCondPayment: string; chfCondShipping: string; chfCondDivision: string; chfCondCartTotal: string }): { value: ConditionSource; label: string }[] {
+  return [
+    { value: "", label: s.chfCondAlways },
+    { value: "paymentMethod", label: s.chfCondPayment },
+    { value: "shippingMethod", label: s.chfCondShipping },
+    { value: "division", label: s.chfCondDivision },
+    { value: "cartTotal", label: s.chfCondCartTotal },
+  ];
+}
 
 const CONDITION_VALUE_HINTS: Record<string, string> = {
   paymentMethod: "cod, bkash",
   shippingMethod: "inside_dhaka, outside_dhaka, pickup",
-  division: "Dhaka, Chattogram (English নাম)",
+  division: "Dhaka, Chattogram",
 };
 
 /** Comma-separated editor text → clean value list (trim, drop empties, de-dupe). */
@@ -86,8 +91,8 @@ function parseConditionValues(text: string): string[] {
 
 /**
  * One condition editor (doc 29): a source select plus either a
- * comma-separated values input or a টাকা amount input. Choosing
- * "সবসময়" clears the condition entirely.
+ * comma-separated values input or a taka amount input. Choosing
+ * "Always" clears the condition entirely.
  */
 function ConditionEditor({
   title,
@@ -98,6 +103,8 @@ function ConditionEditor({
   cond: CheckoutFieldCondition | undefined;
   onChange: (next: CheckoutFieldCondition | undefined) => void;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_STRINGS);
   const source: ConditionSource = cond?.source ?? "";
   const isValues = source === "paymentMethod" || source === "shippingMethod" || source === "division";
   // The values input keeps a local draft so commas/spaces survive
@@ -147,7 +154,7 @@ function ConditionEditor({
         onChange={(e) => onSource(e.target.value as ConditionSource)}
         className={INPUT_CLASS}
       >
-        {CONDITION_SOURCE_OPTIONS.map((o) => (
+        {conditionSourceOptions(s).map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
           </option>
@@ -158,12 +165,10 @@ function ConditionEditor({
           <input
             value={draft}
             onChange={(e) => onValuesText(e.target.value)}
-            placeholder={CONDITION_VALUE_HINTS[source]}
+            placeholder={source === "division" ? `Dhaka, Chattogram ${s.chfCondDivisionHint}` : CONDITION_VALUE_HINTS[source]}
             className={`${INPUT_CLASS} mt-2`}
           />
-          <span className="mt-1 block text-xs text-text-muted">
-            কমা দিয়ে আলাদা করে মান লিখুন — যেকোনো একটি মিললেই শর্তটি পূরণ হবে।
-          </span>
+          <span className="mt-1 block text-xs text-text-muted">{s.chfCondValuesHint}</span>
         </>
       )}
       {source === "cartTotal" && (
@@ -179,19 +184,17 @@ function ConditionEditor({
                 minPoisha: Number.isFinite(taka) ? Math.max(0, Math.round(taka * 100)) : 0,
               });
             }}
-            placeholder="যেমন: 1000"
+            placeholder={s.chfCondCartPlaceholder}
             className={`${INPUT_CLASS} mt-2`}
           />
-          <span className="mt-1 block text-xs text-text-muted">
-            কার্টের পণ্যের মোট এই টাকা বা তার বেশি হলেই শর্তটি পূরণ হবে।
-          </span>
+          <span className="mt-1 block text-xs text-text-muted">{s.chfCondCartHint}</span>
         </>
       )}
     </div>
   );
 }
 
-/** The "যাচাই" editor (doc 29): min/max answer length + a format preset. */
+/** The validation editor (doc 29): min/max answer length + a format preset. */
 function ValidationEditor({
   validation,
   onChange,
@@ -199,6 +202,8 @@ function ValidationEditor({
   validation: CheckoutFieldValidation | undefined;
   onChange: (next: CheckoutFieldValidation | undefined) => void;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_STRINGS);
   function patch(next: CheckoutFieldValidation) {
     onChange(Object.keys(next).length > 0 ? next : undefined);
   }
@@ -215,31 +220,31 @@ function ValidationEditor({
   return (
     <div className="grid gap-3 sm:grid-cols-3">
       <label className="block">
-        <span className="mb-1.5 block text-xs font-medium text-text-muted">সর্বনিম্ন দৈর্ঘ্য</span>
+        <span className="mb-1.5 block text-xs font-medium text-text-muted">{s.chfMinLength}</span>
         <input
           type="number"
           min={1}
           max={MAX_VALIDATION_LENGTH}
           value={validation?.minLength ?? ""}
           onChange={(e) => setLength("minLength", e.target.value)}
-          placeholder="খালি = নেই"
+          placeholder={s.chfEmptyNone}
           className={INPUT_CLASS}
         />
       </label>
       <label className="block">
-        <span className="mb-1.5 block text-xs font-medium text-text-muted">সর্বোচ্চ দৈর্ঘ্য</span>
+        <span className="mb-1.5 block text-xs font-medium text-text-muted">{s.chfMaxLength}</span>
         <input
           type="number"
           min={1}
           max={MAX_VALIDATION_LENGTH}
           value={validation?.maxLength ?? ""}
           onChange={(e) => setLength("maxLength", e.target.value)}
-          placeholder="খালি = নেই"
+          placeholder={s.chfEmptyNone}
           className={INPUT_CLASS}
         />
       </label>
       <label className="block">
-        <span className="mb-1.5 block text-xs font-medium text-text-muted">উত্তরের ধরন</span>
+        <span className="mb-1.5 block text-xs font-medium text-text-muted">{s.chfPatternLabel}</span>
         <select
           value={validation?.pattern ?? ""}
           onChange={(e) => {
@@ -253,10 +258,10 @@ function ValidationEditor({
           }}
           className={INPUT_CLASS}
         >
-          <option value="">যেকোনো</option>
-          <option value="digits">শুধু সংখ্যা</option>
-          <option value="bd_phone">মোবাইল নম্বর</option>
-          <option value="email">ইমেইল</option>
+          <option value="">{s.chfPatternAny}</option>
+          <option value="digits">{s.chfPatternDigits}</option>
+          <option value="bd_phone">{s.chfPatternPhone}</option>
+          <option value="email">{s.chfPatternEmail}</option>
         </select>
       </label>
     </div>
@@ -264,8 +269,8 @@ function ValidationEditor({
 }
 
 /**
- * The doc-29 blocks for one field: "শর্ত" (দেখানোর + আবশ্যক হওয়ার
- * শর্ত) and "যাচাই" — rendered only for fields the contract allows
+ * The doc-29 blocks for one field: conditions (show + required
+ * conditions) and validation — rendered only for fields the contract allows
  * to carry them; locked fields show neither.
  */
 function FieldRulesBlocks({
@@ -275,6 +280,8 @@ function FieldRulesBlocks({
   def: CheckoutFieldDef;
   updateField: (key: string, patch: Partial<CheckoutFieldDef>) => void;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_STRINGS);
   const cond = mayCondition(def);
   const val = mayValidate(def);
   if (!cond && !val) return null;
@@ -282,15 +289,15 @@ function FieldRulesBlocks({
     <div className="mt-4 grid gap-4 border-t border-border pt-4">
       {cond && (
         <div>
-          <p className="text-xs font-semibold text-text-main">শর্ত</p>
+          <p className="text-xs font-semibold text-text-main">{s.chfConditionsTitle}</p>
           <div className="mt-2 grid gap-3 sm:grid-cols-2">
             <ConditionEditor
-              title="দেখানোর শর্ত"
+              title={s.chfVisibleWhen}
               cond={def.visibleWhen}
               onChange={(next) => updateField(def.key, { visibleWhen: next })}
             />
             <ConditionEditor
-              title="আবশ্যক হওয়ার শর্ত"
+              title={s.chfRequiredWhen}
               cond={def.requiredWhen}
               onChange={(next) => updateField(def.key, { requiredWhen: next })}
             />
@@ -299,7 +306,7 @@ function FieldRulesBlocks({
       )}
       {val && (
         <div>
-          <p className="text-xs font-semibold text-text-main">যাচাই</p>
+          <p className="text-xs font-semibold text-text-main">{s.chfValidationTitle}</p>
           <div className="mt-2">
             <ValidationEditor
               validation={def.validation}
@@ -313,6 +320,8 @@ function FieldRulesBlocks({
 }
 
 export function CheckoutFieldsPanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_STRINGS);
   const [fields, setFields] = useState<CheckoutFieldDef[] | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -327,7 +336,7 @@ export function CheckoutFieldsPanel() {
         error?: { message?: string };
       } | null;
       if (!res.ok || !json?.data) {
-        setError(json?.error?.message ?? "ফিল্ডের তালিকা লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.chfLoadFailed);
         return;
       }
       // Pass whatever the API returned through the shared coercion —
@@ -335,9 +344,9 @@ export function CheckoutFieldsPanel() {
       setFields(coerceCheckoutFieldsConfig(json.data).fields);
       setError(null);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — ফিল্ডের তালিকা লোড করা যায়নি।");
+      setError(s.chfNetworkLoad);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load();
@@ -398,14 +407,14 @@ export function CheckoutFieldsPanel() {
   async function save() {
     if (busy || !fields) return;
     if (!reason.trim()) {
-      setError("পরিবর্তনের কারণ লিখুন (অডিটের জন্য আবশ্যক)।");
+      setError(s.chfReasonRequired);
       return;
     }
     const labelless = fields.find(
       (f) => f.extra && !f.labelBn.trim() && !f.labelEn.trim(),
     );
     if (labelless) {
-      setError("প্রতিটি অতিরিক্ত ফিল্ডের একটি লেবেল লিখুন — লেবেলছাড়া ফিল্ড সংরক্ষণ হয় না।");
+      setError(s.chfLabelless);
       return;
     }
     setBusy(true);
@@ -438,21 +447,21 @@ export function CheckoutFieldsPanel() {
         error?: { message?: string };
       } | null;
       if (!res.ok) {
-        setError(json?.error?.message ?? "ফিল্ডের তালিকা সংরক্ষণ করা যায়নি।");
+        setError(json?.error?.message ?? s.chfSaveFailed);
         return;
       }
       setReason("");
-      setNotice("চেকআউট ফিল্ড সংরক্ষিত হয়েছে — স্টোরফ্রন্টে এখন থেকে এই সাজানোই দেখা যাবে।");
+      setNotice(s.chfSaved);
       await load();
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — ফিল্ডের তালিকা সংরক্ষণ করা যায়নি।");
+      setError(s.chfNetworkSave);
     } finally {
       setBusy(false);
     }
   }
 
   if (!fields && !error) {
-    return <p className="text-sm text-text-muted">ফিল্ডের তালিকা লোড হচ্ছে…</p>;
+    return <p className="text-sm text-text-muted">{s.chfLoading}</p>;
   }
 
   const builtins = (fields ?? []).filter((f) => !f.extra);
@@ -475,27 +484,27 @@ export function CheckoutFieldsPanel() {
           <span className="flex gap-1.5">
             <button
               type="button"
-              aria-label={`${def.key} উপরে নিন`}
+              aria-label={interpolate(s.chfMoveUpAria, { key: def.key })}
               disabled={pos === 0}
               onClick={() => move(def.key, -1)}
               className="rounded-lg border border-border bg-card px-2.5 py-1 text-sm font-medium text-text-main transition hover:bg-surface-2 disabled:opacity-40"
             >
-              ↑ উপরে
+              {s.chfMoveUp}
             </button>
             <button
               type="button"
-              aria-label={`${def.key} নিচে নিন`}
+              aria-label={interpolate(s.chfMoveDownAria, { key: def.key })}
               disabled={pos === groupSize - 1}
               onClick={() => move(def.key, 1)}
               className="rounded-lg border border-border bg-card px-2.5 py-1 text-sm font-medium text-text-main transition hover:bg-surface-2 disabled:opacity-40"
             >
-              ↓ নিচে
+              {s.chfMoveDown}
             </button>
           </span>
         </div>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-text-muted">লেবেল (বাংলা)</span>
+            <span className="mb-1.5 block text-xs font-medium text-text-muted">{s.chfLabelBn}</span>
             <input
               value={def.labelBn}
               maxLength={MAX_LABEL_LENGTH}
@@ -504,7 +513,7 @@ export function CheckoutFieldsPanel() {
             />
           </label>
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-text-muted">লেবেল (English)</span>
+            <span className="mb-1.5 block text-xs font-medium text-text-muted">{s.chfLabelEn}</span>
             <input
               value={def.labelEn}
               maxLength={MAX_LABEL_LENGTH}
@@ -513,7 +522,7 @@ export function CheckoutFieldsPanel() {
             />
           </label>
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-text-muted">প্লেসহোল্ডার (ঐচ্ছিক)</span>
+            <span className="mb-1.5 block text-xs font-medium text-text-muted">{s.chfPlaceholderLabel}</span>
             <input
               value={def.placeholder ?? ""}
               maxLength={MAX_PLACEHOLDER_LENGTH}
@@ -532,11 +541,11 @@ export function CheckoutFieldsPanel() {
                 onChange={(e) => updateField(def.key, { visible: e.target.checked })}
                 className="h-4 w-4 shrink-0 accent-brand-600 disabled:opacity-50"
               />
-              দেখানো হবে
+              {s.chfVisible}
             </label>
             {visibleLocked && (
               <span className="mt-1 block pl-7 text-xs text-text-muted">
-                এই ফিল্ড বন্ধ করা যাবে না — অর্ডারের জন্য এটি আবশ্যক।
+                {s.chfVisibleLocked}
               </span>
             )}
           </span>
@@ -549,11 +558,11 @@ export function CheckoutFieldsPanel() {
                 onChange={(e) => updateField(def.key, { required: e.target.checked })}
                 className="h-4 w-4 shrink-0 accent-brand-600 disabled:opacity-50"
               />
-              আবশ্যক
+              {s.chfRequired}
             </label>
             {requiredLocked && (
               <span className="mt-1 block pl-7 text-xs text-text-muted">
-                এই ফিল্ড ঐচ্ছিক করা যাবে না।
+                {s.chfRequiredLocked}
               </span>
             )}
           </span>
@@ -565,16 +574,12 @@ export function CheckoutFieldsPanel() {
 
   return (
     <section
-      aria-label="চেকআউট ফিল্ড সম্পাদনা"
+      aria-label={s.chfAria}
       className="rounded-2xl border border-border bg-card p-5 shadow-card"
     >
-      <h2 className="text-base font-semibold text-text-main">চেকআউট ফর্মের ফিল্ড</h2>
+      <h2 className="text-base font-semibold text-text-main">{s.chfHeading}</h2>
       <p className="mt-1 text-sm leading-6 text-text-muted">
-        স্টোরফ্রন্ট চেকআউটে কোন ফিল্ড দেখা যাবে, তার লেবেল কী হবে আর কোনটি আবশ্যক — সব এখান
-        থেকে বদলানো যায়। নাম, মোবাইল নম্বর আর ঠিকানার ধাপগুলো (বিভাগ › জেলা › উপজেলা ›
-        বিস্তারিত ঠিকানা) অর্ডারের চাবিকাঠি বলে সবসময় চালু থাকে; শুধু সেগুলোর লেবেল বদলানো
-        যায়। কোনো ঐচ্ছিক ফিল্ড আবশ্যক করলে তার লেবেল থেকেও “(ঐচ্ছিক)” কথাটি বদলে দিন, যাতে
-        ক্রেতার কাছে নির্দেশনা পরিষ্কার থাকে।
+        {s.chfIntro}
       </p>
       {error && (
         <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
@@ -587,28 +592,26 @@ export function CheckoutFieldsPanel() {
         </p>
       )}
 
-      <h3 className="mt-6 text-sm font-semibold text-text-main">ধাপ ১ — আপনার তথ্য</h3>
+      <h3 className="mt-6 text-sm font-semibold text-text-main">{s.chfStep1}</h3>
       <div className="mt-3 grid gap-3">
         {infoFields.map((def, i) => renderBuiltinRow(def, i, infoFields.length))}
       </div>
 
-      <h3 className="mt-6 text-sm font-semibold text-text-main">ধাপ ২ — ঠিকানা</h3>
+      <h3 className="mt-6 text-sm font-semibold text-text-main">{s.chfStep2}</h3>
       <div className="mt-3 grid gap-3">
         {addressFields.map((def, i) => renderBuiltinRow(def, i, addressFields.length))}
       </div>
 
-      <h3 className="mt-6 text-sm font-semibold text-text-main">অতিরিক্ত ফিল্ড</h3>
+      <h3 className="mt-6 text-sm font-semibold text-text-main">{s.chfExtrasTitle}</h3>
       <p className="mt-1 text-sm leading-6 text-text-muted">
-        নিজের দরকারমতো সর্বোচ্চ {MAX_EXTRA_FIELDS}টি লেখার ফিল্ড যোগ করা যায় (যেমন: উপহারের
-        বার্তা বা ডেলিভারির বিশেষ নির্দেশনা)। এগুলো ঠিকানার ধাপের শেষে দেখা যায়, আর ক্রেতার
-        উত্তর অর্ডারের নোটে জমা থাকে।
+        {s.chfExtrasIntroA}{MAX_EXTRA_FIELDS}{s.chfExtrasIntroB}
       </p>
       <div className="mt-3 grid gap-3">
         {extras.map((def) => (
           <div key={def.key} className="rounded-xl border border-border bg-surface-2/60 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-semibold text-text-main">
-                অতিরিক্ত ফিল্ড{" "}
+                {s.chfExtraField}{" "}
                 <code className="ml-1 rounded bg-card px-1.5 py-0.5 text-xs font-normal text-text-muted">
                   {def.key}
                 </code>
@@ -618,12 +621,12 @@ export function CheckoutFieldsPanel() {
                 onClick={() => removeExtra(def.key)}
                 className="rounded-lg border border-border bg-card px-2.5 py-1 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
               >
-                সরিয়ে ফেলুন
+                {s.chfRemoveField}
               </button>
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-3">
               <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-text-muted">লেবেল (বাংলা)</span>
+                <span className="mb-1.5 block text-xs font-medium text-text-muted">{s.chfLabelBn}</span>
                 <input
                   value={def.labelBn}
                   maxLength={MAX_LABEL_LENGTH}
@@ -632,7 +635,7 @@ export function CheckoutFieldsPanel() {
                 />
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-text-muted">লেবেল (English)</span>
+                <span className="mb-1.5 block text-xs font-medium text-text-muted">{s.chfLabelEn}</span>
                 <input
                   value={def.labelEn}
                   maxLength={MAX_LABEL_LENGTH}
@@ -641,7 +644,7 @@ export function CheckoutFieldsPanel() {
                 />
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-text-muted">প্লেসহোল্ডার (ঐচ্ছিক)</span>
+                <span className="mb-1.5 block text-xs font-medium text-text-muted">{s.chfPlaceholderLabel}</span>
                 <input
                   value={def.placeholder ?? ""}
                   maxLength={MAX_PLACEHOLDER_LENGTH}
@@ -657,7 +660,7 @@ export function CheckoutFieldsPanel() {
                 onChange={(e) => updateField(def.key, { required: e.target.checked })}
                 className="h-4 w-4 shrink-0 accent-brand-600"
               />
-              আবশ্যক
+              {s.chfRequired}
             </label>
             <FieldRulesBlocks def={def} updateField={updateField} />
           </div>
@@ -669,17 +672,17 @@ export function CheckoutFieldsPanel() {
         onClick={addExtra}
         className="mt-3 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-2 disabled:opacity-50"
       >
-        + নতুন ফিল্ড যোগ করুন
+        {s.chfAddField}
       </button>
 
       <div className="mt-6 grid gap-4 border-t border-border pt-5 sm:grid-cols-[1fr_auto] sm:items-end">
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">পরিবর্তনের কারণ (আবশ্যক)</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{s.chfReasonLabel}</span>
           <input
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             maxLength={300}
-            placeholder="যেমন: ইমেইল এখন থেকে আবশ্যক করা হলো"
+            placeholder={s.chfReasonPlaceholder}
             className={INPUT_CLASS}
           />
         </label>
@@ -689,7 +692,7 @@ export function CheckoutFieldsPanel() {
           onClick={() => void save()}
           className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
         >
-          {busy ? "সংরক্ষণ হচ্ছে…" : "সংরক্ষণ করুন"}
+          {busy ? s.chfSaving : s.chfSave}
         </button>
       </div>
     </section>

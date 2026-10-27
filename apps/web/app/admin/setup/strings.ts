@@ -1,0 +1,153 @@
+/**
+ * Admin setup wizard — UI dictionary (doc 30 unified language system).
+ * bn typed once, en typed as the mapped type — parity is compile-checked.
+ * Step labels come from SETUP_STEPS' labelBn/labelEn pair in
+ * src/platform/setup.ts (selected by locale); validation error strings
+ * also live in that module (outside this area). Store DATA is never
+ * translated.
+ */
+import type { Locale } from "@/i18n/locale";
+
+const bn = {
+  pageTitle: "সেটআপ উইজার্ড",
+  pageDescription:
+    "প্রথমবারের সেটআপ — দোকানের তথ্য, পেমেন্ট ও কুরিয়ার চালু করুন। অগ্রগতি শুধু এই ব্রাউজারে (localStorage) সংরক্ষিত থাকে।",
+  pageBreadcrumb: "Admin / Setup",
+  on: "চালু",
+  off: "বন্ধ",
+  storeInfo: "দোকানের তথ্য",
+  storeName: "দোকানের নাম",
+  storeNamePlaceholder: "যেমন: ঢাকা ফ্যাশন হাউস",
+  storePhone: "মোবাইল নম্বর",
+  storePhoneHelper: "অর্ডার ও ডেলিভারির জন্য এই নম্বরে যোগাযোগ করা হবে।",
+  storeAddress: "দোকানের ঠিকানা",
+  storeAddressPlaceholder: "বাসা/রোড, এলাকা, জেলা",
+  defaultsTitle: "ভাষা ও মুদ্রা (লক করা)",
+  defaultsText:
+    "এই প্ল্যাটফর্ম বাংলাদেশ-প্রথম: ডিফল্ট ভাষা বাংলা, মুদ্রা টাকা (BDT) এবং সময় অঞ্চল Asia/Dhaka — এগুলো উইজার্ড থেকে বদলানো যায় না।",
+  language: "ভাষা",
+  languageValue: "বাংলা ({locale}) · fallback English",
+  currency: "মুদ্রা",
+  timezone: "সময় অঞ্চল",
+  paymentsTitle: "পেমেন্ট পদ্ধতি চালু করুন",
+  paymentsText:
+    "এখানে শুধু কোন পদ্ধতি চালু থাকবে তা বেছে নিন। API key / মার্চেন্ট তথ্য পরে সেটিংস থেকে দিতে হবে — উইজার্ডে কোনো key চাওয়া হয় না।",
+  adapterNotBuiltSuffix: " (অ্যাডাপ্টার তৈরি হয়নি)",
+  defaultOn: "ডিফল্ট চালু",
+  adapterHint: "অ্যাডাপ্টার তৈরি না হওয়া পর্যন্ত checkout-এ দেখাবে না",
+  couriersTitle: "কুরিয়ার চালু করুন",
+  couriersText: "কমপক্ষে একটি কুরিয়ার চালু করুন। অ্যাকাউন্টের credential পরে সেটিংস থেকে দিতে হবে।",
+  integrationsTitle: "ইন্টিগ্রেশন ও API key",
+  integrationsText1: "পেমেন্ট, কুরিয়ার, SMS, ইমেইল ও স্টোরেজের API key বা credential ",
+  integrationsTextStrong: "কখনোই এই উইজার্ডে দেওয়া হয় না",
+  integrationsText2: "। সেটআপ শেষে ",
+  integrationsLink: "অ্যাডমিন → সেটিংস",
+  integrationsText3:
+    " থেকে প্রতিটি প্রোভাইডারের তথ্য দিন — সেগুলো এনক্রিপ্ট করে সংরক্ষণ করা হয় এবং env শুধু ডিফল্ট/fallback হিসেবে থাকে।",
+  integrationsBadge: "Key ছাড়াই উইজার্ড শেষ করা যাবে",
+  finishTitle: "সারসংক্ষেপ ও শেষ করুন",
+  sumStore: "দোকান",
+  sumPhone: "মোবাইল",
+  sumAddress: "ঠিকানা",
+  sumPayments: "পেমেন্ট",
+  sumCouriers: "কুরিয়ার",
+  sumSettings: "সেটিংস এন্ট্রি",
+  sumSettingsValue: "{count}টি (key, value, category আকারে)",
+  finishNote:
+    "জমা দিলে তথ্য ডাটাবেসের Settings টেবিলে সংরক্ষিত হবে (অডিটসহ)। API key/secret এখানে নেওয়া হয় না — সেগুলো Settings পেজে এনক্রিপ্ট করে রাখতে হয়।",
+  savedFallback: "সেটআপ সংরক্ষিত হয়েছে (ডাটাবেসে, persisted: true)।",
+  submitFailed: "জমা ব্যর্থ হয়েছে (HTTP {status})।",
+  networkError: "নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।",
+  back: "পেছনে",
+  finish: "সেটআপ শেষ করুন",
+  next: "পরবর্তী ধাপ",
+  payCod: "ক্যাশ অন ডেলিভারি (COD)",
+  payBkash: "বিকাশ",
+  payNagad: "নগদ",
+  payRocket: "রকেট",
+  payUpay: "উপায়",
+  paySslcommerz: "SSLCommerz",
+  payAamarpay: "AamarPay",
+  payShurjopay: "ShurjoPay",
+  payStripe: "Stripe",
+  payPaypal: "PayPal",
+  courierSteadfast: "স্টেডফাস্ট",
+  courierPathao: "পাঠাও",
+  courierRedx: "রেডএক্স",
+  courierPaperfly: "পেপারফ্লাই",
+  courierEcourier: "ইকুরিয়ার",
+};
+
+export type SetupStrings = { [K in keyof typeof bn]: string };
+
+const en: SetupStrings = {
+  pageTitle: "Setup Wizard",
+  pageDescription:
+    "First-time setup — add your store info and enable payments and couriers. Progress is saved only in this browser (localStorage).",
+  pageBreadcrumb: "Admin / Setup",
+  on: "On",
+  off: "Off",
+  storeInfo: "Store Info",
+  storeName: "Store name",
+  storeNamePlaceholder: "e.g. Dhaka Fashion House",
+  storePhone: "Mobile number",
+  storePhoneHelper: "This number will be contacted for orders and deliveries.",
+  storeAddress: "Store address",
+  storeAddressPlaceholder: "House/Road, Area, District",
+  defaultsTitle: "Language & Currency (locked)",
+  defaultsText:
+    "This platform is Bangladesh-first: the default language is Bangla, the currency is Taka (BDT) and the timezone is Asia/Dhaka — these cannot be changed from the wizard.",
+  language: "Language",
+  languageValue: "Bangla ({locale}) · fallback English",
+  currency: "Currency",
+  timezone: "Timezone",
+  paymentsTitle: "Enable Payment Methods",
+  paymentsText:
+    "Choose only which methods stay enabled here. API keys / merchant details go in Settings later — the wizard never asks for a key.",
+  adapterNotBuiltSuffix: " (adapter not built yet)",
+  defaultOn: "On by default",
+  adapterHint: "Will not appear at checkout until the adapter is built",
+  couriersTitle: "Enable Couriers",
+  couriersText: "Enable at least one courier. Account credentials go in Settings later.",
+  integrationsTitle: "Integrations & API Keys",
+  integrationsText1: "API keys or credentials for payments, couriers, SMS, email and storage are ",
+  integrationsTextStrong: "never entered in this wizard",
+  integrationsText2: ". After setup, go to ",
+  integrationsLink: "Admin → Settings",
+  integrationsText3:
+    " and enter each provider's details — they are stored encrypted, with env only as the default/fallback.",
+  integrationsBadge: "The wizard can be finished without any keys",
+  finishTitle: "Summary & Finish",
+  sumStore: "Store",
+  sumPhone: "Mobile",
+  sumAddress: "Address",
+  sumPayments: "Payments",
+  sumCouriers: "Couriers",
+  sumSettings: "Settings entries",
+  sumSettingsValue: "{count} (as key, value, category)",
+  finishNote:
+    "On submit, the information is saved to the Settings table in the database (with audit). API keys/secrets are not taken here — they are kept encrypted on the Settings page.",
+  savedFallback: "Setup saved (in the database, persisted: true).",
+  submitFailed: "Submission failed (HTTP {status}).",
+  networkError: "Network error — please try again.",
+  back: "Back",
+  finish: "Finish setup",
+  next: "Next step",
+  payCod: "Cash on Delivery (COD)",
+  payBkash: "bKash",
+  payNagad: "Nagad",
+  payRocket: "Rocket",
+  payUpay: "Upay",
+  paySslcommerz: "SSLCommerz",
+  payAamarpay: "AamarPay",
+  payShurjopay: "ShurjoPay",
+  payStripe: "Stripe",
+  payPaypal: "PayPal",
+  courierSteadfast: "Steadfast",
+  courierPathao: "Pathao",
+  courierRedx: "RedX",
+  courierPaperfly: "Paperfly",
+  courierEcourier: "eCourier",
+};
+
+export const SETUP_STRINGS: Record<Locale, SetupStrings> = { bn, en };

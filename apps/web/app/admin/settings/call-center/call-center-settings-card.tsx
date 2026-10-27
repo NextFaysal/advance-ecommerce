@@ -29,6 +29,11 @@
 // (retention.ts accepts any positive integer; 60 is the editor cap).
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SETTINGS_B_STRINGS, type SettingsBStrings } from "../strings-b";
+
+type SKey = keyof SettingsBStrings;
 
 const KEYS = {
   slaConfirm: "call_center.sla_confirm_minutes",
@@ -44,98 +49,44 @@ type FieldId = keyof typeof KEYS;
 
 interface FieldDef {
   id: FieldId;
-  label: string;
-  suffix: string;
-  help: string;
+  labelKey: SKey;
+  suffixKey: SKey;
+  helpKey: SKey;
   min: number;
   max: number;
   defaultValue: number;
 }
 
-const FIELD_GROUPS: { title: string; note?: string; fields: FieldDef[] }[] = [
+interface FieldGroupDef { titleKey: SKey; noteKey?: SKey; fields: FieldDef[] }
+
+const FIELD_GROUPS: FieldGroupDef[] = [
   {
-    title: "SLA সীমা (সুপারভাইজার বোর্ড)",
+    titleKey: "ccGroupSla",
     fields: [
-      {
-        id: "slaConfirm",
-        label: "কনফার্মেশন SLA",
-        suffix: "মিনিট",
-        help: "PENDING_ORDER টাস্ক তৈরি হওয়ার পর এতক্ষণ চেষ্টা না হলে সুপারভাইজার বোর্ডে SLA ভঙ্গ হিসেবে দেখায়।",
-        min: 1,
-        max: 1440,
-        defaultValue: 30,
-      },
-      {
-        id: "slaRescue",
-        label: "রেসকিউ SLA",
-        suffix: "মিনিট",
-        help: "FAILED_DELIVERY রেসকিউ টাস্কের জন্য একই নিয়ম — এতক্ষণ চেষ্টা না হলে SLA ভঙ্গ।",
-        min: 1,
-        max: 1440,
-        defaultValue: 60,
-      },
+      { id: "slaConfirm", labelKey: "ccSlaConfirmLabel", suffixKey: "ccSuffixMinutes", helpKey: "ccSlaConfirmHelp", min: 1, max: 1440, defaultValue: 30 },
+      { id: "slaRescue", labelKey: "ccSlaRescueLabel", suffixKey: "ccSuffixMinutes", helpKey: "ccSlaRescueHelp", min: 1, max: 1440, defaultValue: 60 },
     ],
   },
   {
-    title: "ফলো-আপ অটোমেশন SMS-এর সময়",
-    note: "এই সময়গুলো তখনই কাজ করে যখন অটোমেশন চালু থাকে (module.call_center_automation kill-switch) এবং worker চলমান থাকে — মান সেভ করলেই SMS যাবে না।",
+    titleKey: "ccGroupAuto",
+    noteKey: "ccGroupAutoNote",
     fields: [
-      {
-        id: "autoSmsNoAnswer",
-        label: "NO_ANSWER SMS-এর বিরতি",
-        suffix: "মিনিট",
-        help: "ফোন না ধরলে (NO_ANSWER) এত মিনিট পর 'আমরা যোগাযোগের চেষ্টা করেছি' SMS পাঠানো হয়। 0 = সাথে সাথে।",
-        min: 0,
-        max: 1440,
-        defaultValue: 15,
-      },
-      {
-        id: "callbackReminder",
-        label: "কলব্যাক রিমাইন্ডার SMS",
-        suffix: "মিনিট আগে",
-        help: "নির্ধারিত কলব্যাকের এত মিনিট আগে রিমাইন্ডার SMS যায় (সেই মুহূর্ত পার হয়ে গেলে সাথে সাথে)।",
-        min: 0,
-        max: 1440,
-        defaultValue: 10,
-      },
+      { id: "autoSmsNoAnswer", labelKey: "ccAutoSmsLabel", suffixKey: "ccSuffixMinutes", helpKey: "ccAutoSmsHelp", min: 0, max: 1440, defaultValue: 15 },
+      { id: "callbackReminder", labelKey: "ccCallbackLabel", suffixKey: "ccSuffixMinutesBefore", helpKey: "ccCallbackHelp", min: 0, max: 1440, defaultValue: 10 },
     ],
   },
   {
-    title: "কলিং সময়সীমা (ঢাকা সময়)",
-    note: "NO_ANSWER রিট্রাই শুধু এই উইন্ডোর মধ্যেই নির্ধারিত হয় — বাইরে পড়লে পরের উইন্ডো খোলার সময়ে সরিয়ে নেওয়া হয়। উইন্ডো হলো [শুরু, শেষ) — যেমন 9–21 মানে সকাল ৯টা থেকে রাত ৯টার আগ পর্যন্ত।",
+    titleKey: "ccGroupWindow",
+    noteKey: "ccGroupWindowNote",
     fields: [
-      {
-        id: "callingStartHour",
-        label: "কলিং শুরুর ঘণ্টা",
-        suffix: "টা",
-        help: "0–23-এর মধ্যে পূর্ণ ঘণ্টা।",
-        min: 0,
-        max: 23,
-        defaultValue: 9,
-      },
-      {
-        id: "callingEndHour",
-        label: "কলিং শেষের ঘণ্টা",
-        suffix: "টা",
-        help: "শুরুর ঘণ্টার চেয়ে বড় হতে হবে। 24 = মধ্যরাত (রাত ১২টা) পর্যন্ত।",
-        min: 1,
-        max: 24,
-        defaultValue: 21,
-      },
+      { id: "callingStartHour", labelKey: "ccStartLabel", suffixKey: "ccSuffixHour", helpKey: "ccStartHelp", min: 0, max: 23, defaultValue: 9 },
+      { id: "callingEndHour", labelKey: "ccEndLabel", suffixKey: "ccSuffixHour", helpKey: "ccEndHelp", min: 1, max: 24, defaultValue: 21 },
     ],
   },
   {
-    title: "ডেটা সংরক্ষণ",
+    titleKey: "ccGroupRetention",
     fields: [
-      {
-        id: "logRetentionMonths",
-        label: "কল-লগ সংরক্ষণের মেয়াদ",
-        suffix: "মাস",
-        help: "এর চেয়ে পুরনো কল-লগের free-text (নোট/QA মন্তব্য) ও শেষ হয়ে যাওয়া টাস্কের ব্যক্তিগত তথ্য (পুরো ফোন, নাম, নোট) retention job বেনামি করে — ফলাফল, disposition, স্কোর ও সময় থেকে যায়। Job-টি নির্ধারিত সময়ে চালালে তবেই প্রয়োগ হয়।",
-        min: 1,
-        max: 60,
-        defaultValue: 12,
-      },
+      { id: "logRetentionMonths", labelKey: "ccRetentionLabel", suffixKey: "ccSuffixMonths", helpKey: "ccRetentionHelp", min: 1, max: 60, defaultValue: 12 },
     ],
   },
 ];
@@ -152,18 +103,21 @@ interface CallCenterSettingsCardProps {
 }
 
 /** Parse an editor input: whole non-negative integers only. */
-function parseField(raw: string, def: FieldDef): { value: number } | { error: string } {
+function parseField(raw: string, def: FieldDef, s: SettingsBStrings): { value: number } | { error: string } {
+  const label = s[def.labelKey];
   const trimmed = raw.trim();
-  if (trimmed === "") return { error: `${def.label}: মান খালি রাখা যাবে না — একটি সংখ্যা লিখুন।` };
-  if (!/^\d+$/.test(trimmed)) return { error: `${def.label}: শুধু পূর্ণ সংখ্যা লিখুন (দশমিক বা অক্ষর নয়)।` };
+  if (trimmed === "") return { error: interpolate(s.ccErrEmpty, { label }) };
+  if (!/^\d+$/.test(trimmed)) return { error: interpolate(s.ccErrInteger, { label }) };
   const value = Number.parseInt(trimmed, 10);
   if (value < def.min || value > def.max) {
-    return { error: `${def.label}: মান ${def.min} থেকে ${def.max}-এর মধ্যে হতে হবে।` };
+    return { error: interpolate(s.ccErrRange, { label, min: def.min, max: def.max }) };
   }
   return { value };
 }
 
 export function CallCenterSettingsCard({ initial, dbReady }: CallCenterSettingsCardProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_B_STRINGS);
   const [values, setValues] = useState<Record<FieldId, string>>(() => {
     const out = {} as Record<FieldId, string>;
     for (const def of ALL_FIELDS) out[def.id] = String(initial[def.id]);
@@ -175,14 +129,14 @@ export function CallCenterSettingsCard({ initial, dbReady }: CallCenterSettingsC
   const [saving, setSaving] = useState(false);
 
   const parsed = new Map<FieldId, { value: number } | { error: string }>();
-  for (const def of ALL_FIELDS) parsed.set(def.id, parseField(values[def.id], def));
+  for (const def of ALL_FIELDS) parsed.set(def.id, parseField(values[def.id], def, s));
 
   // Cross-field rule: the calling window [start, end) must be non-empty.
   const startParsed = parsed.get("callingStartHour");
   const endParsed = parsed.get("callingEndHour");
   const windowError =
     startParsed && "value" in startParsed && endParsed && "value" in endParsed && endParsed.value <= startParsed.value
-      ? "কলিং উইন্ডো অবৈধ: শেষের ঘণ্টা শুরুর ঘণ্টার চেয়ে বড় হতে হবে।"
+      ? s.ccErrWindow
       : null;
 
   async function postSetting(key: string, value: string): Promise<string | null> {
@@ -193,14 +147,14 @@ export function CallCenterSettingsCard({ initial, dbReady }: CallCenterSettingsC
     });
     if (res.ok) return null;
     const data = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-    return data.error?.message ?? `সেভ করা যায়নি (${res.status})`;
+    return data.error?.message ?? interpolate(s.saveFailedStatus, { status: res.status });
   }
 
   async function handleSave() {
     setStatus("");
     if (reason.trim() === "") {
       setStatusOk(false);
-      setStatus("পরিবর্তনের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setStatus(s.reasonRequired);
       return;
     }
     for (const def of ALL_FIELDS) {
@@ -228,7 +182,7 @@ export function CallCenterSettingsCard({ initial, dbReady }: CallCenterSettingsC
     }
     if (writes.length === 0) {
       setStatusOk(true);
-      setStatus("কোনো পরিবর্তন নেই — সব মান আগের মতোই আছে, কিছুই সেভ করা হয়নি।");
+      setStatus(s.noChanges);
       return;
     }
 
@@ -241,20 +195,18 @@ export function CallCenterSettingsCard({ initial, dbReady }: CallCenterSettingsC
           setStatusOk(false);
           setStatus(
             savedKeys.length > 0
-              ? `${w.key} সেভ করা যায়নি: ${failure} — তবে আগের ${savedKeys.length}টি পরিবর্তন সেভ হয়ে গেছে (${savedKeys.join(", ")})।`
-              : `${w.key} সেভ করা যায়নি: ${failure}`,
+              ? interpolate(s.partialSave, { key: w.key, failure, count: savedKeys.length, keys: savedKeys.join(", ") })
+              : interpolate(s.singleSaveFailed, { key: w.key, failure }),
           );
           return;
         }
         savedKeys.push(w.key);
       }
       setStatusOk(true);
-      setStatus(
-        `সেভ হয়েছে — ${savedKeys.length}টি সেটিং বদলেছে (${savedKeys.join(", ")})। নতুন মান পরের সিদ্ধান্ত/পাঠানোর মুহূর্ত থেকেই কার্যকর (কোড নতুন করে চালু করা লাগবে না)।`,
-      );
+      setStatus(interpolate(s.ccSavedMany, { count: savedKeys.length, keys: savedKeys.join(", ") }));
     } catch {
       setStatusOk(false);
-      setStatus("সার্ভারের সঙ্গে যোগাযোগ করা যায়নি — কোন সেটিং সেভ হয়েছে তা নিশ্চিত নয়; পেজটি আবার লোড করে যাচাই করুন।");
+      setStatus(s.networkUncertainSettings);
     } finally {
       setSaving(false);
     }
@@ -268,35 +220,35 @@ export function CallCenterSettingsCard({ initial, dbReady }: CallCenterSettingsC
           <span aria-hidden="true" className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
             <Icon name="phone" size={20} />
           </span>
-          <h2 className="font-display text-base font-semibold text-text-main">কল সেন্টার সময়সীমা ও সংরক্ষণ</h2>
+          <h2 className="font-display text-base font-semibold text-text-main">{s.ccCardTitle}</h2>
         </div>
 
         <div className="mt-4 rounded-xl border border-border bg-surface-2 px-4 py-3.5 text-sm">
           <p className="leading-relaxed">
-            বর্তমানে কার্যকর: SLA — কনফার্ম <strong>{initial.slaConfirm} মিনিট</strong> · রেসকিউ{" "}
-            <strong>{initial.slaRescue} মিনিট</strong> · কলিং উইন্ডো{" "}
+            {s.ccCurrentA}
+            <strong>{initial.slaConfirm}{s.ccCurrentMin}</strong>
+            {s.ccCurrentRescue}
+            <strong>{initial.slaRescue}{s.ccCurrentMin}</strong>
+            {s.ccCurrentWindow}
             <strong>
               {initial.callingStartHour}:00–{initial.callingEndHour}:00
-            </strong>{" "}
-            (ঢাকা) · কল-লগ সংরক্ষণ <strong>{initial.logRetentionMonths} মাস</strong>।
+            </strong>
+            {s.ccCurrentDhaka}
+            <strong>{initial.logRetentionMonths}{s.ccCurrentMonths}</strong>.
           </p>
-          {!dbReady && (
-            <span className="mt-1.5 block leading-relaxed text-rose-600">
-              সতর্কতা: ডাটাবেস থেকে বর্তমান মান পড়া যায়নি — উপরে বিল্ট-ইন ডিফল্ট দেখানো হচ্ছে। সেভ করলে সার্ভার ত্রুটি দেখালে কিছুই বদলাবে না।
-            </span>
-          )}
+          {!dbReady && <span className="mt-1.5 block leading-relaxed text-rose-600">{s.ccDbWarning}</span>}
         </div>
 
         {FIELD_GROUPS.map((group) => (
-          <fieldset key={group.title} className="mt-6">
-            <legend className="text-sm font-semibold text-text-main">{group.title}</legend>
-            {group.note && <p className="mt-1 text-xs leading-relaxed text-text-muted">{group.note}</p>}
+          <fieldset key={group.titleKey} className="mt-6">
+            <legend className="text-sm font-semibold text-text-main">{s[group.titleKey]}</legend>
+            {group.noteKey && <p className="mt-1 text-xs leading-relaxed text-text-muted">{s[group.noteKey]}</p>}
             <div className="mt-3 grid gap-5 md:grid-cols-2">
               {group.fields.map((def) => {
                 const p = parsed.get(def.id);
                 return (
                   <label key={def.id} className="block">
-                    <span className="text-sm font-medium">{def.label}</span>
+                    <span className="text-sm font-medium">{s[def.labelKey]}</span>
                     <span className="mt-1 flex items-center gap-1.5">
                       <input
                         type="text"
@@ -308,12 +260,12 @@ export function CallCenterSettingsCard({ initial, dbReady }: CallCenterSettingsC
                         disabled={saving}
                         className="min-h-[44px] w-28 rounded-lg border border-border bg-card px-3 text-sm shadow-sm outline-none transition motion-fast focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100"
                       />
-                      <span className="text-sm text-text-muted">{def.suffix}</span>
+                      <span className="text-sm text-text-muted">{s[def.suffixKey]}</span>
                       <span className="text-xs text-text-muted">
-                        ({def.min}–{def.max} · ডিফল্ট {def.defaultValue})
+                        {interpolate(s.ccRangeDefault, { min: def.min, max: def.max, def: def.defaultValue })}
                       </span>
                     </span>
-                    <span className="mt-1 block text-xs leading-relaxed text-text-muted">{def.help}</span>
+                    <span className="mt-1 block text-xs leading-relaxed text-text-muted">{s[def.helpKey]}</span>
                     {p && "error" in p && <span className="mt-1 block text-xs text-rose-600">{p.error}</span>}
                   </label>
                 );
@@ -326,10 +278,10 @@ export function CallCenterSettingsCard({ initial, dbReady }: CallCenterSettingsC
 
         <div className="mt-5 flex flex-wrap items-end gap-3">
           <label className="block grow basis-56">
-            <span className="text-sm font-medium">পরিবর্তনের কারণ (অডিটের জন্য আবশ্যিক)</span>
+            <span className="text-sm font-medium">{s.reasonRequiredShort}</span>
             <input
               type="text"
-              placeholder="যেমন: ঈদের ভিড়ে কনফার্মেশন SLA 30 থেকে 45 মিনিট করা হলো"
+              placeholder={s.ccReasonPlaceholder}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               disabled={saving}
@@ -342,7 +294,7 @@ export function CallCenterSettingsCard({ initial, dbReady }: CallCenterSettingsC
             disabled={saving}
             className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {saving ? "সেভ হচ্ছে…" : "সেটিংস সেভ করুন"}
+            {saving ? s.saving : s.saveSettings}
           </button>
         </div>
 

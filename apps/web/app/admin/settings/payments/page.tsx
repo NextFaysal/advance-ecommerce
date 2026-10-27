@@ -10,12 +10,13 @@
 // No credential value is stored here: the credential field is a REFERENCE
 // only; the real credential lives in Settings, encrypted, server-side.
 // Live-mode guard: live cannot be saved without a credential reference.
+// UI copy: doc-30 dictionary (../strings-b) — locale-selected, no mixing.
 import { useState } from "react";
 import { liveModeGuardMessage } from "../../../../src/integrations/sandbox/live-guard";
-import {
-  ADAPTER_NOT_BUILT_BN,
-  isAdapterlessGatewayMethod,
-} from "../../../../src/checkout/payment-methods";
+import { isAdapterlessGatewayMethod } from "../../../../src/checkout/payment-methods";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SETTINGS_B_STRINGS, type SettingsBStrings } from "../strings-b";
 
 const METHODS = [
   { key: "cod", label: "COD" },
@@ -40,26 +41,29 @@ interface MethodState {
   maxPoisha: string;
   feePoisha: string;
   status: string;
-  /** Rocket only: the merchant number customers send money to
-   *  (payment.rocket.merchant_number) + the account holder name
-   *  shown next to it at checkout (payment.rocket.account_name). */
   merchantNumber: string;
   accountName: string;
 }
 
-const initialState = (): MethodState => ({
-  enabled: false,
-  mode: "sandbox",
-  credentialRef: "",
-  minPoisha: "",
-  maxPoisha: "",
-  feePoisha: "0",
-  status: "Not connected",
-  merchantNumber: "",
-  accountName: "",
-});
+function initialState(s: SettingsBStrings): MethodState {
+  return {
+    enabled: false,
+    mode: "sandbox",
+    credentialRef: "",
+    minPoisha: "",
+    maxPoisha: "",
+    feePoisha: "0",
+    status: s.payNotConnected,
+    merchantNumber: "",
+    accountName: "",
+  };
+}
 
-async function postJson(url: string, body: Record<string, string>): Promise<{ ok: boolean; message: string }> {
+async function postJson(
+  url: string,
+  body: Record<string, string>,
+  s: SettingsBStrings,
+): Promise<{ ok: boolean; message: string }> {
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -75,26 +79,19 @@ async function postJson(url: string, body: Record<string, string>): Promise<{ ok
         ok: false,
         message:
           res.status === 404
-            ? "Settings API is not available yet (route missing) — nothing was saved."
-            : (data.error?.message ?? `Save failed (${res.status}).`),
+            ? s.payApiMissing
+            : (data.error?.message ?? interpolate(s.paySaveFailed, { status: res.status })),
       };
     }
-    return { ok: true, message: data.data?.message ?? "Saved." };
+    return { ok: true, message: data.data?.message ?? s.paySaved };
   } catch {
-    return { ok: false, message: "Network error — nothing was saved." };
+    return { ok: false, message: s.payNetworkError };
   }
 }
 
-function MethodSection({ methodKey, label }: { methodKey: MethodKey; label: string }) {
-  const [state, setState] = useState<MethodState>(initialState);
-  const set = (patch: Partial<MethodState>) => setState((s) => ({ ...s, ...patch }));
-  // Checkout honesty (doc 22 ADV-4): a gateway method with NO adapter
-  // (capability map: src/checkout/payment-methods) can never complete
-  // a payment, so it is never offered at checkout — and staff must not
-  // be able to "enable" it into a dead end from here either. The
-  // enable control is locked off with the reason visible; the stored
-  // settings keys/semantics are unchanged (a save still writes
-  // enabled=false for such a method).
+function MethodSection({ methodKey, label, s }: { methodKey: MethodKey; label: string; s: SettingsBStrings }) {
+  const [state, setState] = useState<MethodState>(() => initialState(s));
+  const set = (patch: Partial<MethodState>) => setState((prev) => ({ ...prev, ...patch }));
   const adapterless = isAdapterlessGatewayMethod(methodKey);
 
   async function handleSave() {
@@ -114,33 +111,31 @@ function MethodSection({ methodKey, label }: { methodKey: MethodKey; label: stri
       [`payment.${methodKey}.fee_poisha`, state.feePoisha],
     ];
     if (methodKey === "rocket") {
-      // Rocket is a MANUAL method (no gateway): checkout shows it
-      // only when enabled AND this number is set — see
-      // src/payments/rocket-manual.ts.
       entries.push([`payment.rocket.merchant_number`, state.merchantNumber]);
       entries.push([`payment.rocket.account_name`, state.accountName]);
     }
     for (const [key, value] of entries) {
       if (value === "" && !key.endsWith(".enabled") && !key.endsWith(".mode")) continue;
-      const result = await postJson("/api/v1/admin/settings", {
-        key,
-        value,
-        reason: `Update payment method ${methodKey} from Settings UI`,
-      });
+      const result = await postJson(
+        "/api/v1/admin/settings",
+        { key, value, reason: `Update payment method ${methodKey} from Settings UI` },
+        s,
+      );
       if (!result.ok) {
         set({ status: result.message });
         return;
       }
     }
-    set({ status: "Saved via Settings API." });
+    set({ status: s.paySavedViaApi });
   }
 
   async function handleTest() {
-    const result = await postJson("/api/v1/admin/settings/test", {
-      category: "payment",
-      provider: methodKey,
-    });
-    set({ status: result.ok ? "Test passed via Settings API (sandbox is simulated)." : result.message });
+    const result = await postJson(
+      "/api/v1/admin/settings/test",
+      { category: "payment", provider: methodKey },
+      s,
+    );
+    set({ status: result.ok ? s.payTestPassed : result.message });
   }
 
   return (
@@ -159,12 +154,12 @@ function MethodSection({ methodKey, label }: { methodKey: MethodKey; label: stri
               fontWeight: 600,
             }}
           >
-            {ADAPTER_NOT_BUILT_BN}
+            {s.payAdapterBadge}
           </span>
         ) : null}
       </h2>
       <label>
-        Enabled{" "}
+        {s.payEnabled}{" "}
         <input
           type="checkbox"
           checked={adapterless ? false : state.enabled}
@@ -173,25 +168,18 @@ function MethodSection({ methodKey, label }: { methodKey: MethodKey; label: stri
         />
       </label>{" "}
       {adapterless ? (
-        <p style={{ color: "#92400E", fontSize: 13, margin: "6px 0" }}>
-          এই পদ্ধতির কোনো পেমেন্ট অ্যাডাপ্টার এখনো তৈরি হয়নি — তাই এটি checkout-এ
-          customers-কে দেখানো হয় না এবং এখান থেকে চালু করা যাবে না। অ্যাডাপ্টার তৈরি
-          হলে এই নিয়ন্ত্রণটি নিজে থেকেই সক্রিয় হবে।
-        </p>
+        <p style={{ color: "#92400E", fontSize: 13, margin: "6px 0" }}>{s.payAdapterNote}</p>
       ) : null}
       <label>
-        Mode{" "}
-        <select
-          value={state.mode}
-          onChange={(e) => set({ mode: e.target.value as MethodState["mode"] })}
-        >
+        {s.payMode}{" "}
+        <select value={state.mode} onChange={(e) => set({ mode: e.target.value as MethodState["mode"] })}>
           <option value="sandbox">sandbox</option>
           <option value="live">live</option>
         </select>
       </label>
       <div>
         <label>
-          Credential reference (encrypted, never shown){" "}
+          {s.payCredentialRef}{" "}
           <input
             type="password"
             placeholder="••••••••"
@@ -203,15 +191,9 @@ function MethodSection({ methodKey, label }: { methodKey: MethodKey; label: stri
       </div>
       {methodKey === "rocket" ? (
         <div>
-          <p style={{ fontSize: 13, margin: "6px 0" }}>
-            Rocket একটি ম্যানুয়াল পদ্ধতি — কোনো গেটওয়ে নেই। Checkout-এ Rocket তখনই
-            দেখানো হয় যখন Enabled চালু এবং নিচের মার্চেন্ট নম্বরটি দেওয়া আছে।
-            গ্রাহক এই নম্বরে টাকা পাঠিয়ে TrxID জমা দেন; স্টাফ Admin &gt; Payments-এর
-            রিভিউ কিউতে যাচাই করে অনুমোদন দিলে তবেই পেমেন্ট ধরা হয় (স্বয়ংক্রিয়
-            নিশ্চিতকরণ নেই)।
-          </p>
+          <p style={{ fontSize: 13, margin: "6px 0" }}>{s.payRocketNote}</p>
           <label>
-            Merchant Rocket number (customers send money here){" "}
+            {s.payRocketNumber}{" "}
             <input
               type="tel"
               placeholder="01XXXXXXXXX"
@@ -221,10 +203,10 @@ function MethodSection({ methodKey, label }: { methodKey: MethodKey; label: stri
             />
           </label>{" "}
           <label>
-            Account holder name (shown at checkout){" "}
+            {s.payRocketName}{" "}
             <input
               type="text"
-              placeholder="e.g. Store Name"
+              placeholder={s.payRocketNamePlaceholder}
               value={state.accountName}
               onChange={(e) => set({ accountName: e.target.value })}
               autoComplete="off"
@@ -233,68 +215,47 @@ function MethodSection({ methodKey, label }: { methodKey: MethodKey; label: stri
         </div>
       ) : null}
       {methodKey === "upay" ? (
-        <p style={{ fontSize: 13, margin: "6px 0" }}>
-          Upay credentials (merchant_id / merchant_key / merchant_code) are saved as
-          encrypted Settings keys payment.upay.* from Admin &gt; Settings &gt;
-          Integrations. Note: the Upay wire format is not yet verified against
-          Upay&apos;s official merchant API document — treat live mode as untested
-          until a real merchant account confirms it.
-        </p>
+        <p style={{ fontSize: 13, margin: "6px 0" }}>{s.payUpayNote}</p>
       ) : null}
       <div>
         <label>
-          Min amount (poisha){" "}
+          {s.payMin}{" "}
           <input type="number" placeholder="0" value={state.minPoisha} onChange={(e) => set({ minPoisha: e.target.value })} />
         </label>{" "}
         <label>
-          Max amount (poisha){" "}
+          {s.payMax}{" "}
           <input type="number" placeholder="—" value={state.maxPoisha} onChange={(e) => set({ maxPoisha: e.target.value })} />
         </label>{" "}
         <label>
-          Flat fee (poisha){" "}
+          {s.payFee}{" "}
           <input type="number" placeholder="0" value={state.feePoisha} onChange={(e) => set({ feePoisha: e.target.value })} />
         </label>
       </div>
-      <p>Status: {state.status}</p>
+      <p>{interpolate(s.payStatus, { status: state.status })}</p>
       <button type="button" onClick={handleSave}>
-        Save
+        {s.paySaveBtn}
       </button>{" "}
       <button type="button" onClick={handleTest}>
-        Test connection
+        {s.payTestBtn}
       </button>
     </section>
   );
 }
 
 export default function PaymentsSettingsPage() {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_B_STRINGS);
   return (
     <main>
-      <h1>Settings — Payments</h1>
-      <p>
-        Admin-configurable: env is only a default. Live mode must not turn on without a
-        verified credential reference, and sandbox is the default for every new method.
-      </p>
-      <p>
-        Checkout-এ শুধু সেই পদ্ধতিগুলোই দেখানো হয় যেগুলো এখানে Enabled এবং যাদের
-        সক্রিয় অ্যাডাপ্টার আছে (বর্তমানে bKash, Nagad, SSLCommerz, Upay গেটওয়ে +
-        Rocket ম্যানুয়াল পদ্ধতি + COD)।{" "}
-        {ADAPTER_NOT_BUILT_BN} ব্যাজওয়ালা পদ্ধতি চালু করা যায় না — অ্যাডাপ্টার তৈরি
-        না হওয়া পর্যন্ত সেগুলো customers-এর কাছ থেকে লুকানো থাকে।
-      </p>
-      <p>
-        Manual TrxID rule: the same (method, TrxID) can never be approved twice —
-        duplicate TrxID detection is enforced in the manual TrxID review API
-        (Agent 9, sandbox).
-      </p>
-      <p>Manual mobile banking (TrxID approve/reject) is reviewed in Admin &gt; Payments, not configured here.</p>
+      <h1>{s.payTitle}</h1>
+      <p>{s.payIntro}</p>
+      <p>{s.payCheckoutNote}</p>
+      <p>{s.payTrxRule}</p>
+      <p>{s.payManualNote}</p>
       {METHODS.map((method) => (
-        <MethodSection key={method.key} methodKey={method.key} label={method.label} />
+        <MethodSection key={method.key} methodKey={method.key} label={method.label} s={s} />
       ))}
-      <p>
-        Note: Save/Test call the Settings API (see SETTINGS-API-CONTRACT.md in
-        src/integrations/sandbox). Until that route exists, this page shows an
-        error instead of claiming a save happened.
-      </p>
+      <p>{s.payFooterNote}</p>
     </main>
   );
 }

@@ -27,6 +27,9 @@ import { Icon, type IconName } from "@/components/ui/icon";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { formatPoisha } from "@/components/ui/money";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
+import { RETURNS_STRINGS, type ReturnsStrings } from "./strings";
 
 type ReturnStatus = "REQUESTED" | "APPROVED" | "REJECTED" | "RECEIVED" | "COMPLETED" | "CLOSED";
 
@@ -70,25 +73,25 @@ interface ReturnView {
  * the order state machine. */
 const RETURN_STATUS_VISUAL: Record<
   string,
-  { tone: "success" | "warning" | "danger" | "info" | "neutral"; icon: IconName; label: string }
+  { tone: "success" | "warning" | "danger" | "info" | "neutral"; icon: IconName; labelKey: keyof ReturnsStrings }
 > = {
-  REQUESTED: { tone: "warning", icon: "clock", label: "অনুরোধ এসেছে" },
-  APPROVED: { tone: "info", icon: "check", label: "অনুমোদিত — পণ্য আসছে" },
-  REJECTED: { tone: "danger", icon: "x", label: "বাতিল" },
-  RECEIVED: { tone: "info", icon: "package", label: "পণ্য পৌঁছেছে" },
-  COMPLETED: { tone: "success", icon: "check", label: "সম্পন্ন (রিফান্ড PENDING)" },
-  CLOSED: { tone: "neutral", icon: "x", label: "বন্ধ (রিফান্ড নেই)" },
-  EXCHANGED: { tone: "info", icon: "refresh-ccw", label: "এক্সচেঞ্জ করা" },
+  REQUESTED: { tone: "warning", icon: "clock", labelKey: "statusRequested" },
+  APPROVED: { tone: "info", icon: "check", labelKey: "statusApproved" },
+  REJECTED: { tone: "danger", icon: "x", labelKey: "statusRejected" },
+  RECEIVED: { tone: "info", icon: "package", labelKey: "statusReceived" },
+  COMPLETED: { tone: "success", icon: "check", labelKey: "statusCompleted" },
+  CLOSED: { tone: "neutral", icon: "x", labelKey: "statusClosed" },
+  EXCHANGED: { tone: "info", icon: "refresh-ccw", labelKey: "statusExchanged" },
 };
 
-const FILTERS: { key: string; label: string }[] = [
-  { key: "", label: "সব" },
-  { key: "REQUESTED", label: "অনুরোধ" },
-  { key: "APPROVED", label: "অনুমোদিত" },
-  { key: "RECEIVED", label: "পৌঁছেছে" },
-  { key: "COMPLETED", label: "সম্পন্ন" },
-  { key: "REJECTED", label: "বাতিল" },
-  { key: "CLOSED", label: "বন্ধ" },
+const FILTERS: { key: string; labelKey: keyof ReturnsStrings }[] = [
+  { key: "", labelKey: "filterAll" },
+  { key: "REQUESTED", labelKey: "filterRequested" },
+  { key: "APPROVED", labelKey: "filterApproved" },
+  { key: "RECEIVED", labelKey: "filterReceived" },
+  { key: "COMPLETED", labelKey: "filterCompleted" },
+  { key: "REJECTED", labelKey: "filterRejected" },
+  { key: "CLOSED", labelKey: "filterClosed" },
 ];
 
 const inputCls =
@@ -96,8 +99,8 @@ const inputCls =
 const selectCls =
   "h-10 rounded-md border border-border bg-card px-2 text-sm shadow-sm outline-none transition focus:border-brand-500";
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString("bn-BD", {
+function fmtDate(iso: string, locale: Locale): string {
+  return new Date(iso).toLocaleString(intlLocale(locale), {
     timeZone: "Asia/Dhaka",
     dateStyle: "medium",
     timeStyle: "short",
@@ -105,6 +108,8 @@ function fmtDate(iso: string): string {
 }
 
 export default function AdminReturnsPage() {
+  const { locale } = useLocale();
+  const s = pick(locale, RETURNS_STRINGS);
   const [rows, setRows] = useState<ReturnView[] | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [total, setTotal] = useState(0);
@@ -133,10 +138,10 @@ export default function AdminReturnsPage() {
       setCounts(json.meta?.counts ?? {});
       setLoadError(null);
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "লোড ব্যর্থ হয়েছে");
+      setLoadError(e instanceof Error ? e.message : s.loadFailedFallback);
       setRows([]);
     }
-  }, [page, status]);
+  }, [page, status, s]);
 
   useEffect(() => {
     void load();
@@ -179,12 +184,14 @@ export default function AdminReturnsPage() {
       if (!res.ok) throw new Error(json?.error?.message ?? `HTTP ${res.status}`);
       setNotice(
         to === "COMPLETED"
-          ? `রিটার্ন সম্পন্ন — ${formatPoisha(json.data?.refundAmountPoisha ?? row.refundableValuePoisha)} রিফান্ড PENDING হিসেবে রেকর্ড হয়েছে (অর্ডার পেজের রিফান্ড প্যানেল থেকে পাঠান)।`
-          : "সংরক্ষিত হয়েছে।",
+          ? interpolate(s.noticeCompleted, {
+              amount: formatPoisha(json.data?.refundAmountPoisha ?? row.refundableValuePoisha),
+            })
+          : s.noticeSaved,
       );
       await load();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "অ্যাকশন ব্যর্থ হয়েছে");
+      setActionError(e instanceof Error ? e.message : s.actionFailedFallback);
     } finally {
       setBusyId(null);
     }
@@ -194,10 +201,7 @@ export default function AdminReturnsPage() {
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6">
-      <PageHeader
-        title="রিটার্ন (RMA)"
-        description="ডেলিভারি হওয়া অর্ডারের রিটার্ন অনুরোধ, পণ্য বুঝে নেওয়া (ভালো হলে স্টকে ফেরত), আর রিফান্ড রেকর্ড — সব এক জায়গায়। রিফান্ড এখানে শুধু PENDING হিসেবে রেকর্ড হয়; টাকা কর্মীরা নিজে পাঠিয়ে রিফান্ড workbench-এ SENT করেন।"
-      />
+      <PageHeader title={s.title} description={s.description} />
 
       <div className="mt-4 flex flex-wrap gap-2">
         {FILTERS.map((f) => (
@@ -214,7 +218,7 @@ export default function AdminReturnsPage() {
                 : "border-border bg-card text-text-muted hover:text-text-main"
             } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
           >
-            {f.label}
+            {s[f.labelKey]}
             <span className="ml-1.5 text-caption text-text-subtle">
               {f.key === "" ? (counts.ALL ?? 0) : (counts[f.key] ?? 0)}
             </span>
@@ -244,16 +248,13 @@ export default function AdminReturnsPage() {
         </div>
       ) : rows.length === 0 ? (
         <div className="mt-4">
-          <EmptyState
-            title="এই তালিকায় কোনো রিটার্ন নেই"
-            description="এই ফিল্টারে কোনো রিটার্ন অনুরোধ পাওয়া যায়নি। নতুন অনুরোধ এলে এখানে দেখা যাবে।"
-          />
+          <EmptyState title={s.emptyTitle} description={s.emptyDescription} />
         </div>
       ) : (
       <Card className="mt-4 overflow-hidden p-0">
           <ul className="divide-y divide-border">
             {rows.map((row) => {
-              const ui = RETURN_STATUS_VISUAL[row.status] ?? { label: row.status, tone: "neutral" as const, icon: "info" as IconName };
+              const ui = RETURN_STATUS_VISUAL[row.status] ?? { labelKey: null, tone: "neutral" as const, icon: "info" as IconName };
               const expanded = expandedId === row.id;
               const busy = busyId === row.id;
               return (
@@ -265,35 +266,34 @@ export default function AdminReturnsPage() {
                     <span className="text-small text-text-main">{row.customerName}</span>
                     <span className="text-small text-text-muted">{row.customerPhoneMasked}</span>
                     <span className="flex flex-wrap items-center gap-1.5">
-                      <Badge tone={ui.tone} icon={<Icon name={ui.icon} size={12} />}>{ui.label}</Badge>
-                      <Badge tone="neutral">{row.source === "customer" ? "কাস্টমারের অনুরোধ" : "অ্যাডমিন"}</Badge>
+                      <Badge tone={ui.tone} icon={<Icon name={ui.icon} size={12} />}>{ui.labelKey ? s[ui.labelKey] : row.status}</Badge>
+                      <Badge tone="neutral">{row.source === "customer" ? s.sourceCustomer : s.sourceAdmin}</Badge>
                       {row.refundId ? (
                         <Badge tone="info" icon={<Icon name="banknote" size={12} />}>
-                          রিফান্ড রেকর্ড সংযুক্ত
+                          {s.refundAttached}
                         </Badge>
                       ) : null}
                     </span>
                     <span className="text-small text-text-muted">
-                      {row.items.reduce((s, i) => s + i.quantity, 0)}টি পণ্য · {formatPoisha(row.goodsValuePoisha)}
+                      {interpolate(s.itemsSummary, { count: row.items.reduce((sum, i) => sum + i.quantity, 0), amount: formatPoisha(row.goodsValuePoisha) })}
                     </span>
-                    <span className="text-caption text-text-subtle">{fmtDate(row.createdAt)}</span>
+                    <span className="text-caption text-text-subtle">{fmtDate(row.createdAt, locale)}</span>
                     <Button size="sm" variant="outline" className="w-full sm:ml-auto sm:w-auto" onClick={() => expand(row)}>
-                      {expanded ? "বন্ধ করুন" : "বিস্তারিত"}
+                      {expanded ? s.close : s.details}
                     </Button>
                   </div>
 
                   {expanded && (
                     <div className="mt-3 rounded-md bg-surface-2 px-3.5 py-3">
                       <p className="text-small text-text-muted">
-                        কারণ: <span className="text-text-main">{row.reason}</span>
-                        {row.customerNote ? <> · নোট: {row.customerNote}</> : null}
-                        {row.decisionReason ? <> · সিদ্ধান্তের কারণ: {row.decisionReason}</> : null}
+                        {s.reasonLabel} <span className="text-text-main">{row.reason}</span>
+                        {row.customerNote ? <> · {s.noteLabel} {row.customerNote}</> : null}
+                        {row.decisionReason ? <> · {s.decisionReasonLabel} {row.decisionReason}</> : null}
                         {row.restockDecision ? <><br />{row.restockDecision}</> : null}
                         {row.refundId ? (
                           <>
                             <br />
-                            রিফান্ড রেকর্ড: <span className="font-mono">{row.refundId}</span> (PENDING — অর্ডার পেজের
-                            রিফান্ড প্যানেল থেকে পাঠান)
+                            {s.refundRecordPrefix} <span className="font-mono">{row.refundId}</span> {s.refundRecordSuffix}
                           </>
                         ) : null}
                       </p>
@@ -319,16 +319,16 @@ export default function AdminReturnsPage() {
                                   }))
                                 }
                               >
-                                <option value="restockable">ভালো — স্টকে ফিরবে</option>
-                                <option value="damaged">নষ্ট — স্টকে যাবে না</option>
+                                <option value="restockable">{s.conditionGoodOption}</option>
+                                <option value="damaged">{s.conditionDamagedOption}</option>
                               </select>
                             ) : item.condition === "restockable" ? (
                               <Badge tone="success" icon={<Icon name="check" size={12} />}>
-                                ভালো (স্টকে ফিরেছে)
+                                {s.conditionGoodBadge}
                               </Badge>
                             ) : item.condition === "damaged" ? (
                               <Badge tone="danger" icon={<Icon name="alert" size={12} />}>
-                                নষ্ট
+                                {s.conditionDamagedBadge}
                               </Badge>
                             ) : (
                               <span className="text-text-subtle">—</span>
@@ -342,7 +342,7 @@ export default function AdminReturnsPage() {
                           {row.status === "APPROVED" && (
                             <input
                               className={inputCls}
-                              placeholder="QC নোট (ঐচ্ছিক)"
+                              placeholder={s.qcNotePlaceholder}
                               value={qcNote}
                               onChange={(e) => setQcNote(e.target.value)}
                             />
@@ -350,7 +350,7 @@ export default function AdminReturnsPage() {
                           {(row.status === "REQUESTED" || row.status === "RECEIVED") && (
                             <input
                               className={inputCls}
-                              placeholder="বাতিল/বন্ধের কারণ"
+                              placeholder={s.decisionReasonPlaceholder}
                               value={decisionReason}
                               onChange={(e) => setDecisionReason(e.target.value)}
                             />
@@ -362,25 +362,25 @@ export default function AdminReturnsPage() {
                         {row.status === "REQUESTED" && (
                           <>
                             <Button size="sm" disabled={busy} onClick={() => void act(row, "APPROVED")}>
-                              অনুমোদন করুন
+                              {s.approve}
                             </Button>
                             <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(row, "REJECTED")}>
-                              বাতিল করুন
+                              {s.reject}
                             </Button>
                           </>
                         )}
                         {row.status === "APPROVED" && (
                           <Button size="sm" disabled={busy} onClick={() => void act(row, "RECEIVED")}>
-                            পণ্য বুঝে নিন (স্টক আপডেট হবে)
+                            {s.receive}
                           </Button>
                         )}
                         {row.status === "RECEIVED" && (
                           <>
                             <Button size="sm" disabled={busy} onClick={() => void act(row, "COMPLETED")}>
-                              সম্পন্ন করুন — রিফান্ড রেকর্ড ({formatPoisha(row.refundableValuePoisha)})
+                              {interpolate(s.completeWithRefund, { amount: formatPoisha(row.refundableValuePoisha) })}
                             </Button>
                             <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(row, "CLOSED")}>
-                              রিফান্ড ছাড়া বন্ধ করুন
+                              {s.closeNoRefund}
                             </Button>
                           </>
                         )}
@@ -395,15 +395,13 @@ export default function AdminReturnsPage() {
         )}
 
       <div className="mt-4 flex items-center justify-between text-small text-text-muted">
-        <span>
-          মোট {total}টি · পেজ {page}/{pages}
-        </span>
+        <span>{interpolate(s.totalPageLine, { total, page, pages })}</span>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-            আগের
+            {s.previous}
           </Button>
           <Button size="sm" variant="outline" disabled={page >= pages} onClick={() => setPage((p) => Math.min(pages, p + 1))}>
-            পরের
+            {s.next}
           </Button>
         </div>
       </div>

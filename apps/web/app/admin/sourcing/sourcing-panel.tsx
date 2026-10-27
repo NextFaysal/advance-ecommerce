@@ -15,6 +15,9 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { takaStringToPoisha } from "@/catalog/import";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SOURCING_STRINGS } from "./strings";
 
 const inputCls =
   "min-h-[44px] w-full rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-sm outline-none transition motion-fast focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100";
@@ -50,6 +53,8 @@ async function readError(res: Response, fallback: string): Promise<string> {
 }
 
 export function SourcingPanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, SOURCING_STRINGS);
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +95,7 @@ export function SourcingPanel() {
     setCreated(null);
     setPreview(null);
     if (url.trim().length < 8) {
-      setError("পণ্যের পেজের পুরো লিংক দিন (https:// সহ)।");
+      setError(s.urlTooShort);
       return;
     }
     setLoading(true);
@@ -100,7 +105,7 @@ export function SourcingPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim() }),
       });
-      if (!res.ok) throw new Error(await readError(res, "প্রিভিউ আনা যায়নি।"));
+      if (!res.ok) throw new Error(await readError(res, s.previewFailed));
       const body = (await res.json()) as { data: PreviewData };
       const p = body.data;
       setPreview(p);
@@ -115,7 +120,7 @@ export function SourcingPanel() {
       setSku("");
       setStock("0");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "প্রিভিউ আনা যায়নি।");
+      setError(e instanceof Error ? e.message : s.previewFailed);
     } finally {
       setLoading(false);
     }
@@ -135,16 +140,16 @@ export function SourcingPanel() {
     if (!preview) return;
     const pricePoisha = takaStringToPoisha(priceTaka);
     if (pricePoisha === undefined) {
-      setError("বিক্রয়মূল্য টাকায় সঠিকভাবে লিখুন (যেমন 1250 বা 1250.50)।");
+      setError(s.priceInvalid);
       return;
     }
     if (categorySlug.trim() === "") {
-      setError("একটি ক্যাটাগরি বেছে নিন — ক্যাটাগরি ছাড়া পণ্য তৈরি হয় না।");
+      setError(s.categoryRequired);
       return;
     }
     const stockNum = Number(stock);
     if (!Number.isInteger(stockNum) || stockNum < 0) {
-      setError("স্টক ০ বা তার বেশি পূর্ণ সংখ্যা হতে হবে।");
+      setError(s.stockInvalid);
       return;
     }
     setCreating(true);
@@ -166,13 +171,13 @@ export function SourcingPanel() {
           imageUrls: preview.images.filter((img) => pickedImages.has(img)),
         }),
       });
-      if (!res.ok) throw new Error(await readError(res, "পণ্য তৈরি করা যায়নি।"));
+      if (!res.ok) throw new Error(await readError(res, s.createFailed));
       const body = (await res.json()) as { data: { product: CreatedProduct } };
       setCreated(body.data.product);
       setPreview(null);
       setUrl("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "পণ্য তৈরি করা যায়নি।");
+      setError(e instanceof Error ? e.message : s.createFailed);
     } finally {
       setCreating(false);
     }
@@ -187,12 +192,12 @@ export function SourcingPanel() {
             <Icon name="store" size={20} />
           </span>
           <div className="min-w-0">
-            <h2 className="font-display text-base font-semibold text-text-main">লিংক থেকে পণ্য আনুন</h2>
-            <p className="text-xs text-text-subtle">AliExpress / 1688 / Alibaba বা যেকোনো শপের পণ্যের লিংক দিন</p>
+            <h2 className="font-display text-base font-semibold text-text-main">{s.importTitle}</h2>
+            <p className="text-xs text-text-subtle">{s.importSub}</p>
           </div>
         </div>
         <label className={`${labelCls} mt-4`} htmlFor="src-url">
-          পণ্যের লিংক (AliExpress / 1688 / Alibaba বা যেকোনো শপ)
+          {s.urlLabel}
         </label>
         <div className="flex flex-col gap-2 min-[560px]:flex-row">
           <input
@@ -210,14 +215,13 @@ export function SourcingPanel() {
             className="brand-gradient inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105 disabled:opacity-50"
           >
             <Icon name="search" size={16} />
-            {loading ? "আনা হচ্ছে…" : "প্রিভিউ আনুন"}
+            {loading ? s.fetching : s.fetchPreview}
           </button>
         </div>
         <p className="mt-3 flex gap-2 text-xs leading-relaxed text-text-subtle">
           <Icon name="info" size={14} className="mt-0.5 shrink-0" />
           <span>
-            সার্ভার পেজটি পড়ে নাম, ছবি ও দাম খুঁজে বের করে। অনেক মার্কেটপ্লেস স্বয়ংক্রিয় অ্যাক্সেস আটকায় —
-            সেক্ষেত্রে কারণসহ বার্তা দেখাবে, ভুয়া তথ্য বসানো হবে না।
+            {s.serverNote}
           </span>
         </p>
       </Card>
@@ -237,9 +241,9 @@ export function SourcingPanel() {
             <Icon name="check" size={16} />
           </span>
           <p className="leading-relaxed">
-            ড্রাফট পণ্য তৈরি হয়েছে: <span className="font-mono">{created.slug}</span> —{" "}
+            {interpolate(s.createdMsg, { slug: created.slug })}{" "}
             <Link href={`/admin/products/${created.id}`} className="font-medium underline">
-              এডিটরে খুলে যাচাই করে পাবলিশ করুন
+              {s.openInEditor}
             </Link>
           </p>
         </div>
@@ -249,16 +253,16 @@ export function SourcingPanel() {
         <Card className="overflow-hidden">
           <div className="-mx-5 -mt-5 mb-5 border-b border-border bg-surface-2/70 px-5 py-4">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-display text-base font-semibold text-text-main">প্রিভিউ — যাচাই করে ঠিক করুন</h2>
+              <h2 className="font-display text-base font-semibold text-text-main">{s.previewTitle}</h2>
               <span className="inline-flex h-6 items-center rounded-full bg-amber-50 px-2.5 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-200">
-                DRAFT হিসেবে তৈরি হবে
+                {s.draftBadge}
               </span>
             </div>
             <p className="mt-1.5 break-all text-xs leading-relaxed text-text-subtle">
-              উৎস: <span className="font-mono">{preview.finalUrl}</span>
+              {s.sourceLabel} <span className="font-mono">{preview.finalUrl}</span>
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-text-subtle">যেভাবে পাওয়া গেছে:</span>
+              <span className="text-xs text-text-subtle">{s.foundVia}</span>
               {(preview.strategies.length > 0 ? preview.strategies : ["—"]).map((s) => (
                 <span key={s} className="inline-flex h-6 items-center rounded-full bg-brand-50 px-2.5 font-mono text-xs text-brand-700 ring-1 ring-inset ring-brand-100">
                   {s}
@@ -271,13 +275,13 @@ export function SourcingPanel() {
           <div className="grid gap-3 md:grid-cols-2">
             <div>
               <label className={labelCls} htmlFor="src-title-bn">
-                নাম (বাংলা) *
+                {s.nameBn}
               </label>
               <input id="src-title-bn" value={titleBn} onChange={(e) => setTitleBn(e.target.value)} className={inputCls} />
             </div>
             <div>
               <label className={labelCls} htmlFor="src-title-en">
-                নাম (English) *
+                {s.nameEn}
               </label>
               <input id="src-title-en" value={titleEn} onChange={(e) => setTitleEn(e.target.value)} className={inputCls} />
             </div>
@@ -285,7 +289,7 @@ export function SourcingPanel() {
 
           <div>
             <label className={labelCls} htmlFor="src-desc">
-              বর্ণনা (পেজ থেকে পাওয়া; উৎস লিংকটি তৈরি সময়ে নিচে যোগ হবে)
+              {s.descLabel}
             </label>
             <textarea
               id="src-desc"
@@ -297,9 +301,9 @@ export function SourcingPanel() {
           </div>
 
           <div>
-            <span className={labelCls}>ছবি — যেগুলো নিতে চান টিক দিন ({pickedImages.size}/{preview.images.length})</span>
+            <span className={labelCls}>{interpolate(s.imagesLabel, { picked: pickedImages.size, total: preview.images.length })}</span>
             {preview.images.length === 0 ? (
-              <p className="text-sm text-text-subtle">এই পেজে কোনো ছবি পাওয়া যায়নি — পণ্য ছবি ছাড়াই তৈরি হবে, পরে এডিটরে যোগ করতে পারবেন।</p>
+              <p className="text-sm text-text-subtle">{s.noImages}</p>
             ) : (
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
                 {preview.images.map((img) => {
@@ -336,34 +340,34 @@ export function SourcingPanel() {
 
           <div className="grid gap-3 md:grid-cols-3">
             <div>
-              <span className={labelCls}>পেজে শনাক্ত দাম</span>
+              <span className={labelCls}>{s.detectedPrice}</span>
               <p className="flex min-h-[44px] items-center rounded-lg border border-brand-100 bg-brand-50/60 px-3 py-2 font-mono text-base font-semibold text-brand-800">
                 {preview.priceAmount
                   ? `${preview.priceAmount} ${preview.priceCurrency ?? ""}`.trim()
-                  : "দাম পাওয়া যায়নি — নিজে লিখুন"}
+                  : s.noPrice}
               </p>
             </div>
             <div>
               <label className={labelCls} htmlFor="src-price">
-                বিক্রয়মূল্য (৳) *
+                {s.sellPrice}
               </label>
               <input
                 id="src-price"
                 value={priceTaka}
                 onChange={(e) => setPriceTaka(e.target.value)}
-                placeholder="যেমন 1850"
+                placeholder={s.pricePlaceholder}
                 inputMode="decimal"
                 className={inputCls}
               />
               {preview.priceCurrency && preview.priceCurrency !== "BDT" ? (
                 <p className="mt-1 text-xs text-amber-700">
-                  বিদেশি দাম নিজে থেকে টাকায় বদলানো হয়নি — আপনার রেটে হিসাব করে লিখুন (ক্যালকুলেটর ট্যাব সাহায্য করবে)।
+                  {s.foreignPriceNote}
                 </p>
               ) : null}
             </div>
             <div>
               <label className={labelCls} htmlFor="src-stock">
-                প্রাথমিক স্টক
+                {s.initialStock}
               </label>
               <input id="src-stock" value={stock} onChange={(e) => setStock(e.target.value)} inputMode="numeric" className={inputCls} />
             </div>
@@ -372,14 +376,14 @@ export function SourcingPanel() {
           <div className="grid gap-3 md:grid-cols-3">
             <div>
               <label className={labelCls} htmlFor="src-category">
-                ক্যাটাগরি *
+                {s.category}
               </label>
               {categories && categories.length > 0 ? (
                 <select id="src-category" value={categorySlug} onChange={(e) => setCategorySlug(e.target.value)} className={inputCls}>
-                  <option value="">— বেছে নিন —</option>
+                  <option value="">{s.choose}</option>
                   {categories.map((c) => (
                     <option key={c.slug} value={c.slug}>
-                      {c.nameBn} ({c.slug})
+                      {locale === "bn" ? c.nameBn : (c.nameEn ?? c.nameBn)} ({c.slug})
                     </option>
                   ))}
                 </select>
@@ -388,20 +392,20 @@ export function SourcingPanel() {
                   id="src-category"
                   value={categorySlug}
                   onChange={(e) => setCategorySlug(e.target.value)}
-                  placeholder="ক্যাটাগরি slug, যেমন fashion"
+                  placeholder={s.categoryPlaceholder}
                   className={inputCls}
                 />
               )}
             </div>
             <div>
               <label className={labelCls} htmlFor="src-brand">
-                ব্র্যান্ড (ঐচ্ছিক)
+                {s.brandOptional}
               </label>
               <input id="src-brand" value={brandName} onChange={(e) => setBrandName(e.target.value)} className={inputCls} />
             </div>
             <div>
               <label className={labelCls} htmlFor="src-sku">
-                SKU (খালি রাখলে নিজে তৈরি হবে)
+                {s.skuLabel}
               </label>
               <input id="src-sku" value={sku} onChange={(e) => setSku(e.target.value)} className={`${inputCls} font-mono`} />
             </div>
@@ -415,9 +419,9 @@ export function SourcingPanel() {
               className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2 text-sm font-semibold text-white shadow-md transition motion-fast hover:bg-emerald-700 hover:shadow-lift disabled:opacity-50"
             >
               <Icon name="plus" size={16} />
-              {creating ? "তৈরি হচ্ছে…" : "ড্রাফট পণ্য তৈরি করুন"}
+              {creating ? s.creating : s.createDraft}
             </button>
-            <p className="text-xs leading-relaxed text-text-subtle">পণ্যটি DRAFT হিসেবে তৈরি হবে — এডিটরে যাচাই না করে কখনো সরাসরি পাবলিশ হয় না।</p>
+            <p className="text-xs leading-relaxed text-text-subtle">{s.draftNote}</p>
           </div>
           </div>
         </Card>

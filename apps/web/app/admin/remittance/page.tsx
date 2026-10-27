@@ -25,6 +25,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { formatPoisha } from "@/components/ui/money";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
+import { REMITTANCE_STRINGS, type RemittanceStrings } from "./strings";
 
 interface OutstandingOrder {
   paymentId: string;
@@ -77,14 +80,18 @@ interface BatchItem {
 
 const PROVIDERS = ["steadfast", "pathao", "redx", "paperfly", "ecourier", "rider"] as const;
 
-const STATUS_UI: Record<string, { label: string; tone: "success" | "warning" | "danger" | "info" | "neutral" }> = {
-  OPEN: { label: "খোলা — প্রাপ্তি বাকি", tone: "warning" },
-  RECEIVED: { label: "টাকা এসেছে", tone: "info" },
-  CLOSED: { label: "বন্ধ", tone: "success" },
-};
+function statusUi(
+  s: RemittanceStrings,
+): Record<string, { label: string; tone: "success" | "warning" | "danger" | "info" | "neutral" }> {
+  return {
+    OPEN: { label: s.statusOpen, tone: "warning" },
+    RECEIVED: { label: s.statusReceived, tone: "info" },
+    CLOSED: { label: s.statusClosed, tone: "success" },
+  };
+}
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", { timeZone: "Asia/Dhaka" });
+function fmtDate(iso: string, locale: Locale): string {
+  return new Date(iso).toLocaleDateString(intlLocale(locale), { timeZone: "Asia/Dhaka" });
 }
 
 /* ------------------------------------------------------------------ */
@@ -100,19 +107,23 @@ function pct(part: number, whole: number): number {
   return Math.min(100, Math.max(0, (part / whole) * 100));
 }
 
-const AGE_BUCKETS: Array<{ key: string; label: string; maxAgeDays: number; barClass: string }> = [
-  { key: "d0-2", label: "০–২ দিন", maxAgeDays: 2, barClass: "bg-emerald-400" },
-  { key: "d3-6", label: "৩–৬ দিন", maxAgeDays: 6, barClass: "bg-amber-400" },
-  { key: "d7-13", label: "৭–১৩ দিন", maxAgeDays: 13, barClass: "bg-orange-400" },
-  { key: "d14+", label: "১৪+ দিন", maxAgeDays: Number.POSITIVE_INFINITY, barClass: "bg-rose-400" },
-];
+function ageBuckets(s: RemittanceStrings): Array<{ key: string; label: string; maxAgeDays: number; barClass: string }> {
+  return [
+    { key: "d0-2", label: s.age0_2, maxAgeDays: 2, barClass: "bg-emerald-400" },
+    { key: "d3-6", label: s.age3_6, maxAgeDays: 6, barClass: "bg-amber-400" },
+    { key: "d7-13", label: s.age7_13, maxAgeDays: 13, barClass: "bg-orange-400" },
+    { key: "d14+", label: s.age14plus, maxAgeDays: Number.POSITIVE_INFINITY, barClass: "bg-rose-400" },
+  ];
+}
 
 /** Aging strip for one provider's outstanding collections — buckets
  *  are counted/summed from the per-order ageDays the read model
  *  already returns on this very payload. */
 function AgingStrip({ orders }: { orders: OutstandingOrder[] }) {
+  const { locale } = useLocale();
+  const s = pick(locale, REMITTANCE_STRINGS);
   if (orders.length === 0) return null;
-  const buckets = AGE_BUCKETS.map((b) => ({ ...b, count: 0, totalPoisha: 0 }));
+  const buckets = ageBuckets(s).map((b) => ({ ...b, count: 0, totalPoisha: 0 }));
   for (const o of orders) {
     const bucket = buckets.find((b) => o.ageDays <= b.maxAgeDays) ?? buckets[buckets.length - 1];
     bucket.count += 1;
@@ -122,7 +133,7 @@ function AgingStrip({ orders }: { orders: OutstandingOrder[] }) {
   const visible = buckets.filter((b) => b.count > 0);
   return (
     <div className="mt-3">
-      <div className="flex h-2 w-full overflow-hidden rounded-full bg-surface-2" role="img" aria-label="সংগ্রহের বয়স অনুযায়ী ভাগ">
+      <div className="flex h-2 w-full overflow-hidden rounded-full bg-surface-2" role="img" aria-label={s.agingAria}>
         {visible.map((b) => (
           <span key={b.key} className={b.barClass} style={{ width: `${pct(b.totalPoisha, grandTotal)}%` }} />
         ))}
@@ -131,7 +142,7 @@ function AgingStrip({ orders }: { orders: OutstandingOrder[] }) {
         {visible.map((b) => (
           <li key={b.key} className="inline-flex items-center gap-1.5">
             <span aria-hidden="true" className={`h-2 w-2 rounded-full ${b.barClass}`} />
-            {b.label}: {b.count}টি · {formatPoisha(b.totalPoisha)}
+            {interpolate(s.bucketLine, { label: b.label, count: b.count, amount: formatPoisha(b.totalPoisha) })}
           </li>
         ))}
       </ul>
@@ -146,12 +157,14 @@ function AgingStrip({ orders }: { orders: OutstandingOrder[] }) {
  *  sky marker + note. An OPEN batch (nothing received yet) shows the
  *  empty track. Segments are ratios of the stored figures only. */
 function BatchMoneyBar({ batch }: { batch: Batch }) {
+  const { locale } = useLocale();
+  const s = pick(locale, REMITTANCE_STRINGS);
   const expected = batch.expectedPoisha;
   if (batch.receivedPoisha === null) {
     return (
       <div>
         <div className="h-2.5 w-full rounded-full border border-dashed border-border bg-surface-2" />
-        <p className="mt-1.5 text-caption text-text-muted">প্রাপ্তি এখনো রেকর্ড হয়নি — পুরো {formatPoisha(expected)} পাওনা।</p>
+        <p className="mt-1.5 text-caption text-text-muted">{interpolate(s.notReceivedYet, { amount: formatPoisha(expected) })}</p>
       </div>
     );
   }
@@ -160,31 +173,31 @@ function BatchMoneyBar({ batch }: { batch: Batch }) {
   const variance = batch.variancePoisha ?? 0;
   return (
     <div>
-      <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-surface-2" role="img" aria-label="প্রত্যাশিত বনাম প্রাপ্ত অনুপাত">
+      <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-surface-2" role="img" aria-label={s.moneyBarAria}>
         <span className="bg-emerald-500" style={{ width: `${pct(received, expected)}%` }} />
         <span className="bg-slate-400" style={{ width: `${pct(fee, expected)}%` }} />
         {variance > 0 ? <span className="bg-rose-400" style={{ width: `${pct(variance, expected)}%` }} /> : null}
       </div>
       <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-caption text-text-muted">
         <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden="true" className="h-2 w-2 rounded-full bg-emerald-500" /> এসেছে {formatPoisha(received)}
+          <span aria-hidden="true" className="h-2 w-2 rounded-full bg-emerald-500" /> {interpolate(s.receivedLabel, { amount: formatPoisha(received) })}
         </span>
         {fee > 0 ? (
           <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-slate-400" /> ফি {formatPoisha(fee)}
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-slate-400" /> {interpolate(s.feeLabel, { amount: formatPoisha(fee) })}
           </span>
         ) : null}
         {variance > 0 ? (
           <span className="inline-flex items-center gap-1.5 font-medium text-rose-600">
-            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-rose-400" /> অমিল (কম এসেছে) {formatPoisha(variance)}
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-rose-400" /> {interpolate(s.varianceShort, { amount: formatPoisha(variance) })}
           </span>
         ) : variance < 0 ? (
           <span className="inline-flex items-center gap-1.5 font-medium text-sky-600">
-            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-sky-400" /> বেশি এসেছে {formatPoisha(-variance)}
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-sky-400" /> {interpolate(s.varianceOver, { amount: formatPoisha(-variance) })}
           </span>
         ) : (
           <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600">
-            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-emerald-500" /> অমিল নেই
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-emerald-500" /> {s.varianceNone}
           </span>
         )}
       </div>
@@ -193,6 +206,9 @@ function BatchMoneyBar({ batch }: { batch: Batch }) {
 }
 
 export default function RemittancePage() {
+  const { locale } = useLocale();
+  const s = pick(locale, REMITTANCE_STRINGS);
+  const STATUS_UI = statusUi(s);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [outstanding, setOutstanding] = useState<Outstanding | null>(null);
   const [loading, setLoading] = useState(true);
@@ -216,16 +232,16 @@ export default function RemittancePage() {
     try {
       const res = await fetch("/api/v1/admin/remittances?pageSize=50");
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error?.message ?? "লোড ব্যর্থ হয়েছে।");
+      if (!res.ok) throw new Error(json.error?.message ?? s.loadFailed);
       setBatches(json.data ?? []);
       setOutstanding(json.meta?.outstanding ?? null);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "লোড ব্যর্থ হয়েছে।");
+      setError(e instanceof Error ? e.message : s.loadFailed);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load();
@@ -233,7 +249,7 @@ export default function RemittancePage() {
 
   const createBatch = async () => {
     if (!periodStart || !periodEnd) {
-      setError("শুরুর ও শেষের তারিখ দুটোই দিন। / Both period dates are required.");
+      setError(s.datesRequired);
       return;
     }
     setCreating(true);
@@ -250,13 +266,16 @@ export default function RemittancePage() {
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error?.message ?? "ব্যাচ তৈরি ব্যর্থ হয়েছে।");
+      if (!res.ok) throw new Error(json.error?.message ?? s.createFailed);
       setNotice(
-        `ব্যাচ তৈরি হয়েছে — ${json.data.itemCount}টি সংগ্রহ, প্রত্যাশিত ${formatPoisha(json.data.expectedPoisha)}।`,
+        interpolate(s.batchCreated, {
+          count: json.data.itemCount,
+          amount: formatPoisha(json.data.expectedPoisha),
+        }),
       );
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "ব্যাচ তৈরি ব্যর্থ হয়েছে।");
+      setError(e instanceof Error ? e.message : s.createFailed);
     } finally {
       setCreating(false);
     }
@@ -300,16 +319,16 @@ export default function RemittancePage() {
         body: JSON.stringify(body),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error?.message ?? "ব্যর্থ হয়েছে।");
+      if (!res.ok) throw new Error(json.error?.message ?? s.actionFailed);
       setNotice(
         kind === "receive"
-          ? `প্রাপ্তি রেকর্ড হয়েছে — অমিল (variance): ${formatPoisha(json.data.variancePoisha ?? 0)}।`
-          : "ব্যাচ বন্ধ করা হয়েছে।",
+          ? interpolate(s.receivedNotice, { amount: formatPoisha(json.data.variancePoisha ?? 0) })
+          : s.closedNotice,
       );
       setOpenBatchId(null);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "ব্যর্থ হয়েছে।");
+      setError(e instanceof Error ? e.message : s.actionFailed);
     } finally {
       setActing(false);
     }
@@ -318,8 +337,8 @@ export default function RemittancePage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="কুরিয়ার রেমিট্যান্স (COD)"
-        description="কুরিয়ার/রাইডার গ্রাহকের কাছ থেকে যে COD টাকা তুলেছে, তার মধ্যে কতটা দোকানে ফেরত এসেছে — ব্যাচ ধরে হিসাব। প্রত্যাশিত অর্থ সবসময় রেকর্ড-হওয়া সংগ্রহের যোগফল, অর্ডারের মোট থেকে অনুমান নয়।"
+        title={s.title}
+        description={s.description}
       />
 
       {error ? (
@@ -336,12 +355,12 @@ export default function RemittancePage() {
             <div className="flex items-center justify-between">
               <span className="font-medium capitalize text-text-main">{p.provider}</span>
               <Badge tone={p.oldestAgeDays >= 7 ? "danger" : p.oldestAgeDays >= 3 ? "warning" : "neutral"}>
-                সবচেয়ে পুরনো {p.oldestAgeDays} দিন
+                {interpolate(s.oldestBadge, { days: p.oldestAgeDays })}
               </Badge>
             </div>
             <div className="mt-2 text-h3 font-semibold text-text-main">{formatPoisha(p.totalPoisha)}</div>
             <p className="text-small text-text-muted">
-              {p.count}টি সংগ্রহ এখনো কোনো ব্যাচে যায়নি — কুরিয়ারের কাছে পাওনা।
+              {interpolate(s.outstandingText, { count: p.count })}
             </p>
             <AgingStrip orders={p.orders} />
           </Card>
@@ -351,7 +370,7 @@ export default function RemittancePage() {
             <div className="flex items-center justify-between">
               <span className="inline-flex items-center gap-2 font-medium text-amber-900 dark:text-amber-200">
                 <Icon name="alert" size={16} />
-                প্রোভাইডার অজানা — মনোযোগ দিন
+                {s.unattributedTitle}
               </span>
               <Badge tone="warning">unattributed</Badge>
             </div>
@@ -359,14 +378,13 @@ export default function RemittancePage() {
               {formatPoisha(outstanding.unattributed.totalPoisha)}
             </div>
             <p className="text-small text-amber-800 dark:text-amber-300">
-              {outstanding.unattributed.count}টি COD পেমেন্টের প্রোভাইডার সংগ্রহ-মার্কার থেকে প্রমাণ করা যায়নি
-              (যেমন হাতে রেকর্ড করা) — এগুলো কোনো ব্যাচে যাবে না।
+              {interpolate(s.unattributedText, { count: outstanding.unattributed.count })}
             </p>
           </Card>
         ) : null}
         {!loading && outstanding && outstanding.providers.length === 0 && outstanding.unattributed.count === 0 ? (
           <Card className="p-4">
-            <p className="text-small text-text-muted">সব সংগ্রহ ব্যাচে চলে গেছে — কারো কাছে পাওনা নেই।</p>
+            <p className="text-small text-text-muted">{s.allBatched}</p>
           </Card>
         ) : null}
       </div>
@@ -375,18 +393,18 @@ export default function RemittancePage() {
       {(outstanding?.providers ?? []).map((p) => (
         <Card key={`tbl-${p.provider}`} className="p-4">
           <h3 className="mb-3 font-medium capitalize text-text-main">
-            {p.provider} — ব্যাচের বাইরে থাকা সংগ্রহ ({p.count})
+            {interpolate(s.tableTitle, { provider: p.provider, count: p.count })}
           </h3>
           <div className="overflow-x-auto">
             <table className="w-full text-small">
               <thead>
                 <tr className="text-left text-text-muted">
-                  <th className="py-1 pr-3">অর্ডার</th>
-                  <th className="py-1 pr-3">গ্রাহক</th>
-                  <th className="py-1 pr-3">ফোন</th>
-                  <th className="py-1 pr-3">সংগ্রহের তারিখ</th>
-                  <th className="py-1 pr-3">বয়স</th>
-                  <th className="py-1 text-right">পরিমাণ</th>
+                  <th className="py-1 pr-3">{s.colOrder}</th>
+                  <th className="py-1 pr-3">{s.colCustomer}</th>
+                  <th className="py-1 pr-3">{s.colPhone}</th>
+                  <th className="py-1 pr-3">{s.colCollectedDate}</th>
+                  <th className="py-1 pr-3">{s.colAge}</th>
+                  <th className="py-1 text-right">{s.colAmount}</th>
                 </tr>
               </thead>
               <tbody>
@@ -399,8 +417,8 @@ export default function RemittancePage() {
                     </td>
                     <td className="py-1.5 pr-3">{o.customerName}</td>
                     <td className="py-1.5 pr-3 font-mono">{o.customerPhoneMasked}</td>
-                    <td className="py-1.5 pr-3">{fmtDate(o.collectedAt)}</td>
-                    <td className="py-1.5 pr-3">{o.ageDays} দিন</td>
+                    <td className="py-1.5 pr-3">{fmtDate(o.collectedAt, locale)}</td>
+                    <td className="py-1.5 pr-3">{interpolate(s.ageDays, { days: o.ageDays })}</td>
                     <td className="py-1.5 text-right">{formatPoisha(o.amountPoisha)}</td>
                   </tr>
                 ))}
@@ -412,10 +430,10 @@ export default function RemittancePage() {
 
       {/* ------- Create batch ------- */}
       <Card className="p-4">
-        <h3 className="mb-3 font-medium text-text-main">নতুন রেমিট্যান্স ব্যাচ</h3>
+        <h3 className="mb-3 font-medium text-text-main">{s.newBatch}</h3>
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-small text-text-muted">
-            প্রোভাইডার
+            {s.providerLabel}
             <select
               value={provider}
               onChange={(e) => setProvider(e.target.value)}
@@ -423,13 +441,13 @@ export default function RemittancePage() {
             >
               {PROVIDERS.map((p) => (
                 <option key={p} value={p}>
-                  {p === "rider" ? "নিজস্ব রাইডার (rider)" : p}
+                  {p === "rider" ? s.riderOption : p}
                 </option>
               ))}
             </select>
           </label>
           <label className="text-small text-text-muted">
-            সংগ্রহের শুরু
+            {s.periodStartLabel}
             <input
               type="date"
               value={periodStart}
@@ -438,7 +456,7 @@ export default function RemittancePage() {
             />
           </label>
           <label className="text-small text-text-muted">
-            সংগ্রহের শেষ
+            {s.periodEndLabel}
             <input
               type="date"
               value={periodEnd}
@@ -447,21 +465,21 @@ export default function RemittancePage() {
             />
           </label>
           <Button onClick={createBatch} disabled={creating}>
-            {creating ? "তৈরি হচ্ছে…" : "ব্যাচ তৈরি করুন"}
+            {creating ? s.creating : s.createBatch}
           </Button>
         </div>
         <p className="mt-2 text-small text-text-muted">
-          ঐ সময়ে ঐ প্রোভাইডারের যেসব সংগ্রহ এখনো কোনো ব্যাচে যায়নি, সেগুলোই এই ব্যাচে আসবে।
+          {s.createHint}
         </p>
       </Card>
 
       {/* ------- Batches ------- */}
       <Card className="p-4">
-        <h3 className="mb-3 font-medium text-text-main">ব্যাচসমূহ</h3>
+        <h3 className="mb-3 font-medium text-text-main">{s.batchesTitle}</h3>
         {loading ? (
-          <p className="text-small text-text-muted">লোড হচ্ছে…</p>
+          <p className="text-small text-text-muted">{s.loading}</p>
         ) : batches.length === 0 ? (
-          <p className="text-small text-text-muted">এখনো কোনো ব্যাচ নেই।</p>
+          <p className="text-small text-text-muted">{s.noBatches}</p>
         ) : (
           <div className="space-y-3">
             {batches.map((b) => {
@@ -473,37 +491,42 @@ export default function RemittancePage() {
                     <span className="font-medium capitalize text-text-main">{b.provider}</span>
                     <Badge tone={ui.tone}>{ui.label}</Badge>
                     <span className="text-small text-text-muted">
-                      {fmtDate(b.periodStart)} → {fmtDate(b.periodEnd)} · {b.itemCount}টি সংগ্রহ
+                      {fmtDate(b.periodStart, locale)} → {fmtDate(b.periodEnd, locale)} ·{" "}
+                      {interpolate(s.batchMeta, { count: b.itemCount })}
                     </span>
                     <span className="ml-auto text-small text-text-main">
-                      প্রত্যাশিত {formatPoisha(b.expectedPoisha)}
-                      {b.receivedPoisha !== null ? <> · এসেছে {formatPoisha(b.receivedPoisha)}</> : null}
-                      {b.feePoisha !== null && b.feePoisha > 0 ? <> · ফি {formatPoisha(b.feePoisha)}</> : null}
+                      {interpolate(s.expectedInline, { amount: formatPoisha(b.expectedPoisha) })}
+                      {b.receivedPoisha !== null ? (
+                        <>{interpolate(s.receivedInline, { amount: formatPoisha(b.receivedPoisha) })}</>
+                      ) : null}
+                      {b.feePoisha !== null && b.feePoisha > 0 ? (
+                        <>{interpolate(s.feeInline, { amount: formatPoisha(b.feePoisha) })}</>
+                      ) : null}
                     </span>
                     {b.variancePoisha !== null && b.variancePoisha !== 0 ? (
-                      <Badge tone={b.variancePoisha > 0 ? "danger" : "info"}>অমিল {formatPoisha(b.variancePoisha)}</Badge>
+                      <Badge tone={b.variancePoisha > 0 ? "danger" : "info"}>{interpolate(s.varianceBadge, { amount: formatPoisha(b.variancePoisha) })}</Badge>
                     ) : null}
                   </button>
                   <div className="mt-3 border-t border-border pt-3">
                     <dl className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
                       <div className="rounded-lg bg-surface-2 px-2 py-2">
-                        <dt className="text-caption text-text-muted">প্রত্যাশিত</dt>
+                        <dt className="text-caption text-text-muted">{s.statExpected}</dt>
                         <dd className="mt-0.5 text-small font-semibold text-text-main">{formatPoisha(b.expectedPoisha)}</dd>
                       </div>
                       <div className="rounded-lg bg-surface-2 px-2 py-2">
-                        <dt className="text-caption text-text-muted">এসেছে</dt>
+                        <dt className="text-caption text-text-muted">{s.statReceived}</dt>
                         <dd className="mt-0.5 text-small font-semibold text-text-main">
                           {b.receivedPoisha !== null ? formatPoisha(b.receivedPoisha) : "—"}
                         </dd>
                       </div>
                       <div className="rounded-lg bg-surface-2 px-2 py-2">
-                        <dt className="text-caption text-text-muted">কুরিয়ার ফি</dt>
+                        <dt className="text-caption text-text-muted">{s.statFee}</dt>
                         <dd className="mt-0.5 text-small font-semibold text-text-main">
                           {b.feePoisha !== null ? formatPoisha(b.feePoisha) : "—"}
                         </dd>
                       </div>
                       <div className="rounded-lg bg-surface-2 px-2 py-2">
-                        <dt className="text-caption text-text-muted">অমিল (variance)</dt>
+                        <dt className="text-caption text-text-muted">{s.statVariance}</dt>
                         <dd
                           className={`mt-0.5 text-small font-semibold ${
                             b.variancePoisha === null || b.variancePoisha === 0
@@ -528,11 +551,11 @@ export default function RemittancePage() {
                           <table className="w-full text-small">
                             <thead>
                               <tr className="text-left text-text-muted">
-                                <th className="py-1 pr-3">অর্ডার</th>
-                                <th className="py-1 pr-3">গ্রাহক</th>
-                                <th className="py-1 pr-3">ফোন</th>
-                                <th className="py-1 pr-3">সংগ্রহ</th>
-                                <th className="py-1 text-right">পরিমাণ</th>
+                                <th className="py-1 pr-3">{s.colOrder}</th>
+                                <th className="py-1 pr-3">{s.colCustomer}</th>
+                                <th className="py-1 pr-3">{s.colPhone}</th>
+                                <th className="py-1 pr-3">{s.colCollected}</th>
+                                <th className="py-1 text-right">{s.colAmount}</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -545,7 +568,7 @@ export default function RemittancePage() {
                                   </td>
                                   <td className="py-1.5 pr-3">{i.customerName}</td>
                                   <td className="py-1.5 pr-3 font-mono">{i.customerPhoneMasked}</td>
-                                  <td className="py-1.5 pr-3">{fmtDate(i.collectedAt)}</td>
+                                  <td className="py-1.5 pr-3">{fmtDate(i.collectedAt, locale)}</td>
                                   <td className="py-1.5 text-right">{formatPoisha(i.expectedPoisha)}</td>
                                 </tr>
                               ))}
@@ -553,12 +576,12 @@ export default function RemittancePage() {
                           </table>
                         </div>
                       ) : (
-                        <p className="text-small text-text-muted">আইটেম লোড হচ্ছে…</p>
+                        <p className="text-small text-text-muted">{s.itemsLoading}</p>
                       )}
                       {b.status === "OPEN" ? (
                         <div className="flex flex-wrap items-end gap-3">
                           <label className="text-small text-text-muted">
-                            প্রাপ্ত টাকা (৳)
+                            {s.receivedTakaLabel}
                             <input
                               type="number"
                               min="0"
@@ -569,7 +592,7 @@ export default function RemittancePage() {
                             />
                           </label>
                           <label className="text-small text-text-muted">
-                            কুরিয়ার ফি (৳)
+                            {s.feeTakaLabel}
                             <input
                               type="number"
                               min="0"
@@ -580,7 +603,7 @@ export default function RemittancePage() {
                             />
                           </label>
                           <label className="flex-1 text-small text-text-muted">
-                            নোট
+                            {s.noteLabel}
                             <input
                               type="text"
                               value={actionNote}
@@ -589,14 +612,15 @@ export default function RemittancePage() {
                             />
                           </label>
                           <Button onClick={() => void postAction(b, "receive")} disabled={acting}>
-                            প্রাপ্তি রেকর্ড করুন
+                            {s.recordReceipt}
                           </Button>
                         </div>
                       ) : null}
                       {b.status === "RECEIVED" ? (
                         <div className="flex flex-wrap items-end gap-3">
                           <label className="flex-1 text-small text-text-muted">
-                            বন্ধের নোট{(b.variancePoisha ?? 0) !== 0 ? " (অমিল থাকায় আবশ্যক)" : ""}
+                            {s.closeNoteLabel}
+                            {(b.variancePoisha ?? 0) !== 0 ? s.closeNoteRequiredSuffix : ""}
                             <input
                               type="text"
                               value={actionNote}
@@ -605,12 +629,12 @@ export default function RemittancePage() {
                             />
                           </label>
                           <Button onClick={() => void postAction(b, "close")} disabled={acting}>
-                            ব্যাচ বন্ধ করুন
+                            {s.closeBatch}
                           </Button>
                         </div>
                       ) : null}
                       {b.status === "CLOSED" && b.note ? (
-                        <p className="text-small text-text-muted">নোট: {b.note}</p>
+                        <p className="text-small text-text-muted">{interpolate(s.notePrefix, { note: b.note })}</p>
                       ) : null}
                     </div>
                   ) : null}

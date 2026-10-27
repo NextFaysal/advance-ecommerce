@@ -64,6 +64,9 @@ import { generateVariantDrafts, validateVariantDrafts } from "@/catalog/variants
 import { renderDescriptionHtml } from "@/catalog/description";
 import { formatFileSize, type ProductTypeValue, type ProductWithTypeFields } from "@/catalog/product-type-contract";
 import type { Product, ProductAttribute, ProductStatus } from "@/catalog/types";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick } from "@/i18n/locale";
+import { PRODUCTS_STRINGS } from "./strings";
 
 export interface CategoryOption {
   slug: string;
@@ -188,12 +191,12 @@ function localInputToIso(value: string): string | null {
 }
 
 /** Optional non-negative-integer field: "" -> null; junk -> error. */
-function parseNonNegativeInt(value: string, label: string, errors: string[]): number | null {
+function parseNonNegativeInt(value: string, label: string, errors: string[], template: string): number | null {
   const t = value.trim();
   if (t === "") return null;
   const n = Number(t);
   if (!Number.isInteger(n) || n < 0) {
-    errors.push(`${label}: শূন্য বা তার বেশি পূর্ণ সংখ্যা হতে হবে।`);
+    errors.push(interpolate(template, { label }));
     return null;
   }
   return n;
@@ -385,6 +388,8 @@ function DescriptionField({
   onChange: (next: string) => void;
   placeholder?: string;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, PRODUCTS_STRINGS);
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -416,29 +421,29 @@ function DescriptionField({
   }
 
   function addLink() {
-    const url = window.prompt("লিংকের URL লিখুন (https:// দিয়ে শুরু হতে হবে)");
+    const url = window.prompt(s.linkPrompt);
     if (!url || url.trim() === "") return;
-    applyToSelection((s) => `[${s || "লিংক"}](${url.trim()})`);
+    applyToSelection((sel) => `[${sel || s.linkDefault}](${url.trim()})`);
   }
 
   return (
     <div className="block text-sm">
       <span className="font-medium text-text-main">{label}</span>
       <span className="mt-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-border/70 bg-surface-2/70 p-1.5">
-        <button type="button" className={toolbarBtnCls} onClick={() => applyToSelection((s) => `**${s || "গুরুত্বপূর্ণ"}**`)} aria-label="Bold">
+        <button type="button" className={toolbarBtnCls} onClick={() => applyToSelection((sel) => `**${sel || s.boldDefault}**`)} aria-label={s.mdBoldAria}>
           B
         </button>
-        <button type="button" className={`${toolbarBtnCls} italic`} onClick={() => applyToSelection((s) => `*${s || "লেখা"}*`)} aria-label="Italic">
+        <button type="button" className={`${toolbarBtnCls} italic`} onClick={() => applyToSelection((sel) => `*${sel || s.italicDefault}*`)} aria-label={s.mdItalicAria}>
           I
         </button>
-        <button type="button" className={toolbarBtnCls} onClick={() => prefixCurrentLine("## ")} aria-label="Heading">
+        <button type="button" className={toolbarBtnCls} onClick={() => prefixCurrentLine("## ")} aria-label={s.mdHeadingAria}>
           H
         </button>
-        <button type="button" className={toolbarBtnCls} onClick={() => prefixCurrentLine("- ")} aria-label="Bullet list">
-          • তালিকা
+        <button type="button" className={toolbarBtnCls} onClick={() => prefixCurrentLine("- ")} aria-label={s.mdBulletAria}>
+          {s.bulletBtn}
         </button>
-        <button type="button" className={toolbarBtnCls} onClick={addLink} aria-label="Link">
-          🔗 লিংক
+        <button type="button" className={toolbarBtnCls} onClick={addLink} aria-label={s.mdLinkAria}>
+          {s.linkBtn}
         </button>
         <button
           type="button"
@@ -446,7 +451,7 @@ function DescriptionField({
           onClick={() => setShowPreview((v) => !v)}
           aria-expanded={showPreview}
         >
-          {showPreview ? "প্রিভিউ লুকান" : "প্রিভিউ দেখুন"}
+          {showPreview ? s.previewHide : s.previewShow}
         </button>
       </span>
       <textarea
@@ -458,7 +463,7 @@ function DescriptionField({
         placeholder={placeholder}
       />
       <span className="mt-1.5 block text-xs leading-relaxed text-text-subtle">
-        Markdown চলবে: **গাঢ়**, *তির্যক*, ## শিরোনাম, - তালিকা, [লেখা](https://…) লিংক। স্টোরে ঠিক এভাবেই দেখাবে।
+        {s.markdownHint}
       </span>
       {showPreview && (
         <div
@@ -495,6 +500,8 @@ export function ProductEditor({
   productTypesEnabled?: boolean;
 }) {
   const router = useRouter();
+  const { locale } = useLocale();
+  const s = pick(locale, PRODUCTS_STRINGS);
   const keySeq = useRef(1);
   const nextKey = () => keySeq.current++;
 
@@ -655,7 +662,7 @@ export function ProductEditor({
       if (!res.ok || !json?.data) {
         // Server message verbatim — the 503 AI_NOT_CONFIGURED text
         // must reach the admin exactly as the API states it.
-        setAiError(json?.error?.message ?? `AI অনুরোধ ব্যর্থ হয়েছে (HTTP ${res.status})।`);
+        setAiError(json?.error?.message ?? interpolate(s.aiRequestFail, { status: res.status }));
         return;
       }
       if (kind === "description") {
@@ -667,9 +674,9 @@ export function ProductEditor({
         if (json.data.seoDescriptionBn) setSeoDescriptionBn(json.data.seoDescriptionBn);
         if (json.data.seoDescriptionEn) setSeoDescriptionEn(json.data.seoDescriptionEn);
       }
-      setAiNote("AI খসড়া বসানো হয়েছে — যাচাই করে তারপর সংরক্ষণ করুন। এখনো কিছুই সেভ হয়নি।");
+      setAiNote(s.aiNoteSaved);
     } catch {
-      setAiError("AI সার্ভিসে পৌঁছানো যায়নি — নেটওয়ার্ক সমস্যা। আবার চেষ্টা করুন।");
+      setAiError(s.aiUnreachable);
     } finally {
       setAiBusy(null);
     }
@@ -969,46 +976,46 @@ export function ProductEditor({
 
   function buildPayload(effectiveStatus: ProductStatus): { payload?: Record<string, unknown>; errors: string[] } {
     const errors: string[] = [];
-    if (titleBn.trim() === "") errors.push("টাইটেল (বাংলা) আবশ্যক।");
-    if (titleEn.trim() === "") errors.push("Title (English) আবশ্যক।");
-    if (descriptionBn.trim() === "") errors.push("বিবরণ (বাংলা) আবশ্যক — API খালি বিবরণ নেয় না।");
-    if (descriptionEn.trim() === "") errors.push("Description (English) আবশ্যক — API খালি বিবরণ নেয় না।");
+    if (titleBn.trim() === "") errors.push(s.errTitleBn);
+    if (titleEn.trim() === "") errors.push(s.errTitleEn);
+    if (descriptionBn.trim() === "") errors.push(s.errDescBn);
+    if (descriptionEn.trim() === "") errors.push(s.errDescEn);
     if (!SLUG_PATTERN.test(slug)) {
-      errors.push("Slug ঠিক করুন — ছোট হাতের ইংরেজি অক্ষর, সংখ্যা আর হাইফেন (-) ছাড়া কিছু চলবে না।");
+      errors.push(s.errSlug);
     }
-    if (categorySlug === "") errors.push("ক্যাটাগরি বেছে নিন।");
+    if (categorySlug === "") errors.push(s.errCategory);
 
     const tags = tagsText
       .split(",")
       .map((t) => t.trim())
       .filter(Boolean);
-    if (tags.some((t) => t.length > 64)) errors.push("প্রতিটি ট্যাগ সর্বোচ্চ 64 অক্ষরের হতে পারবে।");
-    if (tags.length > 50) errors.push("সর্বোচ্চ 50টি ট্যাগ দেওয়া যাবে।");
+    if (tags.some((t) => t.length > 64)) errors.push(s.errTagLong);
+    if (tags.length > 50) errors.push(s.errTagMany);
 
-    if (rows.length === 0) errors.push("অন্তত ১টি ভেরিয়েন্ট লাগবে।");
+    if (rows.length === 0) errors.push(s.errVariantNeeded);
     const variants: VariantPayload[] = [];
     for (const r of rows) {
       const sku = r.sku.trim();
       if (sku === "") {
-        errors.push("একটি ভেরিয়েন্টের SKU খালি — SKU লিখুন বা সারিটি মুছুন।");
+        errors.push(s.errSkuEmpty);
         continue;
       }
       const price = takaToPoisha(r.priceTaka);
       if (price === null) {
-        errors.push(`SKU ${sku}: দাম (৳) ঠিকমতো লিখুন।`);
+        errors.push(interpolate(s.errPriceInvalidSku, { sku }));
         continue;
       }
       if (r.compareAtTaka.trim() !== "" && takaToPoisha(r.compareAtTaka) === null) {
-        errors.push(`SKU ${sku}: Compare-at দাম ঠিকমতো লিখুন।`);
+        errors.push(interpolate(s.errCompareInvalidSku, { sku }));
         continue;
       }
       if (r.costTaka.trim() !== "" && takaToPoisha(r.costTaka) === null) {
-        errors.push(`SKU ${sku}: Cost price ঠিকমতো লিখুন।`);
+        errors.push(interpolate(s.errCostInvalidSku, { sku }));
         continue;
       }
       const stockNum = Number(r.stock);
       if (r.stock.trim() === "" || !Number.isInteger(stockNum) || stockNum < 0) {
-        errors.push(`SKU ${sku}: স্টক শূন্য বা তার বেশি পূর্ণ সংখ্যা হতে হবে।`);
+        errors.push(interpolate(s.errStockInvalidSku, { sku }));
         continue;
       }
       variants.push({
@@ -1026,39 +1033,39 @@ export function ProductEditor({
     if (variants.length > 0) {
       // Same draft rules the generator validates: unique SKUs etc.
       for (const e of validateVariantDrafts(variants)) {
-        errors.push(`ভেরিয়েন্ট: ${e}`);
+        errors.push(interpolate(s.errVariantPrefix, { msg: e }));
       }
     }
 
     const images = imageRows
       .filter((i) => i.url.trim() !== "")
       .map((i, idx) => ({ url: i.url.trim(), altBn: i.altBn, altEn: i.altEn, sortOrder: idx }));
-    if (images.length > 20) errors.push("সর্বোচ্চ 20টি ছবি দেওয়া যাবে।");
+    if (images.length > 20) errors.push(s.errImagesMany);
 
     // --- Wave 14 fields -------------------------------------------------
-    const weightGramsValue = parseNonNegativeInt(weightGrams, "ওজন (গ্রাম)", errors);
-    const lengthMmValue = parseNonNegativeInt(lengthMm, "দৈর্ঘ্য (মিমি)", errors);
-    const widthMmValue = parseNonNegativeInt(widthMm, "প্রস্থ (মিমি)", errors);
-    const heightMmValue = parseNonNegativeInt(heightMm, "উচ্চতা (মিমি)", errors);
-    const lowStockThresholdValue = parseNonNegativeInt(lowStockThreshold, "লো-স্টক সীমা", errors);
+    const weightGramsValue = parseNonNegativeInt(weightGrams, s.lblWeight, errors, s.errNonNegInt);
+    const lengthMmValue = parseNonNegativeInt(lengthMm, s.lblLength, errors, s.errNonNegInt);
+    const widthMmValue = parseNonNegativeInt(widthMm, s.lblWidth, errors, s.errNonNegInt);
+    const heightMmValue = parseNonNegativeInt(heightMm, s.lblHeight, errors, s.errNonNegInt);
+    const lowStockThresholdValue = parseNonNegativeInt(lowStockThreshold, s.lblLowStock, errors, s.errNonNegInt);
 
     const videoUrlValue = emptyToNull(videoUrl);
     if (videoUrlValue !== null) {
       try {
         new URL(videoUrlValue);
       } catch {
-        errors.push("ভিডিও URL ঠিকমতো লিখুন (https:// দিয়ে শুরু হতে হবে)।");
+        errors.push(s.errVideoUrl);
       }
     }
 
     if (publishAt.trim() !== "" && localInputToIso(publishAt) === null) {
-      errors.push("প্রকাশের সময় ঠিকমতো বেছে নিন।");
+      errors.push(s.errPublishTime);
     }
     if (saleStartsAt.trim() !== "" && localInputToIso(saleStartsAt) === null) {
-      errors.push("সেল শুরুর সময় ঠিকমতো বেছে নিন।");
+      errors.push(s.errSaleStart);
     }
     if (saleEndsAt.trim() !== "" && localInputToIso(saleEndsAt) === null) {
-      errors.push("সেল শেষের সময় ঠিকমতো বেছে নিন।");
+      errors.push(s.errSaleEnd);
     }
 
     // Size chart: completely empty -> null; otherwise normalize every
@@ -1073,7 +1080,7 @@ export function ProductEditor({
             rows: sizeChart.rows.map((r) => sizeChart.headers.map((_, ci) => r[ci] ?? "")),
           };
     if (sizeChartValue !== null && sizeChartValue.headers.some((h) => h.trim() === "")) {
-      errors.push("সাইজ চার্টের সব কলামের শিরোনাম লিখুন।");
+      errors.push(s.errSizeChartHeaders);
     }
 
     // FAQ: fully-blank rows drop out; a half-filled row is an error.
@@ -1083,7 +1090,7 @@ export function ProductEditor({
       const a = row.a.trim();
       if (q === "" && a === "") continue;
       if (q === "" || a === "") {
-        errors.push("প্রতিটি প্রশ্নের জোড়ায় প্রশ্ন ও উত্তর দুটোই লিখতে হবে।");
+        errors.push(s.errFaqPair);
         break;
       }
       faqItemsValue.push({ q: row.q, a: row.a });
@@ -1101,18 +1108,18 @@ export function ProductEditor({
         const sizeText = row.sizeBytes.trim();
         if (storageKey === "" && fileName === "" && (sizeText === "" || sizeText === "0")) continue;
         if (storageKey === "" || fileName === "") {
-          errors.push("ডিজিটাল ফাইল: প্রতিটি সারিতে storage key ও ফাইলের নাম দুটোই লাগবে।");
+          errors.push(s.errDigitalRow);
           break;
         }
         const size = Number(sizeText);
         if (sizeText === "" || !Number.isInteger(size) || size < 0) {
-          errors.push(`ডিজিটাল ফাইল "${fileName}": সাইজ (bytes) শূন্য বা তার বেশি পূর্ণ সংখ্যা হতে হবে।`);
+          errors.push(interpolate(s.errDigitalSize, { name: fileName }));
           continue;
         }
         digitalFilesValue.push({ storageKey, fileName, sizeBytes: size });
       }
       if (effectiveStatus === "ACTIVE" && digitalFilesValue.length === 0) {
-        errors.push("ডিজিটাল পণ্য প্রকাশ করতে অন্তত ১টি ফাইল যোগ করুন — ফাইল ছাড়া ক্রেতা কিছুই ডাউনলোড করতে পারবে না।");
+        errors.push(s.errDigitalActive);
       }
     }
     let bundleComponentsValue: { variantId: string; quantity: number }[] | undefined;
@@ -1124,13 +1131,13 @@ export function ProductEditor({
         seen.add(row.variantId);
         const qty = Number(row.quantity);
         if (row.quantity.trim() === "" || !Number.isInteger(qty) || qty < 1) {
-          errors.push(`বান্ডল কম্পোনেন্ট ${row.variantSku || row.variantId}: পরিমাণ কমপক্ষে ১ হতে হবে।`);
+          errors.push(interpolate(s.errBundleQty, { ref: row.variantSku || row.variantId }));
           continue;
         }
         bundleComponentsValue.push({ variantId: row.variantId, quantity: qty });
       }
       if (effectiveStatus === "ACTIVE" && bundleComponentsValue.length === 0) {
-        errors.push("বান্ডল প্রকাশ করতে অন্তত ১টি কম্পোনেন্ট যোগ করুন।");
+        errors.push(s.errBundleActive);
       }
     }
     let preorderValue:
@@ -1142,14 +1149,14 @@ export function ProductEditor({
       if (depositText !== "") {
         const n = Number(depositText);
         if (!Number.isFinite(n) || n < 0 || n > 100) {
-          errors.push("অগ্রিম (%): ০ থেকে ১০০-এর মধ্যে হতে হবে।");
+          errors.push(s.errPreorderDeposit);
         } else {
           deposit = n;
         }
       }
-      const maxUnits = parseNonNegativeInt(preorderMaxUnits, "সর্বোচ্চ প্রি-অর্ডার সংখ্যা", errors);
+      const maxUnits = parseNonNegativeInt(preorderMaxUnits, s.lblMaxPreorder, errors, s.errNonNegInt);
       if (maxUnits !== null && maxUnits < 1) {
-        errors.push("সর্বোচ্চ প্রি-অর্ডার সংখ্যা কমপক্ষে ১ হতে হবে।");
+        errors.push(s.errPreorderMax);
       }
       preorderValue = {
         depositPercent: deposit,
@@ -1202,7 +1209,7 @@ export function ProductEditor({
     }
     if (mode === "edit" && priceChanged) {
       if (reason.trim() === "") {
-        return { errors: ["দাম বদলেছে — সেভ করার আগে দাম বদলের কারণ লিখুন (অডিটে থাকবে)।"] };
+        return { errors: [s.errPriceReasonSave] };
       }
       payload.reason = reason.trim();
     }
@@ -1214,7 +1221,7 @@ export function ProductEditor({
     const { payload, errors } = buildPayload(effectiveStatus);
     if (!payload) {
       setSaveStatus("error");
-      setSaveMessage("কিছু তথ্য ঠিক করতে হবে:");
+      setSaveMessage(s.saveFixHeading);
       setSaveErrors(errors);
       return;
     }
@@ -1242,7 +1249,7 @@ export function ProductEditor({
             )
           : [];
         setSaveErrors(details);
-        setSaveMessage(data.error?.message ?? "সেভ করা যায়নি।");
+        setSaveMessage(data.error?.message ?? s.saveFailedDefault);
         return;
       }
       if (mode === "create") {
@@ -1253,7 +1260,7 @@ export function ProductEditor({
           return;
         }
         setSaveStatus("saved");
-        setSaveMessage("পণ্য তৈরি হয়েছে।");
+        setSaveMessage(s.productCreated);
         return;
       }
       // Edit: the saved values become the new "originals", so the
@@ -1271,13 +1278,13 @@ export function ProductEditor({
       setSaveStatus("saved");
       setSaveMessage(
         data.data?.ledgerPending
-          ? "সেভ হয়েছে — তবে stock ledger এখনো pending (ডিফল্ট গুদাম পাওয়া যায়নি)।"
-          : "পরিবর্তন সেভ হয়েছে।",
+          ? s.savedLedger
+          : s.savedChanges,
       );
       router.refresh();
     } catch {
       setSaveStatus("error");
-      setSaveMessage("Network error — API-তে পৌঁছানো যায়নি।");
+      setSaveMessage(s.saveNetworkError);
     }
   }
 
@@ -1314,11 +1321,11 @@ export function ProductEditor({
           setImageRows((prev) => [...prev, { key: nextKey(), url: ticket.publicUrl, altBn: "", altEn: "" }]);
           resolve();
         } else {
-          fail(`স্টোরেজ আপলোড ব্যর্থ হয়েছে (HTTP ${xhr.status}) — আবার চেষ্টা করুন।`);
+          fail(interpolate(s.uploadStorageFail, { status: xhr.status }));
         }
       };
-      xhr.onerror = () => fail("নেটওয়ার্ক সমস্যায় আপলোড ব্যর্থ হয়েছে — সংযোগ দেখে আবার চেষ্টা করুন।");
-      xhr.onabort = () => fail("আপলোড বাতিল হয়েছে।");
+      xhr.onerror = () => fail(s.uploadNetworkFail);
+      xhr.onabort = () => fail(s.uploadAborted);
       xhr.send(file);
     });
   }
@@ -1358,7 +1365,7 @@ export function ProductEditor({
         error?: { code?: string; message?: string };
       };
       if (!res.ok) {
-        const message = data.error?.message ?? "আপলোড শুরু করা যায়নি।";
+        const message = data.error?.message ?? s.uploadStartFail;
         if (data.error?.code === "STORAGE_NOT_CONFIGURED") setUploadNotice(message);
         markAllError(message);
         return;
@@ -1372,7 +1379,7 @@ export function ProductEditor({
         }),
       );
     } catch {
-      markAllError("Network error — আপলোড সার্ভারে পৌঁছানো যায়নি।");
+      markAllError(s.uploadServerUnreachable);
     }
   }
 
@@ -1411,11 +1418,11 @@ export function ProductEditor({
           ]);
           resolve();
         } else {
-          fail(`স্টোরেজ আপলোড ব্যর্থ হয়েছে (HTTP ${xhr.status}) — আবার চেষ্টা করুন।`);
+          fail(interpolate(s.uploadStorageFail, { status: xhr.status }));
         }
       };
-      xhr.onerror = () => fail("নেটওয়ার্ক সমস্যায় আপলোড ব্যর্থ হয়েছে — সংযোগ দেখে আবার চেষ্টা করুন।");
-      xhr.onabort = () => fail("আপলোড বাতিল হয়েছে।");
+      xhr.onerror = () => fail(s.uploadNetworkFail);
+      xhr.onabort = () => fail(s.uploadAborted);
       xhr.send(file);
     });
   }
@@ -1454,7 +1461,7 @@ export function ProductEditor({
         error?: { code?: string; message?: string };
       };
       if (!res.ok) {
-        const message = data.error?.message ?? "আপলোড শুরু করা যায়নি।";
+        const message = data.error?.message ?? s.uploadStartFail;
         if (data.error?.code === "STORAGE_NOT_CONFIGURED") setDigitalUploadNotice(message);
         markAllError(message);
         return;
@@ -1467,14 +1474,14 @@ export function ProductEditor({
           const storageKey = ticket.key ?? ticket.storageKey ?? "";
           if (!file || !item) return Promise.resolve();
           if (storageKey === "") {
-            markAllError("সার্ভার আপলোডের storage key দেয়নি — ফাইলটি যোগ করা যায়নি।");
+            markAllError(s.digitalKeyMissing);
             return Promise.resolve();
           }
           return putDigitalFileWithProgress(file, { uploadUrl: ticket.uploadUrl, storageKey }, item.id);
         }),
       );
     } catch {
-      markAllError("Network error — আপলোড সার্ভারে পৌঁছানো যায়নি।");
+      markAllError(s.uploadServerUnreachable);
     }
   }
 
@@ -1497,7 +1504,7 @@ export function ProductEditor({
         error?: { message?: string };
       };
       if (!res.ok) {
-        setLicenseNotice(json.error?.message ?? "লাইসেন্স কী লোড করা যায়নি।");
+        setLicenseNotice(json.error?.message ?? s.licenseLoadFail);
         setLicenseLoaded(true);
         return;
       }
@@ -1517,7 +1524,7 @@ export function ProductEditor({
       });
       setLicenseLoaded(true);
     } catch {
-      setLicenseNotice("Network error — লাইসেন্স কী লোড করা যায়নি।");
+      setLicenseNotice(s.licenseLoadNetwork);
       setLicenseLoaded(true);
     }
   }, [mode, productId]);
@@ -1535,7 +1542,7 @@ export function ProductEditor({
       .map((s) => s.trim())
       .filter(Boolean);
     if (keys.length === 0) {
-      setLicenseNotice("আগে অন্তত একটি কী পেস্ট করুন (প্রতি লাইনে একটি)।");
+      setLicenseNotice(s.licensePasteFirst);
       return;
     }
     setLicenseBusy(true);
@@ -1551,19 +1558,22 @@ export function ProductEditor({
         error?: { message?: string };
       };
       if (!res.ok) {
-        setLicenseNotice(json.error?.message ?? "লাইসেন্স কী যোগ করা যায়নি।");
+        setLicenseNotice(json.error?.message ?? s.licenseAddFail);
         return;
       }
       const added = json.data?.added ?? json.data?.inserted ?? keys.length;
       const dup = json.data?.duplicates ?? json.data?.skippedDuplicates ?? json.data?.skipped ?? 0;
       setLicensePaste("");
       setLicenseNotice(
-        `✅ ${added}টি নতুন লাইসেন্স কী যোগ হয়েছে${dup > 0 ? ` — ${dup}টি আগে থেকেই ছিল, বাদ দেওয়া হয়েছে` : ""}।`,
+        interpolate(s.licenseAdded, {
+          added,
+          dupPart: dup > 0 ? interpolate(s.licenseAddedDupPart, { dup }) : "",
+        }),
       );
       // Reload the masked list + counts from the server (source of truth).
       setLicenseLoaded(false);
     } catch {
-      setLicenseNotice("Network error — লাইসেন্স কী যোগ করা যায়নি।");
+      setLicenseNotice(s.licenseAddNetwork);
     } finally {
       setLicenseBusy(false);
     }
@@ -1606,7 +1616,7 @@ export function ProductEditor({
               productSlug: p.slug,
               variantId: v.id,
               variantSku: v.sku,
-              variantLabel: Object.values(v.attributes ?? {}).join(" / ") || "স্ট্যান্ডার্ড",
+              variantLabel: Object.values(v.attributes ?? {}).join(" / ") || s.variantStandard,
               pricePoisha: v.pricePoisha,
               stock: v.stock,
             });
@@ -1667,7 +1677,7 @@ export function ProductEditor({
               productTitle: p.title.bn,
               productSlug: p.slug,
               variantSku: v.sku,
-              variantLabel: Object.values(v.attributes ?? {}).join(" / ") || "স্ট্যান্ডার্ড",
+              variantLabel: Object.values(v.attributes ?? {}).join(" / ") || s.variantStandard,
               unitPricePoisha: v.pricePoisha,
             });
           }
@@ -1729,41 +1739,41 @@ export function ProductEditor({
     seo: Boolean(slug && (seoTitleBn || seoTitleEn || seoDescriptionBn || seoDescriptionEn)),
   };
   const QUALITY_CHECKLIST = [
-    { key: "title", label: "টাইটেল (বাংলা + English)" },
-    { key: "image", label: "কমপক্ষে ১টি ছবি (আপলোড বা URL)" },
-    { key: "description", label: "বিবরণ (বাংলা + English)" },
-    { key: "price", label: "কমপক্ষে ১টি ভেরিয়েন্টে দাম + স্টক" },
-    { key: "seo", label: "SEO: slug + meta" },
+    { key: "title", label: s.qualityTitleItem },
+    { key: "image", label: s.qualityImageItem },
+    { key: "description", label: s.qualityDescItem },
+    { key: "price", label: s.qualityPriceItem },
+    { key: "seo", label: s.qualitySeoItem },
   ] as const;
 
   // Live schedule status (wave 14) — derived from the CURRENT form
   // state, so the merchant sees the effect before saving. Mirrors the
   // server rules: publishAt gates public visibility (read-time), the
   // sale window only drives the public saleActive flag.
-  const fmtWhen = (d: Date) => d.toLocaleString("bn-BD", { dateStyle: "medium", timeStyle: "short" });
+  const fmtWhen = (d: Date) => d.toLocaleString(intlLocale(locale), { dateStyle: "medium", timeStyle: "short" });
   const publishDate = publishAt.trim() !== "" ? new Date(publishAt) : null;
   const publishLine =
     status !== "ACTIVE"
-      ? `স্ট্যাটাস ${status} — ACTIVE না করলে স্টোরে দেখা যাবে না।`
+      ? interpolate(s.publishLineDraft, { status })
       : publishDate !== null && !Number.isNaN(publishDate.getTime()) && publishDate.getTime() > Date.now()
-        ? `🕒 শিডিউল করা: ${fmtWhen(publishDate)} থেকে লাইভ হবে।`
-        : "✅ এখন লাইভ (বা সেভ করলেই লাইভ হবে)।";
+        ? interpolate(s.publishLineScheduled, { when: fmtWhen(publishDate) })
+        : s.publishLineLive;
   const saleStartDate = saleStartsAt.trim() !== "" ? new Date(saleStartsAt) : null;
   const saleEndDate = saleEndsAt.trim() !== "" ? new Date(saleEndsAt) : null;
   const saleLine =
     saleStartDate === null && saleEndDate === null
-      ? "কোনো সেলের সময়সীমা সেট করা নেই।"
+      ? s.saleLineNone
       : (() => {
           const now = Date.now();
           if (saleStartDate !== null && !Number.isNaN(saleStartDate.getTime()) && now < saleStartDate.getTime()) {
-            return `🏷️ সেল ${fmtWhen(saleStartDate)} থেকে শুরু হবে।`;
+            return interpolate(s.saleLineStarts, { when: fmtWhen(saleStartDate) });
           }
           if (saleEndDate !== null && !Number.isNaN(saleEndDate.getTime()) && now > saleEndDate.getTime()) {
-            return `🏷️ সেলের সময়সীমা শেষ (${fmtWhen(saleEndDate)})।`;
+            return interpolate(s.saleLineEnded, { when: fmtWhen(saleEndDate) });
           }
           return saleEndDate !== null && !Number.isNaN(saleEndDate.getTime())
-            ? `🏷️ সেল চলছে — ${fmtWhen(saleEndDate)} পর্যন্ত।`
-            : "🏷️ সেল চলছে।";
+            ? interpolate(s.saleLineRunningUntil, { when: fmtWhen(saleEndDate) })
+            : s.saleLineRunning;
         })();
 
   return (
@@ -1784,13 +1794,13 @@ export function ProductEditor({
               }`}
             >
               {t === "basic"
-                ? "বেসিক"
+                ? s.tabBasic
                 : t === "media"
-                  ? "মিডিয়া"
+                  ? s.tabMedia
                   : t === "variants"
-                    ? "ভেরিয়েন্ট"
+                    ? s.tabVariants
                     : t === "content"
-                      ? "কনটেন্ট"
+                      ? s.tabContent
                       : "SEO"}
               {t === "variants" ? (
                 <span
@@ -1817,7 +1827,7 @@ export function ProductEditor({
             rel="noreferrer"
             className="inline-flex min-h-[44px] shrink-0 items-center rounded-full border border-border bg-card px-4 text-sm font-medium text-brand-700 shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
           >
-            স্টোরফ্রন্টে দেখুন ↗
+            {s.viewStorefront}
           </Link>
         )}
       </div>
@@ -1825,18 +1835,18 @@ export function ProductEditor({
       {tab === "basic" && (
         <div className="mt-5 space-y-4">
           <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
-            <SectionHeading glyph="tag" title="মূল তথ্য" />
+            <SectionHeading glyph="tag" title={s.basicInfo} />
             <div className="grid gap-4 md:grid-cols-2">
           <label className={labelCls}>
-            টাইটেল (বাংলা) *
-            <input value={titleBn} onChange={(e) => handleTitleBnChange(e.target.value)} className={inputCls} placeholder="যেমন: জামদানি শাড়ি" />
+            {s.titleBnLabel}
+            <input value={titleBn} onChange={(e) => handleTitleBnChange(e.target.value)} className={inputCls} placeholder={s.titleBnPh} />
           </label>
           <label className={labelCls}>
-            Title (English) *
-            <input value={titleEn} onChange={(e) => handleTitleEnChange(e.target.value)} className={inputCls} placeholder="e.g. Jamdani Sharee" />
+            {s.titleEnLabel}
+            <input value={titleEn} onChange={(e) => handleTitleEnChange(e.target.value)} className={inputCls} placeholder={s.titleEnPh} />
           </label>
           <label className={labelCls}>
-            Slug *
+            {s.slugLabel}
             <span className="mt-1.5 flex gap-2">
               <input
                 value={slug}
@@ -1845,50 +1855,50 @@ export function ProductEditor({
                   setSlugTouched(true);
                 }}
                 className="min-h-[44px] w-full rounded-md border border-border bg-card px-3.5 py-2.5 font-mono text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-200"
-                placeholder="jamdani-sharee"
+                placeholder={s.slugPh}
               />
               <button
                 type="button"
                 onClick={regenerateSlug}
                 className="inline-flex min-h-[44px] shrink-0 items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
               >
-                টাইটেল থেকে তৈরি করুন
+                {s.slugFromTitle}
               </button>
             </span>
             <span className={hintCls}>
-              English টাইটেল থেকে অটো তৈরি হয়; হাতে বদলালে অটো বন্ধ হয়ে যাবে। স্টোরের ঠিকানা: /product/{slug || "…"}
+              {interpolate(s.slugHint, { slug: slug || "…" })}
             </span>
           </label>
           <label className={labelCls}>
-            স্ট্যাটাস
+            {s.statusLabel}
             <select value={status} onChange={(e) => setStatus(e.target.value as ProductStatus)} className={inputCls}>
-              <option value="DRAFT">খসড়া (DRAFT) — স্টোরে দেখা যাবে না</option>
-              <option value="ACTIVE">সক্রিয় (ACTIVE) — স্টোরে লাইভ</option>
-              <option value="ARCHIVED">আর্কাইভ (ARCHIVED)</option>
+              <option value="DRAFT">{s.statusDraftOpt}</option>
+              <option value="ACTIVE">{s.statusActiveOpt}</option>
+              <option value="ARCHIVED">{s.statusArchivedOpt}</option>
             </select>
           </label>
           {showTypeUi && (
             <label className={labelCls}>
-              ধরন
+              {s.typeLabel}
               <select
                 value={productType}
                 onChange={(e) => setProductType(e.target.value as ProductTypeValue)}
                 className={inputCls}
               >
-                <option value="SIMPLE">সাধারণ পণ্য (SIMPLE)</option>
-                <option value="DIGITAL">ডিজিটাল পণ্য (DIGITAL) — ডাউনলোড / লাইসেন্স</option>
-                <option value="BUNDLE">বান্ডল (BUNDLE) — একসাথে কয়েকটি পণ্য</option>
-                <option value="PREORDER">প্রি-অর্ডার (PREORDER)</option>
+                <option value="SIMPLE">{s.typeSimple}</option>
+                <option value="DIGITAL">{s.typeDigital}</option>
+                <option value="BUNDLE">{s.typeBundle}</option>
+                <option value="PREORDER">{s.typePreorder}</option>
               </select>
               <span className={hintCls}>
-                ধরন বদলালে আগের ধরনের তথ্য হারায় না — সেভের সময় শুধু সক্রিয় ধরনের ব্লকটাই যাবে। ধরন অনুযায়ী সেটিংস নিচে আসবে।
+                {s.typeHint}
               </span>
             </label>
           )}
           <label className={labelCls}>
-            ক্যাটাগরি *
+            {s.categoryLabel}
             <select value={categorySlug} onChange={(e) => setCategorySlug(e.target.value)} className={inputCls}>
-              {categoryOptions.length === 0 && <option value="">— কোনো ক্যাটাগরি পাওয়া যায়নি —</option>}
+              {categoryOptions.length === 0 && <option value="">{s.categoryNone}</option>}
               {categoryOptions.map((c) => (
                 <option key={c.slug} value={c.slug}>
                   {c.nameBn} ({c.nameEn})
@@ -1897,17 +1907,17 @@ export function ProductEditor({
             </select>
             {categoryOptions.length === 0 && (
               <span className="mt-1 block text-xs text-rose-600">
-                ডাটাবেসে কোনো ক্যাটাগরি নেই — ক্যাটাগরি যোগ না হলে পণ্য সেভ করা যাবে না।
+                {s.categoryEmptyWarn}
               </span>
             )}
           </label>
           <label className={labelCls}>
-            ব্র্যান্ড (না থাকলে খালি রাখুন)
+            {s.brandLabel}
             <input
               value={brandName}
               onChange={(e) => setBrandName(e.target.value)}
               className={inputCls}
-              placeholder="যেমন: Aarong"
+              placeholder={s.brandPh}
               list="product-editor-brand-names"
             />
             <datalist id="product-editor-brand-names">
@@ -1915,39 +1925,39 @@ export function ProductEditor({
                 <option key={b} value={b} />
               ))}
             </datalist>
-            <span className={hintCls}>নতুন নাম লিখলে ব্র্যান্ডটি সার্ভারে অটো তৈরি হয়ে যাবে।</span>
+            <span className={hintCls}>{s.brandHint}</span>
           </label>
           <label className={`${labelCls} md:col-span-2`}>
-            ট্যাগ (কমা দিয়ে আলাদা করুন)
-            <input value={tagsText} onChange={(e) => setTagsText(e.target.value)} className={inputCls} placeholder="যেমন: ঈদ, নতুন, বেস্ট সেলার" />
+            {s.tagsLabel}
+            <input value={tagsText} onChange={(e) => setTagsText(e.target.value)} className={inputCls} placeholder={s.tagsPh} />
           </label>
             </div>
           </section>
           <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
-            <SectionHeading glyph="banknote" title="দাম, ওজন ও প্যাকেজ" />
+            <SectionHeading glyph="banknote" title={s.priceSection} />
             <div className="grid gap-4 md:grid-cols-2">
           <label className={labelCls}>
-            ডিফল্ট দাম (৳) — নতুন ভেরিয়েন্টে বসবে
-            <input value={basePriceTaka} onChange={(e) => setBasePriceTaka(e.target.value)} inputMode="decimal" className={inputCls} placeholder="4500" />
+            {s.defaultPriceLabel}
+            <input value={basePriceTaka} onChange={(e) => setBasePriceTaka(e.target.value)} inputMode="decimal" className={inputCls} placeholder={s.defaultPricePh} />
             <span className={hintCls}>
-              Poisha: {basePricePoisha} • দেখাবে: {formatBdt(basePricePoisha)} — প্রতিটি ভেরিয়েন্টের দাম Variants ট্যাবে আলাদা করে বদলানো যায়।
+              {interpolate(s.defaultPriceHint, { poisha: basePricePoisha, formatted: formatBdt(basePricePoisha) })}
             </span>
           </label>
           <label className={labelCls}>
-            ডিফল্ট Compare-at দাম (৳) — ছাড় দেখাতে
-            <input value={baseCompareAtTaka} onChange={(e) => setBaseCompareAtTaka(e.target.value)} inputMode="decimal" className={inputCls} placeholder="5200" />
+            {s.defaultCompareLabel}
+            <input value={baseCompareAtTaka} onChange={(e) => setBaseCompareAtTaka(e.target.value)} inputMode="decimal" className={inputCls} placeholder={s.defaultComparePh} />
           </label>
           <label className={labelCls}>
-            ডিফল্ট Cost price (৳) — শুধু স্টাফদের জন্য
-            <input value={baseCostTaka} onChange={(e) => setBaseCostTaka(e.target.value)} inputMode="decimal" className={inputCls} placeholder="3000" />
+            {s.defaultCostLabel}
+            <input value={baseCostTaka} onChange={(e) => setBaseCostTaka(e.target.value)} inputMode="decimal" className={inputCls} placeholder={s.defaultCostPh} />
           </label>
           <label className={labelCls}>
-            ওজন (গ্রাম) — কুরিয়ারের ওজন-ভিত্তিক চার্জে লাগে
-            <input value={weightGrams} onChange={(e) => setWeightGrams(e.target.value)} inputMode="numeric" className={inputCls} placeholder="যেমন: 500" />
+            {s.weightLabel}
+            <input value={weightGrams} onChange={(e) => setWeightGrams(e.target.value)} inputMode="numeric" className={inputCls} placeholder={s.weightPh} />
           </label>
           <label className={labelCls}>
-            লো-স্টক সতর্কতার সীমা (খালি = গ্লোবাল ডিফল্ট)
-            <input value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)} inputMode="numeric" className={inputCls} placeholder="যেমন: 5" />
+            {s.lowStockLabel}
+            <input value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)} inputMode="numeric" className={inputCls} placeholder={s.lowStockPh} />
           </label>
           <label className="flex items-start gap-2.5 self-center rounded-lg border border-border/70 bg-surface-2/60 p-3.5 text-sm text-text-main md:col-span-2">
             <input
@@ -1957,26 +1967,25 @@ export function ProductEditor({
               className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
             />
             <span>
-              <span className="font-medium">দাম অনুরোধে (Price on Request)</span>
+              <span className="font-medium">{s.priceOnRequestTitle}</span>
               <span className="block text-xs leading-5 text-text-muted">
-                চালু থাকলে স্টোরফ্রন্টে এই পণ্যের দাম ও কার্ট বোতাম লুকানো থাকবে — ক্রেতা
-                "দামের জন্য যোগাযোগ করুন" দেখে যোগাযোগের পেজ থেকে বার্তা পাঠাবেন।
+                {s.priceOnRequestDesc}
               </span>
             </span>
           </label>
           <div className="rounded-lg border border-border/70 bg-surface-2/60 p-3.5 md:col-span-2">
-            <span className="text-sm font-medium text-text-main">প্যাকেজের মাপ (মিলিমিটার)</span>
+            <span className="text-sm font-medium text-text-main">{s.packageSize}</span>
             <div className="mt-2 grid gap-3 sm:grid-cols-3">
               <label className="block text-xs font-medium text-text-muted">
-                দৈর্ঘ্য (mm)
+                {s.lengthLabel}
                 <input value={lengthMm} onChange={(e) => setLengthMm(e.target.value)} inputMode="numeric" className={`${cellInputCls} mt-1.5`} placeholder="300" />
               </label>
               <label className="block text-xs font-medium text-text-muted">
-                প্রস্থ (mm)
+                {s.widthLabel}
                 <input value={widthMm} onChange={(e) => setWidthMm(e.target.value)} inputMode="numeric" className={`${cellInputCls} mt-1.5`} placeholder="200" />
               </label>
               <label className="block text-xs font-medium text-text-muted">
-                উচ্চতা (mm)
+                {s.heightLabel}
                 <input value={heightMm} onChange={(e) => setHeightMm(e.target.value)} inputMode="numeric" className={`${cellInputCls} mt-1.5`} placeholder="50" />
               </label>
             </div>
@@ -1984,18 +1993,18 @@ export function ProductEditor({
             </div>
           </section>
           <section className="brand-soft-gradient rounded-lg border border-brand-100 p-4 shadow-card sm:p-5">
-            <SectionHeading glyph="clock" title="শিডিউল — প্রকাশ ও সেলের সময়" chipCls="bg-card text-brand-600" />
+            <SectionHeading glyph="clock" title={s.scheduleTitle} chipCls="bg-card text-brand-600" />
             <div className="grid gap-3 sm:grid-cols-3">
               <label className="block text-xs font-medium text-text-muted">
-                প্রকাশের সময় (খালি = সঙ্গে সঙ্গে লাইভ)
+                {s.publishAtLabel}
                 <input type="datetime-local" value={publishAt} onChange={(e) => setPublishAt(e.target.value)} className={`${cellInputCls} mt-1.5 bg-card`} />
               </label>
               <label className="block text-xs font-medium text-text-muted">
-                সেল শুরু
+                {s.saleStartLabel}
                 <input type="datetime-local" value={saleStartsAt} onChange={(e) => setSaleStartsAt(e.target.value)} className={`${cellInputCls} mt-1.5 bg-card`} />
               </label>
               <label className="block text-xs font-medium text-text-muted">
-                সেল শেষ
+                {s.saleEndLabel}
                 <input type="datetime-local" value={saleEndsAt} onChange={(e) => setSaleEndsAt(e.target.value)} className={`${cellInputCls} mt-1.5 bg-card`} />
               </label>
             </div>
@@ -2003,7 +2012,7 @@ export function ProductEditor({
               {publishLine} {saleLine}
             </div>
             <p className="mt-2 text-xs leading-relaxed text-text-subtle">
-              সেলের সময়সীমা শুধু স্টোরে "সেল চলছে" অবস্থা ঠিক করে — দাম বদলাতে চাইলে ভেরিয়েন্টের Compare-at দাম ব্যবহার করুন। বিবরণ (বাংলা + English) এখন "কনটেন্ট" ট্যাবে।
+              {s.scheduleNote}
             </p>
           </section>
         </div>
@@ -2014,8 +2023,8 @@ export function ProductEditor({
           <SectionHeading
             glyph="download"
             chipCls="bg-violet-100 text-violet-600"
-            title="ডিজিটাল ফাইল — ক্রেতা পেমেন্টের পর যা ডাউনলোড করবে"
-            hint="ফাইল আপলোড করুন (সরাসরি স্টোরেজে যাবে), অথবা স্টোরেজে আগে থেকে থাকা ফাইলের key হাতে বসান। প্রকাশ (ACTIVE) করতে অন্তত ১টি ফাইল লাগবে।"
+            title={s.digitalTitle}
+            hint={s.digitalHint}
           />
           <div className="rounded-lg border border-dashed border-violet-300 bg-violet-50/60 p-4">
             <div className="flex flex-wrap items-center gap-3">
@@ -2024,10 +2033,10 @@ export function ProductEditor({
                 onClick={() => digitalFileInputRef.current?.click()}
                 className="inline-flex min-h-[44px] items-center rounded-md bg-violet-600 px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105"
               >
-                ফাইল আপলোড করুন
+                {s.digitalUploadBtn}
               </button>
               <span className="text-xs text-text-subtle">
-                যেকোনো ধরনের ফাইল (PDF, ZIP, MP4, সফটওয়্যার…)। আপলোড শেষ হলে ফাইলটি নিচের তালিকায় যোগ হবে; সেভ না করা পর্যন্ত পণ্যে যুক্ত হবে না।
+                {s.digitalUploadNote}
               </span>
               <input
                 ref={digitalFileInputRef}
@@ -2042,7 +2051,7 @@ export function ProductEditor({
             </div>
             {digitalUploadNotice && (
               <p role="status" className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                ⚠️ {digitalUploadNotice} — স্টোরেজ সেটআপ না থাকলে উপরের পদ্ধতিতে আপলোড হবে না; তখন key হাতে বসিয়ে সেভ করা যাবে।
+                ⚠️ {digitalUploadNotice}{s.digitalNoticeSuffix}
               </p>
             )}
             {digitalUploadItems.length > 0 && (
@@ -2053,11 +2062,11 @@ export function ProductEditor({
                       <span className="min-w-0 truncate text-text-main">{it.name}</span>
                       <span className="shrink-0 text-xs font-medium">
                         {it.status === "done" ? (
-                          <span className="text-emerald-700">✅ আপলোড হয়েছে</span>
+                          <span className="text-emerald-700">{s.uploadDone}</span>
                         ) : it.status === "error" ? (
-                          <span className="text-rose-600">❌ ব্যর্থ</span>
+                          <span className="text-rose-600">{s.uploadFailed}</span>
                         ) : (
-                          <span className="text-text-muted">আপলোড হচ্ছে… {it.progress}%</span>
+                          <span className="text-text-muted">{interpolate(s.uploadingPct, { pct: it.progress })}</span>
                         )}
                       </span>
                     </div>
@@ -2076,13 +2085,13 @@ export function ProductEditor({
           <div className="mt-3 space-y-2.5">
             {digitalRows.length === 0 && (
               <p className="rounded-lg border border-dashed border-violet-200 bg-violet-50/40 px-4 py-6 text-center text-sm text-text-subtle">
-                এখনো কোনো ফাইল যোগ হয়নি।
+                {s.digitalEmpty}
               </p>
             )}
             {digitalRows.map((row) => (
               <div key={row.key} className="grid items-end gap-2.5 rounded-lg border border-border/70 bg-surface-2/50 p-3 md:grid-cols-[1.3fr_1fr_0.55fr_auto]">
                 <label className="block text-xs">
-                  Storage key *
+                  {s.storageKeyLabel}
                   <input
                     value={row.storageKey}
                     onChange={(e) =>
@@ -2093,18 +2102,18 @@ export function ProductEditor({
                   />
                 </label>
                 <label className="block text-xs">
-                  ফাইলের নাম (ক্রেতা যা দেখবে) *
+                  {s.digitalFileNameLabel}
                   <input
                     value={row.fileName}
                     onChange={(e) =>
                       setDigitalRows((prev) => prev.map((p) => (p.key === row.key ? { ...p, fileName: e.target.value } : p)))
                     }
                     className={`${cellInputCls} mt-1`}
-                    placeholder="guide.pdf"
+                    placeholder={s.digitalFileNamePh}
                   />
                 </label>
                 <label className="block text-xs">
-                  সাইজ (bytes)
+                  {s.sizeBytesLabel}
                   <input
                     value={row.sizeBytes}
                     onChange={(e) =>
@@ -2122,7 +2131,7 @@ export function ProductEditor({
                   onClick={() => setDigitalRows((prev) => prev.filter((p) => p.key !== row.key))}
                   className="inline-flex min-h-[40px] items-center justify-center rounded-md border border-border bg-card px-3 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                 >
-                  মুছুন
+                  {s.deleteBtn}
                 </button>
               </div>
             ))}
@@ -2134,7 +2143,7 @@ export function ProductEditor({
             }
             className="mt-3 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-violet-300 hover:bg-violet-50"
           >
-            + ফাইল হাতে যোগ করুন
+            {s.addFileManual}
           </button>
 
           <div className="mt-6 rounded-lg border border-violet-100 bg-violet-50/40 p-4">
@@ -2144,11 +2153,11 @@ export function ProductEditor({
                   {GLYPHS.key}
                 </svg>
               </span>
-              <h4 className="font-display text-sm font-semibold text-text-main">লাইসেন্স কী পুল</h4>
+              <h4 className="font-display text-sm font-semibold text-text-main">{s.licenseTitle}</h4>
             </div>
             {mode !== "edit" ? (
               <p className="mt-2 text-sm leading-relaxed text-text-muted">
-                লাইসেন্স কী যোগ করা যায় পণ্যটি তৈরি হওয়ার পর — এডিট পেজে এসে এই অংশেই কী পুল পাবেন।
+                {s.licenseCreateNote}
               </p>
             ) : (
               <>
@@ -2156,24 +2165,24 @@ export function ProductEditor({
                   <>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-card px-3 py-1.5 text-xs font-semibold text-text-main shadow-sm ring-1 ring-inset ring-violet-100">
-                        মোট <span className="font-mono tabular-nums">{licenseCounts.total}</span>টি কী
+                        {interpolate(s.licenseTotal, { count: licenseCounts.total })}
                       </span>
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-100">
-                        ফাঁকা <span className="font-mono tabular-nums">{licenseCounts.available}</span>টি
+                        {interpolate(s.licenseAvailable, { count: licenseCounts.available })}
                       </span>
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-xs font-semibold text-text-muted ring-1 ring-inset ring-black/5">
-                        বরাদ্দ হয়ে গেছে <span className="font-mono tabular-nums">{licenseCounts.assigned}</span>টি
+                        {interpolate(s.licenseAssigned, { count: licenseCounts.assigned })}
                       </span>
                     </div>
                     {licenseCounts.available === 0 && (
                       <p className="mt-2 text-xs leading-relaxed text-amber-700">
-                        পুল খালি হলে নতুন অর্ডারে কী দেওয়া যাবে না — আরও কী যোগ করুন।
+                        {s.licenseEmptyWarn}
                       </p>
                     )}
                   </>
                 )}
                 <label className="mt-3 block text-xs font-medium text-text-muted">
-                  নতুন কী পেস্ট করুন (প্রতি লাইনে একটি)
+                  {s.licensePasteLabel}
                   <textarea
                     value={licensePaste}
                     onChange={(e) => setLicensePaste(e.target.value)}
@@ -2188,7 +2197,7 @@ export function ProductEditor({
                   disabled={licenseBusy}
                   className="mt-2.5 inline-flex min-h-[44px] items-center rounded-md bg-violet-600 px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
                 >
-                  {licenseBusy ? "যোগ হচ্ছে…" : "কী যোগ করুন"}
+                  {licenseBusy ? s.licenseAdding : s.licenseAddBtn}
                 </button>
                 {licenseNotice && (
                   <p role="status" className="mt-2 text-sm text-text-muted">
@@ -2196,9 +2205,9 @@ export function ProductEditor({
                   </p>
                 )}
                 {!licenseLoaded ? (
-                  <p className="mt-3 text-sm text-text-subtle">লাইসেন্স কী লোড হচ্ছে…</p>
+                  <p className="mt-3 text-sm text-text-subtle">{s.licenseLoading}</p>
                 ) : licenseKeys.length === 0 ? (
-                  <p className="mt-3 text-sm text-text-subtle">এখনো কোনো লাইসেন্স কী যোগ হয়নি।</p>
+                  <p className="mt-3 text-sm text-text-subtle">{s.licenseEmpty}</p>
                 ) : (
                   <ul className="mt-3 max-h-56 divide-y divide-border/70 overflow-y-auto rounded-lg border border-border/70 bg-card px-3 shadow-sm">
                     {licenseKeys.map((k) => (
@@ -2210,14 +2219,14 @@ export function ProductEditor({
                           }`}
                         >
                           <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${k.assigned ? "bg-slate-400" : "bg-emerald-500"}`} />
-                          {k.assigned ? "বরাদ্দ হয়ে গেছে" : "ফাঁকা"}
+                          {k.assigned ? s.licenseAssignedChip : s.licenseAvailableChip}
                         </span>
                       </li>
                     ))}
                   </ul>
                 )}
                 <p className="mt-2 text-[11px] text-text-subtle">
-                  নিরাপত্তার জন্য কীগুলো এখানে মাস্ক করা দেখায় — পুরো কী এই পেজে কখনো পাঠানো হয় না।
+                  {s.licenseMaskNote}
                 </p>
               </>
             )}
@@ -2230,19 +2239,19 @@ export function ProductEditor({
           <SectionHeading
             glyph="layers"
             chipCls="bg-amber-100 text-amber-700"
-            title="বান্ডল কম্পোনেন্ট — এই পণ্যটি কিনলে যা যা একসাথে মিলবে"
-            hint="অন্য পণ্যের ভেরিয়েন্ট খুঁজে যোগ করুন ও পরিমাণ ঠিক করুন। প্রকাশ (ACTIVE) করতে অন্তত ১টি কম্পোনেন্ট লাগবে। এই পণ্যের নিজের ভেরিয়েন্ট কম্পোনেন্ট হিসেবে যোগ করা যায় না।"
+            title={s.bundleTitle}
+            hint={s.bundleHint}
           />
           <label className={labelCls}>
-            কম্পোনেন্ট খুঁজুন (পণ্যের নাম বা SKU)
+            {s.bundleSearchLabel}
             <input
               value={bundleQuery}
               onChange={(e) => setBundleQuery(e.target.value)}
               className={inputCls}
-              placeholder="কমপক্ষে ২ অক্ষর লিখুন…"
+              placeholder={s.bundleSearchPh}
             />
           </label>
-          {bundleSearching && <p className="mt-2 text-xs text-text-subtle">খোঁজা হচ্ছে…</p>}
+          {bundleSearching && <p className="mt-2 text-xs text-text-subtle">{s.searching}</p>}
           {bundleHits.length > 0 && (
             <ul className="anim-fade-in mt-2 max-h-64 space-y-1.5 overflow-y-auto rounded-lg border border-border/70 bg-surface-2/50 p-2">
               {bundleHits.map((hit) => {
@@ -2252,7 +2261,7 @@ export function ProductEditor({
                     <span className="min-w-0 flex-1">
                       <span className="font-medium">{hit.productTitle}</span>
                       <span className="block text-xs text-text-subtle">
-                        {hit.variantSku} — {hit.variantLabel} • {formatBdt(hit.pricePoisha)} • স্টক: {hit.stock}
+                        {interpolate(s.bundleHitMeta, { sku: hit.variantSku, label: hit.variantLabel, price: formatBdt(hit.pricePoisha), stock: hit.stock })}
                       </span>
                     </span>
                     <button
@@ -2261,7 +2270,7 @@ export function ProductEditor({
                       onClick={() => addBundleComponent(hit)}
                       className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold transition motion-fast hover:border-amber-300 hover:bg-amber-50 disabled:opacity-50"
                     >
-                      {added ? "যোগ হয়েছে ✓" : "যোগ করুন"}
+                      {added ? s.bundleAdded : s.bundleAdd}
                     </button>
                   </li>
                 );
@@ -2271,21 +2280,21 @@ export function ProductEditor({
           <div className="mt-3 space-y-2.5">
             {bundleRows.length === 0 && (
               <p className="rounded-lg border border-dashed border-amber-200 bg-amber-50/40 px-4 py-6 text-center text-sm text-text-subtle">
-                এখনো কোনো কম্পোনেন্ট যোগ হয়নি — উপরে খুঁজে যোগ করুন।
+                {s.bundleEmpty}
               </p>
             )}
             {bundleRows.map((r) => (
               <div key={r.key} className="flex flex-wrap items-center gap-2.5 rounded-lg border border-border/70 bg-surface-2/50 p-3 text-sm">
                 <span className="min-w-0 flex-1">
-                  <span className="font-medium">{r.productTitle || "অজানা পণ্য"}</span>
+                  <span className="font-medium">{r.productTitle || s.unknownProduct}</span>
                   <span className="block text-xs text-text-subtle">
                     {r.variantSku || r.variantId}
                     {r.variantLabel ? ` — ${r.variantLabel}` : ""}
-                    {r.unitPricePoisha !== null ? ` • একক দাম ${formatBdt(r.unitPricePoisha)}` : ""}
+                    {r.unitPricePoisha !== null ? interpolate(s.bundleUnitPricePart, { price: formatBdt(r.unitPricePoisha) }) : ""}
                   </span>
                 </span>
                 <label className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
-                  পরিমাণ
+                  {s.bundleQtyLabel}
                   <input
                     value={r.quantity}
                     onChange={(e) =>
@@ -2305,26 +2314,26 @@ export function ProductEditor({
                   onClick={() => setBundleRows((prev) => prev.filter((p) => p.key !== r.key))}
                   className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                 >
-                  মুছুন
+                  {s.deleteBtn}
                 </button>
               </div>
             ))}
           </div>
           <p className="brand-soft-gradient mt-4 rounded-lg border border-brand-100 px-4 py-3 text-small text-text-muted shadow-sm">
-            কম্পোনেন্টগুলোর মোট দাম: <strong className="text-text-main">{formatBdt(bundleKnownTotal)}</strong>
-            {"  "}— এই পণ্যের ডিফল্ট দাম: <strong className="text-text-main">{formatBdt(basePricePoisha)}</strong>
+            {s.bundleComponentsTotal} <strong className="text-text-main">{formatBdt(bundleKnownTotal)}</strong>
+            {"  "}{s.bundleOwnPrice} <strong className="text-text-main">{formatBdt(basePricePoisha)}</strong>
             {bundleKnownTotal > 0 && basePricePoisha > 0 && (
               <>
-                {"  "}— পার্থক্য:{" "}
+                {"  "}{s.bundleDiffPart}{" "}
                 <strong className={bundleKnownTotal - basePricePoisha >= 0 ? "text-emerald-700" : "text-rose-600"}>
                   {formatBdt(Math.abs(bundleKnownTotal - basePricePoisha))}{" "}
-                  {bundleKnownTotal - basePricePoisha >= 0 ? "সাশ্রয়" : "বেশি"}
+                  {bundleKnownTotal - basePricePoisha >= 0 ? s.bundleSavings : s.bundleExtra}
                 </strong>
               </>
             )}
             {bundleHasUnknownPrice && (
               <span className="mt-1 block text-xs text-amber-700">
-                কয়েকটি কম্পোনেন্টের দাম জানা যায়নি — মোটটি অসম্পূর্ণ হতে পারে।
+                {s.bundleUnknownNote}
               </span>
             )}
           </p>
@@ -2336,22 +2345,22 @@ export function ProductEditor({
           <SectionHeading
             glyph="clock"
             chipCls="bg-sky-100 text-sky-600"
-            title="প্রি-অর্ডার সেটিংস"
-            hint="সব ঘরই ঐচ্ছিক — যা বসাবেন, স্টোরে প্রি-অর্ডার ব্যাজের পাশাপাশি ঠিক সেটাই দেখাবে (অগ্রিমের নোট ও সম্ভাব্য তারিখ)।"
+            title={s.preorderTitle}
+            hint={s.preorderHint}
           />
           <div className="grid gap-4 sm:grid-cols-3">
             <label className={labelCls}>
-              অগ্রিম (%) — বুকিংয়ের সময় যা নেওয়া হবে
+              {s.preorderDepositLabel}
               <input
                 value={preorderDeposit}
                 onChange={(e) => setPreorderDeposit(e.target.value)}
                 inputMode="decimal"
                 className={inputCls}
-                placeholder="যেমন: 30"
+                placeholder={s.preorderDepositPh}
               />
             </label>
             <label className={labelCls}>
-              সম্ভাব্য ডেলিভারির তারিখ
+              {s.preorderDateLabel}
               <input
                 type="date"
                 value={preorderExpected}
@@ -2360,13 +2369,13 @@ export function ProductEditor({
               />
             </label>
             <label className={labelCls}>
-              সর্বোচ্চ প্রি-অর্ডার সংখ্যা (খালি = সীমা নেই)
+              {s.preorderMaxLabel}
               <input
                 value={preorderMaxUnits}
                 onChange={(e) => setPreorderMaxUnits(e.target.value)}
                 inputMode="numeric"
                 className={inputCls}
-                placeholder="যেমন: 100"
+                placeholder={s.preorderMaxPh}
               />
             </label>
           </div>
@@ -2377,8 +2386,8 @@ export function ProductEditor({
         <section className="mt-5 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
           <SectionHeading
             glyph="image"
-            title="মিডিয়া"
-            hint="নিজের ডিভাইস থেকে ছবি আপলোড করুন, অথবা হোস্ট করা ছবির URL বসান — ক্রম অনুযায়ী প্রথম ছবিটাই প্রধান ছবি হিসেবে স্টোরে দেখাবে।"
+            title={s.mediaTitle}
+            hint={s.mediaHint}
           />
           <div className="rounded-lg border-2 border-dashed border-brand-200 bg-brand-50/40 p-4 sm:p-5">
             <div className="flex flex-wrap items-center gap-3">
@@ -2387,10 +2396,10 @@ export function ProductEditor({
                 onClick={() => fileInputRef.current?.click()}
                 className="inline-flex min-h-[44px] items-center rounded-md bg-brand-600 px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105"
               >
-                ছবি আপলোড করুন
+                {s.mediaUploadBtn}
               </button>
               <span className="max-w-xl text-xs leading-relaxed text-text-subtle">
-                JPEG, PNG, WebP বা AVIF — প্রতিটি ছবি সর্বোচ্চ 5 MB, একবারে সর্বোচ্চ 10টি। আপলোড শেষ হলে ছবিটি নিচের তালিকায় যোগ হয়ে যাবে; সেভ না করা পর্যন্ত পণ্যে যুক্ত হবে না।
+                {s.mediaUploadNote}
               </span>
               <input
                 ref={fileInputRef}
@@ -2417,11 +2426,11 @@ export function ProductEditor({
                       <span className="min-w-0 truncate text-text-main">{it.name}</span>
                       <span className="shrink-0 text-xs font-medium">
                         {it.status === "done" ? (
-                          <span className="text-emerald-700">✅ আপলোড হয়েছে</span>
+                          <span className="text-emerald-700">{s.uploadDone}</span>
                         ) : it.status === "error" ? (
-                          <span className="text-rose-600">❌ ব্যর্থ</span>
+                          <span className="text-rose-600">{s.uploadFailed}</span>
                         ) : (
-                          <span className="text-text-muted">আপলোড হচ্ছে… {it.progress}%</span>
+                          <span className="text-text-muted">{interpolate(s.uploadingPct, { pct: it.progress })}</span>
                         )}
                       </span>
                     </div>
@@ -2439,7 +2448,7 @@ export function ProductEditor({
           <div className="mt-4 grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
             {imageRows.length === 0 && (
               <p className="rounded-lg border border-dashed border-brand-200 bg-brand-50/40 px-4 py-8 text-center text-sm text-text-subtle sm:col-span-2 xl:col-span-3">
-                এখনো কোনো ছবি যোগ হয়নি।
+                {s.mediaEmpty}
               </p>
             )}
             {imageRows.map((img, idx) => (
@@ -2449,14 +2458,14 @@ export function ProductEditor({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={img.url} alt={img.altEn || img.altBn} className="aspect-[4/3] w-full object-cover" />
                   ) : (
-                    <span className="flex aspect-[4/3] w-full items-center justify-center border-b border-dashed border-border bg-surface-2/60 text-xs text-text-subtle">ছবি নেই</span>
+                    <span className="flex aspect-[4/3] w-full items-center justify-center border-b border-dashed border-border bg-surface-2/60 text-xs text-text-subtle">{s.mediaNoImage}</span>
                   )}
                   {idx === 0 && (
                     <span className="brand-gradient absolute left-2.5 top-2.5 rounded-full px-2.5 py-1 text-[11px] font-semibold leading-none text-white shadow-md">
-                      প্রধান ছবি
+                      {s.mediaPrimary}
                     </span>
                   )}
-                  <span aria-hidden="true" title="ক্রম বদলাতে ↑ ↓ বোতাম ব্যবহার করুন" className="absolute right-2.5 top-2.5 flex h-7 w-7 cursor-grab items-center justify-center rounded-md bg-card/85 text-text-muted shadow-sm backdrop-blur">
+                  <span aria-hidden="true" title={s.mediaDragTitle} className="absolute right-2.5 top-2.5 flex h-7 w-7 cursor-grab items-center justify-center rounded-md bg-card/85 text-text-muted shadow-sm backdrop-blur">
                     <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                       <circle cx="9" cy="5" r="1.6" />
                       <circle cx="15" cy="5" r="1.6" />
@@ -2469,7 +2478,7 @@ export function ProductEditor({
                 </div>
                 <div className="grid flex-1 gap-2.5 p-3">
                   <label className="block text-xs font-medium text-text-muted">
-                    ছবির URL *
+                    {s.imageUrlLabel}
                     <input
                       value={img.url}
                       onChange={(e) =>
@@ -2480,7 +2489,7 @@ export function ProductEditor({
                     />
                   </label>
                   <label className="block text-xs font-medium text-text-muted">
-                    Alt text (বাংলা)
+                    {s.altBnLabel}
                     <input
                       value={img.altBn}
                       onChange={(e) =>
@@ -2490,7 +2499,7 @@ export function ProductEditor({
                     />
                   </label>
                   <label className="block text-xs font-medium text-text-muted">
-                    Alt text (English)
+                    {s.altEnLabel}
                     <input
                       value={img.altEn}
                       onChange={(e) =>
@@ -2502,7 +2511,7 @@ export function ProductEditor({
                   <span className="mt-auto flex items-center gap-1.5 border-t border-border/60 pt-2.5">
                     <button
                       type="button"
-                      aria-label="ছবি উপরে নিন"
+                      aria-label={s.imageUpAria}
                       disabled={idx === 0}
                       onClick={() =>
                         setImageRows((prev) => {
@@ -2517,7 +2526,7 @@ export function ProductEditor({
                     </button>
                     <button
                       type="button"
-                      aria-label="ছবি নিচে নামান"
+                      aria-label={s.imageDownAria}
                       disabled={idx === imageRows.length - 1}
                       onClick={() =>
                         setImageRows((prev) => {
@@ -2535,7 +2544,7 @@ export function ProductEditor({
                       onClick={() => setImageRows((prev) => prev.filter((p) => p.key !== img.key))}
                       className="ml-auto inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                     >
-                      মুছুন
+                      {s.deleteBtn}
                     </button>
                   </span>
                 </div>
@@ -2547,7 +2556,7 @@ export function ProductEditor({
             onClick={() => setImageRows((prev) => [...prev, { key: nextKey(), url: "", altBn: "", altEn: "" }])}
             className="mt-4 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
           >
-            + আরেকটি ছবি যোগ করুন
+            {s.addImageBtn}
           </button>
         </section>
       )}
@@ -2557,8 +2566,8 @@ export function ProductEditor({
           <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
             <SectionHeading
               glyph="layers"
-              title="অ্যাট্রিবিউট"
-              hint="প্রতি সারিতে একটি key ও তার মানসমূহ — মান কমা দিয়ে আলাদা করুন, যেমন লাল, নীল।"
+              title={s.attrTitle}
+              hint={s.attrHint}
             />
             <div className="space-y-2.5">
               {attrRows.map((row) => {
@@ -2572,16 +2581,16 @@ export function ProductEditor({
                       value={row.name}
                       onChange={(e) => updateAttrRow(row.rowId, { name: e.target.value })}
                       list={attributeSets.length > 0 ? "pe-attr-keys" : undefined}
-                      placeholder="key (যেমন color)"
-                      aria-label="অ্যাট্রিবিউট key"
+                      placeholder={s.attrKeyPh}
+                      aria-label={s.attrKeyAria}
                       className="min-h-[44px] w-44 rounded-md border border-border bg-card px-3 py-2 font-mono text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                     />
                     <input
                       value={row.valuesText}
                       onChange={(e) => updateAttrRow(row.rowId, { valuesText: e.target.value })}
                       list={matchedSet ? valuesListId : undefined}
-                      placeholder="মানসমূহ (যেমন লাল, নীল)"
-                      aria-label="অ্যাট্রিবিউটের মানসমূহ"
+                      placeholder={s.attrValuesPh}
+                      aria-label={s.attrValuesAria}
                       className="min-h-[44px] min-w-[220px] flex-1 rounded-md border border-border bg-card px-3 py-2 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                     />
                     {matchedSet ? (
@@ -2596,11 +2605,11 @@ export function ProductEditor({
                       onClick={() => setAttrRows((prev) => prev.filter((r) => r.rowId !== row.rowId))}
                       className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3 text-sm font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                     >
-                      মুছুন
+                      {s.deleteBtn}
                     </button>
                     {matchedSet ? (
                       <span className="w-full text-[11px] leading-relaxed text-text-subtle">
-                        লাইব্রেরি সেট: {matchedSet.labelBn} — এর মানগুলো সাজেশনে আছে; নতুন মান হাতেও লেখা যাবে।
+                        {interpolate(s.librarySetNote, { label: matchedSet.labelBn })}
                       </span>
                     ) : null}
                   </div>
@@ -2623,15 +2632,15 @@ export function ProductEditor({
               }
               className="mt-3 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
             >
-              + আরেকটি অ্যাট্রিবিউট যোগ করুন
+              {s.addAttrBtn}
             </button>
             {attributeSets.length > 0 ? (
               <p className="mt-2 text-xs leading-relaxed text-text-subtle">
-                key লিখতে গেলেই{" "}
+                {s.attrLibraryPre}{" "}
                 <Link href="/admin/attributes" className="font-medium text-brand-700 hover:underline">
-                  অ্যাট্রিবিউট লাইব্রেরির
+                  {s.attrLibraryLink}
                 </Link>{" "}
-                key সাজেশনে আসবে — লাইব্রেরি শুধু সাহায্যের জন্য, নতুন key বা মান হাতে লিখলেও চলবে।
+                {s.attrLibraryPost}
               </p>
             ) : null}
             <div className="mt-4 flex flex-wrap gap-2 border-t border-border/60 pt-4">
@@ -2640,35 +2649,35 @@ export function ProductEditor({
                 onClick={handleGenerate}
                 className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105"
               >
-                ভেরিয়েন্ট তৈরি / আপডেট করুন
+                {s.generateBtn}
               </button>
               <button
                 type="button"
                 onClick={handleAddManualRow}
                 className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
               >
-                + একটি ভেরিয়েন্ট হাতে যোগ করুন
+                {s.addVariantManual}
               </button>
             </div>
             <p className="mt-3 text-xs leading-relaxed text-text-subtle">
-              জেনারেট করলে সব কম্বিনেশনের সারি তৈরি হবে; আগে থেকে থাকা SKU-র সারির দাম/স্টক আগেরটাই থাকবে। নিচের প্রতিটি সারির দাম, compare-at, cost, স্টক, barcode, ছবি আর সক্রিয় অবস্থা আলাদা করে বদলানো যায়।
-              {mode === "edit" && " এডিট মোডে কোনো সারি মুছে সেভ করলে সেই ভেরিয়েন্টটি সফট-ডিলিট হবে (অর্ডার ইতিহাসে রেফারেন্স থাকবে)। স্টক বদলালে পার্থক্যটা stock ledger-এ এন্ট্রি হবে।"}
+              {s.generateNote}
+              {mode === "edit" && s.generateNoteEditSuffix}
             </p>
           </section>
           <div className="hidden overflow-x-auto rounded-lg border border-border/70 bg-card shadow-card md:block">
             <table className="w-full min-w-[980px] text-left text-sm">
               <thead>
                 <tr className="bg-surface-2 [&>th]:border-b [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:text-caption [&>th]:font-semibold [&>th]:text-text-muted">
-                  <th>SKU *</th>
-                  <th>অ্যাট্রিবিউট</th>
-                  <th>দাম (৳) *</th>
-                  <th>Compare-at (৳)</th>
-                  <th>Cost (৳)</th>
-                  <th>স্টক</th>
-                  <th>Barcode</th>
-                  <th>ছবির URL</th>
-                  <th>সক্রিয়</th>
-                  <th aria-label="অ্যাকশন" />
+                  <th>{s.colSku}</th>
+                  <th>{s.colAttr}</th>
+                  <th>{s.colVariantPrice}</th>
+                  <th>{s.colCompare}</th>
+                  <th>{s.colCost}</th>
+                  <th>{s.colVariantStock}</th>
+                  <th>{s.colBarcode}</th>
+                  <th>{s.colImageUrl}</th>
+                  <th>{s.colActiveCol}</th>
+                  <th aria-label={s.colActions} />
                 </tr>
               </thead>
               <tbody>
@@ -2677,7 +2686,7 @@ export function ProductEditor({
                     <td className="px-3 py-2">
                       <input value={r.sku} onChange={(e) => updateRow(r.key, { sku: e.target.value })} className={`${cellInputCls} font-mono text-xs`} />
                       {r.originalSku !== null && r.sku.trim() !== r.originalSku && (
-                        <span className="mt-1 block text-[11px] text-amber-600">SKU বদলালে এটি নতুন ভেরিয়েন্ট হিসেবে তৈরি হবে, পুরনোটি সফট-ডিলিট হবে।</span>
+                        <span className="mt-1 block text-[11px] text-amber-600">{s.skuChangeNote}</span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-xs leading-relaxed text-text-muted">
@@ -2696,7 +2705,7 @@ export function ProductEditor({
                     <td className="px-3 py-2">
                       <input value={r.stock} onChange={(e) => updateRow(r.key, { stock: e.target.value })} inputMode="numeric" className={cellInputCls} />
                       {r.originalStock !== null && Number(r.stock) !== r.originalStock && (
-                        <span className="mt-1 block text-[11px] text-text-subtle">আগের স্টক: {r.originalStock}</span>
+                        <span className="mt-1 block text-[11px] text-text-subtle">{interpolate(s.prevStock, { n: r.originalStock })}</span>
                       )}
                     </td>
                     <td className="px-3 py-2">
@@ -2710,7 +2719,7 @@ export function ProductEditor({
                         type="checkbox"
                         checked={r.isActive}
                         onChange={(e) => updateRow(r.key, { isActive: e.target.checked })}
-                        aria-label={`SKU ${r.sku || "নতুন"} সক্রিয়`}
+                        aria-label={interpolate(s.activeAria, { sku: r.sku || s.wordNew })}
                         className="h-4 w-4 accent-brand-600"
                       />
                     </td>
@@ -2720,7 +2729,7 @@ export function ProductEditor({
                         onClick={() => setRows((prev) => prev.filter((p) => p.key !== r.key))}
                         className="inline-flex min-h-[36px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                       >
-                        মুছুন
+                        {s.deleteBtn}
                       </button>
                     </td>
                   </tr>
@@ -2728,7 +2737,7 @@ export function ProductEditor({
                 {rows.length === 0 && (
                   <tr>
                     <td colSpan={10} className="px-3 py-8 text-center text-sm text-text-subtle">
-                      কোনো ভেরিয়েন্ট নেই — উপরের বোতামে জেনারেট করুন বা হাতে যোগ করুন।
+                      {s.variantsEmpty}
                     </td>
                   </tr>
                 )}
@@ -2741,14 +2750,14 @@ export function ProductEditor({
           <div className="space-y-3 md:hidden">
             {rows.length === 0 && (
               <p className="rounded-lg border border-dashed border-border bg-card px-4 py-8 text-center text-sm text-text-subtle shadow-card">
-                কোনো ভেরিয়েন্ট নেই — উপরের বোতামে জেনারেট করুন বা হাতে যোগ করুন।
+                {s.variantsEmpty}
               </p>
             )}
             {rows.map((r) => (
               <article key={r.key} className="rounded-lg border border-border/70 bg-card p-3.5 shadow-card">
                 <div className="flex items-start gap-3">
                   <label className="block min-w-0 flex-1 text-xs font-medium text-text-muted">
-                    SKU *
+                    {s.colSku}
                     <input value={r.sku} onChange={(e) => updateRow(r.key, { sku: e.target.value })} className={`${cellInputCls} mt-1 font-mono text-xs`} />
                   </label>
                   <label className="flex shrink-0 cursor-pointer items-center gap-2 pt-5 text-xs font-medium text-text-muted">
@@ -2756,46 +2765,46 @@ export function ProductEditor({
                       type="checkbox"
                       checked={r.isActive}
                       onChange={(e) => updateRow(r.key, { isActive: e.target.checked })}
-                      aria-label={`SKU ${r.sku || "নতুন"} সক্রিয়`}
+                      aria-label={interpolate(s.activeAria, { sku: r.sku || s.wordNew })}
                       className="h-5 w-5 accent-brand-600"
                     />
-                    সক্রিয়
+                    {s.colActiveCol}
                   </label>
                 </div>
                 {r.originalSku !== null && r.sku.trim() !== r.originalSku && (
-                  <p className="mt-1.5 text-[11px] leading-relaxed text-amber-600">SKU বদলালে এটি নতুন ভেরিয়েন্ট হিসেবে তৈরি হবে, পুরনোটি সফট-ডিলিট হবে।</p>
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-amber-600">{s.skuChangeNote}</p>
                 )}
                 <p className="mt-2 rounded-md bg-surface-2 px-2.5 py-1.5 text-xs leading-relaxed text-text-muted">
-                  <span className="font-semibold text-text-main">অ্যাট্রিবিউট:</span>{" "}
+                  <span className="font-semibold text-text-main">{s.colAttr}:</span>{" "}
                   {Object.entries(r.attributes).map(([k, v]) => `${k}: ${v}`).join(", ") || "—"}
                 </p>
                 <div className="mt-3 grid grid-cols-2 gap-2.5">
                   <label className="block text-xs font-medium text-text-muted">
-                    দাম (৳) *
+                    {s.colVariantPrice}
                     <input value={r.priceTaka} onChange={(e) => updateRow(r.key, { priceTaka: e.target.value })} inputMode="decimal" className={`${cellInputCls} mt-1`} />
                     <span className="mt-1 block text-[11px] text-text-subtle">{formatBdt(takaToPoisha(r.priceTaka) ?? 0)}</span>
                   </label>
                   <label className="block text-xs font-medium text-text-muted">
-                    Compare-at (৳)
+                    {s.colCompare}
                     <input value={r.compareAtTaka} onChange={(e) => updateRow(r.key, { compareAtTaka: e.target.value })} inputMode="decimal" className={`${cellInputCls} mt-1`} />
                   </label>
                   <label className="block text-xs font-medium text-text-muted">
-                    Cost (৳)
+                    {s.colCost}
                     <input value={r.costTaka} onChange={(e) => updateRow(r.key, { costTaka: e.target.value })} inputMode="decimal" className={`${cellInputCls} mt-1`} />
                   </label>
                   <label className="block text-xs font-medium text-text-muted">
-                    স্টক
+                    {s.colVariantStock}
                     <input value={r.stock} onChange={(e) => updateRow(r.key, { stock: e.target.value })} inputMode="numeric" className={`${cellInputCls} mt-1`} />
                     {r.originalStock !== null && Number(r.stock) !== r.originalStock && (
-                      <span className="mt-1 block text-[11px] text-text-subtle">আগের স্টক: {r.originalStock}</span>
+                      <span className="mt-1 block text-[11px] text-text-subtle">{interpolate(s.prevStock, { n: r.originalStock })}</span>
                     )}
                   </label>
                   <label className="block text-xs font-medium text-text-muted">
-                    Barcode
+                    {s.colBarcode}
                     <input value={r.barcode} onChange={(e) => updateRow(r.key, { barcode: e.target.value })} className={`${cellInputCls} mt-1 font-mono text-xs`} />
                   </label>
                   <label className="block text-xs font-medium text-text-muted">
-                    ছবির URL
+                    {s.colImageUrl}
                     <input value={r.imageUrl} onChange={(e) => updateRow(r.key, { imageUrl: e.target.value })} className={`${cellInputCls} mt-1`} placeholder="https://…" />
                   </label>
                 </div>
@@ -2805,7 +2814,7 @@ export function ProductEditor({
                     onClick={() => setRows((prev) => prev.filter((p) => p.key !== r.key))}
                     className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                   >
-                    মুছুন
+                    {s.deleteBtn}
                   </button>
                 </div>
               </article>
@@ -2818,7 +2827,7 @@ export function ProductEditor({
         <div className="mt-5 grid gap-4">
           <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
             <label className={labelCls}>
-              প্রোডাক্ট ভিডিওর URL (YouTube বা সরাসরি ভিডিও ফাইল — না থাকলে খালি রাখুন)
+              {s.videoUrlLabel}
               <input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} className={inputCls} placeholder="https://…" />
             </label>
           </section>
@@ -2831,10 +2840,10 @@ export function ProductEditor({
                 onClick={() => requestAiDraft("description")}
                 className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {aiBusy === "description" ? "AI তৈরি করছে…" : "AI দিয়ে বিবরণ তৈরি করুন"}
+                {aiBusy === "description" ? s.aiDescBusy : s.aiDescBtn}
               </button>
               <p className="min-w-0 flex-1 text-xs leading-relaxed text-text-subtle">
-                AI বাংলা + English বিবরণের খসড়া তৈরি করে নিচের ঘরে বসিয়ে দেবে — সংরক্ষণের আগে অবশ্যই যাচাই করুন।
+                {s.aiDescNote}
               </p>
             </div>
             <AiDraftStatus error={aiError} note={aiNote} />
@@ -2842,33 +2851,33 @@ export function ProductEditor({
 
           <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
             <DescriptionField
-              label="বিবরণ (বাংলা) *"
+              label={s.descBnLabel}
               value={descriptionBn}
               onChange={setDescriptionBn}
-              placeholder="পণ্যের বাংলা বিবরণ"
+              placeholder={s.descBnPh}
             />
           </section>
           <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
             <DescriptionField
-              label="Description (English) *"
+              label={s.descEnLabel}
               value={descriptionEn}
               onChange={setDescriptionEn}
-              placeholder="Product description in English"
+              placeholder={s.descEnPh}
             />
           </section>
 
           <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
             <SectionHeading
               glyph="file"
-              title="সাইজ চার্ট"
+              title={s.sizeChartTitle}
               action={
                 sizeChart.headers.length === 0 ? (
                   <button
                     type="button"
-                    onClick={() => setSizeChart({ headers: ["সাইজ", "মাপ"], rows: [["", ""]] })}
+                    onClick={() => setSizeChart({ headers: [s.sizeChartDefaultCol1, s.sizeChartDefaultCol2], rows: [["", ""]] })}
                     className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
                   >
-                    + সাইজ চার্ট যোগ করুন
+                    {s.sizeChartAdd}
                   </button>
                 ) : (
                   <button
@@ -2876,7 +2885,7 @@ export function ProductEditor({
                     onClick={() => setSizeChart({ headers: [], rows: [] })}
                     className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                   >
-                    সাইজ চার্ট সরিয়ে ফেলুন
+                    {s.sizeChartRemove}
                   </button>
                 )
               }
@@ -2899,8 +2908,8 @@ export function ProductEditor({
                                   }))
                                 }
                                 className={cellInputCls}
-                                placeholder={`কলাম ${ci + 1}`}
-                                aria-label={`সাইজ চার্টের কলাম ${ci + 1}-এর শিরোনাম`}
+                                placeholder={interpolate(s.sizeChartColPh, { n: ci + 1 })}
+                                aria-label={interpolate(s.sizeChartColAria, { n: ci + 1 })}
                               />
                               <button
                                 type="button"
@@ -2912,7 +2921,7 @@ export function ProductEditor({
                                   }))
                                 }
                                 className="inline-flex min-h-[40px] min-w-[40px] shrink-0 items-center justify-center rounded-md border border-border bg-card text-xs text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50 disabled:opacity-40"
-                                aria-label={`কলাম ${ci + 1} মুছুন`}
+                                aria-label={interpolate(s.sizeChartColDeleteAria, { n: ci + 1 })}
                               >
                                 ✕
                               </button>
@@ -2930,7 +2939,7 @@ export function ProductEditor({
                             }
                             className="inline-flex min-h-[40px] items-center whitespace-nowrap rounded-md border border-border bg-card px-3 text-xs font-semibold shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
                           >
-                            + কলাম
+                            {s.addColumn}
                           </button>
                         </th>
                       </tr>
@@ -2951,7 +2960,7 @@ export function ProductEditor({
                                   }))
                                 }
                                 className={cellInputCls}
-                                aria-label={`সাইজ চার্টের সারি ${ri + 1}, কলাম ${ci + 1}`}
+                                aria-label={interpolate(s.sizeChartCellAria, { row: ri + 1, col: ci + 1 })}
                               />
                             </td>
                           ))}
@@ -2963,7 +2972,7 @@ export function ProductEditor({
                               }
                               className="inline-flex min-h-[40px] items-center whitespace-nowrap rounded-md border border-border bg-card px-3 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                             >
-                              সারি মুছুন
+                              {s.rowDelete}
                             </button>
                           </td>
                         </tr>
@@ -2978,40 +2987,40 @@ export function ProductEditor({
                   }
                   className="mt-3 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
                 >
-                  + সারি যোগ করুন
+                  {s.addRow}
                 </button>
               </div>
             )}
           </section>
 
           <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
-            <SectionHeading glyph="check" title="সাধারণ প্রশ্নোত্তর (FAQ)" />
+            <SectionHeading glyph="check" title={s.faqTitle} />
             <div className="space-y-3">
               {faqRows.length === 0 && (
-                <p className="rounded-lg border border-dashed border-border px-4 py-5 text-center text-sm text-text-subtle">এখনো কোনো প্রশ্নোত্তর যোগ হয়নি।</p>
+                <p className="rounded-lg border border-dashed border-border px-4 py-5 text-center text-sm text-text-subtle">{s.faqEmpty}</p>
               )}
               {faqRows.map((row, ri) => (
                 <div key={ri} className="grid gap-2.5 rounded-lg border border-border/60 bg-surface-2/50 p-3 md:grid-cols-[1fr_1fr_auto]">
                   <label className="block text-xs font-medium text-text-muted">
-                    প্রশ্ন
+                    {s.faqQuestion}
                     <input
                       value={row.q}
                       onChange={(e) =>
                         setFaqRows((prev) => prev.map((r, i) => (i === ri ? { ...r, q: e.target.value } : r)))
                       }
                       className={`${cellInputCls} mt-1 bg-card`}
-                      placeholder="যেমন: ডেলিভারি পেতে কত দিন লাগবে?"
+                      placeholder={s.faqQuestionPh}
                     />
                   </label>
                   <label className="block text-xs font-medium text-text-muted">
-                    উত্তর
+                    {s.faqAnswer}
                     <input
                       value={row.a}
                       onChange={(e) =>
                         setFaqRows((prev) => prev.map((r, i) => (i === ri ? { ...r, a: e.target.value } : r)))
                       }
                       className={`${cellInputCls} mt-1 bg-card`}
-                      placeholder="উত্তর লিখুন"
+                      placeholder={s.faqAnswerPh}
                     />
                   </label>
                   <span className="flex items-end">
@@ -3020,7 +3029,7 @@ export function ProductEditor({
                       onClick={() => setFaqRows((prev) => prev.filter((_, i) => i !== ri))}
                       className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                     >
-                      মুছুন
+                      {s.deleteBtn}
                     </button>
                   </span>
                 </div>
@@ -3031,7 +3040,7 @@ export function ProductEditor({
               onClick={() => setFaqRows((prev) => [...prev, { q: "", a: "" }])}
               className="mt-3.5 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
             >
-              + প্রশ্নোত্তর যোগ করুন
+              {s.addFaqBtn}
             </button>
           </section>
         </div>
@@ -3041,7 +3050,7 @@ export function ProductEditor({
         <section className="mt-5 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
           <SectionHeading
             glyph="search"
-            title="SEO"
+            title={s.seoHeading}
             action={
               <button
                 type="button"
@@ -3049,31 +3058,31 @@ export function ProductEditor({
                 onClick={() => requestAiDraft("seo")}
                 className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {aiBusy === "seo" ? "AI তৈরি করছে…" : "AI দিয়ে SEO তৈরি করুন"}
+                {aiBusy === "seo" ? s.aiSeoBusy : s.aiSeoBtn}
               </button>
             }
           />
           <AiDraftStatus error={aiError} note={aiNote} />
           <div className="grid gap-4 md:grid-cols-2">
           <label className={labelCls}>
-            SEO টাইটেল (বাংলা)
-            <input value={seoTitleBn} onChange={(e) => setSeoTitleBn(e.target.value)} className={inputCls} placeholder="খালি রাখলে পণ্যের টাইটেলই যাবে" />
+            {s.seoTitleBnLabel}
+            <input value={seoTitleBn} onChange={(e) => setSeoTitleBn(e.target.value)} className={inputCls} placeholder={s.seoTitleBnPh} />
           </label>
           <label className={labelCls}>
-            SEO Title (English)
-            <input value={seoTitleEn} onChange={(e) => setSeoTitleEn(e.target.value)} className={inputCls} placeholder="Empty = product title is used" />
+            {s.seoTitleEnLabel}
+            <input value={seoTitleEn} onChange={(e) => setSeoTitleEn(e.target.value)} className={inputCls} placeholder={s.seoTitleEnPh} />
           </label>
           <label className={labelCls}>
-            SEO বিবরণ (বাংলা)
+            {s.seoDescBnLabel}
             <textarea value={seoDescriptionBn} onChange={(e) => setSeoDescriptionBn(e.target.value)} rows={3} className={inputCls} />
           </label>
           <label className={labelCls}>
-            SEO Description (English)
+            {s.seoDescEnLabel}
             <textarea value={seoDescriptionEn} onChange={(e) => setSeoDescriptionEn(e.target.value)} rows={3} className={inputCls} />
           </label>
           <div className="md:col-span-2">
             <label className={labelCls}>
-              OG ছবি (সোশ্যাল মিডিয়ায় শেয়ার করলে যে ছবি দেখাবে)
+              {s.ogLabel}
               <input value={ogImage} onChange={(e) => setOgImage(e.target.value)} className={inputCls} placeholder="https://…" />
             </label>
             <div className="mt-2.5 flex flex-wrap items-center gap-3 rounded-lg border border-border/60 bg-surface-2/50 p-3">
@@ -3090,25 +3099,25 @@ export function ProductEditor({
                 }}
                 className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
               >
-                প্রথম গ্যালারি ছবি ব্যবহার করুন
+                {s.ogUseFirst}
               </button>
-              <span className="max-w-md text-xs leading-relaxed text-text-subtle">খালি রাখলে শেয়ারিংয়ে প্রথম গ্যালারি ছবিটাই যাবে। মিডিয়া ট্যাব থেকে আপলোড করা ছবির URL-ও এখানে বসানো যাবে।</span>
+              <span className="max-w-md text-xs leading-relaxed text-text-subtle">{s.ogHint}</span>
             </div>
           </div>
           <p className="text-sm text-text-muted md:col-span-2">
-            স্টোরের ঠিকানা: <span className="rounded-md bg-surface-2 px-2 py-0.5 font-mono text-[13px] text-brand-700">/product/{slug || "…"}</span> — এই slug দিয়েই সার্চ ইঞ্জিনে পণ্যটি আসবে।
+            {s.seoAddressLabel} <span className="rounded-md bg-surface-2 px-2 py-0.5 font-mono text-[13px] text-brand-700">/product/{slug || "…"}</span> {s.seoAddressSuffix}
           </p>
           </div>
 
           {/* Presentational search-result preview — reads the same
            *  state the fields above edit, nothing new is stored. */}
           <div className="mt-5 rounded-lg border border-border/70 bg-surface-2/50 p-4">
-            <p className="text-caption font-semibold uppercase tracking-wide text-text-subtle">সার্চ প্রিভিউ</p>
+            <p className="text-caption font-semibold uppercase tracking-wide text-text-subtle">{s.searchPreview}</p>
             <div className="mt-2.5 max-w-xl rounded-lg border border-border/60 bg-card px-4 py-3 shadow-sm">
               <p className="truncate font-mono text-xs text-text-muted">/product/{slug || "…"}</p>
-              <p className="mt-1 truncate text-base font-medium text-brand-700">{seoTitleBn || titleBn || "পণ্যের টাইটেল"}</p>
+              <p className="mt-1 truncate text-base font-medium text-brand-700">{seoTitleBn || titleBn || s.previewTitleFallback}</p>
               <p className="mt-0.5 line-clamp-2 text-small leading-relaxed text-text-muted">
-                {seoDescriptionBn || descriptionBn || "বিবরণ এখানে দেখাবে…"}
+                {seoDescriptionBn || descriptionBn || s.previewDescFallback}
               </p>
             </div>
           </div>
@@ -3120,19 +3129,19 @@ export function ProductEditor({
       <div className="sticky bottom-3 z-20 mt-6 rounded-lg border border-border/70 bg-card/95 p-4 shadow-lift backdrop-blur">
         {priceChanged && (
           <label className="mb-3 block text-sm">
-            দাম বদলের কারণ * <span className="text-text-subtle">(এক বা একাধিক পুরনো ভেরিয়েন্টের দাম বদলেছে — কারণটি অডিট লগে থাকবে)</span>
+            {s.priceReasonBarLabel} <span className="text-text-subtle">{s.priceReasonBarNote}</span>
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={2}
               className={inputCls}
-              placeholder="যেমন: সরবরাহকারীর দাম বেড়েছে"
+              placeholder={s.reasonPhSupplier}
             />
           </label>
         )}
         <div className="flex flex-wrap items-center gap-2.5">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-xs font-semibold text-text-muted ring-1 ring-inset ring-black/5">
-            স্ট্যাটাস: <span className="font-mono">{status}</span>
+            {s.statusChipLabel} <span className="font-mono">{status}</span>
             {showTypeUi && (
               <>
                 <span aria-hidden="true" className="text-text-subtle">•</span>
@@ -3147,7 +3156,7 @@ export function ProductEditor({
               disabled={saveStatus === "saving"}
               className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
             >
-              {saveStatus === "saving" ? "সেভ হচ্ছে…" : mode === "create" ? "পণ্য তৈরি করুন" : "পরিবর্তন সেভ করুন"}
+              {saveStatus === "saving" ? s.saving : mode === "create" ? s.editorCreateBtn : s.editorSaveBtn}
             </button>
             {status === "DRAFT" && (
               <button
@@ -3156,7 +3165,7 @@ export function ProductEditor({
                 disabled={saveStatus === "saving"}
                 className="inline-flex min-h-[44px] items-center rounded-md bg-emerald-600 px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
               >
-                প্রকাশ করুন (সেভ করে Active)
+                {s.publishBtn}
               </button>
             )}
           </span>
@@ -3184,7 +3193,7 @@ export function ProductEditor({
 
       <div className="mt-4 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-display text-base font-semibold text-text-main">Product quality checklist</h2>
+          <h2 className="font-display text-base font-semibold text-text-main">{s.qualityTitle}</h2>
           <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold tabular-nums text-brand-700">
             {QUALITY_CHECKLIST.filter((item) => qualityDone[item.key]).length}/{QUALITY_CHECKLIST.length}
           </span>

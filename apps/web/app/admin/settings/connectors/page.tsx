@@ -8,6 +8,9 @@ import {
   type ConnectorChannelInitial,
   type ConnectorsInitial,
 } from "./connectors-card";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { SETTINGS_B_STRINGS } from "../strings-b";
 
 // Admin > Settings > Connectors — outbound connectors (ADV-25 part 2,
 // doc 22): Slack, Telegram and Google Sheets fan-out on order / stock
@@ -51,6 +54,8 @@ async function channelInitial(
 }
 
 export default async function ConnectorsSettingsPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, SETTINGS_B_STRINGS);
   let dbReady = true;
   const markDbError = () => {
     dbReady = false;
@@ -110,15 +115,15 @@ export default async function ConnectorsSettingsPage() {
   return (
     <main className="min-w-0">
       <PageHeader
-        title="কানেক্টর — Slack, Telegram, Google Sheets"
-        description="নতুন অর্ডার, স্ট্যাটাস বদল, পেমেন্ট সফল ও স্টক কমে যাওয়ার ঘটনা আপনার টিমের Slack / Telegram-এ পাঠানো হয়; Google Sheets-এ প্রতিটি নতুন অর্ডারের একটি সারি যোগ হয়। ক্রেডেনশিয়াল এনক্রিপ্ট হয়ে সংরক্ষিত থাকে — মান কখনো পেজে দেখানো হয় না।"
-        breadcrumb="সেটিংস / কানেক্টর"
+        title={s.connPageTitle}
+        description={s.connPageDesc}
+        breadcrumb={s.connBreadcrumb}
         actions={
           <Link
             href="/admin/settings"
             className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition motion-fast hover:border-brand-300"
           >
-            ← সব সেটিংস
+            {s.allSettings}
           </Link>
         }
       />

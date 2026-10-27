@@ -38,12 +38,15 @@ import { Modal } from "@/components/ui/modal";
 import {
   ColumnPicker,
   SavedViewsBar,
-  TABLE_PREFS_NOTE,
   useHiddenColumns,
   useSavedViews,
   type SavedView,
 } from "../../../src/admin/table-prefs";
 import { DeleteProductButton } from "./delete-product-button";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
+import { PRODUCTS_STRINGS, type ProductsStrings } from "./strings";
 import { DuplicateProductButton } from "./duplicate-product-button";
 
 export interface ProductRow {
@@ -58,11 +61,13 @@ export interface ProductRow {
 
 const PAGE_SIZE = 25;
 
-const STATUS_META: Record<string, { label: string; tone: "success" | "warning" | "neutral" | "brand" }> = {
-  ACTIVE: { label: "সক্রিয়", tone: "success" },
-  DRAFT: { label: "খসড়া", tone: "warning" },
-  ARCHIVED: { label: "আর্কাইভ", tone: "neutral" },
-};
+function statusMeta(s: ProductsStrings): Record<string, { label: string; tone: "success" | "warning" | "neutral" | "brand" }> {
+  return {
+    ACTIVE: { label: s.statusActive, tone: "success" },
+    DRAFT: { label: s.statusDraft, tone: "warning" },
+    ARCHIVED: { label: s.statusArchived, tone: "neutral" },
+  };
+}
 const STATUS_FILTERS = ["ALL", "ACTIVE", "DRAFT", "ARCHIVED"] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
 const PRODUCT_STATUSES = ["ACTIVE", "DRAFT", "ARCHIVED"] as const;
@@ -76,12 +81,7 @@ interface ProductViewState {
   category: string;
 }
 
-const PICKER_COLUMNS = [
-  { key: "price", label: "দাম (থেকে)" },
-  { key: "stock", label: "স্টক" },
-  { key: "status", label: "স্ট্যাটাস" },
-] as const;
-const HIDEABLE_KEYS = PICKER_COLUMNS.map((c) => c.key);
+const HIDEABLE_KEYS = ["price", "stock", "status"] as const;
 
 interface CategoryOption {
   slug: string;
@@ -150,11 +150,13 @@ function SortTh({
   sortKey,
   sort,
   onSort,
+  sortByTemplate,
 }: {
   label: string;
   sortKey: ProductSortKey;
   sort: ProductSort | null;
   onSort: (key: ProductSortKey) => void;
+  sortByTemplate: string;
 }) {
   const active = sort?.key === sortKey;
   return (
@@ -166,7 +168,7 @@ function SortTh({
       <button
         type="button"
         onClick={() => onSort(sortKey)}
-        aria-label={`${label} অনুযায়ী সাজান`}
+        aria-label={interpolate(sortByTemplate, { label })}
         className={`flex items-center gap-1 transition motion-fast hover:text-brand-700 ${active ? "text-brand-700" : ""}`}
       >
         {label}
@@ -199,6 +201,14 @@ export function ProductsTable({
   canEdit: boolean;
   canCreate: boolean;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, PRODUCTS_STRINGS);
+  const STATUS_META = statusMeta(s);
+  const PICKER_COLUMNS = [
+    { key: "price", label: s.colPriceFrom },
+    { key: "stock", label: s.colStock },
+    { key: "status", label: s.colStatus },
+  ] as const;
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("ALL");
@@ -276,7 +286,7 @@ export function ProductsTable({
       setRows(body.data.map(toRow));
       setTotal(body.meta.total);
     } catch {
-      setLoadError("নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি।");
+      setLoadError(s.netError);
       setRows([]);
       setTotal(0);
     } finally {
@@ -479,7 +489,7 @@ export function ProductsTable({
       setSelected(new Set());
       void load();
     } catch {
-      setNotice({ tone: "error", text: "নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি।" });
+      setNotice({ tone: "error", text: s.netError });
     } finally {
       setBulkBusy(false);
     }
@@ -488,11 +498,11 @@ export function ProductsTable({
   function confirmBulkPrice() {
     const percent = Number(bulkPercent);
     if (bulkPercent.trim() === "" || !Number.isFinite(percent) || percent <= -100 || percent > 1000) {
-      setBulkModalError("সঠিক শতাংশ লিখুন (যেমন 10 মানে ১০% বৃদ্ধি, -5 মানে ৫% ছাড়) — -100-এর বেশি হতে হবে।");
+      setBulkModalError(s.percentInvalid);
       return;
     }
     if (bulkReason.trim() === "") {
-      setBulkModalError("দাম বদলের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setBulkModalError(s.priceReasonRequired);
       return;
     }
     setPriceModal(false);
@@ -509,7 +519,7 @@ export function ProductsTable({
 
   function confirmBulkDelete() {
     if (bulkDeleteReason.trim() === "") {
-      setBulkDeleteError("মুছে ফেলার কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setBulkDeleteError(s.deleteReasonRequired);
       return;
     }
     setDeleteModal(false);
@@ -549,7 +559,7 @@ export function ProductsTable({
         message: body?.error ? `${body.error.code}: ${body.error.message}` : `HTTP ${res.status}`,
       };
     } catch {
-      return { ok: false, message: "নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি।" };
+      return { ok: false, message: s.netError };
     }
   }
 
@@ -573,7 +583,7 @@ export function ProductsTable({
     if (!full || full.variants.length === 0) {
       editingRef.current = null;
       setEditing(null);
-      setNotice({ tone: "error", text: "পণ্যের বিবরণ লোড করা যায়নি — আবার চেষ্টা করুন।" });
+      setNotice({ tone: "error", text: s.priceLoadFail });
       return;
     }
     setEditProduct(full);
@@ -601,7 +611,7 @@ export function ProductsTable({
     const raw = draft.trim();
     const taka = Number(raw);
     if (raw === "" || !Number.isFinite(taka) || taka < 0) {
-      setEditError("সঠিক দাম লিখুন (টাকায় — যেমন 1250 বা 1250.50)।");
+      setEditError(s.priceInvalid);
       return;
     }
     const poisha = Math.round(taka * 100);
@@ -613,7 +623,7 @@ export function ProductsTable({
     if (editReason.trim() === "") {
       // Mirror the editor: a price change cannot save without the
       // audited reason — the inline prompt row below collects it.
-      setEditError("দাম বদলেছে — সেভ করার আগে দাম বদলের কারণ লিখুন (অডিটে থাকবে)।");
+      setEditError(s.priceReasonSave);
       reasonRef.current?.focus();
       return;
     }
@@ -641,7 +651,7 @@ export function ProductsTable({
     const raw = draft.trim();
     const next = Number(raw);
     if (raw === "" || !Number.isInteger(next) || next < 0) {
-      setEditError("সঠিক স্টক সংখ্যা লিখুন (০ বা তার বেশি পূর্ণ সংখ্যা)।");
+      setEditError(s.stockInvalid);
       return;
     }
     editBusyRef.current = true;
@@ -650,7 +660,7 @@ export function ProductsTable({
     try {
       const full = await fetchFullProduct(row.id);
       if (!full || full.variants.length === 0) {
-        setEditError("পণ্যের বিবরণ লোড করা যায়নি — আবার চেষ্টা করুন।");
+        setEditError(s.priceLoadFail);
         return;
       }
       const oldTotal = full.variants.reduce((s, v) => s + v.stock, 0);
@@ -665,9 +675,7 @@ export function ProductsTable({
       const delta = next - oldTotal;
       const variants = toVariantInputs(full);
       if (variants[0].stock + delta < 0) {
-        setEditError(
-          "একাধিক ভ্যারিয়েন্টের পণ্যে মোট স্টক এখান থেকে এতটা কমানো যাচ্ছে না — এডিট পেজ থেকে ভ্যারিয়েন্ট অনুযায়ী স্টক বদলান।",
-        );
+        setEditError(s.stockDecreaseError);
         return;
       }
       variants[0].stock += delta;
@@ -714,17 +722,17 @@ export function ProductsTable({
               if (e.key === "Enter") {
                 e.preventDefault();
                 if (editReason.trim() === "") {
-                  setEditError("দাম বদলেছে — সেভ করার আগে নিচে দাম বদলের কারণ লিখুন (অডিটে থাকবে)।");
+                  setEditError(s.priceReasonInline);
                   reasonRef.current?.focus();
                 } else void savePrice(row);
               }
               if (e.key === "Escape") cancelEdit();
             }}
             inputMode="decimal"
-            aria-label={`${row.title} — প্রথম ভ্যারিয়েন্টের দাম (টাকায়)`}
+            aria-label={interpolate(s.priceAria, { title: row.title })}
             className={cellInputCls}
           />
-          {editLoading ? <span className="text-caption text-text-subtle">লোড হচ্ছে…</span> : null}
+          {editLoading ? <span className="text-caption text-text-subtle">{s.loadingEllipsis}</span> : null}
         </span>
       );
     }
@@ -736,13 +744,13 @@ export function ProductsTable({
         <button
           type="button"
           onClick={() => void startEdit(row, "price")}
-          title="দাম দ্রুত বদলান (প্রথম ভ্যারিয়েন্ট)"
+          title={s.priceQuickTitle}
           className="rounded px-1 py-0.5 text-left font-mono font-semibold tabular-nums transition motion-fast hover:bg-brand-50 hover:text-brand-700"
         >
           {formatBdt(row.pricePoisha)}
         </button>
         {row.variantCount > 1 ? (
-          <span className="px-1 text-caption text-text-subtle">সর্বনিম্ন · সম্পাদনা: প্রথম ভ্যারিয়েন্ট</span>
+          <span className="px-1 text-caption text-text-subtle">{s.priceMinNote}</span>
         ) : null}
       </span>
     );
@@ -768,7 +776,7 @@ export function ProductsTable({
             if (!editBusy) void saveStock(row);
           }}
           inputMode="numeric"
-          aria-label={`${row.title} — মোট স্টক`}
+          aria-label={interpolate(s.stockAria, { title: row.title })}
           className={cellInputCls}
         />
       );
@@ -778,7 +786,7 @@ export function ProductsTable({
         <span className={`font-mono tabular-nums ${row.stock <= 0 ? "font-semibold text-rose-600" : ""}`}>
           {row.stock}
         </span>
-        {row.stock <= 0 ? <span className="ml-1.5 text-caption text-rose-500">স্টক শেষ</span> : null}
+        {row.stock <= 0 ? <span className="ml-1.5 text-caption text-rose-500">{s.outOfStock}</span> : null}
       </>
     );
     if (!canEdit) return stockLabel;
@@ -786,7 +794,7 @@ export function ProductsTable({
       <button
         type="button"
         onClick={() => void startEdit(row, "stock")}
-        title="মোট স্টক দ্রুত বদলান"
+        title={s.stockQuickTitle}
         className="rounded px-1 py-0.5 text-left transition motion-fast hover:bg-brand-50"
       >
         {stockLabel}
@@ -802,7 +810,7 @@ export function ProductsTable({
         value={row.status}
         disabled={statusBusyId === row.id}
         onChange={(e) => void quickStatus(row, e.target.value)}
-        aria-label={`${row.title} — স্ট্যাটাস`}
+        aria-label={interpolate(s.statusAria, { title: row.title })}
         className="h-10 rounded-md border border-border bg-card px-2 text-small font-semibold shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:opacity-50"
       >
         {PRODUCT_STATUSES.map((s) => (
@@ -819,15 +827,15 @@ export function ProductsTable({
     return (
       <div className="rounded-lg border border-brand-200 bg-brand-50/60 p-3">
         <label className="block text-small font-medium">
-          দাম বদলের কারণ *{" "}
-          <span className="text-text-subtle">(প্রথম ভ্যারিয়েন্টের দাম বদলাচ্ছে — কারণটি অডিট লগে থাকবে)</span>
+          {s.reasonLabel}{" "}
+          <span className="text-text-subtle">{s.reasonNote}</span>
         </label>
         <textarea
           ref={reasonRef}
           value={editReason}
           onChange={(e) => setEditReason(e.target.value)}
           rows={2}
-          placeholder="যেমন: সরবরাহকারীর দাম বেড়েছে"
+          placeholder={s.reasonPhSupplier}
           className="mt-1.5 w-full rounded-md border border-border bg-card px-3 py-2 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
         />
         {editError ? (
@@ -842,7 +850,7 @@ export function ProductsTable({
             disabled={editBusy || editLoading}
             className="inline-flex min-h-[44px] items-center rounded-md bg-brand-600 px-4 text-small font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
           >
-            {editBusy ? "সেভ হচ্ছে…" : "দাম সেভ করুন"}
+            {editBusy ? s.saving : s.savePrice}
           </button>
           <button
             type="button"
@@ -850,7 +858,7 @@ export function ProductsTable({
             disabled={editBusy}
             className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 disabled:opacity-50"
           >
-            বাতিল
+            {s.cancelBtn}
           </button>
         </div>
       </div>
@@ -873,6 +881,7 @@ export function ProductsTable({
 
   /* ------------------------------ render ----------------------------- */
 
+  const statusAllLabel = s.statusAll;
   const filtersActive = debouncedSearch !== "" || status !== "ALL" || category !== "";
   const catalogEmpty = !loading && !loadError && total === 0 && counts.ALL === 0 && !filtersActive;
 
@@ -887,18 +896,18 @@ export function ProductsTable({
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="পণ্যের নাম বা স্লাগ খুঁজুন…"
-              aria-label="পণ্য খুঁজুন"
+              placeholder={s.searchPh}
+              aria-label={s.searchAria}
               className="h-12 w-full rounded-md border border-border bg-card pl-10 pr-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-200"
             />
           </div>
           <select
             value={category}
             onChange={(e) => changeCategory(e.target.value)}
-            aria-label="ক্যাটাগরি দিয়ে ছাঁকুন"
+            aria-label={s.catFilterAria}
             className="h-12 max-w-[220px] rounded-md border border-border bg-card px-2.5 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-200"
           >
-            <option value="">সব ক্যাটাগরি</option>
+            <option value="">{s.allCategories}</option>
             {categories.map((c) => (
               <option key={c.slug} value={c.slug}>
                 {c.nameBn}
@@ -916,7 +925,7 @@ export function ProductsTable({
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           {STATUS_FILTERS.map((s) => {
-            const label = s === "ALL" ? "সব" : (STATUS_META[s]?.label ?? s);
+            const label = s === "ALL" ? statusAllLabel : (STATUS_META[s]?.label ?? s);
             const active = status === s;
             const dotCls =
               s === "ACTIVE"
@@ -947,7 +956,7 @@ export function ProductsTable({
             );
           })}
           <span className="ml-auto rounded-full bg-brand-50 px-3 py-1.5 text-caption font-semibold text-brand-700">
-            {loading ? "লোড হচ্ছে…" : `মোট ${total}টি পণ্য — পৃষ্ঠা ${page}/${totalPages}`}
+            {loading ? s.loadingEllipsis : interpolate(s.totalLine, { total, page, pages: totalPages })}
           </span>
         </div>
         <div className="mt-3 border-t border-border pt-3">
@@ -960,13 +969,13 @@ export function ProductsTable({
             onDelete={views.deleteView}
           />
         </div>
-        <p className="mt-2 text-caption leading-relaxed text-text-subtle">{TABLE_PREFS_NOTE}</p>
+        <p className="mt-2 text-caption leading-relaxed text-text-subtle">{pick(locale, ADMIN_STRINGS).tpStorageNote}</p>
       </Card>
 
       {selected.size > 0 ? (
         <div className="anim-fade-in sticky top-2 z-20 mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-brand-200 bg-brand-50/90 px-4 py-3 shadow-lift backdrop-blur">
           <span className="brand-gradient inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-small font-semibold text-white shadow-md">
-            {selected.size}টি পণ্য নির্বাচিত
+            {interpolate(s.selectedCount, { count: selected.size })}
           </span>
           {canEdit ? (
             <>
@@ -976,7 +985,7 @@ export function ProductsTable({
                 onClick={() => void callBulk({ ids: [...selected], action: "status", status: "ACTIVE" })}
                 className="inline-flex min-h-[44px] items-center rounded-md bg-emerald-600 px-3.5 text-small font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
               >
-                সক্রিয় করুন
+                {s.bulkActivate}
               </button>
               <button
                 type="button"
@@ -984,7 +993,7 @@ export function ProductsTable({
                 onClick={() => void callBulk({ ids: [...selected], action: "status", status: "DRAFT" })}
                 className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 disabled:opacity-50"
               >
-                খসড়া করুন
+                {s.bulkDraft}
               </button>
               <button
                 type="button"
@@ -992,7 +1001,7 @@ export function ProductsTable({
                 onClick={() => void callBulk({ ids: [...selected], action: "status", status: "ARCHIVED" })}
                 className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 disabled:opacity-50"
               >
-                আর্কাইভ
+                {s.bulkArchive}
               </button>
               <button
                 type="button"
@@ -1003,7 +1012,7 @@ export function ProductsTable({
                 }}
                 className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 disabled:opacity-50"
               >
-                দাম সমন্বয়…
+                {s.bulkPriceAdjust}
               </button>
             </>
           ) : null}
@@ -1017,7 +1026,7 @@ export function ProductsTable({
               }}
               className="inline-flex min-h-[44px] items-center rounded-md px-3.5 text-small font-semibold text-rose-600 transition motion-fast hover:bg-rose-50 disabled:opacity-50"
             >
-              মুছুন…
+              {s.bulkDelete}
             </button>
           ) : null}
           <button
@@ -1026,9 +1035,9 @@ export function ProductsTable({
             onClick={() => setSelected(new Set())}
             className="ml-auto inline-flex min-h-[44px] items-center rounded-md px-3.5 text-small font-semibold text-text-muted transition motion-fast hover:text-text-main disabled:opacity-50"
           >
-            নির্বাচন বাতিল
+            {s.bulkClear}
           </button>
-          {bulkBusy ? <span className="text-small text-text-muted">প্রসেস হচ্ছে…</span> : null}
+          {bulkBusy ? <span className="text-small text-text-muted">{s.bulkProcessing}</span> : null}
         </div>
       ) : null}
 
@@ -1042,8 +1051,10 @@ export function ProductsTable({
           }`}
         >
           <p className="text-small font-semibold">
-            বাল্ক কাজ শেষ: {bulkSummary.ok}টি সফল
-            {bulkSummary.failures.length > 0 ? `, ${bulkSummary.failures.length}টি ব্যর্থ` : ""}।
+            {interpolate(s.bulkSummary, {
+              ok: bulkSummary.ok,
+              failPart: bulkSummary.failures.length > 0 ? interpolate(s.bulkSummaryFailPart, { count: bulkSummary.failures.length }) : "",
+            })}
           </p>
           {bulkSummary.failures.length > 0 ? (
             <ul className="mt-1.5 list-inside list-disc space-y-0.5 text-small text-rose-700">
@@ -1059,7 +1070,7 @@ export function ProductsTable({
             onClick={() => setBulkSummary(null)}
             className="mt-2 text-caption font-semibold text-text-muted underline-offset-2 hover:underline"
           >
-            বন্ধ করুন
+            {s.bulkClose}
           </button>
         </div>
       ) : null}
@@ -1087,10 +1098,10 @@ export function ProductsTable({
               <path d="M12 17h.01" />
             </svg>
           </span>
-          <h2 className="mt-4 font-display text-h3">তালিকা লোড করা যায়নি</h2>
+          <h2 className="mt-4 font-display text-h3">{s.loadErrorTitle}</h2>
           <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-rose-600">{loadError}</p>
           <Button variant="outline" className="mt-5" onClick={() => void load()}>
-            আবার চেষ্টা করুন
+            {s.retry}
           </Button>
         </div>
       ) : catalogEmpty ? (
@@ -1101,15 +1112,15 @@ export function ProductsTable({
               <path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" />
             </svg>
           </span>
-          <h2 className="mt-4 font-display text-h3">কোনো পণ্য নেই</h2>
+          <h2 className="mt-4 font-display text-h3">{s.emptyTitle}</h2>
           <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
-            ক্যাটালগে এখনো কোনো পণ্য যোগ হয়নি — নতুন পণ্য যোগ করলেই এখানে দেখা যাবে।
+            {s.emptyDesc}
           </p>
           <Link
             href="/admin/products/new"
             className="brand-gradient mt-5 inline-flex min-h-[44px] items-center justify-center rounded-md px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105"
           >
-            + নতুন পণ্য যোগ করুন
+            {s.emptyAdd}
           </Link>
         </div>
       ) : !loading && rows.length === 0 ? (
@@ -1120,9 +1131,9 @@ export function ProductsTable({
               <path d="m21 21-4.3-4.3" />
             </svg>
           </span>
-          <h2 className="mt-4 font-display text-h3">কোনো পণ্য পাওয়া যায়নি</h2>
+          <h2 className="mt-4 font-display text-h3">{s.noResultsTitle}</h2>
           <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
-            এই ফিল্টার/খোঁজে ক্যাটালগে কোনো পণ্য নেই। ফিল্টার বদলে আবার দেখুন।
+            {s.noResultsDesc}
           </p>
           <Button
             variant="outline"
@@ -1133,7 +1144,7 @@ export function ProductsTable({
               changeCategory("");
             }}
           >
-            ফিল্টার মুছে ফেলুন
+            {s.clearFilters}
           </Button>
         </div>
       ) : (
@@ -1149,22 +1160,22 @@ export function ProductsTable({
                       type="checkbox"
                       checked={allPageSelected}
                       onChange={(e) => togglePage(e.target.checked)}
-                      aria-label="এই পৃষ্ঠার সব পণ্য নির্বাচন করুন"
+                      aria-label={s.selectPageAria}
                       className="h-5 w-5 rounded accent-[#4F46E5]"
                     />
                   </th>
-                  <SortTh label="পণ্য" sortKey="title" sort={sort} onSort={toggleSort} />
+                  <SortTh label={s.colProduct} sortKey="title" sort={sort} onSort={toggleSort} sortByTemplate={s.sortByAria} />
                   {cols.isVisible("price") ? (
-                    <SortTh label="দাম (থেকে)" sortKey="price" sort={sort} onSort={toggleSort} />
+                    <SortTh label={s.colPriceFrom} sortKey="price" sort={sort} onSort={toggleSort} sortByTemplate={s.sortByAria} />
                   ) : null}
                   {cols.isVisible("stock") ? (
-                    <SortTh label="স্টক" sortKey="stock" sort={sort} onSort={toggleSort} />
+                    <SortTh label={s.colStock} sortKey="stock" sort={sort} onSort={toggleSort} sortByTemplate={s.sortByAria} />
                   ) : null}
                   {cols.isVisible("status") ? (
-                    <SortTh label="স্ট্যাটাস" sortKey="status" sort={sort} onSort={toggleSort} />
+                    <SortTh label={s.colStatus} sortKey="status" sort={sort} onSort={toggleSort} sortByTemplate={s.sortByAria} />
                   ) : null}
                   {showActions && (
-                    <th scope="col" className="px-4 py-3 text-right text-caption font-semibold text-text-muted">অ্যাকশন</th>
+                    <th scope="col" className="px-4 py-3 text-right text-caption font-semibold text-text-muted">{s.colActions}</th>
                   )}
                 </tr>
               </thead>
@@ -1181,7 +1192,7 @@ export function ProductsTable({
                           type="checkbox"
                           checked={selected.has(p.id)}
                           onChange={(e) => toggleRow(p.id, e.target.checked)}
-                          aria-label={`${p.title} নির্বাচন করুন`}
+                          aria-label={interpolate(s.selectRowAria, { title: p.title })}
                           className="h-5 w-5 rounded accent-[#4F46E5]"
                         />
                       </td>
@@ -1250,7 +1261,7 @@ export function ProductsTable({
                       type="checkbox"
                       checked={selected.has(p.id)}
                       onChange={(e) => toggleRow(p.id, e.target.checked)}
-                      aria-label={`${p.title} নির্বাচন করুন`}
+                      aria-label={interpolate(s.selectRowAria, { title: p.title })}
                       className="mt-0.5 h-5 w-5 shrink-0 rounded accent-[#4F46E5]"
                     />
                     <div className="min-w-0">
@@ -1272,11 +1283,11 @@ export function ProductsTable({
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2.5 text-small">
                   <span className="rounded-md bg-surface-2 px-3 py-2.5">
-                    <span className="mb-0.5 block text-caption font-medium text-text-subtle">দাম (থেকে)</span>
+                    <span className="mb-0.5 block text-caption font-medium text-text-subtle">{s.colPriceFrom}</span>
                     {renderPriceCell(p)}
                   </span>
                   <span className="rounded-md bg-surface-2 px-3 py-2.5">
-                    <span className="mb-0.5 block text-caption font-medium text-text-subtle">স্টক</span>
+                    <span className="mb-0.5 block text-caption font-medium text-text-subtle">{s.colStock}</span>
                     {renderStockCell(p)}
                   </span>
                 </div>
@@ -1298,9 +1309,9 @@ export function ProductsTable({
           </div>
 
           {/* Pager */}
-          <nav aria-label="পণ্য তালিকার পৃষ্ঠা" className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <nav aria-label={s.pagerAria} className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <span className="text-caption text-text-muted">
-              মোট {total}টি পণ্যের মধ্যে এই পৃষ্ঠায় {rows.length}টি — পৃষ্ঠা {page} / {totalPages}
+              {interpolate(s.pagerSummary, { total, shown: rows.length, page, pages: totalPages })}
             </span>
             <div className="flex flex-wrap items-center gap-1.5">
               <button
@@ -1309,7 +1320,7 @@ export function ProductsTable({
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                ← আগের
+                {s.prevPage}
               </button>
               {pageList(page, totalPages).map((n, i) =>
                 n === "…" ? (
@@ -1339,7 +1350,7 @@ export function ProductsTable({
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                পরের →
+                {s.nextPage}
               </button>
             </div>
           </nav>
@@ -1353,15 +1364,14 @@ export function ProductsTable({
         onClose={() => {
           if (!bulkBusy) setPriceModal(false);
         }}
-        title="দাম সমন্বয় (বাল্ক)"
+        title={s.bulkPriceTitle}
         onConfirm={confirmBulkPrice}
       >
         <p className="text-small leading-relaxed">
-          নির্বাচিত <strong>{selected.size}টি</strong> পণ্যের <strong>সব ভ্যারিয়েন্টের</strong> দাম শতাংশ
-          হারে বদলাবে। নতুন দাম নিকটতম পয়সায় রাউন্ড হবে।
+          {interpolate(s.bulkPriceBody, { count: selected.size })}
         </p>
         <label className="mb-1.5 mt-4 block text-small font-medium" htmlFor="bulk-percent">
-          শতাংশ (%, যেমন 10 = ১০% বৃদ্ধি, -5 = ৫% ছাড়)
+          {s.percentLabel}
         </label>
         <input
           id="bulk-percent"
@@ -1372,13 +1382,13 @@ export function ProductsTable({
           className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
         />
         <label className="mb-1.5 mt-4 block text-small font-medium" htmlFor="bulk-price-reason">
-          দাম বদলের কারণ * <span className="text-text-subtle">(অডিট লগে থাকবে)</span>
+          {s.bulkReasonLabel} <span className="text-text-subtle">{s.bulkReasonNote}</span>
         </label>
         <input
           id="bulk-price-reason"
           value={bulkReason}
           onChange={(e) => setBulkReason(e.target.value)}
-          placeholder="যেমন: সরবরাহকারীর দাম বেড়েছে"
+          placeholder={s.reasonPhSupplier}
           className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
         />
         {bulkModalError ? (
@@ -1394,22 +1404,20 @@ export function ProductsTable({
         onClose={() => {
           if (!bulkBusy) setDeleteModal(false);
         }}
-        title="নির্বাচিত পণ্য মুছে ফেলুন"
+        title={s.bulkDeleteTitle}
         onConfirm={confirmBulkDelete}
       >
         <p className="text-small leading-relaxed">
-          নির্বাচিত <strong>{selected.size}টি</strong> পণ্য সফট-ডিলিট হবে: স্টোরফ্রন্ট ও সার্চ থেকে সরে
-          যাবে, ভ্যারিয়েন্টগুলো আর অর্ডার করা যাবে না। পুরনো অর্ডারের ইতিহাসে তথ্য থেকে যাবে (হার্ড
-          ডিলিট হয় না)।
+          {interpolate(s.bulkDeleteBody, { count: selected.size })}
         </p>
         <label className="mb-1.5 mt-4 block text-small font-medium" htmlFor="bulk-delete-reason">
-          মুছে ফেলার কারণ (আবশ্যক)
+          {s.deleteReasonLabel}
         </label>
         <input
           id="bulk-delete-reason"
           value={bulkDeleteReason}
           onChange={(e) => setBulkDeleteReason(e.target.value)}
-          placeholder="যেমন: পণ্যের লাইন বন্ধ হয়ে গেছে"
+          placeholder={s.bulkDeleteReasonPh}
           className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
         />
         {bulkDeleteError ? (

@@ -1,6 +1,9 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { ReviewsManager } from "./reviews-manager";
 import { QuestionsManager } from "./questions-manager";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { REVIEWS_ADMIN_STRINGS } from "./strings";
 
 // Review moderation — the queue behind the storefront review system.
 // Reviews are born PENDING at POST /api/v1/public/products/[slug]/reviews
@@ -17,21 +20,22 @@ import { QuestionsManager } from "./questions-manager";
 // /api/v1/admin/product-questions; guarded by content.page too.
 export const dynamic = "force-dynamic";
 
-export default function AdminReviewsPage() {
+export default async function AdminReviewsPage() {
+  const s = pick(await getRequestLocale(), REVIEWS_ADMIN_STRINGS);
   return (
     <main>
       <PageHeader
-        title="রিভিউ মডারেশন"
-        description="আসল রিভিউ ডাটাবেসের Review টেবিল থেকে আসে। অনুমোদিত রিভিউই শুধু পণ্যের পেজে ও হোমপেজে প্রকাশিত হয়; অনুমোদন/প্রত্যাখ্যানের সঙ্গে সঙ্গেই পণ্যের গড় রেটিং আপডেট হয়। ফোন নম্বর যাচাইয়ের জন্য — এখানে মাস্ক করা দেখানো হয়। (Review Moderation — content.page)"
-        breadcrumb="Admin / Catalog"
+        title={s.pageTitle}
+        description={s.pageDescription}
+        breadcrumb={s.pageBreadcrumb}
       />
       <ReviewsManager />
 
       <div className="mt-12">
         <PageHeader
-          title="পণ্য প্রশ্নোত্তর মডারেশন"
-          description="গ্রাহকদের পণ্য-সম্পর্কিত প্রশ্ন ProductQuestion টেবিল থেকে আসে। উত্তর দিলেই প্রশ্নোত্তরটি পণ্যের পেজে প্রকাশিত হয়; অনুপযুক্ত প্রশ্ন লুকিয়ে রাখা যায়। (Product Q&A — content.page)"
-          breadcrumb="Admin / Catalog"
+          title={s.qaTitle}
+          description={s.qaDescription}
+          breadcrumb={s.pageBreadcrumb}
         />
         <QuestionsManager />
       </div>

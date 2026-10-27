@@ -1,3 +1,6 @@
+import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { SETTINGS_STRINGS } from "../strings";
+
 // Shared pure helpers for the Orders settings editors (doc 18, F2-1):
 // the Order Rules card and the Delivery Slots card on
 // /admin/settings/orders, plus the smoke that verifies them.
@@ -35,10 +38,11 @@ export function poishaToTakaText(poisha: number): string {
  * state and is handled there; anything non-numeric, negative, or with
  * more than two decimals is an error (never silently rounded).
  */
-export function takaTextToPoisha(input: string): { poisha: number } | { error: string } {
+export function takaTextToPoisha(input: string, locale: Locale = "bn"): { poisha: number } | { error: string } {
+  const s = pick(locale, SETTINGS_STRINGS);
   const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(input.trim());
   if (!match) {
-    return { error: "টাকার পরিমাণটি সঠিকভাবে লিখুন — যেমন 500 বা 1500.50 (সর্বোচ্চ দুই দশমিক ঘর)।" };
+    return { error: s.sharedTakaError };
   }
   const whole = Number(match[1] as string);
   const frac = match[2] ? Number((match[2] as string).padEnd(2, "0")) : 0;
@@ -68,28 +72,28 @@ export function serializeSlotRows(rows: readonly SlotRow[]): string {
  */
 export function validateSlotRows(
   rows: readonly SlotRow[],
+  locale: Locale = "bn",
 ): { value: string } | { error: string } {
+  const s = pick(locale, SETTINGS_STRINGS);
   if (rows.length === 0) {
-    return { error: "কমপক্ষে একটি ডেলিভারি স্লট থাকতে হবে — খালি তালিকা সেভ করা যাবে না।" };
+    return { error: s.sharedSlotEmpty };
   }
   const seen = new Set<string>();
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i] as SlotRow;
     const id = row.id.trim();
     if (id === "") {
-      return { error: `${i + 1} নম্বর স্লটের আইডি খালি — প্রতিটি স্লটের একটি আইডি লাগবে।` };
+      return { error: interpolate(s.sharedSlotIdEmpty, { n: i + 1 }) };
     }
     if (!SLOT_ID_PATTERN.test(id)) {
-      return {
-        error: `স্লট আইডি "${row.id}" বৈধ নয় — শুধু ইংরেজি অক্ষর, সংখ্যা, হাইফেন (-) ও আন্ডারস্কোর (_) ব্যবহার করুন, ফাঁকা জায়গা নয়।`,
-      };
+      return { error: interpolate(s.sharedSlotIdInvalid, { id: row.id }) };
     }
     if (seen.has(id)) {
-      return { error: `স্লট আইডি "${id}" দুইবার আছে — প্রতিটি আইডি একবারই থাকতে পারে।` };
+      return { error: interpolate(s.sharedSlotIdDup, { id }) };
     }
     seen.add(id);
     if (row.labelBn.trim() === "" || row.labelEn.trim() === "") {
-      return { error: `"${id}" স্লটের বাংলা ও ইংরেজি দুটি লেবেলই লিখতে হবে।` };
+      return { error: interpolate(s.sharedSlotLabels, { id }) };
     }
   }
   return { value: serializeSlotRows(rows) };

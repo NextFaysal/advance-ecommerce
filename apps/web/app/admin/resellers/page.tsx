@@ -7,6 +7,9 @@ import { formatBdt } from "@/checkout/pricing";
 import { CreateResellerForm } from "./create-reseller-form";
 import PayoutActions from "./payout-actions";
 import { RevokeResellerSessions } from "./revoke-sessions";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
+import { RESELLERS_STRINGS } from "./strings";
 
 // Resellers admin — Agent 14, Step 46 (A5).
 // Locked state: while module.reseller is OFF (the seeded default — this is a
@@ -22,15 +25,14 @@ import { RevokeResellerSessions } from "./revoke-sessions";
 // /api/v1/admin/resellers — the create endpoint that did not exist
 // before; new rows start PENDING_APPROVAL with their code generated.
 export default async function AdminResellersPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, RESELLERS_STRINGS);
   await ensureDbFeatureFlags().catch(() => {});
   if (!isResellerEnabled(demoResellerFlags)) {
     return (
       <main style={{ padding: 24, fontFamily: "system-ui" }}>
-        <h1>Resellers</h1>
-        <p role="status">
-          🔒 This module is locked for this install. Reseller panel is a paid add-on —
-          enable <code>module.reseller</code> in Admin &gt; Settings &gt; Feature Flags to unlock it.
-        </p>
+        <h1>{s.title}</h1>
+        <p role="status">{s.locked}</p>
       </main>
     );
   }
@@ -46,15 +48,15 @@ export default async function AdminResellersPage() {
   const appBaseUrl = process.env["NEXT_PUBLIC_APP_URL"] ?? "";
   return (
     <main style={{ padding: 24, fontFamily: "system-ui" }}>
-      <h1>Resellers</h1>
-      <p>Live data from the database (src/reseller/store.ts).</p>
+      <h1>{s.title}</h1>
+      <p>{s.liveData}</p>
       <CreateResellerForm />
       <table>
         <thead>
           <tr>
-            <th>Reseller</th><th>Phone</th><th>Tier</th><th>Commission</th>
-            <th>Lifetime Sales</th><th>Lifetime Commission</th><th>Wallet Balance</th><th>Pending Withdrawal</th>
-            <th>Referral Code</th><th>Share Link</th>
+            <th>{s.colReseller}</th><th>{s.colPhone}</th><th>{s.colTier}</th><th>{s.colCommission}</th>
+            <th>{s.colLifetimeSales}</th><th>{s.colLifetimeCommission}</th><th>{s.colWallet}</th><th>{s.colPendingWithdrawal}</th>
+            <th>{s.colReferralCode}</th><th>{s.colShareLink}</th>
           </tr>
         </thead>
         <tbody>
@@ -62,7 +64,7 @@ export default async function AdminResellersPage() {
             <tr key={d.resellerId}>
               <td>{d.name}</td>
               <td>{d.phoneMasked}</td>
-              <td>{d.tier}{d.nextTier ? ` (next: ${d.nextTier} in ${formatBdt(d.toNextTierPoisha)})` : ""}</td>
+              <td>{d.tier}{d.nextTier ? ` (${interpolate(s.nextTier, { tier: d.nextTier, amount: formatBdt(d.toNextTierPoisha) })})` : ""}</td>
               <td>{(d.commissionBps / 100).toFixed(1)}%</td>
               <td>{formatBdt(d.lifetimeSalesPoisha)}</td>
               <td>{formatBdt(d.lifetimeCommissionPoisha)}</td>
@@ -80,39 +82,34 @@ export default async function AdminResellersPage() {
           ))}
         </tbody>
       </table>
-      <h2>Price List (margin never negative)</h2>
+      <h2>{s.priceListTitle}</h2>
       <ul>
         {priceEntries.map((e) => {
           const m = computeMargin(e);
           return (
             <li key={e.variantId}>
-              {e.productName} ({e.sku}) — base {formatBdt(e.basePricePoisha)}, sells at{" "}
-              {formatBdt(e.resellerPricePoisha)}, margin {m.ok ? formatBdt(m.marginPoisha) : m.error}
+              {interpolate(s.priceEntry, { name: e.productName, sku: e.sku, base: formatBdt(e.basePricePoisha), price: formatBdt(e.resellerPricePoisha), margin: m.ok ? formatBdt(m.marginPoisha) : (m.error ?? "") })}
             </li>
           );
         })}
       </ul>
-      <p>Pending withdrawals: {withdrawals.filter((w) => w.status === "PENDING").length}</p>
-      <h2>Payout Requests (portal, ADV-12)</h2>
-      <p>
-        Portal payout requests from resellers. Availability is computed (wallet balance − PAID −
-        pending/approved requests). <strong>Mark PAID only records that staff paid the reseller
-        externally</strong> (bKash/Nagad/bank) — no money moves through this panel.
-      </p>
+      <p>{interpolate(s.pendingWithdrawals, { count: withdrawals.filter((w) => w.status === "PENDING").length })}</p>
+      <h2>{s.payoutTitle}</h2>
+      <p>{s.payoutDesc}</p>
       {payoutRequests.length === 0 ? (
-        <p>No payout requests yet.</p>
+        <p>{s.noPayouts}</p>
       ) : (
         <table>
           <thead>
             <tr>
-              <th>Requested</th><th>Reseller</th><th>Amount</th><th>Method</th>
-              <th>Account Note</th><th>Status</th><th>Decided By</th><th>Actions</th>
+              <th>{s.colRequested}</th><th>{s.colReseller}</th><th>{s.colAmount}</th><th>{s.colMethod}</th>
+              <th>{s.colAccountNote}</th><th>{s.colStatus}</th><th>{s.colDecidedBy}</th><th>{s.colActions}</th>
             </tr>
           </thead>
           <tbody>
             {payoutRequests.map((r) => (
               <tr key={r.id}>
-                <td>{new Date(r.createdAt).toLocaleDateString("en-GB")}</td>
+                <td>{new Date(r.createdAt).toLocaleDateString(locale === "bn" ? "bn-BD" : "en-GB")}</td>
                 <td>{r.resellerName} ({r.resellerPhoneMasked})</td>
                 <td>{formatBdt(r.amountPoisha)}</td>
                 <td>{r.method}</td>

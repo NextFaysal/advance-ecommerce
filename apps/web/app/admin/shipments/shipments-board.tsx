@@ -29,6 +29,9 @@ import { Money, formatPoisha } from "@/components/ui/money";
 import { StatCard } from "@/components/ui/stat-card";
 import { DataTable } from "@/components/ui/table";
 import type { ShipmentBoardRow, ShipmentsBoardSummary } from "@/shipments/board";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
+import { SHIPMENTS_STRINGS, type ShipmentsStrings } from "./strings";
 
 /* ------------------------------------------------------------------ */
 /* Display language (moved from the deleted demo-data.ts; the values   */
@@ -37,16 +40,21 @@ import type { ShipmentBoardRow, ShipmentsBoardSummary } from "@/shipments/board"
 
 type StatusTone = "warning" | "info" | "success" | "danger" | "brand" | "neutral";
 
-const SHIPMENT_STATUS_META: Record<string, { labelBn: string; labelEn: string; icon: string; tone: StatusTone }> = {
-  CREATED: { labelBn: "তৈরি হয়েছে", labelEn: "CREATED", icon: "📦", tone: "neutral" },
-  PICKED_UP: { labelBn: "পিকআপ হয়েছে", labelEn: "PICKED_UP", icon: "📥", tone: "info" },
-  IN_TRANSIT: { labelBn: "পথে আছে", labelEn: "IN_TRANSIT", icon: "🚚", tone: "info" },
-  OUT_FOR_DELIVERY: { labelBn: "ডেলিভারির জন্য বের হয়েছে", labelEn: "OUT_FOR_DELIVERY", icon: "🛵", tone: "brand" },
-  DELIVERED: { labelBn: "ডেলিভারি সম্পন্ন", labelEn: "DELIVERED", icon: "✓", tone: "success" },
-  FAILED: { labelBn: "ব্যর্থ", labelEn: "FAILED", icon: "⚠", tone: "danger" },
-  RETURNING: { labelBn: "ফেরত আসছে", labelEn: "RETURNING", icon: "↩", tone: "warning" },
-  RETURNED: { labelBn: "ফেরত এসেছে", labelEn: "RETURNED", icon: "↩", tone: "warning" },
+const SHIPMENT_STATUS_META: Record<string, { labelKey: keyof ShipmentsStrings; icon: string; tone: StatusTone }> = {
+  CREATED: { labelKey: "stCreated", icon: "📦", tone: "neutral" },
+  PICKED_UP: { labelKey: "stPickedUp", icon: "📥", tone: "info" },
+  IN_TRANSIT: { labelKey: "stInTransit", icon: "🚚", tone: "info" },
+  OUT_FOR_DELIVERY: { labelKey: "stOutForDelivery", icon: "🛵", tone: "brand" },
+  DELIVERED: { labelKey: "stDelivered", icon: "✓", tone: "success" },
+  FAILED: { labelKey: "stFailed", icon: "⚠", tone: "danger" },
+  RETURNING: { labelKey: "stReturning", icon: "↩", tone: "warning" },
+  RETURNED: { labelKey: "stReturned", icon: "↩", tone: "warning" },
 };
+
+function statusLabel(status: string, s: ShipmentsStrings): string {
+  const meta = SHIPMENT_STATUS_META[status];
+  return meta ? s[meta.labelKey] : status;
+}
 
 const STATUS_TAB_ORDER = [
   "CREATED",
@@ -59,22 +67,23 @@ const STATUS_TAB_ORDER = [
   "RETURNED",
 ] as const;
 
-const COURIER_LABELS_BN: Record<string, string> = {
-  steadfast: "স্টেডফাস্ট (Steadfast)",
-  pathao: "পাঠাও (Pathao)",
-  redx: "রেডএক্স (RedX)",
+const COURIER_LABEL_KEYS: Record<string, keyof ShipmentsStrings> = {
+  steadfast: "courierSteadfast",
+  pathao: "courierPathao",
+  redx: "courierRedx",
 };
 
-function courierLabel(provider: string): string {
-  return COURIER_LABELS_BN[provider] ?? provider;
+function courierLabel(provider: string, s: ShipmentsStrings): string {
+  const key = COURIER_LABEL_KEYS[provider];
+  return key ? s[key] : provider;
 }
 
 function isProblemStatus(status: string): boolean {
   return status === "FAILED" || status === "RETURNING" || status === "RETURNED";
 }
 
-function dhakaDateTime(iso: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
+function dhakaDateTime(iso: string, locale: Locale): string {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone: "Asia/Dhaka",
     day: "2-digit",
     month: "short",
@@ -92,10 +101,12 @@ function formatWeight(grams: number | null): string {
 }
 
 function ShipmentStatusBadge({ status }: { status: string }) {
-  const s = SHIPMENT_STATUS_META[status] ?? { labelBn: status, labelEn: status, icon: "•", tone: "neutral" as StatusTone };
+  const { locale } = useLocale();
+  const s = pick(locale, SHIPMENTS_STRINGS);
+  const meta = SHIPMENT_STATUS_META[status] ?? { labelKey: null, icon: "•", tone: "neutral" as StatusTone };
   return (
-    <Badge tone={s.tone}>
-      <span aria-hidden="true">{s.icon}</span> {s.labelBn} ({s.labelEn})
+    <Badge tone={meta.tone}>
+      <span aria-hidden="true">{meta.icon}</span> {meta.labelKey ? s[meta.labelKey] : status}
     </Badge>
   );
 }
@@ -106,33 +117,35 @@ function ShipmentStatusBadge({ status }: { status: string }) {
 /* ------------------------------------------------------------------ */
 
 const PIPELINE_STEPS = [
-  { status: "CREATED", labelBn: "তৈরি", icon: "package" },
-  { status: "PICKED_UP", labelBn: "পিকআপ", icon: "box" },
-  { status: "IN_TRANSIT", labelBn: "পথে", icon: "truck" },
-  { status: "OUT_FOR_DELIVERY", labelBn: "ডেলিভারিতে", icon: "arrow-right" },
-  { status: "DELIVERED", labelBn: "ডেলিভার্ড", icon: "check" },
-] as const satisfies readonly { status: string; labelBn: string; icon: IconName }[];
+  { status: "CREATED", labelKey: "stepCreated", icon: "package" },
+  { status: "PICKED_UP", labelKey: "stepPickedUp", icon: "box" },
+  { status: "IN_TRANSIT", labelKey: "stepInTransit", icon: "truck" },
+  { status: "OUT_FOR_DELIVERY", labelKey: "stepOutForDelivery", icon: "arrow-right" },
+  { status: "DELIVERED", labelKey: "stepDelivered", icon: "check" },
+] as const satisfies readonly { status: string; labelKey: keyof ShipmentsStrings; icon: IconName }[];
 
-const OFF_PATH: Record<string, { labelBn: string; icon: IconName; cls: string }> = {
-  FAILED: { labelBn: "ডেলিভারি ব্যর্থ হয়েছে", icon: "alert", cls: "border-rose-200 bg-rose-50 text-rose-700" },
-  RETURNING: { labelBn: "পার্সেলটি ফেরত আসছে", icon: "rotate-ccw", cls: "border-amber-200 bg-amber-50 text-amber-800" },
-  RETURNED: { labelBn: "পার্সেলটি ফেরত এসেছে", icon: "rotate-ccw", cls: "border-border bg-slate-50 text-slate-600" },
+const OFF_PATH: Record<string, { labelKey: keyof ShipmentsStrings; icon: IconName; cls: string }> = {
+  FAILED: { labelKey: "offPathFailed", icon: "alert", cls: "border-rose-200 bg-rose-50 text-rose-700" },
+  RETURNING: { labelKey: "offPathReturning", icon: "rotate-ccw", cls: "border-amber-200 bg-amber-50 text-amber-800" },
+  RETURNED: { labelKey: "offPathReturned", icon: "rotate-ccw", cls: "border-border bg-slate-50 text-slate-600" },
 };
 
 function ParcelStepper({ status }: { status: string }) {
-  const activeIdx = PIPELINE_STEPS.findIndex((s) => s.status === status);
+  const { locale } = useLocale();
+  const s = pick(locale, SHIPMENTS_STRINGS);
+  const activeIdx = PIPELINE_STEPS.findIndex((step) => step.status === status);
   if (activeIdx === -1) {
     const off = OFF_PATH[status];
     if (!off) return null;
     return (
       <p className={`mt-3 flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium ${off.cls}`}>
         <Icon name={off.icon} size={16} />
-        {off.labelBn}
+        {s[off.labelKey]}
       </p>
     );
   }
   return (
-    <ol className="mt-3 flex items-start" aria-label={`পার্সেলের অবস্থা: ${PIPELINE_STEPS[activeIdx].labelBn}`}>
+    <ol className="mt-3 flex items-start" aria-label={interpolate(s.stepperAria, { label: s[PIPELINE_STEPS[activeIdx]!.labelKey] })}>
       {PIPELINE_STEPS.map((step, idx) => {
         const done = idx < activeIdx || status === "DELIVERED";
         const active = idx === activeIdx && status !== "DELIVERED";
@@ -155,7 +168,7 @@ function ParcelStepper({ status }: { status: string }) {
                 <Icon name={done ? "check" : step.icon} size={14} />
               </span>
               <span className={`text-xs leading-tight ${done || active ? "font-semibold text-text-main" : "text-text-muted"}`}>
-                {step.labelBn}
+                {s[step.labelKey]}
               </span>
             </span>
           </li>
@@ -176,6 +189,8 @@ export function ShipmentsBoard({
   rows: ShipmentBoardRow[];
   summary: ShipmentsBoardSummary;
 }) {
+  const { locale } = useLocale();
+  const str = pick(locale, SHIPMENTS_STRINGS);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [courierFilter, setCourierFilter] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<string>(rows[0]?.id ?? "");
@@ -212,12 +227,12 @@ export function ShipmentsBoard({
         </Link>
         {s.packed ? (
           <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
-            প্যাক হয়েছে (Packed)
+            {str.packedBadge}
           </span>
         ) : null}
       </span>
     ),
-    courier: courierLabel(s.provider),
+    courier: courierLabel(s.provider, str),
     tracking: <span className="font-mono text-xs tabular-nums">{s.trackingId ?? "—"}</span>,
     destination: <span>{s.district ?? "—"}</span>,
     weight: <span className="tabular-nums">{formatWeight(s.weightGrams)}</span>,
@@ -226,11 +241,11 @@ export function ShipmentsBoard({
       s.codAmountPoisha > 0 ? (
         <Money poisha={s.codAmountPoisha} />
       ) : (
-        <span className="text-text-muted">প্রিপেইড</span>
+        <span className="text-text-muted">{str.prepaid}</span>
       ),
     status: <ShipmentStatusBadge status={s.status} />,
     created: (
-      <span className="font-mono text-xs tabular-nums">{dhakaDateTime(s.createdAt)}</span>
+      <span className="font-mono text-xs tabular-nums">{dhakaDateTime(s.createdAt, locale)}</span>
     ),
     action: (
       <span className="flex items-center gap-2">
@@ -240,13 +255,13 @@ export function ShipmentsBoard({
           onClick={() => setSelectedId(s.id)}
           aria-pressed={selected?.id === s.id}
         >
-          বিবরণ
+          {str.details}
         </Button>
         <Link
           href={`/admin/orders/${s.orderId}`}
           className="whitespace-nowrap text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
-          ওয়ার্কস্পেস →
+          {str.workspaceLink}
         </Link>
       </span>
     ),
@@ -255,49 +270,50 @@ export function ShipmentsBoard({
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="মোট শিপমেন্ট" value={String(summary.total)} delta="সব কুরিয়ার" icon="🚚" />
+        <StatCard label={str.statTotal} value={String(summary.total)} delta={str.statTotalDelta} icon="🚚" />
         <StatCard
-          label="পথে আছে"
+          label={str.statInTransit}
           value={String(summary.inTransit)}
-          delta="পিকআপ → ডেলিভারি"
+          delta={str.statInTransitDelta}
           icon="🛵"
         />
         <StatCard
-          label="ডেলিভারি সম্পন্ন"
+          label={str.statDelivered}
           value={String(summary.delivered)}
-          delta="সফল"
+          delta={str.statDeliveredDelta}
           icon="✓"
         />
         <StatCard
-          label="COD সংগ্রহ বাকি"
+          label={str.statCodOutstanding}
           value={formatPoisha(summary.codOutstandingPoisha)}
-          delta="সক্রিয় শিপমেন্টে"
+          delta={str.statCodDelta}
           icon="💰"
         />
       </div>
 
       {summary.total > rows.length ? (
         <p className="text-sm text-text-muted">
-          সর্বশেষ {rows.length}টি শিপমেন্ট দেখানো হচ্ছে (মোট {summary.total}টি) — পুরনো রেকর্ড
-          সংশ্লিষ্ট অর্ডারের ওয়ার্কস্পেসে পাওয়া যাবে। উপরের হিসাব পুরো {summary.total}টির
-          উপরেই গণনা করা।
+          {interpolate(str.showingLatest, { shown: rows.length, total: summary.total })}
         </p>
       ) : null}
 
       {problemShipments.length > 0 ? (
-        <section className="space-y-2" aria-label="সমস্যাযুক্ত শিপমেন্ট">
+        <section className="space-y-2" aria-label={str.problemAria}>
           <h2 className="text-lg font-semibold">
-            <span aria-hidden="true">⚠</span> মনোযোগ দরকার — ব্যর্থ / ফেরত শিপমেন্ট ({problemShipments.length})
+            <span aria-hidden="true">⚠</span> {interpolate(str.problemTitle, { count: problemShipments.length })}
           </h2>
           {problemShipments.map((s) => (
             <p key={s.id} className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
               <ShipmentStatusBadge status={s.status} />{" "}
-              <span className="font-mono">{s.trackingId ?? "—"}</span> (অর্ডার{" "}
+              <span className="font-mono">{s.trackingId ?? "—"}</span>{" "}
+              {str.orderWord}{" "}
               <Link href={`/admin/orders/${s.orderId}`} className="font-medium underline">
                 #{s.orderNo}
-              </Link>
-              , {courierLabel(s.provider)}) — COD{" "}
-              {s.codAmountPoisha > 0 ? <Money poisha={s.codAmountPoisha} /> : "প্রিপেইড"} সংগৃহীত হয়নি।
+              </Link>{" "}
+              {interpolate(str.problemMeta, {
+                courier: courierLabel(s.provider, str),
+                cod: s.codAmountPoisha > 0 ? formatPoisha(s.codAmountPoisha) : str.prepaid,
+              })}
             </p>
           ))}
         </section>
@@ -305,15 +321,12 @@ export function ShipmentsBoard({
 
       {rows.length === 0 ? (
         <Card>
-          <h2 className="font-semibold">এখনো কোনো শিপমেন্ট বুক হয়নি</h2>
-          <p className="mt-2 text-sm leading-6 text-text-muted">
-            কোনো অর্ডারের ওয়ার্কস্পেস থেকে প্রথম বুকিং হলেই তা এখানে দেখা যাবে। বুকিং এই
-            বোর্ড থেকে হয় না — নিচের কার্ডে বিস্তারিত আছে।
-          </p>
+          <h2 className="font-semibold">{str.emptyTitle}</h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">{str.emptyDesc}</p>
         </Card>
       ) : (
         <section className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="অবস্থা অনুযায়ী ফিল্টার">
+          <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label={str.filterByStatusAria}>
             <button
               type="button"
               role="tab"
@@ -321,7 +334,7 @@ export function ShipmentsBoard({
               onClick={() => setStatusFilter("ALL")}
               className={`min-h-[44px] rounded-full px-3 text-sm font-medium ${statusFilter === "ALL" ? "bg-brand-600 text-white" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
             >
-              সব ({rows.length})
+              {interpolate(str.allWithCount, { count: rows.length })}
             </button>
             {STATUS_TAB_ORDER.map((status) => {
               const count = rows.filter((s) => s.status === status).length;
@@ -336,20 +349,20 @@ export function ShipmentsBoard({
                   onClick={() => setStatusFilter(status)}
                   className={`min-h-[44px] rounded-full px-3 text-sm font-medium ${statusFilter === status ? "bg-brand-600 text-white" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
                 >
-                  <span aria-hidden="true">{meta.icon}</span> {meta.labelBn} ({count})
+                  <span aria-hidden="true">{meta.icon}</span> {interpolate(str.tabWithCount, { label: statusLabel(status, str), count })}
                 </button>
               );
             })}
           </div>
           {providers.length > 1 ? (
-            <div className="flex flex-wrap items-center gap-2" aria-label="কুরিয়ার অনুযায়ী ফিল্টার">
+            <div className="flex flex-wrap items-center gap-2" aria-label={str.filterByCourierAria}>
               <button
                 type="button"
                 onClick={() => setCourierFilter("all")}
                 aria-pressed={courierFilter === "all"}
                 className={`min-h-[44px] rounded-full px-3 text-sm font-medium ${courierFilter === "all" ? "bg-brand-100 text-brand-700" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
               >
-                সব কুরিয়ার
+                {str.allCouriers}
               </button>
               {providers.map((p) => (
                 <button
@@ -359,97 +372,94 @@ export function ShipmentsBoard({
                   aria-pressed={courierFilter === p}
                   className={`min-h-[44px] rounded-full px-3 text-sm font-medium ${courierFilter === p ? "bg-brand-100 text-brand-700" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
                 >
-                  {courierLabel(p)}
+                  {courierLabel(p, str)}
                 </button>
               ))}
             </div>
           ) : null}
 
           <DataTable
-            caption="শিপমেন্ট — আসল রেকর্ড (সব অর্ডার)"
+            caption={str.tableCaption}
             columns={[
-              { key: "order", header: "অর্ডার" },
-              { key: "courier", header: "কুরিয়ার" },
-              { key: "tracking", header: "ট্র্যাকিং আইডি" },
-              { key: "destination", header: "গন্তব্য (জেলা)" },
-              { key: "weight", header: "ওজন" },
-              { key: "charge", header: "কুরিয়ার চার্জ" },
-              { key: "cod", header: "COD" },
-              { key: "status", header: "অবস্থা" },
-              { key: "created", header: "তৈরি (Asia/Dhaka)" },
+              { key: "order", header: str.colOrder },
+              { key: "courier", header: str.colCourier },
+              { key: "tracking", header: str.colTracking },
+              { key: "destination", header: str.colDestination },
+              { key: "weight", header: str.colWeight },
+              { key: "charge", header: str.colCharge },
+              { key: "cod", header: str.colCod },
+              { key: "status", header: str.colStatus },
+              { key: "created", header: str.colCreated },
               { key: "action", header: "" },
             ]}
             rows={tableRows}
           />
           {filtered.length === 0 ? (
-            <p className="text-sm text-text-muted">এই ফিল্টারে কোনো শিপমেন্ট নেই।</p>
+            <p className="text-sm text-text-muted">{str.noFiltered}</p>
           ) : null}
         </section>
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
-          <h2 className="font-semibold">ট্র্যাকিং টাইমলাইন</h2>
+          <h2 className="font-semibold">{str.timelineTitle}</h2>
           {selected ? (
             <div className="mt-3 space-y-4">
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="font-mono text-xs tabular-nums">{selected.trackingId ?? "—"}</span>
                 <ShipmentStatusBadge status={selected.status} />
                 <span className="text-text-muted">
-                  অর্ডার{" "}
+                  {str.orderWord}{" "}
                   <Link href={`/admin/orders/${selected.orderId}`} className="font-medium text-primary hover:underline">
                     #{selected.orderNo}
                   </Link>{" "}
-                  · {courierLabel(selected.provider)}
+                  · {courierLabel(selected.provider, str)}
                 </span>
                 {selected.packed ? (
                   <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
-                    প্যাক হয়েছে (Packed)
-                    {selected.packedPickListId ? ` · পিক লিস্ট ${selected.packedPickListId.slice(0, 8)}` : ""}
+                    {selected.packedPickListId
+                      ? interpolate(str.packedWithList, { id: selected.packedPickListId.slice(0, 8) })
+                      : str.packedBadge}
                   </span>
                 ) : null}
               </div>
               <ParcelStepper status={selected.status} />
               <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
                 <div>
-                  <dt className="text-xs text-text-muted">গন্তব্য (জেলা)</dt>
+                  <dt className="text-xs text-text-muted">{str.dtDestination}</dt>
                   <dd>{selected.district ?? "—"}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-text-muted">ওজন</dt>
+                  <dt className="text-xs text-text-muted">{str.dtWeight}</dt>
                   <dd className="tabular-nums">{formatWeight(selected.weightGrams)}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-text-muted">কুরিয়ার চার্জ</dt>
+                  <dt className="text-xs text-text-muted">{str.dtCharge}</dt>
                   <dd><Money poisha={selected.chargePoisha} /></dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-text-muted">COD সংগ্রহ</dt>
+                  <dt className="text-xs text-text-muted">{str.dtCod}</dt>
                   <dd>
                     {selected.codAmountPoisha > 0 ? (
                       <Money poisha={selected.codAmountPoisha} />
                     ) : (
-                      "প্রিপেইড"
+                      str.prepaid
                     )}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-text-muted">বুকিং সময়</dt>
-                  <dd className="font-mono text-xs tabular-nums">{dhakaDateTime(selected.createdAt)}</dd>
+                  <dt className="text-xs text-text-muted">{str.dtBookingTime}</dt>
+                  <dd className="font-mono text-xs tabular-nums">{dhakaDateTime(selected.createdAt, locale)}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-text-muted">সর্বশেষ আপডেট</dt>
-                  <dd className="font-mono text-xs tabular-nums">{dhakaDateTime(selected.updatedAt)}</dd>
+                  <dt className="text-xs text-text-muted">{str.dtLastUpdate}</dt>
+                  <dd className="font-mono text-xs tabular-nums">{dhakaDateTime(selected.updatedAt, locale)}</dd>
                 </div>
               </dl>
               {selected.events.length > 0 ? (
                 <ol className="space-y-0">
                   {selected.events.map((event, i) => {
-                    const meta = SHIPMENT_STATUS_META[event.status] ?? {
-                      labelBn: event.status,
-                      labelEn: event.status,
-                      icon: "•",
-                    };
+                    const meta = SHIPMENT_STATUS_META[event.status] ?? null;
                     return (
                       <li key={`${event.status}-${event.at}`} className="relative flex gap-3 pb-4 last:pb-0">
                         {i < selected.events.length - 1 ? (
@@ -462,15 +472,12 @@ export function ShipmentsBoard({
                           aria-hidden="true"
                           className="z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm"
                         >
-                          {meta.icon}
+                          {meta?.icon ?? "•"}
                         </span>
                         <div>
-                          <p className="text-sm font-medium">
-                            {meta.labelBn}{" "}
-                            <span className="font-mono text-xs text-text-muted">({meta.labelEn})</span>
-                          </p>
+                          <p className="text-sm font-medium">{statusLabel(event.status, str)}</p>
                           <p className="font-mono text-xs tabular-nums text-text-muted">
-                            {dhakaDateTime(event.at)}
+                            {dhakaDateTime(event.at, locale)}
                           </p>
                         </div>
                       </li>
@@ -478,39 +485,29 @@ export function ShipmentsBoard({
                   })}
                 </ol>
               ) : (
-                <p className="text-xs text-text-muted">
-                  এই শিপমেন্টের কোনো ইভেন্ট রেকর্ড হয়নি এখনো।
-                </p>
+                <p className="text-xs text-text-muted">{str.noEvents}</p>
               )}
-              <p className="text-xs text-text-muted">
-                ইভেন্টগুলো আসল ShipmentEvent রেকর্ড — কুরিয়ার ওয়েবহুক ও অর্ডার-সিঙ্ক যেভাবে
-                অবস্থা এগিয়ে নেয়, সেভাবেই এখানে জমা হয়।
-              </p>
+              <p className="text-xs text-text-muted">{str.eventsNote}</p>
             </div>
           ) : (
-            <p className="mt-2 text-sm text-text-muted">কোনো শিপমেন্ট নির্বাচিত নেই।</p>
+            <p className="mt-2 text-sm text-text-muted">{str.noSelection}</p>
           )}
         </Card>
 
         <Card>
-          <h2 className="font-semibold">বুকিং কোথায় হয়?</h2>
+          <h2 className="font-semibold">{str.bookingTitle}</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            এই বোর্ড শুধু দেখার জন্য — এখান থেকে বুকিং হয় না। নতুন শিপমেন্ট বুক করতে সংশ্লিষ্ট
-            অর্ডারটি খুলুন: অর্ডারের ওয়ার্কস্পেসের <strong>শিপমেন্ট প্যানেল</strong> থেকে পুরো
-            অর্ডার বা লাইন-ভিত্তিক স্প্লিট বুকিং করা যায়। বুকিং হলেই তা এই বোর্ডে সঙ্গে সঙ্গে
-            দেখা যাবে।
+            {str.bookingDesc1Before}<strong>{str.bookingDesc1Strong}</strong>{str.bookingDesc1After}
           </p>
           <p className="mt-3 text-sm leading-6 text-text-muted">
-            মনে রাখবেন: কুরিয়ার অ্যাডাপ্টরগুলো আপাতত <strong>sandbox</strong> — বুকিংয়ে SBX
-            ট্র্যাকিং আইডি আসে এবং কোনো আসল কুরিয়ার কল হয় না। Live provider (Steadfast /
-            Pathao / RedX-এর আসল API) এলে একই বোর্ডেই আসল ট্র্যাকিং দেখা যাবে।
+            {str.bookingDesc2Before}<strong>{str.bookingDesc2Strong}</strong>{str.bookingDesc2After}
           </p>
           <div className="mt-4">
             <Link
               href="/admin/orders"
               className="inline-flex min-h-[44px] items-center rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
-              অর্ডার তালিকা খুলুন →
+              {str.openOrdersLink}
             </Link>
           </div>
         </Card>

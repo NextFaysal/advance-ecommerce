@@ -11,6 +11,9 @@
 // split recorded on orders". This card changes no VAT math anywhere.
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SETTINGS_STRINGS } from "../strings";
 
 const VAT_SETTING_KEY = "accounting.vat_rate_bps";
 
@@ -28,15 +31,15 @@ function formatBpsAsPercent(bps: number): string {
  * an integer (15.55% = 1555 bps; 15.555% has no exact bps value and
  * is rejected rather than rounded silently).
  */
-function percentToBps(input: string): { bps: number } | { error: string } {
+function percentToBps(input: string, s: { vatPercentError: string; vatOverError: string }): { bps: number } | { error: string } {
   const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(input.trim());
   if (!match) {
-    return { error: "শতকরা হারটি সঠিকভাবে লিখুন — যেমন 15 বা 7.5 (সর্বোচ্চ দুই দশমিক ঘর)।" };
+    return { error: s.vatPercentError };
   }
   const whole = Number(match[1] as string);
   const frac = match[2] ? Number((match[2] as string).padEnd(2, "0")) : 0;
   const bps = whole * 100 + frac;
-  if (bps > 10000) return { error: "VAT হার 100%-এর বেশি হতে পারে না।" };
+  if (bps > 10000) return { error: s.vatOverError };
   return { bps };
 }
 
@@ -49,6 +52,8 @@ interface VatRateCardProps {
 }
 
 export function VatRateCard({ initialBps, initialRaw, dbReady }: VatRateCardProps) {
+  const { locale, t } = useLocale();
+  const s = pick(locale, SETTINGS_STRINGS);
   const [currentBps, setCurrentBps] = useState<number | null>(initialBps);
   const [storedRaw, setStoredRaw] = useState<string>(initialRaw);
   const [percent, setPercent] = useState<string>(initialBps !== null ? formatBpsAsPercent(initialBps) : "");
@@ -58,20 +63,20 @@ export function VatRateCard({ initialBps, initialRaw, dbReady }: VatRateCardProp
   const [saving, setSaving] = useState<boolean>(false);
 
   const trimmed = percent.trim();
-  const parsed = trimmed === "" ? null : percentToBps(trimmed);
+  const parsed = trimmed === "" ? null : percentToBps(trimmed, s);
   const previewBps = parsed !== null && "bps" in parsed ? parsed.bps : null;
 
   async function handleSave() {
     setStatus("");
     if (reason.trim() === "") {
       setStatusOk(false);
-      setStatus("পরিবর্তনের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setStatus(s.reasonRequired);
       return;
     }
     let valueToStore = "";
     let nextBps: number | null = null;
     if (trimmed !== "") {
-      const result = percentToBps(trimmed);
+      const result = percentToBps(trimmed, s);
       if ("error" in result) {
         setStatusOk(false);
         setStatus(result.error);
@@ -93,7 +98,7 @@ export function VatRateCard({ initialBps, initialRaw, dbReady }: VatRateCardProp
       const data = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
       if (!res.ok) {
         setStatusOk(false);
-        setStatus(data.error?.message ?? `সেভ করা যায়নি (${res.status})।`);
+        setStatus(data.error?.message ?? interpolate(s.saveFailedDot, { status: res.status }));
         return;
       }
       setCurrentBps(nextBps);
@@ -101,12 +106,12 @@ export function VatRateCard({ initialBps, initialRaw, dbReady }: VatRateCardProp
       setStatusOk(true);
       setStatus(
         nextBps !== null
-          ? `সেভ হয়েছে — এখন থেকে নতুন অর্ডারে ${formatBpsAsPercent(nextBps)}% হারে VAT বিভাজন সংরক্ষিত হবে।`
-          : "সেভ হয়েছে — VAT বিভাজন এখন বন্ধ; নতুন অর্ডারে কোনো VAT বিভাজন সংরক্ষিত হবে না।",
+          ? interpolate(s.vatSavedOn, { pct: formatBpsAsPercent(nextBps) })
+          : s.vatSavedOff,
       );
     } catch {
       setStatusOk(false);
-      setStatus("সার্ভারের সঙ্গে যোগাযোগ করা যায়নি — কিছুই সেভ হয়নি।");
+      setStatus(s.networkNothingSaved);
     } finally {
       setSaving(false);
     }
@@ -120,7 +125,7 @@ export function VatRateCard({ initialBps, initialRaw, dbReady }: VatRateCardProp
         <span aria-hidden="true" className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
           <Icon name="banknote" size={20} />
         </span>
-        <h2 className="font-display text-base font-semibold text-text-main">VAT হার (বিক্রয়)</h2>
+        <h2 className="font-display text-base font-semibold text-text-main">{s.vatTitle}</h2>
       </div>
 
       <div
@@ -133,33 +138,33 @@ export function VatRateCard({ initialBps, initialRaw, dbReady }: VatRateCardProp
             aria-hidden="true"
             className={`h-2.5 w-2.5 shrink-0 rounded-full ${currentBps !== null ? "bg-emerald-500" : "bg-slate-400"}`}
           />
-          বর্তমানে কার্যকর:{" "}
+          {s.currentlyEffective}{" "}
           {currentBps !== null ? (
             <strong className="font-mono text-base text-emerald-700">{formatBpsAsPercent(currentBps)}% ({currentBps} bps)</strong>
           ) : (
-            <strong>বন্ধ — কোনো হার সেট করা নেই</strong>
+            <strong>{s.vatEffectiveOff}</strong>
           )}
         </p>
         {!dbReady && (
           <span className="mt-1.5 block leading-relaxed text-rose-600">
-            সতর্কতা: ডাটাবেস থেকে বর্তমান মান পড়া যায়নি — উপরের অবস্থা নির্ভরযোগ্য নয়। সেভ করলে সার্ভার ত্রুটি দেখালে কিছুই বদলাবে না।
+            {s.dbWarningShort}
           </span>
         )}
         {dbReady && currentBps === null && storedRaw.trim() !== "" && (
           <span className="mt-1.5 block leading-relaxed text-text-muted">
-            (সেভ করা মান <code className="font-mono text-xs">{storedRaw}</code> বৈধ হার নয় — তাই এখন বন্ধ হিসেবেই ধরা হচ্ছে। নিচে সঠিক হার সেভ করলেই ঠিক হয়ে যাবে।)
+            {s.vatInvalidNoteA}<code className="font-mono text-xs">{storedRaw}</code>{s.vatInvalidNoteB}
           </span>
         )}
       </div>
 
       <div className="mt-4 flex flex-wrap items-end gap-3">
         <label className="block">
-          <span className="text-sm font-medium">VAT হার (%)</span>
+          <span className="text-sm font-medium">{s.vatRateLabel}</span>
           <span className="mt-1 flex items-center gap-1.5">
             <input
               type="text"
               inputMode="decimal"
-              placeholder="যেমন 15"
+              placeholder={s.vatPlaceholder}
               value={percent}
               onChange={(e) => setPercent(e.target.value)}
               disabled={saving}
@@ -169,10 +174,10 @@ export function VatRateCard({ initialBps, initialRaw, dbReady }: VatRateCardProp
           </span>
         </label>
         <label className="block grow basis-56">
-          <span className="text-sm font-medium">পরিবর্তনের কারণ (অডিটের জন্য আবশ্যিক)</span>
+          <span className="text-sm font-medium">{s.reasonLabel}</span>
           <input
             type="text"
-            placeholder="যেমন: নতুন অর্থবছর থেকে VAT হার 15%"
+            placeholder={s.vatReasonPlaceholder}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             disabled={saving}
@@ -185,18 +190,18 @@ export function VatRateCard({ initialBps, initialRaw, dbReady }: VatRateCardProp
           disabled={saving}
           className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {saving ? "সেভ হচ্ছে…" : "সেভ করুন"}
+          {saving ? t.saving : s.vatSave}
         </button>
       </div>
 
       <p className="mt-2 text-sm text-text-muted">
         {trimmed === ""
-          ? "ঘর খালি রেখে সেভ করলে VAT বিভাজন বন্ধ হয়ে যাবে।"
+          ? s.vatEmptyHint
           : parsed !== null && "error" in parsed
             ? parsed.error
             : previewBps !== null && previewBps > 0
-              ? `সংরক্ষিত হবে ${previewBps} bps হিসেবে (${formatBpsAsPercent(previewBps)}%)।`
-              : "0% — সেভ করলে VAT বিভাজন বন্ধ হয়ে যাবে।"}
+              ? interpolate(s.vatWillStore, { bps: previewBps, pct: formatBpsAsPercent(previewBps) })
+              : s.vatZeroHint}
       </p>
 
       {status && (

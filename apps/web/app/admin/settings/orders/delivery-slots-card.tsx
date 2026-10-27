@@ -18,6 +18,9 @@
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/ui/icon";
 import type { DeliverySlot } from "@/checkout/delivery-slots";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SETTINGS_STRINGS } from "../strings";
 import { serializeSlotRows, validateSlotRows, type SlotRow } from "./orders-settings-shared";
 
 const SLOTS_SETTING_KEY = "orders.delivery_slots";
@@ -37,6 +40,8 @@ interface DeliverySlotsCardProps {
 }
 
 export function DeliverySlotsCard({ initialSlots, storedCustomized, dbReady }: DeliverySlotsCardProps) {
+  const { locale, t: common } = useLocale();
+  const s = pick(locale, SETTINGS_STRINGS);
   const [rows, setRows] = useState<EditorRow[]>(() =>
     initialSlots.map((s) => ({ id: s.id, labelBn: s.labelBn, labelEn: s.labelEn, isNew: false })),
   );
@@ -47,7 +52,7 @@ export function DeliverySlotsCard({ initialSlots, storedCustomized, dbReady }: D
   const [saving, setSaving] = useState(false);
 
   const initialSerialized = useMemo(() => serializeSlotRows(initialSlots), [initialSlots]);
-  const validation = useMemo(() => validateSlotRows(rows), [rows]);
+  const validation = useMemo(() => validateSlotRows(rows, locale), [rows, locale]);
   const changed = "value" in validation && validation.value !== initialSerialized;
 
   function updateRow(index: number, patch: Partial<EditorRow>) {
@@ -72,7 +77,7 @@ export function DeliverySlotsCard({ initialSlots, storedCustomized, dbReady }: D
     setStatus("");
     if (reason.trim() === "") {
       setStatusOk(false);
-      setStatus("পরিবর্তনের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setStatus(s.reasonRequired);
       return;
     }
     if (!("value" in validation)) {
@@ -82,7 +87,7 @@ export function DeliverySlotsCard({ initialSlots, storedCustomized, dbReady }: D
     }
     if (!changed) {
       setStatusOk(true);
-      setStatus("কোনো পরিবর্তন নেই — স্লট তালিকা আগের মতোই আছে, কিছুই সেভ করা হয়নি।");
+      setStatus(s.slotNoChange);
       return;
     }
     setSaving(true);
@@ -95,17 +100,17 @@ export function DeliverySlotsCard({ initialSlots, storedCustomized, dbReady }: D
       const data = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
       if (!res.ok) {
         setStatusOk(false);
-        setStatus(data.error?.message ?? `সেভ করা যায়নি (${res.status})।`);
+        setStatus(data.error?.message ?? interpolate(s.saveFailedDot, { status: res.status }));
         return;
       }
       // What was just saved is now the locked configuration.
       setRows((prev) => prev.map((r) => ({ ...r, isNew: false })));
       setRemovedSavedIds([]);
       setStatusOk(true);
-      setStatus(`সেভ হয়েছে — এখন থেকে চেকআউটে ${rows.length}টি ডেলিভারি স্লট দেখানো হবে।`);
+      setStatus(interpolate(s.slotSaved, { count: rows.length }));
     } catch {
       setStatusOk(false);
-      setStatus("সার্ভারের সঙ্গে যোগাযোগ করা যায়নি — কিছুই সেভ হয়নি।");
+      setStatus(s.networkNothingSaved);
     } finally {
       setSaving(false);
     }
@@ -119,19 +124,18 @@ export function DeliverySlotsCard({ initialSlots, storedCustomized, dbReady }: D
           <span aria-hidden="true" className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
             <Icon name="clock" size={20} />
           </span>
-          <h2 className="font-display text-base font-semibold text-text-main">ডেলিভারি স্লট (সময়ের ব্যাণ্ড)</h2>
+          <h2 className="font-display text-base font-semibold text-text-main">{s.slotTitle}</h2>
         </div>
 
         <div className="mt-4 rounded-xl border border-border bg-surface-2 px-4 py-3.5 text-sm">
           <p className="leading-relaxed">
-            বর্তমানে কার্যকর: <strong>{initialSlots.length}টি স্লট</strong>
-            {storedCustomized ? " — কাস্টম তালিকা সংরক্ষিত আছে।" : " — বিল্ট-ইন ডিফল্ট তালিকাই চলছে।"}
-            {" "}ক্রেতা চেকআউটে এই সময়গুলো থেকে একটি বেছে নিতে পারেন; পছন্দটি অর্ডারে স্লটের{" "}
-            <strong>আইডি</strong> আকারে সংরক্ষিত থাকে, লেবেল দেখানোর সময় বর্তমান তালিকা থেকে নেওয়া হয়।
+            {s.slotSummaryA}<strong>{interpolate(s.slotSummaryCount, { count: initialSlots.length })}</strong>
+            {storedCustomized ? s.slotCustom : s.slotDefault}
+            {s.slotSummaryB}<strong>{s.slotIdWord}</strong>{s.slotSummaryC}
           </p>
           {!dbReady && (
             <span className="mt-1.5 block leading-relaxed text-rose-600">
-              সতর্কতা: ডাটাবেস থেকে বর্তমান মান পড়া যায়নি — উপরের অবস্থা নির্ভরযোগ্য নয়। সেভ করলে সার্ভার ত্রুটি দেখালে কিছুই বদলাবে না।
+              {s.dbWarningShort}
             </span>
           )}
         </div>
@@ -141,40 +145,40 @@ export function DeliverySlotsCard({ initialSlots, storedCustomized, dbReady }: D
             <div key={index} className="rounded-lg border border-border/70 p-3.5">
               <div className="grid gap-3 md:grid-cols-[1fr_1.4fr_1.4fr_auto]">
                 <label className="block">
-                  <span className="text-xs font-medium text-text-muted">স্লট আইডি</span>
+                  <span className="text-xs font-medium text-text-muted">{s.slotIdLabel}</span>
                   <input
                     type="text"
                     value={row.id}
                     disabled={!row.isNew || saving}
                     onChange={(e) => updateRow(index, { id: e.target.value })}
-                    placeholder="যেমন: night"
+                    placeholder={s.slotIdPlaceholder}
                     className="mt-1 block min-h-[40px] w-full rounded-lg border border-border bg-card px-3 font-mono text-sm shadow-sm outline-none transition motion-fast focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100 disabled:bg-surface-2 disabled:text-text-muted"
                   />
                   {!row.isNew && (
                     <span className="mt-1 block text-[11px] leading-relaxed text-text-muted">
-                      আইডি বদলানো যাবে না — অর্ডারে এই আইডিই সংরক্ষিত থাকে।
+                      {s.slotIdLocked}
                     </span>
                   )}
                 </label>
                 <label className="block">
-                  <span className="text-xs font-medium text-text-muted">লেবেল (বাংলা)</span>
+                  <span className="text-xs font-medium text-text-muted">{s.slotLabelBn}</span>
                   <input
                     type="text"
                     value={row.labelBn}
                     disabled={saving}
                     onChange={(e) => updateRow(index, { labelBn: e.target.value })}
-                    placeholder="যেমন: রাত (১০টা – ১২টা)"
+                    placeholder={s.slotLabelBnPlaceholder}
                     className="mt-1 block min-h-[40px] w-full rounded-lg border border-border bg-card px-3 text-sm shadow-sm outline-none transition motion-fast focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100"
                   />
                 </label>
                 <label className="block">
-                  <span className="text-xs font-medium text-text-muted">লেবেল (English)</span>
+                  <span className="text-xs font-medium text-text-muted">{s.slotLabelEn}</span>
                   <input
                     type="text"
                     value={row.labelEn}
                     disabled={saving}
                     onChange={(e) => updateRow(index, { labelEn: e.target.value })}
-                    placeholder="e.g. Night (10pm – 12am)"
+                    placeholder={s.slotLabelEnPlaceholder}
                     className="mt-1 block min-h-[40px] w-full rounded-lg border border-border bg-card px-3 text-sm shadow-sm outline-none transition motion-fast focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100"
                   />
                 </label>
@@ -185,7 +189,7 @@ export function DeliverySlotsCard({ initialSlots, storedCustomized, dbReady }: D
                     onClick={() => removeRow(index)}
                     className="inline-flex min-h-[40px] items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium text-rose-700 transition motion-fast hover:border-rose-300 hover:bg-rose-50 disabled:opacity-50"
                   >
-                    <Icon name="x" size={14} /> সরান
+                    <Icon name="x" size={14} /> {s.remove}
                   </button>
                 </div>
               </div>
@@ -199,8 +203,7 @@ export function DeliverySlotsCard({ initialSlots, storedCustomized, dbReady }: D
               <Icon name="alert" size={15} />
             </span>
             <p className="leading-relaxed">
-              সতর্কতা: <strong>{removedSavedIds.join(", ")}</strong> — এই স্লটে ইতিমধ্যে অর্ডার থাকলে, স্লটটি সরিয়ে
-              সেভ করলে ওই অর্ডারগুলোতে লেবেলের বদলে কাঁচা আইডি দেখাবে। অর্ডারগুলো নিজে ঠিক থাকবে, শুধু নামটা মিলবে না।
+              {s.slotRemoveWarningA}<strong>{removedSavedIds.join(", ")}</strong>{s.slotRemoveWarningB}
             </p>
           </div>
         )}
@@ -216,13 +219,13 @@ export function DeliverySlotsCard({ initialSlots, storedCustomized, dbReady }: D
             disabled={saving}
             className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md border border-border bg-card px-4 text-sm font-medium transition motion-fast hover:border-brand-300 disabled:opacity-50"
           >
-            <Icon name="plus" size={15} /> নতুন স্লট যোগ করুন
+            <Icon name="plus" size={15} /> {s.slotAdd}
           </button>
           <label className="block grow basis-56">
-            <span className="text-sm font-medium">পরিবর্তনের কারণ (অডিটের জন্য আবশ্যিক)</span>
+            <span className="text-sm font-medium">{s.reasonLabel}</span>
             <input
               type="text"
-              placeholder="যেমন: রাতের ডেলিভারি চালু হলো"
+              placeholder={s.slotReasonPlaceholder}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               disabled={saving}
@@ -235,15 +238,15 @@ export function DeliverySlotsCard({ initialSlots, storedCustomized, dbReady }: D
             disabled={saving}
             className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {saving ? "সেভ হচ্ছে…" : "স্লট সেভ করুন"}
+            {saving ? common.saving : s.slotSave}
           </button>
         </div>
 
         <p className="mt-3 text-sm text-text-muted">
-          চেকআউটে ক্রেতা দেখবেন:{" "}
+          {s.slotPreview}
           {rows.length === 0
             ? "—"
-            : rows.map((r) => r.labelBn || r.id).join(" · ")}
+            : rows.map((r) => (locale === "bn" ? r.labelBn : r.labelEn) || r.id).join(" · ")}
         </p>
 
         {status && (

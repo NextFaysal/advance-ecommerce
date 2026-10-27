@@ -22,6 +22,9 @@
 // the server page passes in.
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/ui/icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SETTINGS_STRINGS } from "../strings";
 import { poishaToTakaText, sameStringSet, takaTextToPoisha } from "./orders-settings-shared";
 
 const KEYS = {
@@ -61,6 +64,8 @@ interface OrderRulesCardProps {
 }
 
 export function OrderRulesCard({ initial, districtGroups, categories, dbReady }: OrderRulesCardProps) {
+  const { locale, t: common } = useLocale();
+  const s = pick(locale, SETTINGS_STRINGS);
   // Canonical district lookup: the loader returns lowercased names;
   // the geo tree carries the canonical nameEn the editor stores.
   const canonicalByLower = useMemo(() => {
@@ -97,8 +102,8 @@ export function OrderRulesCard({ initial, districtGroups, categories, dbReady }:
   const [statusOk, setStatusOk] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const minParsed = minTaka.trim() === "" ? { poisha: 0 } : takaTextToPoisha(minTaka);
-  const aboveParsed = aboveTaka.trim() === "" ? { poisha: 0 } : takaTextToPoisha(aboveTaka);
+  const minParsed = minTaka.trim() === "" ? { poisha: 0 } : takaTextToPoisha(minTaka, locale);
+  const aboveParsed = aboveTaka.trim() === "" ? { poisha: 0 } : takaTextToPoisha(aboveTaka, locale);
   const percentTrimmed = percent.trim();
   const percentValue =
     percentTrimmed === "" ? 20 : /^\d+$/.test(percentTrimmed) ? Number.parseInt(percentTrimmed, 10) : NaN;
@@ -142,29 +147,29 @@ export function OrderRulesCard({ initial, districtGroups, categories, dbReady }:
     });
     if (res.ok) return null;
     const data = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-    return data.error?.message ?? `সেভ করা যায়নি (${res.status})`;
+    return data.error?.message ?? interpolate(s.saveFailedStatus, { status: res.status });
   }
 
   async function handleSave() {
     setStatus("");
     if (reason.trim() === "") {
       setStatusOk(false);
-      setStatus("পরিবর্তনের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setStatus(s.reasonRequired);
       return;
     }
     if (!("poisha" in minParsed)) {
       setStatusOk(false);
-      setStatus(`সর্বনিম্ন অর্ডার: ${minParsed.error}`);
+      setStatus(interpolate(s.ruleMinPrefix, { error: minParsed.error }));
       return;
     }
     if (!("poisha" in aboveParsed)) {
       setStatusOk(false);
-      setStatus(`অগ্রিমের সীমা: ${aboveParsed.error}`);
+      setStatus(interpolate(s.ruleAdvPrefix, { error: aboveParsed.error }));
       return;
     }
     if (!percentValid) {
       setStatusOk(false);
-      setStatus("অগ্রিমের হার 1 থেকে 100-এর মধ্যে একটি পূর্ণ সংখ্যা হতে হবে (খালি রাখলে ডিফল্ট 20 ধরা হয়)।");
+      setStatus(s.rulePctInvalid);
       return;
     }
 
@@ -188,7 +193,7 @@ export function OrderRulesCard({ initial, districtGroups, categories, dbReady }:
     }
     if (writes.length === 0) {
       setStatusOk(true);
-      setStatus("কোনো পরিবর্তন নেই — সব মান আগের মতোই আছে, কিছুই সেভ করা হয়নি।");
+      setStatus(s.ruleNoChange);
       return;
     }
 
@@ -201,20 +206,18 @@ export function OrderRulesCard({ initial, districtGroups, categories, dbReady }:
           setStatusOk(false);
           setStatus(
             savedKeys.length > 0
-              ? `${w.key} সেভ করা যায়নি: ${failure} — তবে আগের ${savedKeys.length}টি পরিবর্তন সেভ হয়ে গেছে (${savedKeys.join(", ")})।`
-              : `${w.key} সেভ করা যায়নি: ${failure}`,
+              ? interpolate(s.rulePartialFail, { key: w.key, failure, count: savedKeys.length, keys: savedKeys.join(", ") })
+              : interpolate(s.ruleFail, { key: w.key, failure }),
           );
           return;
         }
         savedKeys.push(w.key);
       }
       setStatusOk(true);
-      setStatus(
-        `সেভ হয়েছে — ${savedKeys.length}টি সেটিং বদলেছে (${savedKeys.join(", ")})। নতুন নিয়ম এখন থেকে তৈরি হওয়া অর্ডারে প্রযোজ্য হবে।`,
-      );
+      setStatus(interpolate(s.ruleSaved, { count: savedKeys.length, keys: savedKeys.join(", ") }));
     } catch {
       setStatusOk(false);
-      setStatus("সার্ভারের সঙ্গে যোগাযোগ করা যায়নি — কোন সেটিং সেভ হয়েছে তা নিশ্চিত নয়; পেজটি আবার লোড করে যাচাই করুন।");
+      setStatus(s.ruleNetwork);
     } finally {
       setSaving(false);
     }
@@ -230,35 +233,35 @@ export function OrderRulesCard({ initial, districtGroups, categories, dbReady }:
           <span aria-hidden="true" className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
             <Icon name="cart" size={20} />
           </span>
-          <h2 className="font-display text-base font-semibold text-text-main">অর্ডার নিয়ম (চেকআউট)</h2>
+          <h2 className="font-display text-base font-semibold text-text-main">{s.ruleTitle}</h2>
         </div>
 
         <div className="mt-4 rounded-xl border border-border bg-surface-2 px-4 py-3.5 text-sm">
           <p className="leading-relaxed">
-            বর্তমানে কার্যকর নিয়ম: <strong>{activeCount}টি চালু</strong> — সর্বনিম্ন অর্ডার{" "}
-            {"poisha" in minParsed && minParsed.poisha > 0 ? `৳${poishaToTakaText(minParsed.poisha)}` : "বন্ধ"} ·
-            অগ্রিম নিয়ম{" "}
+            {s.ruleSummaryA}<strong>{interpolate(s.ruleSummaryActive, { count: activeCount })}</strong>{s.ruleSummaryMin}
+            {"poisha" in minParsed && minParsed.poisha > 0 ? `৳${poishaToTakaText(minParsed.poisha)}` : s.stOff}
+            {s.ruleSummaryAdv}
             {"poisha" in aboveParsed && aboveParsed.poisha > 0
-              ? `৳${poishaToTakaText(aboveParsed.poisha)}-এর বেশি COD অর্ডারে ${percentValid ? percentValue : initial.advancePercent}%`
-              : "বন্ধ"}{" "}
-            · COD বন্ধ: জেলা {districtValues.length}টি, ক্যাটাগরি {categoryValues.length}টি।
+              ? interpolate(s.ruleSummaryAdvText, { amount: poishaToTakaText(aboveParsed.poisha), pct: percentValid ? percentValue : initial.advancePercent })
+              : s.stOff}
+            {interpolate(s.ruleSummaryCod, { districts: districtValues.length, categories: categoryValues.length })}
           </p>
           {!dbReady && (
             <span className="mt-1.5 block leading-relaxed text-rose-600">
-              সতর্কতা: ডাটাবেস থেকে বর্তমান মান পড়া যায়নি — উপরের অবস্থা নির্ভরযোগ্য নয়। সেভ করলে সার্ভার ত্রুটি দেখালে কিছুই বদলাবে না।
+              {s.dbWarningShort}
             </span>
           )}
         </div>
 
         <div className="mt-5 grid gap-5 md:grid-cols-2">
           <label className="block">
-            <span className="text-sm font-medium">সর্বনিম্ন অর্ডার (টাকা)</span>
+            <span className="text-sm font-medium">{s.ruleMinLabel}</span>
             <span className="mt-1 flex items-center gap-1.5">
               <span className="text-sm text-text-muted">৳</span>
               <input
                 type="text"
                 inputMode="decimal"
-                placeholder="খালি বা 0 = বন্ধ"
+                placeholder={s.ruleEmptyOff}
                 value={minTaka}
                 onChange={(e) => setMinTaka(e.target.value)}
                 disabled={saving}
@@ -266,20 +269,20 @@ export function OrderRulesCard({ initial, districtGroups, categories, dbReady }:
               />
             </span>
             <span className="mt-1 block text-xs leading-relaxed text-text-muted">
-              পণ্যের উপমোট (ডেলিভারি চার্জ ছাড়া) এর কম হলে অর্ডার নেওয়া হবে না।
+              {s.ruleMinHint}
             </span>
             {"error" in minParsed && <span className="mt-1 block text-xs text-rose-600">{minParsed.error}</span>}
           </label>
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="text-sm font-medium">অগ্রিমের সীমা (টাকা)</span>
+              <span className="text-sm font-medium">{s.ruleAdvLimitLabel}</span>
               <span className="mt-1 flex items-center gap-1.5">
                 <span className="text-sm text-text-muted">৳</span>
                 <input
                   type="text"
                   inputMode="decimal"
-                  placeholder="খালি বা 0 = বন্ধ"
+                  placeholder={s.ruleEmptyOff}
                   value={aboveTaka}
                   onChange={(e) => setAboveTaka(e.target.value)}
                   disabled={saving}
@@ -289,7 +292,7 @@ export function OrderRulesCard({ initial, districtGroups, categories, dbReady }:
               {"error" in aboveParsed && <span className="mt-1 block text-xs text-rose-600">{aboveParsed.error}</span>}
             </label>
             <label className="block">
-              <span className="text-sm font-medium">অগ্রিমের হার (%)</span>
+              <span className="text-sm font-medium">{s.ruleAdvPctLabel}</span>
               <span className="mt-1 flex items-center gap-1.5">
                 <input
                   type="text"
@@ -303,29 +306,29 @@ export function OrderRulesCard({ initial, districtGroups, categories, dbReady }:
                 <span className="text-sm text-text-muted">%</span>
               </span>
               {!percentValid && percentTrimmed !== "" && (
-                <span className="mt-1 block text-xs text-rose-600">1–100-এর মধ্যে পূর্ণ সংখ্যা দিন।</span>
+                <span className="mt-1 block text-xs text-rose-600">{s.ruleAdvPctError}</span>
               )}
             </label>
             <p className="col-span-2 text-xs leading-relaxed text-text-muted">
-              মোট দাম সীমার বেশি হলে COD অর্ডারে মোটের এই শতকরা অংশ অগ্রিম চাওয়া হয় (সংগ্রহ ও কনফার্ম-গেট O3-এর অগ্রিম ব্যবস্থায় হয়)।
+              {s.ruleAdvHint}
             </p>
           </div>
         </div>
 
         <div className="mt-6 grid gap-5 lg:grid-cols-2">
           <fieldset>
-            <legend className="text-sm font-medium">যেসব জেলায় COD বন্ধ</legend>
+            <legend className="text-sm font-medium">{s.ruleDistrictsLegend}</legend>
             <p className="mt-1 text-xs leading-relaxed text-text-muted">
-              এই জেলাগুলোর ঠিকানায় ক্যাশ অন ডেলিভারি দেওয়া হবে না — ক্রেতাকে আগাম পেমেন্ট করতে হবে।
+              {s.ruleDistrictsHint}
             </p>
             {extraDistricts.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {extraDistricts.map((name) => (
                   <span key={name} className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 font-mono text-xs text-amber-800 ring-1 ring-inset ring-amber-200">
-                    {name} (তালিকার বাইরের সংরক্ষিত নাম)
+                    {name} {s.ruleExtraSuffix}
                     <button
                       type="button"
-                      aria-label={`${name} সরান`}
+                      aria-label={interpolate(s.ruleRemoveAria, { name })}
                       disabled={saving}
                       onClick={() => setExtraDistricts((prev) => prev.filter((n) => n !== name))}
                       className="text-amber-700 hover:text-amber-900"
@@ -338,7 +341,7 @@ export function OrderRulesCard({ initial, districtGroups, categories, dbReady }:
             )}
             <input
               type="text"
-              placeholder="জেলা খুঁজুন…"
+              placeholder={s.ruleDistrictSearch}
               value={districtFilter}
               onChange={(e) => setDistrictFilter(e.target.value)}
               className="mt-2 min-h-[40px] w-full rounded-lg border border-border bg-card px-3 text-sm shadow-sm outline-none transition motion-fast focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100"
@@ -352,7 +355,7 @@ export function OrderRulesCard({ initial, districtGroups, categories, dbReady }:
                 return (
                   <div key={group.divisionEn} className="mb-3 last:mb-0">
                     <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                      {group.divisionBn} · {group.divisionEn}
+                      {locale === "bn" ? group.divisionBn : group.divisionEn} · {locale === "bn" ? group.divisionEn : group.divisionBn}
                     </p>
                     <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1.5">
                       {visible.map((d) => (
@@ -365,7 +368,7 @@ export function OrderRulesCard({ initial, districtGroups, categories, dbReady }:
                             className="h-4 w-4 shrink-0 accent-brand-600"
                           />
                           <span>
-                            {d.nameBn} <span className="text-xs text-text-muted">({d.nameEn})</span>
+                            {locale === "bn" ? d.nameBn : d.nameEn} <span className="text-xs text-text-muted">({locale === "bn" ? d.nameEn : d.nameBn})</span>
                           </span>
                         </label>
                       ))}
@@ -378,18 +381,18 @@ export function OrderRulesCard({ initial, districtGroups, categories, dbReady }:
                   g.districts.every(
                     (d) => !d.nameEn.toLowerCase().includes(filter) && !d.nameBn.includes(districtFilter.trim()),
                   ),
-                ) && <p className="text-sm text-text-muted">কোনো জেলা মেলেনি।</p>}
+                ) && <p className="text-sm text-text-muted">{s.ruleNoDistrict}</p>}
             </div>
-            <p className="mt-1.5 text-xs text-text-muted">নির্বাচিত: {districtValues.length}টি জেলা</p>
+            <p className="mt-1.5 text-xs text-text-muted">{interpolate(s.ruleSelectedDistricts, { count: districtValues.length })}</p>
           </fieldset>
 
           <fieldset>
-            <legend className="text-sm font-medium">যেসব ক্যাটাগরিতে COD বন্ধ</legend>
+            <legend className="text-sm font-medium">{s.ruleCategoriesLegend}</legend>
             <p className="mt-1 text-xs leading-relaxed text-text-muted">
-              অর্ডারে এই ক্যাটাগরির যেকোনো পণ্য থাকলেই COD দেওয়া হবে না।
+              {s.ruleCategoriesHint}
             </p>
             <div className="mt-2 max-h-72 overflow-y-auto rounded-lg border border-border/70 p-3">
-              {categories.length === 0 && <p className="text-sm text-text-muted">কোনো ক্যাটাগরি পাওয়া যায়নি।</p>}
+              {categories.length === 0 && <p className="text-sm text-text-muted">{s.ruleNoCategories}</p>}
               <div className="grid gap-y-1.5">
                 {categories.map((c) => (
                   <label key={c.slug} className="flex min-h-[28px] cursor-pointer items-center gap-2 text-sm">
@@ -401,24 +404,24 @@ export function OrderRulesCard({ initial, districtGroups, categories, dbReady }:
                       className="h-4 w-4 shrink-0 accent-brand-600"
                     />
                     <span>
-                      {c.nameBn} <span className="text-xs text-text-muted">({c.nameEn})</span>
+                      {locale === "bn" ? c.nameBn : c.nameEn} <span className="text-xs text-text-muted">({locale === "bn" ? c.nameEn : c.nameBn})</span>
                     </span>
                     <code className="rounded-full bg-surface-2 px-2 py-0.5 font-mono text-[11px] text-text-muted">{c.slug}</code>
-                    {!c.isActive && <span className="text-xs text-amber-600">নিষ্ক্রিয়</span>}
+                    {!c.isActive && <span className="text-xs text-amber-600">{s.ruleInactive}</span>}
                   </label>
                 ))}
               </div>
             </div>
-            <p className="mt-1.5 text-xs text-text-muted">নির্বাচিত: {categoryValues.length}টি ক্যাটাগরি</p>
+            <p className="mt-1.5 text-xs text-text-muted">{interpolate(s.ruleSelectedCategories, { count: categoryValues.length })}</p>
           </fieldset>
         </div>
 
         <div className="mt-5 flex flex-wrap items-end gap-3">
           <label className="block grow basis-56">
-            <span className="text-sm font-medium">পরিবর্তনের কারণ (অডিটের জন্য আবশ্যিক)</span>
+            <span className="text-sm font-medium">{s.reasonLabel}</span>
             <input
               type="text"
-              placeholder="যেমন: ঈদের আগে বড় অর্ডারে 20% অগ্রিম বাধ্যতামূলক"
+              placeholder={s.ruleReasonPlaceholder}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               disabled={saving}
@@ -431,7 +434,7 @@ export function OrderRulesCard({ initial, districtGroups, categories, dbReady }:
             disabled={saving}
             className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {saving ? "সেভ হচ্ছে…" : "নিয়ম সেভ করুন"}
+            {saving ? common.saving : s.ruleSave}
           </button>
         </div>
 

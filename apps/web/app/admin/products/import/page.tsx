@@ -16,6 +16,9 @@ import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import type { ImportMoneyUnits, ImportRow } from "@/catalog/import";
 import ExternalImports from "./external-imports";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { PRODUCTS_STRINGS, type ProductsStrings } from "../strings";
 
 interface InvalidRow {
   row: number;
@@ -63,12 +66,9 @@ interface ConfirmData {
   moneyUnits: ImportMoneyUnits;
 }
 
-const UNIT_LABELS: Record<string, string> = {
-  poisha: "পয়সা (poisha)",
-  taka: "টাকা (taka)",
-  mixed: "মিশ্র — কিছু সারিতে পয়সা, কিছুতে টাকা",
-  none: "—",
-};
+function unitLabels(s: ProductsStrings): Record<string, string> {
+  return { poisha: s.unitPoisha, taka: s.unitTaka, mixed: s.unitMixed, none: s.unitNone };
+}
 
 const TEMPLATE_HEADERS = [
   "slug",
@@ -148,6 +148,8 @@ function downloadTextFile(name: string, text: string) {
 }
 
 function formatPoisha(poisha: number): string {
+  // Locale-neutral on purpose: digit script is the separate numerals
+  // preference (doc 30), not coupled to the UI language in this wave.
   return `৳${(poisha / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
@@ -162,14 +164,17 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-const FORMAT_LABELS: Record<ImportFormat, string> = {
-  csv: "CSV",
-  xlsx: "Excel (.xlsx) — শুধু প্রথম শিট",
-};
+function formatLabels(s: ProductsStrings): Record<ImportFormat, string> {
+  return { csv: s.formatCsv, xlsx: s.formatXlsx };
+}
 
 type Phase = "pick" | "previewing" | "preview" | "confirming" | "done";
 
 export default function ProductImportPage() {
+  const { locale } = useLocale();
+  const s = pick(locale, PRODUCTS_STRINGS);
+  const UNIT_LABELS = unitLabels(s);
+  const FORMAT_LABELS = formatLabels(s);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>("pick");
   const [fileName, setFileName] = useState<string>("");
@@ -191,7 +196,7 @@ export default function ProductImportPage() {
       filePayload = { kind: "xlsx", base64: arrayBufferToBase64(await file.arrayBuffer()) };
     } else {
       setPhase("pick");
-      setErrorMessage("শুধু .csv অথবা .xlsx (Excel) ফাইল চলবে।");
+      setErrorMessage(s.impFileOnlyError);
       return;
     }
     setPayload(filePayload);
@@ -210,14 +215,14 @@ export default function ProductImportPage() {
       };
       if (!res.ok || !data.data) {
         setPhase("pick");
-        setErrorMessage(data.error?.message ?? "প্রিভিউ তৈরি করা যায়নি।");
+        setErrorMessage(data.error?.message ?? s.impPreviewFail);
         return;
       }
       setPreview(data.data);
       setPhase("preview");
     } catch {
       setPhase("pick");
-      setErrorMessage("সার্ভারের সঙ্গে যোগাযোগ করা যায়নি। আবার চেষ্টা করুন।");
+      setErrorMessage(s.impServerFail);
     }
   }
 
@@ -240,14 +245,14 @@ export default function ProductImportPage() {
       };
       if (!res.ok || !data.data) {
         setPhase("preview");
-        setErrorMessage(data.error?.message ?? "ইমপোর্ট সম্পন্ন করা যায়নি।");
+        setErrorMessage(data.error?.message ?? s.impConfirmFail);
         return;
       }
       setResult(data.data);
       setPhase("done");
     } catch {
       setPhase("preview");
-      setErrorMessage("সার্ভারের সঙ্গে যোগাযোগ করা যায়নি। আবার চেষ্টা করুন।");
+      setErrorMessage(s.impServerFail);
     }
   }
 
@@ -266,22 +271,22 @@ export default function ProductImportPage() {
   return (
     <main className="min-w-0">
       <PageHeader
-        title="পণ্য ইমপোর্ট (CSV / Excel)"
-        description="CSV অথবা Excel (.xlsx) ফাইল থেকে একসঙ্গে অনেক পণ্য যোগ করুন। আগে প্রিভিউ দেখানো হয় — কনফার্ম না করা পর্যন্ত কিছুই সেভ হয় না। তৈরি হওয়া সব পণ্য খসড়া (DRAFT) থাকে; যাচাই করে নিজে প্রকাশ করুন।"
-        breadcrumb="পণ্য / ইমপোর্ট"
+        title={s.impTitle}
+        description={s.impDesc}
+        breadcrumb={s.impBreadcrumb}
         actions={
           <Link
             href="/admin/products"
             className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
           >
-            ← পণ্যের তালিকা
+            {s.impBackLink}
           </Link>
         }
       />
 
       {/* Stepper — presentational only, follows the existing phase. */}
-      <ol className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2" aria-label="ইমপোর্টের ধাপ">
-        {["ফাইল বেছে নিন", "প্রিভিউ যাচাই করুন", "ইমপোর্ট সম্পন্ন"].map((label, i) => {
+      <ol className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2" aria-label={s.impStepperAria}>
+        {[s.impStep1, s.impStep2, s.impStep3].map((label, i) => {
           const activeIdx = phase === "done" ? 2 : phase === "preview" || phase === "confirming" ? 1 : 0;
           const state = i < activeIdx ? "done" : i === activeIdx ? "active" : "todo";
           return (
@@ -313,20 +318,20 @@ export default function ProductImportPage() {
 
       <section className="mt-4 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
         <div className="flex flex-wrap items-center gap-2.5">
-          <h2 className="font-display text-base font-semibold">ফাইল ফরম্যাট</h2>
+          <h2 className="font-display text-base font-semibold">{s.impFormatTitle}</h2>
           <span className="rounded-full bg-brand-50 px-2.5 py-1 font-mono text-[11px] font-bold text-brand-700 ring-1 ring-inset ring-brand-100">CSV</span>
           <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-mono text-[11px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-100">Excel (.xlsx)</span>
         </div>
         <ul className="mt-3 list-inside list-disc space-y-1.5 text-sm leading-relaxed text-text-muted">
-          <li>প্রতি সারি = একটি ভেরিয়েন্ট। একই <span className="font-mono">slug</span>-এর একাধিক সারি একই পণ্যের ভেরিয়েন্ট হিসেবে যুক্ত হয়।</li>
-          <li>আবশ্যিক কলাম: <span className="font-mono">slug, title_bn, title_en, sku, stock</span> এবং দামের কলাম (নিচে দেখুন)। <span className="font-mono">category_slug</span> অবশ্যই আগে থেকে থাকা একটি ক্যাটাগরির slug হতে হবে।</li>
+          <li>{s.impB1Pre} <span className="font-mono">slug</span>{s.impB1Post}</li>
+          <li>{s.impB2Pre} <span className="font-mono">slug, title_bn, title_en, sku, stock</span> {s.impB2Mid} <span className="font-mono">category_slug</span> {s.impB2Post}</li>
           <li>
-            দাম দুই এককের যেকোনো একটিতে দেওয়া যায়: <span className="font-mono">price_poisha</span> (পূর্ণ সংখ্যা পয়সা) অথবা{" "}
-            <span className="font-mono">price_taka</span> (দশমিক টাকা, যেমন 1250.50)। একই সারিতে একই দামের দুটি কলামই ভরলে সারিটি বাতিল হবে — কোন একক চলবে তা অনুমান করা হয় না।{" "}
-            <span className="font-mono">compare_at</span> ও <span className="font-mono">cost</span>-এর ক্ষেত্রেও একই নিয়ম (<span className="font-mono">*_poisha</span> / <span className="font-mono">*_taka</span>)।
+            {s.impB3Pre} <span className="font-mono">price_poisha</span> {s.impB3Mid1}{" "}
+            <span className="font-mono">price_taka</span> {s.impB3Mid2}{" "}
+            <span className="font-mono">compare_at</span> {s.impB3Mid3} <span className="font-mono">cost</span>{s.impB3Post} (<span className="font-mono">*_poisha</span> / <span className="font-mono">*_taka</span>)।
           </li>
-          <li><span className="font-mono">tags</span> একাধিক হলে <span className="font-mono">|</span> দিয়ে আলাদা করুন। <span className="font-mono">status</span> যাই লিখুন, ইমপোর্টে সব পণ্য DRAFT হিসেবেই তৈরি হয়।</li>
-          <li>CSV অথবা Excel (.xlsx) — দুই ফরম্যাটই চলে, নিয়ম একই। .xlsx ফাইলের ক্ষেত্রে শুধু <strong>প্রথম শিটটি</strong> পড়া হয়; দামের ঘরে সংখ্যা (number) হিসেবে মান রাখুন, টেক্সট হিসেবে &ldquo;৳&rdquo; চিহ্ন বা কমা দেবেন না।</li>
+          <li><span className="font-mono">tags</span> {s.impB4Pre} <span className="font-mono">|</span>{s.impB4Mid} <span className="font-mono">status</span>{s.impB4Post}</li>
+          <li>{s.impB5Pre} <strong>{s.impB5Strong}</strong> {s.impB5Post}</li>
         </ul>
         <div className="mt-3.5 flex flex-wrap gap-2">
           <button
@@ -339,13 +344,13 @@ export default function ProductImportPage() {
               <path d="m8 10 4 4 4-4" />
               <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
             </svg>
-            টেমপ্লেট CSV ডাউনলোড
+            {s.impTemplateBtn}
           </button>
         </div>
       </section>
 
       <section className="mt-4 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
-        <h2 className="font-display text-base font-semibold">১. ফাইল বেছে নিন</h2>
+        <h2 className="font-display text-base font-semibold">{s.impChooseTitle}</h2>
         <div className="mt-3 rounded-lg border-2 border-dashed border-brand-200 bg-brand-50/40 px-4 py-6 text-center">
           <span aria-hidden="true" className="brand-soft-gradient mx-auto flex h-14 w-14 items-center justify-center rounded-full text-brand-600 shadow-sm">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7">
@@ -366,7 +371,7 @@ export default function ProductImportPage() {
               }}
               className="max-w-full text-sm text-transparent file:mr-3 file:min-h-[44px] file:cursor-pointer file:rounded-md file:border-0 file:bg-brand-600 file:px-4 file:py-2.5 file:text-sm file:font-semibold file:text-white file:shadow-md file:transition hover:file:brightness-105 disabled:opacity-50"
             />
-            {phase === "previewing" && <span className="text-sm font-medium text-text-muted">প্রিভিউ তৈরি হচ্ছে…</span>}
+            {phase === "previewing" && <span className="text-sm font-medium text-text-muted">{s.impPreviewing}</span>}
           </div>
           {fileName && (
             <p className="mt-3.5">
@@ -383,28 +388,28 @@ export default function ProductImportPage() {
 
       {preview && phase !== "done" && (
         <section className="anim-rise mt-4 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
-          <h2 className="font-display text-base font-semibold">২. প্রিভিউ যাচাই করুন</h2>
+          <h2 className="font-display text-base font-semibold">{s.impPreviewTitle}</h2>
           <div className="mt-3.5 grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg border border-brand-100 bg-brand-50/60 p-4">
-              <div className="text-caption font-semibold text-brand-700">মোট সারি</div>
+              <div className="text-caption font-semibold text-brand-700">{s.impTotalRows}</div>
               <div className="mt-1 font-display text-h2 font-bold tabular-nums text-text-main">{preview.totalRows}</div>
             </div>
             <div className="rounded-lg border border-emerald-100 bg-emerald-50/70 p-4">
-              <div className="text-caption font-semibold text-emerald-700">বৈধ সারি</div>
+              <div className="text-caption font-semibold text-emerald-700">{s.impValidRows}</div>
               <div className="mt-1 font-display text-h2 font-bold tabular-nums text-emerald-700">{preview.validCount}</div>
             </div>
             <div className="rounded-lg border border-rose-100 bg-rose-50/70 p-4">
-              <div className="text-caption font-semibold text-rose-700">ভুল সারি (বাদ যাবে)</div>
+              <div className="text-caption font-semibold text-rose-700">{s.impInvalidRows}</div>
               <div className="mt-1 font-display text-h2 font-bold tabular-nums text-rose-600">{preview.invalidCount}</div>
             </div>
           </div>
           <div className="mt-3.5 flex flex-wrap gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-xs font-medium text-text-muted ring-1 ring-inset ring-black/5">
-              শনাক্ত ফরম্যাট: <strong className="text-text-main">{FORMAT_LABELS[preview.format]}</strong>
+              {s.impDetectedFormat} <strong className="text-text-main">{FORMAT_LABELS[preview.format]}</strong>
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-xs font-medium text-text-muted ring-1 ring-inset ring-black/5">
-              শনাক্ত হওয়া দামের একক — মূল্য: <strong className="text-text-main">{UNIT_LABELS[preview.moneyUnits.price]}</strong> · তুলনামূলক মূল্য:{" "}
-              <strong className="text-text-main">{UNIT_LABELS[preview.moneyUnits.compareAt]}</strong> · ক্রয়মূল্য: <strong className="text-text-main">{UNIT_LABELS[preview.moneyUnits.cost]}</strong>
+              {s.impUnitsLine} <strong className="text-text-main">{UNIT_LABELS[preview.moneyUnits.price]}</strong> {s.impUnitCompare}{" "}
+              <strong className="text-text-main">{UNIT_LABELS[preview.moneyUnits.compareAt]}</strong> {s.impUnitCost} <strong className="text-text-main">{UNIT_LABELS[preview.moneyUnits.cost]}</strong>
             </span>
           </div>
 
@@ -415,8 +420,8 @@ export default function ProductImportPage() {
                   <tr className="bg-brand-50/70 [&>th]:border-b [&>th]:border-border [&>th]:px-3 [&>th]:py-2.5 [&>th]:text-left [&>th]:text-caption [&>th]:font-semibold [&>th]:text-text-muted">
                     <th>Slug</th>
                     <th>SKU</th>
-                    <th>দাম</th>
-                    <th>স্টক</th>
+                    <th>{s.impColPrice}</th>
+                    <th>{s.impColStock}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -431,7 +436,7 @@ export default function ProductImportPage() {
                 </tbody>
               </table>
               {preview.validRows.length > 100 && (
-                <p className="bg-surface-2/60 px-3 py-2 text-xs text-text-subtle">প্রথম ১০০টি বৈধ সারি দেখানো হচ্ছে; বাকিগুলোও ইমপোর্ট হবে।</p>
+                <p className="bg-surface-2/60 px-3 py-2 text-xs text-text-subtle">{s.impFirst100}</p>
               )}
             </div>
           )}
@@ -445,16 +450,16 @@ export default function ProductImportPage() {
                     <path d="M12 16.5h.01" />
                   </svg>
                 </span>
-                ভুল সারি — এগুলো ইমপোর্ট হবে না
+                {s.impInvalidTitle}
               </h3>
               <div className="mt-3 overflow-x-auto rounded-lg border border-rose-100 bg-card shadow-sm">
                 <table className="w-full text-sm [&_tbody_tr]:transition [&_tbody_tr:hover]:bg-rose-50/50">
                   <thead>
                     <tr className="bg-rose-50/80 [&>th]:border-b [&>th]:border-rose-100 [&>th]:px-3 [&>th]:py-2.5 [&>th]:text-left [&>th]:text-caption [&>th]:font-semibold [&>th]:text-rose-700">
-                      <th>সারি</th>
+                      <th>{s.impColRow}</th>
                       <th>SKU</th>
-                      <th>ফিল্ড</th>
-                      <th>সমস্যা</th>
+                      <th>{s.impColField}</th>
+                      <th>{s.impColProblem}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -481,7 +486,7 @@ export default function ProductImportPage() {
                   <path d="m8 10 4 4 4-4" />
                   <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
                 </svg>
-                এরর রিপোর্ট CSV ডাউনলোড
+                {s.impErrorReportBtn}
               </button>
             </div>
           )}
@@ -493,7 +498,7 @@ export default function ProductImportPage() {
               onClick={() => void handleConfirm()}
               className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {phase === "confirming" ? "ইমপোর্ট হচ্ছে…" : `৩. কনফার্ম করুন — ${preview.validCount}টি বৈধ সারি ইমপোর্ট`}
+              {phase === "confirming" ? s.impConfirming : interpolate(s.impConfirmBtn, { count: preview.validCount })}
             </button>
             <button
               type="button"
@@ -501,11 +506,11 @@ export default function ProductImportPage() {
               onClick={reset}
               className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition motion-fast hover:border-brand-300"
             >
-              বাতিল
+              {s.cancelBtn}
             </button>
           </div>
           {preview.validCount === 0 && (
-            <p className="mt-2 text-sm text-rose-600">কোনো বৈধ সারি নেই — ভুলগুলো ঠিক করে আবার ফাইল বেছে নিন।</p>
+            <p className="mt-2 text-sm text-rose-600">{s.impNoValid}</p>
           )}
         </section>
       )}
@@ -519,11 +524,11 @@ export default function ProductImportPage() {
               </svg>
             </span>
             <div className="min-w-0">
-              <h2 className="font-display text-base font-semibold">ইমপোর্ট সম্পন্ন</h2>
+              <h2 className="font-display text-base font-semibold">{s.impDoneTitle}</h2>
               <p className="mt-1 text-sm leading-relaxed text-text-muted">
-                <strong className="text-emerald-600">{result.createdProductCount}টি পণ্য</strong> তৈরি হয়েছে ({result.createdRowCount}টি সারি) — সবগুলো{" "}
-                <strong>খসড়া (DRAFT)</strong> অবস্থায়। পণ্যের তালিকা থেকে যাচাই করে প্রকাশ করুন। বাদ পড়েছে {result.skippedRowCount}টি ভুল সারি
-                {result.failedRowCount > 0 && <>; তৈরি করতে ব্যর্থ হয়েছে {result.failedRowCount}টি সারি</>}।
+                <strong className="text-emerald-600">{interpolate(s.impDoneProducts, { count: result.createdProductCount })}</strong> {interpolate(s.impDoneCreatedSuffix, { count: result.createdRowCount })}{" "}
+                <strong>{s.impDoneDraft}</strong> {interpolate(s.impDoneRest, { count: result.skippedRowCount })}
+                {result.failedRowCount > 0 && <>{interpolate(s.impDoneFailedSuffix, { count: result.failedRowCount })}</>}।
               </p>
             </div>
           </div>
@@ -546,10 +551,10 @@ export default function ProductImportPage() {
               <table className="w-full text-sm [&_tbody_tr]:transition [&_tbody_tr:hover]:bg-brand-50/40">
                 <thead>
                   <tr className="bg-surface-2 [&>th]:border-b [&>th]:border-border [&>th]:px-3 [&>th]:py-2.5 [&>th]:text-left [&>th]:text-caption [&>th]:font-semibold [&>th]:text-text-muted">
-                    <th>সারি</th>
+                    <th>{s.impColRow}</th>
                     <th>SKU</th>
-                    <th>অবস্থা</th>
-                    <th>কারণ</th>
+                    <th>{s.impColStatus}</th>
+                    <th>{s.impColReason}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -559,7 +564,7 @@ export default function ProductImportPage() {
                       <tr key={o.row} className="border-t border-border [&>td]:px-3 [&>td]:py-2">
                         <td className="tabular-nums">{o.row}</td>
                         <td className="font-mono text-xs">{o.sku}</td>
-                        <td>{o.status === "skipped" ? "বাদ (ভুল সারি)" : "ব্যর্থ"}</td>
+                        <td>{o.status === "skipped" ? s.impSkippedStatus : s.impFailedStatus}</td>
                         <td>{o.message ?? ""}</td>
                       </tr>
                     ))}
@@ -572,7 +577,7 @@ export default function ProductImportPage() {
               href="/admin/products"
               className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105"
             >
-              পণ্যের তালিকায় যান
+              {s.impGoList}
             </Link>
             {result.errorReportCsv.trim() !== "row,field,message" && (
               <button
@@ -580,7 +585,7 @@ export default function ProductImportPage() {
                 onClick={() => downloadTextFile("import-errors.csv", result.errorReportCsv)}
                 className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition motion-fast hover:border-brand-300"
               >
-                এরর রিপোর্ট CSV ডাউনলোড
+                {s.impErrorReportBtn}
               </button>
             )}
             <button
@@ -588,7 +593,7 @@ export default function ProductImportPage() {
               onClick={reset}
               className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition motion-fast hover:border-brand-300"
             >
-              আরেকটি ফাইল ইমপোর্ট
+              {s.impAnotherFile}
             </button>
           </div>
         </section>

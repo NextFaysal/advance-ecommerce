@@ -3,6 +3,9 @@ import { TeamClient } from "./team-client";
 import { TargetsPanel } from "./targets-panel";
 import { DigestPanel } from "./digest-panel";
 import { ChatPanel } from "./chat-panel";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { TEAM_STRINGS } from "./strings";
 
 // Team ops (ADV-27 remainder) — attendance grid, shifts, staff
 // targets and the daily digest. Thin shell; the panels are
@@ -10,12 +13,14 @@ import { ChatPanel } from "./chat-panel";
 // (reads staff.view, writes staff.manage — enforced server-side).
 export const dynamic = "force-dynamic";
 
-export default function AdminTeamPage() {
+export default async function AdminTeamPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, TEAM_STRINGS);
   return (
     <main>
       <PageHeader
-        title="টিম"
-        description="স্টাফদের উপস্থিতি, শিফট, মাসিক লক্ষ্য (টার্গেট) ও দৈনিক ডাইজেস্ট। উপস্থিতির হিসাব আসে রেকর্ড করা চেক-ইন/চেক-আউট জোড়া থেকে; টার্গেটের অগ্রগতি আসে আসল অর্ডার ইতিহাস থেকে — অনুমান করা কোনো সংখ্যা এখানে নেই।"
+        title={s.title}
+        description={s.description}
       />
       <TeamClient />
       <TargetsPanel />

@@ -26,8 +26,12 @@ import Link from "next/link";
 import { formatBdt } from "@/checkout/pricing";
 import {
   RENTAL_STATUS_LABELS_BN,
+  RENTAL_STATUS_LABELS_EN,
   type RentalStatus,
 } from "@/rental/selection";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { RENTALS_STRINGS, type RentalsStrings } from "./strings";
 
 const POLL_MS = 30_000;
 
@@ -62,13 +66,16 @@ const STATUS_BADGE: Record<RentalStatus, string> = {
   CANCELLED: "bg-slate-200 text-slate-600",
 };
 
-function daysText(row: BoardRow): string {
-  if (row.daysRemaining > 0) return `আর ${row.daysRemaining} দিন বাকি`;
-  if (row.daysRemaining === 0) return "আজই ফেরতের দিন";
-  return `${-row.daysRemaining} দিন মেয়াদোত্তীর্ণ`;
+function daysText(s: RentalsStrings, row: BoardRow): string {
+  if (row.daysRemaining > 0) return interpolate(s.daysRemaining, { days: row.daysRemaining });
+  if (row.daysRemaining === 0) return s.dueToday;
+  return interpolate(s.daysOverdue, { days: -row.daysRemaining });
 }
 
 export function RentalsBoard() {
+  const { locale } = useLocale();
+  const s = pick(locale, RENTALS_STRINGS);
+  const statusLabels = locale === "bn" ? RENTAL_STATUS_LABELS_BN : RENTAL_STATUS_LABELS_EN;
   const [board, setBoard] = useState<BoardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -81,15 +88,15 @@ export function RentalsBoard() {
         error?: { message?: string };
       } | null;
       if (!res.ok || !json?.data) {
-        setError(json?.error?.message ?? "ভাড়ার বোর্ড লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.boardLoadFailed);
         return;
       }
       setBoard(json.data);
       setError(null);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — বোর্ড হালনাগাদ করা যায়নি।");
+      setError(s.boardLoadNetwork);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load();
@@ -108,42 +115,46 @@ export function RentalsBoard() {
       });
       const json = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
       if (!res.ok) {
-        setError(json?.error?.message ?? "ভাড়া হালনাগাদ করা যায়নি।");
+        setError(json?.error?.message ?? s.updateFailed);
       }
       await load();
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — ভাড়া হালনাগাদ করা যায়নি।");
+      setError(s.updateNetwork);
     } finally {
       setBusyId(null);
     }
   }
 
   return (
-    <section aria-label="ভাড়ার বোর্ড" className="space-y-3">
+    <section aria-label={s.boardAria} className="space-y-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-text-muted">
         <span>
-          চলমান: <strong className="text-text-main">{board?.counts.ACTIVE ?? 0}টি</strong> ·
-          মেয়াদোত্তীর্ণ: <strong className="text-text-main">{board?.counts.OVERDUE ?? 0}টি</strong> ·
-          ফেরত: <strong className="text-text-main">{board?.counts.RETURNED ?? 0}টি</strong> · বাতিল:{" "}
-          <strong className="text-text-main">{board?.counts.CANCELLED ?? 0}টি</strong>
+          {s.activeLabel}{" "}
+          <strong className="text-text-main">{interpolate(s.count, { count: board?.counts.ACTIVE ?? 0 })}</strong> ·{" "}
+          {s.overdueLabel}{" "}
+          <strong className="text-text-main">{interpolate(s.count, { count: board?.counts.OVERDUE ?? 0 })}</strong> ·{" "}
+          {s.returnedLabel}{" "}
+          <strong className="text-text-main">{interpolate(s.count, { count: board?.counts.RETURNED ?? 0 })}</strong> ·{" "}
+          {s.cancelledLabel}{" "}
+          <strong className="text-text-main">{interpolate(s.count, { count: board?.counts.CANCELLED ?? 0 })}</strong>
         </span>
         {board && board.lateFeePerDayPoisha > 0 && (
           <span>
-            চুক্তির বিলম্ব ফি: দিনপ্রতি <strong className="text-text-main">{formatBdt(board.lateFeePerDayPoisha)}</strong>{" "}
-            (ম্যানুয়ালি হিসাব হয় — নিজে থেকে কাটা হয় না)
+            {s.lateFeePrefix}{" "}
+            <strong className="text-text-main">{formatBdt(board.lateFeePerDayPoisha)}</strong> {s.lateFeeSuffix}
           </span>
         )}
-        <span>প্রতি ৩০ সেকেন্ডে স্বয়ংক্রিয় হালনাগাদ হয় (polling — live realtime নয়)।</span>
+        <span>{s.pollNote}</span>
       </div>
       {error && (
         <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
           {error}
         </p>
       )}
-      {!board && !error && <p className="text-sm text-text-muted">ভাড়ার বোর্ড লোড হচ্ছে…</p>}
+      {!board && !error && <p className="text-sm text-text-muted">{s.boardLoading}</p>}
       {board && board.rentals.length === 0 && (
         <p className="rounded-2xl border border-border bg-surface-2/50 px-4 py-6 text-sm text-text-muted">
-          এখন কোনো চলমান ভাড়া নেই।
+          {s.emptyBoard}
         </p>
       )}
       <div className="space-y-2.5">
@@ -158,7 +169,7 @@ export function RentalsBoard() {
                 <span
                   className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_BADGE[row.displayStatus]}`}
                 >
-                  {RENTAL_STATUS_LABELS_BN[row.displayStatus]}
+                  {statusLabels[row.displayStatus]}
                 </span>
                 <span
                   className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
@@ -169,19 +180,20 @@ export function RentalsBoard() {
                         : "bg-surface-2 text-text-muted"
                   }`}
                 >
-                  {daysText(row)}
+                  {daysText(s, row)}
                 </span>
               </div>
               <p className="mt-1 text-xs text-text-muted">
-                {row.customerFirstName} · {row.customerPhoneMasked} · অর্ডার{" "}
+                {row.customerFirstName} · {row.customerPhoneMasked} · {s.orderWord}{" "}
                 <Link href={`/admin/orders/${row.orderId}`} className="font-semibold text-brand-700 hover:underline">
                   {row.orderNo}
                 </Link>{" "}
-                ({row.orderStatus}) · ভাড়া: {row.startDate} → {row.endDate} ({row.days} দিন)
+                ({row.orderStatus}) ·{" "}
+                {interpolate(s.rentalPeriod, { start: row.startDate, end: row.endDate, days: row.days })}
                 {row.depositPoisha > 0 && (
                   <>
-                    {" "}· জামানত: <strong className="text-text-main">{formatBdt(row.depositPoisha)}</strong>{" "}
-                    (ফেরতে ম্যানুয়ালি ফেরত দিন)
+                    {" "}· {s.depositPrefix}{" "}
+                    <strong className="text-text-main">{formatBdt(row.depositPoisha)}</strong> {s.depositSuffix}
                   </>
                 )}
               </p>
@@ -193,7 +205,7 @@ export function RentalsBoard() {
                 onClick={() => void advance(row, "RETURNED")}
                 className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
               >
-                ফেরত এসেছে
+                {s.returnedBtn}
               </button>
               {row.displayStatus === "ACTIVE" && (
                 <button
@@ -202,7 +214,7 @@ export function RentalsBoard() {
                   onClick={() => void advance(row, "OVERDUE")}
                   className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-text-main transition hover:bg-surface-2 disabled:opacity-50"
                 >
-                  মেয়াদোত্তীর্ণ চিহ্নিত করুন
+                  {s.markOverdueBtn}
                 </button>
               )}
             </div>

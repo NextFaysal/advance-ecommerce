@@ -11,6 +11,9 @@
 // tree by the table, which is itself a client component).
 import { useState } from "react";
 import Link from "next/link";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { PRODUCTS_STRINGS } from "./strings";
 
 export function DuplicateProductButton({
   productId,
@@ -21,6 +24,8 @@ export function DuplicateProductButton({
   productTitle: string;
   onDuplicated?: () => void;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, PRODUCTS_STRINGS);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [copy, setCopy] = useState<{ id: string; title: string } | null>(null);
@@ -47,7 +52,7 @@ export function DuplicateProductButton({
         setError(body?.error ? `${body.error.code}: ${body.error.message}` : `HTTP ${res.status}`);
       }
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি।");
+      setError(s.netError);
     } finally {
       setBusy(false);
     }
@@ -58,9 +63,9 @@ export function DuplicateProductButton({
       <Link
         href={`/admin/products/${copy.id}`}
         className="inline-flex min-h-[44px] items-center rounded-md px-3 text-small font-semibold text-emerald-700 transition motion-fast hover:bg-emerald-50"
-        title={`কপি তৈরি হয়েছে: ${copy.title}`}
+        title={interpolate(s.duplicateDoneTitle, { title: copy.title })}
       >
-        কপি এডিট করুন →
+        {s.duplicateDoneLink}
       </Link>
     );
   }
@@ -72,7 +77,7 @@ export function DuplicateProductButton({
         disabled={busy}
         className="inline-flex min-h-[44px] items-center rounded-md px-3 text-small font-semibold text-brand-700 transition motion-fast hover:bg-brand-50 disabled:opacity-50"
       >
-        {busy ? "কপি হচ্ছে…" : "কপি"}
+        {busy ? s.duplicating : s.duplicateBtn}
       </button>
       {error ? (
         <span role="alert" className="max-w-[220px] text-right text-caption text-rose-600">

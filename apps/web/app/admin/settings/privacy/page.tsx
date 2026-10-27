@@ -14,6 +14,9 @@ import { maskPhone } from "@/checkout/validation";
 import { MaintenanceCard } from "./maintenance-card";
 import { AgeGateCard } from "./age-gate-card";
 import { loadAgeRestrictions } from "@/catalog/age-restrictions";
+import { getRequestLocale } from "@/i18n/server";
+import { intlLocale, interpolate, pick, type Locale } from "@/i18n/locale";
+import { SETTINGS_B_STRINGS } from "../strings-b";
 import { prisma } from "@advance-ecommerce/db";
 
 // Admin > Settings > Privacy (ADV-29) — the operator surface for
@@ -29,11 +32,11 @@ import { prisma } from "@advance-ecommerce/db";
 // never renders invented records.
 export const dynamic = "force-dynamic";
 
-function formatAt(iso: string): string {
+function formatAt(iso: string, locale: Locale): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? iso
-    : new Intl.DateTimeFormat("bn-BD", { dateStyle: "medium", timeStyle: "short" }).format(d);
+    : new Intl.DateTimeFormat(intlLocale(locale), { dateStyle: "medium", timeStyle: "short" }).format(d);
 }
 
 function shortId(id: string | null): string {
@@ -42,6 +45,8 @@ function shortId(id: string | null): string {
 }
 
 export default async function AdminPrivacySettingsPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, SETTINGS_B_STRINGS);
   let dbReady = true;
   let maintenance = await getMaintenanceConfig().catch(() => null);
   let consent: ConsentLogEntry[] = [];
@@ -79,8 +84,8 @@ export default async function AdminPrivacySettingsPage() {
   return (
     <main>
       <PageHeader
-        title="গোপনীয়তা ও মেইনটেন্যান্স"
-        description="কাস্টমার ডেটা অধিকার (এক্সপোর্ট/মুছে ফেলা), মার্কেটিং সম্মতির লগ এবং স্টোরফ্রন্ট মেইনটেন্যান্স মোড — সব রেকর্ড আসল privacy লেজার থেকে পড়া। (Privacy & Maintenance)"
+        title={s.privTitle}
+        description={s.privDesc}
         breadcrumb="Admin / Settings"
       />
 
@@ -98,33 +103,34 @@ export default async function AdminPrivacySettingsPage() {
       </div>
 
       <Card className="mb-6">
-        <h2 className="font-semibold">মার্কেটিং সম্মতির লগ (Consent Log)</h2>
+        <h2 className="font-semibold">{s.privConsentTitle}</h2>
         <p className="mt-1 text-sm text-text-muted">
-          নিউজলেটার সাবস্ক্রাইব/আনসাবস্ক্রাইব ও অ্যাকাউন্ট মোছার সময় সম্মতি প্রত্যাহারের রেকর্ড
-          (সর্বশেষ ৫০টি, <code className="font-mono text-xs">privacy.consent_log</code>)।
+          {s.privConsentDescA}
+          <code className="font-mono text-xs">privacy.consent_log</code>
+          {s.privConsentDescB}
         </p>
         {consent.length === 0 ? (
-          <p className="mt-3 text-sm text-text-muted">এখনো কোনো সম্মতি-পরিবর্তনের রেকর্ড নেই।</p>
+          <p className="mt-3 text-sm text-text-muted">{s.privConsentEmpty}</p>
         ) : (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-text-muted">
-                  <th className="py-2 pr-3 font-medium">সময়</th>
-                  <th className="py-2 pr-3 font-medium">সিদ্ধান্ত</th>
-                  <th className="py-2 pr-3 font-medium">উৎস</th>
-                  <th className="py-2 pr-3 font-medium">ইমেইল</th>
-                  <th className="py-2 pr-3 font-medium">ফোন</th>
-                  <th className="py-2 font-medium">কাস্টমার</th>
+                  <th className="py-2 pr-3 font-medium">{s.privColTime}</th>
+                  <th className="py-2 pr-3 font-medium">{s.privColDecision}</th>
+                  <th className="py-2 pr-3 font-medium">{s.privColSource}</th>
+                  <th className="py-2 pr-3 font-medium">{s.privColEmail}</th>
+                  <th className="py-2 pr-3 font-medium">{s.privColPhone}</th>
+                  <th className="py-2 font-medium">{s.privColCustomer}</th>
                 </tr>
               </thead>
               <tbody>
                 {consent.map((entry, i) => (
                   <tr key={`${entry.at}-${i}`} className="border-b border-border/50">
-                    <td className="py-2 pr-3 whitespace-nowrap">{formatAt(entry.at)}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">{formatAt(entry.at, locale)}</td>
                     <td className="py-2 pr-3">
                       <Badge tone={entry.action === "granted" ? "success" : "warning"}>
-                        {entry.action === "granted" ? "সম্মতি দিয়েছেন" : "সম্মতি তুলে নিয়েছেন"}
+                        {entry.action === "granted" ? s.privGranted : s.privWithdrawn}
                       </Badge>
                     </td>
                     <td className="py-2 pr-3">{entry.source}</td>
@@ -141,21 +147,22 @@ export default async function AdminPrivacySettingsPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <h2 className="font-semibold">ডেটা এক্সপোর্ট লেজার</h2>
+          <h2 className="font-semibold">{s.privExportTitle}</h2>
           <p className="mt-1 text-sm text-text-muted">
-            কাস্টমারদের নিজের ডেটা ডাউনলোডের রেকর্ড (সর্বশেষ ২০টি,{" "}
-            <code className="font-mono text-xs">privacy.exports</code>)।
+            {s.privExportDescA}
+            <code className="font-mono text-xs">privacy.exports</code>
+            {s.privExportDescB}
           </p>
           {exportsLedger.length === 0 ? (
-            <p className="mt-3 text-sm text-text-muted">এখনো কোনো এক্সপোর্ট হয়নি।</p>
+            <p className="mt-3 text-sm text-text-muted">{s.privExportEmpty}</p>
           ) : (
             <ul className="mt-3 space-y-2 text-sm">
               {exportsLedger.map((entry, i) => (
                 <li key={`${entry.at}-${i}`} className="rounded-lg border border-border/60 px-3 py-2">
-                  <span className="font-medium">{formatAt(entry.at)}</span>{" "}
+                  <span className="font-medium">{formatAt(entry.at, locale)}</span>{" "}
                   <span className="font-mono text-xs text-text-muted">{shortId(entry.customerId)}</span>
                   <span className="block text-text-muted">
-                    {entry.sections.length}টি সেকশন · অডিট লগ: {entry.auditLogWritten ? "লেখা হয়েছে" : "লেখা যায়নি"}
+                    {interpolate(s.privExportMeta, { count: entry.sections.length, audit: entry.auditLogWritten ? s.privAuditYes : s.privAuditNo })}
                   </span>
                 </li>
               ))}
@@ -164,24 +171,22 @@ export default async function AdminPrivacySettingsPage() {
         </Card>
 
         <Card>
-          <h2 className="font-semibold">অ্যাকাউন্ট মুছে ফেলার লেজার</h2>
+          <h2 className="font-semibold">{s.privDeletionTitle}</h2>
           <p className="mt-1 text-sm text-text-muted">
-            বেনামীকরণের (anonymisation) রেকর্ড (সর্বশেষ ২০টি,{" "}
-            <code className="font-mono text-xs">privacy.deletions</code>)। অর্ডার হিসাবের জন্য
-            সংরক্ষিত থাকে — এখানে শুধু সংখ্যা থাকে, কোনো ব্যক্তিগত তথ্য নয়।
+            {s.privDeletionDescA}
+            <code className="font-mono text-xs">privacy.deletions</code>
+            {s.privDeletionDescB}
           </p>
           {deletions.length === 0 ? (
-            <p className="mt-3 text-sm text-text-muted">এখনো কোনো অ্যাকাউন্ট মোছা হয়নি।</p>
+            <p className="mt-3 text-sm text-text-muted">{s.privDeletionEmpty}</p>
           ) : (
             <ul className="mt-3 space-y-2 text-sm">
               {deletions.map((entry, i) => (
                 <li key={`${entry.at}-${i}`} className="rounded-lg border border-border/60 px-3 py-2">
-                  <span className="font-medium">{formatAt(entry.at)}</span>{" "}
+                  <span className="font-medium">{formatAt(entry.at, locale)}</span>{" "}
                   <span className="font-mono text-xs text-text-muted">{shortId(entry.customerId)}</span>
                   <span className="block text-text-muted">
-                    প্রমাণ: {entry.proof} · সংরক্ষিত অর্ডার {entry.ordersRetained}টি · বেনামী রিভিউ{" "}
-                    {entry.reviewsAnonymised}টি · মোছা ঠিকানা {entry.addressesDeleted}টি · সেশন{" "}
-                    {entry.sessionsDeleted}টি
+                    {interpolate(s.privDeletionMeta, { proof: entry.proof, orders: entry.ordersRetained, reviews: entry.reviewsAnonymised, addresses: entry.addressesDeleted, sessions: entry.sessionsDeleted })}
                   </span>
                 </li>
               ))}

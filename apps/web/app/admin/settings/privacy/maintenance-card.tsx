@@ -13,6 +13,9 @@
 // will read).
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { SETTINGS_B_STRINGS } from "../strings-b";
 
 const MAINTENANCE_KEY = "site.maintenance";
 
@@ -29,6 +32,8 @@ export function MaintenanceCard({
   initialMessageEn,
   dbReady,
 }: MaintenanceCardProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, SETTINGS_B_STRINGS);
   const [enabled, setEnabled] = useState(initialEnabled);
   const [messageBn, setMessageBn] = useState(initialMessageBn);
   const [messageEn, setMessageEn] = useState(initialMessageEn);
@@ -41,12 +46,12 @@ export function MaintenanceCard({
     setStatus("");
     if (reason.trim() === "") {
       setStatusOk(false);
-      setStatus("পরিবর্তনের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setStatus(s.reasonRequired);
       return;
     }
     if (enabled && (messageBn.trim() === "" || messageEn.trim() === "")) {
       setStatusOk(false);
-      setStatus("মেইনটেন্যান্স চালু করতে হলে বাংলা ও ইংরেজি — দুটি বার্তাই লিখুন।");
+      setStatus(s.maintErrBoth);
       return;
     }
     const value = JSON.stringify({
@@ -64,18 +69,14 @@ export function MaintenanceCard({
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
         setStatusOk(false);
-        setStatus(`সেভ করা যায়নি: ${data.error?.message ?? `সেভ করা যায়নি (${res.status})`}`);
+        setStatus(interpolate(s.saveFailedWith, { message: data.error?.message ?? interpolate(s.saveFailedStatus, { status: res.status }) }));
         return;
       }
       setStatusOk(true);
-      setStatus(
-        enabled
-          ? "সেভ হয়েছে — মেইনটেন্যান্স মোড চালু। স্টোরফ্রন্টে প্রায় ২০ সেকেন্ডের মধ্যে 503 পেজ দেখা যাবে; অ্যাডমিন প্যানেল আগের মতোই চলবে। ?preview=1 দিয়ে লগইন অবস্থায় স্টোরফ্রন্ট প্রিভিউ করা যাবে।"
-          : "সেভ হয়েছে — মেইনটেন্যান্স মোড বন্ধ। প্রায় ২০ সেকেন্ডের মধ্যে স্টোরফ্রন্ট আবার সবার জন্য খুলবে।",
-      );
+      setStatus(enabled ? s.maintSavedOn : s.maintSavedOff);
     } catch {
       setStatusOk(false);
-      setStatus("সার্ভারের সঙ্গে যোগাযোগ করা যায়নি — সেভ হয়েছে কিনা নিশ্চিত নয়; পেজটি আবার লোড করে যাচাই করুন।");
+      setStatus(s.networkUncertain);
     } finally {
       setSaving(false);
     }
@@ -92,22 +93,15 @@ export function MaintenanceCard({
           <span aria-hidden="true" className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
             <Icon name="alert" size={20} />
           </span>
-          <h2 className="font-display text-base font-semibold text-text-main">
-            মেইনটেন্যান্স মোড (Maintenance Mode)
-          </h2>
+          <h2 className="font-display text-base font-semibold text-text-main">{s.maintTitle}</h2>
         </div>
 
         <p className="mt-3 text-sm leading-relaxed text-text-muted">
-          চালু থাকলে স্টোরফ্রন্টের সব পেজে নিচের বার্তাসহ 503 পেজ দেখায় — অ্যাডমিন প্যানেল,
-          অ্যাডমিন লগইন ও API আগের মতোই চলে। লগইন করা অবস্থায়{" "}
-          <code className="font-mono text-xs">?preview=1</code> যোগ করলে স্টোরফ্রন্ট প্রিভিউ করা
-          যায়। সেটিং কী <code className="font-mono text-xs">site.maintenance</code>।
-          {!dbReady && (
-            <span className="mt-1.5 block text-rose-600">
-              সতর্কতা: ডাটাবেস থেকে বর্তমান মান পড়া যায়নি — উপরে বিল্ট-ইন ডিফল্ট (বন্ধ)
-              দেখানো হচ্ছে।
-            </span>
-          )}
+          {s.maintDescA}
+          <code className="font-mono text-xs">?preview=1</code>
+          {s.maintDescB}
+          <code className="font-mono text-xs">site.maintenance</code>.
+          {!dbReady && <span className="mt-1.5 block text-rose-600">{s.maintDbWarning}</span>}
         </p>
 
         <label className="mt-4 flex items-center gap-2.5 text-sm font-medium text-text-main">
@@ -118,12 +112,12 @@ export function MaintenanceCard({
             disabled={saving}
             className="h-5 w-5"
           />
-          মেইনটেন্যান্স মোড চালু
+          {s.maintEnabled}
         </label>
 
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <label className="block">
-            <span className="text-sm font-medium">বার্তা (বাংলা)</span>
+            <span className="text-sm font-medium">{s.maintMsgBn}</span>
             <textarea
               rows={3}
               value={messageBn}
@@ -133,7 +127,7 @@ export function MaintenanceCard({
             />
           </label>
           <label className="block">
-            <span className="text-sm font-medium">Message (English)</span>
+            <span className="text-sm font-medium">{s.maintMsgEn}</span>
             <textarea
               rows={3}
               value={messageEn}
@@ -146,10 +140,10 @@ export function MaintenanceCard({
 
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="block grow basis-56">
-            <span className="text-sm font-medium">পরিবর্তনের কারণ (অডিটের জন্য আবশ্যিক)</span>
+            <span className="text-sm font-medium">{s.reasonRequiredShort}</span>
             <input
               type="text"
-              placeholder="যেমন: সার্ভার মাইগ্রেশনের জন্য ২ ঘণ্টা বন্ধ"
+              placeholder={s.maintReasonPlaceholder}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               disabled={saving}
@@ -162,7 +156,7 @@ export function MaintenanceCard({
             disabled={saving}
             className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition hover:shadow-lift hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {saving ? "সেভ হচ্ছে…" : "সেভ করুন"}
+            {saving ? s.saving : s.save}
           </button>
         </div>
 

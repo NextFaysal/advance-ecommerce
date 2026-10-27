@@ -14,6 +14,9 @@ import {
   type SmsSettingsInitial,
 } from "./sms-settings-card";
 import { getEmailTransportStatus, type EmailTransportStatus } from "@/email/config";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { SETTINGS_B_STRINGS } from "../strings-b";
 
 // Admin > Settings > Notifications — SMS gateway configuration (ADV-2,
 // doc 22). This page used to be a disabled shell; it is now the real
@@ -32,9 +35,12 @@ import { getEmailTransportStatus, type EmailTransportStatus } from "@/email/conf
 // A provider routes REAL sends only when enabled AND fully
 // credentialed; otherwise sends stay on the sandbox simulator and are
 // labelled simulated — the card says which state the store is in.
+// UI copy: doc-30 dictionary (../strings-b), locale via getRequestLocale().
 export const dynamic = "force-dynamic";
 
 export default async function NotificationsSettingsPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, SETTINGS_B_STRINGS);
   let dbReady = true;
   const initial: SmsSettingsInitial = {
     activeProvider: "",
@@ -79,15 +85,15 @@ export default async function NotificationsSettingsPage() {
   return (
     <main className="min-w-0">
       <PageHeader
-        title="নোটিফিকেশন — SMS গেটওয়ে ও ইমেইল"
-        description="OTP, অর্ডার আপডেট, কল-সেন্টার অটোমেশন ও রিটার্ন নোটিফিকেশনের SMS কোন গেটওয়ে দিয়ে যাবে তা এখান থেকে ঠিক হয়। ক্রেডেনশিয়াল এনক্রিপ্ট হয়ে সংরক্ষিত থাকে — মান কখনো পেজে দেখানো হয় না।"
-        breadcrumb="সেটিংস / নোটিফিকেশন"
+        title={s.notifTitle}
+        description={s.notifDesc}
+        breadcrumb={s.notifBreadcrumb}
         actions={
           <Link
             href="/admin/settings"
             className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition motion-fast hover:border-brand-300"
           >
-            ← সব সেটিংস
+            {s.allSettings}
           </Link>
         }
       />
@@ -101,23 +107,20 @@ export default async function NotificationsSettingsPage() {
           <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
             <Icon name="info" size={17} />
           </span>
-          ইমেইল
+          {s.notifEmailTitle}
         </h2>
         <p className="mt-3 text-sm leading-relaxed text-text-muted">
           {emailStatus.configured ? (
-            <>
-              Resend transport কনফিগার করা আছে — queue-তে থাকা ইমেইল (অর্ডার
-              কনফার্মেশন, স্টাফ ইনভাইট) worker চালু থাকলে আসলেই পাঠানো হবে।
-            </>
+            <>{s.notifEmailConfigured}</>
           ) : (
             <>
-              Resend transport তৈরি (ADV-3), কিন্তু এখনো কনফিগার করা হয়নি
-              {emailStatus.reason ? <> ({emailStatus.reason})</> : null}। Settings-এ{" "}
-              <code>email.resend.api_key</code> ও <code>email.from_address</code>{" "}
-              বসালে ইমেইল চালু হবে; ততক্ষণ queue-তে থাকা ইমেইল SKIP হয় — কোথাও
-              &quot;পাঠানো হয়েছে&quot; বলে দাবি করা হয় না। SMTP এখনো implement
-              হয়নি। SMS গেটওয়ে উপরে কনফিগার করলেই OTP ও নোটিফিকেশন SMS আসল
-              গেটওয়ে দিয়ে যেতে শুরু করবে (worker চালু থাকা সাপেক্ষে)।
+              {s.notifEmailNotConfiguredA}
+              {emailStatus.reason ? <> ({emailStatus.reason})</> : null}
+              {s.notifEmailNotConfiguredB}
+              <code>email.resend.api_key</code>
+              {s.notifEmailNotConfiguredC}
+              <code>email.from_address</code>
+              {s.notifEmailNotConfiguredD}
             </>
           )}
         </p>

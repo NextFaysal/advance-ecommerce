@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { PRODUCTS_STRINGS } from "./strings";
 
 // CSV export for the products list — small client leaf (plain
 // serializable props only), mirroring the call-center reports export
@@ -12,6 +15,8 @@ import { useState } from "react";
 // every status, so the default export covers ALL statuses. A specific
 // status can be passed to export just that slice.
 export function ProductsExportButton({ status = "ALL" }: { status?: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, PRODUCTS_STRINGS);
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -21,7 +26,7 @@ export function ProductsExportButton({ status = "ALL" }: { status?: string }) {
   async function run() {
     const trimmed = reason.trim();
     if (!trimmed) {
-      setError("কারণ লেখা বাধ্যতামূলক। (A reason is required.)");
+      setError(s.exportReasonRequired);
       return;
     }
     setBusy(true);
@@ -34,7 +39,7 @@ export function ProductsExportButton({ status = "ALL" }: { status?: string }) {
         | { data?: { csv: string; filename: string; rowCount: number }; error?: { message?: string } }
         | null;
       if (!res.ok || !body?.data) {
-        setError(body?.error?.message ?? `Export failed (${res.status}).`);
+        setError(body?.error?.message ?? interpolate(s.exportFailed, { status: res.status }));
         return;
       }
       const blob = new Blob([body.data.csv], { type: "text/csv" });
@@ -44,13 +49,11 @@ export function ProductsExportButton({ status = "ALL" }: { status?: string }) {
       a.download = body.data.filename;
       a.click();
       URL.revokeObjectURL(url);
-      setMessage(
-        `এক্সপোর্ট ডাউনলোড হয়েছে (${body.data.rowCount} সারি) — অডিট লগে নথিভুক্ত। (Exported; recorded in the audit log.)`,
-      );
+      setMessage(interpolate(s.exportSuccess, { count: body.data.rowCount }));
       setOpen(false);
       setReason("");
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন। (Network error.)");
+      setError(s.exportNetwork);
     } finally {
       setBusy(false);
     }
@@ -64,9 +67,9 @@ export function ProductsExportButton({ status = "ALL" }: { status?: string }) {
             type="text"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="এক্সপোর্টের কারণ (বাধ্যতামূলক)"
+            placeholder={s.exportReasonPh}
             className="h-11 w-64 max-w-[70vw] rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
-            aria-label="Export reason"
+            aria-label={s.exportReasonAria}
           />
           <button
             type="button"
@@ -74,14 +77,14 @@ export function ProductsExportButton({ status = "ALL" }: { status?: string }) {
             disabled={busy}
             className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-brand-600 px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
           >
-            {busy ? "হচ্ছে…" : "ডাউনলোড"}
+            {busy ? s.exportBusy : s.exportDownload}
           </button>
           <button
             type="button"
             onClick={() => setOpen(false)}
             className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-border bg-card px-3 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
           >
-            বাতিল
+            {s.cancelBtn}
           </button>
         </div>
       ) : (
@@ -95,7 +98,7 @@ export function ProductsExportButton({ status = "ALL" }: { status?: string }) {
             <path d="m7 10 5 5 5-5" />
             <path d="M12 15V3" />
           </svg>
-          CSV এক্সপোর্ট
+          {s.exportBtn}
         </button>
       )}
       {message ? <p className="text-xs text-emerald-600">{message}</p> : null}

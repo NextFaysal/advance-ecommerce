@@ -11,6 +11,9 @@ import { activeLoad } from "@/riders/assignment";
 import { codHandoverLine, computeRiderPerformance } from "@/riders/service";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { RiderAssignmentBoard } from "@/components/admin/rider-assignment-board";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
+import { RIDERS_STRINGS, type RidersStrings } from "./strings";
 
 // Own Riders admin — Agent 18, Step 45 (E3); real data wired 2026-10-25.
 // Locked state: while module.rider is OFF in the feature_flags TABLE
@@ -25,15 +28,25 @@ import { RiderAssignmentBoard } from "@/components/admin/rider-assignment-board"
 export const dynamic = "force-dynamic";
 
 export default async function AdminRidersPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, RIDERS_STRINGS);
+  const riderStatusLabel = (status: string): string => {
+    const key = (
+      {
+        ACTIVE: "statusActive",
+        INACTIVE: "statusInactive",
+        ON_DELIVERY: "statusOnDelivery",
+        SUSPENDED: "statusSuspended",
+      } as Record<string, keyof RidersStrings>
+    )[status];
+    return key ? s[key] : status;
+  };
   await ensureDbFeatureFlags();
   if (!isRiderEnabled(demoRiderFlags)) {
     return (
       <main>
-        <PageHeader title="Own Riders" description="In-house delivery rider management (E3)" />
-        <p role="status">
-          This module is locked for this install. Own rider management is a paid add-on —
-          enable <code>module.rider</code> in Admin &gt; Settings &gt; Feature Flags to unlock it.
-        </p>
+        <PageHeader title={s.lockedTitle} description={s.lockedDesc} />
+        <p role="status">{interpolate(s.lockedText, { flag: "module.rider" })}</p>
       </main>
     );
   }
@@ -59,7 +72,7 @@ export default async function AdminRidersPage() {
       vehicle: r.vehicle,
       status: (
         <Badge tone={r.status === "ACTIVE" ? "success" : r.status === "ON_DELIVERY" ? "info" : "neutral"}>
-          {r.status}
+          {riderStatusLabel(r.status)}
         </Badge>
       ),
       load: activeLoad(deliveries, r.id),
@@ -82,38 +95,33 @@ export default async function AdminRidersPage() {
 
   return (
     <main>
-      <PageHeader
-        title="Own Riders"
-        description="Real data from the Rider and RiderDelivery tables (same store as the riders API). Zone names are the module's fixed catalogue — there is no Zone table. Assignment uses nearest-zone + lowest-load scoring."
-        breadcrumb="Admin / Delivery"
-      />
+      <PageHeader title={s.title} description={s.description} breadcrumb="Admin / Delivery" />
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Riders" value={String(riders.length)} delta={`${riders.filter((r) => r.status === "ACTIVE" || r.status === "ON_DELIVERY").length} available`} icon={<Icon name="users" size={22} />} />
-        <StatCard label="In-flight deliveries" value={String(inFlight.length)} delta="assigned + picked up" icon={<Icon name="package" size={22} />} />
-        <StatCard label="Delivered" value={String(deliveries.filter((d) => d.status === "DELIVERED").length)} delta="with proof" icon={<Icon name="check" size={22} />} />
-        <StatCard label="COD shortages" value={String(shortageCount)} delta={shortageCount > 0 ? "needs review" : "none flagged"} deltaTone={shortageCount > 0 ? "down" : "up"} icon={<Icon name="banknote" size={22} />} />
+        <StatCard label={s.statRiders} value={String(riders.length)} delta={interpolate(s.availableDelta, { count: riders.filter((r) => r.status === "ACTIVE" || r.status === "ON_DELIVERY").length })} icon={<Icon name="users" size={22} />} />
+        <StatCard label={s.statInFlight} value={String(inFlight.length)} delta={s.statInFlightDelta} icon={<Icon name="package" size={22} />} />
+        <StatCard label={s.statDelivered} value={String(deliveries.filter((d) => d.status === "DELIVERED").length)} delta={s.statDeliveredDelta} icon={<Icon name="check" size={22} />} />
+        <StatCard label={s.statCodShortages} value={String(shortageCount)} delta={shortageCount > 0 ? s.shortageNeedsReview : s.shortageNone} deltaTone={shortageCount > 0 ? "down" : "up"} icon={<Icon name="banknote" size={22} />} />
       </div>
 
       {riders.length === 0 ? (
         <p className="mb-6 rounded-md bg-surface-2 px-3 py-2 text-sm text-text-muted">
-          No riders are registered yet — riders added via the riders API will appear here with their
-          delivery history. The tables below are empty because the tables are empty, not sample data.
+          {s.emptyNote}
         </p>
       ) : null}
 
-      <h2 className="mb-3 text-lg font-semibold">Riders</h2>
+      <h2 className="mb-3 text-lg font-semibold">{s.ridersHeading}</h2>
       <DataTable
-        caption="Rider list — phone masked, payout is per-delivery rate × delivered"
+        caption={s.tableCaption}
         columns={[
-          { key: "rider", header: "Rider" },
-          { key: "phone", header: "Phone" },
-          { key: "zone", header: "Zone" },
-          { key: "vehicle", header: "Vehicle" },
-          { key: "status", header: "Status" },
-          { key: "load", header: "Load" },
-          { key: "delivered", header: "Delivered" },
-          { key: "success", header: "Success" },
-          { key: "payout", header: "Payout due" },
+          { key: "rider", header: s.colRider },
+          { key: "phone", header: s.colPhone },
+          { key: "zone", header: s.colZone },
+          { key: "vehicle", header: s.colVehicle },
+          { key: "status", header: s.colStatus },
+          { key: "load", header: s.colLoad },
+          { key: "delivered", header: s.colDelivered },
+          { key: "success", header: s.colSuccess },
+          { key: "payout", header: s.colPayout },
         ]}
         rows={riderRows}
       />

@@ -7,6 +7,9 @@ import { SecurityAlertsCard } from "@/components/admin/security-alerts-card";
 import { SecurityIpRulesCard } from "@/components/admin/security-ip-rules-card";
 import { SecuritySessionsCard } from "@/components/admin/security-sessions-card";
 import TotpEnrollCard from "./totp-enroll-card";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { SECURITY_STRINGS } from "./strings";
 
 // Account + store security (ADV-28 core composition).
 //
@@ -25,15 +28,17 @@ import TotpEnrollCard from "./totp-enroll-card";
 export const dynamic = "force-dynamic";
 
 export default async function AdminSecurityPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, SECURITY_STRINGS);
   const token = cookies().get("admin_session")?.value;
   const session = token ? await validateSessionToken(token) : null;
 
   if (!session) {
     return (
       <main>
-        <PageHeader title="নিরাপত্তা" description="আপনার অ্যাকাউন্টের দুই-ধাপ যাচাই (2FA)" breadcrumb="Admin / System" />
+        <PageHeader title={s.title} description={s.loginRequiredDesc} breadcrumb={s.breadcrumb} />
         <p role="status" className="text-sm text-text-muted">
-          এই পেজ দেখতে আগে লগইন করুন।
+          {s.loginRequired}
         </p>
       </main>
     );
@@ -49,9 +54,9 @@ export default async function AdminSecurityPage() {
   return (
     <main>
       <PageHeader
-        title="নিরাপত্তা"
-        description="আপনার নিজের অ্যাকাউন্টের দুই-ধাপ যাচাই (TOTP 2FA) — অন্য কারো 2FA এখান থেকে বদলানো যায় না। নিচে IP নিয়ম, নিরাপত্তা সতর্কতা ও সক্রিয় স্টাফ সেশন।"
-        breadcrumb="Admin / System"
+        title={s.title}
+        description={s.description}
+        breadcrumb={s.breadcrumb}
       />
       <div className="max-w-2xl">
         <TotpEnrollCard

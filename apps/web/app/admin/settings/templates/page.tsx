@@ -1,5 +1,8 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { TemplatesEditor } from "./templates-editor";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { SETTINGS_B_STRINGS } from "../strings-b";
 
 // Admin > Settings > Templates (ADV-29 template designer, doc 23
 // wave 53) — merchant overrides for the invoice copy slots
@@ -10,16 +13,15 @@ import { TemplatesEditor } from "./templates-editor";
 // the editor surface, the client editor self-fetches through
 // /api/v1/admin/settings/templates (settings.view / settings.edit,
 // reason-required + audited writes).
+// UI copy: doc-30 dictionary (../strings-b), locale via getRequestLocale().
 export const dynamic = "force-dynamic";
 
-export default function AdminTemplatesSettingsPage() {
+export default async function AdminTemplatesSettingsPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, SETTINGS_B_STRINGS);
   return (
     <main>
-      <PageHeader
-        title="টেমপ্লেট ডিজাইনার"
-        description="ইনভয়েস ও ইমেইলের নির্দিষ্ট লেখা (কপি) বদলান — লেআউট বা হিসাব বদলায় না। খালি রাখা স্লটে বিল্ট-ইন লেখাই ছাপা/পাঠানো হয়। (Template designer)"
-        breadcrumb="Admin / Settings"
-      />
+      <PageHeader title={s.tplPageTitle} description={s.tplPageDesc} breadcrumb="Admin / Settings" />
       <TemplatesEditor />
     </main>
   );
