@@ -34,6 +34,37 @@ export type CheckoutFieldKey =
   | "addressLine"
   | "note";
 
+/**
+ * A display/requirement condition (doc 29). Matched against the live
+ * checkout context; `values` conditions match when the context value
+ * (trimmed, case-insensitive) is one of the listed values, `cartTotal`
+ * matches when the merchandise subtotal reaches `minPoisha`.
+ */
+export type CheckoutFieldCondition =
+  | { source: "paymentMethod" | "shippingMethod" | "division"; values: string[] }
+  | { source: "cartTotal"; minPoisha: number };
+
+/** The live checkout state conditions are matched against. */
+export interface CheckoutConditionContext {
+  paymentMethod?: string;
+  shippingMethod?: string;
+  division?: string;
+  /** Merchandise subtotal in poisha (before shipping/coupons/gift cards). */
+  cartTotalPoisha?: number;
+}
+
+/** Answer format presets (doc 29) — deliberately no raw regex from admin. */
+export type CheckoutAnswerPattern = "digits" | "bd_phone" | "email";
+
+export const CHECKOUT_ANSWER_PATTERNS: CheckoutAnswerPattern[] = ["digits", "bd_phone", "email"];
+
+/** Admin-settable answer validation (doc 29), checked when a value is present. */
+export interface CheckoutFieldValidation {
+  minLength?: number;
+  maxLength?: number;
+  pattern?: CheckoutAnswerPattern;
+}
+
 export type CheckoutFieldDef = {
   /** Built-in key, or extra_1..extra_5 for merchant-added fields. */
   key: string;
@@ -44,6 +75,12 @@ export type CheckoutFieldDef = {
   required: boolean;
   /** Merchant-added custom text field (answers land on the order note). */
   extra?: boolean;
+  /** Doc 29: render/enforce this field only when the condition matches. */
+  visibleWhen?: CheckoutFieldCondition;
+  /** Doc 29: this field is required when the condition matches (OR-ed with `required`). */
+  requiredWhen?: CheckoutFieldCondition;
+  /** Doc 29: answer validation, applied when a value is present. */
+  validation?: CheckoutFieldValidation;
 };
 
 export type CheckoutFieldsConfig = {
@@ -94,6 +131,54 @@ export const MAX_LABEL_LENGTH = 80;
 export const MAX_PLACEHOLDER_LENGTH = 120;
 export const MAX_ANSWER_LENGTH = 200;
 
+/** Doc 29 bounds. */
+export const MAX_CONDITION_VALUES = 10;
+export const MAX_CONDITION_VALUE_LENGTH = 60;
+export const MAX_CART_TOTAL_POISHA = 1_000_000_000;
+export const MAX_VALIDATION_LENGTH = 200;
+
+/** Keys that may carry conditions (doc 29): the fully editable fields + extras. */
+const CONDITION_KEYS: ReadonlySet<string> = new Set(["email", "union", "note"]);
+
+/** Keys that may carry answer validation (doc 29). */
+const VALIDATION_KEYS: ReadonlySet<string> = new Set(["email", "union", "addressLine", "note"]);
+
+function coerceCondition(raw: unknown): CheckoutFieldCondition | undefined {
+  if (!isRecord(raw)) return undefined;
+  if (raw.source === "cartTotal") {
+    const min = typeof raw.minPoisha === "number" ? Math.floor(raw.minPoisha) : NaN;
+    if (!Number.isFinite(min) || min < 0 || min > MAX_CART_TOTAL_POISHA) return undefined;
+    return { source: "cartTotal", minPoisha: min };
+  }
+  if (raw.source === "paymentMethod" || raw.source === "shippingMethod" || raw.source === "division") {
+    if (!Array.isArray(raw.values)) return undefined;
+    const values: string[] = [];
+    for (const v of raw.values) {
+      const s = cleanText(v, MAX_CONDITION_VALUE_LENGTH);
+      if (s && !values.some((x) => x.toLowerCase() === s.toLowerCase())) values.push(s);
+      if (values.length >= MAX_CONDITION_VALUES) break;
+    }
+    if (values.length === 0) return undefined;
+    return { source: raw.source, values };
+  }
+  return undefined;
+}
+
+function coerceValidation(raw: unknown): CheckoutFieldValidation | undefined {
+  if (!isRecord(raw)) return undefined;
+  const out: CheckoutFieldValidation = {};
+  const len = (v: unknown): number | undefined =>
+    typeof v === "number" && Number.isFinite(v)
+      ? Math.min(MAX_VALIDATION_LENGTH, Math.max(1, Math.floor(v)))
+      : undefined;
+  const minLength = len(raw.minLength);
+  const maxLength = len(raw.maxLength);
+  if (minLength !== undefined) out.minLength = minLength;
+  if (maxLength !== undefined && (minLength === undefined || maxLength >= minLength)) out.maxLength = maxLength;
+  if (raw.pattern === "digits" || raw.pattern === "bd_phone" || raw.pattern === "email") out.pattern = raw.pattern;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 const BUILTIN_DEFAULTS: CheckoutFieldDef[] = [
   { key: "customerName", labelBn: "আপনার নাম", labelEn: "Your name", visible: true, required: true },
   { key: "phone", labelBn: "মোবাইল নম্বর", labelEn: "Mobile number", placeholder: "01XXXXXXXXX", visible: true, required: true },
@@ -131,6 +216,14 @@ function coerceField(raw: unknown, fallback: CheckoutFieldDef): CheckoutFieldDef
   let required = typeof raw.required === "boolean" ? raw.required : fallback.required;
   if (LOCKED_VISIBLE.has(key)) visible = true;
   if (LOCKED_REQUIRED.has(key)) required = true;
+  // Doc 29: conditions live only on the fully editable fields + extras;
+  // validation only on the free-text fields + extras. Everywhere else
+  // they are stripped here, so no reader can ever honour them there.
+  const mayCondition = fallback.extra === true || CONDITION_KEYS.has(key);
+  const mayValidate = fallback.extra === true || VALIDATION_KEYS.has(key);
+  const visibleWhen = mayCondition ? coerceCondition(raw.visibleWhen) : undefined;
+  const requiredWhen = mayCondition ? coerceCondition(raw.requiredWhen) : undefined;
+  const validation = mayValidate ? coerceValidation(raw.validation) : undefined;
   return {
     key,
     labelBn,
@@ -139,6 +232,9 @@ function coerceField(raw: unknown, fallback: CheckoutFieldDef): CheckoutFieldDef
     visible,
     required,
     ...(fallback.extra ? { extra: true } : {}),
+    ...(visibleWhen ? { visibleWhen } : {}),
+    ...(requiredWhen ? { requiredWhen } : {}),
+    ...(validation ? { validation } : {}),
   };
 }
 
@@ -206,4 +302,66 @@ export function visibleFieldsForGroup(
 /** The field def for a key (built-in or extra), or undefined. */
 export function fieldByKey(config: CheckoutFieldsConfig, key: string): CheckoutFieldDef | undefined {
   return config.fields.find((f) => f.key === key);
+}
+
+/** Doc 29: does a condition match the live checkout context? */
+export function conditionMatches(
+  cond: CheckoutFieldCondition | undefined,
+  ctx: CheckoutConditionContext,
+): boolean {
+  if (!cond) return false;
+  if (cond.source === "cartTotal") {
+    return typeof ctx.cartTotalPoisha === "number" && ctx.cartTotalPoisha >= cond.minPoisha;
+  }
+  const actual =
+    cond.source === "paymentMethod"
+      ? ctx.paymentMethod
+      : cond.source === "shippingMethod"
+        ? ctx.shippingMethod
+        : ctx.division;
+  if (typeof actual !== "string" || actual.trim() === "") return false;
+  const a = actual.trim().toLowerCase();
+  return cond.values.some((v) => v.toLowerCase() === a);
+}
+
+/** Doc 29: is the field in play at all under the current context? */
+export function effectiveVisible(def: CheckoutFieldDef, ctx: CheckoutConditionContext): boolean {
+  if (!def.visible) return false;
+  if (def.visibleWhen && !conditionMatches(def.visibleWhen, ctx)) return false;
+  return true;
+}
+
+/** Doc 29: is the field required under the current context? */
+export function effectiveRequired(def: CheckoutFieldDef, ctx: CheckoutConditionContext): boolean {
+  if (def.required) return true;
+  if (def.requiredWhen && conditionMatches(def.requiredWhen, ctx)) return true;
+  return false;
+}
+
+const ANSWER_PATTERNS: Record<CheckoutAnswerPattern, RegExp> = {
+  digits: /^[0-9]+$/,
+  bd_phone: /^(\+?880|0)1[3-9]\d{8}$/,
+  email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+};
+
+/**
+ * Doc 29: validate a present (non-empty) answer against the field's
+ * validation rules. Returns the failure kind, or null when valid.
+ * The caller handles absence (required checks) and the hard
+ * MAX_ANSWER_LENGTH cap for extras.
+ */
+export function validateAnswer(
+  def: CheckoutFieldDef,
+  value: string,
+): "TOO_SHORT" | "TOO_LONG" | "INVALID_FORMAT" | null {
+  const v = def.validation;
+  if (!v) return null;
+  const trimmed = value.trim();
+  if (v.minLength !== undefined && trimmed.length < v.minLength) return "TOO_SHORT";
+  if (v.maxLength !== undefined && trimmed.length > v.maxLength) return "TOO_LONG";
+  if (v.pattern) {
+    const probe = v.pattern === "bd_phone" ? trimmed.replace(/[\s-]/g, "") : trimmed;
+    if (!ANSWER_PATTERNS[v.pattern].test(probe)) return "INVALID_FORMAT";
+  }
+  return null;
 }

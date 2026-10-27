@@ -69,8 +69,11 @@ import { getCheckoutSkin } from "@/themes/skin-registry";
 import {
   coerceCheckoutFieldsConfig,
   DEFAULT_CHECKOUT_FIELDS_CONFIG,
+  effectiveRequired,
+  effectiveVisible,
   fieldByKey,
   visibleFieldsForGroup,
+  type CheckoutConditionContext,
   type CheckoutFieldDef,
   type CheckoutFieldsConfig,
 } from "@/checkout/fields";
@@ -629,6 +632,12 @@ export default function CheckoutPage() {
   // be offered and dead-end a customer again. A failed fetch leaves
   // COD only — checkout never blocks on the method list.
   const [gatewayMethods, setGatewayMethods] = useState<{ method: string; label: string }[]>([]);
+  // Doc 29: mirror of the picked payment method. The method radios
+  // are uncontrolled (submit reads them from FormData); this state
+  // exists only so field conditions can be evaluated live as the
+  // customer switches methods. It is kept in sync by the form's
+  // onChange (trackPaymentMethod below).
+  const [paymentMethod, setPaymentMethod] = useState("cod");
   useEffect(() => {
     let cancelled = false;
     fetch("/api/v1/public/payment-methods")
@@ -723,6 +732,15 @@ export default function CheckoutPage() {
     if (captureTimerRef.current !== null) window.clearTimeout(captureTimerRef.current);
     captureTimerRef.current = window.setTimeout(() => fireCapture(false), 1200);
   }, [fireCapture]);
+
+  // Doc 29: keep the payment-method mirror in sync with the
+  // uncontrolled radios so field conditions re-evaluate live.
+  const trackPaymentMethod = useCallback((e: React.FormEvent<HTMLFormElement>) => {
+    const t = e.target;
+    if (t instanceof HTMLInputElement && t.name === "paymentMethod") {
+      setPaymentMethod(t.value);
+    }
+  }, []);
 
   // pagehide is the last chance to capture when the shopper leaves
   // mid-form; keepalive lets the request outlive the page.
@@ -983,9 +1001,22 @@ export default function CheckoutPage() {
     // is absent from FormData, and the reads below already map that
     // to the same empty/absent values an untouched optional field
     // produces today.
+    // Doc 29: extras are collected only when EFFECTIVELY visible
+    // under the submitted context — a condition-hidden extra's typed
+    // value (its input unmounts when the condition flips, but the
+    // rule is enforced here too) must not ride the order. The
+    // context is read from the submitted values themselves, the
+    // same sources the server gate evaluates.
+    const submitConditionCtx: CheckoutConditionContext = {
+      paymentMethod: String(data.get("paymentMethod") ?? "") || undefined,
+      shippingMethod: String(data.get("shippingMethod") ?? "") || undefined,
+      division: String(data.get("division") ?? "") || undefined,
+      cartTotalPoisha: cartSubtotalPoisha(cart),
+    };
     const fieldAnswers: Record<string, string> = {};
     for (const def of visibleFieldsForGroup(fieldsConfig, "address")) {
       if (!def.extra) continue;
+      if (!effectiveVisible(def, submitConditionCtx)) continue;
       const value = String(data.get(def.key) ?? "").trim();
       if (value) fieldAnswers[def.key] = value;
     }
@@ -1227,19 +1258,49 @@ export default function CheckoutPage() {
   // (the default labels are the original form's); the required
   // attribute comes from the def. Under the DEFAULT config the
   // emitted fields, order and flags are the original form's.
-  const infoFieldDefs = visibleFieldsForGroup(fieldsConfig, "info");
-  const addressFieldDefs = visibleFieldsForGroup(fieldsConfig, "address");
+  // Doc 29: the live condition context — the picked payment method
+  // (mirrored state), the shipping method exactly as the submit
+  // sends it (submittedZone), the picked division, and the
+  // merchandise subtotal in poisha (the same subtotal the summary
+  // shows). visibleFieldsForGroup applies the STATIC visible flag;
+  // effectiveVisible composes the field's conditions on top, so a
+  // config with no conditions renders exactly as doc 28 did.
+  const conditionCtx: CheckoutConditionContext = {
+    paymentMethod,
+    shippingMethod: submittedZone,
+    division: division || undefined,
+    cartTotalPoisha: cart ? cartSubtotalPoisha(cart) : 0,
+  };
+  const infoFieldDefs = visibleFieldsForGroup(fieldsConfig, "info").filter((def) =>
+    effectiveVisible(def, conditionCtx),
+  );
+  const addressFieldDefs = visibleFieldsForGroup(fieldsConfig, "address").filter((def) =>
+    effectiveVisible(def, conditionCtx),
+  );
   const divisionDef = fieldByKey(fieldsConfig, "division");
   const districtDef = fieldByKey(fieldsConfig, "district");
   const upazilaDef = fieldByKey(fieldsConfig, "upazila");
   // Display label: the original form marked required fields with
   // " *". Config labels don't carry the marker, so append it for
-  // required fields (unless the merchant typed one already).
+  // required fields (unless the merchant typed one already). Doc 29:
+  // "required" here is the EFFECTIVE required under the live
+  // context, so the marker follows condition flips. (Cascade defs
+  // never carry conditions — coercion strips them — so for them
+  // this is exactly the static flag, as before.)
   const fieldLabel = (def?: CheckoutFieldDef): string => {
     if (!def) return "";
     const label = def.labelBn || def.labelEn || "";
-    return label + (def.required && !label.includes("*") ? " *" : "");
+    return label + (effectiveRequired(def, conditionCtx) && !label.includes("*") ? " *" : "");
   };
+  // Doc 29: native validation attributes from the def's rules.
+  // Length attributes apply to the free-text inputs; the HTML
+  // pattern is set ONLY for the digits preset (bd_phone/email rely
+  // on the input type + server enforcement — no loose patterns).
+  const validationAttrs = (def: CheckoutFieldDef) => ({
+    minLength: def.validation?.minLength,
+    maxLength: def.validation?.maxLength,
+    ...(def.validation?.pattern === "digits" ? { pattern: "[0-9]+" } : {}),
+  });
 
   function renderInfoField(def: CheckoutFieldDef) {
     if (def.key === "customerName") {
@@ -1248,7 +1309,7 @@ export default function CheckoutPage() {
           <span className="mb-1.5 block text-sm font-medium text-text-main">{fieldLabel(def)}</span>
           <input
             name="customerName"
-            required={def.required}
+            required={effectiveRequired(def, conditionCtx)}
             autoComplete="name"
             placeholder={def.placeholder || undefined}
             className={INPUT_CLASS}
@@ -1266,7 +1327,7 @@ export default function CheckoutPage() {
             inputMode="tel"
             autoComplete="tel"
             placeholder={def.placeholder || undefined}
-            required={def.required}
+            required={effectiveRequired(def, conditionCtx)}
             className={INPUT_CLASS}
           />
         </label>
@@ -1282,7 +1343,8 @@ export default function CheckoutPage() {
             inputMode="email"
             autoComplete="email"
             placeholder={def.placeholder || undefined}
-            required={def.required}
+            required={effectiveRequired(def, conditionCtx)}
+            {...validationAttrs(def)}
             className={INPUT_CLASS}
           />
         </label>
@@ -1405,7 +1467,8 @@ export default function CheckoutPage() {
             <input
               name={def.key}
               placeholder={def.placeholder || undefined}
-              required={def.required}
+              required={effectiveRequired(def, conditionCtx)}
+              {...validationAttrs(def)}
               className={INPUT_CLASS}
             />
           </label>
@@ -1418,7 +1481,8 @@ export default function CheckoutPage() {
             <input
               name="union"
               placeholder={def.placeholder || undefined}
-              required={def.required}
+              required={effectiveRequired(def, conditionCtx)}
+              {...validationAttrs(def)}
               className={INPUT_CLASS}
             />
           </label>
@@ -1430,7 +1494,7 @@ export default function CheckoutPage() {
             <span className="mb-1.5 block text-sm font-medium text-text-main">{fieldLabel(def)}</span>
             <input
               name="addressLine"
-              required={def.required}
+              required={effectiveRequired(def, conditionCtx)}
               autoComplete="street-address"
               placeholder={def.placeholder || undefined}
               className={INPUT_CLASS}
@@ -1445,7 +1509,8 @@ export default function CheckoutPage() {
             <input
               name="note"
               placeholder={def.placeholder || undefined}
-              required={def.required}
+              required={effectiveRequired(def, conditionCtx)}
+              {...validationAttrs(def)}
               className={INPUT_CLASS}
             />
           </label>
@@ -1813,7 +1878,7 @@ export default function CheckoutPage() {
         )}
       </section>
 
-      <form ref={formRef} id="checkout-form" onSubmit={onSubmit} onChange={scheduleCapture} className="grid gap-4 lg:col-start-1 lg:row-start-1">
+      <form ref={formRef} id="checkout-form" onSubmit={onSubmit} onChange={(e) => { scheduleCapture(); trackPaymentMethod(e); }} className="grid gap-4 lg:col-start-1 lg:row-start-1">
         {/* Step ১ — তথ্য */}
         <section aria-label="ধাপ ১: আপনার তথ্য" className="rounded-2xl border border-border bg-card p-5 shadow-card">
           <h2 className="flex items-center gap-2 text-base font-semibold text-text-main">

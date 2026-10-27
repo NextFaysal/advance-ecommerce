@@ -17,7 +17,7 @@
  * questions rendered at the end of the address step; their answers
  * ride the order and land on the order's note.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CHECKOUT_FIELD_GROUPS,
   LOCKED_REQUIRED,
@@ -25,8 +25,11 @@ import {
   MAX_EXTRA_FIELDS,
   MAX_LABEL_LENGTH,
   MAX_PLACEHOLDER_LENGTH,
+  MAX_VALIDATION_LENGTH,
   coerceCheckoutFieldsConfig,
+  type CheckoutFieldCondition,
   type CheckoutFieldDef,
+  type CheckoutFieldValidation,
   type CheckoutFieldsConfig,
 } from "@/checkout/fields";
 
@@ -35,6 +38,278 @@ const INPUT_CLASS =
 
 function groupOf(key: string): "info" | "address" {
   return (CHECKOUT_FIELD_GROUPS.info as string[]).includes(key) ? "info" : "address";
+}
+
+/**
+ * Doc 29 eligibility — mirrors the contract's private rails in
+ * src/checkout/fields.ts (coercion strips these blocks everywhere
+ * else): conditions may live on email / union / note + extras;
+ * validation on email / union / addressLine / note + extras.
+ * Locked identity/cascade fields get neither block.
+ */
+const CONDITION_KEYS: ReadonlySet<string> = new Set(["email", "union", "note"]);
+const VALIDATION_KEYS: ReadonlySet<string> = new Set(["email", "union", "addressLine", "note"]);
+
+function mayCondition(def: CheckoutFieldDef): boolean {
+  return def.extra === true || CONDITION_KEYS.has(def.key);
+}
+
+function mayValidate(def: CheckoutFieldDef): boolean {
+  return def.extra === true || VALIDATION_KEYS.has(def.key);
+}
+
+type ConditionSource = "" | "paymentMethod" | "shippingMethod" | "division" | "cartTotal";
+
+const CONDITION_SOURCE_OPTIONS: { value: ConditionSource; label: string }[] = [
+  { value: "", label: "সবসময়" },
+  { value: "paymentMethod", label: "পেমেন্ট মেথড" },
+  { value: "shippingMethod", label: "শিপিং মেথড" },
+  { value: "division", label: "বিভাগ" },
+  { value: "cartTotal", label: "কার্টের মোট (৳)" },
+];
+
+const CONDITION_VALUE_HINTS: Record<string, string> = {
+  paymentMethod: "cod, bkash",
+  shippingMethod: "inside_dhaka, outside_dhaka, pickup",
+  division: "Dhaka, Chattogram (English নাম)",
+};
+
+/** Comma-separated editor text → clean value list (trim, drop empties, de-dupe). */
+function parseConditionValues(text: string): string[] {
+  const out: string[] = [];
+  for (const part of text.split(",")) {
+    const v = part.trim();
+    if (v && !out.some((x) => x.toLowerCase() === v.toLowerCase())) out.push(v);
+  }
+  return out;
+}
+
+/**
+ * One condition editor (doc 29): a source select plus either a
+ * comma-separated values input or a টাকা amount input. Choosing
+ * "সবসময়" clears the condition entirely.
+ */
+function ConditionEditor({
+  title,
+  cond,
+  onChange,
+}: {
+  title: string;
+  cond: CheckoutFieldCondition | undefined;
+  onChange: (next: CheckoutFieldCondition | undefined) => void;
+}) {
+  const source: ConditionSource = cond?.source ?? "";
+  const isValues = source === "paymentMethod" || source === "shippingMethod" || source === "division";
+  // The values input keeps a local draft so commas/spaces survive
+  // typing; it re-syncs only when the stored values change from
+  // OUTSIDE this editor (load, reload after save, source switch).
+  const storedText = cond && cond.source !== "cartTotal" ? cond.values.join(", ") : "";
+  const [draft, setDraft] = useState(storedText);
+  const lastEmitted = useRef(storedText);
+  useEffect(() => {
+    if (storedText !== lastEmitted.current) {
+      lastEmitted.current = storedText;
+      setDraft(storedText);
+    }
+  }, [storedText]);
+
+  function onSource(next: ConditionSource) {
+    if (next === "") {
+      onChange(undefined);
+      return;
+    }
+    if (next === "cartTotal") {
+      onChange({
+        source: "cartTotal",
+        minPoisha: cond?.source === "cartTotal" ? cond.minPoisha : 100_000,
+      });
+      return;
+    }
+    onChange({
+      source: next,
+      values: cond && cond.source !== "cartTotal" ? cond.values : [],
+    });
+  }
+
+  function onValuesText(text: string) {
+    setDraft(text);
+    if (!isValues) return;
+    const values = parseConditionValues(text);
+    lastEmitted.current = values.join(", ");
+    onChange({ source, values });
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      <span className="mb-1.5 block text-xs font-medium text-text-muted">{title}</span>
+      <select
+        value={source}
+        onChange={(e) => onSource(e.target.value as ConditionSource)}
+        className={INPUT_CLASS}
+      >
+        {CONDITION_SOURCE_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      {isValues && (
+        <>
+          <input
+            value={draft}
+            onChange={(e) => onValuesText(e.target.value)}
+            placeholder={CONDITION_VALUE_HINTS[source]}
+            className={`${INPUT_CLASS} mt-2`}
+          />
+          <span className="mt-1 block text-xs text-text-muted">
+            কমা দিয়ে আলাদা করে মান লিখুন — যেকোনো একটি মিললেই শর্তটি পূরণ হবে।
+          </span>
+        </>
+      )}
+      {source === "cartTotal" && (
+        <>
+          <input
+            type="number"
+            min={0}
+            value={cond?.source === "cartTotal" ? cond.minPoisha / 100 : ""}
+            onChange={(e) => {
+              const taka = Number.parseFloat(e.target.value);
+              onChange({
+                source: "cartTotal",
+                minPoisha: Number.isFinite(taka) ? Math.max(0, Math.round(taka * 100)) : 0,
+              });
+            }}
+            placeholder="যেমন: 1000"
+            className={`${INPUT_CLASS} mt-2`}
+          />
+          <span className="mt-1 block text-xs text-text-muted">
+            কার্টের পণ্যের মোট এই টাকা বা তার বেশি হলেই শর্তটি পূরণ হবে।
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The "যাচাই" editor (doc 29): min/max answer length + a format preset. */
+function ValidationEditor({
+  validation,
+  onChange,
+}: {
+  validation: CheckoutFieldValidation | undefined;
+  onChange: (next: CheckoutFieldValidation | undefined) => void;
+}) {
+  function patch(next: CheckoutFieldValidation) {
+    onChange(Object.keys(next).length > 0 ? next : undefined);
+  }
+  function setLength(which: "minLength" | "maxLength", raw: string) {
+    const next: CheckoutFieldValidation = { ...validation };
+    const n = Number.parseInt(raw, 10);
+    if (raw.trim() === "" || !Number.isFinite(n)) {
+      delete next[which];
+    } else {
+      next[which] = Math.min(MAX_VALIDATION_LENGTH, Math.max(1, n));
+    }
+    patch(next);
+  }
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      <label className="block">
+        <span className="mb-1.5 block text-xs font-medium text-text-muted">সর্বনিম্ন দৈর্ঘ্য</span>
+        <input
+          type="number"
+          min={1}
+          max={MAX_VALIDATION_LENGTH}
+          value={validation?.minLength ?? ""}
+          onChange={(e) => setLength("minLength", e.target.value)}
+          placeholder="খালি = নেই"
+          className={INPUT_CLASS}
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1.5 block text-xs font-medium text-text-muted">সর্বোচ্চ দৈর্ঘ্য</span>
+        <input
+          type="number"
+          min={1}
+          max={MAX_VALIDATION_LENGTH}
+          value={validation?.maxLength ?? ""}
+          onChange={(e) => setLength("maxLength", e.target.value)}
+          placeholder="খালি = নেই"
+          className={INPUT_CLASS}
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1.5 block text-xs font-medium text-text-muted">উত্তরের ধরন</span>
+        <select
+          value={validation?.pattern ?? ""}
+          onChange={(e) => {
+            const next: CheckoutFieldValidation = { ...validation };
+            if (e.target.value === "digits" || e.target.value === "bd_phone" || e.target.value === "email") {
+              next.pattern = e.target.value;
+            } else {
+              delete next.pattern;
+            }
+            patch(next);
+          }}
+          className={INPUT_CLASS}
+        >
+          <option value="">যেকোনো</option>
+          <option value="digits">শুধু সংখ্যা</option>
+          <option value="bd_phone">মোবাইল নম্বর</option>
+          <option value="email">ইমেইল</option>
+        </select>
+      </label>
+    </div>
+  );
+}
+
+/**
+ * The doc-29 blocks for one field: "শর্ত" (দেখানোর + আবশ্যক হওয়ার
+ * শর্ত) and "যাচাই" — rendered only for fields the contract allows
+ * to carry them; locked fields show neither.
+ */
+function FieldRulesBlocks({
+  def,
+  updateField,
+}: {
+  def: CheckoutFieldDef;
+  updateField: (key: string, patch: Partial<CheckoutFieldDef>) => void;
+}) {
+  const cond = mayCondition(def);
+  const val = mayValidate(def);
+  if (!cond && !val) return null;
+  return (
+    <div className="mt-4 grid gap-4 border-t border-border pt-4">
+      {cond && (
+        <div>
+          <p className="text-xs font-semibold text-text-main">শর্ত</p>
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            <ConditionEditor
+              title="দেখানোর শর্ত"
+              cond={def.visibleWhen}
+              onChange={(next) => updateField(def.key, { visibleWhen: next })}
+            />
+            <ConditionEditor
+              title="আবশ্যক হওয়ার শর্ত"
+              cond={def.requiredWhen}
+              onChange={(next) => updateField(def.key, { requiredWhen: next })}
+            />
+          </div>
+        </div>
+      )}
+      {val && (
+        <div>
+          <p className="text-xs font-semibold text-text-main">যাচাই</p>
+          <div className="mt-2">
+            <ValidationEditor
+              validation={def.validation}
+              onChange={(next) => updateField(def.key, { validation: next })}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function CheckoutFieldsPanel() {
@@ -136,7 +411,24 @@ export function CheckoutFieldsPanel() {
     setBusy(true);
     setNotice(null);
     try {
-      const config: CheckoutFieldsConfig = { version: 1, fields };
+      // Doc 29: emit clean defs — a condition whose values list is
+      // still empty (source picked, nothing typed yet) and an empty
+      // validation block are dropped here; undefined keys vanish
+      // from the JSON body entirely. The server coerces regardless.
+      const cleanedFields = fields.map((f) => ({
+        ...f,
+        visibleWhen:
+          f.visibleWhen && (f.visibleWhen.source === "cartTotal" || f.visibleWhen.values.length > 0)
+            ? f.visibleWhen
+            : undefined,
+        requiredWhen:
+          f.requiredWhen && (f.requiredWhen.source === "cartTotal" || f.requiredWhen.values.length > 0)
+            ? f.requiredWhen
+            : undefined,
+        validation:
+          f.validation && Object.keys(f.validation).length > 0 ? f.validation : undefined,
+      }));
+      const config: CheckoutFieldsConfig = { version: 1, fields: cleanedFields };
       const res = await fetch("/api/v1/admin/checkout-fields", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -266,6 +558,7 @@ export function CheckoutFieldsPanel() {
             )}
           </span>
         </div>
+        <FieldRulesBlocks def={def} updateField={updateField} />
       </div>
     );
   }
@@ -366,6 +659,7 @@ export function CheckoutFieldsPanel() {
               />
               আবশ্যক
             </label>
+            <FieldRulesBlocks def={def} updateField={updateField} />
           </div>
         ))}
       </div>

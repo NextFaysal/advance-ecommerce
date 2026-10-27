@@ -122,6 +122,13 @@
  *   answer + the `[checkout-fields] {json}` machine line). With the
  *   default config nothing changes: the toggleable fields are
  *   visible + optional and there are no extras.
+ *   Doc 29 extends the same gate with conditions + validation:
+ *   visibility / requirement are evaluated EFFECTIVELY against the
+ *   live context (payment method, shipping method, division, and
+ *   the merchandise subtotal recomputed from DB variant prices with
+ *   the platform line-total rule), and present values are checked
+ *   against the field's validation rules (400
+ *   CHECKOUT_FIELD_TOO_SHORT / _TOO_LONG / _INVALID_FORMAT).
  * - Print-on-demand (ADV-23 vertical 5, wave 56): an optional
  *   `pod` customisation (variant + print text + optional palette
  *   colour) is gated by module.print_on_demand — field present +
@@ -149,7 +156,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkoutFormSchema } from "@/checkout/validation";
-import { fieldByKey, MAX_ANSWER_LENGTH } from "@/checkout/fields";
+import {
+  effectiveRequired,
+  effectiveVisible,
+  fieldByKey,
+  MAX_ANSWER_LENGTH,
+  validateAnswer,
+  type CheckoutConditionContext,
+  type CheckoutFieldDef,
+} from "@/checkout/fields";
 import { getCheckoutFieldsConfig } from "@/checkout/fields-server";
 import { computePricing, formatBdt } from "@/checkout/pricing";
 import { InMemoryIdempotencyStore } from "@/checkout/idempotency";
@@ -248,17 +263,90 @@ type CheckoutFieldsGate =
   | { ok: false; code: string; message: string; details: { field: string } };
 
 /**
- * Doc 28 enforcement against the saved checkout.fields config.
- * Returns the (possibly adjusted) form plus the OrderNote text for
- * the extra-field answers, or the refusal to return. With the
- * default config this is a no-op: email/union/note are visible +
- * optional and there are no extra fields.
+ * Doc 28 + doc 29 enforcement against the saved checkout.fields
+ * config. Doc 29 evaluates each field's EFFECTIVE visibility /
+ * requirement against the live context (payment method, shipping
+ * method, division, merchandise subtotal) and validates present
+ * values against the field's rules. Returns the (possibly adjusted)
+ * form plus the OrderNote text for the extra-field answers, or the
+ * refusal to return. With the default config (no conditions or
+ * validation anywhere) this is a no-op, exactly as doc 28:
+ * email/union/note are visible + optional and there are no extras.
  */
 async function enforceCheckoutFields(form: CreateOrderBody): Promise<CheckoutFieldsGate> {
   const config = await getCheckoutFieldsConfig();
 
-  // Built-in toggleable fields: a hidden field's submitted value is
-  // treated as absent; a visible + required field must be non-empty.
+  // Doc 29 condition context. The merchandise subtotal is recomputed
+  // from DB variant prices ONLY when some field actually carries a
+  // cart-total condition — otherwise the gate stays read-free,
+  // exactly as doc 28. Unknown variant ids contribute 0 (later gates
+  // reject them anyway); a lookup failure leaves the total
+  // undefined, which simply never matches a cart-total condition.
+  const needsCartTotal = config.fields.some(
+    (f) => f.visibleWhen?.source === "cartTotal" || f.requiredWhen?.source === "cartTotal",
+  );
+  let cartTotalPoisha: number | undefined;
+  if (needsCartTotal) {
+    try {
+      const snapshots = await getVariantSnapshots([...new Set(form.items.map((i) => i.variantId))]);
+      cartTotalPoisha = 0;
+      for (const item of form.items) {
+        const snap = snapshots.get(item.variantId);
+        if (snap) cartTotalPoisha += lineTotalPoisha(snap.unitPricePoisha, item.quantity);
+      }
+    } catch {
+      cartTotalPoisha = undefined;
+    }
+  }
+  const ctx: CheckoutConditionContext = {
+    paymentMethod: form.paymentMethod,
+    shippingMethod: form.shippingMethod,
+    division: form.address.division,
+    ...(cartTotalPoisha !== undefined ? { cartTotalPoisha } : {}),
+  };
+
+  const refuse = (code: string, key: string, message: string): CheckoutFieldsGate => ({
+    ok: false,
+    code,
+    message,
+    details: { field: key },
+  });
+  const refuseRequired = (key: string): CheckoutFieldsGate =>
+    refuse(
+      "CHECKOUT_FIELD_REQUIRED",
+      key,
+      `চেকআউটের আবশ্যক ঘরটি পূরণ করুন: ${key} / Please fill in the required checkout field: ${key}.`,
+    );
+  // Doc 29 validation of a present (non-empty) value; null = valid.
+  const refuseInvalid = (def: CheckoutFieldDef, value: string): CheckoutFieldsGate | null => {
+    const failure = validateAnswer(def, value);
+    if (!failure) return null;
+    if (failure === "TOO_SHORT") {
+      return refuse(
+        "CHECKOUT_FIELD_TOO_SHORT",
+        def.key,
+        `উত্তরটি কমপক্ষে ${def.validation?.minLength ?? 0} অক্ষরের হতে হবে: ${def.key} / Answer must be at least ${def.validation?.minLength ?? 0} characters: ${def.key}.`,
+      );
+    }
+    if (failure === "TOO_LONG") {
+      return refuse(
+        "CHECKOUT_FIELD_TOO_LONG",
+        def.key,
+        `উত্তরটি সর্বোচ্চ ${def.validation?.maxLength ?? MAX_ANSWER_LENGTH} অক্ষরের মধ্যে হতে হবে: ${def.key} / Answer must be at most ${def.validation?.maxLength ?? MAX_ANSWER_LENGTH} characters: ${def.key}.`,
+      );
+    }
+    return refuse(
+      "CHECKOUT_FIELD_INVALID_FORMAT",
+      def.key,
+      `উত্তরটির ধরন সঠিক নয়: ${def.key} / The answer format is not valid: ${def.key}.`,
+    );
+  };
+
+  // Built-in toggleable fields: a field that is not EFFECTIVELY
+  // visible (static flag or a non-matching visibleWhen) has its
+  // submitted value treated as absent; an effectively required
+  // field must be non-empty; a present value must satisfy the
+  // field's validation rules.
   let email = form.email;
   let union = form.address.union;
   let note = form.note;
@@ -270,45 +358,49 @@ async function enforceCheckoutFields(form: CreateOrderBody): Promise<CheckoutFie
   for (const field of builtins) {
     const def = fieldByKey(config, field.key);
     if (!def) continue;
-    if (!def.visible) {
+    if (!effectiveVisible(def, ctx)) {
       field.apply(undefined);
       continue;
     }
-    if (def.required && (field.value === undefined || field.value.trim() === "")) {
-      return {
-        ok: false,
-        code: "CHECKOUT_FIELD_REQUIRED",
-        message: `চেকআউটের আবশ্যক ঘরটি পূরণ করুন: ${field.key} / Please fill in the required checkout field: ${field.key}.`,
-        details: { field: field.key },
-      };
+    if (effectiveRequired(def, ctx) && (field.value === undefined || field.value.trim() === "")) {
+      return refuseRequired(field.key);
+    }
+    if (field.value !== undefined && field.value.trim() !== "") {
+      const refusal = refuseInvalid(def, field.value);
+      if (refusal) return refusal;
     }
   }
 
+  // addressLine: visibility + required are locked, but it may carry
+  // a validation block — its (always present) value must satisfy it.
+  const addressLineDef = fieldByKey(config, "addressLine");
+  if (addressLineDef) {
+    const refusal = refuseInvalid(addressLineDef, form.address.addressLine);
+    if (refusal) return refusal;
+  }
+
   // Extra fields: answers come from fieldAnswers by config key only
-  // (unknown keys dropped). Hidden extras are ignored entirely.
+  // (unknown keys dropped). Extras that are not effectively visible
+  // are ignored entirely.
   const answers: Record<string, string> = {};
   const humanLines: string[] = [];
   for (const def of config.fields) {
-    if (!def.extra || !def.visible) continue;
+    if (!def.extra || !effectiveVisible(def, ctx)) continue;
     const raw = form.fieldAnswers?.[def.key];
     const value = typeof raw === "string" ? raw.trim() : "";
     if (value.length > MAX_ANSWER_LENGTH) {
-      return {
-        ok: false,
-        code: "CHECKOUT_FIELD_TOO_LONG",
-        message: `উত্তরটি সর্বোচ্চ ${MAX_ANSWER_LENGTH} অক্ষরের মধ্যে হতে হবে: ${def.key} / Answer must be at most ${MAX_ANSWER_LENGTH} characters: ${def.key}.`,
-        details: { field: def.key },
-      };
+      return refuse(
+        "CHECKOUT_FIELD_TOO_LONG",
+        def.key,
+        `উত্তরটি সর্বোচ্চ ${MAX_ANSWER_LENGTH} অক্ষরের মধ্যে হতে হবে: ${def.key} / Answer must be at most ${MAX_ANSWER_LENGTH} characters: ${def.key}.`,
+      );
     }
-    if (def.required && value === "") {
-      return {
-        ok: false,
-        code: "CHECKOUT_FIELD_REQUIRED",
-        message: `চেকআউটের আবশ্যক ঘরটি পূরণ করুন: ${def.key} / Please fill in the required checkout field: ${def.key}.`,
-        details: { field: def.key },
-      };
+    if (effectiveRequired(def, ctx) && value === "") {
+      return refuseRequired(def.key);
     }
     if (value !== "") {
+      const refusal = refuseInvalid(def, value);
+      if (refusal) return refusal;
       answers[def.key] = value;
       humanLines.push(`${def.labelBn || def.labelEn}: ${value}`);
     }
