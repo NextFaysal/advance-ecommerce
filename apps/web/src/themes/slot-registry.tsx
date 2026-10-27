@@ -21,6 +21,11 @@
  */
 import { AURORA_SLOTS } from "./aurora/slots";
 import { BAZAAR_SLOTS } from "./bazaar/slots";
+import { HAAT_SLOTS } from "./haat/slots";
+import { SHOBJI_SLOTS } from "./shobji/slots";
+import { BOIGHOR_SLOTS } from "./boighor/slots";
+import { CIRCUIT_SLOTS } from "./circuit/slots";
+import { NEEL_SLOTS } from "./neel/slots";
 import { DEFAULT_PACKAGE_ID } from "./registry";
 import type { ThemeSlots } from "./slots";
 
@@ -28,6 +33,11 @@ import type { ThemeSlots } from "./slots";
 const PACKAGE_SLOTS: ReadonlyMap<string, Partial<ThemeSlots>> = new Map([
   [DEFAULT_PACKAGE_ID, AURORA_SLOTS],
   ["bazaar", BAZAAR_SLOTS],
+  ["haat", HAAT_SLOTS],
+  ["shobji", SHOBJI_SLOTS],
+  ["boighor", BOIGHOR_SLOTS],
+  ["circuit", CIRCUIT_SLOTS],
+  ["neel", NEEL_SLOTS],
 ]);
 
 /**

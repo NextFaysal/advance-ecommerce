@@ -16,6 +16,11 @@
  */
 import { ProductCard } from "@/catalog/ProductCard";
 import { BazaarProductCard } from "./bazaar/product-card";
+import { HaatProductCard } from "./haat/product-card";
+import { ShobjiProductCard } from "./shobji/product-card";
+import { BoighorProductCard } from "./boighor/product-card";
+import { CircuitProductCard } from "./circuit/product-card";
+import { NeelProductCard } from "./neel/product-card";
 import { DEFAULT_PACKAGE_ID } from "./registry";
 import type { ThemeProductCardSlot } from "./slots";
 
@@ -23,6 +28,11 @@ import type { ThemeProductCardSlot } from "./slots";
 const PACKAGE_PRODUCT_CARDS: ReadonlyMap<string, ThemeProductCardSlot> = new Map([
   [DEFAULT_PACKAGE_ID, ProductCard],
   ["bazaar", BazaarProductCard],
+  ["haat", HaatProductCard],
+  ["shobji", ShobjiProductCard],
+  ["boighor", BoighorProductCard],
+  ["circuit", CircuitProductCard],
+  ["neel", NeelProductCard],
 ]);
 
 /** Resolve the ProductCard slot for a package (Aurora on any miss). */

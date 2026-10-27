@@ -13,6 +13,11 @@
  */
 import { AURORA_CHECKOUT_SKIN } from "./aurora/checkout-skin";
 import { BAZAAR_CHECKOUT_SKIN } from "./bazaar/checkout-skin";
+import { HAAT_CHECKOUT_SKIN } from "./haat/checkout-skin";
+import { SHOBJI_CHECKOUT_SKIN } from "./shobji/checkout-skin";
+import { BOIGHOR_CHECKOUT_SKIN } from "./boighor/checkout-skin";
+import { CIRCUIT_CHECKOUT_SKIN } from "./circuit/checkout-skin";
+import { NEEL_CHECKOUT_SKIN } from "./neel/checkout-skin";
 import { DEFAULT_PACKAGE_ID } from "./registry";
 import type { CheckoutSkin } from "./slots";
 
@@ -20,6 +25,11 @@ import type { CheckoutSkin } from "./slots";
 const PACKAGE_SKINS: ReadonlyMap<string, Partial<CheckoutSkin>> = new Map([
   [DEFAULT_PACKAGE_ID, AURORA_CHECKOUT_SKIN],
   ["bazaar", BAZAAR_CHECKOUT_SKIN],
+  ["haat", HAAT_CHECKOUT_SKIN],
+  ["shobji", SHOBJI_CHECKOUT_SKIN],
+  ["boighor", BOIGHOR_CHECKOUT_SKIN],
+  ["circuit", CIRCUIT_CHECKOUT_SKIN],
+  ["neel", NEEL_CHECKOUT_SKIN],
 ]);
 
 /**

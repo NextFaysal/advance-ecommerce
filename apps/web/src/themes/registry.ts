@@ -230,9 +230,165 @@ export const BAZAAR_PACKAGE: ThemePackage = {
   slots: {},
 };
 
+export const HAAT_PACKAGE: ThemePackage = {
+  id: "haat",
+  name: "Haat",
+  nameBn: "হাট",
+  version: "1.0.0",
+  author: "Advance Commerce",
+  description:
+    "A dense marketplace layout — solid orange two-tier header with wide search, flash-style offers rail, square product cards with discount chips, cart drawer, grey listing surfaces. Best for large general catalogues.",
+  preview: ["#F26D21", "#262626", "#F5F5F5"],
+  lockPalette: true,
+  supportsDark: false,
+  optionsSchema: [
+    {
+      key: "showFlashRail",
+      type: "boolean",
+      label: "Flash offers rail on home",
+      labelBn: "হোমে আজকের অফার রেল দেখান",
+      default: true,
+    },
+    {
+      key: "heroSidePanel",
+      type: "boolean",
+      label: "Hero side panel",
+      labelBn: "হিরোর পাশের প্যানেল দেখান",
+      default: true,
+    },
+  ],
+  slots: {},
+};
+
+export const SHOBJI_PACKAGE: ThemePackage = {
+  id: "shobji",
+  name: "Shobji",
+  nameBn: "সবজি",
+  version: "1.0.0",
+  author: "Advance Commerce",
+  description:
+    "A sidebar grocery layout — white header with wide search, a persistent left category sidebar on home and shop, lavender hero with a big search box, floating purple cart tab, cart drawer and soft-shadow cards. Best for grocery, fresh food and daily-essentials stores.",
+  preview: ["#7438A8", "#EFEAF9", "#E9B949"],
+  lockPalette: true,
+  supportsDark: false,
+  optionsSchema: [
+    {
+      key: "showSidebar",
+      type: "boolean",
+      label: "Category sidebar",
+      labelBn: "ক্যাটাগরি সাইডবার",
+      default: true,
+    },
+    {
+      key: "showFloatingCart",
+      type: "boolean",
+      label: "Floating cart tab",
+      labelBn: "ভাসমান কার্ট ট্যাব",
+      default: true,
+    },
+  ],
+  slots: {},
+};
+
+export const BOIGHOR_PACKAGE: ThemePackage = {
+  id: "boighor",
+  name: "Boighor",
+  nameBn: "বইঘর",
+  version: "1.0.0",
+  author: "Advance Commerce",
+  description:
+    "A books-catalogue layout — four-tier header with a blue utility bar and pale-blue facet row, portrait product cards with author line and red discount disc, circular category row, cart drawer. Best for bookshops and catalogue-style stores.",
+  preview: ["#1668B4", "#D93A36", "#EAF2FB"],
+  lockPalette: true,
+  supportsDark: false,
+  optionsSchema: [
+    {
+      key: "showFacetRow",
+      type: "boolean",
+      label: "Show facet quick-link row",
+      labelBn: "ফ্যাসেট কুইক-লিংক সারি দেখান",
+      default: true,
+    },
+    {
+      key: "cardStyle",
+      type: "select",
+      label: "Product card style",
+      labelBn: "পণ্য কার্ডের স্টাইল",
+      choices: [{ value: "classic", label: "Classic (ক্লাসিক)" }],
+      default: "classic",
+    },
+  ],
+  slots: {},
+};
+
+export const CIRCUIT_PACKAGE: ThemePackage = {
+  id: "circuit",
+  name: "Circuit",
+  nameBn: "সার্কিট",
+  version: "1.0.0",
+  author: "Advance Commerce",
+  description:
+    "A tech-store layout — dark-navy header with a gradient CTA and white category bar, floating cart/compare buttons, spacious cards with a purple savings pill and red prices, dark footer, cart drawer. Best for electronics, gadgets and computer stores.",
+  preview: ["#F07D1A", "#10222E", "#EFF3F6"],
+  lockPalette: true,
+  supportsDark: true,
+  optionsSchema: [
+    {
+      key: "showUtilityCards",
+      type: "boolean",
+      label: "Show utility cards on home",
+      labelBn: "হোমে সুবিধা কার্ড দেখান",
+      default: true,
+    },
+    {
+      key: "showFloatingActions",
+      type: "boolean",
+      label: "Floating cart/compare buttons",
+      labelBn: "ভাসমান কার্ট/তুলনা বাটন",
+      default: true,
+    },
+  ],
+  slots: {},
+};
+
+export const NEEL_PACKAGE: ThemePackage = {
+  id: "neel",
+  name: "Neel",
+  nameBn: "নীল",
+  version: "1.0.0",
+  author: "Advance Commerce",
+  description:
+    "A blue marketplace layout — gradient header with a pale link strip, circular category row, hero with 2×2 promo tiles, classic marketplace cards with wishlist hearts and star ratings from real reviews, cart drawer. Best for general marketplaces and multi-category stores.",
+  preview: ["#1773B8", "#F97A1F", "#F2F6FA"],
+  lockPalette: true,
+  supportsDark: false,
+  optionsSchema: [
+    {
+      key: "showCategoryCircles",
+      type: "boolean",
+      label: "Show circular category row on home",
+      labelBn: "হোমে বৃত্তাকার ক্যাটাগরি সারি দেখান",
+      default: true,
+    },
+    {
+      key: "showPromoTiles",
+      type: "boolean",
+      label: "Show hero promo tiles",
+      labelBn: "হিরো প্রমো টাইল দেখান",
+      default: true,
+    },
+  ],
+  slots: {},
+};
+
 const THEME_PACKAGES: ReadonlyMap<string, ThemePackage> = new Map([
   [AURORA_PACKAGE.id, AURORA_PACKAGE],
   [BAZAAR_PACKAGE.id, BAZAAR_PACKAGE],
+  [HAAT_PACKAGE.id, HAAT_PACKAGE],
+  [SHOBJI_PACKAGE.id, SHOBJI_PACKAGE],
+  [BOIGHOR_PACKAGE.id, BOIGHOR_PACKAGE],
+  [CIRCUIT_PACKAGE.id, CIRCUIT_PACKAGE],
+  [NEEL_PACKAGE.id, NEEL_PACKAGE],
 ]);
 
 /* ------------------------------------------------------------------ */

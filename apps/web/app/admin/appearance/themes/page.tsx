@@ -8,6 +8,11 @@ import Link from "next/link";
 import type { AppTheme } from "@/lib/themes";
 import { listThemePackages } from "@/themes/registry";
 import { BAZAAR_TOKENS } from "@/themes/bazaar/tokens";
+import { HAAT_TOKENS } from "@/themes/haat/tokens";
+import { SHOBJI_TOKENS } from "@/themes/shobji/tokens";
+import { BOIGHOR_TOKENS } from "@/themes/boighor/tokens";
+import { CIRCUIT_TOKENS } from "@/themes/circuit/tokens";
+import { NEEL_TOKENS } from "@/themes/neel/tokens";
 
 /**
  * Packages that ship a ready-made starter instance (hand-authored
@@ -18,6 +23,11 @@ import { BAZAAR_TOKENS } from "@/themes/bazaar/tokens";
  */
 const PACKAGE_STARTER_TOKENS: Record<string, typeof BAZAAR_TOKENS> = {
   bazaar: BAZAAR_TOKENS,
+  haat: HAAT_TOKENS,
+  shobji: SHOBJI_TOKENS,
+  boighor: BOIGHOR_TOKENS,
+  circuit: CIRCUIT_TOKENS,
+  neel: NEEL_TOKENS,
 };
 
 export default function AdminThemesPage() {

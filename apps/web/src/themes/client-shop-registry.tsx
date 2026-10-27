@@ -13,6 +13,11 @@
  */
 import AuroraShopChrome from "./aurora/shop-chrome";
 import BazaarShopChrome from "./bazaar/shop-chrome";
+import HaatShopChrome from "./haat/shop-chrome";
+import ShobjiShopChrome from "./shobji/shop-chrome";
+import BoighorShopChrome from "./boighor/shop-chrome";
+import CircuitShopChrome from "./circuit/shop-chrome";
+import NeelShopChrome from "./neel/shop-chrome";
 import { DEFAULT_PACKAGE_ID } from "./registry";
 import type { ThemeShopChromeSlot } from "./slots";
 
@@ -20,6 +25,11 @@ import type { ThemeShopChromeSlot } from "./slots";
 const PACKAGE_SHOP_CHROME: ReadonlyMap<string, ThemeShopChromeSlot> = new Map([
   [DEFAULT_PACKAGE_ID, AuroraShopChrome],
   ["bazaar", BazaarShopChrome],
+  ["haat", HaatShopChrome],
+  ["shobji", ShobjiShopChrome],
+  ["boighor", BoighorShopChrome],
+  ["circuit", CircuitShopChrome],
+  ["neel", NeelShopChrome],
 ]);
 
 /** Resolve the ShopChrome slot for a package (Aurora on any miss). */

@@ -28,8 +28,18 @@
  */
 import { AURORA_SHELL_SLOTS } from "./aurora/shell-slots";
 import { BAZAAR_SHELL_SLOTS } from "./bazaar/shell-slots";
+import { HAAT_SHELL_SLOTS } from "./haat/shell-slots";
+import { SHOBJI_SHELL_SLOTS } from "./shobji/shell-slots";
+import { BOIGHOR_SHELL_SLOTS } from "./boighor/shell-slots";
+import { CIRCUIT_SHELL_SLOTS } from "./circuit/shell-slots";
+import { NEEL_SHELL_SLOTS } from "./neel/shell-slots";
 import { NullCartDrawer } from "./aurora/cart-drawer";
 import BazaarCartDrawer from "./bazaar/cart-drawer";
+import HaatCartDrawer from "./haat/cart-drawer";
+import ShobjiCartDrawer from "./shobji/cart-drawer";
+import BoighorCartDrawer from "./boighor/cart-drawer";
+import CircuitCartDrawer from "./circuit/cart-drawer";
+import NeelCartDrawer from "./neel/cart-drawer";
 import { DEFAULT_PACKAGE_ID } from "./registry";
 import type { ThemeCartDrawerSlot, ThemeShellSlots } from "./slots";
 
@@ -37,6 +47,11 @@ import type { ThemeCartDrawerSlot, ThemeShellSlots } from "./slots";
 const PACKAGE_SHELL_SLOTS: ReadonlyMap<string, Partial<ThemeShellSlots>> = new Map([
   [DEFAULT_PACKAGE_ID, AURORA_SHELL_SLOTS],
   ["bazaar", BAZAAR_SHELL_SLOTS],
+  ["haat", HAAT_SHELL_SLOTS],
+  ["shobji", SHOBJI_SHELL_SLOTS],
+  ["boighor", BOIGHOR_SHELL_SLOTS],
+  ["circuit", CIRCUIT_SHELL_SLOTS],
+  ["neel", NEEL_SHELL_SLOTS],
 ]);
 
 /**
@@ -59,6 +74,11 @@ export { AURORA_SHELL_SLOTS };
 const PACKAGE_CART_DRAWERS: ReadonlyMap<string, ThemeCartDrawerSlot> = new Map<string, ThemeCartDrawerSlot>([
   [DEFAULT_PACKAGE_ID, NullCartDrawer],
   ["bazaar", BazaarCartDrawer],
+  ["haat", HaatCartDrawer],
+  ["shobji", ShobjiCartDrawer],
+  ["boighor", BoighorCartDrawer],
+  ["circuit", CircuitCartDrawer],
+  ["neel", NeelCartDrawer],
 ]);
 
 /** Resolve the CartDrawer slot for a package (Aurora on any miss). */
