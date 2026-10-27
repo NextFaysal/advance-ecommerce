@@ -37,6 +37,9 @@
   --shadow-lift: 0 2px 4px rgba(49, 46, 129, 0.06), 0 16px 32px -12px rgba(79, 70, 229, 0.22);
   --shadow-pop: 0 4px 12px rgba(49, 46, 129, 0.08), 0 24px 48px -12px rgba(49, 46, 129, 0.28);
   --font-sans: "Plus Jakarta Sans", "Hind Siliguri", "Noto Sans Bengali", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Display stack as a token (theme catalogue --font-display); identical
+     to the stack the .font-display utility below has always used. */
+  --font-display: "Hind Siliguri", "Plus Jakarta Sans", "Noto Sans Bengali", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   /* RGB triplets for the static-hex colours in tailwind.config.js — the
      config references them as rgb(var(--c-…) / <alpha-value>) so these

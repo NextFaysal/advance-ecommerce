@@ -5,6 +5,9 @@
  * RGB token format:  "R G B"     (space-separated, used with rgb() in CSS)
  * Gradient format:  full CSS gradient string
  * Length format:    CSS length value (e.g. "0.75rem")
+ * Shadow format:    full CSS box-shadow string (e.g. "0 1px 2px rgba(0,0,0,.1)")
+ * Font format:      a font-family stack chosen from THEME_FONT_STACKS only
+ *                   (families the platform already loads — see app/layout.tsx)
  */
 
 export interface ThemeTokens {
@@ -16,11 +19,33 @@ export interface ThemeTokens {
 
 export interface AppTheme {
   id: string;
+  /**
+   * The theme PACKAGE this instance belongs to (doc 25 D1/D3) — an id
+   * from the static registry in src/themes/registry.ts ("aurora", …).
+   * An instance = package + token set (+ option values, stored
+   * separately). Optional because catalogs saved before the package
+   * system existed carry no packageId: the repository's read path
+   * lazily resolves a missing value to "aurora" (doc 25 §5.2 — no
+   * data migration, no write on read). Unknown ids also resolve to
+   * Aurora at resolution time (src/themes/resolution.ts), never crash.
+   */
+  packageId?: string;
   name: string;
   description?: string;
   /** 3 hex colors for the swatch preview chip (e.g. primary, accent, background). */
   preview: string[];
+  /** Published to the customer theme picker (Account → Preferences). */
   isActive: boolean;
+  /**
+   * The store's default theme: applied to every visitor who has not
+   * picked their own theme. Exclusive — at most one theme in the
+   * catalog carries this flag; set it via setStoreDefaultTheme()
+   * (Admin → Appearance → "স্টোরে প্রয়োগ করুন"), never by hand-editing
+   * isActive. Optional because catalogs saved before this field
+   * existed simply have no store default (visitors then see the
+   * globals.css defaults, exactly as before).
+   */
+  isStoreDefault?: boolean;
   tokens: ThemeTokens;
   createdAt: string;
   updatedAt: string;
@@ -77,17 +102,69 @@ export const THEME_TOKEN_GROUPS = [
     label: "Gradients & Radius",
     tokens: ["--brand-gradient", "--brand-soft-gradient", "--radius"],
   },
+  {
+    label: "Shadows",
+    tokens: ["--shadow-card", "--shadow-lift", "--shadow-pop"],
+  },
+  {
+    label: "Typography",
+    tokens: ["--font-sans", "--font-display"],
+  },
 ] as const;
 
 /* ------------------------------------------------------------------ */
 /* Token metadata — label, type, light/dark defaults from globals.css  */
 /* ------------------------------------------------------------------ */
 
-export type TokenType = "hsl" | "rgb" | "gradient" | "length";
+export type TokenType = "hsl" | "rgb" | "gradient" | "length" | "shadow" | "font";
+
+/**
+ * The fixed font-stack allowlist for the "font" tokens (--font-sans,
+ * --font-display). Every stack is built ONLY from families the platform
+ * already loads via Google Fonts in app/layout.tsx (Plus Jakarta Sans,
+ * Hind Siliguri, Noto Sans Bengali) plus generic fallbacks — a theme can
+ * reorder/reweight those families but can never introduce a new one
+ * (doc 25 §1.3.3). The meta entries below reference these stacks as their
+ * `options`; defaults and the palette generator only ever emit values
+ * from this list.
+ */
+export const THEME_FONT_STACKS: { id: string; label: string; value: string }[] = [
+  {
+    id: "jakarta",
+    label: "Plus Jakarta Sans (platform default)",
+    value:
+      '"Plus Jakarta Sans", "Hind Siliguri", "Noto Sans Bengali", system-ui, -apple-system, "Segoe UI", sans-serif',
+  },
+  {
+    id: "siliguri-display",
+    label: "Hind Siliguri first (display default)",
+    value: '"Hind Siliguri", "Plus Jakarta Sans", "Noto Sans Bengali", system-ui, sans-serif',
+  },
+  {
+    id: "siliguri",
+    label: "Hind Siliguri first (Bengali-first)",
+    value: '"Hind Siliguri", "Noto Sans Bengali", "Plus Jakarta Sans", system-ui, sans-serif',
+  },
+  {
+    id: "noto",
+    label: "Noto Sans Bengali first",
+    value: '"Noto Sans Bengali", "Hind Siliguri", "Plus Jakarta Sans", system-ui, sans-serif',
+  },
+];
+
+/** The stack values alone — the `options` list carried by font tokens. */
+export const THEME_FONT_STACK_VALUES: string[] = THEME_FONT_STACKS.map((s) => s.value);
 
 export const THEME_TOKEN_META: Record<
   string,
-  { label: string; type: TokenType; lightDefault: string; darkDefault: string }
+  {
+    label: string;
+    type: TokenType;
+    lightDefault: string;
+    darkDefault: string;
+    /** Fixed value allowlist — set only on "font" tokens (see THEME_FONT_STACKS). */
+    options?: string[];
+  }
 > = {
   // --- Brand Colors ---
   "--primary": {
@@ -285,6 +362,47 @@ export const THEME_TOKEN_META: Record<
     type: "length",
     lightDefault: "0.75rem",
     darkDefault: "0.75rem",
+  },
+
+  // --- Shadows (full box-shadow strings; values copied from globals.css) ---
+  "--shadow-card": {
+    label: "Shadow — Card",
+    type: "shadow",
+    lightDefault: "0 1px 2px rgba(49, 46, 129, 0.05), 0 8px 24px -12px rgba(79, 70, 229, 0.14)",
+    darkDefault: "0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px -12px rgba(0, 0, 0, 0.45)",
+  },
+  "--shadow-lift": {
+    label: "Shadow — Lift (hover)",
+    type: "shadow",
+    lightDefault: "0 2px 4px rgba(49, 46, 129, 0.06), 0 16px 32px -12px rgba(79, 70, 229, 0.22)",
+    darkDefault: "0 2px 4px rgba(0, 0, 0, 0.4), 0 16px 32px -12px rgba(0, 0, 0, 0.55)",
+  },
+  "--shadow-pop": {
+    label: "Shadow — Pop (overlay)",
+    type: "shadow",
+    lightDefault: "0 4px 12px rgba(49, 46, 129, 0.08), 0 24px 48px -12px rgba(49, 46, 129, 0.28)",
+    darkDefault: "0 4px 12px rgba(0, 0, 0, 0.45), 0 24px 48px -12px rgba(0, 0, 0, 0.6)",
+  },
+
+  // --- Typography (constrained: values only from THEME_FONT_STACKS) ---
+  // globals.css defines no .dark override for the font vars, so
+  // lightDefault === darkDefault and defaultThemeTokens() keeps them in
+  // the light map only (dark rendering inherits the :root value).
+  "--font-sans": {
+    label: "Font — Body (sans)",
+    type: "font",
+    lightDefault:
+      '"Plus Jakarta Sans", "Hind Siliguri", "Noto Sans Bengali", system-ui, -apple-system, "Segoe UI", sans-serif',
+    darkDefault:
+      '"Plus Jakarta Sans", "Hind Siliguri", "Noto Sans Bengali", system-ui, -apple-system, "Segoe UI", sans-serif',
+    options: THEME_FONT_STACK_VALUES,
+  },
+  "--font-display": {
+    label: "Font — Display (headings)",
+    type: "font",
+    lightDefault: '"Hind Siliguri", "Plus Jakarta Sans", "Noto Sans Bengali", system-ui, sans-serif',
+    darkDefault: '"Hind Siliguri", "Plus Jakarta Sans", "Noto Sans Bengali", system-ui, sans-serif',
+    options: THEME_FONT_STACK_VALUES,
   },
 };
 

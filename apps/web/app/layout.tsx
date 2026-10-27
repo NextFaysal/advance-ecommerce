@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next";
 import RegisterSW from "./register-sw";
 import TrackingShell from "./tracking-shell";
 import StorefrontShell from "./storefront-shell";
+import ThemeShell from "@/storefront-shell/ThemeShell";
 import ThemeStyleSync from "@/components/ui/theme-style-sync";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 
@@ -84,12 +85,18 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
         rel="stylesheet"
       />
-      <body className="min-h-screen bg-background font-sans text-foreground antialiased selection:bg-brand-500 selection:text-white">
+      <body className="min-h-screen bg-background font-sans text-foreground antialiased selection:bg-ring selection:text-white">
         <RegisterSW />
         <ThemeStyleSync />
-        <StorefrontShell>
-          <TrackingShell>{children}</TrackingShell>
-        </StorefrontShell>
+        {/* ThemeShell (S3a): resolves the store theme server-side
+            (store-global catalog data only — still no cookies() in
+            this layout) and mounts the ThemeView context the theme
+            slot system consumes. Renders no markup of its own. */}
+        <ThemeShell>
+          <StorefrontShell>
+            <TrackingShell>{children}</TrackingShell>
+          </StorefrontShell>
+        </ThemeShell>
       </body>
     </html>
   );

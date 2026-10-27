@@ -4,6 +4,30 @@
  * from a single primary brand color.
  */
 import type { ThemeTokens } from "./themes";
+import { THEME_TOKEN_META } from "./themes";
+
+/**
+ * Seed-independent structural tokens (shadows + fonts) are copied from
+ * the catalogue defaults in THEME_TOKEN_META so a generated palette
+ * always carries the FULL token catalogue — and its values can never
+ * drift from globals.css. Shadows differ per mode (light/dark values in
+ * globals.css); fonts do not (globals.css has no .dark font override),
+ * so fonts are emitted in the light map only, exactly as
+ * defaultThemeTokens() does.
+ */
+const STRUCTURAL_LIGHT: Record<string, string> = {
+  "--shadow-card": THEME_TOKEN_META["--shadow-card"]!.lightDefault,
+  "--shadow-lift": THEME_TOKEN_META["--shadow-lift"]!.lightDefault,
+  "--shadow-pop": THEME_TOKEN_META["--shadow-pop"]!.lightDefault,
+  "--font-sans": THEME_TOKEN_META["--font-sans"]!.lightDefault,
+  "--font-display": THEME_TOKEN_META["--font-display"]!.lightDefault,
+};
+
+const STRUCTURAL_DARK: Record<string, string> = {
+  "--shadow-card": THEME_TOKEN_META["--shadow-card"]!.darkDefault,
+  "--shadow-lift": THEME_TOKEN_META["--shadow-lift"]!.darkDefault,
+  "--shadow-pop": THEME_TOKEN_META["--shadow-pop"]!.darkDefault,
+};
 
 /** Parses hex (#RGB, #RRGGBB) to [h (0-360), s (0-100), l (0-100)] */
 export function hexToHsl(hex: string): [number, number, number] {
@@ -140,6 +164,9 @@ export function generateSmartPalette(primaryHex: string): {
     // Gradients
     "--brand-gradient": `linear-gradient(135deg, ${hslToHex(h, s, 55)} 0%, ${hslToHex(accentH, 80, 58)} 100%)`,
     "--brand-soft-gradient": `linear-gradient(135deg, ${hslToHex(h, 40, 96)} 0%, ${hslToHex(accentH, 40, 97)} 100%)`,
+
+    // Shadows & Fonts (seed-independent catalogue defaults)
+    ...STRUCTURAL_LIGHT,
   };
 
   const dark: Record<string, string> = {
@@ -179,6 +206,9 @@ export function generateSmartPalette(primaryHex: string): {
 
     // Dark Soft Gradient
     "--brand-soft-gradient": `linear-gradient(135deg, ${hslToHex(h, 30, 14)} 0%, ${hslToHex(accentH, 30, 16)} 100%)`,
+
+    // Shadows (dark catalogue defaults; fonts inherit the light map)
+    ...STRUCTURAL_DARK,
   };
 
   const preview = [

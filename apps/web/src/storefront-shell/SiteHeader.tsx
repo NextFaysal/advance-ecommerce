@@ -84,7 +84,7 @@ function CountBadge({ count, pop = false }: { count: number; pop?: boolean }) {
     <span
       // Re-keying by the count remounts the span, replaying the pop.
       key={pop ? count : undefined}
-      className={`absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-600 px-1 text-[11px] font-bold text-white ${
+      className={`absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold text-white ${
         pop ? "animate-badge-pop" : ""
       }`}
     >
@@ -258,7 +258,7 @@ function SearchPanelContent({
               key={term}
               href={`/search?q=${encodeURIComponent(term)}`}
               onClick={onNavigate}
-              className="inline-flex min-h-[44px] items-center rounded-full border border-border bg-surface-2 px-4 text-sm font-medium text-text-main transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
+              className="inline-flex min-h-[44px] items-center rounded-full border border-border bg-surface-2 px-4 text-sm font-medium text-text-main transition hover:border-input hover:bg-secondary hover:text-primary"
             >
               {term}
             </Link>
@@ -287,7 +287,7 @@ function SearchPanelContent({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={thumb} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" />
                   ) : (
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-brand-300">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-primary/40">
                       <ShopIcon />
                     </span>
                   )}
@@ -297,7 +297,7 @@ function SearchPanelContent({
                       <span className="block truncate text-xs text-text-subtle">{p.brandName}</span>
                     ) : null}
                   </span>
-                  <span className="shrink-0 text-sm font-bold tabular-nums text-brand-700">
+                  <span className="shrink-0 text-sm font-bold tabular-nums text-primary">
                     {digits(formatBdt(minVariantPricePoisha(p)))}
                   </span>
                 </Link>
@@ -313,7 +313,7 @@ function SearchPanelContent({
       <Link
         href={`/search?q=${encodeURIComponent(q)}`}
         onClick={onNavigate}
-        className="mt-1 flex min-h-[44px] items-center rounded-xl px-2 text-sm font-semibold text-brand-700 transition hover:bg-brand-50"
+        className="mt-1 flex min-h-[44px] items-center rounded-xl px-2 text-sm font-semibold text-primary transition hover:bg-secondary"
       >
         সব ফলাফল দেখুন →
       </Link>
@@ -505,7 +505,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                   onKeyDown={(e) => {
                     if (e.key === "Escape") setSearchOpen(false);
                   }}
-                  className="h-11 w-full rounded-full border border-border bg-surface-2 pl-4 pr-12 text-sm text-text-main outline-none transition focus:border-brand-500 focus:bg-surface"
+                  className="h-11 w-full rounded-full border border-border bg-surface-2 pl-4 pr-12 text-sm text-text-main outline-none transition focus:border-ring focus:bg-surface"
                 />
                 <button
                   type="submit"
@@ -536,7 +536,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
             {navItems.map((link) => {
               const linkClass = `rounded-lg px-3 py-2 text-sm transition ${
                 isActive(link.href)
-                  ? "bg-brand-50 font-semibold text-brand-700"
+                  ? "bg-secondary font-semibold text-secondary-foreground"
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
               }`;
               if (link.children.length === 0) {
@@ -641,10 +641,10 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                 সব ক্যাটাগরি
                 <ChevronDownIcon />
               </button>
-              <a href="/shop" className="rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition hover:text-brand-700">
+              <a href="/shop" className="rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition hover:text-primary">
                 সব পণ্য
               </a>
-              <a href="/track" className="rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition hover:text-brand-700">
+              <a href="/track" className="rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition hover:text-primary">
                 অর্ডার ট্র্যাক
               </a>
             </div>
@@ -703,7 +703,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                               <a
                                 href={`/shop?category=${child.slug}`}
                                 onClick={() => setMegaOpen(false)}
-                                className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-[13px] text-text-muted transition hover:bg-surface-2 hover:text-brand-700"
+                                className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-[13px] text-text-muted transition hover:bg-surface-2 hover:text-primary"
                               >
                                 <span className="min-w-0 truncate">
                                   <span aria-hidden="true" className="mr-1 text-text-subtle">↳</span>
@@ -727,7 +727,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                     <a
                       href="/shop"
                       onClick={() => setMegaOpen(false)}
-                      className="mt-2 inline-block text-sm font-semibold text-brand-700 hover:underline"
+                      className="mt-2 inline-block text-sm font-semibold text-primary hover:underline"
                     >
                       সব পণ্য দেখুন →
                     </a>
@@ -747,7 +747,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                   aria-current={isActive(link.href) ? "page" : undefined}
                   className={`block rounded-lg px-3 py-2.5 text-sm ${
                     isActive(link.href)
-                      ? "bg-brand-50 font-semibold text-brand-700"
+                      ? "bg-secondary font-semibold text-secondary-foreground"
                       : "text-text-main hover:bg-surface-2"
                   }`}
                 >
@@ -839,7 +839,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                   onKeyDown={(e) => {
                     if (e.key === "Escape") setMobileSearchOpen(false);
                   }}
-                  className="h-11 w-full rounded-full border border-border bg-surface-2 pl-4 pr-12 text-sm text-text-main outline-none transition focus:border-brand-500 focus:bg-surface"
+                  className="h-11 w-full rounded-full border border-border bg-surface-2 pl-4 pr-12 text-sm text-text-main outline-none transition focus:border-ring focus:bg-surface"
                 />
                 <button
                   type="submit"
@@ -885,7 +885,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   className={`relative flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${
-                    active ? "text-brand-700" : "text-text-muted"
+                    active ? "text-primary" : "text-text-muted"
                   }`}
                 >
                   <span className="relative">

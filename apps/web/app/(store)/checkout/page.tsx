@@ -64,20 +64,23 @@ import { EmiCheckoutNote } from "@/marketing/components/EmiCheckoutNote";
 import { ExperimentConversionPing } from "@/marketing/components/ExperimentConversionPing";
 import { PAYMENT_NOT_LIVE_MESSAGE_BN } from "../../../src/checkout/payment-methods";
 import { shiftYmd, todayDhakaYmd } from "@/lib/dhaka-date";
+import { useThemeView } from "@/themes/theme-view";
+import { getCheckoutSkin } from "@/themes/skin-registry";
 
 // Responsive pass (Design v3 §3): single-column flow at every width,
 // 44px+ touch targets (h-12 fields, 52px payment tiles), numeric keypad
 // hint on the phone field, and a sticky order-summary bar on small
 // screens (real cart totals). Field names/values and validation are
 // exactly as before.
-const INPUT_CLASS =
-  "h-12 w-full rounded-xl border border-border bg-card px-4 text-sm text-text-main outline-none transition placeholder:text-text-subtle focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30";
-const PAYMENT_TILE_CLASS =
-  "inline-flex h-[52px] cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-3 transition has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50 has-[:checked]:ring-1 has-[:checked]:ring-brand-500/40";
-// Delivery-slot radio cards (OD3): same checked-tile language as the
-// payment tiles, sized for a Bn label + En/time line.
-const SLOT_CARD_CLASS =
-  "flex min-h-[52px] cursor-pointer items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 py-2.5 transition has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50 has-[:checked]:ring-1 has-[:checked]:ring-brand-500/40";
+//
+// Wave S3b (doc 25): the three styling constants that used to live
+// here (INPUT_CLASS / PAYMENT_TILE_CLASS / SLOT_CARD_CLASS) are now
+// the CheckoutSkin — data, resolved inside the component from the
+// active theme package via getCheckoutSkin() (Aurora's values are
+// the verbatim strings, in src/themes/aurora/checkout-skin.ts).
+// Only the SOURCE of the class strings changed; every usage below
+// is untouched, and checkout logic/fields/validation/submit are
+// exactly as before.
 
 type PlacedOrder = {
   /** Order row id — the OTP endpoints are addressed by it. */
@@ -150,6 +153,16 @@ type PlacedOrder = {
 
 export default function CheckoutPage() {
   const digits = useDigitText();
+  // CheckoutSkin (S3b): the field/tile class constants come from the
+  // active theme package's skin (plain data via the ThemeView
+  // context + the skin registry — no component crosses the RSC
+  // boundary). Local names match the old module constants, so every
+  // usage below is byte-identical to before.
+  const themeView = useThemeView();
+  const skin = getCheckoutSkin(themeView.packageId);
+  const INPUT_CLASS = skin.INPUT_CLASS;
+  const PAYMENT_TILE_CLASS = skin.PAYMENT_TILE_CLASS;
+  const SLOT_CARD_CLASS = skin.SLOT_CARD_CLASS;
   const [cart, setCart] = useState<Cart | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);

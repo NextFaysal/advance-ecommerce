@@ -71,6 +71,11 @@ export async function POST(req: Request) {
       description: typeof input.description === "string" ? input.description : undefined,
       preview: Array.isArray(input.preview) ? (input.preview as string[]) : [],
       isActive: typeof input.isActive === "boolean" ? input.isActive : false,
+      // Package linkage (doc 25 D1): a create may name the package the
+      // instance belongs to (the admin gallery's starter-instance
+      // action does). Absent → the repository lazily resolves the
+      // instance to Aurora on read, exactly as before.
+      packageId: typeof input.packageId === "string" ? input.packageId : undefined,
       tokens: input.tokens as AppTheme["tokens"],
     });
     return NextResponse.json({ data: theme }, { status: 201 });

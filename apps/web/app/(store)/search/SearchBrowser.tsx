@@ -11,7 +11,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ProductCard } from "@/catalog/ProductCard";
+import { ThemedProductCard } from "@/themes/themed-product-card";
 import type { PublicProduct } from "@/catalog/types";
 
 /** One Banglish mapping the server applied (wave 57B, meta.banglish). */
@@ -129,7 +129,7 @@ export function SearchBrowser() {
       {products.length > 0 && (
         <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
           {products.map((p) => (
-            <ProductCard key={p.id} product={p} />
+            <ThemedProductCard key={p.id} product={p} />
           ))}
         </div>
       )}

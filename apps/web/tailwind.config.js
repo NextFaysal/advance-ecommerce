@@ -21,6 +21,36 @@ module.exports = {
         success: "hsl(var(--success))",
         warning: "hsl(var(--warning))",
         info: "hsl(var(--info))",
+        /* Theme-token colours (globals.css vars, overridden per-theme by
+           the theme engine's injected stylesheet). These names were
+           referenced by components (admin + storefront) but never mapped
+           here, so the utilities silently generated nothing; mapping
+           them makes the token utilities real and lets former brand-*
+           call sites follow the active theme. Like the entries above,
+           the plain hsl(var(--…)) form still supports opacity modifiers
+           (Tailwind injects the alpha into the hsl() call). */
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        ring: "hsl(var(--ring))",
+        input: "hsl(var(--input))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: "hsl(var(--card))",
@@ -39,7 +69,18 @@ module.exports = {
            ~5.6:1 on white (and >5:1 on bg-app), passing WCAG AA 4.5:1. */
         "text-subtle": "rgb(var(--c-text-subtle) / <alpha-value>)",
       },
-      borderRadius: { sm: "8px", md: "12px", lg: "16px", xl: "20px" },
+      /* Radius scale derived from the --radius theme token (doc 25 §1.3.2).
+         --radius defaults to 0.75rem = 12px in globals.css, so at the
+         default these compute to EXACTLY the px values this scale had
+         before it was token-wired: sm 12-4=8px, md 12px, lg 12+4=16px,
+         xl 12+8=20px. A theme that changes --radius shifts the whole
+         scale around the md anchor. */
+      borderRadius: {
+        sm: "calc(var(--radius) - 4px)",
+        md: "var(--radius)",
+        lg: "calc(var(--radius) + 4px)",
+        xl: "calc(var(--radius) + 8px)",
+      },
       boxShadow: {
         sm: "0 1px 2px rgba(79,70,229,0.06)",
         md: "0 4px 12px rgba(79,70,229,0.08)",
@@ -65,6 +106,11 @@ module.exports = {
       },
       fontFamily: {
         sans: ["var(--font-sans)"],
+        /* --font-display is a theme token (doc 25 §1.3.3); its globals.css
+           default equals the stack the hand-written .font-display
+           utility in globals.css has always used, so this generated
+           utility renders identically. */
+        display: ["var(--font-display)"],
         mono: ["var(--font-mono)"],
       },
     },

@@ -3,7 +3,16 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { SiteFooter, SiteHeader } from "@/storefront-shell";
+import {
+  AURORA_CART_DRAWER,
+  AURORA_SHELL_SLOTS,
+  getCartDrawerSlot,
+  getShellSlots,
+} from "@/themes/client-slot-registry";
+import { ThemeBoundary } from "@/themes/theme-boundary";
+import { useThemeView } from "@/themes/theme-view";
+import { DEFAULT_PACKAGE_ID } from "@/themes/registry";
+import { subscribeCartDrawerOpen } from "@/themes/cart-drawer-events";
 import type { PublicCategoryNode } from "@/catalog/category-tree";
 import type {
   FooterMenuGroup,
@@ -44,6 +53,36 @@ interface SiteContentResponse {
 
 export default function StorefrontShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  // Theme slots (S3a): Header/Footer are resolved from the active
+  // package (ThemeView context, mounted server-side by ThemeShell)
+  // through the client-safe slot registry — a static-import lookup,
+  // never a component passed across the RSC boundary. Per-slot
+  // Aurora fallback is built into the registry, and each slot is
+  // additionally wrapped in a ThemeBoundary whose fallback is the
+  // Aurora slot with the same props, so a throwing theme header or
+  // footer degrades to Aurora instead of breaking the page.
+  const themeView = useThemeView();
+  const slots = getShellSlots(themeView.packageId);
+  const Header = slots.Header;
+  const Footer = slots.Footer;
+  const AuroraHeader = AURORA_SHELL_SLOTS.Header;
+  const AuroraFooter = AURORA_SHELL_SLOTS.Footer;
+  // CartDrawer slot (S3b): mounted beside the other floating
+  // elements with the shell owning its open state. Aurora's drawer
+  // is the explicit NullCartDrawer (Theme #1 has no drawer; the
+  // header cart links to /cart). Packages with a real drawer (S4a+)
+  // open it via the cart-drawer-events subscription below.
+  const CartDrawer = getCartDrawerSlot(themeView.packageId);
+  const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
+
+  // Drawer-open requests (S4a): packages that own a drawer ask for
+  // it through the cart-drawer-events window event (their header
+  // cart action / post-add tap) because they render deep inside the
+  // shell and cannot reach this state directly. Aurora never
+  // dispatches the event, so this listener is a no-op under Theme
+  // #1 — opening state only ever flips for a package whose drawer
+  // slot exists to receive it.
+  useEffect(() => subscribeCartDrawerOpen(() => setCartDrawerOpen(true)), []);
   const [categories, setCategories] = useState<ReadonlyArray<PublicCategoryNode> | undefined>(undefined);
   const [siteContent, setSiteContent] = useState<SiteContentResponse | undefined>(undefined);
 
@@ -89,17 +128,51 @@ export default function StorefrontShell({ children }: { children: ReactNode }) {
   const hidden = HIDDEN_PREFIXES.some((p) => pathname?.startsWith(p));
   if (hidden) return <>{children}</>;
   const isProductPage = pathname?.startsWith("/product/") ?? false;
+  // Mobile bottom padding (S4b): the pb-16 exists only to clear
+  // Aurora's fixed mobile bottom nav. Packages without a bottom
+  // nav (Bazaar) must not inherit the empty space, so the padding
+  // applies only when the resolved package is the default one.
+  // Aurora behaviour is byte-identical (product pages already
+  // skipped it; other packages now skip it too).
+  const hasMobileBottomNav = themeView.packageId === DEFAULT_PACKAGE_ID;
+  const headerProps = {
+    categories,
+    headerMenu: siteContent?.configured.headerMenu ? siteContent.headerMenu : undefined,
+  };
+  const footerProps = {
+    footerMenu: siteContent?.configured.footerMenu ? siteContent.footerMenu : undefined,
+  };
   return (
-    <div className={isProductPage ? undefined : "pb-16 lg:pb-0"}>
-      <SiteHeader
-        categories={categories}
-        headerMenu={siteContent?.configured.headerMenu ? siteContent.headerMenu : undefined}
-      />
+    <div className={isProductPage || !hasMobileBottomNav ? undefined : "pb-16 lg:pb-0"}>
+      <ThemeBoundary
+        slotName="Header"
+        packageId={themeView.packageId}
+        fallback={<AuroraHeader {...headerProps} />}
+      >
+        <Header {...headerProps} />
+      </ThemeBoundary>
       {children}
-      <SiteFooter
-        footerMenu={siteContent?.configured.footerMenu ? siteContent.footerMenu : undefined}
-      />
+      <ThemeBoundary
+        slotName="Footer"
+        packageId={themeView.packageId}
+        fallback={<AuroraFooter {...footerProps} />}
+      >
+        <Footer {...footerProps} />
+      </ThemeBoundary>
       <InstallPrompt />
+      {/* CartDrawer slot (S3b): the active package's slide-in cart.
+          Aurora's NullCartDrawer renders nothing, so this mount is
+          invisible today; the boundary fallback is the same Aurora
+          drawer with the same props. */}
+      <ThemeBoundary
+        slotName="CartDrawer"
+        packageId={themeView.packageId}
+        fallback={
+          <AURORA_CART_DRAWER open={cartDrawerOpen} onClose={() => setCartDrawerOpen(false)} />
+        }
+      >
+        <CartDrawer open={cartDrawerOpen} onClose={() => setCartDrawerOpen(false)} />
+      </ThemeBoundary>
       {/* Reseller attribution (wave 6): captures ?ref=CODE into
           localStorage on any storefront page; renders nothing. Only
           mounted in this storefront branch — never on /admin. */}

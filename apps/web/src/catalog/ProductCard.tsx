@@ -150,7 +150,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
             />
           ) : (
             <div
-              className={`flex h-full w-full items-center justify-center bg-gradient-to-br from-brand-50 via-surface-2 to-violet-500/10 text-brand-300 ${inStock ? "" : "opacity-60 grayscale"}`}
+              className={`flex h-full w-full items-center justify-center bg-gradient-to-br from-secondary via-surface-2 to-accent/10 text-primary/40 ${inStock ? "" : "opacity-60 grayscale"}`}
             >
               <BagIcon />
             </div>
@@ -198,12 +198,12 @@ export function ProductCard({ product }: { product: PublicProduct }) {
             </span>
           </p>
           {priceOnRequest ? (
-            <p className="mt-2 text-base font-extrabold text-brand-700 dark:text-brand-300">
+            <p className="mt-2 text-base font-extrabold text-primary">
               দামের জন্য যোগাযোগ করুন
             </p>
           ) : (
           <p className="mt-2 flex flex-wrap items-baseline gap-x-2">
-            <span className="text-base font-extrabold tabular-nums text-brand-700 dark:text-brand-300">{digits(formatBdt(price))}</span>
+            <span className="text-base font-extrabold tabular-nums text-primary">{digits(formatBdt(price))}</span>
             {compareAt !== null && compareAt > price ? (
               <span className="text-[13px] tabular-nums text-text-subtle line-through">{digits(formatBdt(compareAt))}</span>
             ) : null}
@@ -235,7 +235,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
           type="button"
           onClick={() => setShowQuickView(true)}
           aria-haspopup="dialog"
-          className="min-h-[44px] rounded-xl border border-border px-3 py-2 text-sm font-medium text-text-muted transition duration-200 hover:border-brand-300 hover:bg-surface-2 hover:text-text-main active:scale-[0.98]"
+          className="min-h-[44px] rounded-xl border border-border px-3 py-2 text-sm font-medium text-text-muted transition duration-200 hover:border-input hover:bg-surface-2 hover:text-text-main active:scale-[0.98]"
         >
           ঝটপট দেখুন
         </button>

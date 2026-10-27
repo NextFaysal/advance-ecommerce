@@ -27,6 +27,7 @@ import {
 import type { AppTheme } from "@/lib/themes";
 import { THEME_COOKIE, themeToFullStyleString } from "@/lib/theme-engine";
 import {
+  applyStoreDefaultThemeCss,
   clearThemeCss,
   storeAndApplyThemeCss,
 } from "@/components/ui/theme-style-sync";
@@ -90,10 +91,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const setTheme = useCallback(
     (id: string | null) => {
       if (id === null) {
-        // Clear cookie + cached CSS + injected style element.
+        // Clear cookie + cached CSS + injected style element, then
+        // fall back to the store default theme (if the merchant set
+        // one) — "no personal pick" no longer means "globals.css
+        // defaults" when the store has a default of its own.
         document.cookie = `${THEME_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
         setThemeIdState(null);
         clearThemeCss();
+        void applyStoreDefaultThemeCss();
       } else {
         document.cookie = `${THEME_COOKIE}=${id}; path=/; max-age=31536000; SameSite=Lax`;
         setThemeIdState(id);

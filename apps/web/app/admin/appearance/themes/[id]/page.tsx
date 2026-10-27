@@ -11,6 +11,275 @@ import { THEME_TOKEN_GROUPS, THEME_TOKEN_META } from "@/lib/themes";
 import type { AppTheme, ThemeTokens } from "@/lib/themes";
 import { generateSmartPalette } from "@/lib/theme-palette-generator";
 import { ThemeLivePreview } from "@/components/admin/theme-live-preview";
+import type { ThemeOptionField, ThemeOptions } from "@/themes/registry";
+
+/* ------------------------------------------------------------------ */
+/* Customizer-lite (wave S2) — the package options form.              */
+/*                                                                    */
+/* Fully schema-driven: fields render from the instance's package   */
+/* optionsSchema returned by GET /api/v1/admin/themes/[id]/options, */
+/* and saves go back through the same route's PUT (reason mandatory, */
+/* audited server-side). No per-package form code exists — a package */
+/* with a schema (first: Ghorer, S4) gets a working form for free.   */
+/* ------------------------------------------------------------------ */
+
+interface ThemeOptionsData {
+  packageId: string;
+  schema: ThemeOptionField[];
+  values: ThemeOptions;
+  stored: ThemeOptions;
+}
+
+function ThemeCustomizerSection({ themeId }: { themeId: string }) {
+  const [data, setData] = useState<ThemeOptionsData | null>(null);
+  const [values, setValues] = useState<ThemeOptions>({});
+  const [reason, setReason] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveDetails, setSaveDetails] = useState<string[]>([]);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/v1/admin/themes/${themeId}/options`)
+      .then((r) => r.json())
+      .then(
+        (json: { data?: ThemeOptionsData; error?: { message: string } }) => {
+          if (json.error) {
+            setLoadError(json.error.message);
+          } else if (json.data) {
+            setData(json.data);
+            setValues(json.data.values);
+          }
+        },
+      )
+      .catch(() => setLoadError("কাস্টমাইজার অপশন লোড করা যায়নি।"))
+      .finally(() => setLoading(false));
+  }, [themeId]);
+
+  function setValue(key: string, value: string | number | boolean) {
+    setValues((prev) => ({ ...prev, [key]: value }));
+    setSaved(false);
+  }
+
+  async function handleSave() {
+    if (!data) return;
+    // Local guard: a number field left blank would fail server-side
+    // validation anyway — catch it here with a clearer message.
+    for (const field of data.schema) {
+      if (field.type === "number" && values[field.key] === "") {
+        setSaveError(`“${field.labelBn ?? field.label}” এর জন্য একটি সংখ্যা দিন।`);
+        setSaveDetails([]);
+        return;
+      }
+    }
+    if (reason.trim() === "") {
+      setSaveError("কারণ লিখুন — এই পরিবর্তনটি অডিট লগে সংরক্ষিত হবে।");
+      setSaveDetails([]);
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    setSaveDetails([]);
+    setSaved(false);
+    try {
+      const res = await fetch(`/api/v1/admin/themes/${themeId}/options`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ values, reason: reason.trim() }),
+      });
+      const json = (await res.json().catch(() => null)) as {
+        data?: ThemeOptionsData;
+        error?: { message: string; details?: unknown };
+      } | null;
+      if (!res.ok) {
+        setSaveError(json?.error?.message ?? "অপশন সংরক্ষণ করা যায়নি।");
+        if (Array.isArray(json?.error?.details)) {
+          setSaveDetails(json.error.details.map(String));
+        }
+        return;
+      }
+      if (json?.data) {
+        setData(json.data);
+        setValues(json.data.values);
+      }
+      setReason("");
+      setSaved(true);
+    } catch {
+      setSaveError("নেটওয়ার্ক ত্রুটি। আবার চেষ্টা করুন।");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputClass =
+    "w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs text-text-main shadow-sm focus:border-ring focus:outline-none";
+
+  function renderField(field: ThemeOptionField) {
+    const value = values[field.key];
+    const label = field.labelBn ?? field.label;
+    return (
+      <div
+        key={field.key}
+        className="grid items-center gap-2 border-b border-border/50 pb-3 text-xs last:border-0 sm:grid-cols-12"
+      >
+        <div className="sm:col-span-5">
+          <span className="font-semibold text-text-main">{label}</span>
+          <span className="block font-mono text-[10px] text-text-muted">{field.key}</span>
+        </div>
+        <div className="sm:col-span-7">
+          {field.type === "boolean" && (
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={value === true}
+                onChange={(e) => setValue(field.key, e.target.checked)}
+                className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
+              />
+              <span className="font-medium text-text-main">
+                {value === true ? "চালু" : "বন্ধ"}
+              </span>
+            </label>
+          )}
+          {field.type === "select" && (
+            <select
+              value={typeof value === "string" ? value : field.default}
+              onChange={(e) => setValue(field.key, e.target.value)}
+              className={inputClass}
+            >
+              {field.choices.map((choice) => (
+                <option key={choice.value} value={choice.value}>
+                  {choice.label}
+                </option>
+              ))}
+            </select>
+          )}
+          {field.type === "number" && (
+            <input
+              type="number"
+              min={field.min}
+              max={field.max}
+              step="any"
+              value={value === undefined ? "" : String(value)}
+              onChange={(e) =>
+                setValue(field.key, e.target.value === "" ? "" : Number(e.target.value))
+              }
+              className={inputClass}
+            />
+          )}
+          {field.type === "color" && (
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={
+                  typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value)
+                    ? value
+                    : "#000000"
+                }
+                onChange={(e) => setValue(field.key, e.target.value)}
+                className="h-8 w-12 shrink-0 cursor-pointer rounded-lg border border-border bg-card p-0.5"
+              />
+              <input
+                type="text"
+                value={typeof value === "string" ? value : ""}
+                onChange={(e) => setValue(field.key, e.target.value)}
+                placeholder={field.default}
+                className={`${inputClass} font-mono`}
+              />
+            </div>
+          )}
+          {field.type === "text" && (
+            <input
+              type="text"
+              maxLength={field.maxLength}
+              value={typeof value === "string" ? value : ""}
+              onChange={(e) => setValue(field.key, e.target.value)}
+              placeholder={field.default}
+              className={inputClass}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+      <h2 className="text-sm font-bold text-text-main">🎛️ কাস্টমাইজার — প্যাকেজ অপশন</h2>
+      {data && (
+        <p className="mt-1 text-[11px] leading-4 text-text-muted">
+          এই থিমটি <span className="font-mono font-semibold">{data.packageId}</span>{" "}
+          প্যাকেজের ইনস্ট্যান্স। অপশনগুলো প্যাকেজের স্কিমা থেকে তৈরি — এগুলো শুধু
+          উপস্থাপনা বদলায়, স্টোরের ডেটা বা আচরণ নয়।
+        </p>
+      )}
+
+      {loading && <p className="mt-4 text-xs text-text-muted">অপশন লোড হচ্ছে…</p>}
+
+      {loadError && (
+        <div className="mt-4 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-xs text-destructive">
+          {loadError}
+        </div>
+      )}
+
+      {!loading && !loadError && data && data.schema.length === 0 && (
+        <div className="mt-4 rounded-xl border border-border/60 bg-muted/50 px-4 py-3">
+          <p className="text-xs font-semibold text-text-main">
+            এই প্যাকেজে কোনো কাস্টমাইজার অপশন নেই
+          </p>
+          <p className="mt-1 text-[11px] leading-4 text-text-muted">
+            প্যাকেজে অপশন স্কিমা ঘোষণা করা থাকলে এখানে স্বয়ংক্রিয়ভাবে ফর্ম তৈরি হবে —
+            যেমন Ghorer প্যাকেজে থাকবে। ততদিন এই থিম শুধু রঙের টোকেন দিয়েই কাস্টমাইজ করা
+            যায় (নিচের CSS ভ্যারিয়েবল অংশ)।
+          </p>
+        </div>
+      )}
+
+      {!loading && !loadError && data && data.schema.length > 0 && (
+        <div className="mt-4">
+          <div className="space-y-3">{data.schema.map(renderField)}</div>
+
+          {saveError && (
+            <div className="mt-4 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-xs text-destructive">
+              {saveError}
+              {saveDetails.length > 0 && (
+                <ul className="mt-1 list-inside list-disc">
+                  {saveDetails.map((d, i) => (
+                    <li key={i}>{d}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+          {saved && (
+            <div className="mt-4 rounded-xl border border-success/20 bg-success/10 px-4 py-3 text-xs text-success">
+              ✓ কাস্টমাইজার অপশন সংরক্ষিত হয়েছে (অডিট লগে কারণসহ নথিভুক্ত)।
+            </div>
+          )}
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="পরিবর্তনের কারণ (অডিটের জন্য, আবশ্যক)"
+              className="min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs text-text-main shadow-sm focus:border-ring focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-lg bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
+            >
+              {saving ? "সংরক্ষণ হচ্ছে…" : "অপশন সংরক্ষণ করুন"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   params: { id: string };
@@ -258,7 +527,7 @@ export default function EditThemePage({ params }: Props) {
                     className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm text-text-main shadow-sm focus:border-ring focus:outline-none"
                   />
                 </div>
-                <div className="flex items-center gap-2 pt-1">
+                <div className="flex flex-wrap items-center gap-2 pt-1">
                   <input
                     type="checkbox"
                     id="isActive"
@@ -267,8 +536,11 @@ export default function EditThemePage({ params }: Props) {
                     className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
                   />
                   <label htmlFor="isActive" className="text-xs font-semibold text-text-main cursor-pointer">
-                    সক্রিয় থিম হিসেবে নির্ধারণ করুন (স্টোরে দৃশ্যমান হবে)
+                    কাস্টমার পছন্দের তালিকায় প্রকাশ করুন (কাস্টমার অ্যাকাউন্ট → পছন্দ থেকে বেছে নিতে পারবে)
                   </label>
+                  <p className="w-full text-[11px] leading-4 text-text-muted">
+                    স্টোরের সব ভিজিটরের জন্য থিমটি চালু করতে থিম তালিকা থেকে "স্টোরে প্রয়োগ করুন" ব্যবহার করুন।
+                  </p>
                 </div>
               </div>
             </div>
@@ -364,6 +636,11 @@ export default function EditThemePage({ params }: Props) {
               </button>
             </div>
           </form>
+
+          {/* Customizer-lite (S2): package options for this instance.
+              A sibling of the token form above — separate save path
+              (PUT /options, reason + audit), never nested inside it. */}
+          {theme && <ThemeCustomizerSection themeId={id} />}
         </div>
 
         {/* Right Live Preview Sticky Panel (5 cols) */}

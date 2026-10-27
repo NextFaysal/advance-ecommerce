@@ -5,9 +5,14 @@ type Variant = "primary" | "gradient" | "secondary" | "outline" | "ghost" | "des
 type Size = "sm" | "md" | "lg";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-brand-600 text-white shadow-md hover:bg-brand-700 hover:shadow-lift",
+  // Token-driven (theme engine): --primary at the default tokens equals
+  // the old brand-600 within triplet rounding. The hover darkening has
+  // no token equivalent (no --primary-hover token exists), so it uses a
+  // brightness step — the same technique as the gradient variant below —
+  // which darkens whatever colour the active theme supplies.
+  primary: "bg-primary text-primary-foreground shadow-md hover:brightness-90 hover:shadow-lift",
   gradient: "brand-gradient text-white shadow-md hover:shadow-lift hover:brightness-105",
-  secondary: "bg-brand-50 text-brand-700 hover:bg-brand-100",
+  secondary: "bg-secondary text-secondary-foreground hover:brightness-95",
   outline: "border border-border bg-card text-text-main hover:bg-surface-2 hover:shadow-card",
   ghost: "bg-transparent text-text-main hover:bg-surface-2",
   destructive: "bg-rose-500 text-white shadow-md hover:bg-rose-600 hover:shadow-lift",
@@ -38,7 +43,7 @@ export function Button({
       {...props}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
-      className={`inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md font-semibold transition motion-base focus-visible:ring-[3px] focus-visible:ring-brand-500/40 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 ${variants[variant]} ${sizes[size]} ${className}`}
+      className={`inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md font-semibold transition motion-base focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 ${variants[variant]} ${sizes[size]} ${className}`}
     >
       {loading ? <Icon name="spinner" size={16} className="animate-spin" /> : null}
       {children}

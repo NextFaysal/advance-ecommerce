@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
-import { CartPageClient } from "@/cart/components";
 import { listActivePublicProducts } from "@/catalog/server-read";
 import { getAllWeightedVariantInfos } from "@/business-modules/grocery-pricing";
+import { getThemeSlots, AURORA_SLOTS } from "@/themes/slot-registry";
+import { resolveStorefrontThemeFromStore } from "@/themes/resolution-server";
+import { ThemeBoundary } from "@/themes/theme-boundary";
+import type { ThemeCartPageProps } from "@/themes/slots";
 
 // /cart — storefront cart page. Agent 33.
 // The page itself is a thin server shell for metadata; all cart state is
@@ -9,6 +12,9 @@ import { getAllWeightedVariantInfos } from "@/business-modules/grocery-pricing";
 // in src/cart/components/CartPageClient.tsx. The shell feeds the client
 // the real ACTIVE catalog (Prisma repository via src/catalog/server-read)
 // so cart lines resolve against live products/prices — never mock data.
+// Wave S3b (doc 25): the client composition is the active package's
+// CartPage slot — Aurora's slot IS CartPageClient, registered in place —
+// resolved here server-side with Aurora as the ThemeBoundary fallback.
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
@@ -47,5 +53,23 @@ export default async function CartPage() {
       stepQuantity: Math.max(1, Math.round((info.weightStepGrams * 1000) / info.packGrams)) / 1000,
     };
   }
-  return <CartPageClient catalogProducts={catalogProducts} weightedVariants={weightedVariants} />;
+  // CartPage slot (S3b): same server-side resolution pattern as the
+  // home and PDP composition roots — registry fallback per slot,
+  // Aurora as the boundary fallback.
+  const { themeView } = await resolveStorefrontThemeFromStore();
+  const CartPageSlot = getThemeSlots(themeView.packageId).CartPage;
+  const AuroraCartPage = AURORA_SLOTS.CartPage;
+  const cartProps: ThemeCartPageProps = {
+    catalogProducts,
+    weightedVariants,
+  };
+  return (
+    <ThemeBoundary
+      slotName="CartPage"
+      packageId={themeView.packageId}
+      fallback={<AuroraCartPage {...cartProps} />}
+    >
+      <CartPageSlot {...cartProps} />
+    </ThemeBoundary>
+  );
 }

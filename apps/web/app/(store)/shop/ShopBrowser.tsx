@@ -31,16 +31,18 @@
 //   server page.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ProductCard } from "@/catalog/ProductCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { PublicProduct } from "@/catalog/types";
 import type { SortOption } from "@/catalog/search";
 import type { PublicBrand } from "@/catalog/public-brands";
 import type { AdminAttributeSet } from "@/catalog/attributes-admin";
-import { MobileFilterDrawer } from "./MobileFilterDrawer";
+import { useThemeView } from "@/themes/theme-view";
+import { ThemeBoundary } from "@/themes/theme-boundary";
+import { getShopChromeSlot, AURORA_SHOP_CHROME } from "@/themes/client-shop-registry";
+import { ThemedProductCard } from "@/themes/themed-product-card";
+import type { ShopChromeProps } from "@/themes/slots";
 
 const SHOP_DEFAULT_TITLE = "দোকান — Advance Ecommerce";
 
@@ -196,135 +198,16 @@ function toggleAttr(state: ShopState, pair: AttrPair): string {
   return buildHref(state, { attr });
 }
 
-const PRICE_RANGES: ReadonlyArray<{ label: string; min?: number; max?: number }> = [
-  { label: "৫০০ টাকার কম", max: 50000 },
-  { label: "৫০০ – ১,০০০ টাকা", min: 50000, max: 100000 },
-  { label: "১,০০০ – ৩,০০০ টাকা", min: 100000, max: 300000 },
-  { label: "৩,০০০ টাকার বেশি", min: 300000 },
-];
-
-const SORT_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: "relevance", label: "জনপ্রিয়তা" },
-  { value: "newest", label: "নতুন আগে" },
-  { value: "price-asc", label: "দাম: কম থেকে বেশি" },
-  { value: "price-desc", label: "দাম: বেশি থেকে কম" },
-  { value: "rating", label: "রেটিং" },
-];
-
-const RATING_OPTIONS: ReadonlyArray<{ value?: number; label: string }> = [
-  { value: undefined, label: "সব রেটিং" },
-  { value: 4, label: "৪★ ও উপরে" },
-  { value: 3, label: "৩★ ও উপরে" },
-];
-
 function TakaShort(poisha: number): string {
   return `৳${(poisha / 100).toLocaleString("en-IN")}`;
 }
 
 /* ------------------------------------------------------------------ */
-/* Presentational pieces — markup identical to the server page.        */
+/* Presentational pieces — the filter panel pieces (FilterSection,     */
+/* SidebarLink, AttrToggleLink) and the option lists moved verbatim    */
+/* into the Aurora ShopChrome slot (src/themes/aurora/shop-chrome.tsx) */
+/* in wave S3b; ShopBrowser keeps the results-block pieces below.      */
 /* ------------------------------------------------------------------ */
-
-function FilterSection({
-  title,
-  children,
-  defaultOpen = true,
-}: {
-  title: string;
-  children: ReactNode;
-  defaultOpen?: boolean;
-}) {
-  return (
-    <details open={defaultOpen} className="group border-b border-border py-3 last:border-b-0">
-      <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between rounded-lg px-1 text-sm font-bold text-text-main transition duration-200 hover:text-brand-700 dark:hover:text-brand-300 [&::-webkit-details-marker]:hidden">
-        {title}
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-2 text-text-subtle transition duration-300 group-open:rotate-180">
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            aria-hidden="true"
-          >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        </span>
-      </summary>
-      <div className="mb-2 mt-1 space-y-1">{children}</div>
-    </details>
-  );
-}
-
-function SidebarLink({
-  href,
-  active,
-  children,
-  count,
-}: {
-  href: string;
-  active: boolean;
-  children: ReactNode;
-  count?: number;
-}) {
-  return (
-    <Link
-      href={href}
-      aria-current={active ? "true" : undefined}
-      className={`flex min-h-[40px] items-center justify-between rounded-xl px-3 py-2 text-sm transition duration-200 ${
-        active
-          ? "bg-brand-500/10 font-semibold text-brand-700 dark:text-brand-200"
-          : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-      }`}
-    >
-      <span className="min-w-0 truncate">{children}</span>
-      {count !== undefined ? (
-        <span
-          className={`ml-2 shrink-0 rounded-full px-2 py-0.5 text-[11px] tabular-nums ${
-            active ? "bg-brand-600/10 text-brand-700 dark:text-brand-200" : "bg-surface-2 text-text-subtle"
-          }`}
-        >
-          {count}
-        </span>
-      ) : null}
-    </Link>
-  );
-}
-
-/** Multi-select attribute row: a toggle link with a checkbox glyph. */
-function AttrToggleLink({
-  href,
-  active,
-  children,
-}: {
-  href: string;
-  active: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      aria-pressed={active}
-      className={`flex min-h-[40px] items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition duration-200 ${
-        active
-          ? "bg-brand-500/5 font-semibold text-brand-700 dark:text-brand-200"
-          : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-      }`}
-    >
-      <span
-        aria-hidden="true"
-        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] leading-none transition duration-200 ${
-          active ? "border-brand-600 bg-brand-600 text-white shadow-sm" : "border-border bg-card"
-        }`}
-      >
-        {active ? "✓" : ""}
-      </span>
-      <span className="min-w-0 truncate">{children}</span>
-    </Link>
-  );
-}
 
 function EmptyState({
   title,
@@ -418,6 +301,12 @@ export function ShopBrowser() {
   const searchParams = useSearchParams();
   const mainRef = useRef<HTMLElement | null>(null);
   const hasLoadedOnceRef = useRef(false);
+  // ShopChrome slot (S3b): resolved from the ThemeView context via
+  // the client-safe shop registry (per-slot Aurora fallback built
+  // in); rendered at the bottom of this component with every derived
+  // value this state owner computes.
+  const themeView = useThemeView();
+  const ShopChrome = getShopChromeSlot(themeView.packageId);
 
   /* ---- URL state (single source of truth, same parsing as before) -- */
   const attrPairs = useMemo(
@@ -647,252 +536,100 @@ export function ShopBrowser() {
     });
   }
 
-  // Filter panel content — rendered ONCE as a node, then placed in the
-  // desktop sidebar card and inside the mobile filter drawer. Same
-  // GET-param links in both, so behaviour is identical.
-  const filterPanel = (
-    <>
-      <FilterSection title="ক্যাটাগরি">
-        <SidebarLink href={buildHref(current, { category: undefined })} active={!category}>
-          সব ক্যাটাগরি
-        </SidebarLink>
-        {categories.map((c) => (
-          <SidebarLink
-            key={c.slug}
-            href={buildHref(current, { category: c.slug })}
-            active={category === c.slug}
-            count={c.productCount}
-          >
-            {c.name.bn}
-          </SidebarLink>
+  // Results / loading / empty states — this block stays ShopBrowser's
+  // (it is the state owner's render output) and is handed to the
+  // ShopChrome slot as its children, rendered inside the chrome's
+  // results section exactly where it sat inline before S3b.
+  const resultsBlock =
+    result === null ? (
+      <div
+        className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4 xl:gap-5"
+        aria-label="লোড হচ্ছে"
+      >
+        {Array.from({ length: 8 }).map((_, i) => (
+          <ShopCardSkeleton key={i} />
         ))}
-      </FilterSection>
-
-      <FilterSection title="মূল্য">
-        <SidebarLink href={buildHref(current, { min: undefined, max: undefined })} active={!hasPriceFilter}>
-          সব দাম
-        </SidebarLink>
-        {PRICE_RANGES.map((range) => {
-          const active = minPoisha === range.min && maxPoisha === range.max && hasPriceFilter;
-          return (
-            <SidebarLink
-              key={range.label}
-              href={buildHref(current, {
-                min: range.min !== undefined ? String(range.min) : undefined,
-                max: range.max !== undefined ? String(range.max) : undefined,
-              })}
-              active={active}
-            >
-              {range.label}
-            </SidebarLink>
-          );
-        })}
-      </FilterSection>
-
-      {brands.length > 0 ? (
-        <FilterSection title="ব্র্যান্ড">
-          <SidebarLink href={buildHref(current, { brand: undefined })} active={!brand}>
-            সব ব্র্যান্ড
-          </SidebarLink>
-          {brands.map((b) => (
-            <SidebarLink key={b.slug} href={buildHref(current, { brand: b.name })} active={brand === b.name} count={b.productCount}>
-              {b.name}
-            </SidebarLink>
-          ))}
-        </FilterSection>
-      ) : null}
-
-      <FilterSection title="রেটিং">
-        {RATING_OPTIONS.map((option) => (
-          <SidebarLink
-            key={option.label}
-            href={buildHref(current, { rating: option.value !== undefined ? String(option.value) : undefined })}
-            active={ratingMin === option.value}
-          >
-            {option.label}
-          </SidebarLink>
+      </div>
+    ) : products.length === 0 ? (
+      <div className="mt-6">
+        {q ? (
+          <EmptyState
+            title={`“${q}” দিয়ে কোনো পণ্য পাওয়া যায়নি`}
+            description="বানান ঠিক আছে কিনা দেখুন, অথবা অন্য কোনো নামে খুঁজে দেখুন। চাইলে সব পণ্য ঘুরে দেখতে পারেন।"
+            ctaHref="/shop"
+            ctaLabel="সব পণ্য দেখুন"
+          />
+        ) : hasAnyFilter ? (
+          <EmptyState
+            title="এই ফিল্টারে কোনো পণ্য মিলছে না"
+            description="নির্বাচিত ফিল্টারের সাথে মিলে এমন পণ্য এখন স্টকে নেই। ফিল্টার বদলে বা মুছে আবার দেখুন।"
+            ctaHref="/shop"
+            ctaLabel="সব ফিল্টার মুছুন"
+          />
+        ) : (
+          <EmptyState
+            title="এখনো কোনো পণ্য যোগ হয়নি"
+            description="আমাদের কালেকশন তৈরি হচ্ছে — খুব শীঘ্রই নতুন পণ্য আসছে। ততক্ষণে হোমপেজে ঘুরে দেখুন।"
+            ctaHref="/"
+            ctaLabel="হোমপেজে যান"
+          />
+        )}
+      </div>
+    ) : (
+      <div
+        className={`mt-6 grid grid-cols-2 gap-3 transition-opacity duration-200 sm:gap-4 md:grid-cols-3 xl:grid-cols-4 xl:gap-5 ${
+          fetching ? "opacity-50" : ""
+        }`}
+      >
+        {products.map((p) => (
+          <ThemedProductCard key={p.id} product={p} />
         ))}
-      </FilterSection>
+      </div>
+    );
 
-      {attrFacets.map((facet) => (
-        <FilterSection key={facet.key} title={facet.labelBn}>
-          {facet.values.map((value) => {
-            const pair = { key: facet.key, value };
-            const active = current.attr.includes(pairToParam(pair));
-            return (
-              <AttrToggleLink key={value} href={toggleAttr(current, pair)} active={active}>
-                {value}
-              </AttrToggleLink>
-            );
-          })}
-        </FilterSection>
-      ))}
-
-      <FilterSection title="প্রাপ্যতা">
-        <SidebarLink href={buildHref(current, { instock: undefined })} active={!inStockOnly}>
-          সব পণ্য
-        </SidebarLink>
-        <SidebarLink href={buildHref(current, { instock: "1" })} active={inStockOnly}>
-          শুধু স্টকে আছে
-        </SidebarLink>
-      </FilterSection>
-    </>
-  );
+  // ShopChrome slot (S3b): the sidebar + toolbar composition is the
+  // active package's chrome, resolved through the client-safe shop
+  // registry from the ThemeView context — same S3a pattern as the
+  // shell's Header/Footer. Every value below is derived by this
+  // component exactly as the inline JSX consumed it; the chrome only
+  // arranges the markup.
+  const chromeProps: ShopChromeProps = {
+    breadcrumbCategoryLabel: activeCategory ? activeCategory.name.bn : null,
+    heading,
+    displayTotal,
+    filtersApplied: hasAnyFilter || Boolean(q),
+    resultCount: displayTotal ?? 0,
+    clearHref: hasAnyFilter || q ? "/shop" : undefined,
+    sort,
+    onSortChange: (value: string) => router.push(buildHref(current, { sort: value })),
+    chips: activeChips,
+    busy: result === null || fetching,
+    categories,
+    brands,
+    attrFacets,
+    filterState: current,
+    activeCategorySlug: category,
+    activeBrand: brand,
+    hasPriceFilter,
+    minPoisha,
+    maxPoisha,
+    ratingMin,
+    inStockOnly,
+    buildHref,
+    toggleAttr,
+    pairToParam,
+    children: resultsBlock,
+  };
 
   return (
     <main ref={mainRef} className="mx-auto min-w-0 max-w-[1440px] px-4 py-6 sm:px-6 lg:py-8">
-      {/* Breadcrumb */}
-      <nav aria-label="ব্রেডক্রাম্ব" className="flex flex-wrap items-center gap-1.5 text-sm text-text-subtle">
-        <Link href="/" className="hover:text-brand-700">হোম</Link>
-        <span aria-hidden="true">/</span>
-        <Link href="/shop" className="hover:text-brand-700">দোকান</Link>
-        {activeCategory ? (
-          <>
-            <span aria-hidden="true">/</span>
-            <span className="font-medium text-text-main">{activeCategory.name.bn}</span>
-          </>
-        ) : null}
-      </nav>
-
-      <div className="mt-4 grid gap-6 lg:grid-cols-[270px_minmax(0,1fr)] lg:gap-8">
-        {/* ---------- Filter sidebar (desktop) ---------- */}
-        <aside className="hidden min-w-0 lg:block">
-          <div className="rounded-3xl border border-border bg-card px-5 py-2 shadow-card lg:sticky lg:top-[8.5rem]">
-            {filterPanel}
-          </div>
-        </aside>
-
-        {/* ---------- Results ---------- */}
-        <section className="min-w-0" aria-busy={result === null || fetching}>
-          {/* Toolbar — Wave 17: on mobile this is a sticky glass bar
-              pinned under the h-16 site header (top-16) carrying the
-              heading, result count, filter drawer trigger and sort;
-              on lg it relaxes back into a plain static header row. */}
-          <div className="sticky top-16 z-30 -mx-4 border-b border-border/60 bg-bg-app/85 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:border-b-0 lg:bg-transparent lg:px-0 lg:py-0 lg:backdrop-blur-none">
-            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5">
-              <div className="min-w-0">
-                <h1 className="break-words font-display text-h1 text-text-main [overflow-wrap:anywhere]">{heading}</h1>
-                <p className="mt-0.5 text-sm text-text-muted">
-                  মোট {displayTotal === null ? "…" : displayTotal}টি পণ্য
-                  {hasAnyFilter || q ? " — ফিল্টার প্রয়োগ করা হয়েছে" : ""}
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2.5">
-                {/* Mobile filter trigger (Design v3) — the drawer lives
-                    here now so it stays reachable inside the sticky bar. */}
-                <div className="flex flex-wrap items-center gap-2.5 lg:hidden">
-                  <MobileFilterDrawer
-                    resultCount={displayTotal ?? 0}
-                    clearHref={hasAnyFilter || q ? "/shop" : undefined}
-                  >
-                    {filterPanel}
-                  </MobileFilterDrawer>
-                  {activeChips.length > 0 ? (
-                    <span className="rounded-full bg-brand-500/10 px-2.5 py-1 text-[13px] font-semibold text-brand-700 dark:text-brand-200">
-                      {activeChips.length}টি ফিল্টার সক্রিয়
-                    </span>
-                  ) : null}
-                </div>
-
-                {/* Sort — controlled select (was a GET form on the
-                    server page): changing it pushes the same `sort`
-                    param via buildHref, so every other active filter
-                    rides along exactly as the hidden inputs did. */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <label htmlFor="shop-sort" className="hidden text-sm text-text-muted min-[420px]:block">
-                    সাজান:
-                  </label>
-                  <select
-                    id="shop-sort"
-                    value={sort}
-                    onChange={(e) => router.push(buildHref(current, { sort: e.target.value }))}
-                    className="h-11 rounded-xl border border-border bg-card px-2.5 text-sm text-text-main shadow-sm outline-none transition focus:border-brand-500"
-                  >
-                    {SORT_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Active filter chips */}
-          {activeChips.length > 0 ? (
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              {activeChips.map((chip) => (
-                <Link
-                  key={chip.key}
-                  href={chip.href}
-                  aria-label={`${chip.label} ফিল্টার সরান`}
-                  className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-brand-600/15 bg-brand-500/10 py-1.5 pl-3.5 pr-2 text-[13px] font-medium text-brand-700 transition duration-200 hover:bg-brand-500/20 active:scale-[0.97] dark:text-brand-200"
-                >
-                  {chip.label}
-                  <span
-                    aria-hidden="true"
-                    className="flex h-5 w-5 items-center justify-center rounded-full bg-brand-600/15 text-sm leading-none"
-                  >
-                    ×
-                  </span>
-                </Link>
-              ))}
-              <Link href="/shop" className="inline-flex min-h-[36px] items-center px-1 text-[13px] font-semibold text-text-muted underline-offset-2 transition hover:text-brand-700 hover:underline dark:hover:text-brand-300">
-                সব ফিল্টার মুছুন
-              </Link>
-            </div>
-          ) : null}
-
-          {/* Results / loading / empty states */}
-          {result === null ? (
-            <div
-              className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4 xl:gap-5"
-              aria-label="লোড হচ্ছে"
-            >
-              {Array.from({ length: 8 }).map((_, i) => (
-                <ShopCardSkeleton key={i} />
-              ))}
-            </div>
-          ) : products.length === 0 ? (
-            <div className="mt-6">
-              {q ? (
-                <EmptyState
-                  title={`“${q}” দিয়ে কোনো পণ্য পাওয়া যায়নি`}
-                  description="বানান ঠিক আছে কিনা দেখুন, অথবা অন্য কোনো নামে খুঁজে দেখুন। চাইলে সব পণ্য ঘুরে দেখতে পারেন।"
-                  ctaHref="/shop"
-                  ctaLabel="সব পণ্য দেখুন"
-                />
-              ) : hasAnyFilter ? (
-                <EmptyState
-                  title="এই ফিল্টারে কোনো পণ্য মিলছে না"
-                  description="নির্বাচিত ফিল্টারের সাথে মিলে এমন পণ্য এখন স্টকে নেই। ফিল্টার বদলে বা মুছে আবার দেখুন।"
-                  ctaHref="/shop"
-                  ctaLabel="সব ফিল্টার মুছুন"
-                />
-              ) : (
-                <EmptyState
-                  title="এখনো কোনো পণ্য যোগ হয়নি"
-                  description="আমাদের কালেকশন তৈরি হচ্ছে — খুব শীঘ্রই নতুন পণ্য আসছে। ততক্ষণে হোমপেজে ঘুরে দেখুন।"
-                  ctaHref="/"
-                  ctaLabel="হোমপেজে যান"
-                />
-              )}
-            </div>
-          ) : (
-            <div
-              className={`mt-6 grid grid-cols-2 gap-3 transition-opacity duration-200 sm:gap-4 md:grid-cols-3 xl:grid-cols-4 xl:gap-5 ${
-                fetching ? "opacity-50" : ""
-              }`}
-            >
-              {products.map((p) => (
-                <ProductCard key={p.id} product={p} />
-              ))}
-            </div>
-          )}
-        </section>
-      </div>
+      <ThemeBoundary
+        slotName="ShopChrome"
+        packageId={themeView.packageId}
+        fallback={<AURORA_SHOP_CHROME {...chromeProps} />}
+      >
+        <ShopChrome {...chromeProps} />
+      </ThemeBoundary>
     </main>
   );
 }

@@ -12,6 +12,7 @@ import { prisma } from "@advance-ecommerce/db";
 import { randomUUID } from "crypto";
 import type { AppTheme } from "./themes";
 import { THEME_CATALOG_SETTING_KEY } from "./theme-engine";
+import { DEFAULT_PACKAGE_ID } from "../themes/registry";
 
 /* ------------------------------------------------------------------ */
 /* Catalog read / write                                                */
@@ -26,6 +27,19 @@ import { THEME_CATALOG_SETTING_KEY } from "./theme-engine";
 /* visible on the very next read (other processes converge ≤60s).    */
 const THEME_CATALOG_CACHE_TTL_MS = 60_000;
 let themeCatalogCache: { at: number; catalog: AppTheme[] } | null = null;
+
+/**
+ * Lazy package transform (doc 25 §5.2, D7): catalog entries saved
+ * before the package system have no packageId — they are Aurora
+ * instances. The default is applied in the READ path only (idempotent,
+ * no write on read); the first admin save after upgrade persists the
+ * new shape via saveThemeCatalog(). Entries that already carry a
+ * packageId pass through untouched — including unknown ids, which
+ * resolution (src/themes/resolution.ts) falls back to Aurora for.
+ */
+function withDefaultPackageId(theme: AppTheme): AppTheme {
+  return theme.packageId ? theme : { ...theme, packageId: DEFAULT_PACKAGE_ID };
+}
 
 export async function getThemeCatalog(): Promise<AppTheme[]> {
   if (
@@ -42,7 +56,7 @@ export async function getThemeCatalog(): Promise<AppTheme[]> {
       themeCatalogCache = { at: Date.now(), catalog: [] };
       return [];
     }
-    const catalog = JSON.parse(row.value) as AppTheme[];
+    const catalog = (JSON.parse(row.value) as AppTheme[]).map(withDefaultPackageId);
     themeCatalogCache = { at: Date.now(), catalog };
     return catalog;
   } catch {
@@ -119,4 +133,39 @@ export async function setActiveTheme(id: string | null): Promise<void> {
   const catalog = await getThemeCatalog();
   const next = catalog.map((t) => ({ ...t, isActive: t.id === id }));
   await saveThemeCatalog(next);
+}
+
+/* ------------------------------------------------------------------ */
+/* Store default theme                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The store default theme — the one applied to visitors who have not
+ * picked a theme themselves. Distinct from isActive (which only
+ * publishes a theme to the customer picker): a catalog may have
+ * several published themes but at most one store default.
+ */
+export async function getStoreDefaultTheme(): Promise<AppTheme | null> {
+  const catalog = await getThemeCatalog();
+  return catalog.find((t) => t.isStoreDefault) ?? null;
+}
+
+/**
+ * Set one theme as THE store default, clearing the flag on all
+ * others. Pass null to clear the store default entirely (visitors
+ * then fall back to the globals.css defaults). Throws when a non-null
+ * id does not exist in the catalog. Returns the previous and next
+ * store default themes so callers can audit the change.
+ */
+export async function setStoreDefaultTheme(
+  id: string | null,
+): Promise<{ previous: AppTheme | null; next: AppTheme | null }> {
+  const catalog = await getThemeCatalog();
+  const previous = catalog.find((t) => t.isStoreDefault) ?? null;
+  if (id !== null && !catalog.some((t) => t.id === id)) {
+    throw new Error(`Theme ${id} not found`);
+  }
+  const mapped = catalog.map((t) => ({ ...t, isStoreDefault: t.id === id }));
+  await saveThemeCatalog(mapped);
+  return { previous, next: mapped.find((t) => t.isStoreDefault) ?? null };
 }
