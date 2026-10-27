@@ -4,6 +4,7 @@
  * differ are flagged, so the customer sees the difference at a glance.
  */
 import type { PublicProduct } from "@/catalog/types";
+import type { Locale } from "@/i18n/locale";
 import { publicPriceRangePoisha } from "./quick-view";
 
 export const MAX_COMPARE_PRODUCTS = 3;
@@ -47,13 +48,13 @@ function row(key: string, labelBn: string, labelEn: string, values: Array<string
   return { key, labelBn, labelEn, values, differing: new Set(present).size > 1 };
 }
 
-export function buildComparison(products: PublicProduct[]): ComparisonTable {
+export function buildComparison(products: PublicProduct[], locale: Locale = "bn"): ComparisonTable {
   const selected = products.slice(0, MAX_COMPARE_PRODUCTS);
   const rows: ComparisonRow[] = [
-    row("title", "পণ্য", "Product", selected.map((p) => p.title.bn)),
+    row("title", "পণ্য", "Product", selected.map((p) => p.title[locale])),
     row("price", "দাম (থেকে)", "Price (from)", selected.map((p) => String(publicPriceRangePoisha(p).min))),
     row("brand", "ব্র্যান্ড", "Brand", selected.map((p) => p.brandName)),
-    row("category", "ক্যাটাগরি", "Category", selected.map((p) => p.categoryName.bn)),
+    row("category", "ক্যাটাগরি", "Category", selected.map((p) => p.categoryName[locale])),
     row("rating", "রেটিং", "Rating", selected.map((p) => (p.ratingAverage === null ? null : p.ratingAverage.toFixed(1)))),
     row("reviews", "রিভিউ সংখ্যা", "Reviews", selected.map((p) => String(p.reviewCount))),
     row(

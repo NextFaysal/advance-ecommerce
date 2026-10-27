@@ -22,8 +22,10 @@
 import { maskPhone, normalizeBdPhone } from "@advance-ecommerce/validators";
 import type { Order, OrderStatus } from "@/orders/types";
 import type { ShipmentStatus } from "@/integrations/courier";
+import { pick, type Locale } from "@/i18n/locale";
 import {
   KITCHEN_STATUS_LABELS_BN,
+  KITCHEN_STATUS_LABELS_EN,
   type KitchenTicketStatus,
 } from "@/restaurant/selection";
 
@@ -43,6 +45,22 @@ export const ORDER_STATUS_LABELS_BN: Record<OrderStatus, string> = {
   EXCHANGED: "বদলি পাঠানো হয়েছে",
 };
 
+export const ORDER_STATUS_LABELS_EN: Record<OrderStatus, string> = {
+  PENDING: "Order received",
+  CONFIRMED: "Confirmed",
+  PROCESSING: "Processing",
+  PACKED: "Packed",
+  SHIPPED: "Shipped",
+  DELIVERED: "Delivered",
+  FAILED: "Delivery failed",
+  RETURN_REQUESTED: "Return requested",
+  RETURNING: "Return on its way",
+  RETURNED: "Return received",
+  CANCELLED: "Cancelled",
+  REFUNDED: "Refunded",
+  EXCHANGED: "Exchange sent",
+};
+
 export const SHIPMENT_STATUS_LABELS_BN: Record<ShipmentStatus, string> = {
   CREATED: "কুরিয়ার বুকিং তৈরি হয়েছে",
   PICKED_UP: "কুরিয়ার পিক আপ করেছে",
@@ -52,6 +70,28 @@ export const SHIPMENT_STATUS_LABELS_BN: Record<ShipmentStatus, string> = {
   FAILED: "ডেলিভারি ব্যর্থ",
   RETURNING: "ফেরত আসছে",
   RETURNED: "ফেরত এসেছে",
+};
+
+export const SHIPMENT_STATUS_LABELS_EN: Record<ShipmentStatus, string> = {
+  CREATED: "Courier booking created",
+  PICKED_UP: "Picked up by courier",
+  IN_TRANSIT: "In transit",
+  OUT_FOR_DELIVERY: "Out for delivery",
+  DELIVERED: "Delivered",
+  FAILED: "Delivery failed",
+  RETURNING: "Being returned",
+  RETURNED: "Returned",
+};
+
+/** Doc 30: locale-keyed label records — pick(locale, …) selects the set. */
+export const ORDER_STATUS_LABELS: Record<Locale, Record<OrderStatus, string>> = {
+  bn: ORDER_STATUS_LABELS_BN,
+  en: ORDER_STATUS_LABELS_EN,
+};
+
+export const SHIPMENT_STATUS_LABELS: Record<Locale, Record<ShipmentStatus, string>> = {
+  bn: SHIPMENT_STATUS_LABELS_BN,
+  en: SHIPMENT_STATUS_LABELS_EN,
 };
 
 /** Main happy-path flow shown as the tracking progress timeline. */
@@ -121,16 +161,19 @@ export interface TrackingParcel {
   items: Array<{ productName: string; quantity: number }> | null;
 }
 
-/** Map real Shipment rows to the customer-facing per-parcel view. */
-export function buildParcels(rows: readonly TrackingShipmentRow[]): TrackingParcel[] {
+/** Map real Shipment rows to the customer-facing per-parcel view.
+ *  The `*LabelBn` fields carry the label in `locale` (doc 30; the field
+ *  names are kept for compatibility with existing consumers). */
+export function buildParcels(rows: readonly TrackingShipmentRow[], locale: Locale = "bn"): TrackingParcel[] {
+  const labels = pick(locale, SHIPMENT_STATUS_LABELS);
   return rows.map((row) => ({
     courier: courierDisplayName(row.provider),
     trackingId: row.trackingId,
     status: row.status,
-    statusLabelBn: SHIPMENT_STATUS_LABELS_BN[row.status],
+    statusLabelBn: labels[row.status],
     events: row.events.map((e) => ({
       status: e.status,
-      labelBn: SHIPMENT_STATUS_LABELS_BN[e.status],
+      labelBn: labels[e.status],
       at: e.occurredAt,
       location: e.location,
     })),
@@ -213,7 +256,8 @@ export function deriveShipmentStatus(order: Order): ShipmentStatus | null {
   }
 }
 
-export function buildTimeline(order: Order): TrackingTimelineStep[] {
+export function buildTimeline(order: Order, locale: Locale = "bn"): TrackingTimelineStep[] {
+  const labels = pick(locale, ORDER_STATUS_LABELS);
   const enteredAt = new Map<OrderStatus, string>();
   for (const h of order.history) {
     if (!enteredAt.has(h.to)) enteredAt.set(h.to, h.changedAt);
@@ -229,15 +273,18 @@ export function buildTimeline(order: Order): TrackingTimelineStep[] {
     } else {
       state = at ? "done" : "upcoming";
     }
-    return { status, labelBn: ORDER_STATUS_LABELS_BN[status], state, at };
+    return { status, labelBn: labels[status], state, at };
   });
 }
 
 export type TrackingLookupResult =
   | { ok: true; view: TrackingView }
-  | { ok: false; error: "not_found"; messageBn: string };
+  | { ok: false; error: "not_found"; messageBn: string; message: string };
 
-const GENERIC_NOT_FOUND = "অর্ডার পাওয়া যায়নি — অর্ডার নম্বর ও মোবাইল নম্বর মিলিয়ে আবার চেষ্টা করুন।";
+const GENERIC_NOT_FOUND: Record<Locale, string> = {
+  bn: "অর্ডার পাওয়া যায়নি — অর্ডার নম্বর ও মোবাইল নম্বর মিলিয়ে আবার চেষ্টা করুন।",
+  en: "Order not found — check the order number and mobile number and try again.",
+};
 
 export function lookupTracking(
   orders: Order[],
@@ -253,8 +300,17 @@ export function lookupTracking(
     labelBn: string;
     labelEn: string;
   } | null = null,
+  /** Doc 30: label language for the whole view (default bn = legacy). */
+  locale: Locale = "bn",
 ): TrackingLookupResult {
-  const fail: TrackingLookupResult = { ok: false, error: "not_found", messageBn: GENERIC_NOT_FOUND };
+  const orderLabels = pick(locale, ORDER_STATUS_LABELS);
+  const shipmentLabels = pick(locale, SHIPMENT_STATUS_LABELS);
+  const fail: TrackingLookupResult = {
+    ok: false,
+    error: "not_found",
+    messageBn: GENERIC_NOT_FOUND.bn,
+    message: pick(locale, GENERIC_NOT_FOUND),
+  };
   const normalized = normalizeBdPhone(phoneInput);
   if (!normalized) return fail;
   const orderNo = orderNoInput.trim().toUpperCase();
@@ -268,12 +324,14 @@ export function lookupTracking(
     ? {
         status: kitchen.status,
         statusLabelBn:
-          KITCHEN_STATUS_LABELS_BN[kitchen.status as KitchenTicketStatus] ?? kitchen.status,
+          pick(locale, { bn: KITCHEN_STATUS_LABELS_BN, en: KITCHEN_STATUS_LABELS_EN })[
+            kitchen.status as KitchenTicketStatus
+          ] ?? kitchen.status,
         fulfilmentType: kitchen.fulfilmentType,
         tableLabel: kitchen.tableLabel,
       }
     : null;
-  const parcels = buildParcels(shipments);
+  const parcels = buildParcels(shipments, locale);
   if (parcels.length > 0) {
     // Real Shipment rows win. The legacy single-parcel summary fields
     // are filled only when there is exactly ONE parcel — with several,
@@ -285,7 +343,7 @@ export function lookupTracking(
       view: {
         orderNo: order.orderNo,
         status: order.status,
-        statusLabelBn: ORDER_STATUS_LABELS_BN[order.status],
+        statusLabelBn: orderLabels[order.status],
         maskedPhone: maskPhone(normalized),
         items: order.items.map((i) => ({ productName: i.productName, quantity: i.quantity, unitPricePoisha: i.unitPricePoisha })),
         totalPoisha: order.totalPoisha,
@@ -299,7 +357,7 @@ export function lookupTracking(
         shipmentSource: "shipments",
         kitchen: kitchenView,
         workflowStage,
-        timeline: buildTimeline(order),
+        timeline: buildTimeline(order, locale),
         createdAt: order.createdAt,
       },
     };
@@ -310,7 +368,7 @@ export function lookupTracking(
     view: {
       orderNo: order.orderNo,
       status: order.status,
-      statusLabelBn: ORDER_STATUS_LABELS_BN[order.status],
+      statusLabelBn: orderLabels[order.status],
       maskedPhone: maskPhone(normalized),
       items: order.items.map((i) => ({ productName: i.productName, quantity: i.quantity, unitPricePoisha: i.unitPricePoisha })),
       totalPoisha: order.totalPoisha,
@@ -319,12 +377,12 @@ export function lookupTracking(
       courier: order.courier ?? null,
       trackingId: order.trackingId ?? null,
       shipmentStatus,
-      shipmentStatusLabelBn: shipmentStatus ? SHIPMENT_STATUS_LABELS_BN[shipmentStatus] : null,
+      shipmentStatusLabelBn: shipmentStatus ? shipmentLabels[shipmentStatus] : null,
       parcels,
       shipmentSource: "order-status",
       kitchen: kitchenView,
       workflowStage,
-      timeline: buildTimeline(order),
+      timeline: buildTimeline(order, locale),
       createdAt: order.createdAt,
     },
   };

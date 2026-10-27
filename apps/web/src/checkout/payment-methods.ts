@@ -149,3 +149,8 @@ export const ADAPTER_NOT_BUILT_BN = "অ্যাডাপ্টার তৈর
  */
 export const PAYMENT_NOT_LIVE_MESSAGE_BN =
   "এই পেমেন্ট পদ্ধতি এখনো চালু হয়নি — তবে আপনার অর্ডারটি গৃহীত হয়েছে। পেমেন্টের জন্য আমাদের টিম ফোনে যোগাযোগ করবে।";
+
+/** English twin of PAYMENT_NOT_LIVE_MESSAGE_BN (doc 30): the checkout
+ *  confirmation picks BN/EN by the visitor's resolved locale. */
+export const PAYMENT_NOT_LIVE_MESSAGE_EN =
+  "This payment method isn't live yet — but your order has been received. Our team will contact you by phone about payment.";

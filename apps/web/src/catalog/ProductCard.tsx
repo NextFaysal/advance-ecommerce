@@ -16,13 +16,12 @@ import { toggleWishlistId } from "./wishlist";
 import { useDigitText } from "@/components/ui/numerals";
 import type { PublicProduct } from "./types";
 import { minVariantPricePoisha } from "./types";
-import {
-  PRODUCT_TYPE_BADGE_LABEL,
-  productTypeOf,
-  type PublicProductWithTypeFields,
-} from "./product-type-contract";
+import { productTypeOf, type PublicProductWithTypeFields } from "./product-type-contract";
 import { AddToCartButton } from "@/cart/components/AddToCartButton";
 import { QuickView } from "./QuickView";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { CATALOG_STRINGS } from "./strings";
 
 function StarIcon({ filled }: { filled: boolean }) {
   return (
@@ -82,6 +81,8 @@ function BagIcon() {
 // shape), so a full admin Product cannot be passed here by accident:
 // cost prices can never ride this component's serialized props.
 export function ProductCard({ product }: { product: PublicProduct }) {
+  const { locale, t } = useLocale();
+  const s = pick(locale, CATALOG_STRINGS);
   const digits = useDigitText();
   const [wishlisted, setWishlisted] = useState(false);
   const [showQuickView, setShowQuickView] = useState(false);
@@ -112,7 +113,16 @@ export function ProductCard({ product }: { product: PublicProduct }) {
   // including every product while the module flag is off — renders
   // exactly as before.
   const cardType = productTypeOf(product as PublicProductWithTypeFields);
-  const typeBadgeLabel = cardType !== "SIMPLE" ? PRODUCT_TYPE_BADGE_LABEL[cardType] : null;
+  // Badge labels localised here (the contract module's
+  // PRODUCT_TYPE_BADGE_LABEL is bn-only and outside this slice).
+  const typeBadgeLabel =
+    cardType === "DIGITAL"
+      ? s.badgeDigital
+      : cardType === "BUNDLE"
+        ? s.badgeBundle
+        : cardType === "PREORDER"
+          ? s.badgePreorder
+          : null;
   const typeBadgeCls =
     cardType === "DIGITAL" ? "bg-violet-600" : cardType === "BUNDLE" ? "bg-amber-600" : "bg-sky-600";
 
@@ -121,7 +131,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
       {/* Wishlist — overlay, outside the product link so it stays clickable */}
       <button
         type="button"
-        aria-label={wishlisted ? "উইশলিস্ট থেকে সরান" : "উইশলিস্টে যোগ করুন"}
+        aria-label={wishlisted ? s.wishlistRemove : s.wishlistAdd}
         aria-pressed={wishlisted}
         onClick={() => {
           toggleWishlistId(product.id);
@@ -142,7 +152,10 @@ export function ProductCard({ product }: { product: PublicProduct }) {
             // renders instead of the full-resolution original.
             <Image
               src={imageUrl}
-              alt={product.images[0]?.altBn ?? product.title.bn}
+              alt={
+                (locale === "bn" ? product.images[0]?.altBn : product.images[0]?.altEn) ??
+                product.title[locale]
+              }
               fill
               sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
               loading="lazy"
@@ -175,7 +188,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
           ) : null}
           {!inStock ? (
             <span className="absolute bottom-2.5 left-2.5 rounded-full bg-text-main/85 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-sm">
-              স্টক শেষ
+              {t.outOfStock}
             </span>
           ) : null}
         </div>
@@ -187,9 +200,12 @@ export function ProductCard({ product }: { product: PublicProduct }) {
             </p>
           ) : null}
           <h3 className="mt-0.5 line-clamp-2 min-h-[2.6em] break-words text-sm font-semibold leading-snug text-text-main [overflow-wrap:anywhere]">
-            {product.title.bn}
+            {product.title[locale]}
           </h3>
-          <p className="mt-1.5 flex items-center gap-1" aria-label={`রেটিং ${rating} / ৫`}>
+          <p
+            className="mt-1.5 flex items-center gap-1"
+            aria-label={interpolate(s.ratingLabel, { rating })}
+          >
             {[1, 2, 3, 4, 5].map((i) => (
               <StarIcon key={i} filled={i <= fullStars} />
             ))}
@@ -198,9 +214,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
             </span>
           </p>
           {priceOnRequest ? (
-            <p className="mt-2 text-base font-extrabold text-primary">
-              দামের জন্য যোগাযোগ করুন
-            </p>
+            <p className="mt-2 text-base font-extrabold text-primary">{s.priceOnRequest}</p>
           ) : (
           <p className="mt-2 flex flex-wrap items-baseline gap-x-2">
             <span className="text-base font-extrabold tabular-nums text-primary">{digits(formatBdt(price))}</span>
@@ -210,7 +224,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
           </p>
           )}
           <p className={`mt-1 text-xs font-medium ${inStock ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-            {inStock ? "স্টকে আছে" : "স্টক শেষ"}
+            {inStock ? t.inStock : t.outOfStock}
           </p>
         </div>
       </Link>
@@ -237,7 +251,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
           aria-haspopup="dialog"
           className="min-h-[44px] rounded-xl border border-border px-3 py-2 text-sm font-medium text-text-muted transition duration-200 hover:border-input hover:bg-surface-2 hover:text-text-main active:scale-[0.98]"
         >
-          ঝটপট দেখুন
+          {s.quickView}
         </button>
       </div>
 

@@ -6,6 +6,8 @@ import StorefrontShell from "./storefront-shell";
 import ThemeShell from "@/storefront-shell/ThemeShell";
 import ThemeStyleSync from "@/components/ui/theme-style-sync";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
+import { getStoreDefaultLocale } from "@/i18n/server";
+import { LocaleProvider } from "@/i18n/LocaleProvider";
 
 export const metadata: Metadata = {
   title: "Advance Ecommerce — Storefront",
@@ -44,12 +46,29 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     // Database unreachable — fallback gracefully to catalogue defaults
   }
 
+  // Unified language system (doc 30): the store default locale comes from
+  // the `general.locale` setting (owner-set in Admin → Settings). The
+  // visitor's own override lives in the `ae-locale` cookie/localStorage
+  // and is adopted client-side by LocaleProvider (plus a pre-paint script
+  // below for <html lang>), so this layout still never calls cookies()
+  // and pages stay eligible for static rendering / ISR.
+  const defaultLocale = await getStoreDefaultLocale();
+
   // Selected-theme CSS is applied entirely on the client (bootstrap
   // script below + ThemeStyleSync) so this layout never calls cookies()
   // and pages stay eligible for static rendering / ISR.
 
   return (
-    <html lang="bn" suppressHydrationWarning>
+    <html lang={defaultLocale} suppressHydrationWarning>
+      {/* Language bootstrap (doc 30): apply the visitor's stored language
+          to <html lang> BEFORE first paint, mirroring the theme bootstrap
+          below. Keys must stay in sync with src/i18n/locale.ts. */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html:
+            '(function(){try{var l=localStorage.getItem("advance-ecommerce:locale");if(l!=="bn"&&l!=="en"){var m=document.cookie.match(/(?:^|; )ae-locale=([^;]*)/);l=m?decodeURIComponent(m[1]):null}if(l==="bn"||l==="en"){document.documentElement.lang=l}}catch(e){}})();',
+        }}
+      />
       {/* Theme bootstrap (Design v3): apply the stored/system dark-mode
           preference BEFORE first paint so the ThemeToggle never flashes
           light. Must stay in sync with src/components/ui/theme-toggle.tsx
@@ -92,11 +111,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             (store-global catalog data only — still no cookies() in
             this layout) and mounts the ThemeView context the theme
             slot system consumes. Renders no markup of its own. */}
-        <ThemeShell>
-          <StorefrontShell>
-            <TrackingShell>{children}</TrackingShell>
-          </StorefrontShell>
-        </ThemeShell>
+        <LocaleProvider defaultLocale={defaultLocale}>
+          <ThemeShell>
+            <StorefrontShell>
+              <TrackingShell>{children}</TrackingShell>
+            </StorefrontShell>
+          </ThemeShell>
+        </LocaleProvider>
       </body>
     </html>
   );

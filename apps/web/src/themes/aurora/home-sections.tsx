@@ -28,6 +28,10 @@ import { RecentOrdersSection } from "@/marketing/components/RecentOrdersSection"
 import { VisitorIdBootstrap } from "@/marketing/components/VisitorIdBootstrap";
 import { Stars } from "@/reviews/components/Stars";
 import type { HomeSectionsProps } from "../slots";
+import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { getRequestLocale } from "@/i18n/server";
+import { COMMON_STRINGS } from "@/i18n/dictionaries";
+import { AURORA_STRINGS, type AuroraStrings } from "./strings";
 
 /* ---------- small inline icons (Lucide-style, 1.6 stroke) ---------- */
 const iconProps = {
@@ -129,7 +133,17 @@ const CATEGORY_TINTS: ReadonlyArray<{ bg: string; fg: string }> = [
   { bg: "bg-teal-50", fg: "text-teal-700" },
 ];
 
-function CategoryTile({ category, index }: { category: Category; index: number }) {
+function CategoryTile({
+  category,
+  index,
+  locale,
+  s,
+}: {
+  category: Category;
+  index: number;
+  locale: Locale;
+  s: AuroraStrings;
+}) {
   const tint = CATEGORY_TINTS[index % CATEGORY_TINTS.length];
   return (
     <Link
@@ -140,50 +154,36 @@ function CategoryTile({ category, index }: { category: Category; index: number }
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={category.imageUrl}
-          alt={category.name.bn}
+          alt={category.name[locale]}
           loading="lazy"
           className="h-12 w-12 shrink-0 rounded-xl object-cover"
         />
       ) : (
         <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/80 text-lg font-extrabold text-text-main shadow-sm">
-          {category.name.bn.charAt(0)}
+          {category.name[locale].charAt(0)}
         </span>
       )}
       <span className="min-w-0">
-        <span className={`block truncate text-[15px] font-bold ${tint.fg}`}>{category.name.bn}</span>
-        <span className="mt-0.5 block text-xs text-text-muted">{category.productCount}টি পণ্য</span>
+        <span className={`block truncate text-[15px] font-bold ${tint.fg}`}>{category.name[locale]}</span>
+        <span className="mt-0.5 block text-xs text-text-muted">{interpolate(s.categoryProductCount, { count: category.productCount })}</span>
       </span>
     </Link>
   );
 }
 
-const TRUST_ITEMS = [
-  {
-    icon: <CashIcon />,
-    title: "ক্যাশ অন ডেলিভারি",
-    text: "পণ্য হাতে পেয়ে নিশ্চিন্তে মূল্য পরিশোধ করুন।",
-  },
-  {
-    icon: <TruckIcon />,
-    title: "সারাদেশে হোম ডেলিভারি",
-    text: "ঢাকা থেকে জেলা-উপজেলা — ঘরে বসেই পণ্য পৌঁছে যাবে।",
-  },
-  {
-    icon: <ReturnIcon />,
-    title: "সহজ রিটার্ন",
-    text: "পণ্যে সমস্যা থাকলে সহজ শর্তে রিটার্ন ও রিফান্ড।",
-  },
-  {
-    icon: <ShieldIcon />,
-    title: "১০০% অরিজিনাল পণ্য",
-    text: "প্রতিটি পণ্য যাচাই করে তারপর আপনার কাছে পাঠাই।",
-  },
-] as const;
+function buildTrustItems(s: AuroraStrings) {
+  return [
+    { icon: <CashIcon />, title: s.trustCodTitle, text: s.trustCodText },
+    { icon: <TruckIcon />, title: s.trustDeliveryTitle, text: s.trustDeliveryText },
+    { icon: <ReturnIcon />, title: s.trustReturnTitle, text: s.trustReturnText },
+    { icon: <ShieldIcon />, title: s.trustOriginalTitle, text: s.trustOriginalText },
+  ];
+}
 
 /* Hero right-column visual — layered brand cards over the aurora
    background (Design v3, A+); no fake products. Shared by the static
    hero and the CMS campaign slider (as its no-image fallback). */
-function HeroVisual() {
+function HeroVisual({ s }: { s: AuroraStrings }) {
   return (
     <div className="aurora relative hidden min-h-[320px] overflow-hidden rounded-3xl p-6 shadow-md lg:block" aria-hidden="true">
       <div className="absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/15" />
@@ -191,28 +191,32 @@ function HeroVisual() {
       <div className="relative flex h-full flex-col justify-between gap-4">
         <div className="w-56 rounded-2xl bg-white/95 p-4 shadow-lg">
           <p className="flex items-center gap-2 text-sm font-bold text-[#1F2037]">
-            <span className="text-primary"><CashIcon size={20} /></span> ক্যাশ অন ডেলিভারি
+            <span className="text-primary"><CashIcon size={20} /></span> {s.trustCodTitle}
           </p>
-          <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">পণ্য হাতে পেয়ে টাকা দিন — কোনো অগ্রিম ঝামেলা নেই।</p>
+          <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">{s.heroCodText}</p>
         </div>
         <div className="ml-auto w-60 rounded-2xl bg-white/95 p-4 shadow-lg">
           <p className="flex items-center gap-2 text-sm font-bold text-[#1F2037]">
-            <span className="text-primary"><TruckIcon size={20} /></span> দ্রুত ডেলিভারি
+            <span className="text-primary"><TruckIcon size={20} /></span> {s.heroFastDeliveryTitle}
           </p>
-          <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">সারাদেশের সব জেলায় নির্ভরযোগ্য কুরিয়ার পার্টনার।</p>
+          <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">{s.heroDeliveryText}</p>
         </div>
         <div className="w-52 rounded-2xl bg-white/95 p-4 shadow-lg">
           <p className="flex items-center gap-2 text-sm font-bold text-[#1F2037]">
-            <span className="text-primary"><ShieldIcon size={20} /></span> যাচাইকৃত মান
+            <span className="text-primary"><ShieldIcon size={20} /></span> {s.heroQualityTitle}
           </p>
-          <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">প্রতিটি অর্ডার পাঠানোর আগে মান যাচাই করা হয়।</p>
+          <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">{s.heroQualityText}</p>
         </div>
       </div>
     </div>
   );
 }
 
-export default function AuroraHomeSections({
+export default function AuroraHomeSections(props: HomeSectionsProps) {
+  return <AuroraHomeSectionsInner {...props} />;
+}
+
+async function AuroraHomeSectionsInner({
   products,
   categories,
   heroSlides,
@@ -221,6 +225,10 @@ export default function AuroraHomeSections({
   experimentActive,
   heroStats,
 }: HomeSectionsProps) {
+  const locale = await getRequestLocale();
+  const t = pick(locale, COMMON_STRINGS);
+  const s = pick(locale, AURORA_STRINGS);
+  const trustItems = buildTrustItems(s);
   // Flash sale = products whose default purchasable variant carries a
   // compare-at price. Derived from the same fetch — no extra query.
   const flashProducts = products.filter((p) =>
@@ -234,7 +242,7 @@ export default function AuroraHomeSections({
         /* CMS campaign slides (Admin → Content) replace the static
            hero copy while at least one slide is active. The A/B
            override never applied while slides exist — unchanged. */
-        <HeroSlides slides={heroSlides} visual={<HeroVisual />} stats={heroStats} />
+        <HeroSlides slides={heroSlides} visual={<HeroVisual s={s} />} stats={heroStats} />
       ) : (
       <section className="brand-soft-gradient mt-5 overflow-hidden rounded-3xl shadow-sm">
         <div className="grid items-center gap-8 p-6 sm:p-10 lg:grid-cols-2 lg:p-12">
@@ -244,9 +252,9 @@ export default function AuroraHomeSections({
                 experiment is running. heroStats stays a
                 server-rendered child. */}
             <HeroExperiment
-              headline="সারাদেশে হোম ডেলিভারি, পছন্দের সব পণ্য"
-              sub="ফ্যাশন, ইলেকট্রনিক্স, ঘরোয়া পণ্য ও আরও অনেক কিছু — যাচাই করা অরিজিনাল পণ্য, সেরা দামে, ঘরে বসে অর্ডার করুন বাংলায়।"
-              ctaLabel="কেনাকাটা শুরু করুন"
+              headline={s.heroHeadline}
+              sub={s.heroSub}
+              ctaLabel={s.heroCta}
               ctaHref="/shop"
               experimentActive={experimentActive}
             >
@@ -254,7 +262,7 @@ export default function AuroraHomeSections({
             </HeroExperiment>
           </div>
 
-          <HeroVisual />
+          <HeroVisual s={s} />
         </div>
       </section>
       )}
@@ -280,8 +288,8 @@ export default function AuroraHomeSections({
 
       {/* ---------- Trust row ---------- */}
       <Reveal delay={60}>
-      <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="আমাদের সুবিধা">
-        {TRUST_ITEMS.map((item) => (
+      <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={s.benefitsAria}>
+        {trustItems.map((item) => (
           <div key={item.title} className="flex gap-3.5 rounded-2xl border border-border bg-card p-4 shadow-sm">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
               {item.icon}
@@ -299,10 +307,10 @@ export default function AuroraHomeSections({
       {categories.length > 0 ? (
         <Reveal delay={120}>
         <section className="mt-12">
-          <SectionHeading eyebrow="ক্যাটাগরি" title="পছন্দ অনুযায়ী কিনুন" href="/shop" linkLabel="সব পণ্য দেখুন" />
+          <SectionHeading eyebrow={t.categories} title={s.shopByPreference} href="/shop" linkLabel={s.viewAllProducts} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {categories.map((c, i) => (
-              <CategoryTile key={c.slug} category={c} index={i} />
+              <CategoryTile key={c.slug} category={c} index={i} locale={locale} s={s} />
             ))}
           </div>
         </section>
@@ -313,7 +321,7 @@ export default function AuroraHomeSections({
       {flashProducts.length > 0 ? (
         <Reveal delay={60}>
         <section className="mt-12">
-          <SectionHeading eyebrow="সীমিত সময়ের অফার" title="ফ্ল্যাশ সেল" href="/shop" linkLabel="সব অফার দেখুন" />
+          <SectionHeading eyebrow={s.limitedTimeOffer} title={s.flashSale} href="/shop" linkLabel={s.viewAllOffers} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {flashProducts.slice(0, 4).map((p) => (
               <ThemedProductCard key={p.id} product={p} />
@@ -327,7 +335,7 @@ export default function AuroraHomeSections({
       {products.length > 0 ? (
         <Reveal delay={120}>
         <section className="mt-12">
-          <SectionHeading eyebrow="বাছাই করা" title="জনপ্রিয় পণ্য" href="/shop" linkLabel="সব দেখুন" />
+          <SectionHeading eyebrow={s.featuredEyebrow} title={s.popularProducts} href="/shop" linkLabel={t.viewAll} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {products.map((p) => (
               <ThemedProductCard key={p.id} product={p} />
@@ -340,9 +348,9 @@ export default function AuroraHomeSections({
       {/* ---------- Why us (inverse band) ---------- */}
       <Reveal delay={60}>
       <section className="mt-14 rounded-3xl bg-foreground px-6 py-10 shadow-md sm:px-10">
-        <SectionHeading eyebrow="কেন আমরাই" title="আস্থার সাথে কেনাকাটা" inverse />
+        <SectionHeading eyebrow={s.whyUsEyebrow} title={s.shopWithTrust} inverse />
         <div className="mt-7 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {TRUST_ITEMS.map((item) => (
+          {trustItems.map((item) => (
             <div key={item.title}>
               <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-background/10 text-background">
                 {item.icon}
@@ -357,13 +365,13 @@ export default function AuroraHomeSections({
             href="/shop"
             className="rounded-xl bg-background px-5 py-3 text-sm font-bold text-foreground shadow-sm transition hover:bg-secondary"
           >
-            এখনই কেনাকাটা করুন
+            {s.shopNowCta}
           </Link>
           <Link
             href="/track"
             className="rounded-xl border border-background/30 px-5 py-3 text-sm font-bold text-background transition hover:bg-background/10"
           >
-            অর্ডার ট্র্যাক করুন
+            {t.trackOrder}
           </Link>
         </div>
       </section>
@@ -376,7 +384,7 @@ export default function AuroraHomeSections({
       {customerReviews.length > 0 ? (
         <Reveal delay={120}>
         <section className="mt-14">
-          <SectionHeading eyebrow="কাস্টমারদের কথা" title="যারা কিনেছেন, তারা বলছেন" />
+          <SectionHeading eyebrow={s.customerWordsEyebrow} title={s.customersSayTitle} />
           <div className="mt-5 grid gap-3 md:grid-cols-3">
             {customerReviews.map((r) => (
               <figure key={r.id} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
@@ -387,7 +395,7 @@ export default function AuroraHomeSections({
                 <figcaption className="mt-4 text-sm">
                   <span className="font-bold text-text-main">{r.authorName}</span>
                   <span className="text-text-subtle">
-                    {" "}— পণ্য:{" "}
+                    {" "}— {s.reviewProductLabel}{" "}
                     <Link href={`/product/${r.productSlug}`} className="font-medium text-primary hover:underline">
                       {r.productTitleBn}
                     </Link>
@@ -405,9 +413,9 @@ export default function AuroraHomeSections({
       <section id="newsletter" className="brand-soft-gradient mb-10 mt-14 rounded-3xl px-6 py-10 shadow-sm sm:px-10">
         <div className="grid items-center gap-6 lg:grid-cols-2">
           <div>
-            <h2 className="text-2xl font-extrabold leading-tight text-text-main">অফারের খবর সবার আগে পান</h2>
+            <h2 className="text-2xl font-extrabold leading-tight text-text-main">{s.newsletterTitle}</h2>
             <p className="mt-2 max-w-md text-sm leading-6 text-text-muted">
-              নতুন পণ্য, ফ্ল্যাশ সেল আর বিশেষ ছাড়ের খবর সরাসরি আপনার ইমেইলে। স্প্যাম পাঠাই না — শুধু দরকারি অফার।
+              {s.newsletterText}
             </p>
           </div>
           {/* Real subscribe form → POST /api/v1/public/newsletter

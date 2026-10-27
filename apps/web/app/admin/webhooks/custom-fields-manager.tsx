@@ -19,6 +19,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CustomFieldDefinition, CustomFieldType } from "@/extensibility/types";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { WEBHOOKS_STRINGS } from "./strings";
 
 const ENTITIES = ["product", "customer", "order"] as const;
 const TYPES: CustomFieldType[] = [
@@ -31,11 +34,7 @@ const TYPES: CustomFieldType[] = [
   "select",
   "multiselect",
 ];
-const ENTITY_LABEL: Record<string, string> = {
-  product: "পণ্য (Product)",
-  customer: "ক্রেতা (Customer)",
-  order: "অর্ডার (Order)",
-};
+
 const SELECT_CLASS = "rounded-md border border-border bg-card px-2 py-1.5 text-small";
 const LBL = "mb-1 block text-caption text-text-subtle";
 
@@ -81,6 +80,13 @@ function fromDraft(draft: DraftDef): CustomFieldDefinition {
 let newIdCounter = 0;
 
 export function CustomFieldsManager() {
+  const { locale } = useLocale();
+  const s = pick(locale, WEBHOOKS_STRINGS);
+  const ENTITY_LABEL: Record<string, string> = {
+    product: s.cfEntityProduct,
+    customer: s.cfEntityCustomer,
+    order: s.cfEntityOrder,
+  };
   const [drafts, setDrafts] = useState<DraftDef[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -94,17 +100,17 @@ export function CustomFieldsManager() {
     try {
       const res = await fetch("/api/v1/admin/custom-fields");
       if (!res.ok) {
-        setLoadError("সংজ্ঞা লোড করা যায়নি (পারমিশন: settings.integrations)।");
+        setLoadError(s.cfLoadFailed);
         return;
       }
       const json = (await res.json()) as { data?: { definitions: CustomFieldDefinition[] } };
       setDrafts((json.data?.definitions ?? []).map(toDraft));
     } catch {
-      setLoadError("নেটওয়ার্ক ত্রুটি — সংজ্ঞা লোড হয়নি।");
+      setLoadError(s.cfNetworkLoadFailed);
     } finally {
       setLoaded(true);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load();
@@ -152,14 +158,14 @@ export function CustomFieldsManager() {
       };
       if (!res.ok) {
         setProblems(json.error?.details ?? []);
-        setError(json.error?.message ?? "সংরক্ষণ ব্যর্থ হয়েছে।");
+        setError(json.error?.message ?? s.cfSaveFailed);
         return;
       }
       if (json.data) setDrafts(json.data.definitions.map(toDraft));
       setReason("");
-      setNotice("সংজ্ঞা সংরক্ষিত হয়েছে। মান (values) প্রতিটি পণ্য/ক্রেতা/অর্ডারের নিজের স্ক্রিনে বসাতে হয়।");
+      setNotice(s.cfSaved);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+      setError(s.cfNetworkError);
     } finally {
       setBusy(false);
     }
@@ -167,12 +173,10 @@ export function CustomFieldsManager() {
 
   return (
     <section className="rounded-lg border border-border bg-surface-2/50 px-4 py-4">
-      <h2 className="text-body font-semibold text-text-main">কাস্টম ফিল্ড (Custom Fields)</h2>
+      <h2 className="text-body font-semibold text-text-main">{s.cfTitle}</h2>
       <p className="mt-1 text-small text-text-muted">
-        পণ্য / ক্রেতা / অর্ডারের উপর মার্চেন্ট-সংজ্ঞায়িত অতিরিক্ত ফিল্ড। সংজ্ঞা এখানে বানান —
-        মান বসান প্রতিটি এনটিটির নিজের অ্যাডমিন স্ক্রিনে। মান থাকলে partner API-তেও{" "}
-        <span className="font-mono text-xs">customFields</span> হিসেবে যায়। কোনো সংজ্ঞা না থাকলে
-        কোথাও কিছুই বদলায় না।
+        {s.cfDescBefore}
+        <span className="font-mono text-xs">customFields</span>{s.cfDescAfter}
       </p>
 
       {loadError ? (
@@ -180,7 +184,7 @@ export function CustomFieldsManager() {
       ) : null}
 
       {loaded && !loadError && drafts.length === 0 ? (
-        <p className="mt-3 text-small text-text-muted">এখনো কোনো কাস্টম ফিল্ড সংজ্ঞায়িত নেই।</p>
+        <p className="mt-3 text-small text-text-muted">{s.cfEmpty}</p>
       ) : null}
 
       <div className="mt-3 space-y-3">
@@ -188,7 +192,7 @@ export function CustomFieldsManager() {
           <div key={draft.id} className="rounded-md border border-border bg-card px-3 py-3">
             <div className="flex flex-wrap gap-3">
               <label className="block">
-                <span className={LBL}>এনটিটি</span>
+                <span className={LBL}>{s.cfFieldEntity}</span>
                 <select
                   value={draft.entity}
                   onChange={(e) => patch(index, { entity: e.target.value as DraftDef["entity"] })}
@@ -200,16 +204,16 @@ export function CustomFieldsManager() {
                 </select>
               </label>
               <label className="block">
-                <span className={LBL}>কী (snake_case)</span>
+                <span className={LBL}>{s.cfFieldKey}</span>
                 <Input
                   value={draft.key}
                   onChange={(e) => patch(index, { key: e.target.value })}
                   className="w-44 font-mono"
-                  placeholder="যেমন: warranty_months"
+                  placeholder={s.cfKeyPlaceholder}
                 />
               </label>
               <label className="block">
-                <span className={LBL}>ধরন</span>
+                <span className={LBL}>{s.cfFieldType}</span>
                 <select
                   value={draft.type}
                   onChange={(e) => patch(index, { type: e.target.value as CustomFieldType })}
@@ -221,18 +225,18 @@ export function CustomFieldsManager() {
                 </select>
               </label>
               <label className="block grow">
-                <span className={LBL}>লেবেল (বাংলা)</span>
+                <span className={LBL}>{s.cfFieldLabelBn}</span>
                 <Input value={draft.labelBn} onChange={(e) => patch(index, { labelBn: e.target.value })} className="w-full min-w-40" />
               </label>
               <label className="block grow">
-                <span className={LBL}>লেবেল (English)</span>
+                <span className={LBL}>{s.cfFieldLabelEn}</span>
                 <Input value={draft.labelEn} onChange={(e) => patch(index, { labelEn: e.target.value })} className="w-full min-w-40" />
               </label>
             </div>
             <div className="mt-2 flex flex-wrap items-end gap-3">
               {draft.type === "select" || draft.type === "multiselect" ? (
                 <label className="block grow">
-                  <span className={LBL}>অপশন (কমা দিয়ে)</span>
+                  <span className={LBL}>{s.cfFieldOptions}</span>
                   <Input
                     value={draft.optionsText}
                     onChange={(e) => patch(index, { optionsText: e.target.value })}
@@ -244,23 +248,23 @@ export function CustomFieldsManager() {
               {draft.type === "integer" || draft.type === "number_poisha" ? (
                 <>
                   <label className="block">
-                    <span className={LBL}>সর্বনিম্ন</span>
+                    <span className={LBL}>{s.cfFieldMin}</span>
                     <Input type="number" value={draft.minText} onChange={(e) => patch(index, { minText: e.target.value })} className="w-24" />
                   </label>
                   <label className="block">
-                    <span className={LBL}>সর্বোচ্চ</span>
+                    <span className={LBL}>{s.cfFieldMax}</span>
                     <Input type="number" value={draft.maxText} onChange={(e) => patch(index, { maxText: e.target.value })} className="w-24" />
                   </label>
                 </>
               ) : null}
               {draft.type === "text" || draft.type === "textarea" ? (
                 <label className="block">
-                  <span className={LBL}>সর্বোচ্চ দৈর্ঘ্য</span>
+                  <span className={LBL}>{s.cfFieldMaxLength}</span>
                   <Input type="number" value={draft.maxLengthText} onChange={(e) => patch(index, { maxLengthText: e.target.value })} className="w-24" />
                 </label>
               ) : null}
               <label className="block">
-                <span className={LBL}>ক্রম</span>
+                <span className={LBL}>{s.cfFieldSort}</span>
                 <Input
                   type="number"
                   value={String(draft.sortOrder)}
@@ -270,20 +274,20 @@ export function CustomFieldsManager() {
               </label>
               <label className="flex items-center gap-1.5 pb-1.5 text-small">
                 <input type="checkbox" checked={draft.required} onChange={(e) => patch(index, { required: e.target.checked })} />
-                আবশ্যক
+                {s.cfRequired}
               </label>
               <label className="flex items-center gap-1.5 pb-1.5 text-small">
                 <input type="checkbox" checked={draft.adminOnly} onChange={(e) => patch(index, { adminOnly: e.target.checked })} />
-                শুধু অ্যাডমিনে
+                {s.cfAdminOnly}
               </label>
-              <Button size="sm" variant="outline" onClick={() => remove(index)}>মুছুন</Button>
+              <Button size="sm" variant="outline" onClick={() => remove(index)}>{s.cfDeleteBtn}</Button>
             </div>
           </div>
         ))}
       </div>
 
       <div className="mt-3">
-        <Button size="sm" variant="outline" onClick={add}>+ নতুন ফিল্ড</Button>
+        <Button size="sm" variant="outline" onClick={add}>{s.cfAddBtn}</Button>
       </div>
 
       {problems.length > 0 ? (
@@ -298,11 +302,11 @@ export function CustomFieldsManager() {
 
       <div className="mt-3 flex flex-wrap items-end gap-2">
         <label className="block grow">
-          <span className={LBL}>কারণ (অডিটের জন্য আবশ্যক)</span>
-          <Input value={reason} onChange={(e) => setReason(e.target.value)} className="w-full" placeholder="কেন বদলাচ্ছেন?" />
+          <span className={LBL}>{s.cfReasonLabel}</span>
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} className="w-full" placeholder={s.cfReasonPlaceholder} />
         </label>
         <Button onClick={() => void save()} disabled={busy || !loaded || reason.trim() === ""}>
-          {busy ? "সংরক্ষণ হচ্ছে…" : "সব সংজ্ঞা সংরক্ষণ"}
+          {busy ? s.cfSaving : s.cfSaveBtn}
         </Button>
       </div>
     </section>

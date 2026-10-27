@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { intlLocale, pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
 
 interface ErpPeriodItem {
   id?: string;
@@ -14,6 +17,8 @@ interface Props {
 }
 
 export function ErpPeriodManager({ initialPeriods }: Props) {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
   const router = useRouter();
   const [periods, setPeriods] = useState<ErpPeriodItem[]>(initialPeriods);
   const [newPeriod, setNewPeriod] = useState("");
@@ -35,7 +40,7 @@ export function ErpPeriodManager({ initialPeriods }: Props) {
       const json = await res.json() as { data?: { code: string; lockedAt: string | null }; error?: { message: string } };
 
       if (!res.ok) {
-        setError(json.error?.message || "হালনাগাদ করা যায়নি।");
+        setError(json.error?.message || s.erpUpdateFailed);
         return;
       }
 
@@ -49,7 +54,7 @@ export function ErpPeriodManager({ initialPeriods }: Props) {
 
       router.refresh();
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি। আবার চেষ্টা করুন।");
+      setError(s.erpNetworkError);
     } finally {
       setLoading(false);
     }
@@ -58,7 +63,7 @@ export function ErpPeriodManager({ initialPeriods }: Props) {
   function handleCreatePeriod(e: React.FormEvent) {
     e.preventDefault();
     if (!/^\d{4}-\d{2}$/.test(newPeriod)) {
-      setError("পিরিয়ড ফরম্যাট YYYY-MM হতে হবে (যেমন: 2026-10)।");
+      setError(s.erpFormatError);
       return;
     }
     toggleLock(newPeriod, true);
@@ -69,9 +74,9 @@ export function ErpPeriodManager({ initialPeriods }: Props) {
     <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
         <div>
-          <h3 className="text-base font-bold text-text-main">হিসাব পিরিয়ড ও লক ব্যবস্থাপনা</h3>
+          <h3 className="text-base font-bold text-text-main">{s.erpTitle}</h3>
           <p className="text-xs text-text-muted">
-            লক করা মাসে কোনো পূর্ববর্তী ব্যাকডেটেড জার্নাল এন্ট্রি পোস্ট করা নিষিদ্ধ।
+            {s.erpDesc}
           </p>
         </div>
 
@@ -89,7 +94,7 @@ export function ErpPeriodManager({ initialPeriods }: Props) {
             disabled={loading}
             className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-90 disabled:opacity-50"
           >
-            + পিরিয়ড লক
+            {s.erpAddLock}
           </button>
         </form>
       </div>
@@ -112,11 +117,11 @@ export function ErpPeriodManager({ initialPeriods }: Props) {
                     isLocked ? "bg-destructive/15 text-destructive" : "bg-success/15 text-success"
                   }`}
                 >
-                  {isLocked ? "🔒 লকড (বন্ধ)" : "🔓 ওপেন (খোলা)"}
+                  {isLocked ? s.erpLocked : s.erpOpen}
                 </span>
                 {isLocked && p.lockedAt && (
                   <span className="text-[11px] text-text-muted">
-                    লক হয়েছে: {new Date(p.lockedAt).toLocaleDateString("bn-BD")}
+                    {s.erpLockedAt}: {new Date(p.lockedAt).toLocaleDateString(intlLocale(locale))}
                   </span>
                 )}
               </div>
@@ -131,7 +136,7 @@ export function ErpPeriodManager({ initialPeriods }: Props) {
                     : "border border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20"
                 }`}
               >
-                {isLocked ? "আনলক করুন" : "লক করুন"}
+                {isLocked ? s.erpUnlock : s.erpLock}
               </button>
             </div>
           );
@@ -139,7 +144,7 @@ export function ErpPeriodManager({ initialPeriods }: Props) {
 
         {periods.length === 0 && (
           <p className="py-4 text-center text-xs text-text-muted">
-            কোনো সংরক্ষিত হিসাব পিরিয়ড নেই। উপরের ফর্ম দিয়ে বর্তমান মাস যুক্ত ও লক করতে পারেন।
+            {s.erpEmpty}
           </p>
         )}
       </div>

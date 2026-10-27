@@ -125,6 +125,12 @@ export async function POST(req: Request) {
   if (!isKnownSettingKey(parsed.data.key)) {
     return err("UNKNOWN_SETTING_KEY", `Unknown setting key: ${parsed.data.key}`, 400);
   }
+  // Doc 30: the store default language only ever holds a real locale —
+  // anything else would silently fall back at render time and confuse
+  // the owner about which language the store is actually running in.
+  if (parsed.data.key === "general.locale" && parsed.data.value !== "bn" && parsed.data.value !== "en") {
+    return err("VALIDATION_ERROR", "general.locale must be \"bn\" or \"en\".", 400);
+  }
   try {
     await setSetting({
       key: parsed.data.key,

@@ -13,7 +13,9 @@
  */
 import { prisma } from "@advance-ecommerce/db";
 import { normalizeBdPhone } from "@advance-ecommerce/validators";
+import { pick, type Locale } from "@/i18n/locale";
 import {
+  BACK_IN_STOCK_ERRORS,
   backInStockSignupSchema,
   backInStockToPublic,
   type BackInStockSignupInput,
@@ -38,11 +40,12 @@ function rowToSignup(row: BackInStockRow): BackInStockSignup {
 }
 
 export class PrismaBackInStockStore {
-  async add(input: BackInStockSignupInput): Promise<SignupResult> {
+  async add(input: BackInStockSignupInput, locale: Locale = "bn"): Promise<SignupResult> {
+    const errors = pick(locale, BACK_IN_STOCK_ERRORS);
     const parsed = backInStockSignupSchema.safeParse(input);
-    if (!parsed.success) return { ok: false, error: "সঠিক তথ্য দিন।" };
+    if (!parsed.success) return { ok: false, error: errors.invalidInfo };
     const phone = normalizeBdPhone(parsed.data.phone);
-    if (!phone) return { ok: false, error: "সঠিক মোবাইল নম্বর দিন (01XXXXXXXXX)।" };
+    if (!phone) return { ok: false, error: errors.invalidPhone };
     const where = {
       productId: parsed.data.productId,
       variantId: parsed.data.variantId,

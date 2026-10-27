@@ -10,6 +10,9 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { formatBdt } from "@/checkout/pricing";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick } from "@/i18n/locale";
+import { VENDORS_STRINGS } from "./strings";
 
 interface AdminVendorPayoutRow {
   id: string;
@@ -24,14 +27,12 @@ interface AdminVendorPayoutRow {
   createdAt: string;
 }
 
-const STATUS_BN: Record<AdminVendorPayoutRow["status"], string> = {
-  PENDING: "অপেক্ষমান",
-  APPROVED: "অনুমোদিত",
-  PAID: "পেইড (বাইরে পেমেন্ট রেকর্ড)",
-  REJECTED: "প্রত্যাখ্যাত",
-};
+
 
 export default function VendorPayoutActions() {
+  const { locale } = useLocale();
+  const s = pick(locale, VENDORS_STRINGS);
+  const STATUS_LABEL: Record<AdminVendorPayoutRow["status"], string> = { PENDING: s.payStatusPending, APPROVED: s.payStatusApproved, PAID: s.payStatusPaid, REJECTED: s.payStatusRejected };
   const [rows, setRows] = useState<AdminVendorPayoutRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,13 +49,13 @@ export default function VendorPayoutActions() {
         error?: { message?: string };
       };
       if (!res.ok) {
-        setError(body.error?.message ?? "পে-আউট তালিকা লোড করা যায়নি।");
+        setError(body.error?.message ?? s.payoutLoadFailed);
         setRows([]);
         return;
       }
       setRows(body.data?.requests ?? []);
     } catch {
-      setError("পে-আউট তালিকা লোড করা যায়নি — সংযোগ পরীক্ষা করুন।");
+      setError(s.payoutLoadFailedConn);
     } finally {
       setLoading(false);
     }
@@ -78,10 +79,10 @@ export default function VendorPayoutActions() {
         }),
       });
       const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-      if (!res.ok) setError(body.error?.message ?? "সিদ্ধান্ত সংরক্ষণ করা যায়নি।");
+      if (!res.ok) setError(body.error?.message ?? s.decisionFailed);
       else await load();
     } catch {
-      setError("সিদ্ধান্ত সংরক্ষণ করা যায়নি — সংযোগ পরীক্ষা করুন।");
+      setError(s.decisionFailedConn);
     } finally {
       setBusyId(null);
     }
@@ -89,18 +90,17 @@ export default function VendorPayoutActions() {
 
   return (
     <section className="mt-6 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-6">
-      <h2 className="text-lg font-bold text-text-main">ভেন্ডর পে-আউট অনুরোধ</h2>
+      <h2 className="text-lg font-bold text-text-main">{s.payoutPanelTitle}</h2>
       <p className="mt-1 text-xs leading-5 text-text-muted">
-        "পেইড" মানে স্টাফ ভেন্ডরকে সিস্টেমের বাইরে (বিকাশ/নগদ/ব্যাংক) পেমেন্ট করে এখানে রেকর্ড
-        করেছেন — এই প্যানেল থেকে কোনো টাকা পাঠানো হয় না।
+        {s.payoutPanelDesc}
       </p>
       {error ? (
         <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       ) : null}
       {loading ? (
-        <p className="mt-3 text-sm text-text-muted">লোড হচ্ছে…</p>
+        <p className="mt-3 text-sm text-text-muted">{s.loading}</p>
       ) : rows.length === 0 ? (
-        <p className="mt-3 text-sm text-text-muted">এখনো কোনো পে-আউট অনুরোধ নেই।</p>
+        <p className="mt-3 text-sm text-text-muted">{s.noPayouts}</p>
       ) : (
         <ul className="mt-3 divide-y divide-border">
           {rows.map((r) => (
@@ -109,18 +109,18 @@ export default function VendorPayoutActions() {
                 <p className="text-sm font-semibold text-text-main">
                   {r.vendorName} · {formatBdt(r.amountPoisha)} · {r.method}
                 </p>
-                <span className="text-xs font-medium text-text-main">{STATUS_BN[r.status]}</span>
+                <span className="text-xs font-medium text-text-main">{STATUS_LABEL[r.status]}</span>
               </div>
               <p className="mt-0.5 text-xs text-text-muted">
-                {r.vendorPhoneMasked} · {new Date(r.createdAt).toLocaleString("bn-BD")} · অ্যাকাউন্ট: {r.accountNote}
-                {r.note ? <> · ভেন্ডরকে দেখানো নোট: {r.note}</> : null}
+                {r.vendorPhoneMasked} · {new Date(r.createdAt).toLocaleString(intlLocale(locale))} · {interpolate(s.accountLabel, { note: r.accountNote })}
+                {r.note ? <> · {interpolate(s.vendorNoteLabel, { note: r.note })}</> : null}
               </p>
               {r.status === "PENDING" || r.status === "APPROVED" ? (
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <input
                     value={notes[r.id] ?? ""}
                     onChange={(e) => setNotes((prev) => ({ ...prev, [r.id]: e.target.value }))}
-                    placeholder="নোট (ঐচ্ছিক — ভেন্ডর দেখতে পাবেন)"
+                    placeholder={s.notePlaceholderPayout}
                     maxLength={500}
                     className="min-w-[220px] flex-1 rounded-xl border border-border bg-card px-3 py-2 text-sm text-text-main"
                   />
@@ -131,7 +131,7 @@ export default function VendorPayoutActions() {
                       onClick={() => void decide(r, "APPROVED")}
                       className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
                     >
-                      অনুমোদন
+                      {s.approve}
                     </button>
                   ) : (
                     <button
@@ -140,7 +140,7 @@ export default function VendorPayoutActions() {
                       onClick={() => void decide(r, "PAID")}
                       className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
                     >
-                      পেইড (বাইরে পেমেন্ট রেকর্ড)
+                      {s.paidBtn}
                     </button>
                   )}
                   <button
@@ -149,7 +149,7 @@ export default function VendorPayoutActions() {
                     onClick={() => void decide(r, "REJECTED")}
                     className="rounded-xl bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
                   >
-                    প্রত্যাখ্যান
+                    {s.rejectBtn}
                   </button>
                 </div>
               ) : null}

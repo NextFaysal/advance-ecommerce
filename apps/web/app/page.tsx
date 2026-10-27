@@ -9,6 +9,9 @@ import { getThemeSlots, AURORA_SLOTS } from "@/themes/slot-registry";
 import { resolveStorefrontThemeFromStore } from "@/themes/resolution-server";
 import { ThemeBoundary } from "@/themes/theme-boundary";
 import type { HomeSectionsProps } from "@/themes/slots";
+import { pick } from "@/i18n/locale";
+import { getStoreDefaultLocale } from "@/i18n/server";
+import { STORE_STRINGS } from "./(store)/store-strings";
 
 // NOTE on route groups: Next.js forbids both app/page.tsx and app/(store)/page.tsx
 // (both map to "/"). So the storefront home lives HERE, and only shop/product/search
@@ -33,17 +36,25 @@ import type { HomeSectionsProps } from "@/themes/slots";
 // above is unchanged.
 export const revalidate = 60;
 
-export const metadata: Metadata = {
-  title: "Advance Ecommerce — বাংলাদেশের অনলাইন শপ",
-  description: "ফ্যাশন, ইলেকট্রনিক্স ও আরও অনেক কিছু — সারাদেশে হোম ডেলিভারি, ক্যাশ অন ডেলিভারি।",
-  openGraph: {
-    title: "Advance Ecommerce",
-    description: "বাংলাদেশের অনলাইন শপ — হোম ডেলিভারি, COD।",
-    type: "website",
-  },
-};
+// Doc 30: metadata + the hero stat labels follow the STORE DEFAULT
+// locale. ISR-safe — getStoreDefaultLocale reads only the settings
+// store (no cookies/headers), so the static render above is unchanged;
+// the per-visitor override applies to client surfaces after mount.
+export async function generateMetadata(): Promise<Metadata> {
+  const s = pick(await getStoreDefaultLocale(), STORE_STRINGS);
+  return {
+    title: s.homeMetaTitle,
+    description: s.homeMetaDescription,
+    openGraph: {
+      title: "Advance Ecommerce",
+      description: s.homeOgDescription,
+      type: "website",
+    },
+  };
+}
 
 export default async function Home() {
+  const s = pick(await getStoreDefaultLocale(), STORE_STRINGS);
   const [products, categories, heroSlides, customerReviews] = await Promise.all([
     listActivePublicProducts(8),
     listCategories(),
@@ -81,19 +92,19 @@ export default async function Home() {
         <dd className="text-2xl font-extrabold tabular-nums text-text-main">
           <CountUp value={totalProducts} />+
         </dd>
-        <dt className="mt-0.5 text-xs font-medium text-text-muted">পণ্যের কালেকশন</dt>
+        <dt className="mt-0.5 text-xs font-medium text-text-muted">{s.homeStatProducts}</dt>
       </div>
       <div>
         <dd className="text-2xl font-extrabold tabular-nums text-text-main">
           <CountUp value={categories.length} />
         </dd>
-        <dt className="mt-0.5 text-xs font-medium text-text-muted">ক্যাটাগরি</dt>
+        <dt className="mt-0.5 text-xs font-medium text-text-muted">{s.homeStatCategories}</dt>
       </div>
       <div>
         <dd className="text-2xl font-extrabold tabular-nums text-text-main">
           <CountUp value={64} />
         </dd>
-        <dt className="mt-0.5 text-xs font-medium text-text-muted">জেলায় হোম ডেলিভারি</dt>
+        <dt className="mt-0.5 text-xs font-medium text-text-muted">{s.homeStatDistricts}</dt>
       </div>
     </dl>
   ) : null;

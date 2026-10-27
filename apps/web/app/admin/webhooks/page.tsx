@@ -1,6 +1,9 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { WebhooksPanel } from "./webhooks-panel";
 import { CustomFieldsManager } from "./custom-fields-manager";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { WEBHOOKS_STRINGS } from "./strings";
 
 // Webhooks + API keys admin (ADV-26) — developer platform core.
 // Thin shell; the panel is a self-fetching client component over
@@ -10,12 +13,14 @@ import { CustomFieldsManager } from "./custom-fields-manager";
 // at creation and never again.
 export const dynamic = "force-dynamic";
 
-export default function AdminWebhooksPage() {
+export default async function AdminWebhooksPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, WEBHOOKS_STRINGS);
   return (
     <main>
       <PageHeader
-        title="ওয়েবহুক ও API কী"
-        description="আউটবাউন্ড ওয়েবহুক এন্ডপয়েন্ট, ডেলিভারি লগ ও পার্টনার API কী পরিচালনা করুন। সাইনিং সিক্রেট এনক্রিপ্ট করে রাখা হয় এবং তৈরির সময় একবারই দেখা যায়; ডেলিভারি SENT মানেই টার্গেট সত্যিকারে 2xx উত্তর দিয়েছে।"
+        title={s.title}
+        description={s.description}
       />
       <WebhooksPanel />
       {/* Custom-field definitions (ADV-26, wave 53) — same developer-

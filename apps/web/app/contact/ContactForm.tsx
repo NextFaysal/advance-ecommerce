@@ -16,8 +16,10 @@
  * any user-facing text.
  */
 import { useState } from "react";
-import type { ContactContent } from "@/legal/content";
-import type { ContactFormLabels } from "@/contact/labels";
+import { CONTACT_CONTENT } from "@/legal/content";
+import { CONTACT_FORM_LABELS } from "@/contact/labels";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
 
 type FieldName = "name" | "phone" | "email" | "subject" | "message";
 type FieldErrors = Partial<Record<FieldName, string>>;
@@ -52,13 +54,13 @@ const inputClass =
   "mt-1 h-11 w-full rounded-[10px] border border-slate-300 px-3 text-sm outline-none focus:border-[#4F46E5]";
 const errorText = "mt-1 text-xs text-red-600";
 
-export default function ContactForm({
-  content,
-  labels,
-}: {
-  content: ContactContent;
-  labels: ContactFormLabels;
-}) {
+export default function ContactForm() {
+  // Doc 30: labels follow the ACTIVE locale (visitor override → store
+  // default) and switch live with it — the {bn, en} records are selected
+  // by the resolved locale, never pinned to bn.
+  const { locale } = useLocale();
+  const content = pick(locale, CONTACT_CONTENT);
+  const labels = CONTACT_FORM_LABELS[locale];
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");

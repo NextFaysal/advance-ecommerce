@@ -26,6 +26,7 @@ import {
   createSandboxPaymentGateway,
   type SandboxPaymentMethod,
 } from "@/integrations/sandbox/payment-gateway";
+import { pick, type Locale } from "@/i18n/locale";
 
 export const PAYMENT_LINK_STATUS_LABELS_BN: Record<PaymentLinkStatus, string> = {
   active: "পেমেন্ট বাকি আছে",
@@ -34,10 +35,34 @@ export const PAYMENT_LINK_STATUS_LABELS_BN: Record<PaymentLinkStatus, string> = 
   cancelled: "লিংক বাতিল করা হয়েছে",
 };
 
+export const PAYMENT_LINK_STATUS_LABELS_EN: Record<PaymentLinkStatus, string> = {
+  active: "Payment pending",
+  paid: "Payment completed",
+  expired: "Link expired",
+  cancelled: "Link cancelled",
+};
+
+/** Doc 30: locale-keyed label records — pick(locale, …) selects the set. */
+export const PAYMENT_LINK_STATUS_LABELS: Record<Locale, Record<PaymentLinkStatus, string>> = {
+  bn: PAYMENT_LINK_STATUS_LABELS_BN,
+  en: PAYMENT_LINK_STATUS_LABELS_EN,
+};
+
 const PURPOSE_LABELS_BN: Record<string, string> = {
   cod_advance: "অগ্রিম পেমেন্ট (ক্যাশ অন ডেলিভারি)",
   partial: "আংশিক পেমেন্ট",
   due: "বকেয়া পেমেন্ট",
+};
+
+const PURPOSE_LABELS_EN: Record<string, string> = {
+  cod_advance: "Advance payment (Cash on Delivery)",
+  partial: "Partial payment",
+  due: "Due payment",
+};
+
+export const PAYMENT_LINK_PURPOSE_LABELS: Record<Locale, Record<string, string>> = {
+  bn: PURPOSE_LABELS_BN,
+  en: PURPOSE_LABELS_EN,
 };
 
 export interface PayLinkPublicView {
@@ -53,16 +78,24 @@ export interface PayLinkPublicView {
   isPayable: boolean;
 }
 
-export function buildPayLinkPublicView(record: PaymentLinkRecord, now: Date = new Date()): PayLinkPublicView {
+export function buildPayLinkPublicView(
+  record: PaymentLinkRecord,
+  now: Date = new Date(),
+  /** Doc 30: label language (the *LabelBn fields carry it; names kept
+   *  for compatibility with existing consumers). Default bn = legacy. */
+  locale: Locale = "bn",
+): PayLinkPublicView {
   const effective = withEffectiveStatus(record, now);
+  const purposeLabels = pick(locale, PAYMENT_LINK_PURPOSE_LABELS);
+  const statusLabels = pick(locale, PAYMENT_LINK_STATUS_LABELS);
   return {
     orderId: effective.orderId,
     amountPoisha: effective.amountPoisha,
     amountFormatted: formatBdt(effective.amountPoisha),
     purpose: effective.purpose,
-    purposeLabelBn: PURPOSE_LABELS_BN[effective.purpose] ?? effective.purpose,
+    purposeLabelBn: purposeLabels[effective.purpose] ?? effective.purpose,
     status: effective.status,
-    statusLabelBn: PAYMENT_LINK_STATUS_LABELS_BN[effective.status],
+    statusLabelBn: statusLabels[effective.status],
     expiresAt: effective.expiresAt,
     paidAt: effective.paidAt,
     isPayable: effective.status === "active",
@@ -74,11 +107,11 @@ export type PayLinkResolveResult =
   | { ok: false; error: "not_found" };
 
 /** Resolve by token ONLY (hash lookup + timing-safe verify belt-and-braces). */
-export async function resolvePayLink(token: string, now: Date = new Date()): Promise<PayLinkResolveResult> {
+export async function resolvePayLink(token: string, now: Date = new Date(), locale: Locale = "bn"): Promise<PayLinkResolveResult> {
   if (!token || token.length > 200) return { ok: false, error: "not_found" };
   const record = await paymentLinkStore.getByToken(token);
   if (!record || !verifyPaymentLinkToken(record, token)) return { ok: false, error: "not_found" };
-  return { ok: true, record, view: buildPayLinkPublicView(record, now) };
+  return { ok: true, record, view: buildPayLinkPublicView(record, now, locale) };
 }
 
 export type SandboxPayResult =
@@ -92,10 +125,11 @@ export type SandboxPayResult =
 export async function initiateSandboxPay(
   record: PaymentLinkRecord,
   input: { method: SandboxPaymentMethod; customerPhone: string; baseUrl: string },
+  locale: Locale = "bn",
 ): Promise<SandboxPayResult> {
   const effective = withEffectiveStatus(record);
   if (effective.status !== "active") {
-    return { ok: false, error: PAYMENT_LINK_STATUS_LABELS_BN[effective.status] };
+    return { ok: false, error: pick(locale, PAYMENT_LINK_STATUS_LABELS)[effective.status] };
   }
   const gateway = createSandboxPaymentGateway(input.method);
   const result = await gateway.initiate({

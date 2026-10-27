@@ -38,7 +38,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ADMIN_NAV, isLockedAddOn, type AdminNavItem } from "@/admin-nav/config";
+import { ADMIN_NAV, isLockedAddOn, navItemLabel, type AdminNavItem } from "@/admin-nav/config";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { ADMIN_STRINGS, type AdminStrings } from "@/admin/strings";
 import { Icon, type IconName } from "@/components/ui/icon";
 import type { Customer, Order, OrderStatus } from "@/orders/types";
 import { displayPhone } from "@/orders/customer";
@@ -119,7 +122,7 @@ interface RecordResults {
 
 const EMPTY_RECORDS: RecordResults = { orders: [], customers: [], products: [] };
 
-function pageEntries(query: string): PaletteEntry[] {
+function pageEntries(query: string, locale: Locale): PaletteEntry[] {
   const needle = query.trim().toLowerCase();
   const items: AdminNavItem[] =
     needle.length === 0
@@ -134,7 +137,7 @@ function pageEntries(query: string): PaletteEntry[] {
   return items.map((item) => ({
     id: `page:${item.id}`,
     group: "pages" as const,
-    title: item.labelBn,
+    title: navItemLabel(item, locale),
     subtitle: item.path,
     href: item.path,
     icon: "arrow-right" as IconName,
@@ -174,26 +177,26 @@ function recentEntries(recents: RecentOrder[]): PaletteEntry[] {
   }));
 }
 
-function productEntries(products: Product[]): PaletteEntry[] {
+function productEntries(products: Product[], s: AdminStrings, locale: Locale): PaletteEntry[] {
   return products.slice(0, RECORD_LIMIT).map((p) => {
-    const context = p.brandName ?? p.categoryName?.bn ?? p.categoryName?.en ?? "";
+    const context = p.brandName ?? p.categoryName?.[locale] ?? p.categoryName?.bn ?? p.categoryName?.en ?? "";
     return {
       id: `product:${p.id}`,
       group: "products" as const,
-      title: p.title.bn,
-      subtitle: `${context ? `${context} · ` : ""}${formatBdt(minVariantPricePoisha(p))} থেকে`,
+      title: p.title[locale] ?? p.title.bn,
+      subtitle: `${context ? `${context} · ` : ""}${formatBdt(minVariantPricePoisha(p))} ${s.paletteFrom}`,
       href: "/admin/products",
       icon: "package" as IconName,
     };
   });
 }
 
-function customerEntries(customers: Customer[]): PaletteEntry[] {
+function customerEntries(customers: Customer[], s: AdminStrings): PaletteEntry[] {
   return customers.slice(0, RECORD_LIMIT).map((c) => ({
     id: `customer:${c.id}`,
     group: "customers" as const,
     title: c.name,
-    subtitle: `${displayPhone(c.phone, false)} · ${c.totalOrders}টি অর্ডার · মোট ${formatBdt(c.lifetimeValuePoisha)}`,
+    subtitle: `${displayPhone(c.phone, false)} · ${interpolate(s.paletteOrdersSuffix, { count: c.totalOrders, total: formatBdt(c.lifetimeValuePoisha) })}`,
     href: `/admin/customers?search=${encodeURIComponent(c.name)}`,
     icon: "users" as IconName,
   }));
@@ -211,6 +214,8 @@ async function fetchJson<T>(url: string): Promise<T[]> {
 }
 
 export function AdminCommandPalette() {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -286,15 +291,15 @@ export function AdminCommandPalette() {
       // Recents only make sense before the staff member starts
       // typing; a live search replaces them.
       ...(query.trim().length === 0
-        ? [{ id: "recent" as const, label: "সাম্প্রতিক", entries: recentEntries(recents) }]
+        ? [{ id: "recent" as const, label: s.paletteRecent, entries: recentEntries(recents) }]
         : []),
-      { id: "pages", label: "পেজ", entries: pageEntries(query) },
-      { id: "orders", label: "অর্ডার", entries: orderEntries(records.orders) },
-      { id: "products", label: "পণ্য", entries: productEntries(records.products) },
-      { id: "customers", label: "গ্রাহক", entries: customerEntries(records.customers) },
+      { id: "pages", label: s.palettePages, entries: pageEntries(query, locale) },
+      { id: "orders", label: s.paletteOrders, entries: orderEntries(records.orders) },
+      { id: "products", label: s.paletteProducts, entries: productEntries(records.products, s, locale) },
+      { id: "customers", label: s.paletteCustomers, entries: customerEntries(records.customers, s) },
     ];
     return all.filter((g) => g.entries.length > 0);
-  }, [query, records, recents]);
+  }, [query, records, recents, s, locale]);
 
   const flat = useMemo(() => groups.flatMap((g) => g.entries), [groups]);
 
@@ -344,13 +349,13 @@ export function AdminCommandPalette() {
       className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[10vh]"
       role="dialog"
       aria-modal="true"
-      aria-label="কমান্ড প্যালেট"
+      aria-label={s.paletteLabel}
       onKeyDown={onKeyDown}
     >
       {/* Backdrop — click closes */}
       <button
         type="button"
-        aria-label="বন্ধ করুন"
+        aria-label={s.close}
         className="absolute inset-0 cursor-default bg-brand-900/40 backdrop-blur-[2px]"
         onClick={() => setOpen(false)}
       />
@@ -367,8 +372,8 @@ export function AdminCommandPalette() {
               setQuery(event.target.value);
               setActiveIndex(0);
             }}
-            placeholder="অর্ডার, কাস্টমার, পণ্য বা পেজ খুঁজুন…"
-            aria-label="অর্ডার, কাস্টমার, পণ্য বা পেজ খুঁজুন"
+            placeholder={s.palettePlaceholder}
+            aria-label={s.palettePlaceholder}
             role="combobox"
             aria-expanded="true"
             aria-controls="admin-palette-results"
@@ -389,12 +394,12 @@ export function AdminCommandPalette() {
           ref={listRef}
           id="admin-palette-results"
           role="listbox"
-          aria-label="খোঁজের ফলাফল"
+          aria-label={s.paletteResultsLabel}
           className="max-h-[52vh] overflow-y-auto p-2"
         >
           {searching && flat.length === 0 ? (
             <p role="status" className="px-3 py-8 text-center text-small text-text-muted">
-              খুঁজছে…
+              {s.paletteSearching}
             </p>
           ) : null}
 
@@ -442,7 +447,7 @@ export function AdminCommandPalette() {
                         ) : null}
                         {entry.locked ? (
                           <span className="flex shrink-0 items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-caption font-semibold text-amber-700">
-                            অ্যাড-অন
+                            {s.paletteAddOn}
                           </span>
                         ) : null}
                         {active ? (
@@ -466,26 +471,26 @@ export function AdminCommandPalette() {
               >
                 <Icon name="search" size={24} />
               </span>
-              <p className="mt-3 text-small font-semibold">কিছু পাওয়া যায়নি</p>
+              <p className="mt-3 text-small font-semibold">{s.paletteNoResults}</p>
               <p className="mx-auto mt-1 max-w-xs text-caption leading-relaxed text-text-muted">
-                "{query.trim()}" দিয়ে কোনো পেজ, অর্ডার, পণ্য বা গ্রাহক মেলেনি — বানান বদলে বা অর্ডার নম্বর দিয়ে আবার চেষ্টা করুন।
+                {interpolate(s.paletteNoResultsDesc, { query: query.trim() })}
               </p>
             </div>
           ) : null}
 
           {!hasQuery ? (
             <p className="px-3 pb-2 pt-1 text-caption text-text-subtle">
-              লিখতে শুরু করলেই অর্ডার, পণ্য আর গ্রাহক লাইভ খোঁজা হবে — পেজের তালিকা থেকে সরাসরিও যাওয়া যায়।
+              {s.paletteHint}
             </p>
           ) : null}
         </div>
 
         {/* Footer hints */}
         <p className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border bg-surface-2/60 px-4 py-2.5 text-caption text-text-muted">
-          <span>↑↓ বেছে নিন</span>
-          <span>Enter খুলুন</span>
-          <span>Esc বন্ধ করুন</span>
-          <span className="ml-auto hidden sm:inline">⌘K / Ctrl+K — যেকোনো পেজ থেকে</span>
+          <span>{s.paletteNavigate}</span>
+          <span>{s.paletteOpen}</span>
+          <span>{s.paletteCloseHint}</span>
+          <span className="ml-auto hidden sm:inline">{s.paletteShortcut}</span>
         </p>
       </div>
     </div>
@@ -500,15 +505,17 @@ export function AdminCommandPalette() {
  * old decorative search input.
  */
 export function CommandPaletteTrigger() {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
   return (
     <button
       type="button"
-      aria-label="কমান্ড প্যালেট খুলুন (Ctrl+K)"
+      aria-label={s.paletteTriggerLabel}
       onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))}
       className="flex h-10 w-full items-center gap-2.5 rounded-md border border-border bg-card pl-3 pr-2.5 text-left text-sm text-text-subtle shadow-sm transition motion-fast hover:border-brand-300 hover:text-text-muted focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
     >
       <Icon name="search" size={16} />
-      <span className="min-w-0 flex-1 truncate">অর্ডার, কাস্টমার, পণ্য বা পেজ খুঁজুন…</span>
+      <span className="min-w-0 flex-1 truncate">{s.palettePlaceholder}</span>
       <kbd className="shrink-0 rounded border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-caption font-medium text-text-muted">
         ⌘K
       </kbd>

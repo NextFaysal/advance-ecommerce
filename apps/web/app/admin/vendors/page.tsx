@@ -16,6 +16,9 @@ import VendorDocumentsControl from "./documents-control";
 import VendorPayoutActions from "./payout-actions";
 import RevokeVendorSessions from "./revoke-sessions";
 import type { VendorPayoutSummary } from "@/vendors/types";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
+import { VENDORS_STRINGS } from "./strings";
 
 // Multi-vendor admin — Step 48 (A12).
 // Locked state: while module.multi_vendor is OFF (seeded default, paid
@@ -40,12 +43,7 @@ const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "neutral"> 
   SUSPENDED: "danger",
   REJECTED: "neutral",
 };
-const STATUS_LABEL: Record<string, string> = {
-  ACTIVE: "সক্রিয় (ACTIVE)",
-  PENDING: "অপেক্ষমাণ (PENDING)",
-  SUSPENDED: "স্থগিত (SUSPENDED)",
-  REJECTED: "প্রত্যাখ্যাত (REJECTED)",
-};
+
 const APPROVAL_TONE: Record<string, "success" | "warning" | "info" | "danger"> = {
   APPROVED: "success",
   PENDING_REVIEW: "warning",
@@ -54,16 +52,15 @@ const APPROVAL_TONE: Record<string, "success" | "warning" | "info" | "danger"> =
 };
 
 export default async function AdminVendorsPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, VENDORS_STRINGS);
+  const STATUS_LABEL: Record<string, string> = { ACTIVE: s.statusActive, PENDING: s.statusPending, SUSPENDED: s.statusSuspended, REJECTED: s.statusRejected };
   await ensureDbFeatureFlags().catch(() => {});
   if (!demoVendorFlags.isEnabled("module.multi_vendor")) {
     return (
       <main>
-        <PageHeader title="ভেন্ডর (মাল্টি-ভেন্ডর)" description="Vendor management, approvals and payouts (A12)" />
-        <p role="status">
-          এই মডিউলটি এই ইনস্টলে লক করা আছে। মাল্টি-ভেন্ডর একটি পেইড অ্যাড-অন —
-          খুলতে Admin &gt; Settings থেকে <code>module.multi_vendor</code> ফিচার ফ্ল্যাগ চালু করুন।
-          (This module is locked — enable the <code>module.multi_vendor</code> feature flag to unlock it.)
-        </p>
+        <PageHeader title={s.title} description={s.lockedDesc} />
+        <p role="status">{s.locked}</p>
       </main>
     );
   }
@@ -127,67 +124,62 @@ export default async function AdminVendorsPage() {
 
   return (
     <main>
-      <PageHeader
-        title="ভেন্ডর (মাল্টি-ভেন্ডর)"
-        description="আসল ডেটা — Vendor, VendorProduct, VendorCommissionLine ও VendorRefund টেবিল থেকে। কমিশন ও পেআউট আসল সার্ভিস ফাংশন দিয়ে হিসাব করা; ফোন মাস্ক করা। (Vendors)"
-        breadcrumb="Admin / Add-on Modules"
-      />
+      <PageHeader title={s.title} description={s.description} breadcrumb={s.breadcrumb} />
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
-          label="মোট ভেন্ডর"
+          label={s.statTotalVendors}
           value={String(vendors.length)}
-          delta={`${vendors.filter((v) => v.status === "ACTIVE").length} সক্রিয়`}
+          delta={interpolate(s.statActive, { count: vendors.filter((v) => v.status === "ACTIVE").length })}
           icon={<Icon name="store" size={22} />}
         />
         <StatCard
-          label="পণ্য রিভিউ বাকি"
+          label={s.statPendingProducts}
           value={String(pendingProducts.length)}
-          delta="অনুমোদনের সারিতে"
+          delta={s.statPendingDelta}
           deltaTone="down"
           icon={<Icon name="package" size={22} />}
         />
         <StatCard
-          label="মোট বিক্রি (সব ভেন্ডর)"
+          label={s.statTotalSales}
           value={formatPoisha(totalGross)}
-          delta={`${totalLines}টি কমিশন লাইন`}
+          delta={interpolate(s.statLines, { count: totalLines })}
           icon={<Icon name="chart" size={22} />}
         />
         <StatCard
-          label="নিট পাওনা (সব ভেন্ডর)"
+          label={s.statNet}
           value={formatPoisha(totalNet)}
-          delta="কমিশন ও রিফান্ড বাদে"
+          delta={s.statNetDelta}
           icon={<Icon name="banknote" size={22} />}
         />
       </div>
 
-      <h2 className="mb-3 text-lg font-semibold">ভেন্ডর তালিকা</h2>
+      <h2 className="mb-3 text-lg font-semibold">{s.vendorListTitle}</h2>
       {vendors.length === 0 ? (
         <div className="rounded-lg border border-border bg-card px-6 py-12 text-center shadow-card">
-          <h3 className="text-h3">কোনো ভেন্ডর নেই</h3>
+          <h3 className="text-h3">{s.noVendorsTitle}</h3>
           <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
-            ডাটাবেসে এখনো কোনো ভেন্ডর যোগ হয়নি। Vendor API (POST /api/v1/admin/vendors) দিয়ে
-            প্রথম ভেন্ডর তৈরি করলেই এখানে দেখা যাবে।
+            {s.noVendorsText}
           </p>
         </div>
       ) : (
         <DataTable
-          caption="ভেন্ডর — শুধু ACTIVE ভেন্ডরের APPROVED পণ্যই স্টোরফ্রন্টে বিক্রি হয় (isSellable নিয়ম)। মালিকের নাম এখন DB-তে সংরক্ষিত হয়; পুরনো ভেন্ডরদের ক্ষেত্রে নাম কখনো সংরক্ষিত হয়নি, তাই '—' দেখানো হয়।"
+          caption={s.vendorCaption}
           columns={[
-            { key: "shop", header: "দোকান" },
-            { key: "owner", header: "মালিক" },
-            { key: "phone", header: "ফোন" },
-            { key: "commission", header: "কমিশন" },
-            { key: "products", header: "পণ্য" },
-            { key: "status", header: "অবস্থা" },
+            { key: "shop", header: s.colShop },
+            { key: "owner", header: s.colOwner },
+            { key: "phone", header: s.colPhone },
+            { key: "commission", header: s.colCommission },
+            { key: "products", header: s.colProducts },
+            { key: "status", header: s.colStatus },
           ]}
           rows={vendorRows}
         />
       )}
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">KYC যাচাই (ADV-13)</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.kycTitle}</h2>
       {vendors.length === 0 ? (
         <p className="rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
-          ভেন্ডর না থাকায় KYC তালিকা নেই।
+          {s.noKyc}
         </p>
       ) : (
         <div className="space-y-3">
@@ -210,48 +202,44 @@ export default async function AdminVendorsPage() {
         </div>
       )}
       <p className="mt-2 text-small leading-relaxed text-text-muted">
-        KYC অবস্থা Setting ডকুমেন্টে সংরক্ষিত (Vendor টেবিলে KYC কলাম নেই) — সিদ্ধান্ত অডিট লগে
-        থাকে (vendors.kyc.update) এবং নোটটি ভেন্ডর পোর্টালে দেখা যায়। কাগজপত্র এখন
-        VendorDocument টেবিলে মেটাডেটা হিসেবে রেকর্ড হয় (স্কিমা ওয়েভ ২) এবং ভেন্ডর পোর্টালে
-        তালিকাভুক্ত থাকে; ফাইল আপলোড নিজে এখনো নেই — স্টোরেজ কনফিগার হয়নি, আপলোডের পথও
-        তৈরি হয়নি।
+        {s.kycNote}
       </p>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">পণ্য অনুমোদন</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.productApprovalTitle}</h2>
       {products.length === 0 ? (
         <p className="rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
-          কোনো ভেন্ডর পণ্য এখনো জমা পড়েনি — ভেন্ডর পণ্য যোগ করলে অনুমোদনের সারিতে এখানে দেখা যাবে।
+          {s.noProducts}
         </p>
       ) : (
         <DataTable
-          caption="পণ্য অনুমোদনের সারি — অনুমোদিত পণ্যে সম্পাদনা হলেই আবার PENDING_REVIEW-তে ফেরে; সিদ্ধান্ত Vendor API দিয়ে"
+          caption={s.productCaption}
           columns={[
-            { key: "product", header: "পণ্য" },
-            { key: "sku", header: "SKU" },
-            { key: "shop", header: "দোকান" },
-            { key: "price", header: "দাম" },
-            { key: "approval", header: "অনুমোদন" },
-            { key: "note", header: "নোট / কারণ" },
+            { key: "product", header: s.colProduct },
+            { key: "sku", header: s.colSku },
+            { key: "shop", header: s.colShop },
+            { key: "price", header: s.colPrice },
+            { key: "approval", header: s.colApproval },
+            { key: "note", header: s.colNote },
           ]}
           rows={productRows}
         />
       )}
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">পেআউট সারাংশ — ভেন্ডর অনুযায়ী</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.payoutSummaryTitle}</h2>
       {vendors.length === 0 ? (
         <p className="rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
-          ভেন্ডর না থাকায় পেআউট সারাংশ নেই। ডেলিভার্ড অর্ডার থেকে কমিশন লাইন তৈরি হলেই এখানে হিসাব দেখা যাবে।
+          {s.noPayoutSummary}
         </p>
       ) : (
         <DataTable
-          caption="পেআউট = মোট বিক্রি − কমিশন − রিফান্ড; কখনো শূন্যের নিচে নয় (summarizePayout)। কমিশন লাইন আসল ডেলিভার্ড অর্ডার থেকে, রিফান্ড VendorRefund টেবিল থেকে।"
+          caption={s.payoutCaption}
           columns={[
-            { key: "shop", header: "দোকান" },
-            { key: "orders", header: "অর্ডার (লাইন)" },
-            { key: "gross", header: "মোট বিক্রি" },
-            { key: "commission", header: "কমিশন" },
-            { key: "refunds", header: "রিফান্ড (বাদ)" },
-            { key: "net", header: "নিট পাওনা" },
+            { key: "shop", header: s.colShop },
+            { key: "orders", header: s.colOrders },
+            { key: "gross", header: s.colGross },
+            { key: "commission", header: s.colCommission },
+            { key: "refunds", header: s.colRefunds },
+            { key: "net", header: s.colNet },
           ]}
           rows={payoutRows}
         />

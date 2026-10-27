@@ -24,6 +24,7 @@ export interface QuickViewData {
   titleBn: string;
   titleEn: string;
   descriptionBn: string;
+  descriptionEn: string;
   imageUrl: string | null;
   brandName: string | null;
   /** Integer poisha range across active variants. */

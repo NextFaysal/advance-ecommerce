@@ -10,7 +10,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchPublicProducts } from "@/catalog/public-client";
+import { interpolate, pick } from "@/i18n/locale";
+import { useLocale } from "@/i18n/LocaleProvider";
 import { addToCompare, removeFromCompare, toggleCompare, MAX_COMPARE_PRODUCTS } from "../compare";
+import { UX_STRINGS } from "../strings";
 
 const STORAGE_KEY = "advance-ecommerce:compare";
 const CHANGE_EVENT = "advance-ecommerce:compare-changed";
@@ -61,6 +64,8 @@ export function useCompareIds(): { ids: string[]; setIds: (ids: string[]) => voi
 }
 
 export function CompareToggleButton({ productId }: { productId: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, UX_STRINGS);
   const { ids, setIds } = useCompareIds();
   const [notice, setNotice] = useState<string | null>(null);
   const selected = ids.includes(productId);
@@ -70,8 +75,8 @@ export function CompareToggleButton({ productId }: { productId: string }) {
     if (!result.ok) {
       setNotice(
         result.error === "full"
-          ? `সর্বোচ্চ ${MAX_COMPARE_PRODUCTS}টি পণ্য তুলনা করা যাবে — আগে একটি সরান।`
-          : "পণ্যটি ইতিমধ্যে তুলনায় আছে।",
+          ? interpolate(s.compareFull, { max: MAX_COMPARE_PRODUCTS })
+          : s.compareDuplicate,
       );
       return;
     }
@@ -87,7 +92,7 @@ export function CompareToggleButton({ productId }: { productId: string }) {
         aria-pressed={selected}
         className={`rounded-lg border px-4 py-3 text-sm ${selected ? "border-[#4F46E5] bg-[#EEF2FF] font-semibold text-[#4F46E5]" : ""}`}
       >
-        {selected ? "✓ তুলনায় আছে" : "তুলনা করুন"}
+        {selected ? s.compareAdded : s.compareAdd}
       </button>
       {notice ? <span className="text-xs text-red-600">{notice}</span> : null}
     </span>
@@ -95,20 +100,24 @@ export function CompareToggleButton({ productId }: { productId: string }) {
 }
 
 export function CompareTray() {
+  const { locale } = useLocale();
+  const s = pick(locale, UX_STRINGS);
   const { ids, setIds } = useCompareIds();
   // Chip labels resolve from the real public catalog (ACTIVE products via
   // the public API); an id that no longer resolves falls back to the id.
+  // Product titles are merchant data with bn/en variants — pick the
+  // active locale's variant.
   const [titles, setTitles] = useState<ReadonlyMap<string, string>>(new Map());
 
   useEffect(() => {
     let cancelled = false;
     void fetchPublicProducts().then((products) => {
-      if (!cancelled) setTitles(new Map(products.map((p) => [p.id, p.title.bn])));
+      if (!cancelled) setTitles(new Map(products.map((p) => [p.id, p.title[locale]])));
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [locale]);
 
   if (ids.length === 0) return null;
 
@@ -117,21 +126,21 @@ export function CompareTray() {
   return (
     <div className="fixed inset-x-0 bottom-16 z-40 px-4 md:bottom-4">
       <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-2 rounded-xl border bg-white px-3 py-2 shadow-lg">
-        <span className="text-sm font-semibold">তুলনা ({ids.length}/{MAX_COMPARE_PRODUCTS})</span>
+        <span className="text-sm font-semibold">{interpolate(s.compareTrayLabel, { count: ids.length, max: MAX_COMPARE_PRODUCTS })}</span>
         {ids.map((id) => (
           <span key={id} className="inline-flex items-center gap-1 rounded-full bg-[#EEF2FF] px-2 py-1 text-xs">
             <span className="max-w-[120px] truncate">{labelFor(id)}</span>
-            <button type="button" aria-label="তুলনা থেকে সরান" onClick={() => setIds(removeFromCompare(ids, id))}>
+            <button type="button" aria-label={s.compareRemove} onClick={() => setIds(removeFromCompare(ids, id))}>
               ✕
             </button>
           </span>
         ))}
         <span className="ml-auto flex items-center gap-2">
           <button type="button" className="text-xs text-slate-500 underline" onClick={() => setIds([])}>
-            সব মুছুন
+            {s.compareClearAll}
           </button>
           <Link href="/compare" className="rounded-lg bg-[#4F46E5] px-3 py-2 text-xs font-semibold text-white">
-            তুলনা দেখুন
+            {s.compareView}
           </Link>
         </span>
       </div>

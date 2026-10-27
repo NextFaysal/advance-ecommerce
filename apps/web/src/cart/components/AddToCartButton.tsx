@@ -22,8 +22,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
 import { milliToQty, qtyToMilli } from "@/lib/quantity";
 import { loadGuestCart, saveGuestCart } from "../persistence";
+import { CART_STRINGS } from "../strings";
 import type { Cart, CartItem } from "../types";
 
 export const CART_UPDATED_EVENT = "advance-ecommerce:cart-updated";
@@ -149,7 +152,9 @@ export interface AddToCartButtonProps {
   /** Units per click (default 1). */
   quantity?: number;
   className?: string;
-  /** Button label before adding (default "কার্টে যোগ করুন"). */
+  /** Button label before adding. Caller-supplied content (e.g. a
+   *  landing page's merchant CTA) shown verbatim; when unset the
+   *  localized COMMON addToCart label is used. */
   labelBn?: string;
 }
 
@@ -159,8 +164,10 @@ export function AddToCartButton({
   variant,
   quantity = 1,
   className = "",
-  labelBn = "কার্টে যোগ করুন",
+  labelBn,
 }: AddToCartButtonProps) {
+  const { locale, t } = useLocale();
+  const s = pick(locale, CART_STRINGS);
   const [added, setAdded] = useState(false);
   const [capped, setCapped] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -198,11 +205,11 @@ export function AddToCartButton({
         aria-live="polite"
         className="w-full"
       >
-        {outOfStock ? "স্টক শেষ" : added ? "কার্টে যোগ হয়েছে ✓" : labelBn}
+        {outOfStock ? t.outOfStock : added ? s.addedToCart : (labelBn ?? t.addToCart)}
       </Button>
       {added && capped ? (
         <span role="status" className="mt-1 text-xs text-text-muted">
-          স্টকে যা ছিল সব কার্টে যোগ হয়েছে।
+          {s.allStockAddedNotice}
         </span>
       ) : null}
     </span>

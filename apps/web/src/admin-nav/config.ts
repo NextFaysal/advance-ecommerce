@@ -22,6 +22,17 @@
  *   this config.
  */
 import type { PermissionKey } from "../lib/rbac";
+import type { Locale } from "../i18n/locale";
+
+/** Locale-resolved label for a nav item (doc 30): bn → labelBn, en → labelEn. */
+export function navItemLabel(item: AdminNavItem, locale: Locale): string {
+  return locale === "bn" ? item.labelBn : item.labelEn;
+}
+
+/** Locale-resolved label for a nav section (doc 30). */
+export function navSectionLabel(section: AdminNavSection, locale: Locale): string {
+  return locale === "bn" ? section.labelBn : section.labelEn;
+}
 
 export type AdminNavSectionId =
   | "overview"

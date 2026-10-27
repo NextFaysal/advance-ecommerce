@@ -16,7 +16,16 @@
  */
 import { z } from "zod";
 import { maskPhone, normalizeBdPhone } from "@advance-ecommerce/validators";
+import { pick, type Locale } from "@/i18n/locale";
 import type { BackInStockSignup, BackInStockSignupPublic } from "./types";
+
+/** Doc 30: store-level validation errors, locale-keyed. The public API
+ *  route surfaces these verbatim; it passes the request locale when it
+ *  has one (default bn = legacy behaviour). */
+export const BACK_IN_STOCK_ERRORS: Record<Locale, { invalidInfo: string; invalidPhone: string }> = {
+  bn: { invalidInfo: "সঠিক তথ্য দিন।", invalidPhone: "সঠিক মোবাইল নম্বর দিন (01XXXXXXXXX)।" },
+  en: { invalidInfo: "Please provide valid information.", invalidPhone: "Please enter a valid mobile number (01XXXXXXXXX)." },
+};
 
 export const backInStockSignupSchema = z.object({
   productId: z.string().min(1),
@@ -34,11 +43,12 @@ export type SignupResult =
 export class InMemoryBackInStockStore {
   private readonly signups: BackInStockSignup[] = [];
 
-  add(input: BackInStockSignupInput, now: Date = new Date()): SignupResult {
+  add(input: BackInStockSignupInput, now: Date = new Date(), locale: Locale = "bn"): SignupResult {
+    const errors = pick(locale, BACK_IN_STOCK_ERRORS);
     const parsed = backInStockSignupSchema.safeParse(input);
-    if (!parsed.success) return { ok: false, error: "সঠিক তথ্য দিন।" };
+    if (!parsed.success) return { ok: false, error: errors.invalidInfo };
     const phone = normalizeBdPhone(parsed.data.phone);
-    if (!phone) return { ok: false, error: "সঠিক মোবাইল নম্বর দিন (01XXXXXXXXX)।" };
+    if (!phone) return { ok: false, error: errors.invalidPhone };
     const existing = this.signups.find(
       (s) => s.productId === parsed.data.productId && s.variantId === parsed.data.variantId && s.phone === phone,
     );

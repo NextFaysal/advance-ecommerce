@@ -20,6 +20,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
 
 interface IpRulesData {
   allow: string[];
@@ -39,6 +42,8 @@ function linesToEntries(text: string): string[] {
 }
 
 export function SecurityIpRulesCard() {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
   const [allowText, setAllowText] = useState("");
   const [blockText, setBlockText] = useState("");
   const [reason, setReason] = useState("");
@@ -56,13 +61,13 @@ export function SecurityIpRulesCard() {
         const body = (await res.json().catch(() => ({}))) as IpRulesResponse;
         if (cancelled) return;
         if (!res.ok || !body.data) {
-          setError(body.error?.message ?? "IP নিয়ম লোড করা যায়নি — আবার চেষ্টা করুন।");
+          setError(body.error?.message ?? s.secIpLoadFailed);
           return;
         }
         setAllowText(body.data.allow.join("\n"));
         setBlockText(body.data.block.join("\n"));
       } catch {
-        if (!cancelled) setError("সার্ভারে পৌঁছানো যাচ্ছে না — নেটওয়ার্ক দেখে আবার চেষ্টা করুন।");
+        if (!cancelled) setError(s.secSessNetworkError);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -89,7 +94,7 @@ export function SecurityIpRulesCard() {
       });
       const body = (await res.json().catch(() => ({}))) as IpRulesResponse;
       if (!res.ok || !body.data) {
-        setError(body.error?.message ?? "IP নিয়ম সংরক্ষণ করা যায়নি — আবার চেষ্টা করুন।");
+        setError(body.error?.message ?? s.secIpSaveFailed);
         if (Array.isArray(body.error?.details)) {
           setErrorDetails(body.error.details.filter((d): d is string => typeof d === "string"));
         }
@@ -100,9 +105,9 @@ export function SecurityIpRulesCard() {
       setAllowText(body.data.allow.join("\n"));
       setBlockText(body.data.block.join("\n"));
       setReason("");
-      setMessage("IP নিয়ম সংরক্ষিত হয়েছে — এখন থেকে স্টাফ লগইনে এগুলোই প্রযোজ্য।");
+      setMessage(s.secIpSaved);
     } catch {
-      setError("সার্ভারে পৌঁছানো যাচ্ছে না — নেটওয়ার্ক দেখে আবার চেষ্টা করুন।");
+      setError(s.secSessNetworkError);
     } finally {
       setBusy(false);
     }
@@ -110,23 +115,20 @@ export function SecurityIpRulesCard() {
 
   return (
     <Card>
-      <h3 className="text-base font-semibold text-text-main">স্টাফ লগইন IP নিয়ম</h3>
+      <h3 className="text-base font-semibold text-text-main">{s.secIpTitle}</h3>
       <p className="mt-1 text-sm leading-6 text-text-muted">
-        এই নিয়মগুলো আপাতত <strong>শুধু স্টাফ (অ্যাডমিন) লগইনে</strong> প্রযোজ্য — গ্রাহক লগইন বা
-        স্টোরফ্রন্টে নয়। Block তালিকার IP/CIDR থেকে লগইন সবসময় বন্ধ থাকবে। Allow তালিকা খালি
-        রাখলে সব IP-ই অনুমোদিত (Block তালিকা বাদে); Allow তালিকায় কিছু থাকলে শুধু সেই IP/CIDR
-        থেকেই লগইন করা যাবে।
+        {s.secIpDesc}
       </p>
 
       {loading ? (
-        <p className="mt-4 text-sm text-text-muted">লোড হচ্ছে…</p>
+        <p className="mt-4 text-sm text-text-muted">{s.subsLoading}</p>
       ) : (
         <div className="mt-4 space-y-4">
           <Textarea
             id="ip-rules-allow"
             name="ip-rules-allow"
-            label="Allow তালিকা (অনুমোদিত IP / CIDR)"
-            helper="এক লাইনে একটি করে IP বা CIDR — যেমন 203.0.113.10 অথবা 203.0.113.0/24। খালি রাখলে সবাই অনুমোদিত (Block তালিকা বাদে)।"
+            label={s.secIpAllowLabel}
+            helper={s.secIpAllowHelper}
             rows={5}
             value={allowText}
             onChange={(e) => setAllowText(e.target.value)}
@@ -136,8 +138,8 @@ export function SecurityIpRulesCard() {
           <Textarea
             id="ip-rules-block"
             name="ip-rules-block"
-            label="Block তালিকা (নিষিদ্ধ IP / CIDR)"
-            helper="এক লাইনে একটি করে IP বা CIDR। Block সবসময় Allow-এর ওপরে প্রাধান্য পায়।"
+            label={s.secIpBlockLabel}
+            helper={s.secIpBlockHelper}
             rows={5}
             value={blockText}
             onChange={(e) => setBlockText(e.target.value)}
@@ -147,11 +149,11 @@ export function SecurityIpRulesCard() {
           <Input
             id="ip-rules-reason"
             name="ip-rules-reason"
-            label="পরিবর্তনের কারণ"
-            helper="নিরাপত্তা নিয়ম বদলের কারণ অডিট লগে রাখা বাধ্যতামূলক।"
+            label={s.secIpReasonLabel}
+            helper={s.secIpReasonHelper}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="যেমন: অফিসের নতুন static IP যোগ"
+            placeholder={s.secIpReasonPlaceholder}
             required
             disabled={busy}
           />
@@ -176,7 +178,7 @@ export function SecurityIpRulesCard() {
 
           <div className="flex justify-end">
             <Button onClick={save} disabled={busy || reason.trim() === ""}>
-              {busy ? "সংরক্ষণ হচ্ছে…" : "IP নিয়ম সংরক্ষণ করুন"}
+              {busy ? s.secIpSaving : s.secIpSave}
             </Button>
           </div>
         </div>

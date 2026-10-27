@@ -4,14 +4,20 @@ import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { Button } from "./button";
 import { Icon } from "./icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
 
 /**
  * Modal (Design System v2) — pop-in animation, pop shadow, divided
- * header/footer, Bangla default action labels. Escape closes.
+ * header/footer, locale-resolved default action labels (doc 30).
+ * Escape closes.
  */
 export function Modal({ open, onClose, title, children, onConfirm }: {
   open: boolean; onClose: () => void; title: string; children: ReactNode; onConfirm?: () => void;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -29,7 +35,7 @@ export function Modal({ open, onClose, title, children, onConfirm }: {
           <h2 className="font-display text-lg font-semibold text-text-main">{title}</h2>
           <button
             type="button"
-            aria-label="বন্ধ করুন"
+            aria-label={s.close}
             onClick={onClose}
             className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-text-muted transition motion-fast hover:bg-surface-2 hover:text-text-main"
           >
@@ -38,8 +44,8 @@ export function Modal({ open, onClose, title, children, onConfirm }: {
         </div>
         <div className="px-5 py-4">{children}</div>
         <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
-          <Button variant="outline" onClick={onClose}>বাতিল</Button>
-          {onConfirm ? <Button onClick={onConfirm}>নিশ্চিত করুন</Button> : null}
+          <Button variant="outline" onClick={onClose}>{s.cancel}</Button>
+          {onConfirm ? <Button onClick={onConfirm}>{s.confirm}</Button> : null}
         </div>
       </div>
     </div>

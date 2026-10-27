@@ -27,6 +27,7 @@ import { getTrackingShipmentsForOrder } from "@/shipments/tracking";
 import { getKitchenTicketView } from "@/restaurant/tickets";
 import { getOrderWorkflowStageView } from "@/orders/stages";
 import { lookupTracking } from "@/storefront-ux/order-tracking";
+import { getRequestLocale } from "@/i18n/server";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 const trackBodySchema = z.object({
@@ -35,18 +36,22 @@ const trackBodySchema = z.object({
 });
 
 export async function POST(req: Request) {
+  // Doc 30: every message this route returns follows the request locale
+  // (visitor cookie → store default), like the /track page itself.
+  const locale = await getRequestLocale();
+  const isBn = locale === "bn";
   const ip = (req.headers.get("x-forwarded-for") ?? "unknown").split(",")[0]?.trim() || "unknown";
   const limit = await checkRateLimit(`track:ip:${ip}`, 10, 5 * 60_000);
   if (!limit.allowed) {
     return NextResponse.json(
-      { error: { code: "RATE_LIMITED", message: "অনেকবার চেষ্টা করা হয়েছে — কিছুক্ষণ পর আবার চেষ্টা করুন।" } },
+      { error: { code: "RATE_LIMITED", message: isBn ? "অনেকবার চেষ্টা করা হয়েছে — কিছুক্ষণ পর আবার চেষ্টা করুন।" : "Too many attempts — please try again in a little while." } },
       { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
     );
   }
   const parsed = trackBodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return NextResponse.json(
-      { error: { code: "INVALID_INPUT", message: "অর্ডার নম্বর ও সঠিক মোবাইল নম্বর দিন।", details: parsed.error.issues } },
+      { error: { code: "INVALID_INPUT", message: isBn ? "অর্ডার নম্বর ও সঠিক মোবাইল নম্বর দিন।" : "Enter the order number and a valid mobile number.", details: parsed.error.issues } },
       { status: 400 },
     );
   }
@@ -62,10 +67,10 @@ export async function POST(req: Request) {
   // no-leak discipline as the kitchen ticket above.
   const stageView = order ? await getOrderWorkflowStageView(order.id) : null;
   const workflowStage = stageView ? { labelBn: stageView.labelBn, labelEn: stageView.labelEn } : null;
-  const result = lookupTracking(order ? [order] : [], parsed.data.orderNo, parsed.data.phone, shipments, kitchen, workflowStage);
+  const result = lookupTracking(order ? [order] : [], parsed.data.orderNo, parsed.data.phone, shipments, kitchen, workflowStage, locale);
   if (!result.ok) {
     return NextResponse.json(
-      { error: { code: "NOT_FOUND", message: result.messageBn } },
+      { error: { code: "NOT_FOUND", message: result.message } },
       { status: 404 },
     );
   }

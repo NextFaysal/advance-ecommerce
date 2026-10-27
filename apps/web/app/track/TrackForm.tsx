@@ -14,12 +14,30 @@
  * the view shipmentSource "order-status" and this renders the old
  * derived summary strip PLUS an explicit note that it follows the
  * order's steps, not live courier data — never a fake parcel.
+ *
+ * Language (doc 30, slice L3d): all chrome copy comes from
+ * ./strings via useLocale(). The API view carries Bangla-only labels
+ * next to raw status codes — in Bangla mode those server labels are
+ * rendered as-is; in English mode labels are translated from the
+ * status code via the strings maps (server label as fallback). Server
+ * API error messages are shown verbatim (they arrive Bangla-only from
+ * the API — see slice report remainder).
  */
 import { useState } from "react";
 import { formatBdt } from "@advance-ecommerce/validators";
 import type { TrackingParcel, TrackingView } from "@/storefront-ux/order-tracking";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { intlLocale, pick, type Locale } from "@/i18n/locale";
+import {
+  KITCHEN_STATUS_STRINGS,
+  ORDER_STATUS_STRINGS,
+  PARCEL_STEP_STRINGS,
+  SHIPMENT_STATUS_STRINGS,
+  TRACK_STRINGS,
+  type TrackStrings,
+} from "./strings";
 
 // Mobile polish (Design v3 §3): 48px fields and submit, token colours,
 // and a connected result timeline. Presentation only — the lookup call
@@ -31,22 +49,29 @@ const TRACK_INPUT_CLASS =
  * pipeline steps, off-path banners and tones), mirrored here rather
  * than imported: the panel is admin code and must not leak into the
  * public storefront bundle. OD7's account stepper follows the same
- * mirror-don't-import pattern. */
+ * mirror-don't-import pattern. Step labels come from PARCEL_STEP_STRINGS
+ * in the active locale. */
 const PARCEL_PIPELINE_STEPS = [
-  { status: "CREATED", labelBn: "তৈরি", icon: "package" },
-  { status: "PICKED_UP", labelBn: "পিকআপ", icon: "box" },
-  { status: "IN_TRANSIT", labelBn: "পথে", icon: "truck" },
-  { status: "OUT_FOR_DELIVERY", labelBn: "ডেলিভারিতে", icon: "arrow-right" },
-  { status: "DELIVERED", labelBn: "ডেলিভার্ড", icon: "check" },
-] as const satisfies readonly { status: string; labelBn: string; icon: IconName }[];
+  { status: "CREATED", icon: "package" },
+  { status: "PICKED_UP", icon: "box" },
+  { status: "IN_TRANSIT", icon: "truck" },
+  { status: "OUT_FOR_DELIVERY", icon: "arrow-right" },
+  { status: "DELIVERED", icon: "check" },
+] as const satisfies readonly { status: string; icon: IconName }[];
 
-const PARCEL_OFF_PATH: Record<string, { labelBn: string; icon: IconName; cls: string }> = {
-  FAILED: { labelBn: "ডেলিভারি ব্যর্থ হয়েছে", icon: "alert", cls: "border-rose-200 bg-rose-50 text-rose-700" },
-  RETURNING: { labelBn: "পার্সেলটি ফেরত আসছে", icon: "rotate-ccw", cls: "border-amber-200 bg-amber-50 text-amber-800" },
-  RETURNED: { labelBn: "পার্সেলটি ফেরত এসেছে", icon: "rotate-ccw", cls: "border-border bg-slate-50 text-slate-600" },
+const PARCEL_OFF_PATH: Record<string, { icon: IconName; cls: string }> = {
+  FAILED: { icon: "alert", cls: "border-rose-200 bg-rose-50 text-rose-700" },
+  RETURNING: { icon: "rotate-ccw", cls: "border-amber-200 bg-amber-50 text-amber-800" },
+  RETURNED: { icon: "rotate-ccw", cls: "border-border bg-slate-50 text-slate-600" },
 };
 
-function ParcelStepper({ status }: { status: string }) {
+function stepLabel(locale: Locale, status: string): string {
+  const labels = pick(locale, PARCEL_STEP_STRINGS) as Record<string, string>;
+  return labels[status] ?? status;
+}
+
+function ParcelStepper({ status, locale }: { status: string; locale: Locale }) {
+  const t = pick(locale, TRACK_STRINGS);
   const activeIdx = PARCEL_PIPELINE_STEPS.findIndex((s) => s.status === status);
   if (activeIdx === -1) {
     const off = PARCEL_OFF_PATH[status];
@@ -54,12 +79,15 @@ function ParcelStepper({ status }: { status: string }) {
     return (
       <p className={`mt-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${off.cls}`}>
         <Icon name={off.icon} size={16} />
-        {off.labelBn}
+        {stepLabel(locale, status)}
       </p>
     );
   }
   return (
-    <ol className="mt-3 flex items-start" aria-label={`পার্সেলের অবস্থা: ${PARCEL_PIPELINE_STEPS[activeIdx].labelBn}`}>
+    <ol
+      className="mt-3 flex items-start"
+      aria-label={`${t.parcelStatusAria}: ${stepLabel(locale, PARCEL_PIPELINE_STEPS[activeIdx].status)}`}
+    >
       {PARCEL_PIPELINE_STEPS.map((step, idx) => {
         const done = idx < activeIdx || status === "DELIVERED";
         const active = idx === activeIdx && status !== "DELIVERED";
@@ -82,7 +110,7 @@ function ParcelStepper({ status }: { status: string }) {
                 <Icon name={done ? "check" : step.icon} size={14} />
               </span>
               <span className={`text-caption leading-tight ${done || active ? "font-semibold text-text-main" : "text-text-muted"}`}>
-                {step.labelBn}
+                {stepLabel(locale, step.status)}
               </span>
             </span>
           </li>
@@ -92,26 +120,56 @@ function ParcelStepper({ status }: { status: string }) {
   );
 }
 
+/** Label for a status-coded value: Bangla renders the server's label
+ *  (canonical wording); English translates from the code via `dict`,
+ *  falling back to the server label for unknown codes. */
+function statusLabel(
+  locale: Locale,
+  dict: Record<Locale, Record<string, string>>,
+  code: string,
+  serverLabelBn: string,
+): string {
+  if (locale === "bn") return serverLabelBn;
+  return pick(locale, dict)[code] ?? serverLabelBn;
+}
+
 /** One real parcel: courier + tracking code, stepper, split items and
  *  the recorded courier events (real timestamps, oldest first). */
-function ParcelCard({ parcel, index, total }: { parcel: TrackingParcel; index: number; total: number }) {
+function ParcelCard({
+  parcel,
+  index,
+  total,
+  locale,
+  t,
+}: {
+  parcel: TrackingParcel;
+  index: number;
+  total: number;
+  locale: Locale;
+  t: TrackStrings;
+}) {
   return (
     <div className="mt-4 rounded-xl border border-border bg-surface-2/60 px-4 py-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-text-main">
-          {total > 1 ? `পার্সেল ${index + 1} — ` : ""}কুরিয়ার: {parcel.courier}
+          {total > 1 ? `${t.parcelPrefix} ${index + 1} — ` : ""}
+          {t.courierLabel}: {parcel.courier}
         </h3>
         <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-700">
-          {parcel.statusLabelBn}
+          {statusLabel(locale, SHIPMENT_STATUS_STRINGS, parcel.status, parcel.statusLabelBn)}
         </span>
       </div>
-      {parcel.trackingId && <p className="mt-1 text-xs text-text-muted">ট্র্যাকিং নম্বর: {parcel.trackingId}</p>}
+      {parcel.trackingId && (
+        <p className="mt-1 text-xs text-text-muted">
+          {t.trackingNoLabel}: {parcel.trackingId}
+        </p>
+      )}
 
-      <ParcelStepper status={parcel.status} />
+      <ParcelStepper status={parcel.status} locale={locale} />
 
       {parcel.items && (
         <div className="mt-3">
-          <p className="text-xs font-semibold text-text-muted">এই পার্সেলে আছে:</p>
+          <p className="text-xs font-semibold text-text-muted">{t.parcelItemsHeading}</p>
           <ul className="mt-1 space-y-0.5 text-sm text-text-main">
             {parcel.items.map((item, i) => (
               <li key={i}>
@@ -136,9 +194,11 @@ function ParcelCard({ parcel, index, total }: { parcel: TrackingParcel; index: n
                 }`}
               />
               <span className="min-w-0">
-                <span className="text-sm font-medium text-text-main">{ev.labelBn}</span>
+                <span className="text-sm font-medium text-text-main">
+                  {statusLabel(locale, SHIPMENT_STATUS_STRINGS, ev.status, ev.labelBn)}
+                </span>
                 <span className="block text-xs text-text-muted">
-                  {new Date(ev.at).toLocaleString("bn-BD", { timeZone: "Asia/Dhaka" })}
+                  {new Date(ev.at).toLocaleString(intlLocale(locale), { timeZone: "Asia/Dhaka" })}
                   {ev.location ? ` • ${ev.location}` : ""}
                 </span>
               </span>
@@ -160,6 +220,8 @@ export default function TrackForm() {
   const [orderNo, setOrderNo] = useState("");
   const [phone, setPhone] = useState("");
   const [state, setState] = useState<State>({ phase: "idle" });
+  const { locale } = useLocale();
+  const t = pick(locale, TRACK_STRINGS);
   // Money honours the visitor's numerals preference (order numbers
   // and quantities are never passed through this — display only).
   const digits = useDigitText();
@@ -177,14 +239,14 @@ export default function TrackForm() {
       if (!res.ok) {
         const message =
           typeof body === "object" && body !== null && "error" in body
-            ? String((body as { error: { message?: string } }).error.message ?? "খুঁজে পাওয়া যায়নি।")
-            : "খুঁজে পাওয়া যায়নি।";
+            ? String((body as { error: { message?: string } }).error.message ?? t.notFoundFallback)
+            : t.notFoundFallback;
         setState({ phase: "error", message });
         return;
       }
       setState({ phase: "done", view: (body as { data: { tracking: TrackingView } }).data.tracking });
     } catch {
-      setState({ phase: "error", message: "নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।" });
+      setState({ phase: "error", message: t.networkError });
     }
   }
 
@@ -192,7 +254,7 @@ export default function TrackForm() {
     <div>
       <form onSubmit={submit} className="rounded-2xl border border-border bg-card px-5 py-5 shadow-card">
         <label className="block text-sm font-semibold text-text-main" htmlFor="track-order-no">
-          অর্ডার নম্বর
+          {t.orderNoLabel}
         </label>
         <input
           id="track-order-no"
@@ -204,7 +266,7 @@ export default function TrackForm() {
           required
         />
         <label className="mt-4 block text-sm font-semibold text-text-main" htmlFor="track-phone">
-          মোবাইল নম্বর (অর্ডারের সময় দেওয়া)
+          {t.phoneLabel}
         </label>
         <input
           id="track-phone"
@@ -221,11 +283,9 @@ export default function TrackForm() {
           disabled={state.phase === "submitting"}
           className="brand-gradient mt-5 h-12 w-full rounded-xl text-base font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
         >
-          {state.phase === "submitting" ? "খুঁজছি…" : "অর্ডার ট্র্যাক করুন"}
+          {state.phase === "submitting" ? t.submitBusy : t.submitIdle}
         </button>
-        <p className="mt-2.5 text-xs leading-5 text-text-muted">
-          নিরাপত্তার জন্য অল্প সময়ের মধ্যে বারবার চেষ্টা সীমিত রাখা হয়েছে।
-        </p>
+        <p className="mt-2.5 text-xs leading-5 text-text-muted">{t.rateLimitNote}</p>
         {state.phase === "error" && (
           <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
             {state.message}
@@ -238,19 +298,22 @@ export default function TrackForm() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-lg font-bold text-text-main">{state.view.orderNo}</h2>
             <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-semibold text-brand-700">
-              {state.view.statusLabelBn}
+              {statusLabel(locale, ORDER_STATUS_STRINGS, state.view.status, state.view.statusLabelBn)}
             </span>
           </div>
-          <p className="mt-1 text-sm text-text-muted">ফোন: {state.view.maskedPhone}</p>
+          <p className="mt-1 text-sm text-text-muted">
+            {t.phonePrefix}: {state.view.maskedPhone}
+          </p>
 
           {/* Merchant workflow stage (ADV-26, BUILD-LITE): present
               only when staff set a stage on this order — a friendly
               step label under the canonical status above, which
-              remains the status of record. */}
+              remains the status of record. The view carries BOTH
+              labels, so it follows the active locale directly. */}
           {state.view.workflowStage && (
             <p className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-brand-50 px-4 py-3 text-sm text-text-main">
-              <span className="font-semibold">বর্তমান ধাপ:</span>
-              <span>{state.view.workflowStage.labelBn}</span>
+              <span className="font-semibold">{t.currentStageLabel}</span>
+              <span>{locale === "bn" ? state.view.workflowStage.labelBn : state.view.workflowStage.labelEn}</span>
             </p>
           )}
 
@@ -260,12 +323,12 @@ export default function TrackForm() {
           {state.view.kitchen && (
             <p className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 px-4 py-3 text-sm text-text-main">
               <span aria-hidden="true">🍳</span>
-              <span className="font-semibold">রান্নাঘর:</span>
-              <span>{state.view.kitchen.statusLabelBn}</span>
+              <span className="font-semibold">{t.kitchenLabel}</span>
+              <span>{statusLabel(locale, KITCHEN_STATUS_STRINGS, state.view.kitchen.status, state.view.kitchen.statusLabelBn)}</span>
               <span className="text-text-muted">
                 {state.view.kitchen.fulfilmentType === "DINE_IN"
-                  ? `• ডাইন-ইন${state.view.kitchen.tableLabel ? ` • টেবিল: ${state.view.kitchen.tableLabel}` : ""}`
-                  : "• টেকঅওয়ে"}
+                  ? `• ${t.dineIn}${state.view.kitchen.tableLabel ? ` • ${t.tableLabel}: ${state.view.kitchen.tableLabel}` : ""}`
+                  : `• ${t.takeaway}`}
               </span>
             </p>
           )}
@@ -298,11 +361,11 @@ export default function TrackForm() {
                       step.state === "upcoming" ? "text-sm text-text-subtle" : "text-sm font-semibold text-text-main"
                     }
                   >
-                    {step.labelBn}
+                    {statusLabel(locale, ORDER_STATUS_STRINGS, step.status, step.labelBn)}
                   </span>
                   {step.at && (
                     <span className="block text-xs text-text-muted">
-                      {new Date(step.at).toLocaleString("bn-BD", { timeZone: "Asia/Dhaka" })}
+                      {new Date(step.at).toLocaleString(intlLocale(locale), { timeZone: "Asia/Dhaka" })}
                     </span>
                   )}
                 </span>
@@ -313,28 +376,30 @@ export default function TrackForm() {
           {state.view.parcels.length > 0 ? (
             <div>
               {state.view.parcels.map((parcel, i) => (
-                <ParcelCard key={i} parcel={parcel} index={i} total={state.view.parcels.length} />
+                <ParcelCard key={i} parcel={parcel} index={i} total={state.view.parcels.length} locale={locale} t={t} />
               ))}
             </div>
           ) : (
             <>
               {state.view.shipmentStatusLabelBn && (
                 <p className="mt-5 rounded-xl bg-surface-2 px-3.5 py-2.5 text-sm text-text-main">
-                  কুরিয়ার: {state.view.courier ?? "—"}
-                  {state.view.trackingId ? ` • ট্র্যাকিং: ${state.view.trackingId}` : ""} • {state.view.shipmentStatusLabelBn}
+                  {t.courierLabel}: {state.view.courier ?? "—"}
+                  {state.view.trackingId ? ` • ${t.shipmentTrackingLabel}: ${state.view.trackingId}` : ""} •{" "}
+                  {state.view.shipmentStatus
+                    ? statusLabel(locale, SHIPMENT_STATUS_STRINGS, state.view.shipmentStatus, state.view.shipmentStatusLabelBn)
+                    : state.view.shipmentStatusLabelBn}
                 </p>
               )}
               {/* Honest fallback label (G3-20): no Shipment rows exist for
                   this order yet, so nothing above is live courier data. */}
               <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-800">
                 <Icon name="info" size={14} className="mt-0.5 shrink-0" />
-                কুরিয়ারের লাইভ ট্র্যাকিং তথ্য এখনো এই অর্ডারে যুক্ত হয়নি — বুকিং হলে কুরিয়ারের নাম, ট্র্যাকিং
-                নম্বর ও লাইভ অবস্থা এখানে দেখা যাবে। আপাতত অবস্থা অর্ডারের ধাপ অনুযায়ী দেখানো হচ্ছে।
+                {t.noLiveCourierNote}
               </p>
             </>
           )}
 
-          <h3 className="mt-5 text-sm font-semibold text-text-main">পণ্য</h3>
+          <h3 className="mt-5 text-sm font-semibold text-text-main">{t.itemsHeading}</h3>
           <ul className="mt-1.5 space-y-1.5 text-sm">
             {state.view.items.map((item, i) => (
               <li key={i} className="flex justify-between gap-2">
@@ -346,11 +411,11 @@ export default function TrackForm() {
             ))}
           </ul>
           <p className="mt-3 flex justify-between border-t border-border pt-3 font-semibold text-text-main">
-            <span>মোট</span>
+            <span>{t.totalLabel}</span>
             <span className="tabular-nums">{digits(formatBdt(state.view.totalPoisha))}</span>
           </p>
           <p className="mt-1.5 text-sm text-text-muted">
-            পেমেন্ট: {state.view.paymentMethod} / {state.view.paymentStatus}
+            {t.paymentLabel}: {state.view.paymentMethod} / {state.view.paymentStatus}
           </p>
         </section>
       )}

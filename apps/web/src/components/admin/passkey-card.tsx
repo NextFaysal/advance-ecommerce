@@ -20,6 +20,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
 
 interface PasskeyRow {
   id: string;
@@ -33,8 +36,8 @@ interface ListResponse {
   error?: { message?: string };
 }
 
-function absoluteBn(iso: string): string {
-  return new Date(iso).toLocaleString("bn-BD", {
+function absolute(iso: string, locale: Locale): string {
+  return new Date(iso).toLocaleString(intlLocale(locale), {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -44,6 +47,8 @@ function absoluteBn(iso: string): string {
 }
 
 export function PasskeyCard() {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
   const [rows, setRows] = useState<PasskeyRow[] | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -63,13 +68,13 @@ export function PasskeyCard() {
       const res = await fetch("/api/v1/admin/auth/passkey/credentials");
       const json = (await res.json().catch(() => ({}))) as ListResponse;
       if (!res.ok) {
-        setError(json.error?.message ?? "পাসকি তালিকা লোড করা যায়নি।");
+        setError(json.error?.message ?? s.pkLoadFailed);
         return;
       }
       setError("");
       setRows(json.data?.passkeys ?? []);
     } catch {
-      setError("সার্ভারে পৌঁছানো যাচ্ছে না — নেটওয়ার্ক দেখে আবার চেষ্টা করুন।");
+      setError(s.secSessNetworkError);
     }
   }, []);
 
@@ -80,7 +85,7 @@ export function PasskeyCard() {
   async function handleRegister() {
     const label = deviceLabel.trim();
     if (label === "") {
-      setActionError("আগে ডিভাইসের একটা নাম দিন (যেমন: আমার ফোন)।");
+      setActionError(s.pkNameRequired);
       return;
     }
     setRegistering(true);
@@ -95,7 +100,7 @@ export function PasskeyCard() {
         error?: { message?: string };
       };
       if (!optionsRes.ok || !optionsJson.data?.options) {
-        setActionError(optionsJson.error?.message ?? "পাসকি নিবন্ধন শুরু করা যায়নি।");
+        setActionError(optionsJson.error?.message ?? s.pkRegisterStartFailed);
         return;
       }
       let attestation;
@@ -104,7 +109,7 @@ export function PasskeyCard() {
       } catch {
         // NotAllowedError (cancelled / timed out) and unsupported
         // authenticators both land here — say so plainly, no blame.
-        setActionError("পাসকি তৈরি সম্পন্ন হয়নি — প্রম্পট বাতিল হয়ে থাকতে পারে। আবার চেষ্টা করুন।");
+        setActionError(s.pkRegisterIncomplete);
         return;
       }
       const verifyRes = await fetch("/api/v1/admin/auth/passkey/register/verify", {
@@ -116,14 +121,14 @@ export function PasskeyCard() {
         error?: { message?: string };
       };
       if (!verifyRes.ok) {
-        setActionError(verifyJson.error?.message ?? "পাসকি সংরক্ষণ করা যায়নি।");
+        setActionError(verifyJson.error?.message ?? s.pkSaveFailed);
         return;
       }
       setDeviceLabel("");
-      setNotice("পাসকি যোগ হয়েছে — এখন থেকে লগইন পেজে “পাসকি দিয়ে প্রবেশ” দিয়ে এই ডিভাইস দিয়ে লগইন করা যাবে।");
+      setNotice(s.pkAdded);
       await load();
     } catch {
-      setActionError("সার্ভারে পৌঁছানো যাচ্ছে না — নেটওয়ার্ক দেখে আবার চেষ্টা করুন।");
+      setActionError(s.secSessNetworkError);
     } finally {
       setRegistering(false);
     }
@@ -141,14 +146,14 @@ export function PasskeyCard() {
       });
       const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
       if (!res.ok) {
-        setActionError(json.error?.message ?? "পাসকি মুছে ফেলা যায়নি।");
+        setActionError(json.error?.message ?? s.pkDeleteFailed);
         return;
       }
       setConfirmDeleteId(null);
-      setNotice(`“${row.deviceLabel}” পাসকি মুছে ফেলা হয়েছে — ওই ডিভাইস দিয়ে আর পাসকি লগইন হবে না।`);
+      setNotice(interpolate(s.pkDeleted, { label: row.deviceLabel }));
       await load();
     } catch {
-      setActionError("সার্ভারে পৌঁছানো যাচ্ছে না — নেটওয়ার্ক দেখে আবার চেষ্টা করুন।");
+      setActionError(s.secSessNetworkError);
     } finally {
       setBusyId(null);
     }
@@ -158,14 +163,13 @@ export function PasskeyCard() {
     <Card>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-display text-lg font-bold text-text-main">পাসকি (Passkey)</h2>
+          <h2 className="font-display text-lg font-bold text-text-main">{s.pkTitle}</h2>
           <p className="mt-1 text-sm text-text-muted">
-            ফিঙ্গারপ্রিন্ট, ফেস বা ডিভাইসের PIN দিয়ে পাসওয়ার্ড ছাড়াই লগইন। পাসকি এই ডিভাইসেই থাকে —
-            সার্ভারে শুধু পাবলিক কী থাকে, তাই ফাঁস হওয়ার মতো গোপন কিছু নেই। পাসওয়ার্ড লগইন আগের মতোই চালু থাকবে।
+            {s.pkDesc}
           </p>
         </div>
         <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
-          রিফ্রেশ
+          {s.secSessRefresh}
         </Button>
       </div>
 
@@ -186,16 +190,16 @@ export function PasskeyCard() {
             {error}
           </p>
           <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void load()}>
-            আবার চেষ্টা করুন
+            {s.secSessRetry}
           </Button>
         </div>
       ) : rows === null ? (
         <p role="status" className="mt-4 text-sm text-text-muted">
-          পাসকি তালিকা লোড হচ্ছে…
+          {s.pkLoading}
         </p>
       ) : rows.length === 0 ? (
         <p role="status" className="mt-4 text-sm text-text-muted">
-          এখনো কোনো পাসকি যোগ করা হয়নি।
+          {s.pkEmpty}
         </p>
       ) : (
         <ul className="mt-4 divide-y divide-border">
@@ -204,8 +208,8 @@ export function PasskeyCard() {
               <div>
                 <p className="text-sm font-semibold text-text-main">{row.deviceLabel}</p>
                 <p className="mt-0.5 text-xs text-text-muted">
-                  যোগ হয়েছে: {absoluteBn(row.createdAt)}
-                  {row.lastUsedAt ? ` · শেষ ব্যবহার: ${absoluteBn(row.lastUsedAt)}` : " · এখনো ব্যবহার হয়নি"}
+                  {s.pkAddedOn}: {absolute(row.createdAt, locale)}
+                  {row.lastUsedAt ? ` · ${s.pkLastUsed}: ${absolute(row.lastUsedAt, locale)}` : ` · ${s.pkNeverUsed}`}
                 </p>
               </div>
               {confirmDeleteId === row.id ? (
@@ -216,7 +220,7 @@ export function PasskeyCard() {
                     disabled={busyId === row.id}
                     onClick={() => void handleDelete(row)}
                   >
-                    {busyId === row.id ? "মুছছে…" : "নিশ্চিত মুছুন"}
+                    {busyId === row.id ? s.pkDeleting : s.pkConfirmDelete}
                   </Button>
                   <Button
                     type="button"
@@ -224,7 +228,7 @@ export function PasskeyCard() {
                     size="sm"
                     onClick={() => setConfirmDeleteId(null)}
                   >
-                    থাক
+                    {s.secSessKeep}
                   </Button>
                 </span>
               ) : (
@@ -234,7 +238,7 @@ export function PasskeyCard() {
                   size="sm"
                   onClick={() => setConfirmDeleteId(row.id)}
                 >
-                  মুছে ফেলুন
+                  {s.pkDelete}
                 </Button>
               )}
             </li>
@@ -245,21 +249,21 @@ export function PasskeyCard() {
       <div className="mt-5 border-t border-border pt-4">
         {supported === false ? (
           <p role="status" className="text-sm text-text-muted">
-            এই ব্রাউজারে পাসকি (WebAuthn) সমর্থিত নয় — অন্য আধুনিক ব্রাউজার বা ডিভাইস থেকে যোগ করুন।
+            {s.pkUnsupported}
           </p>
         ) : (
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-56 flex-1">
               <Input
-                label="ডিভাইসের নাম"
+                label={s.pkDeviceName}
                 value={deviceLabel}
                 onChange={(e) => setDeviceLabel(e.target.value)}
-                placeholder="যেমন: আমার ফোন / অফিসের ল্যাপটপ"
+                placeholder={s.pkDevicePlaceholder}
                 maxLength={80}
               />
             </div>
             <Button type="button" disabled={registering} onClick={() => void handleRegister()}>
-              {registering ? "পাসকি তৈরি হচ্ছে…" : "নতুন পাসকি যোগ করুন"}
+              {registering ? s.pkRegistering : s.pkAddNew}
             </Button>
           </div>
         )}

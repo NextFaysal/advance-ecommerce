@@ -1,18 +1,23 @@
 /**
  * /terms — Terms & Conditions. Agent 29.
- * Content lives in src/legal/content.ts (DRAFT template, bn default).
+ * Content lives in src/legal/content.ts (DRAFT template, full {bn, en}).
+ * Locale resolves per request (doc 30): visitor cookie → store default.
  */
 import type { Metadata } from "next";
 import LegalPageView from "@/legal/LegalPageView";
-import { DEFAULT_LEGAL_LOCALE, TERMS_CONTENT } from "@/legal/content";
+import { TERMS_CONTENT } from "@/legal/content";
+import { getRequestLocale } from "@/i18n/server";
 
-const content = TERMS_CONTENT[DEFAULT_LEGAL_LOCALE];
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getRequestLocale();
+  const content = TERMS_CONTENT[locale];
+  return {
+    title: `${content.title} — Advance Ecommerce`,
+    description: content.description,
+  };
+}
 
-export const metadata: Metadata = {
-  title: `${content.title} — Advance Ecommerce`,
-  description: content.description,
-};
-
-export default function TermsPage() {
-  return <LegalPageView content={content} />;
+export default async function TermsPage() {
+  const locale = await getRequestLocale();
+  return <LegalPageView content={TERMS_CONTENT[locale]} locale={locale} />;
 }

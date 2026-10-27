@@ -3,7 +3,8 @@
  * cover (email/subject fields, submit states, API-driven messages).
  * Agent 47. Name/phone/message/submit labels still come from
  * src/legal/content.ts (ContactContent) — this file only fills the
- * gaps, keyed by the same LegalLocale so /contact stays bn-default.
+ * gaps, keyed by the same LegalLocale. Selection follows the doc-30
+ * resolved locale (visitor cookie → store default) — never pinned.
  */
 import type { LegalLocale } from "@/legal/content";
 

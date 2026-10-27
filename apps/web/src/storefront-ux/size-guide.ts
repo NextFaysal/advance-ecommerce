@@ -11,6 +11,8 @@ export interface SizeGuideModalData {
   showMeasureGuide: boolean;
   /** "কীভাবে মাপবেন" lines, shown only when showMeasureGuide is true. */
   measureGuideBn: string[];
+  /** "How to measure" lines — the en counterpart of measureGuideBn. */
+  measureGuideEn: string[];
   rows: Array<{
     size: string;
     measurements: Array<{ labelBn: string; labelEn: string; cm: number }>;
@@ -31,12 +33,20 @@ const MEASURE_GUIDE_BN: string[] = [
   "দুই মাপের মাঝে পড়লে বড় সাইজটি নেওয়াই ভালো।",
 ];
 
+const MEASURE_GUIDE_EN: string[] = [
+  "Chest: measure around the widest part of your chest, under the arms.",
+  "Waist: measure around your natural waistline, keeping the tape loose.",
+  "Length: measure from the highest point of the shoulder down.",
+  "If you're between two sizes, take the larger one.",
+];
+
 export function buildSizeGuideModalData(config: FashionConfig = fashionPack.defaultConfig): SizeGuideModalData {
   return {
     titleBn: "সাইজ গাইড",
     titleEn: "Size Guide",
     showMeasureGuide: config.showMeasureGuide,
     measureGuideBn: config.showMeasureGuide ? MEASURE_GUIDE_BN : [],
+    measureGuideEn: config.showMeasureGuide ? MEASURE_GUIDE_EN : [],
     rows: buildSizeGuide(config).map((r) => ({
       size: r.size,
       measurements: r.measurements.map((m) => ({

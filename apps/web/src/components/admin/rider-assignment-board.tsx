@@ -4,6 +4,9 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { subscribeOrderFeed } from "@/orders/realtime";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
 
 export interface RiderDeliveryView {
   id: string;
@@ -28,6 +31,8 @@ interface Props {
 }
 
 export function RiderAssignmentBoard({ initialDeliveries, riders }: Props) {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
   const router = useRouter();
   const [deliveries, setDeliveries] = useState<RiderDeliveryView[]>(initialDeliveries);
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -46,7 +51,7 @@ export function RiderAssignmentBoard({ initialDeliveries, riders }: Props) {
       const json = await res.json() as { error?: { message: string } };
 
       if (!res.ok) {
-        setError(json.error?.message || "রি-অ্যাসাইন করা যায়নি।");
+        setError(json.error?.message || s.riderReassignFailed);
         return;
       }
 
@@ -56,7 +61,7 @@ export function RiderAssignmentBoard({ initialDeliveries, riders }: Props) {
       );
       router.refresh();
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি। আবার চেষ্টা করুন।");
+      setError(s.riderNetworkError);
     } finally {
       setLoadingId(null);
     }
@@ -82,9 +87,9 @@ export function RiderAssignmentBoard({ initialDeliveries, riders }: Props) {
     <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between border-b border-border pb-3">
         <div>
-          <h3 className="text-base font-bold text-text-main">লাইভ রাইডার অ্যাসাইনমেন্ট বোর্ড</h3>
+          <h3 className="text-base font-bold text-text-main">{s.riderTitle}</h3>
           <p className="text-xs text-text-muted">
-            পার্সেল রি-অ্যাসাইনমেন্ট এবং ইন-ফ্লাইট ডেলিভারির রিয়েল-টাইম নিয়ন্ত্রণ।
+            {s.riderDesc}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -92,7 +97,7 @@ export function RiderAssignmentBoard({ initialDeliveries, riders }: Props) {
             liveConnected ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-text-muted"
           }`}>
             <span className={`h-2 w-2 rounded-full ${liveConnected ? "animate-pulse bg-emerald-500" : "bg-muted-foreground"}`} />
-            {liveConnected ? "রিয়েলটাইম লাইভ" : "ফিড অফলাইন"}
+            {liveConnected ? s.riderLive : s.riderOffline}
           </span>
         </div>
       </div>
@@ -107,12 +112,12 @@ export function RiderAssignmentBoard({ initialDeliveries, riders }: Props) {
         <table className="w-full text-left text-xs">
           <thead className="border-b border-border text-text-muted">
             <tr>
-              <th className="pb-3 font-semibold">অর্ডার আইডি</th>
-              <th className="pb-3 font-semibold">বর্তমান রাইডার</th>
-              <th className="pb-3 font-semibold">জোন</th>
-              <th className="pb-3 font-semibold">স্ট্যাটাস</th>
-              <th className="pb-3 font-semibold">COD আদায়</th>
-              <th className="pb-3 font-semibold">রাইডার পরিবর্তন (Reassign)</th>
+              <th className="pb-3 font-semibold">{s.riderOrderId}</th>
+              <th className="pb-3 font-semibold">{s.riderCurrent}</th>
+              <th className="pb-3 font-semibold">{s.riderZone}</th>
+              <th className="pb-3 font-semibold">{s.riderStatus}</th>
+              <th className="pb-3 font-semibold">{s.riderCod}</th>
+              <th className="pb-3 font-semibold">{s.riderReassign}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60">
@@ -149,18 +154,18 @@ export function RiderAssignmentBoard({ initialDeliveries, riders }: Props) {
                           className="rounded-lg border border-input bg-background px-2 py-1 text-xs text-text-main shadow-sm focus:border-ring focus:outline-none disabled:opacity-50"
                         >
                           <option value="" disabled>
-                            রাইডার সিলেক্ট করুন…
+                            {s.riderSelect}
                           </option>
                           {activeRiders.map((r) => (
                             <option key={r.id} value={r.id} disabled={r.id === d.riderId}>
-                              {r.name} {r.id === d.riderId ? "(বর্তমান)" : ""}
+                              {r.name} {r.id === d.riderId ? s.riderCurrentSuffix : ""}
                             </option>
                           ))}
                         </select>
-                        {loadingId === d.id && <span className="text-[10px] text-text-muted">হচ্ছে…</span>}
+                        {loadingId === d.id && <span className="text-[10px] text-text-muted">{s.riderWorking}</span>}
                       </div>
                     ) : (
-                      <span className="text-[11px] text-text-muted">সম্পন্ন</span>
+                      <span className="text-[11px] text-text-muted">{s.riderDone}</span>
                     )}
                   </td>
                 </tr>
@@ -170,7 +175,7 @@ export function RiderAssignmentBoard({ initialDeliveries, riders }: Props) {
             {deliveries.length === 0 && (
               <tr>
                 <td colSpan={6} className="py-6 text-center text-xs text-text-muted">
-                  কোনো ডেলিভারি অ্যাসাইনমেন্ট পাওয়া যায়নি।
+                  {s.riderEmpty}
                 </td>
               </tr>
             )}

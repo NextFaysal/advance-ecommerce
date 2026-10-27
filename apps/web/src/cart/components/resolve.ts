@@ -18,6 +18,7 @@
 
 import type { PublicProduct, PublicVariant } from "@/catalog/types";
 import { lineTotalPoisha } from "@/lib/quantity";
+import { CART_STRINGS } from "../strings";
 import type { Cart, CartItem } from "../types";
 
 export interface ResolvedCartLine {
@@ -86,23 +87,35 @@ export const CART_SHIPPING_ZONES: CartShippingZone[] = [
   { id: "outside_dhaka", labelBn: "ঢাকার বাইরে", labelEn: "Outside Dhaka", chargePoisha: 12000 },
 ];
 
-// Coupon rejection reasons (Bangla) — shared with the server-side
-// order enrichment, which maps applyCoupon() reason codes through
-// this table. There are deliberately NO coupon records in this module:
-// the demo records that used to live here (WELCOME10 / SAMPLE-FIXED200)
-// were removed (doc 21 G3-3) so a code resolves only when a real
-// Coupon row exists in the DB.
-export const COUPON_REASON_BN: Record<string, string> = {
-  coupon_inactive: "কুপনটি এখন সক্রিয় নয়।",
-  coupon_not_started: "কুপনটি এখনো শুরু হয়নি।",
-  coupon_expired: "কুপনের মেয়াদ শেষ হয়ে গেছে।",
-  min_cart_not_met: "এই কুপনের জন্য ন্যূনতম কার্ট মূল্য পূরণ হয়নি।",
-  usage_limit_reached: "কুপনের ব্যবহারের সীমা শেষ হয়ে গেছে।",
-  per_user_limit_reached: "আপনি এই কুপনের সীমা পর্যন্ত ব্যবহার করেছেন।",
-  not_first_order: "এই কুপন শুধু প্রথম অর্ডারের জন্য।",
-  not_stackable: "এই কুপন অন্য কুপনের সাথে ব্যবহার করা যাবে না।",
-  not_found: "কুপন কোডটি সঠিক নয়।",
-};
+// Coupon rejection reasons — shared with the server-side order
+// enrichment, which maps applyCoupon() reason codes through these
+// tables. Both locales live in src/cart/strings.ts (doc 30); the
+// per-locale maps are derived from it so parity is compile-checked.
+// There are deliberately NO coupon records in this module: the demo
+// records that used to live here (WELCOME10 / SAMPLE-FIXED200) were
+// removed (doc 21 G3-3) so a code resolves only when a real Coupon
+// row exists in the DB.
+const COUPON_REASON_KEYS = {
+  coupon_inactive: "couponReasonInactive",
+  coupon_not_started: "couponReasonNotStarted",
+  coupon_expired: "couponReasonExpired",
+  min_cart_not_met: "couponReasonMinCartNotMet",
+  usage_limit_reached: "couponReasonUsageLimitReached",
+  per_user_limit_reached: "couponReasonPerUserLimitReached",
+  not_first_order: "couponReasonNotFirstOrder",
+  not_stackable: "couponReasonNotStackable",
+  not_found: "couponReasonNotFound",
+} as const;
+
+function couponReasonMap(locale: "bn" | "en"): Record<string, string> {
+  const dict = CART_STRINGS[locale];
+  return Object.fromEntries(
+    Object.entries(COUPON_REASON_KEYS).map(([code, key]) => [code, dict[key]]),
+  );
+}
+
+export const COUPON_REASON_BN: Record<string, string> = couponReasonMap("bn");
+export const COUPON_REASON_EN: Record<string, string> = couponReasonMap("en");
 
 // NOTE: the old TEMPORARY DEMO cart (seeded from the mock catalog) is
 // gone — with the real catalog wired, a browser without a guest cart

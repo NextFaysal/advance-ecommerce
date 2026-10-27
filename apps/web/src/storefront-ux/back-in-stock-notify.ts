@@ -178,8 +178,16 @@ export interface BackInStockSmsSendDeps {
   smsProvider: (providerName: string | null) => Promise<SmsProvider>;
 }
 
-export function renderBackInStockSms(productTitleBn: string): string {
-  return `সুখবর! আপনার অপেক্ষার পণ্য "${productTitleBn}" আবার স্টকে এসেছে। এখনই অর্ডার করুন।`;
+/**
+ * Doc 30 note: the signup row stores NO locale, so the send path has no
+ * per-customer language to honour — it keeps the bn copy (the store's
+ * built-in fallback locale) and passes the product's bn title. The en
+ * renderer exists for the day signups record a locale.
+ */
+export function renderBackInStockSms(productTitle: string, locale: "bn" | "en" = "bn"): string {
+  return locale === "en"
+    ? `Good news! The product you were waiting for, "${productTitle}", is back in stock. Order now.`
+    : `সুখবর! আপনার অপেক্ষার পণ্য "${productTitle}" আবার স্টকে এসেছে। এখনই অর্ডার করুন।`;
 }
 
 /**

@@ -24,26 +24,32 @@ import type {
   ShopChromeProps,
 } from "../slots";
 import { MobileFilterDrawer } from "../../../app/(store)/shop/MobileFilterDrawer";
+import { interpolate, pick } from "@/i18n/locale";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { AURORA_STRINGS, type AuroraStrings } from "./strings";
 
-const PRICE_RANGES: ReadonlyArray<{ label: string; min?: number; max?: number }> = [
-  { label: "৫০০ টাকার কম", max: 50000 },
-  { label: "৫০০ – ১,০০০ টাকা", min: 50000, max: 100000 },
-  { label: "১,০০০ – ৩,০০০ টাকা", min: 100000, max: 300000 },
-  { label: "৩,০০০ টাকার বেশি", min: 300000 },
+// Option VALUES (URL params) are locale-independent and stay
+// byte-identical; only the display labels localise (doc 30), so the
+// lists carry AURORA_STRINGS keys resolved at render time.
+const PRICE_RANGES: ReadonlyArray<{ labelKey: keyof AuroraStrings; min?: number; max?: number }> = [
+  { labelKey: "priceUnder500", max: 50000 },
+  { labelKey: "price500to1000", min: 50000, max: 100000 },
+  { labelKey: "price1000to3000", min: 100000, max: 300000 },
+  { labelKey: "priceOver3000", min: 300000 },
 ];
 
-const SORT_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: "relevance", label: "জনপ্রিয়তা" },
-  { value: "newest", label: "নতুন আগে" },
-  { value: "price-asc", label: "দাম: কম থেকে বেশি" },
-  { value: "price-desc", label: "দাম: বেশি থেকে কম" },
-  { value: "rating", label: "রেটিং" },
+const SORT_OPTIONS: ReadonlyArray<{ value: string; labelKey: keyof AuroraStrings }> = [
+  { value: "relevance", labelKey: "sortRelevance" },
+  { value: "newest", labelKey: "sortNewest" },
+  { value: "price-asc", labelKey: "sortPriceAsc" },
+  { value: "price-desc", labelKey: "sortPriceDesc" },
+  { value: "rating", labelKey: "sortRating" },
 ];
 
-const RATING_OPTIONS: ReadonlyArray<{ value?: number; label: string }> = [
-  { value: undefined, label: "সব রেটিং" },
-  { value: 4, label: "৪★ ও উপরে" },
-  { value: 3, label: "৩★ ও উপরে" },
+const RATING_OPTIONS: ReadonlyArray<{ value?: number; labelKey: keyof AuroraStrings }> = [
+  { value: undefined, labelKey: "ratingAll" },
+  { value: 4, labelKey: "rating4Up" },
+  { value: 3, labelKey: "rating3Up" },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -183,14 +189,16 @@ export default function AuroraShopChrome({
   pairToParam,
   children,
 }: ShopChromeProps) {
+  const { locale, t } = useLocale();
+  const s = pick(locale, AURORA_STRINGS);
   // Filter panel content — rendered ONCE as a node, then placed in the
   // desktop sidebar card and inside the mobile filter drawer. Same
   // GET-param links in both, so behaviour is identical.
   const filterPanel = (
     <>
-      <FilterSection title="ক্যাটাগরি">
+      <FilterSection title={t.categories}>
         <SidebarLink href={buildHref(current, { category: undefined })} active={!category}>
-          সব ক্যাটাগরি
+          {s.allCategories}
         </SidebarLink>
         {categories.map((c) => (
           <SidebarLink
@@ -199,36 +207,36 @@ export default function AuroraShopChrome({
             active={category === c.slug}
             count={c.productCount}
           >
-            {c.name.bn}
+            {c.name[locale] || c.name.bn}
           </SidebarLink>
         ))}
       </FilterSection>
 
-      <FilterSection title="মূল্য">
+      <FilterSection title={s.priceFilterTitle}>
         <SidebarLink href={buildHref(current, { min: undefined, max: undefined })} active={!hasPriceFilter}>
-          সব দাম
+          {s.allPrices}
         </SidebarLink>
         {PRICE_RANGES.map((range) => {
           const active = minPoisha === range.min && maxPoisha === range.max && hasPriceFilter;
           return (
             <SidebarLink
-              key={range.label}
+              key={range.labelKey}
               href={buildHref(current, {
                 min: range.min !== undefined ? String(range.min) : undefined,
                 max: range.max !== undefined ? String(range.max) : undefined,
               })}
               active={active}
             >
-              {range.label}
+              {s[range.labelKey]}
             </SidebarLink>
           );
         })}
       </FilterSection>
 
       {brands.length > 0 ? (
-        <FilterSection title="ব্র্যান্ড">
+        <FilterSection title={s.brandFilterTitle}>
           <SidebarLink href={buildHref(current, { brand: undefined })} active={!brand}>
-            সব ব্র্যান্ড
+            {s.allBrands}
           </SidebarLink>
           {brands.map((b) => (
             <SidebarLink key={b.slug} href={buildHref(current, { brand: b.name })} active={brand === b.name} count={b.productCount}>
@@ -238,14 +246,14 @@ export default function AuroraShopChrome({
         </FilterSection>
       ) : null}
 
-      <FilterSection title="রেটিং">
+      <FilterSection title={s.ratingFilterTitle}>
         {RATING_OPTIONS.map((option) => (
           <SidebarLink
-            key={option.label}
+            key={option.labelKey}
             href={buildHref(current, { rating: option.value !== undefined ? String(option.value) : undefined })}
             active={ratingMin === option.value}
           >
-            {option.label}
+            {s[option.labelKey]}
           </SidebarLink>
         ))}
       </FilterSection>
@@ -264,12 +272,12 @@ export default function AuroraShopChrome({
         </FilterSection>
       ))}
 
-      <FilterSection title="প্রাপ্যতা">
+      <FilterSection title={s.availabilityTitle}>
         <SidebarLink href={buildHref(current, { instock: undefined })} active={!inStockOnly}>
-          সব পণ্য
+          {t.allProducts}
         </SidebarLink>
         <SidebarLink href={buildHref(current, { instock: "1" })} active={inStockOnly}>
-          শুধু স্টকে আছে
+          {s.inStockOnlyLabel}
         </SidebarLink>
       </FilterSection>
     </>
@@ -278,10 +286,10 @@ export default function AuroraShopChrome({
   return (
     <>
       {/* Breadcrumb */}
-      <nav aria-label="ব্রেডক্রাম্ব" className="flex flex-wrap items-center gap-1.5 text-sm text-text-subtle">
-        <Link href="/" className="hover:text-brand-700">হোম</Link>
+      <nav aria-label={s.breadcrumbAria} className="flex flex-wrap items-center gap-1.5 text-sm text-text-subtle">
+        <Link href="/" className="hover:text-brand-700">{t.home}</Link>
         <span aria-hidden="true">/</span>
-        <Link href="/shop" className="hover:text-brand-700">দোকান</Link>
+        <Link href="/shop" className="hover:text-brand-700">{s.shopBreadcrumb}</Link>
         {breadcrumbCategoryLabel ? (
           <>
             <span aria-hidden="true">/</span>
@@ -309,8 +317,8 @@ export default function AuroraShopChrome({
               <div className="min-w-0">
                 <h1 className="break-words font-display text-h1 text-text-main [overflow-wrap:anywhere]">{heading}</h1>
                 <p className="mt-0.5 text-sm text-text-muted">
-                  মোট {displayTotal === null ? "…" : displayTotal}টি পণ্য
-                  {filtersApplied ? " — ফিল্টার প্রয়োগ করা হয়েছে" : ""}
+                  {interpolate(s.productsCountLine, { count: displayTotal === null ? "…" : displayTotal })}
+                  {filtersApplied ? s.filtersAppliedSuffix : ""}
                 </p>
               </div>
 
@@ -326,7 +334,7 @@ export default function AuroraShopChrome({
                   </MobileFilterDrawer>
                   {chips.length > 0 ? (
                     <span className="rounded-full bg-brand-500/10 px-2.5 py-1 text-[13px] font-semibold text-brand-700 dark:text-brand-200">
-                      {chips.length}টি ফিল্টার সক্রিয়
+                      {interpolate(s.activeFiltersCount, { count: chips.length })}
                     </span>
                   ) : null}
                 </div>
@@ -337,7 +345,7 @@ export default function AuroraShopChrome({
                     rides along exactly as the hidden inputs did. */}
                 <div className="flex flex-wrap items-center gap-2">
                   <label htmlFor="shop-sort" className="hidden text-sm text-text-muted min-[420px]:block">
-                    সাজান:
+                    {s.sortByLabel}
                   </label>
                   <select
                     id="shop-sort"
@@ -347,7 +355,7 @@ export default function AuroraShopChrome({
                   >
                     {SORT_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>
-                        {o.label}
+                        {s[o.labelKey]}
                       </option>
                     ))}
                   </select>
@@ -363,7 +371,7 @@ export default function AuroraShopChrome({
                 <Link
                   key={chip.key}
                   href={chip.href}
-                  aria-label={`${chip.label} ফিল্টার সরান`}
+                  aria-label={interpolate(s.removeFilterAria, { label: chip.label })}
                   className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-brand-600/15 bg-brand-500/10 py-1.5 pl-3.5 pr-2 text-[13px] font-medium text-brand-700 transition duration-200 hover:bg-brand-500/20 active:scale-[0.97] dark:text-brand-200"
                 >
                   {chip.label}
@@ -376,7 +384,7 @@ export default function AuroraShopChrome({
                 </Link>
               ))}
               <Link href="/shop" className="inline-flex min-h-[36px] items-center px-1 text-[13px] font-semibold text-text-muted underline-offset-2 transition hover:text-brand-700 hover:underline dark:hover:text-brand-300">
-                সব ফিল্টার মুছুন
+                {s.clearAllFilters}
               </Link>
             </div>
           ) : null}

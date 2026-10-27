@@ -5,7 +5,7 @@
  *
  * Self-fetching: GET /api/v1/admin/security/alerts on mount; the API
  * returns newest first and this card renders in that order.
- * Unacknowledged alerts are highlighted and carry a "দেখেছি" button
+ * Unacknowledged alerts are highlighted and carry a "Seen" button
  * that POSTs to /api/v1/admin/security/alerts/acknowledge and then
  * reloads the list. Kind values come from the alerts producer; the
  * badge maps the known kinds to Bangla and falls back to showing the
@@ -15,6 +15,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
+import { ADMIN_STRINGS, type AdminStrings } from "@/admin/strings";
 
 interface SecurityAlert {
   id: string;
@@ -33,36 +36,36 @@ interface AlertsResponse {
 
 type BadgeTone = "brand" | "success" | "warning" | "danger" | "info" | "neutral";
 
-function kindBadge(kind: string): { label: string; tone: BadgeTone } {
+function kindBadge(kind: string, s: AdminStrings): { label: string; tone: BadgeTone } {
   const k = kind.toLowerCase();
-  if (k.includes("lock")) return { label: "লকআউট", tone: "danger" };
+  if (k.includes("lock")) return { label: s.secAlertLockout, tone: "danger" };
   if (k.includes("new_ip") || k.includes("new-ip") || k.includes("newip")) {
-    return { label: "নতুন IP থেকে লগইন", tone: "info" };
+    return { label: s.secAlertNewIp, tone: "info" };
   }
-  if (k.includes("fail")) return { label: "ব্যর্থ লগইন চেষ্টা", tone: "warning" };
+  if (k.includes("fail")) return { label: s.secAlertFailedLogin, tone: "warning" };
   return { label: kind, tone: "neutral" };
 }
 
-function bn(n: number): string {
-  return n.toLocaleString("bn-BD", { useGrouping: false });
+function fmtNum(n: number, locale: Locale): string {
+  return n.toLocaleString(intlLocale(locale), { useGrouping: false });
 }
 
 /** "এখনই / ৫ মিনিট আগে / ২ ঘণ্টা আগে / ৩ দিন আগে", then a plain date. */
-function relativeBn(iso: string): string {
+function relative(iso: string, locale: Locale, s: AdminStrings): string {
   const then = new Date(iso).getTime();
   const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (diffSec < 60) return "এখনই";
+  if (diffSec < 60) return s.secJustNow;
   const minutes = Math.floor(diffSec / 60);
-  if (minutes < 60) return `${bn(minutes)} মিনিট আগে`;
+  if (minutes < 60) return interpolate(s.secMinutesAgo, { count: fmtNum(minutes, locale) });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${bn(hours)} ঘণ্টা আগে`;
+  if (hours < 24) return interpolate(s.secHoursAgo, { count: fmtNum(hours, locale) });
   const days = Math.floor(hours / 24);
-  if (days < 30) return `${bn(days)} দিন আগে`;
-  return new Date(iso).toLocaleDateString("bn-BD", { day: "numeric", month: "short", year: "numeric" });
+  if (days < 30) return interpolate(s.secDaysAgo, { count: fmtNum(days, locale) });
+  return new Date(iso).toLocaleDateString(intlLocale(locale), { day: "numeric", month: "short", year: "numeric" });
 }
 
-function absoluteBn(iso: string): string {
-  return new Date(iso).toLocaleString("bn-BD", {
+function absolute(iso: string, locale: Locale): string {
+  return new Date(iso).toLocaleString(intlLocale(locale), {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -72,6 +75,8 @@ function absoluteBn(iso: string): string {
 }
 
 export function SecurityAlertsCard() {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
   const [alerts, setAlerts] = useState<SecurityAlert[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -82,14 +87,14 @@ export function SecurityAlertsCard() {
       const res = await fetch("/api/v1/admin/security/alerts");
       const body = (await res.json().catch(() => ({}))) as AlertsResponse;
       if (!res.ok || !body.data) {
-        setError(body.error?.message ?? "সতর্কতা তালিকা লোড করা যায়নি — আবার চেষ্টা করুন।");
+        setError(body.error?.message ?? s.secAlertsLoadFailed);
         setAlerts(null);
         return;
       }
       setError(null);
       setAlerts(body.data);
     } catch {
-      setError("সার্ভারে পৌঁছানো যাচ্ছে না — নেটওয়ার্ক দেখে আবার চেষ্টা করুন।");
+      setError(s.secAlertsNetworkError);
       setAlerts(null);
     }
   }, []);
@@ -109,12 +114,12 @@ export function SecurityAlertsCard() {
       });
       const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
       if (!res.ok) {
-        setActionError(body.error?.message ?? "সতর্কতাটি পড়া হয়েছে হিসেবে চিহ্নিত করা যায়নি।");
+        setActionError(body.error?.message ?? s.secAlertsAckFailed);
         return;
       }
       await load();
     } catch {
-      setActionError("সার্ভারে পৌঁছানো যাচ্ছে না — নেটওয়ার্ক দেখে আবার চেষ্টা করুন।");
+      setActionError(s.secAlertsNetworkError);
     } finally {
       setBusyId(null);
     }
@@ -127,22 +132,21 @@ export function SecurityAlertsCard() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-display text-lg font-bold text-text-main">
-            নিরাপত্তা সতর্কতা
+            {s.secAlertsTitle}
             {alerts !== null && unacknowledgedCount > 0 ? (
               <span className="ml-2 align-middle">
                 <Badge tone="danger" dot>
-                  {bn(unacknowledgedCount)}টি নতুন
+                  {interpolate(s.secAlertsNew, { count: fmtNum(unacknowledgedCount, locale) })}
                 </Badge>
               </span>
             ) : null}
           </h2>
           <p className="mt-1 text-sm text-text-muted">
-            লকআউট, ব্যর্থ লগইন চেষ্টা আর নতুন IP থেকে লগইনের মতো ঘটনা এখানে জমা হয়। দেখে
-            ফেললে “দেখেছি” চাপুন — সতর্কতাটি পড়া হয়েছে হিসেবে চিহ্নিত থাকবে।
+            {s.secAlertsDesc}
           </p>
         </div>
         <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
-          রিফ্রেশ
+          {s.secRefresh}
         </Button>
       </div>
 
@@ -158,21 +162,21 @@ export function SecurityAlertsCard() {
             {error}
           </p>
           <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void load()}>
-            আবার চেষ্টা করুন
+            {s.secRetry}
           </Button>
         </div>
       ) : alerts === null ? (
         <p role="status" className="mt-4 text-sm text-text-muted">
-          সতর্কতা লোড হচ্ছে…
+          {s.secAlertsLoading}
         </p>
       ) : alerts.length === 0 ? (
         <p role="status" className="mt-4 text-sm text-text-muted">
-          কোনো সতর্কতা নেই — লকআউট বা সন্দেহজনক লগইন ঘটলে এখানে দেখা যাবে।
+          {s.secAlertsEmpty}
         </p>
       ) : (
         <ul className="mt-4 divide-y divide-border/60">
           {alerts.map((alert) => {
-            const badge = kindBadge(alert.kind);
+            const badge = kindBadge(alert.kind, s);
             return (
               <li
                 key={alert.id}
@@ -191,12 +195,12 @@ export function SecurityAlertsCard() {
                     {alert.ip ? <span className="font-mono text-xs text-text-muted">IP: {alert.ip}</span> : null}
                   </div>
                   {alert.detail ? <p className="mt-1.5 text-sm text-text-muted">{alert.detail}</p> : null}
-                  <p className="mt-1 text-xs text-text-subtle" title={absoluteBn(alert.at)}>
-                    {relativeBn(alert.at)} · {absoluteBn(alert.at)}
+                  <p className="mt-1 text-xs text-text-subtle" title={absolute(alert.at, locale)}>
+                    {relative(alert.at, locale, s)} · {absolute(alert.at, locale)}
                   </p>
                 </div>
                 {alert.acknowledged ? (
-                  <Badge tone="neutral">দেখা হয়েছে</Badge>
+                  <Badge tone="neutral">{s.secSeen}</Badge>
                 ) : (
                   <Button
                     type="button"
@@ -205,7 +209,7 @@ export function SecurityAlertsCard() {
                     loading={busyId === alert.id}
                     onClick={() => void acknowledge(alert.id)}
                   >
-                    দেখেছি
+                    {s.secMarkSeen}
                   </Button>
                 )}
               </li>

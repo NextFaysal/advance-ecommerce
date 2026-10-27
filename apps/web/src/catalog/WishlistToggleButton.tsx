@@ -15,7 +15,10 @@
  * server-component PDP.
  */
 import { useEffect, useState } from "react";
+import { pick } from "@/i18n/locale";
+import { useLocale } from "@/i18n/LocaleProvider";
 import { WISHLIST_CHANGE_EVENT, getWishlistIds, toggleWishlistId } from "./wishlist";
+import { CATALOG_STRINGS } from "./strings";
 
 function HeartIcon({ filled }: { filled: boolean }) {
   return (
@@ -36,6 +39,8 @@ function HeartIcon({ filled }: { filled: boolean }) {
 }
 
 export function WishlistToggleButton({ productId }: { productId: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, CATALOG_STRINGS);
   const [wishlisted, setWishlisted] = useState(false);
 
   useEffect(() => {
@@ -53,7 +58,7 @@ export function WishlistToggleButton({ productId }: { productId: string }) {
     <button
       type="button"
       aria-pressed={wishlisted}
-      aria-label={wishlisted ? "উইশলিস্ট থেকে সরান" : "উইশলিস্টে যোগ করুন"}
+      aria-label={wishlisted ? s.wishlistRemove : s.wishlistAdd}
       onClick={() => {
         const next = toggleWishlistId(productId);
         setWishlisted(next.includes(productId));
@@ -65,7 +70,7 @@ export function WishlistToggleButton({ productId }: { productId: string }) {
       }`}
     >
       <HeartIcon filled={wishlisted} />
-      {wishlisted ? "উইশলিস্টে আছে" : "উইশলিস্টে রাখুন"}
+      {wishlisted ? s.wishlistIn : s.wishlistKeep}
     </button>
   );
 }

@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Bazaar Footer (doc 24 wave T1 / doc 25 wave S4a) — ThemeFooterProps.
  *
@@ -25,6 +27,9 @@
  * never hardcoded in a theme.
  */
 import { CourierMarks, PaymentMarks } from "@/components/brand-marks";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { BAZAAR_STRINGS } from "./strings";
 import {
   DEFAULT_FOOTER_MENU,
   type FooterMenuGroup,
@@ -91,6 +96,8 @@ export default function BazaarFooter({
   showPoweredBy = false,
   footerMenu,
 }: ThemeFooterProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, BAZAAR_STRINGS);
   const year = new Date().getFullYear();
   const groups: ReadonlyArray<FooterMenuGroup> =
     footerMenu && footerMenu.length > 0 ? footerMenu : DEFAULT_FOOTER_MENU;
@@ -110,28 +117,27 @@ export default function BazaarFooter({
               <span className="text-base font-bold text-text-main">{brandName}</span>
             </a>
             <p className="mt-3 max-w-xs break-words text-sm leading-6 text-text-muted">
-              প্রতিদিনের টাটকা ও খাঁটি বাজার এখন ঘরে বসেই — যত্নে বাছাই করা পণ্য,
-              সঠিক ওজন আর সারাদেশে নির্ভরযোগ্য ডেলিভারি।
+              {s.footerIntro}
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               <a
                 href="/track"
                 className="inline-block rounded-md bg-secondary px-3.5 py-2 text-sm font-semibold text-secondary-foreground transition hover:opacity-90"
               >
-                অর্ডার ট্র্যাক করুন
+                {s.trackOrderButton}
               </a>
               <a
                 href="/contact"
                 className="inline-block rounded-md border border-border px-3.5 py-2 text-sm font-semibold text-text-main transition hover:bg-muted"
               >
-                যোগাযোগ করুন
+                {s.contactButton}
               </a>
             </div>
           </div>
 
           {columns.map((col) => (
-            <nav key={col.headingEn} aria-label={col.headingBn}>
-              <p className="text-sm font-bold text-text-main">{col.headingBn}</p>
+            <nav key={col.headingEn} aria-label={locale === "bn" ? col.headingBn : col.headingEn}>
+              <p className="text-sm font-bold text-text-main">{locale === "bn" ? col.headingBn : col.headingEn}</p>
               <span aria-hidden="true" className="mt-2 block h-0.5 w-8 rounded-full bg-primary" />
               <ul className="mt-3.5 space-y-2.5">
                 {col.links.map((link) => (
@@ -156,21 +162,21 @@ export default function BazaarFooter({
           className="mt-10 space-y-3 border-t border-border pt-6"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-text-muted">পেমেন্ট:</span>
+            <span className="text-xs font-medium text-text-muted">{s.paymentLabel}</span>
             <PaymentMarks />
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-text-muted">ডেলিভারি পার্টনার:</span>
+            <span className="text-xs font-medium text-text-muted">{s.deliveryPartnerLabel}</span>
             <CourierMarks />
           </div>
         </div>
 
         <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-6 text-xs text-text-subtle">
           <span>
-            © {year} {brandName} — সর্বস্বত্ব সংরক্ষিত।
+            {interpolate(s.copyrightLine, { year, brand: brandName })}
           </span>
           <a href="/contact" className="hover:text-primary">
-            যোগাযোগের জন্য এখানে দেখুন
+            {s.contactHint}
           </a>
           {showPoweredBy ? (
             <span className="ml-auto">Powered by Advance Ecommerce</span>

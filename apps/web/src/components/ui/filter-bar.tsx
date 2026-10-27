@@ -2,20 +2,27 @@
 
 import { useState } from "react";
 import { Icon } from "./icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
 
 /**
  * FilterBar (Design System v2) — search field with icon + removable
- * filter chips with close icons. New optional `placeholder` prop.
+ * filter chips with close icons. Optional `placeholder` prop; when
+ * omitted, the locale-resolved default is used (doc 30).
  */
 export function FilterBar({
   onSearch,
   chips,
-  placeholder = "অর্ডার, কাস্টমার, পণ্য খুঁজুন…",
+  placeholder,
 }: {
   onSearch?: (q: string) => void;
   chips?: string[];
   placeholder?: string;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
+  const effectivePlaceholder = placeholder ?? s.filterSearchPlaceholder;
   const [query, setQuery] = useState("");
   const [activeChips, setActiveChips] = useState<string[]>(chips ?? []);
   return (
@@ -27,14 +34,14 @@ export function FilterBar({
         <input
           value={query}
           onChange={(e) => { setQuery(e.target.value); onSearch?.(e.target.value); }}
-          placeholder={placeholder}
-          aria-label="Filter search"
+          placeholder={effectivePlaceholder}
+          aria-label={s.filterSearchLabel}
           className="w-full bg-transparent text-sm text-text-main outline-none placeholder:text-text-subtle"
         />
         {query ? (
           <button
             type="button"
-            aria-label="খোঁজ মুছুন"
+            aria-label={s.clearSearch}
             onClick={() => { setQuery(""); onSearch?.(""); }}
             className="shrink-0 rounded-full p-1 text-text-subtle transition motion-fast hover:bg-surface-2 hover:text-text-main"
           >
@@ -46,7 +53,7 @@ export function FilterBar({
         <button
           key={c}
           type="button"
-          aria-label={`Remove filter ${c}`}
+          aria-label={interpolate(s.removeFilter, { name: c })}
           onClick={() => setActiveChips(activeChips.filter((x) => x !== c))}
           className="flex h-7 items-center gap-1.5 rounded-full bg-brand-100 py-1 pl-3 pr-2 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-200/60 transition motion-fast hover:bg-brand-200/70"
         >

@@ -3,6 +3,9 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { Icon } from "./icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
 
 /**
  * Drawer (Design System v2) — slides in from the right, pop shadow,
@@ -15,6 +18,8 @@ export function Drawer({ open, onClose, title, children, footer }: {
   children: ReactNode;
   footer?: ReactNode;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -35,7 +40,7 @@ export function Drawer({ open, onClose, title, children, footer }: {
           <h2 className="font-display text-lg font-semibold text-text-main">{title}</h2>
           <button
             type="button"
-            aria-label="বন্ধ করুন"
+            aria-label={s.close}
             onClick={onClose}
             className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-text-muted transition motion-fast hover:bg-surface-2 hover:text-text-main"
           >

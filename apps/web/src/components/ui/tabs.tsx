@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
 
 export type TabItem = { id: string; label: string; count?: number; content: ReactNode };
 
@@ -10,11 +13,13 @@ export type TabItem = { id: string; label: string; count?: number; content: Reac
  * pill chips instead of "(n)" text. API unchanged from v1.
  */
 export function Tabs({ tabs, defaultId }: { tabs: TabItem[]; defaultId?: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
   const [active, setActive] = useState(defaultId ?? tabs[0]?.id ?? "");
   const current = tabs.find((t) => t.id === active) ?? tabs[0];
   return (
     <div>
-      <div role="tablist" aria-label="Tabs" className="flex gap-1 overflow-x-auto border-b border-border">
+      <div role="tablist" aria-label={s.tabsLabel} className="flex gap-1 overflow-x-auto border-b border-border">
         {tabs.map((t) => {
           const isActive = active === t.id;
           return (

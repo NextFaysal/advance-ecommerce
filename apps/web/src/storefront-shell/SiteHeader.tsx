@@ -48,6 +48,10 @@ import type { PublicProduct } from "@/catalog/types";
 import type { PublicCategoryNode } from "@/catalog/category-tree";
 import { minVariantPricePoisha } from "@/catalog/types";
 import { DEFAULT_HEADER_MENU, type SiteMenuItem } from "@/cms/site-content-types";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
+import { interpolate, pick } from "@/i18n/locale";
+import { SHELL_STRINGS, TRENDING_TERMS } from "./strings";
 
 export interface SiteHeaderProps {
   brandName?: string;
@@ -65,18 +69,9 @@ export interface SiteHeaderProps {
   headerMenu?: ReadonlyArray<SiteMenuItem>;
 }
 
-// Sensible BD storefront trending terms (static copy, not fake data —
+// Sensible BD storefront trending terms live in ./strings as
+// TRENDING_TERMS (per-locale lists — static copy, not fake data;
 // they are just search shortcuts into the real /search route).
-const TRENDING_TERMS = [
-  "শাড়ি",
-  "পাঞ্জাবি",
-  "থ্রি-পিস",
-  "স্মার্টওয়াচ",
-  "ওয়্যারলেস ইয়ারবাডস",
-  "জুতা",
-  "হাতঘড়ি",
-  "ব্যাগ",
-] as const;
 
 function CountBadge({ count, pop = false }: { count: number; pop?: boolean }) {
   if (count <= 0) return null;
@@ -247,13 +242,15 @@ function SearchPanelContent({
   onNavigate: () => void;
 }): ReactNode {
   const digits = useDigitText();
+  const { locale } = useLocale();
+  const s = pick(locale, SHELL_STRINGS);
   const q = query.trim();
   if (q.length < 2) {
     return (
       <div>
-        <p className="px-2 text-xs font-bold text-text-subtle">জনপ্রিয় খোঁজ</p>
+        <p className="px-2 text-xs font-bold text-text-subtle">{s.popularSearches}</p>
         <div className="mt-2.5 flex flex-wrap gap-2">
-          {TRENDING_TERMS.map((term) => (
+          {pick(locale, TRENDING_TERMS).map((term) => (
             <Link
               key={term}
               href={`/search?q=${encodeURIComponent(term)}`}
@@ -271,7 +268,7 @@ function SearchPanelContent({
   return (
     <div>
       {searching && suggestions.length === 0 ? (
-        <p className="px-2 py-3 text-sm text-text-muted">খুঁজছি…</p>
+        <p className="px-2 py-3 text-sm text-text-muted">{s.searching}</p>
       ) : suggestions.length > 0 ? (
         <ul>
           {suggestions.map((p) => {
@@ -292,7 +289,7 @@ function SearchPanelContent({
                     </span>
                   )}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-text-main">{p.title.bn}</span>
+                    <span className="block truncate text-sm font-medium text-text-main">{p.title[locale] || p.title.bn}</span>
                     {p.brandName ? (
                       <span className="block truncate text-xs text-text-subtle">{p.brandName}</span>
                     ) : null}
@@ -307,7 +304,7 @@ function SearchPanelContent({
         </ul>
       ) : (
         <p className="break-words px-2 py-3 text-sm text-text-muted [overflow-wrap:anywhere]">
-          “{q}” দিয়ে কোনো পণ্য পাওয়া যায়নি
+          {interpolate(s.noProductsForQuery, { query: q })}
         </p>
       )}
       <Link
@@ -315,13 +312,20 @@ function SearchPanelContent({
         onClick={onNavigate}
         className="mt-1 flex min-h-[44px] items-center rounded-xl px-2 text-sm font-semibold text-primary transition hover:bg-secondary"
       >
-        সব ফলাফল দেখুন →
+        {s.viewAllResults}
       </Link>
     </div>
   );
 }
 
 export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount, categories, headerMenu }: SiteHeaderProps) {
+  const { locale, t } = useLocale();
+  const s = pick(locale, SHELL_STRINGS);
+  // CMS menu labels are owner content with their own {bn, en} fields:
+  // pick the active locale's label, falling back to Bangla when the
+  // owner left the English label blank.
+  const menuLabel = (item: { labelBn: string; labelEn: string }) =>
+    locale === "en" && item.labelEn ? item.labelEn : item.labelBn;
   // CMS menu when the owner configured one; the built-in defaults
   // otherwise (same items the public API returns as its fallback).
   const navItems: ReadonlyArray<SiteMenuItem> =
@@ -420,11 +424,11 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
   const showBottomNav = !(pathname?.startsWith("/product/") ?? false);
 
   const bottomNavItems = [
-    { href: "/", label: "হোম", icon: <HomeIcon />, badge: 0 },
-    { href: "/shop", label: "দোকান", icon: <ShopIcon />, badge: 0 },
-    { href: "/cart", label: "কার্ট", icon: <CartIcon />, badge: effectiveCartCount },
-    { href: "/track", label: "ট্র্যাক", icon: <PackageIcon />, badge: 0 },
-    { href: "/account", label: "অ্যাকাউন্ট", icon: <UserIcon />, badge: 0 },
+    { href: "/", label: t.home, icon: <HomeIcon />, badge: 0 },
+    { href: "/shop", label: s.bottomShop, icon: <ShopIcon />, badge: 0 },
+    { href: "/cart", label: t.cart, icon: <CartIcon />, badge: effectiveCartCount },
+    { href: "/track", label: s.bottomTrack, icon: <PackageIcon />, badge: 0 },
+    { href: "/account", label: t.account, icon: <UserIcon />, badge: 0 },
   ] as const;
 
   return (
@@ -432,13 +436,13 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
       {/* Announcement bar — brand gradient, scrolls away (not sticky) */}
       <div className="brand-gradient text-white">
         <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-4 py-2 text-xs sm:px-6">
-          <p className="min-w-0 truncate font-medium">সারাদেশে ক্যাশ অন ডেলিভারি — পণ্য হাতে পেয়ে টাকা দিন</p>
+          <p className="min-w-0 truncate font-medium">{s.announcement}</p>
           <span className="hidden shrink-0 items-center gap-4 sm:flex">
             <a href="/track" className="font-semibold hover:underline">
-              অর্ডার ট্র্যাক করুন
+              {t.trackOrder}
             </a>
             <a href="/faq" className="font-semibold hover:underline">
-              সাহায্য
+              {s.help}
             </a>
           </span>
         </div>
@@ -472,10 +476,10 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
             <button
               type="button"
               onClick={() => setMobileSearchOpen(true)}
-              aria-label="পণ্য খুঁজুন"
+              aria-label={s.searchProducts}
               className="flex h-11 w-full items-center gap-2 rounded-full border border-border bg-surface-2 pl-4 pr-1.5 text-sm text-text-subtle sm:hidden"
             >
-              <span className="min-w-0 flex-1 truncate text-left">পণ্য খুঁজুন…</span>
+              <span className="min-w-0 flex-1 truncate text-left">{t.searchPlaceholder}</span>
               <span className="brand-gradient flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white">
                 <SearchIcon />
               </span>
@@ -490,7 +494,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
               onSubmit={() => setSearchOpen(false)}
             >
               <label className="sr-only" htmlFor="site-search">
-                পণ্য খুঁজুন
+                {s.searchProducts}
               </label>
               <div className="relative">
                 <input
@@ -498,7 +502,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                   name="q"
                   type="search"
                   autoComplete="off"
-                  placeholder="পণ্য খুঁজুন…"
+                  placeholder={t.searchPlaceholder}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onFocus={() => setSearchOpen(true)}
@@ -509,7 +513,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                 />
                 <button
                   type="submit"
-                  aria-label="খুঁজুন"
+                  aria-label={t.search}
                   className="brand-gradient absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:opacity-90"
                 >
                   <SearchIcon />
@@ -532,7 +536,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
           {/* Desktop nav — CMS header menu (Admin → Content) or the
               built-in defaults; items with children get a hover/focus
               dropdown with the child links. */}
-          <nav aria-label="প্রধান নেভিগেশন" className="ml-2 hidden items-center gap-1 lg:flex">
+          <nav aria-label={s.mainNavigation} className="ml-2 hidden items-center gap-1 lg:flex">
             {navItems.map((link) => {
               const linkClass = `rounded-lg px-3 py-2 text-sm transition ${
                 isActive(link.href)
@@ -547,7 +551,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                     aria-current={isActive(link.href) ? "page" : undefined}
                     className={linkClass}
                   >
-                    {link.labelBn}
+                    {menuLabel(link)}
                   </a>
                 );
               }
@@ -558,7 +562,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                     aria-current={isActive(link.href) ? "page" : undefined}
                     className={`${linkClass} inline-flex items-center gap-1`}
                   >
-                    {link.labelBn}
+                    {menuLabel(link)}
                     <ChevronDownIcon />
                   </a>
                   <span className="invisible absolute left-0 top-full z-40 block min-w-52 pt-1 opacity-0 transition group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
@@ -569,7 +573,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                           href={child.href}
                           className="block px-4 py-2.5 text-sm text-text-main transition hover:bg-surface-2"
                         >
-                          {child.labelBn}
+                          {menuLabel(child)}
                         </a>
                       ))}
                     </span>
@@ -580,18 +584,21 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
           </nav>
 
           <span className="ml-auto flex items-center gap-1 lg:ml-0">
+            {/* Doc 30: the visitor language switch — desktop actions row;
+                the mobile menu carries a second mount (see below). */}
+            <LanguageSwitcher className="mr-1 hidden md:inline-flex" />
             <NumeralsToggle />
             <ThemeToggle />
             <a
               href="/account"
-              aria-label="অ্যাকাউন্ট"
+              aria-label={t.account}
               className="hidden min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-main sm:flex"
             >
               <UserIcon />
             </a>
             <a
               href="/wishlist"
-              aria-label={`উইশলিস্ট${wishlistCount > 0 ? `, ${wishlistCount}টি পণ্য` : ""}`}
+              aria-label={wishlistCount > 0 ? interpolate(s.wishlistWithCount, { count: wishlistCount }) : t.wishlist}
               className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-main"
             >
               <HeartIcon />
@@ -599,7 +606,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
             </a>
             <a
               href="/cart"
-              aria-label={`কার্ট${effectiveCartCount > 0 ? `, ${effectiveCartCount}টি পণ্য` : ""}`}
+              aria-label={effectiveCartCount > 0 ? interpolate(s.cartWithCount, { count: effectiveCartCount }) : t.cart}
               className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-main"
             >
               <CartIcon />
@@ -607,7 +614,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
             </a>
             <button
               type="button"
-              aria-label={menuOpen ? "মেনু বন্ধ করুন" : "মেনু খুলুন"}
+              aria-label={menuOpen ? s.closeMenu : s.openMenu}
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen((v) => !v)}
               className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 lg:hidden"
@@ -638,14 +645,14 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                 className="brand-gradient flex min-h-[44px] items-center gap-2 rounded-lg px-4 text-sm font-bold text-white shadow-sm transition hover:opacity-90"
               >
                 <GridIcon />
-                সব ক্যাটাগরি
+                {s.allCategories}
                 <ChevronDownIcon />
               </button>
               <a href="/shop" className="rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition hover:text-primary">
-                সব পণ্য
+                {t.allProducts}
               </a>
               <a href="/track" className="rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition hover:text-primary">
-                অর্ডার ট্র্যাক
+                {s.trackOrderShort}
               </a>
             </div>
 
@@ -658,7 +665,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                     role="status"
                     className="grid grid-cols-3 gap-3 rounded-2xl border border-border bg-card p-4 shadow-pop xl:grid-cols-4"
                   >
-                    <span className="sr-only">ক্যাটাগরি লোড হচ্ছে…</span>
+                    <span className="sr-only">{s.categoriesLoading}</span>
                     {Array.from({ length: 8 }).map((_, i) => (
                       <div key={i} aria-hidden="true" className="flex items-center gap-3 rounded-xl bg-surface-2 p-3">
                         <span className="skeleton-shimmer h-11 w-11 shrink-0 rounded-lg" />
@@ -688,12 +695,12 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                           <img src={c.imageUrl} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" />
                         ) : (
                           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface/80 text-base font-extrabold text-text-main shadow-sm">
-                            {c.name.bn.charAt(0)}
+                            {(c.name[locale] || c.name.bn).charAt(0)}
                           </span>
                         )}
                         <span className="min-w-0">
-                          <span className="block truncate text-sm font-bold">{c.name.bn}</span>
-                          <span className="block text-xs opacity-75">{c.productCount}টি পণ্য</span>
+                          <span className="block truncate text-sm font-bold">{c.name[locale] || c.name.bn}</span>
+                          <span className="block text-xs opacity-75">{interpolate(s.productsCount, { count: c.productCount })}</span>
                         </span>
                       </a>
                       {c.children.length > 0 ? (
@@ -707,9 +714,9 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                               >
                                 <span className="min-w-0 truncate">
                                   <span aria-hidden="true" className="mr-1 text-text-subtle">↳</span>
-                                  {child.name.bn}
+                                  {child.name[locale] || child.name.bn}
                                 </span>
-                                <span className="shrink-0 text-[11px] text-text-subtle">{child.productCount}টি</span>
+                                <span className="shrink-0 text-[11px] text-text-subtle">{interpolate(s.itemsCountShort, { count: child.productCount })}</span>
                               </a>
                             </li>
                           ))}
@@ -723,13 +730,13 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                      opens (the row is always present) with a quiet note
                      instead of a blank box. */
                   <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-pop">
-                    <p className="text-sm text-text-muted">এখনো কোনো ক্যাটাগরি যোগ হয়নি</p>
+                    <p className="text-sm text-text-muted">{s.noCategoriesYet}</p>
                     <a
                       href="/shop"
                       onClick={() => setMegaOpen(false)}
                       className="mt-2 inline-block text-sm font-semibold text-primary hover:underline"
                     >
-                      সব পণ্য দেখুন →
+                      {s.viewAllProducts}
                     </a>
                   </div>
                 )}
@@ -739,7 +746,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
 
         {/* Mobile menu — simple disclosure (+ category section, v3) */}
         {menuOpen ? (
-          <nav aria-label="মোবাইল নেভিগেশন" className="border-t border-border bg-card px-4 py-2 lg:hidden">
+          <nav aria-label={s.mobileNavigation} className="border-t border-border bg-card px-4 py-2 lg:hidden">
             {navItems.map((link) => (
               <span key={link.id} className="block">
                 <a
@@ -751,7 +758,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                       : "text-text-main hover:bg-surface-2"
                   }`}
                 >
-                  {link.labelBn}
+                  {menuLabel(link)}
                 </a>
                 {link.children.map((child) => (
                   <a
@@ -759,35 +766,38 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                     href={child.href}
                     className="block rounded-lg py-2.5 pl-8 pr-3 text-sm text-text-muted hover:bg-surface-2"
                   >
-                    {child.labelBn}
+                    {menuLabel(child)}
                   </a>
                 ))}
               </span>
             ))}
             <a href="/account" className="block rounded-lg px-3 py-2.5 text-sm text-text-main hover:bg-surface-2">
-              অ্যাকাউন্ট
+              {t.account}
             </a>
             <a href="/wishlist" className="block rounded-lg px-3 py-2.5 text-sm text-text-main hover:bg-surface-2">
-              উইশলিস্ট
+              {t.wishlist}
             </a>
+            <div className="px-3 py-2.5 md:hidden">
+              <LanguageSwitcher />
+            </div>
             {categories === undefined ? (
               <div className="mt-1 border-t border-border pt-1">
-                <p className="px-3 pb-1 pt-2.5 text-xs font-bold text-text-subtle">ক্যাটাগরি</p>
+                <p className="px-3 pb-1 pt-2.5 text-xs font-bold text-text-subtle">{t.categories}</p>
                 <p role="status" className="px-3 py-2.5 text-sm text-text-muted">
-                  লোড হচ্ছে…
+                  {t.loading}
                 </p>
               </div>
             ) : hasCategories ? (
               <div className="mt-1 border-t border-border pt-1">
-                <p className="px-3 pb-1 pt-2.5 text-xs font-bold text-text-subtle">ক্যাটাগরি</p>
+                <p className="px-3 pb-1 pt-2.5 text-xs font-bold text-text-subtle">{t.categories}</p>
                 {categories.map((c) => (
                   <span key={c.slug} className="block">
                     <a
                       href={`/shop?category=${c.slug}`}
                       className="flex min-h-[44px] items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm text-text-main hover:bg-surface-2"
                     >
-                      <span className="min-w-0 truncate">{c.name.bn}</span>
-                      <span className="shrink-0 text-xs text-text-subtle">{c.productCount}টি পণ্য</span>
+                      <span className="min-w-0 truncate">{c.name[locale] || c.name.bn}</span>
+                      <span className="shrink-0 text-xs text-text-subtle">{interpolate(s.productsCount, { count: c.productCount })}</span>
                     </a>
                     {/* Wave 13-2: sub-categories indented under their
                         parent (depth 2, same as the desktop menu). */}
@@ -799,9 +809,9 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                       >
                         <span className="min-w-0 truncate">
                           <span aria-hidden="true" className="mr-1 text-text-subtle">↳</span>
-                          {child.name.bn}
+                          {child.name[locale] || child.name.bn}
                         </span>
-                        <span className="shrink-0 text-xs text-text-subtle">{child.productCount}টি পণ্য</span>
+                        <span className="shrink-0 text-xs text-text-subtle">{interpolate(s.productsCount, { count: child.productCount })}</span>
                       </a>
                     ))}
                   </span>
@@ -814,7 +824,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
 
       {/* Mobile search overlay — full-screen, same GET /search contract */}
       {mobileSearchOpen ? (
-        <div role="dialog" aria-modal="true" aria-label="পণ্য খুঁজুন" className="fixed inset-0 z-50 flex flex-col bg-card sm:hidden">
+        <div role="dialog" aria-modal="true" aria-label={s.searchProducts} className="fixed inset-0 z-50 flex flex-col bg-card sm:hidden">
           <div className="flex items-center gap-2 border-b border-border px-4 py-3">
             <form
               action="/search"
@@ -824,7 +834,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
               onSubmit={() => setMobileSearchOpen(false)}
             >
               <label className="sr-only" htmlFor="site-search-mobile">
-                পণ্য খুঁজুন
+                {s.searchProducts}
               </label>
               <div className="relative">
                 <input
@@ -833,7 +843,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                   type="search"
                   autoComplete="off"
                   autoFocus
-                  placeholder="পণ্য খুঁজুন…"
+                  placeholder={t.searchPlaceholder}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => {
@@ -843,7 +853,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                 />
                 <button
                   type="submit"
-                  aria-label="খুঁজুন"
+                  aria-label={t.search}
                   className="brand-gradient absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:opacity-90"
                 >
                   <SearchIcon />
@@ -852,7 +862,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
             </form>
             <button
               type="button"
-              aria-label="বন্ধ করুন"
+              aria-label={t.close}
               onClick={() => setMobileSearchOpen(false)}
               className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-text-muted transition hover:bg-surface-2 hover:text-text-main"
             >
@@ -873,7 +883,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
       {/* Mobile bottom nav — hidden on product pages (PDP buy bar wins) */}
       {showBottomNav ? (
         <nav
-          aria-label="মোবাইল দ্রুত নেভিগেশন"
+          aria-label={s.mobileQuickNavigation}
           className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 shadow-[0_-4px_16px_rgba(49,46,129,0.08)] backdrop-blur lg:hidden"
         >
           <div className="grid grid-cols-5">

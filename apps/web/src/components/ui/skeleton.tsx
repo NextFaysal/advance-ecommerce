@@ -1,9 +1,18 @@
+"use client";
+
 /**
  * Skeleton (Design System v2) — shimmer sweep (see .skeleton-shimmer in
  * globals.css) instead of the flat pulse; reduced-motion safe.
+ * The loading aria-label is locale-resolved (doc 30).
  */
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
+
 export function Skeleton({ className = "h-4 w-full" }: { className?: string }) {
-  return <div aria-hidden="true" aria-label="Loading" className={`skeleton-shimmer rounded-md ${className}`} />;
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
+  return <div aria-hidden="true" aria-label={s.loading} className={`skeleton-shimmer rounded-md ${className}`} />;
 }
 
 export function SkeletonCard() {

@@ -13,6 +13,9 @@ import { Modal } from "@/components/ui/modal";
 import { useDigitText } from "@/components/ui/numerals";
 import { AddToCartButton } from "@/cart/components/AddToCartButton";
 import type { PublicProduct, PublicVariant } from "./types";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { CATALOG_STRINGS } from "./strings";
 
 function StarIcon({ filled }: { filled: boolean }) {
   return (
@@ -50,8 +53,8 @@ function BagIcon() {
   );
 }
 
-function variantLabel(v: PublicVariant): string {
-  return Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড";
+function variantLabel(v: PublicVariant, standardLabel: string): string {
+  return Object.values(v.attributes).join(" / ") || standardLabel;
 }
 
 /** Same default the card picks: first active in-stock, else first active. */
@@ -72,6 +75,8 @@ export function QuickView({
   open: boolean;
   onClose: () => void;
 }) {
+  const { locale, t } = useLocale();
+  const s = pick(locale, CATALOG_STRINGS);
   const digits = useDigitText();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -98,7 +103,7 @@ export function QuickView({
   const fullStars = Math.round(rating);
 
   return (
-    <Modal open={open} onClose={onClose} title="ঝটপট দেখুন">
+    <Modal open={open} onClose={onClose} title={s.quickView}>
       <div className="max-h-[70vh] overflow-y-auto">
         {/* Image */}
         <div className="relative aspect-[16/10] overflow-hidden rounded-xl bg-surface-2">
@@ -106,7 +111,10 @@ export function QuickView({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={imageUrl}
-              alt={product.images[0]?.altBn ?? product.title.bn}
+              alt={
+                (locale === "bn" ? product.images[0]?.altBn : product.images[0]?.altEn) ??
+                product.title[locale]
+              }
               className="h-full w-full object-cover"
             />
           ) : (
@@ -126,20 +134,23 @@ export function QuickView({
           <p className="mt-4 text-xs font-semibold tracking-wide text-text-subtle">{product.brandName}</p>
         ) : null}
         <h3 className="mt-1 break-words text-lg font-bold leading-snug text-text-main [overflow-wrap:anywhere]">
-          {product.title.bn}
+          {product.title[locale]}
         </h3>
-        <p className="mt-1.5 flex items-center gap-1" aria-label={`রেটিং ${rating} / ৫`}>
+        <p
+          className="mt-1.5 flex items-center gap-1"
+          aria-label={interpolate(s.ratingLabel, { rating })}
+        >
           {[1, 2, 3, 4, 5].map((i) => (
             <StarIcon key={i} filled={i <= fullStars} />
           ))}
           <span className="ml-1 text-xs text-text-subtle">
-            {product.ratingAverage ?? "—"} ({product.reviewCount}টি রিভিউ)
+            {product.ratingAverage ?? "—"} ({interpolate(s.reviewsCount, { count: product.reviewCount })})
           </span>
         </p>
 
         {/* Price — or the price-on-request label (schema wave 2) */}
         {product.priceOnRequest ? (
-          <p className="mt-3 text-2xl font-extrabold text-brand-700">দামের জন্য যোগাযোগ করুন</p>
+          <p className="mt-3 text-2xl font-extrabold text-brand-700">{s.priceOnRequest}</p>
         ) : (
         <p className="mt-3 flex flex-wrap items-baseline gap-x-2.5">
           <span className="text-2xl font-extrabold tabular-nums text-brand-700">{digits(formatBdt(price))}</span>
@@ -149,14 +160,14 @@ export function QuickView({
         </p>
         )}
         <p className={`mt-1 text-sm font-medium ${inStock ? "text-emerald-600" : "text-rose-600"}`}>
-          {inStock ? "স্টকে আছে" : "স্টক শেষ"}
+          {inStock ? t.inStock : t.outOfStock}
         </p>
 
         {/* Variant picker */}
         {selectable.length > 1 ? (
           <div className="mt-4">
-            <p className="text-sm font-bold text-text-main">ভেরিয়েন্ট বেছে নিন</p>
-            <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="ভেরিয়েন্ট">
+            <p className="text-sm font-bold text-text-main">{s.variantPickerTitle}</p>
+            <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={s.variantGroupLabel}>
               {selectable.map((v) => {
                 const active = selected?.id === v.id;
                 const soldOut = v.stock <= 0;
@@ -175,11 +186,11 @@ export function QuickView({
                           : "border-border bg-surface text-text-main hover:border-brand-300"
                     }`}
                   >
-                    {variantLabel(v)}
+                    {variantLabel(v, s.standardVariant)}
                     {product.priceOnRequest ? null : (
                       <> — <span className="tabular-nums">{digits(formatBdt(v.pricePoisha))}</span></>
                     )}
-                    {soldOut ? " (স্টক শেষ)" : ""}
+                    {soldOut ? s.soldOutParenthetical : ""}
                   </button>
                 );
               })}
@@ -218,7 +229,7 @@ export function QuickView({
             onClick={onClose}
             className="inline-flex min-h-[44px] items-center rounded-xl border border-border px-4 text-sm font-semibold text-text-main transition hover:bg-surface-2"
           >
-            বিস্তারিত দেখুন
+            {s.viewDetails}
           </Link>
         </div>
       </div>

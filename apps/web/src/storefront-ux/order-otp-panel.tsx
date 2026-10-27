@@ -15,8 +15,8 @@
  *   { error: { code, message, details? } } with codes OTP_MISMATCH
  *   (details.attemptsLeft), OTP_EXPIRED, OTP_TOO_MANY_ATTEMPTS,
  *   OTP_ALREADY_VERIFIED, OTP_NOT_REQUIRED, RATE_LIMITED. The
- *   endpoint's own bilingual message is shown (Bangla half) — no
- *   error copy is invented here.
+ *   endpoint's own bilingual message is shown — the half matching the
+ *   active locale (doc 30) — no error copy is invented here.
  * - Resend enforces a 60-second cooldown server-side (429
  *   OTP_RESEND_COOLDOWN with details.retryAfterSeconds); the button
  *   mirrors that cooldown locally. A 200 resend means a code was
@@ -31,6 +31,9 @@
 import { useEffect, useState } from "react";
 import { maskPhone } from "@/checkout/validation";
 import { useDigitText } from "@/components/ui/numerals";
+import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { UX_STRINGS } from "./strings";
 
 interface OtpApiError {
   code?: string;
@@ -44,11 +47,14 @@ interface OtpApiResponse {
   error?: OtpApiError;
 }
 
-/** Endpoint messages are "বাংলা / English" pairs; the UI is Bangla. */
-function bnMessage(message: string | undefined, fallback: string): string {
+/** Endpoint messages are "বাংলা / English" pairs; show the active
+ *  locale's half (doc 30 — no mixed UI). Falls back to the whole
+ *  message when it is not a pair. */
+function localizedMessage(message: string | undefined, fallback: string, locale: Locale): string {
   if (!message) return fallback;
-  const head = message.split(" / ")[0]?.trim();
-  return head ? head : message;
+  const parts = message.split(" / ").map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 2) return locale === "bn" ? parts[0]! : parts[1]!;
+  return message;
 }
 
 export default function OrderOtpPanel({
@@ -64,6 +70,8 @@ export default function OrderOtpPanel({
   smsState?: string;
 }) {
   const digits = useDigitText();
+  const { locale } = useLocale();
+  const s = pick(locale, UX_STRINGS);
   const [code, setCode] = useState("");
   const [phase, setPhase] = useState<"entry" | "verified" | "not_required">("entry");
   const [busy, setBusy] = useState<"verify" | "resend" | null>(null);
@@ -107,9 +115,9 @@ export default function OrderOtpPanel({
       setAttemptsLeft(
         typeof e?.details?.attemptsLeft === "number" ? e.details.attemptsLeft : null,
       );
-      setError(bnMessage(e?.message, "যাচাই করা যায়নি। আবার চেষ্টা করুন।"));
+      setError(localizedMessage(e?.message, s.otpVerifyFailed, locale));
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — সংযোগ যাচাই করে আবার চেষ্টা করুন।");
+      setError(s.otpNetworkError);
     } finally {
       setBusy(null);
     }
@@ -133,9 +141,7 @@ export default function OrderOtpPanel({
         // The endpoint's own cooldown (60s between issues) starts now.
         setCooldown(60);
         setNotice(
-          json?.meta?.sms === "queued"
-            ? "নতুন কোড পাঠানো হয়েছে — ১০ মিনিটের মধ্যে কোডটি ব্যবহার করুন।"
-            : "নতুন কোড তৈরি হয়েছে, তবে SMS এখন পাঠানো যায়নি — কিছুক্ষণ পরে আবার চেষ্টা করুন।",
+          json?.meta?.sms === "queued" ? s.otpResendQueued : s.otpResendNoSms,
         );
         return;
       }
@@ -153,9 +159,9 @@ export default function OrderOtpPanel({
           typeof e.details?.retryAfterSeconds === "number" ? e.details.retryAfterSeconds : 60,
         );
       }
-      setError(bnMessage(e?.message, "কোড পাঠানো যায়নি। আবার চেষ্টা করুন।"));
+      setError(localizedMessage(e?.message, s.otpSendFailed, locale));
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — সংযোগ যাচাই করে আবার চেষ্টা করুন।");
+      setError(s.otpNetworkError);
     } finally {
       setBusy(null);
     }
@@ -167,7 +173,7 @@ export default function OrderOtpPanel({
         role="status"
         className="mt-4 rounded-xl bg-emerald-50 px-4 py-3.5 text-left text-sm font-medium text-emerald-700"
       >
-        ✓ ফোন যাচাই সম্পন্ন হয়েছে — ধন্যবাদ! আপনার অর্ডারটি এখন নিশ্চিতকরণের ধাপে এগিয়ে যাবে।
+        {s.otpVerified}
       </div>
     );
   }
@@ -178,34 +184,33 @@ export default function OrderOtpPanel({
         role="status"
         className="mt-4 rounded-xl bg-surface-2 px-4 py-3.5 text-left text-sm text-text-muted"
       >
-        এই অর্ডারের জন্য ফোন যাচাই (OTP) প্রয়োজন নেই।
+        {s.otpNotRequired}
       </div>
     );
   }
 
   return (
     <section
-      aria-label="ফোন যাচাই (OTP)"
+      aria-label={s.otpAriaLabel}
       className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-4 text-left"
     >
-      <h2 className="text-sm font-bold text-text-main">ফোন যাচাই (OTP) প্রয়োজন</h2>
+      <h2 className="text-sm font-bold text-text-main">{s.otpTitle}</h2>
       <p className="mt-1 text-sm leading-6 text-text-muted">
-        অর্ডারটি নিশ্চিত করতে <strong>{maskPhone(phone)}</strong> নম্বরে পাঠানো ৬ সংখ্যার
-        কোডটি দিন।
-        {smsState && smsState !== "queued"
-          ? " প্রথম কোডের SMS এখনো পাঠানো সম্পূর্ণ হয়নি — কোড না পেলে নিচের “আবার কোড পাঠান” বোতামটি ব্যবহার করুন।"
-          : ""}
+        {s.otpIntroBefore}
+        <strong>{maskPhone(phone)}</strong>
+        {s.otpIntroAfter}
+        {smsState && smsState !== "queued" ? s.otpFirstSmsPending : ""}
       </p>
       <div className="mt-3 flex flex-wrap items-end gap-2">
         <label className="block min-w-0 flex-1">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">৬ সংখ্যার কোড</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{s.otpCodeLabel}</span>
           <input
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
             inputMode="numeric"
             autoComplete="one-time-code"
             placeholder="------"
-            aria-label="৬ সংখ্যার OTP কোড"
+            aria-label={s.otpCodeAria}
             className="h-12 w-full rounded-xl border border-border bg-card px-4 text-center text-lg font-semibold tracking-[0.3em] text-text-main outline-none transition placeholder:text-text-subtle focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
           />
         </label>
@@ -215,12 +220,12 @@ export default function OrderOtpPanel({
           disabled={busy !== null || code.length !== 6}
           className="brand-gradient flex h-12 shrink-0 items-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {busy === "verify" ? "যাচাই হচ্ছে…" : "যাচাই করুন"}
+          {busy === "verify" ? s.otpVerifying : s.otpVerify}
         </button>
       </div>
       {attemptsLeft !== null ? (
         <p className="mt-2 text-xs font-medium text-amber-700">
-          আরও {digits(String(attemptsLeft))}বার ভুল কোড দেওয়ার সুযোগ বাকি আছে।
+          {interpolate(s.otpAttemptsLeft, { count: digits(String(attemptsLeft)) })}
         </p>
       ) : null}
       {error ? (
@@ -240,10 +245,10 @@ export default function OrderOtpPanel({
         className="mt-3 inline-flex h-10 items-center rounded-lg border border-border bg-card px-3.5 text-sm font-medium text-text-main transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {busy === "resend"
-          ? "কোড পাঠানো হচ্ছে…"
+          ? s.otpSending
           : cooldown > 0
-            ? `আবার কোড পাঠাতে ${digits(String(cooldown))} সেকেন্ড অপেক্ষা করুন`
-            : "আবার কোড পাঠান"}
+            ? interpolate(s.otpResendWait, { seconds: digits(String(cooldown)) })
+            : s.otpResend}
       </button>
     </section>
   );

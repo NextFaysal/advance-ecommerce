@@ -50,7 +50,10 @@ import { CART_UPDATED_EVENT } from "@/cart/components/AddToCartButton";
 import { Icon } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
 import { DEFAULT_HEADER_MENU } from "@/cms/site-content-types";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
 import { useThemeView } from "../theme-view";
+import { BAZAAR_STRINGS } from "./strings";
 import { openCartDrawer } from "../cart-drawer-events";
 import { BAZAAR_COLORS } from "./tokens";
 import type { ThemeHeaderProps } from "../slots";
@@ -71,6 +74,8 @@ export default function BazaarHeader({
   headerMenu,
 }: ThemeHeaderProps) {
   const digits = useDigitText();
+  const { locale } = useLocale();
+  const s = pick(locale, BAZAAR_STRINGS);
   const themeView = useThemeView();
   const showFloatingCart = themeView.options.showFloatingCart !== false;
   const showSupportButtons = themeView.options.showSupportButtons !== false;
@@ -121,9 +126,9 @@ export default function BazaarHeader({
     icon: "package" | "user" | "heart";
     badge?: number;
   }> = [
-    { href: "/track", label: "Track Order", icon: "package" },
-    { href: "/account", label: "Sign In", icon: "user" },
-    { href: "/wishlist", label: "Wishlist", icon: "heart", badge: wishlistCount },
+    { href: "/track", label: s.trackOrderAction, icon: "package" },
+    { href: "/account", label: s.signInAction, icon: "user" },
+    { href: "/wishlist", label: s.wishlistAction, icon: "heart", badge: wishlistCount },
   ];
 
   return (
@@ -158,13 +163,13 @@ export default function BazaarHeader({
                 <input
                   type="search"
                   name="q"
-                  placeholder="পণ্য খুঁজুন… যেমন: খাঁটি সরিষার তেল, মধু, খেজুর"
-                  aria-label="পণ্য খুঁজুন"
+                  placeholder={s.searchPlaceholder}
+                  aria-label={s.searchAria}
                   className="h-11 w-full rounded-full border border-input bg-muted pl-4 pr-12 text-sm text-text-main shadow-sm transition placeholder:text-text-subtle focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                 />
                 <button
                   type="submit"
-                  aria-label="খুঁজুন"
+                  aria-label={s.searchButtonAria}
                   className="absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white transition hover:opacity-90"
                 >
                   <Icon name="search" size={18} />
@@ -190,14 +195,14 @@ export default function BazaarHeader({
               <button
                 type="button"
                 onClick={openCartDrawer}
-                aria-label={`কার্ট${effectiveCartCount > 0 ? `, ${effectiveCartCount}টি পণ্য` : ""} — ড্রয়ার খুলুন`}
+                aria-label={effectiveCartCount > 0 ? interpolate(s.cartDrawerAriaCount, { count: effectiveCartCount }) : s.cartDrawerAria}
                 className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary"
               >
                 <span className="relative">
                   <Icon name="cart" size={23} />
                   <OrangeBadge count={effectiveCartCount} />
                 </span>
-                <span className="text-[11px] font-medium leading-none">Cart</span>
+                <span className="text-[11px] font-medium leading-none">{s.cartLabel}</span>
               </button>
             </div>
           </div>
@@ -205,7 +210,7 @@ export default function BazaarHeader({
 
         {/* Tier 2 — deep-green category bar */}
         <nav
-          aria-label="ক্যাটাগরি"
+          aria-label={s.categoriesAria}
           className="text-white"
           style={{ backgroundColor: BAZAAR_COLORS.navGreen }}
         >
@@ -215,7 +220,7 @@ export default function BazaarHeader({
               className="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-sm font-bold transition hover:bg-white/10"
             >
               <Icon name="grid" size={16} />
-              সব ক্যাটাগরি
+              {s.allCategories}
             </Link>
             {(categories ?? []).map((c) => (
               <Link
@@ -247,12 +252,12 @@ export default function BazaarHeader({
         <button
           type="button"
           onClick={openCartDrawer}
-          aria-label={`কার্ট খুলুন — ${effectiveCartCount}টি পণ্য, মোট ${formatBdt(cartTotalPoisha)}`}
+          aria-label={interpolate(s.floatingCartAria, { count: effectiveCartCount, total: formatBdt(cartTotalPoisha) })}
           className="fixed right-0 top-1/3 z-40 flex flex-col items-center gap-0.5 rounded-l-lg bg-primary px-2.5 py-3 text-white shadow-pop transition hover:opacity-95"
         >
           <Icon name="cart" size={20} />
           <span className="text-[11px] font-bold leading-tight">
-            {digits(`${effectiveCartCount}টি`)}
+            {digits(interpolate(s.itemCountShort, { count: effectiveCartCount }))}
           </span>
           <span className="text-[11px] font-semibold leading-tight">
             {digits(formatBdt(cartTotalPoisha))}
@@ -267,7 +272,7 @@ export default function BazaarHeader({
         <div className="fixed bottom-24 right-3 z-40 flex flex-col gap-2 lg:bottom-6">
           <Link
             href="/contact"
-            aria-label="চ্যাটে যোগাযোগ করুন"
+            aria-label={s.chatContactAria}
             className="flex h-11 w-11 items-center justify-center rounded-full text-white shadow-pop transition hover:opacity-90"
             style={{ backgroundColor: BAZAAR_COLORS.whatsappGreen }}
           >
@@ -275,7 +280,7 @@ export default function BazaarHeader({
           </Link>
           <Link
             href="/contact"
-            aria-label="কল করে অর্ডার করুন"
+            aria-label={s.callOrderAria}
             className="flex h-11 w-11 items-center justify-center rounded-full text-white shadow-pop transition hover:opacity-90"
             style={{ backgroundColor: BAZAAR_COLORS.callNavy }}
           >
@@ -284,7 +289,7 @@ export default function BazaarHeader({
           {scrolled ? (
             <button
               type="button"
-              aria-label="উপরে যান"
+              aria-label={s.backToTopAria}
               onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
               className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-pop transition hover:opacity-90"
             >

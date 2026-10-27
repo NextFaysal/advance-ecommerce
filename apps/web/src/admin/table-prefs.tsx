@@ -18,6 +18,9 @@
 // device.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
 
 /* ------------------------------------------------------------------ */
 /* Identity                                                           */
@@ -209,6 +212,8 @@ export function SavedViewsBar<S>({
   onSave: (name: string, state: S) => void;
   onDelete: (name: string) => void;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
   const [selected, setSelected] = useState("");
   const [newName, setNewName] = useState("");
   const [notice, setNotice] = useState("");
@@ -216,46 +221,46 @@ export function SavedViewsBar<S>({
   function handleSave() {
     const name = newName.trim();
     if (!name) {
-      setNotice("আগে নতুন ভিউয়ের নাম লিখুন।");
+      setNotice(s.tpNameRequired);
       return;
     }
     onSave(name, currentState);
     setSelected(name);
     setNewName("");
-    setNotice(`"${name}" ভিউ সংরক্ষণ হয়েছে।`);
+    setNotice(interpolate(s.tpViewSaved, { name }));
   }
 
   function handleApply() {
     const view = views.find((v) => v.name === selected);
     if (!view) {
-      setNotice("আগে তালিকা থেকে একটি ভিউ বেছে নিন।");
+      setNotice(s.tpSelectFirst);
       return;
     }
     onApply(view);
-    setNotice(`"${view.name}" ভিউ প্রয়োগ হয়েছে।`);
+    setNotice(interpolate(s.tpViewApplied, { name: view.name }));
   }
 
   function handleDelete() {
     if (!selected) {
-      setNotice("মুছতে আগে একটি ভিউ বেছে নিন।");
+      setNotice(s.tpDeleteSelectFirst);
       return;
     }
     onDelete(selected);
-    setNotice(`"${selected}" ভিউ মুছে ফেলা হয়েছে।`);
+    setNotice(interpolate(s.tpViewDeleted, { name: selected }));
     setSelected("");
   }
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-caption font-semibold text-text-muted">সংরক্ষিত ভিউ:</span>
+      <span className="text-caption font-semibold text-text-muted">{s.tpSavedViews}</span>
       <select
         value={selected}
         onChange={(e) => setSelected(e.target.value)}
         disabled={!ready}
-        aria-label="সংরক্ষিত ভিউ বেছে নিন"
+        aria-label={s.tpSelectViewLabel}
         className={barInputCls}
       >
-        <option value="">ভিউ বেছে নিন…</option>
+        <option value="">{s.tpChooseView}</option>
         {views.map((v) => (
           <option key={v.name} value={v.name}>
             {v.name}
@@ -263,22 +268,22 @@ export function SavedViewsBar<S>({
         ))}
       </select>
       <button type="button" className={barBtnCls} disabled={!ready || !selected} onClick={handleApply}>
-        প্রয়োগ করুন
+        {s.tpApply}
       </button>
       <button type="button" className={barBtnCls} disabled={!ready || !selected} onClick={handleDelete}>
-        ভিউ মুছুন
+        {s.tpDeleteView}
       </button>
       <span aria-hidden="true" className="hidden h-5 w-px bg-border sm:block" />
       <input
         value={newName}
         onChange={(e) => setNewName(e.target.value)}
         disabled={!ready}
-        placeholder="নতুন ভিউয়ের নাম"
-        aria-label="নতুন ভিউয়ের নাম"
+        placeholder={s.tpNewViewPlaceholder}
+        aria-label={s.tpNewViewLabel}
         className={`${barInputCls} w-44`}
       />
       <button type="button" className={barBtnCls} disabled={!ready} onClick={handleSave}>
-        বর্তমান ফিল্টার সংরক্ষণ করুন
+        {s.tpSaveCurrent}
       </button>
       {notice ? (
         <span role="status" className="text-caption text-text-muted">
@@ -304,6 +309,8 @@ export function ColumnPicker({
   onToggle: (key: string) => void;
   ready: boolean;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
@@ -319,7 +326,7 @@ export function ColumnPicker({
           <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
           <circle cx="12" cy="12" r="3" />
         </svg>
-        কলাম
+        {s.tpColumns}
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={`h-3.5 w-3.5 transition motion-fast ${open ? "rotate-180" : ""}`}>
           <path d="m6 9 6 6 6-6" />
         </svg>
@@ -333,9 +340,9 @@ export function ColumnPicker({
             className="fixed inset-0 z-10 cursor-default"
             onClick={() => setOpen(false)}
           />
-          <div className="absolute right-0 z-20 mt-2 w-60 rounded-lg border border-border bg-card p-2 shadow-lift" role="group" aria-label="কলাম বেছে নিন">
+          <div className="absolute right-0 z-20 mt-2 w-60 rounded-lg border border-border bg-card p-2 shadow-lift" role="group" aria-label={s.tpColumnsLabel}>
             <p className="px-2 pb-1.5 pt-1 text-caption font-semibold text-text-muted">
-              কোন কলামগুলো দেখাবেন (ডেস্কটপ টেবিলে)
+              {s.tpColumnsHint}
             </p>
             {columns.map((c) => (
               <label
@@ -358,6 +365,9 @@ export function ColumnPicker({
   );
 }
 
-/** Honest note shown next to the prefs controls on every list page. */
-export const TABLE_PREFS_NOTE =
-  "সংরক্ষিত ভিউ ও কলামের পছন্দ শুধু এই ব্রাউজারে, আপনার স্টাফ অ্যাকাউন্টের নামে থাকে (localStorage) — সার্ভারে কোনো per-user পছন্দের স্টোর নেই, তাই অন্য ডিভাইসে এগুলো পাওয়া যাবে না।";
+/**
+ * Legacy bn-pinned export — list pages now render
+ * `pick(locale, ADMIN_STRINGS).tpStorageNote` directly (doc 30).
+ * Kept only so any not-yet-migrated consumer keeps compiling.
+ */
+export const TABLE_PREFS_NOTE = ADMIN_STRINGS.bn.tpStorageNote;

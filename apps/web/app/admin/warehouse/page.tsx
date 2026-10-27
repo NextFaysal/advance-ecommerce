@@ -2,7 +2,10 @@ import { PageHeader } from "@/components/ui/page-header";
 import { isWarehouseOpsEnabled } from "@/warehouse/flags";
 import { listPickLists, prismaKeyValueStore } from "@/warehouse/pick-lists";
 import { getConfirmedQueue } from "@/warehouse/queue";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
 import { WarehouseClient } from "./warehouse-client";
+import { WAREHOUSE_STRINGS } from "./strings";
 
 // Admin > Warehouse (ADV-21, doc 22) — pick → pack → ship scanning.
 // Locked state: while module.warehouse_ops is OFF (the seeded
@@ -17,14 +20,13 @@ import { WarehouseClient } from "./warehouse-client";
 export const dynamic = "force-dynamic";
 
 export default async function WarehousePage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, WAREHOUSE_STRINGS);
   if (!isWarehouseOpsEnabled()) {
     return (
       <main style={{ padding: 24, fontFamily: "system-ui" }}>
-        <h1>ওয়্যারহাউস</h1>
-        <p role="status">
-          🔒 This module is locked for this install. Warehouse ops is a paid add-on —
-          enable <code>module.warehouse_ops</code> in Admin &gt; Settings &gt; Feature Flags to unlock it.
-        </p>
+        <h1>{s.pageTitle}</h1>
+        <p role="status">{interpolate(s.lockedText, { flag: "module.warehouse_ops" })}</p>
       </main>
     );
   }
@@ -34,10 +36,7 @@ export default async function WarehousePage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="ওয়্যারহাউস"
-        description="পিক → প্যাক → শিপ: কনফার্মড অর্ডারের পিক লিস্ট, প্যাক চেকলিস্ট আর স্ক্যান করে কুরিয়ারে হস্তান্তরের রেকর্ড। পিক লিস্ট সম্পন্ন করা শুধু কর্মীর নিশ্চিতকরণ — এতে স্টক নড়ে না; স্টক অর্ডার তৈরির সময়ই রিজার্ভ হয়েছে।"
-      />
+      <PageHeader title={s.pageTitle} description={s.pageDescription} />
       <WarehouseClient initialQueue={queue} initialLists={lists} />
     </div>
   );

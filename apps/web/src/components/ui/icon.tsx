@@ -20,7 +20,7 @@ export type IconName =
   | "star" | "plus" | "minus" | "x" | "check" | "bell" | "settings"
   | "chart" | "tag" | "log-out" | "eye" | "eye-off" | "filter"
   | "arrow-right" | "sparkles" | "credit-card" | "banknote" | "clock"
-  | "alert" | "info" | "trend-up" | "trend-down" | "spinner" | "camera";
+  | "alert" | "info" | "trend-up" | "trend-down" | "spinner" | "camera" | "globe";
 
 const shopGlyph: ReactNode = (
   <>
@@ -256,6 +256,13 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
       <circle cx="12" cy="13" r="3" />
+    </>
+  ),
+  globe: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+      <path d="M2 12h20" />
     </>
   ),
 };

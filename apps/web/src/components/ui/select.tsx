@@ -2,6 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { Icon } from "./icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
 
 export type SelectOption = { value: string; label: string };
 
@@ -14,7 +17,7 @@ export function Combobox({
   options,
   value,
   onChange,
-  placeholder = "খুঁজুন…",
+  placeholder,
 }: {
   label?: string;
   options: SelectOption[];
@@ -22,6 +25,9 @@ export function Combobox({
   onChange: (value: string) => void;
   placeholder?: string;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
+  const effectivePlaceholder = placeholder ?? s.comboboxPlaceholder;
   const [query, setQuery] = useState("");
   const filtered = useMemo(
     () => options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()) || o.value.toLowerCase().includes(query.toLowerCase())),
@@ -37,13 +43,13 @@ export function Combobox({
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={placeholder}
-          aria-label={label ?? placeholder}
+          placeholder={effectivePlaceholder}
+          aria-label={label ?? effectivePlaceholder}
           className="w-full bg-transparent text-sm text-text-main outline-none placeholder:text-text-subtle"
         />
       </span>
       <div role="listbox" className="mt-2 max-h-44 overflow-auto rounded-lg border border-border/70 bg-card p-1 shadow-pop">
-        {filtered.length === 0 ? <p className="px-3 py-2.5 text-sm text-text-muted">কোনো ফলাফল পাওয়া যায়নি।</p> : null}
+        {filtered.length === 0 ? <p className="px-3 py-2.5 text-sm text-text-muted">{s.noResultsFound}</p> : null}
         {filtered.map((o) => {
           const selected = value === o.value;
           return (

@@ -13,8 +13,13 @@
  * vendors.manage) surface verbatim from the API.
  */
 import { useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { VENDORS_STRINGS } from "./strings";
 
 export default function RevokeVendorSessions() {
+  const { locale } = useLocale();
+  const s = pick(locale, VENDORS_STRINGS);
   const [reason, setReason] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -48,11 +53,11 @@ export default function RevokeVendorSessions() {
         setError(
           body?.error
             ? `${body.error.code}: ${body.error.message}`
-            : `HTTP ${res.status} — সেশন বাতিল করা যায়নি।`,
+            : interpolate(s.revokeFailed, { status: res.status }),
         );
       }
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন। (Network error — try again.)");
+      setError(s.networkError);
     } finally {
       setBusy(false);
     }
@@ -61,21 +66,19 @@ export default function RevokeVendorSessions() {
   return (
     <section className="mt-8 rounded-lg border border-rose-200 bg-rose-50 px-4 py-4 shadow-card">
       <h2 className="text-lg font-semibold text-rose-900">
-        বিপজ্জনক এলাকা — সব পোর্টাল সেশন বাতিল
+        {s.dangerTitle}
       </h2>
       <p className="mt-1 text-small leading-relaxed text-text-muted">
-        সব ভেন্ডরের পোর্টাল সেশন সঙ্গে সঙ্গে বাতিল হয়ে যাবে — পরের অনুরোধেই তাদের আবার
-        লগইন (ফোন + OTP) করতে হবে। জরুরি পরিস্থিতিতে (যেমন সেশন টোকেন ফাঁসের সন্দেহে)
-        ব্যবহার করুন। কাজটি অডিট লগে থাকে। (Revokes every vendor portal session; audited.)
+        {s.dangerDesc}
       </p>
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <label className="min-w-[280px] flex-1 text-small font-semibold">
-          কারণ (আবশ্যক)
+          {s.reasonLabel}
           <input
             className="mt-1 block w-full rounded-md border border-border bg-card px-3 py-2 text-sm font-normal"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="কেন সব সেশন বাতিল করা হচ্ছে"
+            placeholder={s.reasonPlaceholder}
             maxLength={500}
           />
         </label>
@@ -86,12 +89,12 @@ export default function RevokeVendorSessions() {
             onClick={() => setConfirming(true)}
             className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            সব পোর্টাল সেশন বাতিল
+            {s.revokeBtn}
           </button>
         ) : (
           <>
             <span className="text-small font-semibold text-rose-900">
-              নিশ্চিত তো? সব ভেন্ডর লগআউট হয়ে যাবে।
+              {s.confirmQ}
             </span>
             <button
               type="button"
@@ -99,7 +102,7 @@ export default function RevokeVendorSessions() {
               onClick={onRevoke}
               className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-wait disabled:opacity-50"
             >
-              {busy ? "বাতিল হচ্ছে…" : "হ্যাঁ, বাতিল করুন"}
+              {busy ? s.revoking : s.yesRevoke}
             </button>
             <button
               type="button"
@@ -107,7 +110,7 @@ export default function RevokeVendorSessions() {
               onClick={() => setConfirming(false)}
               className="rounded-md border border-border bg-card px-4 py-2 text-sm font-semibold transition hover:bg-surface-2"
             >
-              ফিরে যান
+              {s.goBack}
             </button>
           </>
         )}
@@ -119,9 +122,7 @@ export default function RevokeVendorSessions() {
       ) : null}
       {done ? (
         <p role="status" className="mt-2 text-small font-medium text-emerald-700">
-          সম্পন্ন হয়েছে — পোর্টাল টোকেন সংস্করণ {done.previousVersion} থেকে{" "}
-          <strong>{done.currentVersion}</strong>-এ উন্নীত। সব বিদ্যমান ভেন্ডর সেশন এখন
-          অবৈধ; ভেন্ডরদের আবার লগইন করতে হবে।
+          {interpolate(s.doneMsg, { prev: done.previousVersion, curr: done.currentVersion })}
         </p>
       ) : null}
     </section>

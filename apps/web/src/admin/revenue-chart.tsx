@@ -10,6 +10,9 @@
 // page, never functions.
 import { useRef, useState, type MouseEvent } from "react";
 import { formatPoisha } from "@/components/ui/money";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
 import type { DashboardDailyPoint } from "@/reports/dashboard";
 
 const W = 720;
@@ -21,8 +24,6 @@ const PAD_B = 26;
 const PLOT_W = W - PAD_L - PAD_R;
 const PLOT_H = H - PAD_T - PAD_B;
 
-const dayLabelFmt = new Intl.DateTimeFormat("bn-BD", { day: "numeric", month: "short" });
-const fullDayFmt = new Intl.DateTimeFormat("bn-BD", { day: "numeric", month: "long", year: "numeric" });
 
 function dayDate(yyyyMmDd: string): Date {
   // Dhaka calendar date — anchor at Dhaka midnight so Intl formats the
@@ -36,6 +37,10 @@ function tickLabel(poisha: number): string {
 }
 
 export function RevenueChart({ data }: { data: DashboardDailyPoint[] }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
+  const dayLabelFmt = new Intl.DateTimeFormat(intlLocale(locale), { day: "numeric", month: "short" });
+  const fullDayFmt = new Intl.DateTimeFormat(intlLocale(locale), { day: "numeric", month: "long", year: "numeric" });
   const [hover, setHover] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
@@ -67,7 +72,7 @@ export function RevenueChart({ data }: { data: DashboardDailyPoint[] }) {
         viewBox={`0 0 ${W} ${H}`}
         className="block h-auto w-full text-text-subtle"
         role="img"
-        aria-label={`শেষ ৩০ দিনের দৈনিক বিক্রয় চার্ট। সর্বোচ্চ একদিনের বিক্রয় ${hasSales ? formatPoisha(max) : "শূন্য"}।`}
+        aria-label={interpolate(s.chartAria, { max: hasSales ? formatPoisha(max) : s.chartZero })}
         onMouseMove={hasSales ? onMove : undefined}
         onMouseLeave={() => setHover(null)}
       >
@@ -136,14 +141,14 @@ export function RevenueChart({ data }: { data: DashboardDailyPoint[] }) {
           }}
         >
           <p className="font-semibold">{fullDayFmt.format(dayDate(hoverPoint.date))}</p>
-          <p className="font-mono tabular-nums">বিক্রয় {formatPoisha(hoverPoint.revenuePoisha)}</p>
-          <p className="tabular-nums">{hoverPoint.orders}টি অর্ডার</p>
+          <p className="font-mono tabular-nums">{interpolate(s.chartSales, { amount: formatPoisha(hoverPoint.revenuePoisha) })}</p>
+          <p className="tabular-nums">{interpolate(s.chartOrders, { count: hoverPoint.orders })}</p>
         </div>
       ) : null}
 
       {!hasSales ? (
         <p className="py-2 text-center text-small text-text-muted">
-          শেষ ৩০ দিনে কোনো বিক্রয় হয়নি — প্রথম অর্ডার এলেই এখানে প্রতিদিনের বিক্রির চিত্র দেখা যাবে।
+          {s.chartEmpty}
         </p>
       ) : null}
     </div>

@@ -38,6 +38,10 @@ import { ReviewSection } from "@/reviews/components/ReviewSection";
 import { QuestionsSection } from "@/qa/components/QuestionsSection";
 import { ThemedProductCard } from "../themed-product-card";
 import type { PdpCompositionProps } from "../slots";
+import { COMMON_STRINGS } from "@/i18n/dictionaries";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
+import { AURORA_STRINGS } from "./strings";
 import { Gallery } from "../../../app/(store)/product/[slug]/Gallery";
 import { SpinViewer } from "../../../app/(store)/product/[slug]/SpinViewer";
 import { DescriptionSection } from "../../../app/(store)/product/[slug]/DescriptionSection";
@@ -79,49 +83,39 @@ function StarRow({ rating }: { rating: number }) {
   );
 }
 
-const TRUST_ROWS = [
-  {
-    icon: (
-      <svg {...trustIconProps}>
-        <rect x="2.5" y="6" width="19" height="12" rx="2" />
-        <circle cx="12" cy="12" r="2.6" />
-        <path d="M6 9.5h.01M18 14.5h.01" />
-      </svg>
-    ),
-    text: "ক্যাশ অন ডেলিভারি — পণ্য হাতে পেয়ে মূল্য পরিশোধ করুন",
-  },
-  {
-    icon: (
-      <svg {...trustIconProps}>
-        <path d="M2.5 6h12v11h-12z" />
-        <path d="M14.5 10h3.6l3 3.4V17h-6.6" />
-        <circle cx="6.5" cy="17.5" r="1.8" />
-        <circle cx="17.5" cy="17.5" r="1.8" />
-      </svg>
-    ),
-    text: "সারাদেশে হোম ডেলিভারি — ডেলিভারি চার্জ ও সময় চেকআউটে দেখা যাবে",
-  },
-  {
-    icon: (
-      <svg {...trustIconProps}>
-        <path d="M8.5 5.5 5 9l3.5 3.5" />
-        <path d="M5 9h9a5 5 0 0 1 0 10h-3" />
-      </svg>
-    ),
-    text: "সহজ রিটার্ন সুবিধা — শর্ত প্রযোজ্য",
-  },
-  {
-    icon: (
-      <svg {...trustIconProps}>
-        <path d="M12 3l7 2.8v5.4c0 4.6-3 7.7-7 9.3-4-1.6-7-4.7-7-9.3V5.8L12 3z" />
-        <path d="M9 11.6l2.2 2.2L15.4 9.6" />
-      </svg>
-    ),
-    text: "যাচাই করা অরিজিনাল পণ্য",
-  },
+// Trust-row texts live in AURORA_STRINGS (trustPdpCod / trustPdpDelivery
+// / trustPdpReturn / trustPdpOriginal — doc 30); only the icons stay here.
+const TRUST_ICONS = [
+  (
+    <svg {...trustIconProps}>
+      <rect x="2.5" y="6" width="19" height="12" rx="2" />
+      <circle cx="12" cy="12" r="2.6" />
+      <path d="M6 9.5h.01M18 14.5h.01" />
+    </svg>
+  ),
+  (
+    <svg {...trustIconProps}>
+      <path d="M2.5 6h12v11h-12z" />
+      <path d="M14.5 10h3.6l3 3.4V17h-6.6" />
+      <circle cx="6.5" cy="17.5" r="1.8" />
+      <circle cx="17.5" cy="17.5" r="1.8" />
+    </svg>
+  ),
+  (
+    <svg {...trustIconProps}>
+      <path d="M8.5 5.5 5 9l3.5 3.5" />
+      <path d="M5 9h9a5 5 0 0 1 0 10h-3" />
+    </svg>
+  ),
+  (
+    <svg {...trustIconProps}>
+      <path d="M12 3l7 2.8v5.4c0 4.6-3 7.7-7 9.3-4-1.6-7-4.7-7-9.3V5.8L12 3z" />
+      <path d="M9 11.6l2.2 2.2L15.4 9.6" />
+    </svg>
+  ),
 ] as const;
 
-export default function AuroraPdpComposition({
+export default async function AuroraPdpComposition({
   product,
   productType,
   digitalFiles,
@@ -155,22 +149,30 @@ export default function AuroraPdpComposition({
   recentlyViewedEntry,
   jsonLd,
 }: PdpCompositionProps) {
+  const locale = await getRequestLocale();
+  const t = pick(locale, COMMON_STRINGS);
+  const s = pick(locale, AURORA_STRINGS);
+  // Merchant data with bn/en variants renders in the active locale;
+  // the other variant stays as the small subtitle (the PDP's design).
+  const title = product.title[locale] || product.title.bn;
+  const titleAlt = locale === "bn" ? product.title.en : product.title.bn;
+  const trustTexts = [s.trustPdpCod, s.trustPdpDelivery, s.trustPdpReturn, s.trustPdpOriginal];
   return (
     <main className="mx-auto min-w-0 max-w-[1440px] px-4 py-6 sm:px-6 lg:py-8">
       <RecordRecentlyViewed entry={recentlyViewedEntry} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
       {/* Breadcrumb */}
-      <nav aria-label="ব্রেডক্রাম্ব" className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm text-text-subtle">
-        <Link href="/" className="py-1 transition hover:text-brand-700 dark:hover:text-brand-300">হোম</Link>
+      <nav aria-label={s.breadcrumbAria} className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm text-text-subtle">
+        <Link href="/" className="py-1 transition hover:text-brand-700 dark:hover:text-brand-300">{t.home}</Link>
         <span aria-hidden="true" className="text-border">/</span>
-        <Link href="/shop" className="py-1 transition hover:text-brand-700 dark:hover:text-brand-300">দোকান</Link>
+        <Link href="/shop" className="py-1 transition hover:text-brand-700 dark:hover:text-brand-300">{s.shopBreadcrumb}</Link>
         <span aria-hidden="true" className="text-border">/</span>
         <Link href={`/shop?category=${product.categorySlug}`} className="py-1 transition hover:text-brand-700 dark:hover:text-brand-300">
-          {product.categoryName.bn}
+          {product.categoryName[locale] || product.categoryName.bn}
         </Link>
         <span aria-hidden="true" className="text-border">/</span>
-        <span className="max-w-[45vw] truncate py-1 font-medium text-text-main">{product.title.bn}</span>
+        <span className="max-w-[45vw] truncate py-1 font-medium text-text-main">{title}</span>
       </nav>
 
       <div className="mt-5 grid items-start gap-8 lg:grid-cols-2">
@@ -191,32 +193,32 @@ export default function AuroraPdpComposition({
         <div className="min-w-0 lg:sticky lg:top-[8.5rem]">
           {productType === "PREORDER" ? (
             <span className="mb-3 inline-flex rounded-full bg-sky-600 px-3 py-1 text-xs font-bold text-white shadow-md">
-              প্রি-অর্ডার
+              {s.preorderBadge}
             </span>
           ) : null}
           <h1 className="break-words font-display text-[clamp(1.625rem,3.5vw,2.125rem)] font-extrabold leading-[1.25] text-text-main [overflow-wrap:anywhere]">
-            {product.title.bn}
+            {title}
           </h1>
-          {product.title.en ? (
-            <p className="mt-1.5 break-words text-sm text-text-subtle [overflow-wrap:anywhere]">{product.title.en}</p>
+          {titleAlt && titleAlt !== title ? (
+            <p className="mt-1.5 break-words text-sm text-text-subtle [overflow-wrap:anywhere]">{titleAlt}</p>
           ) : null}
 
           <p className="mt-4 inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1.5 rounded-2xl bg-surface-2/70 px-3.5 py-2 text-sm text-text-muted">
             <StarRow rating={product.ratingAverage ?? 0} />
-            <span aria-label={`রেটিং ${product.ratingAverage ?? "—"} / ৫`}>
-              {product.ratingAverage ?? "—"} ({product.reviewCount}টি রিভিউ)
+            <span aria-label={interpolate(s.ratingAria, { rating: product.ratingAverage ?? "—" })}>
+              {product.ratingAverage ?? "—"} {interpolate(s.reviewsCount, { count: product.reviewCount })}
             </span>
             {product.brandName ? (
               <>
                 <span aria-hidden="true" className="text-border">•</span>
                 <span>
-                  ব্র্যান্ড: <span className="font-semibold text-text-main">{product.brandName}</span>
+                  {s.brandLabel} <span className="font-semibold text-text-main">{product.brandName}</span>
                 </span>
               </>
             ) : null}
             <span aria-hidden="true" className="text-border">•</span>
             <span className={`font-semibold ${displayInStock ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-              {displayInStock ? "স্টকে আছে" : "স্টক শেষ"}
+              {displayInStock ? t.inStock : t.outOfStock}
             </span>
           </p>
 
@@ -226,7 +228,7 @@ export default function AuroraPdpComposition({
             {/* Price — or the price-on-request label (schema wave 2) */}
             {priceOnRequest ? (
               <p className="pt-1 font-display text-3xl font-extrabold text-brand-700 dark:text-brand-300">
-                দামের জন্য যোগাযোগ করুন
+                {s.contactForPrice}
               </p>
             ) : (
             <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5 pt-1">
@@ -246,7 +248,7 @@ export default function AuroraPdpComposition({
                     className="text-lg tabular-nums text-text-subtle line-through"
                   />
                   <span className="rounded-full bg-rose-600 px-3 py-1 text-[13px] font-bold text-white shadow-sm">
-                    <DigitText text={`${discountPct}%`} /> ছাড়
+                    <DigitText text={`${discountPct}%`} /> {s.discountOff}
                   </span>
                 </>
               ) : null}
@@ -256,7 +258,7 @@ export default function AuroraPdpComposition({
             {/* Variant list (info) — the buy box below owns selection.
                 Prices are omitted for price-on-request products. */}
             <h2 className="mt-6 text-sm font-bold text-text-main">
-              {priceOnRequest ? "ভেরিয়েন্ট" : "ভেরিয়েন্ট ও দাম"}
+              {priceOnRequest ? s.variantOnly : s.variantsAndPrice}
             </h2>
             <div className="mt-2.5 flex flex-wrap gap-2">
               {product.variants.map((v) => {
@@ -270,14 +272,14 @@ export default function AuroraPdpComposition({
                         : "border-border bg-surface text-text-main hover:border-brand-300"
                     }`}
                   >
-                    {Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড"}
+                    {Object.values(v.attributes).join(" / ") || s.standardVariant}
                     {priceOnRequest ? null : (
                       <>
                         {" "}—{" "}
                         <BdtAmount poisha={v.pricePoisha} className="font-semibold tabular-nums" />
                       </>
                     )}
-                    {soldOut ? " (স্টক শেষ)" : ""}
+                    {soldOut ? s.variantOutOfStock : ""}
                   </span>
                 );
               })}
@@ -288,11 +290,10 @@ export default function AuroraPdpComposition({
             {productType === "DIGITAL" ? (
               <div className="mt-6 rounded-2xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-400/25 dark:bg-violet-500/10">
                 <p className="text-sm font-bold text-violet-900 dark:text-violet-100">
-                  📥 ডিজিটাল পণ্য — পেমেন্টের পরেই ডাউনলোড লিংক
+                  {s.digitalTitle}
                 </p>
                 <p className="mt-1 text-sm leading-relaxed text-violet-800 dark:text-violet-200">
-                  এটি কোনো ফিজিক্যাল পণ্য নয়, কুরিয়ারে কিছু আসবে না — পেমেন্ট সম্পূর্ণ হলেই
-                  ডাউনলোড লিংক (আর লাইসেন্স কী থাকলে সেটিও) পৌঁছে যাবে।
+                  {s.digitalBody}
                 </p>
                 {digitalFiles.length > 0 ? (
                   <ul className="mt-3 space-y-1.5 border-t border-violet-200 pt-3 text-sm text-violet-900 dark:border-violet-400/20 dark:text-violet-100">
@@ -311,25 +312,25 @@ export default function AuroraPdpComposition({
 
             {productType === "PREORDER" ? (
               <div className="mt-6 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900 dark:border-sky-400/25 dark:bg-sky-500/10 dark:text-sky-100">
-                <p className="font-bold">🗓️ এটি একটি প্রি-অর্ডার পণ্য — এখন বুকিং চলছে</p>
+                <p className="font-bold">{s.preorderNoticeTitle}</p>
                 {preorderExpectedLabel ? (
                   <p className="mt-1">
-                    সম্ভাব্য ডেলিভারি: <span className="font-semibold">{preorderExpectedLabel}</span>
+                    {s.expectedDelivery} <span className="font-semibold">{preorderExpectedLabel}</span>
                   </p>
                 ) : null}
                 {preorder?.depositPercent != null ? (
                   <p className="mt-1">
-                    বুকিং কনফার্ম করতে অগ্রিম{" "}
+                    {s.preorderDepositPrefix}{" "}
                     <span className="font-semibold">
                       <DigitText text={`${preorder.depositPercent}%`} />
                     </span>{" "}
-                    দিতে হবে — বাকি টাকা ডেলিভারির সময়।
+                    {s.preorderDepositSuffix}
                   </p>
                 ) : null}
                 {preorder?.maxUnits != null ? (
                   <p className="mt-1">
-                    সীমিত প্রি-অর্ডার: সর্বোচ্চ <DigitText text={`${preorder.maxUnits}`} />
-                    টি পর্যন্ত বুকিং নেওয়া হবে।
+                    {s.preorderMaxPrefix} <DigitText text={`${preorder.maxUnits}`} />
+                    {s.preorderMaxSuffix}
                   </p>
                 ) : null}
               </div>
@@ -337,7 +338,7 @@ export default function AuroraPdpComposition({
 
             {productType === "BUNDLE" && bundleUnavailable ? (
               <p className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700 dark:border-rose-400/25 dark:bg-rose-500/10 dark:text-rose-200">
-                এই বান্ডলের অন্তত একটি কম্পোনেন্ট আপাতত স্টকে নেই — তাই বান্ডলটি এখন কেনা যাচ্ছে না।
+                {s.bundleUnavailableNotice}
               </p>
             ) : null}
 
@@ -348,17 +349,16 @@ export default function AuroraPdpComposition({
                    inbox path and staff quote a price there. */
                 <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-400/25 dark:bg-brand-500/10">
                   <p className="text-sm font-bold text-brand-900 dark:text-brand-100">
-                    এই পণ্যের দাম অনুরোধে জানানো হয়
+                    {s.priceOnRequestTitle}
                   </p>
                   <p className="mt-1 text-sm leading-relaxed text-brand-800 dark:text-brand-200">
-                    দাম জানতে আমাদের বার্তা পাঠান — পণ্যের নামটি উল্লেখ করলেই স্টাফ দাম ও
-                    অর্ডারের ব্যবস্থা করে দেবেন।
+                    {s.priceOnRequestBody}
                   </p>
                   <Link
                     href="/contact"
                     className="mt-3 inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700"
                   >
-                    দামের জন্য যোগাযোগ করুন
+                    {s.contactForPrice}
                   </Link>
                 </div>
               ) : (
@@ -378,10 +378,10 @@ export default function AuroraPdpComposition({
                     : product.variants
                 }
                 {...(productType === "PREORDER"
-                  ? { ctaLabel: "প্রি-অর্ডার করুন", buyNowLabel: "এখনই প্রি-অর্ডার করুন" }
+                  ? { ctaLabel: s.preorderCta, buyNowLabel: s.preorderBuyNow }
                   : {})}
                 {...(bundleUnavailable
-                  ? { forceUnavailable: true, unavailableLabel: "বান্ডল স্টকে নেই" }
+                  ? { forceUnavailable: true, unavailableLabel: s.bundleOutOfStockLabel }
                   : {})}
                 lowStockThreshold={lowStockThreshold}
                 {...(weightedInfos.length > 0
@@ -406,12 +406,12 @@ export default function AuroraPdpComposition({
                   this says so before the customer adds to cart. */}
               {podPdpNote ? (
                 <p className="mt-3 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
-                  🎨 <strong className="text-text-main">কাস্টম প্রিন্ট:</strong> এই পণ্যে আপনার
-                  নিজের লেখা ছাপানো যাবে (সর্বোচ্চ {podPdpNote.textMaxChars} অক্ষর
-                  {podPdpNote.hasColors ? ", রঙও বেছে নেওয়া যাবে" : ""}) — লেখাটি চেকআউটে
-                  দিতে হবে।
+                  🎨 <strong className="text-text-main">{s.podStrong}</strong> {s.podBodyStart}{" "}
+                  {podPdpNote.textMaxChars} {s.podCharsUnit}
+                  {podPdpNote.hasColors ? s.podColorsPart : ""}
+                  {s.podBodyEnd}
                   {podPdpNote.printFeePoisha > 0
-                    ? ` প্রিন্ট ফি প্রতি আইটেমে ${fromPoisha(podPdpNote.printFeePoisha)} টাকা, অর্ডারের মোটে যোগ হবে।`
+                    ? interpolate(s.podFee, { fee: fromPoisha(podPdpNote.printFeePoisha) })
                     : ""}
                 </p>
               ) : null}
@@ -435,7 +435,7 @@ export default function AuroraPdpComposition({
               <BoxSubscribeSection
                 variants={product.variants.map((v) => ({
                   id: v.id,
-                  label: Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড",
+                  label: Object.values(v.attributes).join(" / ") || s.standardVariant,
                   pricePoisha: v.pricePoisha,
                   stock: v.stock,
                 }))}
@@ -445,7 +445,7 @@ export default function AuroraPdpComposition({
               <SubscribeSaveSection
                 variants={product.variants.map((v) => ({
                   id: v.id,
-                  label: Object.values(v.attributes).join(" / ") || "স্ট্যান্ডার্ড",
+                  label: Object.values(v.attributes).join(" / ") || s.standardVariant,
                   pricePoisha: v.pricePoisha,
                   stock: v.stock,
                 }))}
@@ -461,7 +461,7 @@ export default function AuroraPdpComposition({
                 Hidden entirely for price-on-request products. */}
             {weightedInfos.length > 0 && !priceOnRequest ? (
               <div className="mt-4 rounded-2xl border border-border bg-surface-2/60 p-4 text-sm leading-6">
-                <p className="font-semibold text-text-main">⚖️ ওজন অনুযায়ী দাম — প্যাকের ভগ্নাংশেও কেনা যায় (ওজনের ধাপ অনুযায়ী)</p>
+                <p className="font-semibold text-text-main">{s.weightedTitle}</p>
                 <ul className="mt-2 space-y-1.5 text-text-muted">
                   {weightedInfos.map((info) => {
                     const variant = product.variants.find((v) => v.id === info.variantId);
@@ -471,15 +471,15 @@ export default function AuroraPdpComposition({
                     return (
                       <li key={info.variantId}>
                         <span className="font-medium text-text-main">{label}</span>
-                        {" — "}প্যাক: <DigitText text={`${info.packGrams}`} /> গ্রাম · প্রতি কেজি{" "}
+                        {" — "}{s.packLabel} <DigitText text={`${info.packGrams}`} /> {s.gramsUnit} · {s.perKgLabel}{" "}
                         <BdtAmount poisha={info.pricePerKgPoisha} />
                         {info.inSync ? (
                           <>
-                            {" "}· প্যাকের দাম <BdtAmount poisha={info.derivedPricePoisha} />
+                            {" "}· {s.packPriceLabel} <BdtAmount poisha={info.derivedPricePoisha} />
                           </>
                         ) : (
                           <span className="text-text-subtle">
-                            {" "}· (হার অনুযায়ী দাম হালনাগাদ বাকি — উপরে দেখানো দামই প্রযোজ্য)
+                            {" "}· {s.weightedOutOfSync}
                           </span>
                         )}
                       </li>
@@ -499,12 +499,12 @@ export default function AuroraPdpComposition({
 
             {/* Trust rows — 2-col tile grid on sm+, stacked on phones */}
             <ul className="mt-6 grid gap-2.5 border-t border-border pt-5 sm:grid-cols-2">
-              {TRUST_ROWS.map((row) => (
-                <li key={row.text} className="flex items-center gap-3 rounded-2xl bg-surface-2/60 p-3 text-sm leading-snug text-text-muted">
+              {TRUST_ICONS.map((icon, i) => (
+                <li key={trustTexts[i]} className="flex items-center gap-3 rounded-2xl bg-surface-2/60 p-3 text-sm leading-snug text-text-muted">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-300">
-                    {row.icon}
+                    {icon}
                   </span>
-                  {row.text}
+                  {trustTexts[i]}
                 </li>
               ))}
             </ul>
@@ -538,7 +538,7 @@ export default function AuroraPdpComposition({
       {specRows.length > 0 ? (
         <Reveal>
           <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-card sm:p-8">
-            <h2 className="font-display text-xl font-extrabold text-text-main">স্পেসিফিকেশন</h2>
+            <h2 className="font-display text-xl font-extrabold text-text-main">{s.specifications}</h2>
             <dl className="mt-4 max-w-3xl">
               {specRows.map((row) => (
                 <div
@@ -561,11 +561,10 @@ export default function AuroraPdpComposition({
           <SizeChartSection chart={displaySizeChart} />
           {packSizeChart && (packSizeChart.fitNoteBn || packSizeChart.fitNoteEn) ? (
             <p className="mt-3 text-sm text-text-muted">
-              <span className="font-semibold text-text-main">ফিট নোট: </span>
-              {packSizeChart.fitNoteBn ?? packSizeChart.fitNoteEn}
-              {packSizeChart.fitNoteEn && packSizeChart.fitNoteBn ? (
-                <span className="text-text-subtle"> · {packSizeChart.fitNoteEn}</span>
-              ) : null}
+              <span className="font-semibold text-text-main">{s.fitNoteLabel} </span>
+              {locale === "bn"
+                ? (packSizeChart.fitNoteBn ?? packSizeChart.fitNoteEn)
+                : (packSizeChart.fitNoteEn ?? packSizeChart.fitNoteBn)}
             </p>
           ) : null}
         </Reveal>
@@ -575,7 +574,7 @@ export default function AuroraPdpComposition({
       {faqItems.length > 0 ? (
         <Reveal>
           <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-card sm:p-8">
-            <h2 className="font-display text-xl font-extrabold text-text-main">সাধারণ জিজ্ঞাসা</h2>
+            <h2 className="font-display text-xl font-extrabold text-text-main">{t.faq}</h2>
             <div className="mt-4 max-w-3xl space-y-2.5">
               {faqItems.map((item, i) => (
                 <details
@@ -605,10 +604,10 @@ export default function AuroraPdpComposition({
       {productType === "BUNDLE" && bundleComponents.length > 0 ? (
         <Reveal>
         <section className="mt-10 rounded-3xl border border-border bg-card p-6 shadow-card sm:p-8">
-          <h2 className="font-display text-xl font-extrabold text-text-main">এই বান্ডলে যা যা আছে</h2>
+          <h2 className="font-display text-xl font-extrabold text-text-main">{s.bundleContentsTitle}</h2>
           <ul className="mt-4 max-w-3xl divide-y divide-border">
             {bundleComponents.map((c, i) => {
-              const title = c.productTitle?.bn ?? c.productTitle?.en ?? "";
+              const title = c.productTitle?.[locale] ?? c.productTitle?.bn ?? c.productTitle?.en ?? "";
               const linePrice =
                 typeof c.unitPricePoisha === "number" ? c.unitPricePoisha * c.quantity : null;
               return (
@@ -622,7 +621,7 @@ export default function AuroraPdpComposition({
                         {title}
                       </Link>
                     ) : (
-                      <span className="font-semibold text-text-main">{title || "কম্পোনেন্ট পণ্য"}</span>
+                      <span className="font-semibold text-text-main">{title || s.componentProduct}</span>
                     )}
                     {c.variantLabel ? (
                       <span className="block text-xs text-text-subtle">{c.variantLabel}</span>
@@ -646,14 +645,13 @@ export default function AuroraPdpComposition({
           </ul>
           {bundleComponentsTotal !== null && !priceOnRequest ? (
             <p className="mt-4 max-w-3xl rounded-2xl bg-surface-2/60 px-4 py-3 text-sm leading-relaxed text-text-muted">
-              আলাদা করে কিনলে মোট:{" "}
-              <BdtAmount poisha={bundleComponentsTotal} className="font-semibold tabular-nums" /> — বান্ডল
-              দাম:{" "}
+              {s.bundleSeparateTotal}{" "}
+              <BdtAmount poisha={bundleComponentsTotal} className="font-semibold tabular-nums" /> — {s.bundlePriceLabel}{" "}
               <BdtAmount poisha={minPrice} className="font-semibold tabular-nums text-brand-700 dark:text-brand-300" />
               {bundleComponentsTotal > minPrice ? (
                 <>
                   {" "}
-                  (সাশ্রয়{" "}
+                  ({s.savingsLabel}{" "}
                   <BdtAmount
                     poisha={bundleComponentsTotal - minPrice}
                     className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400"
@@ -665,7 +663,7 @@ export default function AuroraPdpComposition({
           ) : null}
           {bundleUnavailable ? (
             <p className="mt-3 max-w-3xl text-sm font-medium text-rose-600 dark:text-rose-400">
-              আপাতত বান্ডলটি স্টকে নেই — কম্পোনেন্টগুলো আলাদাভাবে কিনতে উপরের লিংকগুলো দেখুন।
+              {s.bundleUnavailableNote}
             </p>
           ) : null}
         </section>
@@ -687,7 +685,7 @@ export default function AuroraPdpComposition({
         <Reveal>
           <section className="mt-12">
             <div className="flex items-center gap-4">
-              <h2 className="shrink-0 font-display text-xl font-extrabold text-text-main sm:text-2xl">সম্পর্কিত পণ্য</h2>
+              <h2 className="shrink-0 font-display text-xl font-extrabold text-text-main sm:text-2xl">{s.relatedProducts}</h2>
               <span aria-hidden="true" className="brand-gradient h-px flex-1 rounded-full opacity-40" />
             </div>
             <div className="-mx-4 mt-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:snap-none sm:grid-cols-3 sm:overflow-visible sm:px-0 sm:pb-0 xl:grid-cols-4 xl:gap-4">
@@ -707,7 +705,7 @@ export default function AuroraPdpComposition({
       <RecentlyViewedRail excludeProductId={product.id} />
       {/* Sticky bar hidden for price-on-request products (it shows a price). */}
       {priceOnRequest ? null : (
-        <StickyBuyBar titleBn={product.title.bn} pricePoisha={minPrice} inStock={displayInStock} buyBoxId="buy-box" />
+        <StickyBuyBar titleBn={title} pricePoisha={minPrice} inStock={displayInStock} buyBoxId="buy-box" />
       )}
       <CompareTray />
     </main>

@@ -21,6 +21,9 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { CustomFieldDefinition, CustomFieldValue } from "@/extensibility/types";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
 
 type Entity = "product" | "customer" | "order";
 
@@ -34,6 +37,8 @@ interface ValuesPayload {
 const SELECT_CLASS = "rounded-md border border-border bg-card px-2 py-1.5 text-small";
 
 export function CustomFieldsPanel({ entity, entityId }: { entity: Entity; entityId: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
   const [payload, setPayload] = useState<ValuesPayload | null>(null);
   const [loaded, setLoaded] = useState(false);
   // Form-space draft: scalars as strings, multiselect as string[],
@@ -125,7 +130,7 @@ export function CustomFieldsPanel({ entity, entityId }: { entity: Entity; entity
           for (const d of details as Array<{ key: string; message: string }>) byKey[d.key] = d.message;
           setFieldErrors(byKey);
         }
-        setError(json.error?.message ?? "সংরক্ষণ ব্যর্থ হয়েছে।");
+        setError(json.error?.message ?? s.cfSaveFailed);
         return;
       }
       const savedValues = json.data?.values;
@@ -134,9 +139,9 @@ export function CustomFieldsPanel({ entity, entityId }: { entity: Entity; entity
         seedDraft(savedValues);
       }
       setReason("");
-      setNotice("কাস্টম ফিল্ড সংরক্ষিত হয়েছে।");
+      setNotice(s.cfSaved);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন।");
+      setError(s.cfNetworkError);
     } finally {
       setBusy(false);
     }
@@ -152,9 +157,9 @@ export function CustomFieldsPanel({ entity, entityId }: { entity: Entity; entity
 
   return (
     <Card className="p-4 shadow-card">
-      <h3 className="text-sm font-bold text-text-main">কাস্টম ফিল্ড</h3>
+      <h3 className="text-sm font-bold text-text-main">{s.cfTitle}</h3>
       <p className="mt-1 text-caption text-text-muted">
-        মার্চেন্ট-সংজ্ঞায়িত অতিরিক্ত ফিল্ড — সংরক্ষণের সময় সার্ভারে যাচাই হয়।
+        {s.cfDesc}
       </p>
 
       <div className="mt-3 space-y-3">
@@ -166,10 +171,10 @@ export function CustomFieldsPanel({ entity, entityId }: { entity: Entity; entity
             <div key={def.key}>
               <label className="block">
                 <span className="mb-1 block text-caption text-text-subtle">
-                  {def.labelBn} ({def.labelEn})
+                  {locale === "bn" ? def.labelBn : def.labelEn}
                   {def.required ? <span className="text-danger"> *</span> : null}
                   {def.type === "number_poisha" ? (
-                    <span className="text-text-muted"> — পয়সায় (পূর্ণ সংখ্যা)</span>
+                    <span className="text-text-muted">{s.cfPoishaSuffix}</span>
                   ) : null}
                 </span>
                 {def.type === "textarea" ? (
@@ -197,8 +202,8 @@ export function CustomFieldsPanel({ entity, entityId }: { entity: Entity; entity
                     className={SELECT_CLASS}
                   >
                     <option value="">—</option>
-                    <option value="true">হ্যাঁ</option>
-                    <option value="false">না</option>
+                    <option value="true">{s.cfYes}</option>
+                    <option value="false">{s.cfNo}</option>
                   </select>
                 ) : def.type === "multiselect" ? (
                   <span className="flex flex-wrap gap-2">
@@ -242,11 +247,11 @@ export function CustomFieldsPanel({ entity, entityId }: { entity: Entity; entity
 
       <div className="mt-3 flex flex-wrap items-end gap-2">
         <label className="block grow">
-          <span className="mb-1 block text-caption text-text-subtle">কারণ (অডিটের জন্য আবশ্যক)</span>
-          <Input value={reason} onChange={(e) => setReason(e.target.value)} className="w-full" placeholder="কেন বদলাচ্ছেন?" />
+          <span className="mb-1 block text-caption text-text-subtle">{s.cfReason}</span>
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} className="w-full" placeholder={s.cfReasonPlaceholder} />
         </label>
         <Button onClick={() => void save()} disabled={busy || reason.trim() === ""}>
-          {busy ? "সংরক্ষণ হচ্ছে…" : "সংরক্ষণ"}
+          {busy ? s.cfSaving : s.cfSave}
         </Button>
       </div>
     </Card>

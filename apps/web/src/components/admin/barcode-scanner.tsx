@@ -26,6 +26,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/icon";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
 
 /* Minimal local typings for the Shape Detection API — not in the
  * standard DOM lib for this TS version, so declare just the surface
@@ -52,7 +55,7 @@ const ghostBtn =
 export function BarcodeScanner({
   onScan,
   typedFallback = true,
-  typedPlaceholder = "SKU / বারকোড লিখে এন্টার চাপুন",
+  typedPlaceholder,
   disabled = false,
 }: {
   onScan: (code: string) => void;
@@ -61,6 +64,9 @@ export function BarcodeScanner({
   typedPlaceholder?: string;
   disabled?: boolean;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
+  const effectivePlaceholder = typedPlaceholder ?? s.barcodePlaceholder;
   const [supported, setSupported] = useState<boolean | null>(null);
   const [open, setOpen] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -113,7 +119,7 @@ export function BarcodeScanner({
       if (!video) {
         stopCamera();
         setOpen(false);
-        setCameraError("ক্যামেরা ভিউ চালু করা যায়নি — কোড লিখে চালিয়ে যান।");
+        setCameraError(s.barcodeCameraError);
         return;
       }
       video.srcObject = stream;
@@ -139,11 +145,9 @@ export function BarcodeScanner({
     } catch {
       stopCamera();
       setOpen(false);
-      setCameraError(
-        "ক্যামেরা চালু করা যায়নি (অনুমতি পাওয়া যায়নি বা ক্যামেরা নেই) — কোড লিখে চালিয়ে যান।",
-      );
+      setCameraError(s.barcodeCameraDenied);
     }
-  }, [onScan, stopCamera]);
+  }, [onScan, stopCamera, s]);
 
   const closeCamera = useCallback(() => {
     stopCamera();
@@ -156,7 +160,7 @@ export function BarcodeScanner({
         {supported ? (
           <button type="button" className={bigBtn} disabled={disabled || open} onClick={() => void startCamera()}>
             <Icon name="camera" size={22} />
-            ক্যামেরা স্ক্যান
+            {s.barcodeCameraScan}
           </button>
         ) : null}
         {typedFallback ? (
@@ -173,12 +177,12 @@ export function BarcodeScanner({
             <input
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
-              placeholder={typedPlaceholder}
+              placeholder={effectivePlaceholder}
               className="min-h-14 flex-1 rounded-xl border border-border bg-card px-4 font-mono text-lg"
-              aria-label="SKU বা বারকোড লিখুন"
+              aria-label={s.barcodeInputLabel}
             />
             <button type="submit" className={ghostBtn} disabled={disabled || !typed.trim()}>
-              টিক দিন
+              {s.barcodeTick}
             </button>
           </form>
         ) : null}
@@ -186,7 +190,7 @@ export function BarcodeScanner({
 
       {supported === false ? (
         <p className="text-sm text-text-muted">
-          এই ব্রাউজারে ক্যামেরা স্ক্যান সমর্থিত নয় — কোড লিখে এন্টার চাপুন।
+          {s.barcodeUnsupported}
         </p>
       ) : null}
       {cameraError ? (
@@ -202,12 +206,12 @@ export function BarcodeScanner({
             className="aspect-video w-full rounded-xl bg-black object-cover"
             playsInline
             muted
-            aria-label="ক্যামেরা — বারকোডের দিকে ধরুন"
+            aria-label={s.barcodeCameraLabel}
           />
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm text-text-muted">বারকোডটি ক্যামেরার সামনে ধরুন — শনাক্ত হলেই টিক পড়বে।</p>
+            <p className="text-sm text-text-muted">{s.barcodeHint}</p>
             <button type="button" className={ghostBtn} onClick={closeCamera}>
-              বন্ধ করুন
+              {s.close}
             </button>
           </div>
         </div>

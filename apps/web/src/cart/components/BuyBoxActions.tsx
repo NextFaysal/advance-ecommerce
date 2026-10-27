@@ -16,7 +16,10 @@ import { useRouter } from "next/navigation";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { Button } from "@/components/ui/button";
 import { useDigitText } from "@/components/ui/numerals";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
 import { addQty, qtyToMilli, qtyToString, subQty } from "@/lib/quantity";
+import { CART_STRINGS } from "../strings";
 import { addItemToGuestCart } from "./AddToCartButton";
 
 export interface BuyBoxVariant {
@@ -70,8 +73,8 @@ export interface BuyBoxActionsProps {
   weightedSteps?: Record<string, { stepQuantity: number; packGrams: number }>;
 }
 
-function variantLabel(variant: BuyBoxVariant): string {
-  return Object.values(variant.attributes).join(" / ") || "স্ট্যান্ডার্ড";
+function variantLabel(variant: BuyBoxVariant, fallback: string): string {
+  return Object.values(variant.attributes).join(" / ") || fallback;
 }
 
 export function BuyBoxActions({
@@ -88,6 +91,8 @@ export function BuyBoxActions({
 }: BuyBoxActionsProps) {
   const router = useRouter();
   const digits = useDigitText();
+  const { locale, t } = useLocale();
+  const s = pick(locale, CART_STRINGS);
   const activeVariants = useMemo(
     () => variants.filter((v) => v.isActive),
     [variants],
@@ -139,14 +144,10 @@ export function BuyBoxActions({
       allowFractional: stepInfo !== undefined,
     });
     if (result.addedQuantity <= 0) {
-      setNotice("স্টকে আর নেই — কার্টে যোগ করা যায়নি।");
+      setNotice(s.outOfStockNotice);
       return false;
     }
-    setNotice(
-      result.capped
-        ? "কার্টে যোগ হয়েছে — স্টকে যা ছিল সব নেওয়া হয়েছে।"
-        : "কার্টে যোগ হয়েছে ✓",
-    );
+    setNotice(result.capped ? s.addedCappedNotice : s.addedToCart);
     return true;
   }
 
@@ -159,12 +160,12 @@ export function BuyBoxActions({
       {/* Variant picker — mirrors the server-rendered variant list. */}
       <div>
         <p className="text-sm font-semibold">
-          ভেরিয়েন্ট বেছে নিন:{" "}
+          {s.chooseVariant}{" "}
           <span className="font-normal text-text-muted">
-            {variantLabel(selected)}
+            {variantLabel(selected, s.standardVariant)}
           </span>
         </p>
-        <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="ভেরিয়েন্ট">
+        <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label={s.variant}>
           {activeVariants.map((v) => {
             const isSelected = v.id === selected.id;
             return (
@@ -180,8 +181,10 @@ export function BuyBoxActions({
                     : "border-border text-text-main hover:bg-surface-2"
                 }`}
               >
-                {variantLabel(v)} — {digits(formatBdt(v.pricePoisha))}
-                {v.stock > 0 ? ` (স্টক: ${v.stock})` : " (স্টক শেষ)"}
+                {variantLabel(v, s.standardVariant)} — {digits(formatBdt(v.pricePoisha))}
+                {v.stock > 0
+                  ? ` (${interpolate(s.stockWithCount, { count: v.stock })})`
+                  : ` (${t.outOfStock})`}
               </button>
             );
           })}
@@ -207,7 +210,7 @@ export function BuyBoxActions({
       selected.stock > 0 &&
       selected.stock <= lowStockThreshold ? (
         <p role="status" className="-mt-1 text-sm font-semibold text-amber-600 dark:text-amber-400">
-          {digits(`মাত্র ${selected.stock}টি বাকি`)}
+          {digits(interpolate(s.onlyLeft, { count: selected.stock }))}
         </p>
       ) : null}
 
@@ -216,19 +219,19 @@ export function BuyBoxActions({
         <div className="inline-flex items-center rounded-md border border-border">
           <button
             type="button"
-            aria-label="পরিমাণ কমান"
+            aria-label={s.decreaseQuantity}
             disabled={quantity <= qtyMin}
             onClick={() => setQuantity((q) => Math.max(qtyMin, subQty(q, qtyStep)))}
             className="flex h-11 w-10 items-center justify-center text-lg disabled:opacity-40"
           >
             −
           </button>
-          <span className="w-8 text-center text-sm font-medium tabular-nums" aria-label="পরিমাণ">
+          <span className="w-8 text-center text-sm font-medium tabular-nums" aria-label={t.quantity}>
             {qtyToString(quantity)}
           </span>
           <button
             type="button"
-            aria-label="পরিমাণ বাড়ান"
+            aria-label={s.increaseQuantity}
             disabled={outOfStock || quantity >= stockCap}
             onClick={() => setQuantity((q) => Math.min(stockCap, addQty(q, qtyStep)))}
             className="flex h-11 w-10 items-center justify-center text-lg disabled:opacity-40"
@@ -238,7 +241,7 @@ export function BuyBoxActions({
         </div>
         {stepInfo ? (
           <span className="text-xs text-text-muted">
-            ≈ {digits(`${Math.round((qtyToMilli(quantity) * stepInfo.packGrams) / 1000)}`)} গ্রাম
+            ≈ {digits(`${Math.round((qtyToMilli(quantity) * stepInfo.packGrams) / 1000)}`)} {s.gramsUnit}
           </span>
         ) : null}
 
@@ -250,7 +253,7 @@ export function BuyBoxActions({
           onClick={addSelected}
           className="flex-1"
         >
-          {outOfStock ? (unavailableLabel ?? "স্টক শেষ") : (ctaLabel ?? "কার্টে যোগ করুন")}
+          {outOfStock ? (unavailableLabel ?? t.outOfStock) : (ctaLabel ?? t.addToCart)}
         </Button>
       </div>
 
@@ -262,7 +265,7 @@ export function BuyBoxActions({
         onClick={buyNow}
         className="w-full"
       >
-        {buyNowLabel ?? "এখনই কিনুন"}
+        {buyNowLabel ?? t.buyNow}
       </Button>
 
       {notice ? (

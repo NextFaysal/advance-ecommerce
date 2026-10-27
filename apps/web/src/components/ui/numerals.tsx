@@ -24,6 +24,9 @@ import {
   setNumeralScript,
   toBengaliDigits,
 } from "@/lib/numerals";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
 
 /** True when the visitor opted into Bengali digits (post-mount). */
 export function useBengaliNumerals(): boolean {
@@ -95,6 +98,8 @@ export function DigitText({
  * script so the state reads at a glance.
  */
 export function NumeralsToggle({ className = "" }: { className?: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ADMIN_STRINGS);
   const bn = useBengaliNumerals();
 
   const toggle = () => setNumeralScript(bn ? "latn" : "bn");
@@ -103,9 +108,9 @@ export function NumeralsToggle({ className = "" }: { className?: string }) {
     <button
       type="button"
       onClick={toggle}
-      aria-label={bn ? "ইংরেজি সংখ্যায় দেখান" : "বাংলা সংখ্যায় দেখান"}
+      aria-label={bn ? s.showEnNumerals : s.showBnNumerals}
       aria-pressed={bn}
-      title={bn ? "ইংরেজি সংখ্যা" : "বাংলা সংখ্যা"}
+      title={bn ? s.enNumerals : s.bnNumerals}
       className={`inline-flex h-11 min-w-[44px] items-center justify-center rounded-full border border-border bg-card px-2 text-sm font-bold tabular-nums text-text-main shadow-sm transition motion-base hover:shadow-lift ${className}`}
     >
       {bn ? "১২৩" : "123"}
