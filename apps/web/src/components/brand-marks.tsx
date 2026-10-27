@@ -9,13 +9,20 @@
  * the old grey text pills.
  *
  * Pure presentational components — no hooks, no client directive needed.
+ * Locale arrives as a plain prop (see MarkProps.locale), never a hook,
+ * so server components can render these too.
  */
+import type { Locale } from "@/i18n/locale";
 
 export type MarkVariant = "color" | "mono";
 
 export interface MarkProps {
   variant?: MarkVariant;
   className?: string;
+  /** Doc 30: display locale for the one translatable mark (COD) and the
+   *  group aria-labels. Brand names (bKash, Pathao…) are proper nouns and
+   *  never translated. Defaults to bn (legacy rendering). */
+  locale?: Locale;
 }
 
 interface GlyphProps {
@@ -137,7 +144,7 @@ export function SslCommerzMark(props: MarkProps) {
 export function CodMark(props: MarkProps) {
   return (
     <Chip
-      name="ক্যাশ অন ডেলিভারি"
+      name={props.locale === "en" ? "Cash on Delivery" : "ক্যাশ অন ডেলিভারি"}
       color="#16A34A"
       glyph={["M2 6h20v12H2z", "M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z", "M6 12h.01", "M18 12h.01"]}
       {...props}
@@ -213,28 +220,28 @@ export function PaperflyMark(props: MarkProps) {
 /* Rows                                                                */
 /* ------------------------------------------------------------------ */
 
-export function PaymentMarks({ variant = "color", className }: MarkProps) {
+export function PaymentMarks({ variant = "color", className, locale }: MarkProps) {
   return (
     <div
       className={`flex flex-wrap items-center gap-2 ${className ?? ""}`}
       role="group"
-      aria-label="গৃহীত পেমেন্ট মাধ্যম"
+      aria-label={locale === "en" ? "Accepted payment methods" : "গৃহীত পেমেন্ট মাধ্যম"}
     >
       <BkashMark variant={variant} />
       <NagadMark variant={variant} />
       <RocketMark variant={variant} />
       <SslCommerzMark variant={variant} />
-      <CodMark variant={variant} />
+      <CodMark variant={variant} locale={locale} />
     </div>
   );
 }
 
-export function CourierMarks({ variant = "color", className }: MarkProps) {
+export function CourierMarks({ variant = "color", className, locale }: MarkProps) {
   return (
     <div
       className={`flex flex-wrap items-center gap-2 ${className ?? ""}`}
       role="group"
-      aria-label="ডেলিভারি পার্টনার"
+      aria-label={locale === "en" ? "Delivery partners" : "ডেলিভারি পার্টনার"}
     >
       <PathaoMark variant={variant} />
       <RedxMark variant={variant} />

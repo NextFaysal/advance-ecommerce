@@ -104,6 +104,7 @@ const bn = {
 
   // Service booking
   bookingLegend: "সেবার তারিখ ও সময় (বুকিং আবশ্যক)",
+  bookingDateLabel: "তারিখ",
   bookingQtyNote:
     "বুকিংয়ের জন্য এই সেবাটির পরিমাণ ঠিক ১ রাখুন — কার্ট থেকে পরিমাণ বদলে আবার চেষ্টা করুন।",
   bookingClosed: "এই দিনে সেবা বন্ধ থাকে — অন্য তারিখ বেছে নিন।",
@@ -171,6 +172,7 @@ const bn = {
   // Submit / sticky bar
   submitPlacing: "অর্ডার করা হচ্ছে…",
   submitConfirm: "অর্ডার নিশ্চিত করুন",
+  submitPlaceOrder: "অর্ডার করুন",
   stickyItemsCount: "মোট {count}টি পণ্য",
 
   // Client-side submit-guard + failure errors
@@ -329,6 +331,7 @@ const en: CheckoutStrings = {
   chooseTable: "— Choose a table —",
 
   bookingLegend: "Service date & time (booking required)",
+  bookingDateLabel: "Date",
   bookingQtyNote:
     "For a booking, keep this service's quantity at exactly 1 — change the quantity in the cart and try again.",
   bookingClosed: "The service is closed on this day — please pick another date.",
@@ -390,6 +393,7 @@ const en: CheckoutStrings = {
 
   submitPlacing: "Placing order…",
   submitConfirm: "Confirm order",
+  submitPlaceOrder: "Place order",
   stickyItemsCount: "{count} items in total",
 
   errServiceSlot: "Please pick a date and time for the service.",

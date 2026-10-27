@@ -236,7 +236,7 @@ export default function BoighorHeader({
               href={item.href}
               className="hidden shrink-0 whitespace-nowrap px-3 py-2.5 text-sm font-medium text-text-muted transition hover:bg-muted hover:text-primary md:block"
             >
-              {item.labelBn}
+              {locale === "bn" ? item.labelBn : item.labelEn || item.labelBn}
             </Link>
           ))}
         </div>

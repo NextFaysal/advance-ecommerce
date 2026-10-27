@@ -95,11 +95,11 @@ export default function SiteFooter({
         <div data-brand-marks-slot="payment-courier" className="mt-10 space-y-3 border-t border-border pt-6">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-text-muted">{s.paymentLabel}</span>
-            <PaymentMarks />
+            <PaymentMarks locale={locale} />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-text-muted">{s.deliveryPartnerLabel}</span>
-            <CourierMarks />
+            <CourierMarks locale={locale} />
           </div>
         </div>
 

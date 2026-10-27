@@ -140,6 +140,7 @@ export interface ShopChromeCategoryOption {
 export interface ShopChromeAttrFacet {
   key: string;
   labelBn: string;
+  labelEn: string;
   values: string[];
 }
 

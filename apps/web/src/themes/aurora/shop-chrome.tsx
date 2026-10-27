@@ -259,7 +259,7 @@ export default function AuroraShopChrome({
       </FilterSection>
 
       {attrFacets.map((facet) => (
-        <FilterSection key={facet.key} title={facet.labelBn}>
+        <FilterSection key={facet.key} title={locale === "bn" ? facet.labelBn : facet.labelEn || facet.labelBn}>
           {facet.values.map((value) => {
             const pair: ShopChromeAttrPair = { key: facet.key, value };
             const active = current.attr.includes(pairToParam(pair));

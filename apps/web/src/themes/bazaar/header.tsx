@@ -242,7 +242,7 @@ export default function BazaarHeader({
                 href={item.href}
                 className="hidden shrink-0 whitespace-nowrap px-3 py-2.5 text-sm font-medium text-white/90 transition hover:bg-white/10 hover:text-white md:block"
               >
-                {item.labelBn}
+                {locale === "bn" ? item.labelBn : item.labelEn || item.labelBn}
               </Link>
             ))}
           </div>

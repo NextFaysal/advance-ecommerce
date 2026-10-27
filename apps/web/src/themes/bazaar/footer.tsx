@@ -146,7 +146,7 @@ export default function BazaarFooter({
                       href={link.href}
                       className="text-sm text-text-muted transition hover:text-primary"
                     >
-                      {link.labelBn}
+                      {locale === "bn" ? link.labelBn : link.labelEn || link.labelBn}
                     </a>
                   </li>
                 ))}
@@ -163,11 +163,11 @@ export default function BazaarFooter({
         >
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-text-muted">{s.paymentLabel}</span>
-            <PaymentMarks />
+            <PaymentMarks locale={locale} />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-text-muted">{s.deliveryPartnerLabel}</span>
-            <CourierMarks />
+            <CourierMarks locale={locale} />
           </div>
         </div>
 

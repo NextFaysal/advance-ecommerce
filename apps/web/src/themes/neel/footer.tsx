@@ -161,11 +161,11 @@ export default function NeelFooter({
         >
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-white/70">{s.paymentLabel}</span>
-            <PaymentMarks />
+            <PaymentMarks locale={locale} />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-white/70">{s.deliveryPartnerLabel}</span>
-            <CourierMarks />
+            <CourierMarks locale={locale} />
           </div>
         </div>
 

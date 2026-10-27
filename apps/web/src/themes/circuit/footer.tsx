@@ -166,11 +166,11 @@ export default function CircuitFooter({
         >
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-white/60">{s.paymentLabel}</span>
-            <PaymentMarks />
+            <PaymentMarks locale={locale} />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-white/60">{s.deliveryPartnersLabel}</span>
-            <CourierMarks />
+            <CourierMarks locale={locale} />
           </div>
         </div>
 

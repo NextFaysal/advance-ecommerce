@@ -242,7 +242,7 @@ export default function BoighorShopChrome({
       ) : null}
 
       {attrFacets.map((facet) => (
-        <SidebarCard key={facet.key} title={facet.labelBn}>
+        <SidebarCard key={facet.key} title={locale === "bn" ? facet.labelBn : facet.labelEn || facet.labelBn}>
           {facet.values.map((value) => {
             const pair: ShopChromeAttrPair = { key: facet.key, value };
             const active = current.attr.includes(pairToParam(pair));

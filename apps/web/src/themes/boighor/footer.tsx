@@ -164,11 +164,11 @@ export default function BoighorFooter({
         >
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-text-muted">{s.paymentLabel}</span>
-            <PaymentMarks />
+            <PaymentMarks locale={locale} />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-text-muted">{s.deliveryPartnersLabel}</span>
-            <CourierMarks />
+            <CourierMarks locale={locale} />
           </div>
         </div>
 

@@ -507,6 +507,7 @@ export function ShopBrowser() {
     .map((set) => ({
       key: set.key,
       labelBn: set.labelBn,
+      labelEn: set.labelEn,
       values: set.values.filter((value) => presentByKey.get(set.key)?.has(value)),
     }))
     .filter((facet) => facet.values.length > 0);
@@ -519,7 +520,8 @@ export function ShopBrowser() {
 
   const attrLabel = (pair: AttrPair): string => {
     const set = attributeSets.find((s) => s.key === pair.key);
-    return `${set?.labelBn ?? pair.key}: ${pair.value}`;
+    const setLabel = set ? (locale === "bn" ? set.labelBn : set.labelEn || set.labelBn) : pair.key;
+    return `${setLabel}: ${pair.value}`;
   };
 
   const activeChips: Array<{ key: string; label: string; href: string }> = [];

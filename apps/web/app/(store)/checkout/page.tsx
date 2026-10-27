@@ -2077,21 +2077,21 @@ export default function CheckoutPage() {
                     className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
                   />
                   <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-text-main">টেকঅওয়ে</span>
-                    <span className="block text-xs text-text-muted">প্যাক করে নিয়ে যাবেন</span>
+                    <span className="block text-sm font-semibold text-text-main">{s.takeaway}</span>
+                    <span className="block text-xs text-text-muted">{s.takeawayDesc}</span>
                   </span>
                 </label>
               )}
             </div>
             {fulfilmentType === "DINE_IN" && restaurantConfig.tables.length > 0 && (
               <label className="mt-3 block">
-                <span className="mb-1.5 block text-sm font-medium text-text-main">টেবিল</span>
+                <span className="mb-1.5 block text-sm font-medium text-text-main">{s.tableSelectLabel}</span>
                 <select
                   value={tableLabel}
                   onChange={(e) => setTableLabel(e.target.value)}
                   className={INPUT_CLASS}
                 >
-                  <option value="">— টেবিল বেছে নিন —</option>
+                  <option value="">{s.chooseTable}</option>
                   {restaurantConfig.tables.map((t) => (
                     <option key={t} value={t}>
                       {t}
@@ -2111,15 +2111,15 @@ export default function CheckoutPage() {
             authority. */}
         {servicesConfig?.enabled && serviceLine && (
           <fieldset className="m-0 border-0 p-0">
-            <legend className="mb-2 text-sm font-medium text-text-main">সেবার তারিখ ও সময় (বুকিং আবশ্যক)</legend>
+            <legend className="mb-2 text-sm font-medium text-text-main">{s.bookingLegend}</legend>
             {serviceQty !== 1 ? (
               <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
-                বুকিংয়ের জন্য এই সেবাটির পরিমাণ ঠিক ১ রাখুন — কার্ট থেকে পরিমাণ বদলে আবার চেষ্টা করুন।
+                {s.bookingQtyNote}
               </p>
             ) : (
               <>
                 <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-text-main">তারিখ</span>
+                  <span className="mb-1.5 block text-sm font-medium text-text-main">{s.bookingDateLabel}</span>
                   <input
                     type="date"
                     value={bookingDate}
@@ -2132,12 +2132,12 @@ export default function CheckoutPage() {
                 {bookingDayReason ? (
                   <p className="mt-3 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
                     {bookingDayReason === "CLOSED_WEEKDAY"
-                      ? "এই দিনে সেবা বন্ধ থাকে — অন্য তারিখ বেছে নিন।"
+                      ? s.bookingClosed
                       : bookingDayReason === "PAST_DATE"
-                        ? "এই তারিখটি ইতিমধ্যে পার হয়ে গেছে।"
+                        ? s.bookingPast
                         : bookingDayReason === "BEYOND_ADVANCE_WINDOW"
-                          ? `সর্বোচ্চ ${servicesConfig.advanceDays} দিন আগে পর্যন্ত বুকিং করা যায়।`
-                          : "এই তারিখে বুকিং নেওয়া যাচ্ছে না।"}
+                          ? interpolate(s.bookingBeyond, { days: servicesConfig.advanceDays })
+                          : s.bookingUnavailable}
                   </p>
                 ) : (
                   <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -2159,14 +2159,14 @@ export default function CheckoutPage() {
                         <span className="block text-[11px] font-medium">
                           {!slot.available
                             ? slot.past
-                              ? "অতীত"
-                              : "পূর্ণ"
+                              ? s.slotPast
+                              : s.slotFull
                             : `${slot.start} – ${slot.end}`}
                         </span>
                       </button>
                     ))}
                     {bookingSlots.length === 0 && (
-                      <p className="col-span-full text-sm text-text-muted">সময়ের তালিকা লোড হচ্ছে…</p>
+                      <p className="col-span-full text-sm text-text-muted">{s.slotsLoading}</p>
                     )}
                   </div>
                 )}
@@ -2185,16 +2185,16 @@ export default function CheckoutPage() {
             will carry. */}
         {rentalConfig?.enabled && rentalLine && (
           <fieldset className="m-0 border-0 p-0">
-            <legend className="mb-2 text-sm font-medium text-text-main">ভাড়ার তারিখ (আবশ্যক)</legend>
+            <legend className="mb-2 text-sm font-medium text-text-main">{s.rentalLegend}</legend>
             {rentalQty !== 1 ? (
               <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
-                ভাড়ার জন্য এই আইটেমটির পরিমাণ ঠিক ১ রাখুন — কার্ট থেকে পরিমাণ বদলে আবার চেষ্টা করুন।
+                {s.rentalQtyNote}
               </p>
             ) : (
               <>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-text-main">শুরুর তারিখ</span>
+                    <span className="mb-1.5 block text-sm font-medium text-text-main">{s.startDate}</span>
                     <input
                       type="date"
                       value={rentalStart}
@@ -2210,7 +2210,7 @@ export default function CheckoutPage() {
                     />
                   </label>
                   <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-text-main">ফেরতের তারিখ</span>
+                    <span className="mb-1.5 block text-sm font-medium text-text-main">{s.returnDate}</span>
                     <input
                       type="date"
                       value={rentalEnd}
@@ -2228,26 +2228,26 @@ export default function CheckoutPage() {
                 {rentalStart && rentalEnd && rentalEnd >= rentalStart ? (
                   <p className="mt-3 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
                     {rentalAvailability === null
-                      ? "প্রাপ্যতা যাচাই হচ্ছে…"
+                      ? s.availabilityChecking
                       : rentalAvailability.reason === "TOO_LONG"
-                        ? `একবারে সর্বোচ্চ ${rentalConfig.maxRentalDays} দিনের জন্য ভাড়া নেওয়া যায়।`
+                        ? interpolate(s.rentalTooLong, { days: rentalConfig.maxRentalDays })
                         : rentalAvailability.reason
-                          ? "এই তারিখের জন্য ভাড়া নেওয়া যাচ্ছে না।"
+                          ? s.rentalUnavailableDate
                           : rentalAvailability.availableUnits > 0
-                            ? `এই সময়ের জন্য ${rentalAvailability.availableUnits}টি ইউনিট পাওয়া যাচ্ছে।`
-                            : "এই তারিখের জন্য সব ইউনিট ইতিমধ্যে ভাড়া হয়ে গেছে — অন্য তারিখ বেছে নিন।"}
+                            ? interpolate(s.rentalAvailableUnits, { count: rentalAvailability.availableUnits })
+                            : s.rentalAllBooked}
                     {rentalDepositPreview > 0 && (
                       <>
                         {" "}
-                        ভাড়ার জামানত (ফেরতযোগ্য):{" "}
-                        <strong className="text-text-main">{digits(formatBdt(rentalDepositPreview))}</strong>{" "}
-                        — অর্ডারের মোট মূল্যে যোগ হবে এবং ফেরতের সময় ফেরত দেওয়া হবে।
+                        {interpolate(s.rentalDepositNote, {
+                          amount: digits(formatBdt(rentalDepositPreview)),
+                        })}
                       </>
                     )}
                   </p>
                 ) : (
                   <p className="mt-3 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
-                    শুরুর ও ফেরতের তারিখ বেছে নিন — সর্বোচ্চ {rentalConfig.maxRentalDays} দিন।
+                    {interpolate(s.rentalPickDates, { days: rentalConfig.maxRentalDays })}
                   </p>
                 )}
               </>
@@ -2266,17 +2266,17 @@ export default function CheckoutPage() {
             is storage-gated and does not exist in v1. */}
         {podConfig?.enabled && podLine && (
           <fieldset className="m-0 border-0 p-0">
-            <legend className="mb-2 text-sm font-medium text-text-main">কাস্টম প্রিন্ট (আবশ্যক)</legend>
+            <legend className="mb-2 text-sm font-medium text-text-main">{s.podLegend}</legend>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-text-main">
-                ছাপানোর লেখা — {podLine.name}
+                {interpolate(s.printTextLabel, { name: podLine.name })}
               </span>
               <input
                 type="text"
                 value={podText}
                 maxLength={Math.max(podConfig.textMaxChars * 2, podConfig.textMaxChars)}
                 onChange={(e) => setPodText(e.target.value)}
-                placeholder="যেমন: আপনার নাম বা প্রিয় লাইন"
+                placeholder={s.printTextPlaceholder}
                 className={INPUT_CLASS}
               />
               <span
@@ -2286,13 +2286,15 @@ export default function CheckoutPage() {
                     : "text-text-muted"
                 }`}
               >
-                {[...podText.trim()].length}/{podConfig.textMaxChars} অক্ষর — ঠিক এই লেখাটিই ছাপা হবে,
-                বানান যাচাই করে লিখুন।
+                {interpolate(s.printCharCount, {
+                  count: [...podText.trim()].length,
+                  max: podConfig.textMaxChars,
+                })}
               </span>
             </label>
             {podConfig.colors.length > 0 && (
               <div className="mt-3">
-                <span className="mb-1.5 block text-sm font-medium text-text-main">প্রিন্টের রঙ (ঐচ্ছিক)</span>
+                <span className="mb-1.5 block text-sm font-medium text-text-main">{s.printColorLabel}</span>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -2303,7 +2305,7 @@ export default function CheckoutPage() {
                         : "border-border bg-card text-text-main hover:bg-surface-2"
                     }`}
                   >
-                    দোকানের ডিফল্ট
+                    {s.storeDefault}
                   </button>
                   {podConfig.colors.map((color) => (
                     <button
@@ -2331,13 +2333,15 @@ export default function CheckoutPage() {
             )}
             {podConfig.printFeePoisha > 0 && (
               <p className="mt-3 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
-                প্রিন্ট ফি: প্রতি আইটেমে{" "}
-                <strong className="text-text-main">{digits(formatBdt(podConfig.printFeePoisha))}</strong>
+                {interpolate(s.printFeePerItem, {
+                  fee: digits(formatBdt(podConfig.printFeePoisha)),
+                })}
                 {podFeePreview > 0 && (
                   <>
-                    {" "}— এই অর্ডারে মোট{" "}
-                    <strong className="text-text-main">{digits(formatBdt(podFeePreview))}</strong>{" "}
-                    অর্ডারের মোট মূল্যে যোগ হবে।
+                    {" "}
+                    {interpolate(s.printFeeTotalPart, {
+                      total: digits(formatBdt(podFeePreview)),
+                    })}
                   </>
                 )}
               </p>
@@ -2349,7 +2353,7 @@ export default function CheckoutPage() {
             changes the price — there is no slot fee and no gift fee. */}
         {slots.length > 0 && (
           <fieldset className="m-0 border-0 p-0">
-            <legend className="mb-2 text-sm font-medium text-text-main">ডেলিভারির সময় (ঐচ্ছিক)</legend>
+            <legend className="mb-2 text-sm font-medium text-text-main">{s.slotLegend}</legend>
             {/* Slot radio cards (OD3): the radios stay UNNAMED and
                 state-bound exactly like the select they replace —
                 deliverySlotId still reaches the payload from state,
@@ -2363,8 +2367,10 @@ export default function CheckoutPage() {
                   className="h-4 w-4 shrink-0 accent-brand-600"
                 />
                 <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-text-main">যেকোনো সময়</span>
-                  <span className="block text-xs text-text-muted">Any time</span>
+                  <span className="block text-sm font-semibold text-text-main">{s.anyTime}</span>
+                  <span className="block text-xs text-text-muted">
+                    {pick(locale === "bn" ? "en" : "bn", CHECKOUT_STRINGS).anyTime}
+                  </span>
                 </span>
               </label>
               {slots.map((s) => (
@@ -2392,15 +2398,15 @@ export default function CheckoutPage() {
               onChange={(e) => setGift(e.target.checked)}
               className="h-4 w-4 shrink-0 accent-brand-600"
             />
-            এটি একটি উপহার 🎁
+            {s.giftToggle}
           </label>
           {gift && (
             <input
               value={giftMessage}
               onChange={(e) => setGiftMessage(e.target.value)}
               maxLength={500}
-              placeholder="উপহারের বার্তা (ঐচ্ছিক) — যেমন: শুভ জন্মদিন!"
-              aria-label="উপহারের বার্তা"
+              placeholder={s.giftMessagePlaceholder}
+              aria-label={s.giftMessageAria}
               className={`${INPUT_CLASS} mt-2`}
             />
           )}
@@ -2408,22 +2414,22 @@ export default function CheckoutPage() {
           </div>
         </section>
         {/* Step ৪ — পেমেন্ট */}
-        <section aria-label="ধাপ ৪: পেমেন্ট" className="rounded-2xl border border-border bg-card p-5 shadow-card">
+        <section aria-label={s.step4Aria} className="rounded-2xl border border-border bg-card p-5 shadow-card">
           <h2 className="flex items-center gap-2 text-base font-semibold text-text-main">
             <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">৪</span>
-            পেমেন্ট
+            {s.stepPayment}
           </h2>
           <div className="mt-4 grid gap-4">
         <fieldset className="m-0 border-0 p-0">
-          <legend className="mb-2 text-sm font-semibold text-text-main">পেমেন্ট মাধ্যম</legend>
+          <legend className="mb-2 text-sm font-semibold text-text-main">{s.paymentMethodLegend}</legend>
           <div className="flex flex-wrap gap-2">
             <label className={PAYMENT_TILE_CLASS}>
               <input type="radio" name="paymentMethod" value="cod" defaultChecked className="h-4 w-4 shrink-0 accent-brand-600" />
-              <CodMark />
+              <CodMark locale={locale} />
             </label>
             <label className={PAYMENT_TILE_CLASS}>
               <input type="radio" name="paymentMethod" value="cod" defaultChecked className="h-4 w-4 shrink-0 accent-brand-600" />
-              <CodMark />
+              <CodMark locale={locale} />
             </label>
             {/* Gateway tiles come from GET /api/v1/public/payment-methods
                 (enabled in Settings + a working initiation path for the
@@ -2440,7 +2446,7 @@ export default function CheckoutPage() {
                 ) : m.method === "rocket" ? (
                   <span className="flex items-center gap-2">
                     <RocketMark />
-                    <span className="text-xs font-medium text-text-muted">ম্যানুয়াল যাচাই</span>
+                    <span className="text-xs font-medium text-text-muted">{s.manualVerification}</span>
                   </span>
                 ) : m.method === "upay" ? (
                   <UpayMark />
@@ -2453,13 +2459,11 @@ export default function CheckoutPage() {
             ))}
           </div>
           <p className="mt-2.5 text-sm leading-6 text-text-muted">
-            {gatewayMethods.length > 0
-              ? "নিরাপদ পেমেন্ট: পণ্য হাতে পেয়ে টাকা দিন (ক্যাশ অন ডেলিভারি), অথবা অনলাইনে পরিশোধ করুন।"
-              : "পণ্য হাতে পেয়ে টাকা দিন (ক্যাশ অন ডেলিভারি)।"}
+            {gatewayMethods.length > 0 ? s.paymentNoteWithGateways : s.paymentNoteCodOnly}
           </p>
         </fieldset>
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">কুপন কোড (ঐচ্ছিক)</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{s.couponLabel}</span>
           <input
             name="couponCode"
             autoComplete="off"
@@ -2469,7 +2473,7 @@ export default function CheckoutPage() {
         </label>
         {giftCardsEnabled ? (
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-text-main">গিফট কার্ড কোড (ঐচ্ছিক)</span>
+            <span className="mb-1.5 block text-sm font-medium text-text-main">{s.giftCardLabel}</span>
             <input
               name="giftCardCode"
               autoComplete="off"
@@ -2477,54 +2481,49 @@ export default function CheckoutPage() {
               className={INPUT_CLASS}
             />
             <span className="mt-1.5 block text-xs leading-5 text-text-muted">
-              গিফট কার্ডের ব্যালেন্স থেকে অর্ডারের মূল্য পরিশোধ হবে (সর্বোচ্চ অর্ডারের মোট মূল্য পর্যন্ত);
-              অবশিষ্ট ব্যালেন্স কার্ডেই থেকে যাবে।
+              {s.giftCardNote}
             </span>
           </label>
         ) : null}
         {rxRequired ? (
           <fieldset className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-400/30 dark:bg-amber-500/10">
             <legend className="px-1 text-sm font-semibold text-text-main">
-              💊 প্রেসক্রিপশনের তথ্য আবশ্যক
+              {s.rxLegend}
             </legend>
             <p className="text-sm leading-6 text-text-muted">
-              আপনার কার্টে প্রেসক্রিপশন-আবশ্যক ওষুধ আছে। অর্ডার করতে প্রেসক্রিপশনের তথ্য দিন —
-              ফার্মাসিস্ট যাচাই করার পর অর্ডার নিশ্চিত হবে। এই তথ্য রেকর্ড হিসেবে থাকবে; এটি
-              যাচাইকৃত প্রেসক্রিপশন নয়।
+              {s.rxIntro}
             </p>
             <label className="mt-3 block">
-              <span className="mb-1.5 block text-sm font-medium text-text-main">চিকিৎসকের নাম</span>
+              <span className="mb-1.5 block text-sm font-medium text-text-main">{s.rxPrescriberName}</span>
               <input name="rxPrescriberName" autoComplete="off" className={INPUT_CLASS} />
             </label>
             <label className="mt-3 block">
-              <span className="mb-1.5 block text-sm font-medium text-text-main">চিকিৎসকের রেজিস্ট্রেশন নম্বর</span>
+              <span className="mb-1.5 block text-sm font-medium text-text-main">{s.rxRegistrationNo}</span>
               <input name="rxRegistrationNo" autoComplete="off" className={INPUT_CLASS} />
             </label>
             <label className="mt-3 block">
               <span className="mb-1.5 block text-sm font-medium text-text-main">
-                প্রেসক্রিপশনের ছবির লিংক (যদি আগে থেকে অনলাইনে থাকে — ঐচ্ছিক)
+                {s.rxImageLabel}
               </span>
               <input name="rxImageUrl" autoComplete="off" placeholder="https://…" className={INPUT_CLASS} />
             </label>
             <label className="mt-3 flex items-start gap-2.5 text-sm leading-6 text-text-main">
               <input type="checkbox" name="rxAttested" className="mt-1 h-4 w-4 shrink-0" />
-              <span>আমি নিশ্চিত করছি যে আমার কাছে এই প্রেসক্রিপশনটি আছে এবং তথ্যগুলো সঠিক।</span>
+              <span>{s.rxAttest}</span>
             </label>
           </fieldset>
         ) : null}
         {ageGate.required ? (
           <fieldset className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-400/30 dark:bg-amber-500/10">
             <legend className="px-1 text-sm font-semibold text-text-main">
-              🔞 বয়স নিশ্চিতকরণ আবশ্যক
+              {s.ageLegend}
             </legend>
             <p className="text-sm leading-6 text-text-muted">
-              আপনার কার্টে বয়স-সীমাবদ্ধ পণ্য আছে — কেনার জন্য বয়স কমপক্ষে {ageGate.minAge ?? 18} বছর হতে
-              হবে। এই নিশ্চিতকরণটি অর্ডারে রেকর্ড থাকবে। এটি একটি স্ব-ঘোষণা — আমরা কোনো পরিচয়পত্র বা
-              জন্মতারিখ যাচাই করি না।
+              {interpolate(s.ageIntro, { minAge: ageGate.minAge ?? 18 })}
             </p>
             <label className="mt-3 flex items-start gap-2.5 text-sm leading-6 text-text-main">
               <input type="checkbox" name="ageAttested" className="mt-1 h-4 w-4 shrink-0" />
-              <span>আপনি নিশ্চিত করছেন আপনার বয়স {ageGate.minAge ?? 18}+ / I confirm I am at least {ageGate.minAge ?? 18} years old.</span>
+              <span>{interpolate(s.ageAttest, { minAge: ageGate.minAge ?? 18 })}</span>
             </label>
           </fieldset>
         ) : null}
@@ -2534,7 +2533,7 @@ export default function CheckoutPage() {
           disabled={stockProblems.length > 0 || submitting}
           className="brand-gradient h-12 w-full rounded-xl text-base font-semibold text-white shadow-md transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {submitting ? "অর্ডার করা হচ্ছে…" : "অর্ডার নিশ্চিত করুন"}
+          {submitting ? s.submitPlacing : s.submitConfirm}
         </button>
           </div>
         </section>
@@ -2558,9 +2557,9 @@ export default function CheckoutPage() {
       <div className="fixed inset-x-0 bottom-16 z-40 border-t border-border bg-card/95 px-4 py-3 shadow-[0_-4px_16px_rgba(49,46,129,0.08)] backdrop-blur lg:hidden">
         <div className="mx-auto flex max-w-[720px] items-center gap-3">
           <div className="min-w-0 flex-1">
-            <p className="text-xs text-text-muted">মোট {totalQuantity}টি পণ্য</p>
+            <p className="text-xs text-text-muted">{interpolate(s.stickyItemsCount, { count: totalQuantity })}</p>
             <p className="text-base font-bold leading-6 text-text-main">
-              সর্বমোট <span className="tabular-nums">{digits(formatBdt(pricing.grandTotalPoisha))}</span>
+              {s.grandTotal} <span className="tabular-nums">{digits(formatBdt(pricing.grandTotalPoisha))}</span>
             </p>
           </div>
           <button
@@ -2569,7 +2568,7 @@ export default function CheckoutPage() {
             disabled={stockProblems.length > 0 || submitting}
             className="brand-gradient flex h-12 shrink-0 items-center gap-1.5 rounded-xl px-5 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {submitting ? "অর্ডার করা হচ্ছে…" : "অর্ডার করুন"}
+            {submitting ? s.submitPlacing : s.submitPlaceOrder}
             <Icon name="arrow-right" size={16} strokeWidth={2} />
           </button>
         </div>
