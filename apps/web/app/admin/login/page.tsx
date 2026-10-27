@@ -27,6 +27,7 @@ import {
   browserSupportsWebAuthn,
   startAuthentication,
 } from "@simplewebauthn/browser";
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
 import { LOGIN_STRINGS } from "./strings";
@@ -188,6 +189,12 @@ export default function AdminLoginPage() {
       {/* Form panel */}
       <section className="flex flex-1 items-center justify-center px-6 py-12">
         <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 shadow-lg">
+          {/* Language switcher — top of the login card, visible
+              before sign-in at every width (staff pick their own
+              language here; it persists via the ae-locale cookie). */}
+          <div className="mb-5 flex justify-end">
+            <LanguageSwitcher />
+          </div>
           <div className="mb-6 flex items-center gap-3 lg:hidden">
             <span className="brand-gradient flex h-10 w-10 items-center justify-center rounded-xl text-lg font-extrabold text-white">
               A

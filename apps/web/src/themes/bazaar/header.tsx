@@ -50,6 +50,7 @@ import { CART_UPDATED_EVENT } from "@/cart/components/AddToCartButton";
 import { Icon } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
 import { DEFAULT_HEADER_MENU } from "@/cms/site-content-types";
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { useThemeView } from "../theme-view";
@@ -177,8 +178,11 @@ export default function BazaarHeader({
               </div>
             </form>
 
-            {/* Actions — icon + small label, like the reference tier */}
+            {/* Actions — icon + small label, like the reference tier.
+                The language switcher leads the row: always visible at
+                every width (this row never collapses into a menu). */}
             <div className="order-2 ml-auto flex shrink-0 items-start gap-1 sm:gap-2 lg:order-3 lg:ml-0">
+              <LanguageSwitcher className="mr-1 self-center" />
               {actions.map((a) => (
                 <Link
                   key={a.href}

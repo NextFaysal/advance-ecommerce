@@ -40,6 +40,7 @@ import { DEFAULT_HEADER_MENU } from "@/cms/site-content-types";
 import { useThemeView } from "../theme-view";
 import { openCartDrawer } from "../cart-drawer-events";
 import { CIRCUIT_COLORS } from "./tokens";
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { CIRCUIT_STRINGS } from "./strings";
@@ -135,8 +136,12 @@ export default function CircuitHeader({
               </div>
             </form>
 
-            {/* Right cluster — Offers, Account, gradient CTA */}
+            {/* Right cluster — language switcher first (its pill
+                carries its own light background, so it stays legible
+                on the navy tier, and this row is visible at every
+                width), then Offers, Account, gradient CTA */}
             <div className="order-2 ml-auto flex shrink-0 items-center gap-1 sm:gap-2 lg:order-3 lg:ml-0">
+              <LanguageSwitcher className="mr-1" />
               <Link
                 href="/shop"
                 className="flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-white/85 transition hover:text-white"

@@ -11,12 +11,15 @@
  * package's cart drawer (cart-drawer-events) instead of linking to
  * /cart. The /cart page still exists for deep links.
  *
- * Deliberate absences (honesty rules): there is NO location
- * selector and NO language toggle — the platform has neither a
- * per-visitor location nor a header-level locale switch, and a
- * control that pretends otherwise would be a lie. No announcement
- * bar either; the layout's signature is the persistent category
- * sidebar (home-sections.tsx / shop-chrome.tsx), not the header.
+ * Deliberate absence (honesty rules): there is NO location
+ * selector — the platform has no per-visitor location, and a
+ * control that pretends otherwise would be a lie. The language
+ * switcher in the actions row IS real: it is the platform's
+ * unified LanguageSwitcher (doc 30), which persists the visitor's
+ * choice and re-renders the whole store in that language. No
+ * announcement bar either; the layout's signature is the
+ * persistent category sidebar (home-sections.tsx /
+ * shop-chrome.tsx), not the header.
  *
  * Counts mirror SiteHeader's data path exactly: guest cart from
  * localStorage (@/cart/persistence + @/cart/types), wishlist from
@@ -33,6 +36,7 @@ import { cartItemCount } from "@/cart/types";
 import { CART_UPDATED_EVENT } from "@/cart/components/AddToCartButton";
 import { Icon } from "@/components/ui/icon";
 import { useThemeView } from "../theme-view";
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { SHOBJI_STRINGS } from "./strings";
@@ -130,9 +134,12 @@ export default function ShobjiHeader({
           </div>
         </form>
 
-        {/* Actions — Track/Wishlist icon links, solid purple
-            account button, cart icon button (opens the drawer). */}
+        {/* Actions — language switcher first (always visible at
+            every width in this row), then Track/Wishlist icon links,
+            solid purple account button, cart icon button (opens the
+            drawer). */}
         <div className="order-2 ml-auto flex shrink-0 items-center gap-1 sm:gap-2 lg:order-3 lg:ml-0">
+          <LanguageSwitcher className="mr-1" />
           <Link
             href="/track"
             className="relative hidden min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary min-[420px]:flex"

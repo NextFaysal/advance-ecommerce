@@ -44,6 +44,7 @@ import { DEFAULT_HEADER_MENU } from "@/cms/site-content-types";
 import { useThemeView } from "../theme-view";
 import { openCartDrawer } from "../cart-drawer-events";
 import { BOIGHOR_COLORS } from "./tokens";
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { BOIGHOR_STRINGS, pickLocalized } from "./strings";
@@ -171,8 +172,11 @@ export default function BoighorHeader({
             </div>
           </form>
 
-          {/* Actions — account, wishlist, cart */}
+          {/* Actions — language switcher first (Tier 2 actions row
+              is always visible at every width), then account,
+              wishlist, cart */}
           <div className="order-2 ml-auto flex shrink-0 items-start gap-1 sm:gap-2 lg:order-3 lg:ml-0">
+            <LanguageSwitcher className="mr-1 self-center" />
             <Link
               href="/account"
               className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-lg px-1.5 py-1 text-text-muted transition hover:text-primary"

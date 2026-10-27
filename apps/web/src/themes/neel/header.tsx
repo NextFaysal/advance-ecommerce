@@ -38,6 +38,7 @@ import { GUEST_CART_KEY, loadGuestCart } from "@/cart/persistence";
 import { cartItemCount } from "@/cart/types";
 import { CART_UPDATED_EVENT } from "@/cart/components/AddToCartButton";
 import { Icon } from "@/components/ui/icon";
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { NEEL_STRINGS } from "./strings";
@@ -153,8 +154,12 @@ export default function NeelHeader({
             </div>
           </form>
 
-          {/* Sign In / Register text links + icon actions */}
+          {/* Language switcher first (its pill carries its own
+              light background, legible on the blue gradient; this
+              actions row is visible at every width), then Sign In /
+              Register text links + icon actions */}
           <div className="order-2 ml-auto flex shrink-0 items-center gap-1 sm:gap-2 lg:order-3 lg:ml-0">
+            <LanguageSwitcher className="mr-1" />
             <div className="mr-1 hidden flex-col items-end leading-tight md:flex">
               <Link href="/account" className="text-[13px] font-bold text-white transition hover:underline">
                 {s.signIn}

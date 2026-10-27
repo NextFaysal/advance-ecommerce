@@ -37,6 +37,7 @@ import { Icon } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
 import { openCartDrawer } from "../cart-drawer-events";
 import { HAAT_COLORS } from "./tokens";
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { HAAT_STRINGS } from "./strings";
@@ -156,6 +157,11 @@ export default function HaatHeader({
               </button>
             </div>
           </form>
+
+          {/* Language switcher — sits in the main tier beside the
+              cart, visible at every width (this row wraps but never
+              collapses into a menu). */}
+          <LanguageSwitcher className="order-2 ml-auto self-center lg:order-3 lg:ml-0" />
 
           {/* Cart — opens the drawer; badge carries the live count */}
           <button
