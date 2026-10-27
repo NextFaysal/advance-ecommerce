@@ -24,8 +24,9 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { formatBdt } from "@/checkout/pricing";
-import { canVendorSubmitKyc, VENDOR_KYC_STATUS_BN } from "@/vendors/kyc";
-import { VENDOR_DOCUMENT_KIND_BN, VENDOR_DOCUMENT_STATUS_BN } from "@/vendors/documents";
+import { canVendorSubmitKyc, vendorKycStatusLabel } from "@/vendors/kyc";
+import { vendorDocumentKindLabel, vendorDocumentStatusLabel } from "@/vendors/documents";
+import { getRequestLocale } from "@/i18n/server";
 import { isVendorPortalEnabled, VENDOR_SESSION_COOKIE, verifyVendorSessionToken } from "@/vendors/portal-auth";
 import { buildVendorPortalDashboard } from "@/vendors/portal";
 import KycSubmitButton from "./kyc-submit-button";
@@ -96,6 +97,7 @@ export default async function VendorPortalPage() {
       </main>
     );
   }
+  const locale = await getRequestLocale();
   const store = await cookies();
   const vendorId = await verifyVendorSessionToken(store.get(VENDOR_SESSION_COOKIE)?.value);
   if (!vendorId) redirect("/vendor/login");
@@ -123,7 +125,7 @@ export default async function VendorPortalPage() {
             <div className="flex gap-2">
               <dt className="text-text-muted">অবস্থা:</dt>
               <dd className="font-semibold text-text-main">
-                {VENDOR_KYC_STATUS_BN[d.kyc.status] ?? d.kyc.status}
+                {vendorKycStatusLabel(d.kyc.status, locale)}
               </dd>
             </div>
             {d.kyc.note ? (
@@ -151,14 +153,14 @@ export default async function VendorPortalPage() {
                 {d.documents.map((doc) => (
                   <li key={doc.id} className="flex flex-wrap items-baseline justify-between gap-2">
                     <span className="min-w-0 text-text-main">
-                      {VENDOR_DOCUMENT_KIND_BN[doc.kind] ?? doc.kind}
+                      {vendorDocumentKindLabel(doc.kind, locale)}
                       <span className="block text-xs text-text-muted">
                         {doc.fileName} · {fmtDate(doc.createdAt)}
                         {doc.note ? ` · ${doc.note}` : ""}
                       </span>
                     </span>
                     <span className="shrink-0 text-xs font-medium text-text-main">
-                      {VENDOR_DOCUMENT_STATUS_BN[doc.status] ?? doc.status}
+                      {vendorDocumentStatusLabel(doc.status, locale)}
                     </span>
                   </li>
                 ))}

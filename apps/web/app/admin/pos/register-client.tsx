@@ -155,13 +155,13 @@ export default function PosRegisterClient({
     paymentMethod,
     offline: true,
   };
-  const totals = lines.length > 0 ? saleTotal(totalsInput) : null;
+  const totals = lines.length > 0 ? saleTotal(totalsInput, locale) : null;
   const totalPoisha = totals?.ok ? totals.totalPoisha : 0;
   const subtotalPoisha = totals?.ok ? totals.subtotalPoisha : 0;
   const tenderedPoisha = takaInputToPoisha(tenderedTaka);
   const change =
     paymentMethod === "CASH" && tenderedPoisha !== null && lines.length > 0
-      ? changeDue(totalPoisha, tenderedPoisha)
+      ? changeDue(totalPoisha, tenderedPoisha, locale)
       : null;
 
   function flashError(text: string) {
@@ -291,7 +291,7 @@ export default function PosRegisterClient({
     const result = createSale(input, {
       id: `pos_local_${input.idempotencyKey}`,
       createdAt: new Date().toISOString(),
-    });
+    }, locale);
     if (!result.ok) {
       flashError(result.error);
       return;
@@ -301,7 +301,7 @@ export default function PosRegisterClient({
     // this exact moment can never lose a completed sale.
     enqueuePosSale({ input, sale: result.sale });
     refreshPending();
-    setReceipt(buildPosReceipt(result.sale));
+    setReceipt(buildPosReceipt(result.sale, undefined, locale));
     setLastChangePoisha(
       paymentMethod === "CASH" && tenderedPoisha !== null ? tenderedPoisha - result.sale.totalPoisha : null,
     );

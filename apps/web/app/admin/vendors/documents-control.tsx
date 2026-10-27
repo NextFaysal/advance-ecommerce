@@ -10,8 +10,8 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import {
-  VENDOR_DOCUMENT_KIND_BN,
-  VENDOR_DOCUMENT_STATUS_BN,
+  vendorDocumentKindLabel,
+  vendorDocumentStatusLabel,
   type VendorDocumentView,
 } from "@/vendors/documents";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -21,8 +21,6 @@ import { VENDORS_STRINGS } from "./strings";
 export default function VendorDocumentsControl({ vendorId }: { vendorId: string }) {
   const { locale } = useLocale();
   const s = pick(locale, VENDORS_STRINGS);
-  const KIND_LABEL: Record<string, string> = { TRADE_LICENSE: s.kindTrade, NID: s.kindNid, TIN: s.kindTin, OTHER: s.kindOther };
-  const DOC_STATUS_LABEL: Record<string, string> = { PENDING: s.docStatusPending, VERIFIED: s.docStatusVerified, REJECTED: s.docStatusRejected };
   const [docs, setDocs] = useState<VendorDocumentView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [kind, setKind] = useState("TRADE_LICENSE");
@@ -113,9 +111,9 @@ export default function VendorDocumentsControl({ vendorId }: { vendorId: string 
           {docs.map((doc) => (
             <li key={doc.id} className="flex flex-wrap items-center justify-between gap-2">
               <span className="min-w-0 text-text-main">
-                {locale === "bn" ? VENDOR_DOCUMENT_KIND_BN[doc.kind] : (KIND_LABEL[doc.kind] ?? doc.kind)} — {doc.fileName}
+                {vendorDocumentKindLabel(doc.kind, locale)} — {doc.fileName}
                 <span className="block text-xs text-text-muted">
-                  {locale === "bn" ? VENDOR_DOCUMENT_STATUS_BN[doc.status] : (DOC_STATUS_LABEL[doc.status] ?? doc.status)}
+                  {vendorDocumentStatusLabel(doc.status, locale)}
                   {doc.note ? ` · ${doc.note}` : ""}
                 </span>
               </span>

@@ -9,6 +9,7 @@ import {
 } from "@/reports/builder";
 import { fetchSalesRows } from "@/reports/db-rows";
 import { writeAudit } from "@/lib/audit";
+import { getRequestLocale } from "@/i18n/server";
 
 // POST /api/v1/admin/reports/builder/export — watermarked CSV export
 // of a custom report (ADV-8). SAME contract as the sales export
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
   }
   const definition = validated.definition;
   const rows = await fetchSalesRows(definition.range);
-  const built = buildReport(definition, rows);
+  const built = buildReport(definition, rows, await getRequestLocale());
   await writeAudit({
     actorId: guard.userId,
     action: "reports.builder.export",

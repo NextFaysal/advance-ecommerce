@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   REPORT_COLUMNS,
   REPORT_DATASETS,
+  reportColumnsFor,
   type ReportDataset,
   type ReportDefinition,
 } from "@/reports/builder";
@@ -205,7 +206,7 @@ export function BuilderClient() {
     } finally { setBusy(false); }
   }
 
-  const catalogue = REPORT_COLUMNS[dataset];
+  const catalogue = reportColumnsFor(dataset, locale);
 
   return (
     <div className="mt-4 space-y-6">

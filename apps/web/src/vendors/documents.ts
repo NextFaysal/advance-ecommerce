@@ -13,6 +13,7 @@
  */
 import { prisma } from "@advance-ecommerce/db";
 import { z } from "zod";
+import { pick, type Locale } from "../i18n/locale";
 
 export const VENDOR_DOCUMENT_KINDS = ["TRADE_LICENSE", "NID", "TIN", "OTHER"] as const;
 export type VendorDocumentKind = (typeof VENDOR_DOCUMENT_KINDS)[number];
@@ -20,18 +21,51 @@ export type VendorDocumentKind = (typeof VENDOR_DOCUMENT_KINDS)[number];
 export const VENDOR_DOCUMENT_STATUSES = ["PENDING", "VERIFIED", "REJECTED"] as const;
 export type VendorDocumentStatusValue = (typeof VENDOR_DOCUMENT_STATUSES)[number];
 
-export const VENDOR_DOCUMENT_KIND_BN: Record<VendorDocumentKind, string> = {
-  TRADE_LICENSE: "ট্রেড লাইসেন্স",
-  NID: "জাতীয় পরিচয়পত্র (NID)",
-  TIN: "টিআইএন (TIN)",
-  OTHER: "অন্যান্য",
+/**
+ * Doc 30: kind + status labels are display copy — bn/en pairs (the
+ * en set mirrors the admin vendors dictionary exactly). The kind /
+ * status KEYS never localize. The *_BN exports stay as the bn halves
+ * for existing imports.
+ */
+export const VENDOR_DOCUMENT_KIND_LABELS: Record<Locale, Record<VendorDocumentKind, string>> = {
+  bn: {
+    TRADE_LICENSE: "ট্রেড লাইসেন্স",
+    NID: "জাতীয় পরিচয়পত্র (NID)",
+    TIN: "টিআইএন (TIN)",
+    OTHER: "অন্যান্য",
+  },
+  en: {
+    TRADE_LICENSE: "Trade licence",
+    NID: "National ID (NID)",
+    TIN: "TIN",
+    OTHER: "Other",
+  },
 };
 
-export const VENDOR_DOCUMENT_STATUS_BN: Record<VendorDocumentStatusValue, string> = {
-  PENDING: "যাচাইয়ের অপেক্ষায়",
-  VERIFIED: "যাচাই সম্পন্ন",
-  REJECTED: "প্রত্যাখ্যাত",
+export const VENDOR_DOCUMENT_KIND_BN: Record<VendorDocumentKind, string> = VENDOR_DOCUMENT_KIND_LABELS.bn;
+
+export function vendorDocumentKindLabel(kind: VendorDocumentKind, locale: Locale): string {
+  return pick(locale, VENDOR_DOCUMENT_KIND_LABELS)[kind];
+}
+
+export const VENDOR_DOCUMENT_STATUS_LABELS: Record<Locale, Record<VendorDocumentStatusValue, string>> = {
+  bn: {
+    PENDING: "যাচাইয়ের অপেক্ষায়",
+    VERIFIED: "যাচাই সম্পন্ন",
+    REJECTED: "প্রত্যাখ্যাত",
+  },
+  en: {
+    PENDING: "Awaiting verification",
+    VERIFIED: "Verified",
+    REJECTED: "Rejected",
+  },
 };
+
+export const VENDOR_DOCUMENT_STATUS_BN: Record<VendorDocumentStatusValue, string> = VENDOR_DOCUMENT_STATUS_LABELS.bn;
+
+export function vendorDocumentStatusLabel(status: VendorDocumentStatusValue, locale: Locale): string {
+  return pick(locale, VENDOR_DOCUMENT_STATUS_LABELS)[status];
+}
 
 export interface VendorDocumentView {
   id: string;

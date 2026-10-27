@@ -3,6 +3,7 @@ import { buildPosReceipt, saleTotal } from "@/pos/register";
 import { createSaleDb } from "@/pos/store";
 import { createPosSaleSchema } from "@/pos/types";
 import { posGuardError, requirePosAdmin } from "../guard";
+import { getRequestLocale } from "@/i18n/server";
 
 // POS sale — Agent 38, on src/pos/register.ts createSale() rules.
 // This POST is also the OFFLINE SYNC endpoint: the register queues
@@ -32,10 +33,11 @@ export async function POST(req: Request) {
     );
   }
   const input = parsed.data;
+  const locale = await getRequestLocale();
 
   let result: Awaited<ReturnType<typeof createSaleDb>>;
   try {
-    result = await createSaleDb(input);
+    result = await createSaleDb(input, locale);
   } catch {
     return NextResponse.json(
       { error: { code: "DB_NOT_READY", message: "POS database is not available." } },
@@ -50,13 +52,13 @@ export async function POST(req: Request) {
   }
 
   const sale = result.sale;
-  const totals = saleTotal(sale);
+  const totals = saleTotal(sale, locale);
   const subtotalPoisha = totals.ok ? totals.subtotalPoisha : sale.totalPoisha + sale.discountPoisha;
   if (result.duplicate) {
     return NextResponse.json({
       data: {
         sale,
-        receipt: buildPosReceipt(sale),
+        receipt: buildPosReceipt(sale, undefined, locale),
         subtotalPoisha,
         duplicate: true,
         stock: result.stock,
@@ -68,7 +70,7 @@ export async function POST(req: Request) {
     {
       data: {
         sale,
-        receipt: buildPosReceipt(sale),
+        receipt: buildPosReceipt(sale, undefined, locale),
         subtotalPoisha,
         duplicate: false,
         stock: result.stock,

@@ -368,7 +368,7 @@ export async function processEmailJob(
     }
     const definition = { ...saved.definition, range: { from, to } };
     const rows = await fetchSalesRows({ from, to });
-    const built = buildReport(definition, rows);
+    const built = buildReport(definition, rows, identity.locale);
     const watermark = buildExportWatermark({
       title: `SCHEDULED REPORT — ${saved.name}`,
       exportedBy: `schedule:${job.scheduleId ?? "unknown"}`,

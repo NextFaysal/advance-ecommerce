@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { buildReport, validateReportDefinition } from "@/reports/builder";
 import { fetchSalesRows } from "@/reports/db-rows";
+import { getRequestLocale } from "@/i18n/server";
 
 // POST /api/v1/admin/reports/builder — custom report PREVIEW (ADV-8).
 // Body: a report definition { dataset, columns, filters, range }.
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: { code: "INVALID_DEFINITION", message: validated.message } }, { status: 400 });
   }
   const rows = await fetchSalesRows(validated.definition.range);
-  const built = buildReport(validated.definition, rows);
+  const built = buildReport(validated.definition, rows, await getRequestLocale());
   return NextResponse.json({
     data: {
       columns: built.columns,

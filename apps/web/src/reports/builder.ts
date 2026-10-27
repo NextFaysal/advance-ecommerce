@@ -19,6 +19,7 @@
 import { z } from "zod";
 import { dateRangeSchema, type DateRange, type SalesRow } from "./types";
 import { addQty } from "../lib/quantity";
+import type { Locale } from "../i18n/locale";
 
 export const REPORT_DATASETS = ["orders", "products", "customers"] as const;
 export type ReportDataset = (typeof REPORT_DATASETS)[number];
@@ -66,6 +67,58 @@ export const REPORT_COLUMNS: Record<ReportDataset, ReportColumn[]> = {
     { key: "lastOrderDate", label: "Last order (Dhaka)", type: "text" },
   ],
 };
+
+/**
+ * Doc 30: column labels are display copy. REPORT_COLUMNS above stays
+ * the key/type source with the EN label; the bn label set lives here,
+ * keyed by dataset + column key. Data values and column KEYS never
+ * localize (the CSV header prints keys — the export contract).
+ */
+export const REPORT_COLUMN_LABELS_BN: Record<ReportDataset, Record<string, string>> = {
+  orders: {
+    orderId: "অর্ডার আইডি",
+    date: "তারিখ (ঢাকা)",
+    status: "অবস্থা",
+    customerId: "গ্রাহক আইডি",
+    district: "জেলা",
+    courier: "কুরিয়ার",
+    units: "পরিমাণ (ইউনিট)",
+    revenuePoisha: "আয় (পয়সা)",
+    costPoisha: "খরচ (পয়সা)",
+    shippingPoisha: "ডেলিভারি চার্জ (পয়সা)",
+    refundPoisha: "ফেরত (পয়সা)",
+    grossProfitPoisha: "মোট লাভ (পয়সা)",
+    netRevenuePoisha: "নিট আয় (পয়সা)",
+  },
+  products: {
+    productId: "পণ্য আইডি",
+    orders: "অর্ডার",
+    units: "বিক্রিত পরিমাণ",
+    revenuePoisha: "আয় (পয়সা)",
+    costPoisha: "খরচ (পয়সা)",
+    refundPoisha: "ফেরত (পয়সা)",
+    grossProfitPoisha: "মোট লাভ (পয়সা)",
+  },
+  customers: {
+    customerId: "গ্রাহক আইডি",
+    orders: "অর্ডার",
+    units: "পরিমাণ (ইউনিট)",
+    revenuePoisha: "আয় (পয়সা)",
+    refundPoisha: "ফেরত (পয়সা)",
+    netRevenuePoisha: "নিট আয় (পয়সা)",
+    firstOrderDate: "প্রথম অর্ডার (ঢাকা)",
+    lastOrderDate: "সর্বশেষ অর্ডার (ঢাকা)",
+  },
+};
+
+/** The dataset catalogue with labels picked for `locale`
+ *  (bn falls back to the EN label for any key without a bn entry). */
+export function reportColumnsFor(dataset: ReportDataset, locale: Locale): ReportColumn[] {
+  return REPORT_COLUMNS[dataset].map((c) => ({
+    ...c,
+    label: locale === "bn" ? (REPORT_COLUMN_LABELS_BN[dataset][c.key] ?? c.label) : c.label,
+  }));
+}
 
 export const reportFiltersSchema = z.object({
   status: z.string().trim().min(1).max(40).optional(),
@@ -131,7 +184,18 @@ export interface BuiltReport {
   rows: Row[];
 }
 
-export function buildReport(definition: ReportDefinition, salesRows: readonly SalesRow[]): BuiltReport {
+/**
+ * Build the report. `locale` localizes the returned column LABELS
+ * only (data + keys are locale-free). It defaults to "en" — the
+ * historical catalogue labels — so callers that cannot resolve a
+ * locale keep today's output; request handlers pass the request
+ * locale and the scheduled-email path passes the job's locale.
+ */
+export function buildReport(
+  definition: ReportDefinition,
+  salesRows: readonly SalesRow[],
+  locale: Locale = "en",
+): BuiltReport {
   const { dataset, range, filters } = definition;
   const filtered = salesRows.filter((r) => {
     if (r.date < range.from || r.date > range.to) return false;
@@ -186,7 +250,7 @@ export function buildReport(definition: ReportDefinition, salesRows: readonly Sa
     all.sort((a, b) => Number(b.revenuePoisha) - Number(a.revenuePoisha));
   }
 
-  const catalogue = REPORT_COLUMNS[dataset];
+  const catalogue = reportColumnsFor(dataset, locale);
   const columns = definition.columns
     .map((key) => catalogue.find((c) => c.key === key))
     .filter((c): c is ReportColumn => c !== undefined);

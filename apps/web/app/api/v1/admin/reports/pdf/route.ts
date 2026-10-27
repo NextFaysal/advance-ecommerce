@@ -12,6 +12,7 @@ import { dateRangeSchema } from "@/reports/types";
 import { writeAudit } from "@/lib/audit";
 import { getSetting } from "@/lib/settings";
 import { renderReportPdf } from "@/pdf/report";
+import { getRequestLocale } from "@/i18n/server";
 
 // POST /api/v1/admin/reports/pdf — PDF export of a custom report
 // (ADV-29, doc 22), beside the builder's CSV export and under the
@@ -65,7 +66,7 @@ export async function POST(req: Request) {
   }
   const definition = validated.definition;
   const rows = await fetchSalesRows(definition.range);
-  const built = buildReport(definition, rows);
+  const built = buildReport(definition, rows, await getRequestLocale());
   await writeAudit({
     actorId: guard.userId,
     action: "reports.builder.pdf",

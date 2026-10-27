@@ -3,6 +3,7 @@ import { z } from "zod";
 import { closeShiftDb, openShiftDb } from "@/pos/store";
 import { closeShiftSchema, openShiftSchema } from "@/pos/types";
 import { posGuardError, requirePosAdmin } from "../guard";
+import { getRequestLocale } from "@/i18n/server";
 
 // POS shift open / close — Agent 38, on src/pos/register.ts rules.
 // Open: a register has at most ONE open shift (409 when one is open).
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
       countedCashPoisha: data.countedCashPoisha,
       closedBy: guard.userId,
       note: data.note,
-    });
+    }, await getRequestLocale());
     if (!result.ok) {
       return NextResponse.json(
         { error: { code: result.code, message: result.message } },

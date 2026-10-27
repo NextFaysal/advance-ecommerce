@@ -63,6 +63,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { prisma } from "@advance-ecommerce/db";
+import { FALLBACK_LOCALE, type Locale } from "../i18n/locale";
 import { closeShift, createSale, openShiftForRegister } from "./register";
 import type {
   CreatePosSaleInput,
@@ -207,6 +208,7 @@ export type CloseShiftResult =
 export async function closeShiftDb(
   shiftId: string,
   input: { countedCashPoisha: number; closedBy: string; note?: string },
+  locale: Locale = FALLBACK_LOCALE,
 ): Promise<CloseShiftResult> {
   const row = await prisma.posShift.findUnique({ where: { id: shiftId } });
   if (!row) {
@@ -219,7 +221,7 @@ export async function closeShiftDb(
     closedBy: input.closedBy,
     closedAt: new Date().toISOString(),
     note: input.note,
-  });
+  }, locale);
   if (!result.ok) {
     return { ok: false, status: 422, code: "SHIFT_CLOSE_REJECTED", message: result.error };
   }
@@ -385,7 +387,10 @@ function receiptNoFor(idempotencyKey: string): string {
  * idempotencyKey is the backstop). Shift must exist, be OPEN, and
  * belong to the input register — same rules as the old route.
  */
-export async function createSaleDb(input: CreatePosSaleInput): Promise<CreateSaleResult> {
+export async function createSaleDb(
+  input: CreatePosSaleInput,
+  locale: Locale = FALLBACK_LOCALE,
+): Promise<CreateSaleResult> {
   const existingRow = await prisma.posSale.findUnique({
     where: { idempotencyKey: input.idempotencyKey },
   });
@@ -419,7 +424,7 @@ export async function createSaleDb(input: CreatePosSaleInput): Promise<CreateSal
       message: `Shift ${shiftRow.id} belongs to register ${shiftRow.registerId}, not ${input.registerId}.`,
     };
   }
-  const result = createSale(input, { id: randomUUID(), createdAt: new Date().toISOString() });
+  const result = createSale(input, { id: randomUUID(), createdAt: new Date().toISOString() }, locale);
   if (!result.ok) {
     return { ok: false, status: 422, code: "SALE_REJECTED", message: result.error };
   }

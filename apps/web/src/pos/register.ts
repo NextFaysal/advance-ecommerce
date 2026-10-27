@@ -21,6 +21,7 @@
  *   an explicit discount line so line amounts − discount = total.
  */
 import { formatBdt } from "../checkout/pricing";
+import { FALLBACK_LOCALE, interpolate, pick, type Locale } from "../i18n/locale";
 import { buildPrintData, type PrintFormat } from "../orders/print";
 import type { Order, PaymentMethod } from "../orders/types";
 import { isPosEnabled, type PosFlagStore } from "./flags";
@@ -34,14 +35,53 @@ import type {
   ScanResolution,
 } from "./types";
 
+/**
+ * Doc 30: every human-facing string this module produces — receipt
+ * copy and error messages — is a bn/en pair, picked by the caller's
+ * locale. Error CODES and result shapes never localize. Callers that
+ * resolve a locale (POS client, sale/shift routes) thread it in; the
+ * default is the project fallback locale.
+ */
+const bn = {
+  moduleLocked: "POS মডিউলটি এই ইনস্টলে বন্ধ আছে (module.pos ফ্ল্যাগ OFF)।",
+  discountExceedsSubtotal: "ছাড় বিক্রির মোটের বেশি হতে পারবে না।",
+  tenderedShort: "প্রদত্ত নগদ বিক্রির মোটের চেয়ে কম।",
+  cashRequiresTendered: "CASH বিক্রিতে tenderedPoisha দিতে হবে।",
+  shiftAlreadyClosed: "শিফটটি ইতিমধ্যে {status}।",
+  varianceNoteRequired: "শিফট বন্ধে নগদের অমিল থাকলে নোটে ঘাটতি/বেশির কারণ লিখতে হবে।",
+  walkInCustomer: "ওয়াক-ইন গ্রাহক",
+  discountLine: "ছাড় (Discount)",
+  payCash: "ক্যাশ (Cash)",
+  payBkash: "বিকাশ (bKash)",
+  payNagad: "নগদ (Nagad)",
+  payCard: "কার্ড (Card)",
+};
+type PosRegisterStrings = typeof bn;
+const en: { [K in keyof PosRegisterStrings]: string } = {
+  moduleLocked: "POS module is locked for this install (module.pos flag is OFF).",
+  discountExceedsSubtotal: "Discount cannot exceed the sale subtotal.",
+  tenderedShort: "Tendered cash is less than the sale total.",
+  cashRequiresTendered: "CASH sale requires tenderedPoisha.",
+  shiftAlreadyClosed: "Shift is already {status}.",
+  varianceNoteRequired: "Cash variance at close requires a note (shortage/overage must be explained).",
+  walkInCustomer: "Walk-in Customer",
+  discountLine: "Discount",
+  payCash: "Cash",
+  payBkash: "bKash",
+  payNagad: "Nagad",
+  payCard: "Card",
+};
+const STRINGS: Record<Locale, PosRegisterStrings> = { bn, en };
+
 export function assertPosEnabled(
   store?: PosFlagStore,
+  locale: Locale = FALLBACK_LOCALE,
 ): { ok: true } | { ok: false; code: "FEATURE_LOCKED"; message: string } {
   if (isPosEnabled(store)) return { ok: true };
   return {
     ok: false,
     code: "FEATURE_LOCKED",
-    message: "POS module is locked for this install (module.pos flag is OFF).",
+    message: pick(locale, STRINGS).moduleLocked,
   };
 }
 
@@ -62,18 +102,25 @@ export function resolveScan(
 }
 
 /** Line subtotal + total for a sale input. Integer poisha, discount capped by error (not clamp). */
-export function saleTotal(input: CreatePosSaleInput): { ok: true; subtotalPoisha: number; totalPoisha: number } | { ok: false; error: string } {
+export function saleTotal(
+  input: CreatePosSaleInput,
+  locale: Locale = FALLBACK_LOCALE,
+): { ok: true; subtotalPoisha: number; totalPoisha: number } | { ok: false; error: string } {
   const subtotalPoisha = input.lines.reduce((sum, l) => sum + l.unitPricePoisha * l.quantity, 0);
   if (input.discountPoisha > subtotalPoisha) {
-    return { ok: false, error: "Discount cannot exceed the sale subtotal." };
+    return { ok: false, error: pick(locale, STRINGS).discountExceedsSubtotal };
   }
   return { ok: true, subtotalPoisha, totalPoisha: subtotalPoisha - input.discountPoisha };
 }
 
 /** Change due for a CASH sale. Errors when tendered is short. */
-export function changeDue(totalPoisha: number, tenderedPoisha: number): { ok: true; changePoisha: number } | { ok: false; error: string } {
+export function changeDue(
+  totalPoisha: number,
+  tenderedPoisha: number,
+  locale: Locale = FALLBACK_LOCALE,
+): { ok: true; changePoisha: number } | { ok: false; error: string } {
   if (tenderedPoisha < totalPoisha) {
-    return { ok: false, error: "Tendered cash is less than the sale total." };
+    return { ok: false, error: pick(locale, STRINGS).tenderedShort };
   }
   return { ok: true, changePoisha: tenderedPoisha - totalPoisha };
 }
@@ -81,12 +128,13 @@ export function changeDue(totalPoisha: number, tenderedPoisha: number): { ok: tr
 export function createSale(
   input: CreatePosSaleInput,
   meta: { id: string; createdAt: string },
+  locale: Locale = FALLBACK_LOCALE,
 ): { ok: true; sale: PosSale } | { ok: false; error: string } {
-  const total = saleTotal(input);
+  const total = saleTotal(input, locale);
   if (!total.ok) return total;
   if (input.paymentMethod === "CASH") {
-    if (input.tenderedPoisha === undefined) return { ok: false, error: "CASH sale requires tenderedPoisha." };
-    const change = changeDue(total.totalPoisha, input.tenderedPoisha);
+    if (input.tenderedPoisha === undefined) return { ok: false, error: pick(locale, STRINGS).cashRequiresTendered };
+    const change = changeDue(total.totalPoisha, input.tenderedPoisha, locale);
     if (!change.ok) return change;
   }
   const sale: PosSale = {
@@ -118,12 +166,14 @@ export function closeShift(
   shift: PosShift,
   sales: readonly PosSale[],
   input: { countedCashPoisha: number; closedBy: string; closedAt: string; note?: string },
+  locale: Locale = FALLBACK_LOCALE,
 ): { ok: true; shift: PosShift } | { ok: false; error: string } {
-  if (shift.status !== "OPEN") return { ok: false, error: `Shift is already ${shift.status}.` };
+  const s = pick(locale, STRINGS);
+  if (shift.status !== "OPEN") return { ok: false, error: interpolate(s.shiftAlreadyClosed, { status: shift.status }) };
   const expected = expectedCashPoisha(shift, sales);
   const variance = input.countedCashPoisha - expected;
   if (variance !== 0 && (!input.note || input.note.trim().length === 0)) {
-    return { ok: false, error: "Cash variance at close requires a note (shortage/overage must be explained)." };
+    return { ok: false, error: s.varianceNoteRequired };
   }
   return {
     ok: true,
@@ -151,13 +201,13 @@ const POS_PAYMENT_METHOD: Record<PosPaymentMethod, PaymentMethod> = {
   CARD: "card",
 };
 
-/** Bangla-first receipt labels per POS payment method (D3). */
-const POS_PAYMENT_LABEL: Record<PosPaymentMethod, string> = {
-  CASH: "ক্যাশ (Cash)",
-  BKASH: "বিকাশ (bKash)",
-  NAGAD: "নগদ (Nagad)",
-  CARD: "কার্ড (Card)",
-};
+/** Receipt labels per POS payment method (D3), per locale (doc 30):
+ *  bn keeps the established Bangla-first bilingual receipt style;
+ *  en prints the plain English method name. */
+function posPaymentLabel(method: PosPaymentMethod, locale: Locale): string {
+  const s = pick(locale, STRINGS);
+  return { CASH: s.payCash, BKASH: s.payBkash, NAGAD: s.payNagad, CARD: s.payCard }[method];
+}
 
 /**
  * Receipt for a POS sale: the shared PrintData shape (invoice / thermal)
@@ -176,12 +226,14 @@ export type PosReceipt = PosReceiptData & {
 export function buildPosReceipt(
   sale: PosSale,
   format: PrintFormat = "THERMAL_80",
+  locale: Locale = FALLBACK_LOCALE,
 ): PosReceipt {
+  const s = pick(locale, STRINGS);
   const paymentMethod = POS_PAYMENT_METHOD[sale.paymentMethod];
   const syntheticOrder: Order = {
     id: sale.id,
     orderNo: `POS-${sale.id.slice(0, 8).toUpperCase()}`,
-    customerName: "Walk-in Customer",
+    customerName: s.walkInCustomer,
     customerPhone: "",
     address: { division: "", district: "", upazila: "", addressLine: "" },
     items: sale.lines.map((l) => ({
@@ -209,10 +261,10 @@ export function buildPosReceipt(
   return {
     ...data,
     itemsText: discountText
-      ? [...data.itemsText, `ছাড় (Discount) — ${discountText}`]
+      ? [...data.itemsText, `${s.discountLine} — ${discountText}`]
       : data.itemsText,
     paymentMethod,
-    paymentMethodLabel: POS_PAYMENT_LABEL[sale.paymentMethod],
+    paymentMethodLabel: posPaymentLabel(sale.paymentMethod, locale),
     discountText,
   };
 }

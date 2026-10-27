@@ -8,7 +8,7 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { STAFF_KYC_TARGETS, VENDOR_KYC_STATUS_BN, type VendorKycStatus } from "@/vendors/kyc";
+import { STAFF_KYC_TARGETS, vendorKycStatusLabel, type VendorKycStatus } from "@/vendors/kyc";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { VENDORS_STRINGS } from "./strings";
@@ -29,7 +29,6 @@ export default function KycControl({
   const { locale } = useLocale();
   const s = pick(locale, VENDORS_STRINGS);
   const TARGET_LABEL: Record<string, string> = { DOCUMENTS_REQUESTED: s.targetDocs, VERIFIED: s.targetVerified, REJECTED: s.targetRejected };
-  const KYC_STATUS_LABEL: Record<string, string> = { NOT_SUBMITTED: s.kycStatusNotSubmitted, PENDING: s.kycStatusPending, DOCUMENTS_REQUESTED: s.kycStatusDocsRequested, VERIFIED: s.kycStatusVerified, REJECTED: s.kycStatusRejected };
   const router = useRouter();
   const [status, setStatus] = useState<VendorKycStatus>(initialStatus);
   const [target, setTarget] = useState<string>("DOCUMENTS_REQUESTED");
@@ -71,7 +70,7 @@ export default function KycControl({
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{shopName}</span>
         <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs">
-          {interpolate(s.kycCurrent, { status: locale === "bn" ? (VENDOR_KYC_STATUS_BN[status] ?? status) : (KYC_STATUS_LABEL[status] ?? status) })}
+          {interpolate(s.kycCurrent, { status: vendorKycStatusLabel(status, locale) })}
         </span>
       </div>
       <div className="mt-2 flex flex-wrap items-end gap-2">

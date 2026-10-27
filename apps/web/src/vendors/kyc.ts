@@ -27,6 +27,7 @@
  * Every staff decision carries a note the vendor sees in the portal.
  */
 import { z } from "zod";
+import { pick, type Locale } from "../i18n/locale";
 
 export const VENDOR_KYC_STATUSES = [
   "NOT_SUBMITTED",
@@ -64,13 +65,34 @@ export function defaultVendorKyc(vendorId: string): VendorKycRecord {
   };
 }
 
-export const VENDOR_KYC_STATUS_BN: Record<VendorKycStatus, string> = {
-  NOT_SUBMITTED: "জমা দেওয়া হয়নি",
-  PENDING: "যাচাইয়ের অপেক্ষায়",
-  DOCUMENTS_REQUESTED: "আরও কাগজপত্র চাওয়া হয়েছে",
-  VERIFIED: "যাচাই সম্পন্ন ✓",
-  REJECTED: "প্রত্যাখ্যাত",
+/**
+ * Doc 30: status labels are display copy — a bn/en pair per status
+ * (the en set mirrors the admin vendors dictionary exactly). The
+ * status KEYS never localize. VENDOR_KYC_STATUS_BN stays as the bn
+ * half for existing imports.
+ */
+export const VENDOR_KYC_STATUS_LABELS: Record<Locale, Record<VendorKycStatus, string>> = {
+  bn: {
+    NOT_SUBMITTED: "জমা দেওয়া হয়নি",
+    PENDING: "যাচাইয়ের অপেক্ষায়",
+    DOCUMENTS_REQUESTED: "আরও কাগজপত্র চাওয়া হয়েছে",
+    VERIFIED: "যাচাই সম্পন্ন ✓",
+    REJECTED: "প্রত্যাখ্যাত",
+  },
+  en: {
+    NOT_SUBMITTED: "Not submitted",
+    PENDING: "Awaiting verification",
+    DOCUMENTS_REQUESTED: "More documents requested",
+    VERIFIED: "Verified ✓",
+    REJECTED: "Rejected",
+  },
 };
+
+export const VENDOR_KYC_STATUS_BN: Record<VendorKycStatus, string> = VENDOR_KYC_STATUS_LABELS.bn;
+
+export function vendorKycStatusLabel(status: VendorKycStatus, locale: Locale): string {
+  return pick(locale, VENDOR_KYC_STATUS_LABELS)[status];
+}
 
 /** States a staff decision may set (staff never sets PENDING —
  *  that is the vendor's submission state — nor NOT_SUBMITTED). */
