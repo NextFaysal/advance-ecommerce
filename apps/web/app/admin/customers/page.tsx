@@ -20,11 +20,14 @@ import { Button } from "@/components/ui/button";
 import {
   ColumnPicker,
   SavedViewsBar,
-  TABLE_PREFS_NOTE,
   useHiddenColumns,
   useSavedViews,
   type SavedView,
 } from "../../../src/admin/table-prefs";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
+import { CUSTOMER_STRINGS } from "./strings";
 
 type LoadState = "loading" | "error" | "ready";
 
@@ -38,15 +41,7 @@ interface CustomerViewState {
   search: string;
   sort: CustomerSort | null;
 }
-const CUSTOMER_PICKER_COLUMNS = [
-  { key: "phone", label: "ফোন (মাস্ক করা)" },
-  { key: "orders", label: "অর্ডার" },
-  { key: "success", label: "সাফল্যের হার" },
-  { key: "ltv", label: "মোট কেনাকাটা (LTV)" },
-  { key: "aov", label: "গড় অর্ডার (AOV)" },
-  { key: "tags", label: "ট্যাগ" },
-] as const;
-const CUSTOMER_HIDEABLE_KEYS = CUSTOMER_PICKER_COLUMNS.map((c) => c.key);
+const CUSTOMER_HIDEABLE_KEYS = ["phone", "orders", "success", "ltv", "aov", "tags"] as const;
 
 function SortTh({
   label,
@@ -59,6 +54,8 @@ function SortTh({
   sort: CustomerSort | null;
   onSort: (key: CustomerSortKey) => void;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, CUSTOMER_STRINGS);
   const active = sort?.key === sortKey;
   return (
     <th
@@ -69,7 +66,7 @@ function SortTh({
       <button
         type="button"
         onClick={() => onSort(sortKey)}
-        aria-label={`${label} অনুযায়ী সাজান`}
+        aria-label={interpolate(s.sortByAria, { label })}
         className={`flex items-center gap-1 transition motion-fast hover:text-brand-700 ${active ? "text-brand-700" : ""}`}
       >
         {label}
@@ -90,10 +87,19 @@ function SortTh({
   );
 }
 
-const PROFILE_TABS = ["অর্ডার", "ঠিকানা", "ওয়ালেট ও পয়েন্ট", "নোট", "কার্যকলাপ"];
-const QUICK_ACTIONS = ["কল", "SMS", "WhatsApp", "ব্লক/আনব্লক", "নোট যোগ", "ট্যাগ যোগ"];
-
 export default function AdminCustomersPage() {
+  const { locale, t } = useLocale();
+  const s = pick(locale, CUSTOMER_STRINGS);
+  const profileTabs = [s.tabOrders, s.tabAddresses, s.tabWallet, s.tabNotes, s.tabActivity];
+  const quickActions = [s.quickCall, s.quickSms, s.quickWhatsapp, s.quickBlock, s.quickNote, s.quickTag];
+  const pickerColumns = [
+    { key: "phone", label: s.colPhoneMasked },
+    { key: "orders", label: s.colOrders },
+    { key: "success", label: s.colSuccessRate },
+    { key: "ltv", label: s.colLtv },
+    { key: "aov", label: s.colAov },
+    { key: "tags", label: s.colTags },
+  ] as const;
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [total, setTotal] = useState(0);
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -143,10 +149,10 @@ export default function AdminCustomersPage() {
         setLoadState("error");
       }
     } catch {
-      setLoadError("নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি।");
+      setLoadError(s.networkError);
       setLoadState("error");
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     // ?search= lands here from the command palette's customer links.
@@ -177,11 +183,11 @@ export default function AdminCustomersPage() {
   return (
     <main>
       <PageHeader
-        title="গ্রাহক / CRM"
-        description={`আসল ডেটা — ডাটাবেস থেকে মোট ${total} জন গ্রাহক। ফোন নম্বর ডিফল্টভাবে মাস্ক করা থাকে।`}
+        title={s.title}
+        description={interpolate(s.description, { total })}
         actions={
           <Button variant="outline" onClick={() => void load(search)}>
-            রিফ্রেশ
+            {s.refresh}
           </Button>
         }
       />
@@ -194,8 +200,8 @@ export default function AdminCustomersPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="নাম বা ট্যাগ দিয়ে খুঁজুন…"
-            aria-label="গ্রাহক খুঁজুন"
+            placeholder={s.searchPlaceholder}
+            aria-label={s.searchAria}
             className="h-11 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
           />
         </div>
@@ -210,18 +216,18 @@ export default function AdminCustomersPage() {
           />
           <span className="ml-auto">
             <ColumnPicker
-              columns={CUSTOMER_PICKER_COLUMNS}
+              columns={pickerColumns}
               hidden={customerCols.hidden}
               onToggle={customerCols.toggleColumn}
               ready={customerCols.ready}
             />
           </span>
         </div>
-        <p className="mt-2 text-caption leading-relaxed text-text-subtle">{TABLE_PREFS_NOTE}</p>
+        <p className="mt-2 text-caption leading-relaxed text-text-subtle">{pick(locale, ADMIN_STRINGS).tpStorageNote}</p>
       </Card>
 
       {loadState === "loading" && (
-        <div role="status" aria-label="গ্রাহক লোড হচ্ছে" className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
+        <div role="status" aria-label={s.loadingAria} className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
           <div className="border-b border-border bg-surface-2 px-4 py-3">
             <div className="h-4 w-40 animate-pulse rounded bg-border" />
           </div>
@@ -232,16 +238,16 @@ export default function AdminCustomersPage() {
               <div className="ml-auto h-4 w-16 animate-pulse rounded bg-border" />
             </div>
           ))}
-          <p className="px-4 py-3 text-small text-text-muted">গ্রাহক লোড হচ্ছে…</p>
+          <p className="px-4 py-3 text-small text-text-muted">{s.loadingText}</p>
         </div>
       )}
 
       {loadState === "error" && (
         <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-5 shadow-card">
-          <p className="font-semibold text-rose-700">গ্রাহক লোড হয়নি</p>
+          <p className="font-semibold text-rose-700">{s.loadFailedTitle}</p>
           <p className="mt-1 text-small text-rose-600">{loadError}</p>
           <Button variant="outline" className="mt-4 bg-card" onClick={() => void load(search)}>
-            আবার চেষ্টা করুন
+            {s.tryAgain}
           </Button>
         </div>
       )}
@@ -254,13 +260,13 @@ export default function AdminCustomersPage() {
               <path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
             </svg>
           </span>
-          <h2 className="mt-4 text-h3">কোনো গ্রাহক পাওয়া যায়নি</h2>
+          <h2 className="mt-4 text-h3">{s.emptyTitle}</h2>
           <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
-            ডাটাবেসে এখনো কোনো গ্রাহক নেই, অথবা খোঁজের সঙ্গে মেলেনি।
+            {s.emptyText}
           </p>
           {search.trim() !== "" && (
             <Button variant="outline" className="mt-5" onClick={() => setSearch("")}>
-              খোঁজ মুছে ফেলুন
+              {s.clearSearch}
             </Button>
           )}
         </div>
@@ -274,24 +280,24 @@ export default function AdminCustomersPage() {
           <table className="w-full min-w-[760px] border-collapse text-left text-sm">
             <thead>
               <tr className="bg-surface-2 text-left [&>th]:border-b [&>th]:border-border">
-                <SortTh label="নাম" sortKey="name" sort={sort} onSort={toggleSort} />
+                <SortTh label={t.name} sortKey="name" sort={sort} onSort={toggleSort} />
                 {customerCols.isVisible("phone") ? (
-                  <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">ফোন (মাস্ক করা)</th>
+                  <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">{s.colPhoneMasked}</th>
                 ) : null}
                 {customerCols.isVisible("orders") ? (
-                  <SortTh label="অর্ডার" sortKey="orders" sort={sort} onSort={toggleSort} />
+                  <SortTh label={s.colOrders} sortKey="orders" sort={sort} onSort={toggleSort} />
                 ) : null}
                 {customerCols.isVisible("success") ? (
-                  <SortTh label="সাফল্যের হার" sortKey="success" sort={sort} onSort={toggleSort} />
+                  <SortTh label={s.colSuccessRate} sortKey="success" sort={sort} onSort={toggleSort} />
                 ) : null}
                 {customerCols.isVisible("ltv") ? (
-                  <SortTh label="মোট কেনাকাটা (LTV)" sortKey="ltv" sort={sort} onSort={toggleSort} />
+                  <SortTh label={s.colLtv} sortKey="ltv" sort={sort} onSort={toggleSort} />
                 ) : null}
                 {customerCols.isVisible("aov") ? (
-                  <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">গড় অর্ডার (AOV)</th>
+                  <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">{s.colAov}</th>
                 ) : null}
                 {customerCols.isVisible("tags") ? (
-                  <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">ট্যাগ</th>
+                  <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">{s.colTags}</th>
                 ) : null}
               </tr>
             </thead>
@@ -307,7 +313,7 @@ export default function AdminCustomersPage() {
                   >
                     <td className="px-4 py-3">
                       <span className="font-medium leading-snug">{c.name}</span>
-                      {c.blocked ? <span className="ml-2 inline-flex"><Badge tone="danger">ব্লক করা</Badge></span> : null}
+                      {c.blocked ? <span className="ml-2 inline-flex"><Badge tone="danger">{s.blocked}</Badge></span> : null}
                     </td>
                     {customerCols.isVisible("phone") ? (
                       <td className="px-4 py-3 font-mono text-small tabular-nums text-text-muted">{displayPhone(c.phone, false)}</td>
@@ -357,7 +363,7 @@ export default function AdminCustomersPage() {
                 <div className="flex items-center justify-between gap-2">
                   <p className="min-w-0 truncate font-medium leading-snug">{c.name}</p>
                   <span className="flex shrink-0 items-center gap-1.5">
-                    {c.blocked ? <Badge tone="danger">ব্লক করা</Badge> : null}
+                    {c.blocked ? <Badge tone="danger">{s.blocked}</Badge> : null}
                     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-text-subtle">
                       <path d="m9 18 6-6-6-6" />
                     </svg>
@@ -366,15 +372,15 @@ export default function AdminCustomersPage() {
                 <p className="mt-1 font-mono text-small tabular-nums text-text-muted">{displayPhone(c.phone, false)}</p>
                 <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-3 text-center">
                   <span>
-                    <span className="block text-caption text-text-subtle">অর্ডার</span>
+                    <span className="block text-caption text-text-subtle">{s.colOrders}</span>
                     <span className="font-mono font-semibold tabular-nums">{c.totalOrders}</span>
                   </span>
                   <span>
-                    <span className="block text-caption text-text-subtle">সাফল্যের হার</span>
+                    <span className="block text-caption text-text-subtle">{s.colSuccessRate}</span>
                     <span className="font-mono font-semibold tabular-nums">{customerSuccessRate(c)}%</span>
                   </span>
                   <span>
-                    <span className="block text-caption text-text-subtle">মোট কেনাকাটা</span>
+                    <span className="block text-caption text-text-subtle">{s.colTotalPurchases}</span>
                     <span className="font-mono font-semibold tabular-nums">{formatBdt(c.lifetimeValuePoisha)}</span>
                   </span>
                 </div>
@@ -394,21 +400,21 @@ export default function AdminCustomersPage() {
         <Card className="mt-5 shadow-card">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-h3">{selected.name} — প্রোফাইল</h2>
+              <h2 className="text-h3">{selected.name} — {s.profileWord}</h2>
               <p className="mt-1 text-small text-text-muted">
-                ফোন: <span className="font-mono tabular-nums">{displayPhone(selected.phone, false)}</span>{" "}
-                (পুরো নম্বর দেখতে পারমিশন + অডিট লগ লাগবে — সার্ভার-সাইডে)
+                {t.phone}: <span className="font-mono tabular-nums">{displayPhone(selected.phone, false)}</span>{" "}
+                {s.phonePermissionNote}
               </p>
             </div>
-            {selected.blocked ? <Badge tone="danger">ব্লক করা</Badge> : <Badge tone="success">সক্রিয়</Badge>}
+            {selected.blocked ? <Badge tone="danger">{s.blocked}</Badge> : <Badge tone="success">{s.active}</Badge>}
           </div>
 
           <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
             {[
-              { label: "ডেলিভার্ড", value: String(selected.deliveredOrders) },
-              { label: "বাতিল", value: String(selected.cancelledOrders) },
-              { label: "রিটার্ন", value: String(selected.returnedOrders) },
-              { label: "শেষ অর্ডার", value: selected.lastOrderAt ?? "—" },
+              { label: s.statDelivered, value: String(selected.deliveredOrders) },
+              { label: s.statCancelled, value: String(selected.cancelledOrders) },
+              { label: s.statReturned, value: String(selected.returnedOrders) },
+              { label: s.statLastOrder, value: selected.lastOrderAt ?? "—" },
             ].map((s) => (
               <div key={s.label} className="rounded-md bg-surface-2 px-3.5 py-3">
                 <p className="text-caption font-medium text-text-muted">{s.label}</p>
@@ -419,14 +425,14 @@ export default function AdminCustomersPage() {
 
           <div className="mt-5 border-t border-border pt-4">
             <p className="flex flex-wrap items-center gap-1.5 text-small">
-              <span className="mr-1 font-medium text-text-muted">ট্যাব (এখনো ওয়্যার করা হয়নি):</span>
-              {PROFILE_TABS.map((t) => (
+              <span className="mr-1 font-medium text-text-muted">{s.tabsLabel}</span>
+              {profileTabs.map((t) => (
                 <span key={t} className="rounded-full border border-dashed border-border px-2.5 py-1 text-caption font-medium text-text-muted">{t}</span>
               ))}
             </p>
             <p className="mt-2.5 flex flex-wrap items-center gap-1.5 text-small">
-              <span className="mr-1 font-medium text-text-muted">কুইক অ্যাকশন (এখনো ওয়্যার করা হয়নি):</span>
-              {QUICK_ACTIONS.map((a) => (
+              <span className="mr-1 font-medium text-text-muted">{s.quickActionsLabel}</span>
+              {quickActions.map((a) => (
                 <span key={a} className="rounded-full border border-dashed border-border px-2.5 py-1 text-caption font-medium text-text-muted">{a}</span>
               ))}
             </p>

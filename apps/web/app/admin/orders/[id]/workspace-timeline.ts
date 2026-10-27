@@ -14,22 +14,30 @@
 // appear here; the panels that own them (RefundsPanel, ShipmentsPanel)
 // render their own histories in their tabs. Pure function of the
 // payload — no fetch, no invention.
-import { ORDER_STATUS_BN } from "../../../../src/orders/components/labels";
+import { ORDER_STATUS_VISUAL } from "../../../../src/orders/components/labels";
+import { interpolate, pick, type Locale } from "../../../../src/i18n/locale";
 import type { TimelineEntry } from "../../../../src/orders/components/StatusTimeline";
 import type { Order } from "../../../../src/orders/types";
+import { ORDER_STRINGS } from "../strings";
 
 export function buildWorkspaceTimelineEntries(
   order: Pick<Order, "history" | "notes">,
+  locale: Locale,
 ): TimelineEntry[] {
+  const s = pick(locale, ORDER_STRINGS);
+  const statusLabel = (status: keyof typeof ORDER_STATUS_VISUAL): string => {
+    const visual = ORDER_STATUS_VISUAL[status];
+    return locale === "bn" ? visual.labelBn : visual.labelEn;
+  };
   const entries: TimelineEntry[] = [];
   for (const h of order.history) {
     entries.push({
       kind: "status",
       status: h.to,
       title: h.from
-        ? `${ORDER_STATUS_BN[h.from]} → ${ORDER_STATUS_BN[h.to]}`
-        : ORDER_STATUS_BN[h.to],
-      detail: h.reason ? `কারণ: ${h.reason}` : undefined,
+        ? `${statusLabel(h.from)} → ${statusLabel(h.to)}`
+        : statusLabel(h.to),
+      detail: h.reason ? interpolate(s.tlReason, { reason: h.reason }) : undefined,
       actor: h.changedBy,
       at: h.changedAt,
     });
@@ -37,7 +45,7 @@ export function buildWorkspaceTimelineEntries(
   for (const n of order.notes) {
     entries.push({
       kind: "note",
-      title: "নোট",
+      title: s.tlNote,
       detail: n.text,
       actor: n.author,
       at: n.createdAt,

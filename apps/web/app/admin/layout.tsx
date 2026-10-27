@@ -1,7 +1,11 @@
 import type { ReactNode } from "react";
 import { headers } from "next/headers";
-import { ADMIN_NAV, groupBySection, isLockedAddOn, type AdminNavItem } from "@/admin-nav/config";
+import { ADMIN_NAV, groupBySection, isLockedAddOn, navItemLabel, navSectionLabel, type AdminNavItem } from "@/admin-nav/config";
 import { AdminCommandPalette, CommandPaletteTrigger } from "@/admin/command-palette";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
+import { ADMIN_STRINGS } from "@/admin/strings";
 import { PresenceHeartbeatGlobal } from "./presence-heartbeat";
 
 // Navigation comes from src/admin-nav/config.ts (single source).
@@ -91,6 +95,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     return <div className="min-h-screen bg-bg-app text-text-main">{children}</div>;
   }
 
+  const locale = await getRequestLocale();
+  const s = pick(locale, ADMIN_STRINGS);
+
   const activeItem =
     ADMIN_NAV.filter((item) => isActiveItem(pathname, item)).sort(
       (a, b) => b.path.length - a.path.length,
@@ -114,14 +121,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-[15px] font-bold leading-5">Advance Ecommerce</span>
-                <span className="block text-caption text-text-muted">অ্যাডমিন কনসোল</span>
+                <span className="block text-caption text-text-muted">{s.adminConsole}</span>
               </span>
             </a>
             <div className="mt-4 flex items-center gap-2 rounded-md bg-surface-2 px-3 py-2">
               <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="truncate text-small font-medium">আমার দোকান</span>
+              <span className="truncate text-small font-medium">{s.myStore}</span>
               <span className="ml-auto rounded-full bg-emerald-50 px-2 py-0.5 text-caption font-semibold text-emerald-700">
-                লাইভ
+                {s.live}
               </span>
             </div>
           </div>
@@ -131,9 +138,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             {navGroups.map((group) => (
               <div key={group.section.id} className="mb-5 last:mb-2">
                 <p className="px-3 pb-2 text-caption font-semibold tracking-wide text-text-subtle">
-                  {group.section.labelBn}
+                  {navSectionLabel(group.section, locale)}
                 </p>
-                <nav aria-label={group.section.labelEn} className="space-y-1">
+                <nav aria-label={navSectionLabel(group.section, locale)} className="space-y-1">
                   {group.items.map((item) => {
                     const active = isActiveItem(pathname, item);
                     const locked = isLockedAddOn(item);
@@ -159,11 +166,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                         >
                           <Icon name={item.icon} className="h-[18px] w-[18px]" />
                         </span>
-                        <span className="min-w-0 flex-1 truncate">{item.labelBn}</span>
+                        <span className="min-w-0 flex-1 truncate">{navItemLabel(item, locale)}</span>
                         {locked ? (
                           <span className="flex shrink-0 items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-caption font-semibold text-amber-700">
                             <Icon name="Lock" className="h-3 w-3" />
-                            অ্যাড-অন
+                            {s.addOn}
                           </span>
                         ) : null}
                       </a>
@@ -177,12 +184,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           {/* Sidebar footer — session chip */}
           <div className="border-t border-border px-5 py-4">
             <div className="flex items-center gap-3">
-              <span aria-label="Admin avatar" className="brand-gradient flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ring-2 ring-brand-100">
+              <span aria-label={s.adminAvatar} className="brand-gradient flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ring-2 ring-brand-100">
                 N
               </span>
               <span className="min-w-0">
-                <span className="block truncate text-small font-semibold">অ্যাডমিন</span>
-                <span className="block text-caption text-text-muted">সেশন সক্রিয়</span>
+                <span className="block truncate text-small font-semibold">{s.admin}</span>
+                <span className="block text-caption text-text-muted">{s.sessionActive}</span>
               </span>
             </div>
           </div>
@@ -194,15 +201,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <header className="sticky top-0 z-40 flex h-16 items-center gap-3 border-b border-border/80 bg-card/85 px-4 backdrop-blur-xl shadow-xs sm:px-6">
             <span className="font-bold text-brand-700 md:hidden">Advance Ecommerce</span>
             {/* Breadcrumb */}
-            <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-1.5 text-sm md:flex">
+            <nav aria-label={s.breadcrumb} className="hidden min-w-0 items-center gap-1.5 text-sm md:flex">
               <a href="/admin" className="shrink-0 font-medium text-text-muted transition hover:text-brand-700">
-                অ্যাডমিন
+                {s.admin}
               </a>
               <span aria-hidden="true" className="text-text-subtle">
                 <Icon name="ChevronRight" className="h-4 w-4" />
               </span>
               <span aria-current="page" className="truncate font-semibold text-text-main">
-                {activeItem?.labelBn ?? "ড্যাশবোর্ড"}
+                {activeItem ? navItemLabel(activeItem, locale) : navItemLabel(ADMIN_NAV[0]!, locale)}
               </span>
             </nav>
             <div className="relative ml-auto hidden w-full max-w-sm lg:block">
@@ -214,24 +221,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                 className="brand-gradient flex min-h-[40px] items-center gap-1.5 rounded-md px-3.5 text-sm font-semibold text-white shadow-md transition motion-fast hover:opacity-95"
               >
                 <Icon name="Plus" className="h-4 w-4" />
-                <span className="hidden sm:inline">নতুন</span>
+                <span className="hidden sm:inline">{s.newItem}</span>
               </button>
               <button
                 type="button"
-                aria-label="Notifications"
+                aria-label={s.notifications}
                 className="relative flex min-h-[40px] min-w-[40px] items-center justify-center rounded-md text-text-muted transition hover:bg-surface-2 hover:text-text-main"
               >
                 <Icon name="Bell" className="h-5 w-5" />
               </button>
-              <button
-                type="button"
-                aria-label="Toggle language"
-                className="flex min-h-[40px] items-center rounded-md bg-surface-2 px-1 py-1 text-caption font-semibold"
-              >
-                <span className="rounded-[8px] bg-card px-2 py-1 text-brand-700 shadow-sm">বাং</span>
-                <span className="px-2 py-1 text-text-muted">EN</span>
-              </button>
-              <span aria-label="Admin avatar" className="brand-gradient ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-white ring-2 ring-brand-100">
+              <LanguageSwitcher />
+              <span aria-label={s.adminAvatar} className="brand-gradient ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-white ring-2 ring-brand-100">
                 N
               </span>
             </span>
@@ -244,7 +244,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       </div>
 
       {/* Mobile bottom tab bar */}
-      <nav aria-label="Mobile admin navigation" className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border bg-card/95 px-2 pb-[env(safe-area-inset-bottom)] pt-1.5 shadow-pop backdrop-blur md:hidden">
+      <nav aria-label={s.mobileNav} className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border bg-card/95 px-2 pb-[env(safe-area-inset-bottom)] pt-1.5 shadow-pop backdrop-blur md:hidden">
         {mobileNav.map((item) => {
           const active = isActiveItem(pathname, item);
           return (
@@ -264,7 +264,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               >
                 <Icon name={item.icon} className="h-5 w-5" />
               </span>
-              {item.labelBn}
+              {navItemLabel(item, locale)}
             </a>
           );
         })}

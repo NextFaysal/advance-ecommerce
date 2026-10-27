@@ -23,6 +23,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { formatBdt } from "../../../src/checkout/pricing";
+import { pick, intlLocale, type Locale } from "../../../src/i18n/locale";
+import { useLocale } from "../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "./strings";
 
 interface AgingOrderRow {
   id: string;
@@ -80,12 +83,15 @@ function ageChipClass(ageHours: number): string {
   return "bg-yellow-50 text-yellow-800";
 }
 
-function ageLabel(ageHours: number): string {
-  if (ageHours >= 48) return `${Math.floor(ageHours / 24)} দিন`;
-  return `${Math.round(ageHours)} ঘণ্টা`;
+function ageLabel(ageHours: number, locale: Locale): string {
+  const s = pick(locale, ORDER_STRINGS);
+  if (ageHours >= 48) return `${Math.floor(ageHours / 24)} ${s.ageDays}`;
+  return `${Math.round(ageHours)} ${s.ageHours}`;
 }
 
 export function AgingPanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const [state, setState] = useState<AgingResponse | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
@@ -111,17 +117,17 @@ export function AgingPanel() {
   const buckets = state.data.filter((b) => b.count > 0);
 
   return (
-    <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-card" aria-label="আটকে থাকা অর্ডার">
+    <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-card" aria-label={s.agingAria}>
       <div className="flex flex-wrap items-center gap-3">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500 px-2.5 py-0.5 text-small font-semibold text-white">
           <Icon name="alert" size={14} />
-          {state.meta.totalStuck}টি
+          {state.meta.totalStuck}{s.agingBadgeSuffix}
         </span>
         <p className="text-body font-medium text-amber-900">
-          আটকে থাকা অর্ডার — অনেকক্ষণ ধরে একই অবস্থায় আছে
+          {s.agingTitle}
         </p>
         <p className="text-caption text-amber-800">
-          অর্ডার খুললেই সেখানে কাজ করা যাবে (দায়িত্ব দেওয়া, কল, স্ট্যাটাস বদল)।
+          {s.agingHint}
         </p>
       </div>
       <div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -140,9 +146,9 @@ export function AgingPanel() {
                   <Icon name={ramp.icon} size={13} />
                   {bucket.count}
                 </span>
-                <span className="text-small font-medium text-amber-900">{bucket.labelBn}</span>
+                <span className="text-small font-medium text-amber-900">{locale === "bn" ? bucket.labelBn : bucket.labelEn}</span>
                 <span className="ml-auto inline-flex items-center gap-1 text-small font-medium text-amber-800">
-                  {expanded ? "লুকান" : "দেখুন"}
+                  {expanded ? s.hide : s.show}
                   <Icon name="chevron-down" size={14} className={expanded ? "rotate-180 transition" : "transition"} />
                 </span>
               </button>
@@ -158,15 +164,15 @@ export function AgingPanel() {
                         <Icon name="arrow-right" size={13} />
                       </Link>
                       <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-caption font-semibold ${ageChipClass(row.ageHours)}`}>
-                        {ageLabel(row.ageHours)} ধরে আটকে
+                        {ageLabel(row.ageHours, locale)} {s.ageStuckSuffix}
                       </span>
-                      <span>মোট {formatBdt(row.totalPoisha)}</span>
+                      <span>{s.totalWord} {formatBdt(row.totalPoisha)}</span>
                       <span className="ml-auto text-text-muted">{row.customerPhoneMasked}</span>
                     </li>
                   ))}
                   {bucket.count > bucket.orders.length && (
                     <li className="px-3 py-2 text-small text-text-muted">
-                      আরও {bucket.count - bucket.orders.length}টি এই তালিকার বাইরে (সবচেয়ে পুরনো {bucket.orders.length}টি দেখানো হচ্ছে)।
+                      {s.agingMore1} {bucket.count - bucket.orders.length}{s.agingMoreItems} {bucket.orders.length}{s.agingMore3}
                     </li>
                   )}
                 </ul>

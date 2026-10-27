@@ -17,6 +17,9 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { formatBdt } from "@/checkout/pricing";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { PRINT_QUEUE_STRINGS } from "./strings";
 
 const POLL_MS = 30_000;
 
@@ -44,6 +47,8 @@ function isHexColor(value: string): boolean {
 }
 
 export function PrintQueueBoard() {
+  const { locale } = useLocale();
+  const s = pick(locale, PRINT_QUEUE_STRINGS);
   const [queue, setQueue] = useState<QueueData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -56,15 +61,15 @@ export function PrintQueueBoard() {
         error?: { message?: string };
       } | null;
       if (!res.ok || !json?.data) {
-        setError(json?.error?.message ?? "প্রিন্ট কিউ লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.loadFailed);
         return;
       }
       setQueue(json.data);
       setError(null);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — কিউ হালনাগাদ করা যায়নি।");
+      setError(s.networkLoad);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load();
@@ -83,33 +88,34 @@ export function PrintQueueBoard() {
       });
       const json = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
       if (!res.ok) {
-        setError(json?.error?.message ?? "ছাপানো হিসেবে চিহ্নিত করা যায়নি।");
+        setError(json?.error?.message ?? s.markFailed);
       }
       await load();
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — ছাপানো হিসেবে চিহ্নিত করা যায়নি।");
+      setError(s.networkMark);
     } finally {
       setBusyId(null);
     }
   }
 
   return (
-    <section aria-label="প্রিন্ট কিউ" className="space-y-3">
+    <section aria-label={s.boardAria} className="space-y-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-text-muted">
         <span>
-          ছাপানো বাকি: <strong className="text-text-main">{queue?.pendingCount ?? 0}টি</strong>
+          {s.pendingLabel}{" "}
+          <strong className="text-text-main">{interpolate(s.pendingCount, { count: queue?.pendingCount ?? 0 })}</strong>
         </span>
-        <span>প্রতি ৩০ সেকেন্ডে স্বয়ংক্রিয় হালনাগাদ হয় (polling — live realtime নয়)।</span>
+        <span>{s.pollNote}</span>
       </div>
       {error && (
         <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
           {error}
         </p>
       )}
-      {!queue && !error && <p className="text-sm text-text-muted">প্রিন্ট কিউ লোড হচ্ছে…</p>}
+      {!queue && !error && <p className="text-sm text-text-muted">{s.loading}</p>}
       {queue && queue.rows.length === 0 && (
         <p className="rounded-2xl border border-border bg-surface-2/50 px-4 py-6 text-sm text-text-muted">
-          এখন ছাপানোর অপেক্ষায় কোনো অর্ডার নেই।
+          {s.empty}
         </p>
       )}
       <div className="space-y-2.5">
@@ -133,7 +139,7 @@ export function PrintQueueBoard() {
                         style={{ backgroundColor: row.printColor }}
                       />
                     )}
-                    রঙ: {row.printColor}
+                    {interpolate(s.colorLabel, { color: row.printColor })}
                   </span>
                 )}
               </div>
@@ -141,15 +147,15 @@ export function PrintQueueBoard() {
                 «{row.printText}»
               </p>
               <p className="mt-1 text-xs text-text-muted">
-                {row.customerFirstName} · {row.customerPhoneMasked} · অর্ডার{" "}
+                {row.customerFirstName} · {row.customerPhoneMasked} · {s.orderLabel}{" "}
                 <Link href={`/admin/orders/${row.orderId}`} className="font-semibold text-brand-700 hover:underline">
                   {row.orderNo}
                 </Link>{" "}
                 ({row.orderStatus})
                 {row.feePoisha > 0 && (
                   <>
-                    {" "}· প্রিন্ট ফি: <strong className="text-text-main">{formatBdt(row.feePoisha)}</strong>{" "}
-                    (মোটে অন্তর্ভুক্ত)
+                    {" "}· {s.printFee} <strong className="text-text-main">{formatBdt(row.feePoisha)}</strong>{" "}
+                    {s.feeIncluded}
                   </>
                 )}
               </p>
@@ -161,7 +167,7 @@ export function PrintQueueBoard() {
                 onClick={() => void markPrinted(row)}
                 className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
               >
-                ছাপানো হয়েছে
+                {s.markPrinted}
               </button>
             </div>
           </article>

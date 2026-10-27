@@ -8,11 +8,14 @@ import { Money } from "@/components/ui/money";
 import { Phone } from "@/components/ui/phone";
 import type { ManualTrxSubmission } from "@/integrations/payment";
 import { normalizeTrxId } from "@/integrations/sandbox/store";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
 import {
   dhakaTime,
   findDuplicateTrxCollisions,
-  paymentMethodLabelBn,
+  paymentMethodLabel,
 } from "./lib";
+import { PAYMENTS_STRINGS } from "./strings";
 
 // Manual TrxID review queue — REAL decisions (wired 2026-10-25).
 // Approve/reject POSTs to /api/v1/admin/payments/manual-trx
@@ -27,13 +30,15 @@ import {
 
 type ReviewStatus = ManualTrxSubmission["status"];
 
-const STATUS_META: Record<ReviewStatus, { label: string; icon: string; tone: "warning" | "success" | "danger" }> = {
-  pending: { label: "অপেক্ষমাণ (Pending)", icon: "◷", tone: "warning" },
-  approved: { label: "অনুমোদিত (Approved)", icon: "✓", tone: "success" },
-  rejected: { label: "বাতিল (Rejected)", icon: "✕", tone: "danger" },
+const STATUS_META: Record<ReviewStatus, { labelKey: "rqPending" | "rqApproved" | "rqRejected"; icon: string; tone: "warning" | "success" | "danger" }> = {
+  pending: { labelKey: "rqPending", icon: "◷", tone: "warning" },
+  approved: { labelKey: "rqApproved", icon: "✓", tone: "success" },
+  rejected: { labelKey: "rqRejected", icon: "✕", tone: "danger" },
 };
 
 export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSubmission[] }) {
+  const { locale } = useLocale();
+  const t = pick(locale, PAYMENTS_STRINGS);
   const router = useRouter();
   const [localStatus, setLocalStatus] = useState<Record<string, ReviewStatus>>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});
@@ -76,7 +81,7 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
       if (!res.ok) {
         setErrors((prev) => ({
           ...prev,
-          [s.id]: payload?.error?.message ?? `সার্ভার সিদ্ধান্ত নেয়নি (HTTP ${res.status})।`,
+          [s.id]: payload?.error?.message ?? interpolate(t.rqServerRefused, { status: res.status }),
         }));
         return;
       }
@@ -85,12 +90,12 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
         ...prev,
         [s.id]:
           action === "approve"
-            ? `অনুমোদিত ও সংরক্ষিত হয়েছে — অর্ডারের পেমেন্ট অবস্থা: ${payload?.data?.paymentStatus ?? "PAID"}। কারণ: ${reason}`
-            : `বাতিল ও সংরক্ষিত হয়েছে — অর্ডারের পেমেন্ট অবস্থা: ${payload?.data?.paymentStatus ?? "FAILED"}। কারণ: ${reason}`,
+            ? interpolate(t.rqApprovedNote, { status: payload?.data?.paymentStatus ?? "PAID", reason })
+            : interpolate(t.rqRejectedNote, { status: payload?.data?.paymentStatus ?? "FAILED", reason }),
       }));
       router.refresh();
     } catch {
-      setErrors((prev) => ({ ...prev, [s.id]: "নেটওয়ার্ক সমস্যা — সিদ্ধান্ত পাঠানো যায়নি, আবার চেষ্টা করুন।" }));
+      setErrors((prev) => ({ ...prev, [s.id]: t.rqNetworkError }));
     } finally {
       setBusy((prev) => ({ ...prev, [s.id]: false }));
     }
@@ -99,7 +104,7 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
   if (submissions.length === 0) {
     return (
       <p className="rounded-md bg-surface-2 px-3 py-2 text-xs text-text-muted">
-        কোনো ম্যানুয়াল TrxID জমা নেই — গ্রাহক TrxID জমা দিলেই এখানে আসবে।
+        {t.rqEmpty}
       </p>
     );
   }
@@ -107,8 +112,7 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
   return (
     <div className="space-y-3">
       <p className="rounded-md bg-surface-2 px-3 py-2 text-xs text-text-muted">
-        সিদ্ধান্ত এখান থেকে নিলে তা ডাটাবেসে সংরক্ষিত হয় এবং অডিট লগে থাকে (কারণ বাধ্যতামূলক)।
-        অনুমোদনে অর্ডারের পেমেন্ট PAID হয়, বাতিলে FAILED হয়।
+        {t.rqIntro}
       </p>
       {submissions.map((s) => {
         const status = statusOf(s);
@@ -121,18 +125,18 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
         return (
           <div key={s.id} className="rounded-lg border border-border bg-card p-4">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold">অর্ডার #{s.orderId}</span>
-              <Badge tone="brand">{paymentMethodLabelBn(s.method)}</Badge>
+              <span className="font-semibold">{t.rqOrder} #{s.orderId}</span>
+              <Badge tone="brand">{paymentMethodLabel(locale, s.method)}</Badge>
               <Badge tone={meta.tone}>
-                <span aria-hidden="true">{meta.icon}</span> {meta.label}
+                <span aria-hidden="true">{meta.icon}</span> {t[meta.labelKey]}
               </Badge>
               {isDuplicate ? (
                 <Badge tone="danger">
-                  <span aria-hidden="true">⚠</span> ডুপ্লিকেট TrxID সন্দেহ
+                  <span aria-hidden="true">⚠</span> {t.rqDuplicateSuspect}
                 </Badge>
               ) : null}
               <span className="ml-auto text-sm">
-                পরিমাণ: <Money poisha={s.amountPoisha} />
+                {t.rqAmount}: <Money poisha={s.amountPoisha} />
               </span>
             </div>
 
@@ -142,24 +146,23 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
                 <dd className="font-mono tabular-nums">{s.trxId}</dd>
               </div>
               <div>
-                <dt className="text-xs text-text-muted">প্রেরকের ফোন (মাস্ক করা)</dt>
+                <dt className="text-xs text-text-muted">{t.rqSenderPhone}</dt>
                 <dd><Phone phone={s.senderPhone} /></dd>
               </div>
               <div>
-                <dt className="text-xs text-text-muted">দাবিকৃত অর্ডার</dt>
+                <dt className="text-xs text-text-muted">{t.rqClaimedOrder}</dt>
                 <dd className="font-mono tabular-nums">#{s.orderId}</dd>
               </div>
               <div>
-                <dt className="text-xs text-text-muted">জমার সময় (Asia/Dhaka)</dt>
+                <dt className="text-xs text-text-muted">{t.rqSubmittedAt}</dt>
                 <dd className="font-mono tabular-nums">{dhakaTime(s.submittedAt)}</dd>
               </div>
             </dl>
 
             {isDuplicate ? (
               <p className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                ⚠️ সতর্কতা: একই পদ্ধতিতে এই TrxID ({normalizeTrxId(s.trxId)}) আরও{" "}
-                {twins.length}টি জমায় আছে। একই (পদ্ধতি, TrxID) কখনো দুইবার অনুমোদন করা যায় না —
-                অনুমোদনের আগে কোনটি আসল যাচাই করুন।
+                ⚠️ {t.rqDupWarning1} ({normalizeTrxId(s.trxId)}) {t.rqDupWarning2}{" "}
+                {twins.length} {t.rqDupWarning3}
               </p>
             ) : null}
 
@@ -167,16 +170,15 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
               <div className="mt-3 space-y-2">
                 {blockedBy.length > 0 ? (
                   <p className="rounded-md bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
-                    🚫 এই TrxID ইতিমধ্যে অনুমোদিত — নিয়ম ১ অনুযায়ী আবার অনুমোদন
-                    সম্ভব নয়। এটি বাতিল করুন।
+                    🚫 {t.rqBlocked}
                   </p>
                 ) : null}
                 <div className="flex flex-wrap items-center gap-2">
                   <input
-                    aria-label={`সিদ্ধান্তের কারণ — অর্ডার #${s.orderId}`}
+                    aria-label={`${t.rqReasonAria} #${s.orderId}`}
                     value={reason}
                     onChange={(e) => setReasons((prev) => ({ ...prev, [s.id]: e.target.value }))}
-                    placeholder="সিদ্ধান্তের কারণ (কমপক্ষে ৩ অক্ষর) — বাধ্যতামূলক"
+                    placeholder={t.rqReasonPlaceholder}
                     className="h-10 min-w-0 flex-1 rounded-[10px] border border-border bg-surface-2 px-3 text-sm outline-none focus:border-brand-500"
                   />
                   <Button
@@ -185,7 +187,7 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
                     disabled={!canDecide || blockedBy.length > 0}
                     onClick={() => void decide(s, "approve")}
                   >
-                    ✓ অনুমোদন
+                    {t.rqApprove}
                   </Button>
                   <Button
                     size="sm"
@@ -193,7 +195,7 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
                     disabled={!canDecide}
                     onClick={() => void decide(s, "reject")}
                   >
-                    ✕ বাতিল
+                    {t.rqReject}
                   </Button>
                 </div>
                 {errors[s.id] ? (
@@ -203,7 +205,7 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
             ) : (
               <p className="mt-3 text-xs text-text-muted">
                 {decidedNote[s.id] ??
-                  (s.reviewNote ? `আগের সিদ্ধান্তের নোট: ${s.reviewNote} — একবার সিদ্ধান্ত হলে আবার রিভিউ করা যায় না (নিয়ম ২)।` : "একবার সিদ্ধান্ত হলে আবার রিভিউ করা যায় না (নিয়ম ২)।")}
+                  (s.reviewNote ? interpolate(t.rqPrevNote, { note: s.reviewNote }) : t.rqNoReviewAgain)}
               </p>
             )}
           </div>

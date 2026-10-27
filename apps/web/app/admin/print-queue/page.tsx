@@ -2,6 +2,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { isPodEnabled } from "@/pod/flags";
 import { PrintQueueBoard } from "./print-queue-board";
 import { PodConfigCard } from "./pod-config-card";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { PRINT_QUEUE_STRINGS } from "./strings";
 
 // Admin > Print Queue — ADV-23 vertical 5 (doc 23, wave 56).
 // Locked state: while module.print_on_demand is OFF (the seeded
@@ -17,14 +20,16 @@ import { PodConfigCard } from "./pod-config-card";
 
 export const dynamic = "force-dynamic";
 
-export default function PrintQueuePage() {
+export default async function PrintQueuePage() {
+  const s = pick(await getRequestLocale(), PRINT_QUEUE_STRINGS);
   if (!isPodEnabled()) {
     return (
       <main style={{ padding: 24, fontFamily: "system-ui" }}>
-        <h1>প্রিন্ট কিউ</h1>
+        <h1>{s.lockedTitle}</h1>
         <p role="status">
-          🔒 This module is locked for this install. Print-on-demand is a paid add-on —
-          enable <code>module.print_on_demand</code> in Admin &gt; Settings &gt; Feature Flags to unlock it.
+          {s.lockedText1}
+          <code>module.print_on_demand</code>
+          {s.lockedText2}
         </p>
       </main>
     );
@@ -33,8 +38,8 @@ export default function PrintQueuePage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="প্রিন্ট কিউ"
-        description="কাস্টম প্রিন্টের অপেক্ষমাণ অর্ডার — সবচেয়ে পুরনোটি আগে। ছাপানো শেষ হলে ‘ছাপানো হয়েছে’ চাপুন — অর্ডারে একটি নোট যোগ হয়ে সেটি কিউ থেকে সরে যাবে। বোর্ডটি প্রতি ৩০ সেকেন্ডে নিজে হালনাগাদ হয় (polling — live realtime নয়)।"
+        title={s.title}
+        description={s.description}
       />
       <PrintQueueBoard />
       <PodConfigCard />

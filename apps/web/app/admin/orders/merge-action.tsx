@@ -12,6 +12,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { Icon } from "@/components/ui/icon";
 import { formatBdt } from "../../../src/checkout/pricing";
+import { interpolate, pick } from "../../../src/i18n/locale";
+import { useLocale } from "../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "./strings";
 
 interface MergeVerdict {
   code: string;
@@ -37,6 +40,8 @@ interface MergeActionProps {
 }
 
 export function MergeAction({ selectedIds, knownOrders, onClear, onDone }: MergeActionProps) {
+  const { locale } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const [open, setOpen] = useState(false);
   const [targetId, setTargetId] = useState<string>("");
   const [preflight, setPreflight] = useState<Preflight | null>(null);
@@ -88,7 +93,7 @@ export function MergeAction({ selectedIds, knownOrders, onClear, onDone }: Merge
         if (cancelled) return;
         if (!res.ok || !json.data) {
           setPreflight(null);
-          setError(json.error?.message ?? `যাচাই করা যায়নি (${res.status})।`);
+          setError(json.error?.message ?? interpolate(s.mergeCheckFail, { status: res.status }));
           return;
         }
         setPreflight(json.data);
@@ -96,7 +101,7 @@ export function MergeAction({ selectedIds, knownOrders, onClear, onDone }: Merge
       .catch(() => {
         if (!cancelled) {
           setPreflight(null);
-          setError("সার্ভারের সঙ্গে যোগাযোগ করা যায়নি — আবার চেষ্টা করুন।");
+          setError(s.mergeConnFail);
         }
       })
       .finally(() => {
@@ -122,7 +127,7 @@ export function MergeAction({ selectedIds, knownOrders, onClear, onDone }: Merge
         error?: { message?: string };
       };
       if (!res.ok || !json.data) {
-        setError(json.error?.message ?? `মার্জ করা যায়নি (${res.status})।`);
+        setError(json.error?.message ?? interpolate(s.mergeFail, { status: res.status }));
         return;
       }
       setDone({
@@ -132,7 +137,7 @@ export function MergeAction({ selectedIds, knownOrders, onClear, onDone }: Merge
       });
       onDone();
     } catch {
-      setError("সার্ভারের সঙ্গে যোগাযোগ করা যায়নি — মার্জ সম্পন্ন হয়নি।");
+      setError(s.mergeConnFail2);
     } finally {
       setMerging(false);
     }
@@ -155,12 +160,12 @@ export function MergeAction({ selectedIds, knownOrders, onClear, onDone }: Merge
         onClick={() => setOpen(true)}
         className="brand-gradient inline-flex min-h-[44px] items-center gap-2 rounded-md px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105"
       >
-        <Icon name="package" size={15} /> দুটি অর্ডার মার্জ করুন
+        <Icon name="package" size={15} /> {s.mergeBtn}
       </button>
       <Modal
         open={open}
         onClose={close}
-        title="অর্ডার মার্জ"
+        title={s.mergeTitle}
         onConfirm={done || !preflight?.ok || checking || merging ? undefined : () => void runMerge()}
       >
         {done ? (
@@ -168,23 +173,18 @@ export function MergeAction({ selectedIds, knownOrders, onClear, onDone }: Merge
             <p className="flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800">
               <span aria-hidden="true" className="mt-0.5 shrink-0"><Icon name="check" size={15} /></span>
               <span>
-                মার্জ সম্পন্ন: <strong>{done.sourceOrderNo}</strong>-এর সব আইটেম{" "}
-                <strong>{done.targetOrderNo}</strong> অর্ডারে যোগ হয়েছে — নতুন মোট{" "}
-                <strong>{formatBdt(done.totalPoisha)}</strong>। {done.sourceOrderNo} বাতিল করা হয়েছে
-                (কারণ: “অর্ডার মার্জ: {done.targetOrderNo}”) — রেকর্ডটি মোছা হয়নি, টাইমলাইনে পুরো
-                বিবরণ আছে।
+                {s.mergeDone1} <strong>{done.sourceOrderNo}</strong>{s.mergeDone2}{" "}
+                <strong>{done.targetOrderNo}</strong> {s.mergeDone3}{" "}
+                <strong>{formatBdt(done.totalPoisha)}</strong>{locale === "bn" ? "। " : ". "}
+                {interpolate(s.mergeDone4, { source: done.sourceOrderNo, target: done.targetOrderNo })}
               </span>
             </p>
           </div>
         ) : (
           <div className="space-y-4">
-            <p className="text-sm leading-relaxed text-text-muted">
-              সোর্স অর্ডারের সব আইটেম টার্গেট অর্ডারে যোগ হবে, টার্গেটের মোট তার নিজের প্রাইসিং
-              পথে আবার হিসাব হবে, তারপর সোর্স অর্ডারটি “অর্ডার মার্জ” কারণে বাতিল হবে। কোনো
-              অর্ডারই মোছা হয় না।
-            </p>
+            <p className="text-sm leading-relaxed text-text-muted">{s.mergeIntro}</p>
             <fieldset className="m-0 space-y-2 border-0 p-0">
-              <legend className="mb-1 text-sm font-medium text-text-main">কোন অর্ডারটি থাকবে (টার্গেট)?</legend>
+              <legend className="mb-1 text-sm font-medium text-text-main">{s.mergeTargetLegend}</legend>
               {pair.map((id) => (
                 <label
                   key={id}
@@ -199,16 +199,16 @@ export function MergeAction({ selectedIds, knownOrders, onClear, onDone }: Merge
                   />
                   <span className="font-mono font-semibold">{labelFor(id)}</span>
                   <span className="text-text-muted">
-                    {targetId === id ? "— এতে আইটেম যোগ হবে" : "— এর আইটেম সরে যাবে, এটি বাতিল হবে"}
+                    {targetId === id ? s.mergeTargetNote : s.mergeSourceNote}
                   </span>
                 </label>
               ))}
             </fieldset>
 
             <div>
-              <h3 className="text-sm font-medium text-text-main">শর্ত যাচাই</h3>
+              <h3 className="text-sm font-medium text-text-main">{s.mergeChecksTitle}</h3>
               {checking ? (
-                <p className="mt-2 text-sm text-text-muted">যাচাই হচ্ছে…</p>
+                <p className="mt-2 text-sm text-text-muted">{s.mergeChecking}</p>
               ) : preflight ? (
                 <ul className="mt-2 space-y-1.5">
                   {preflight.verdicts.map((v) => (
@@ -227,9 +227,7 @@ export function MergeAction({ selectedIds, knownOrders, onClear, onDone }: Merge
                 </ul>
               ) : null}
               {!checking && preflight && !preflight.ok && (
-                <p className="mt-2 text-sm text-rose-600">
-                  উপরের কোনো শর্ত মেলেনি — মার্জ করা যাবে না।
-                </p>
+                <p className="mt-2 text-sm text-rose-600">{s.mergeBlocked}</p>
               )}
             </div>
 
@@ -238,7 +236,7 @@ export function MergeAction({ selectedIds, knownOrders, onClear, onDone }: Merge
                 {error}
               </p>
             )}
-            {merging && <p className="text-sm text-text-muted">মার্জ হচ্ছে…</p>}
+            {merging && <p className="text-sm text-text-muted">{s.mergeMerging}</p>}
           </div>
         )}
       </Modal>

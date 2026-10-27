@@ -16,8 +16,12 @@ import Link from "next/link";
 import {
   KITCHEN_NEXT_STATUS,
   KITCHEN_STATUS_LABELS_BN,
+  KITCHEN_STATUS_LABELS_EN,
   type KitchenTicketStatus,
 } from "@/restaurant/selection";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { KITCHEN_STRINGS } from "./strings";
 
 const POLL_MS = 15_000;
 
@@ -40,18 +44,20 @@ interface BoardData {
   cancelledTodayCount: number;
 }
 
-const COLUMNS: Array<{ status: KitchenTicketStatus; advanceLabel: string }> = [
-  { status: "QUEUED", advanceLabel: "তৈরি শুরু করুন" },
-  { status: "PREPARING", advanceLabel: "প্রস্তুত করুন" },
-  { status: "READY", advanceLabel: "পরিবেশন হয়েছে" },
-];
-
 function elapsedMinutes(iso: string, nowMs: number): number {
   const mins = Math.floor((nowMs - new Date(iso).getTime()) / 60_000);
   return mins < 0 ? 0 : mins;
 }
 
 export function KitchenBoard() {
+  const { locale } = useLocale();
+  const s = pick(locale, KITCHEN_STRINGS);
+  const statusLabels = locale === "bn" ? KITCHEN_STATUS_LABELS_BN : KITCHEN_STATUS_LABELS_EN;
+  const columns: Array<{ status: KitchenTicketStatus; advanceLabel: string }> = [
+    { status: "QUEUED", advanceLabel: s.advanceStart },
+    { status: "PREPARING", advanceLabel: s.advanceReady },
+    { status: "READY", advanceLabel: s.advanceServed },
+  ];
   const [board, setBoard] = useState<BoardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -65,16 +71,16 @@ export function KitchenBoard() {
         error?: { message?: string };
       } | null;
       if (!res.ok || !json?.data) {
-        setError(json?.error?.message ?? "কিচেন বোর্ড লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.boardLoadFailed);
         return;
       }
       setBoard(json.data);
       setError(null);
       setNowMs(Date.now());
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — বোর্ড হালনাগাদ করা যায়নি।");
+      setError(s.boardLoadNetwork);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load();
@@ -94,30 +100,32 @@ export function KitchenBoard() {
       });
       const json = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
       if (!res.ok) {
-        setError(json?.error?.message ?? "টিকিট এগিয়ে নেওয়া যায়নি।");
+        setError(json?.error?.message ?? s.advanceFailed);
       }
       await load();
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — টিকিট হালনাগাদ করা যায়নি।");
+      setError(s.advanceNetwork);
     } finally {
       setBusyId(null);
     }
   }
 
   if (!board && !error) {
-    return <p className="text-sm text-text-muted">কিচেন বোর্ড লোড হচ্ছে…</p>;
+    return <p className="text-sm text-text-muted">{s.boardLoading}</p>;
   }
 
   return (
-    <section aria-label="কিচেন বোর্ড" className="space-y-3">
+    <section aria-label={s.boardAria} className="space-y-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-muted">
         <span>
-          আজ পরিবেশিত: <strong className="text-text-main">{board?.servedTodayCount ?? 0}টি</strong>
+          {s.servedTodayLabel}{" "}
+          <strong className="text-text-main">{interpolate(s.count, { count: board?.servedTodayCount ?? 0 })}</strong>
         </span>
         <span>
-          আজ বাতিল: <strong className="text-text-main">{board?.cancelledTodayCount ?? 0}টি</strong>
+          {s.cancelledTodayLabel}{" "}
+          <strong className="text-text-main">{interpolate(s.count, { count: board?.cancelledTodayCount ?? 0 })}</strong>
         </span>
-        <span>প্রতি ১৫ সেকেন্ডে স্বয়ংক্রিয় হালনাগাদ হয় (polling — live realtime নয়)।</span>
+        <span>{s.pollNote}</span>
       </div>
       {error && (
         <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
@@ -125,19 +133,19 @@ export function KitchenBoard() {
         </p>
       )}
       <div className="grid gap-4 lg:grid-cols-3">
-        {COLUMNS.map((col) => {
+        {columns.map((col) => {
           const tickets = (board?.tickets ?? []).filter((t) => t.status === col.status);
           return (
             <div key={col.status} className="rounded-2xl border border-border bg-surface-2/50 p-3">
               <h3 className="mb-3 flex items-center justify-between px-1 text-sm font-bold text-text-main">
-                {KITCHEN_STATUS_LABELS_BN[col.status]}
+                {statusLabels[col.status]}
                 <span className="rounded-full bg-card px-2 py-0.5 text-xs font-semibold text-text-muted">
                   {tickets.length}
                 </span>
               </h3>
               <div className="space-y-3">
                 {tickets.length === 0 && (
-                  <p className="px-1 py-2 text-sm text-text-subtle">কোনো টিকিট নেই।</p>
+                  <p className="px-1 py-2 text-sm text-text-subtle">{s.noTickets}</p>
                 )}
                 {tickets.map((ticket) => {
                   const mins = elapsedMinutes(ticket.createdAt, nowMs);
@@ -152,11 +160,11 @@ export function KitchenBoard() {
                         </Link>
                         {ticket.fulfilmentType === "DINE_IN" ? (
                           <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
-                            টেবিল: {ticket.tableLabel ?? "—"}
+                            {interpolate(s.tableLabel, { label: ticket.tableLabel ?? "—" })}
                           </span>
                         ) : (
                           <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-800">
-                            টেকঅওয়ে
+                            {s.takeaway}
                           </span>
                         )}
                       </div>
@@ -177,7 +185,7 @@ export function KitchenBoard() {
                             mins >= 20 ? "text-rose-600" : "text-text-muted"
                           }`}
                         >
-                          {mins} মিনিট ধরে অপেক্ষমাণ
+                          {interpolate(s.waiting, { mins })}
                         </span>
                         <button
                           type="button"

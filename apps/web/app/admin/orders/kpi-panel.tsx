@@ -16,6 +16,9 @@ import { dhakaYmdOf, shiftYmd, todayDhakaYmd } from "../../../src/lib/dhaka-date
 import { Card } from "../../../src/components/ui/card";
 import { Icon, type IconName } from "../../../src/components/ui/icon";
 import { ORDER_DENSITY } from "../../../src/orders/components/density";
+import { interpolate, pick, type Locale } from "../../../src/i18n/locale";
+import { useLocale } from "../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "./strings";
 
 interface KpiRate {
   numerator: number;
@@ -38,10 +41,10 @@ interface OrderKpis {
 
 type RangeKey = "today" | "7d" | "30d";
 
-const RANGE_OPTIONS: Array<{ key: RangeKey; label: string; days: number }> = [
-  { key: "today", label: "আজ", days: 0 },
-  { key: "7d", label: "শেষ ৭ দিন", days: 6 },
-  { key: "30d", label: "শেষ ৩০ দিন", days: 29 },
+const RANGE_OPTIONS: Array<{ key: RangeKey; label: Record<Locale, string>; days: number }> = [
+  { key: "today", label: { bn: "আজ", en: "Today" }, days: 0 },
+  { key: "7d", label: { bn: "শেষ ৭ দিন", en: "Last 7 days" }, days: 6 },
+  { key: "30d", label: { bn: "শেষ ৩০ দিন", en: "Last 30 days" }, days: 29 },
 ];
 
 function rangeFor(key: RangeKey): { from: string; to: string } {
@@ -101,6 +104,8 @@ function rateHeadline(rate: KpiRate): string {
 }
 
 export function KpiPanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const [rangeKey, setRangeKey] = useState<RangeKey>("30d");
   const [kpis, setKpis] = useState<OrderKpis | null>(null);
   const [failed, setFailed] = useState(false);
@@ -125,17 +130,22 @@ export function KpiPanel() {
   }, [rangeKey]);
 
   return (
-    <section aria-label="অর্ডার KPI" className={`mb-4 rounded-lg border border-border bg-surface-2 ${ORDER_DENSITY.comfortable.panel}`}>
+    <section aria-label={s.kpiTitle} className={`mb-4 rounded-lg border border-border bg-surface-2 ${ORDER_DENSITY.comfortable.panel}`}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">
-          অর্ডার KPI{" "}
+          {s.kpiTitle}{" "}
           <span className="font-normal text-text-muted">
-            — আসল ডাটা থেকে হিসাব; প্রতিটি হারের পাশে লব/হর দেওয়া আছে
-            {kpis ? ` · ${dhakaYmdOf(new Date(`${kpis.range.from}T00:00:00.000Z`))} থেকে ${kpis.range.to}` : ""}
+            {s.kpiSubtitle}
+            {kpis
+              ? interpolate(s.kpiRangePart, {
+                  from: dhakaYmdOf(new Date(`${kpis.range.from}T00:00:00.000Z`)),
+                  to: kpis.range.to,
+                })
+              : ""}
           </span>
         </h2>
         <label className="flex items-center gap-2 text-xs text-text-muted">
-          পরিসর
+          {s.kpiRangeLabel}
           <select
             value={rangeKey}
             onChange={(e) => setRangeKey(e.target.value as RangeKey)}
@@ -143,7 +153,7 @@ export function KpiPanel() {
           >
             {RANGE_OPTIONS.map((o) => (
               <option key={o.key} value={o.key}>
-                {o.label}
+                {pick(locale, o.label)}
               </option>
             ))}
           </select>
@@ -152,10 +162,10 @@ export function KpiPanel() {
 
       {failed ? (
         <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">
-          KPI লোড হয়নি — আবার চেষ্টা করুন। (অর্ডার তালিকা এতে প্রভাবিত হয়নি।)
+          {s.kpiLoadFail}
         </p>
       ) : !kpis ? (
-        <div role="status" aria-label="KPI লোড হচ্ছে" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div role="status" aria-label={s.kpiLoadingAria} className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="h-[132px] animate-pulse rounded-lg border border-border bg-card" />
           ))}
@@ -163,62 +173,62 @@ export function KpiPanel() {
       ) : (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <KpiCard
-            label="নতুন অর্ডার / ডেলিভারি হয়েছে"
+            label={s.kpiNewOrders}
             headline={`${kpis.ordersCreated} / ${kpis.ordersDelivered}`}
-            detail="এই পরিসরে তৈরি অর্ডার / ডেলিভারি ইভেন্ট"
+            detail={s.kpiNewOrdersDetail}
             icon="package"
             accent="bg-brand-50 text-brand-600"
           />
           <KpiCard
-            label="কনফার্মেশন হার"
+            label={s.kpiConfirmRate}
             headline={rateHeadline(kpis.confirmationRate)}
-            detail={`${kpis.confirmationRate.numerator}/${kpis.confirmationRate.denominator}টি অর্ডার কনফার্ম বা তার পরের ধাপে গেছে`}
+            detail={interpolate(s.kpiConfirmDetail, { n: kpis.confirmationRate.numerator, d: kpis.confirmationRate.denominator })}
             icon="check"
             accent="bg-sky-50 text-sky-600"
             fraction={`${kpis.confirmationRate.numerator}/${kpis.confirmationRate.denominator}`}
           />
           <KpiCard
-            label="ডেলিভারি সাফল্যের হার"
+            label={s.kpiDeliveryRate}
             headline={rateHeadline(kpis.deliverySuccessRate)}
-            detail={`${kpis.deliverySuccessRate.numerator}/${kpis.deliverySuccessRate.denominator}টি শিপ করা অর্ডার ডেলিভারি হয়েছে`}
+            detail={interpolate(s.kpiDeliveryDetail, { n: kpis.deliverySuccessRate.numerator, d: kpis.deliverySuccessRate.denominator })}
             icon="truck"
             accent="bg-emerald-50 text-emerald-600"
             fraction={`${kpis.deliverySuccessRate.numerator}/${kpis.deliverySuccessRate.denominator}`}
           />
           <KpiCard
-            label="গড় অর্ডার মূল্য (AOV)"
+            label={s.kpiAov}
             headline={kpis.averageOrderValue.averagePoisha === null ? "—" : formatBdt(kpis.averageOrderValue.averagePoisha)}
-            detail={`ডেলিভারি হওয়া ${kpis.averageOrderValue.orders}টি অর্ডারে মোট ${formatBdt(kpis.averageOrderValue.totalPoisha)}`}
+            detail={interpolate(s.kpiAovDetail, { n: kpis.averageOrderValue.orders, total: formatBdt(kpis.averageOrderValue.totalPoisha) })}
             icon="chart"
             accent="bg-violet-50 text-violet-600"
           />
           <KpiCard
-            label="রিটার্ন হার"
+            label={s.kpiReturnRate}
             headline={rateHeadline(kpis.returnRate)}
-            detail={`${kpis.returnRate.numerator}/${kpis.returnRate.denominator}টি ডেলিভারির বিপরীতে সম্পূর্ণ রিটার্ন`}
+            detail={interpolate(s.kpiReturnDetail, { n: kpis.returnRate.numerator, d: kpis.returnRate.denominator })}
             icon="rotate-ccw"
             accent="bg-amber-50 text-amber-600"
             fraction={`${kpis.returnRate.numerator}/${kpis.returnRate.denominator}`}
           />
           <KpiCard
-            label="অগ্রিম আদায়ের হার"
+            label={s.kpiAdvanceRate}
             headline={rateHeadline(kpis.advanceCollectionRate)}
-            detail={`${kpis.advanceCollectionRate.numerator}/${kpis.advanceCollectionRate.denominator}টি অগ্রিম-বাধ্যতামূলক অর্ডারে অগ্রিম মিলেছে`}
+            detail={interpolate(s.kpiAdvanceDetail, { n: kpis.advanceCollectionRate.numerator, d: kpis.advanceCollectionRate.denominator })}
             icon="credit-card"
             accent="bg-teal-50 text-teal-600"
             fraction={`${kpis.advanceCollectionRate.numerator}/${kpis.advanceCollectionRate.denominator}`}
           />
           <KpiCard
-            label="COD আদায়ের হার"
+            label={s.kpiCodRate}
             headline={rateHeadline(kpis.codCollectionRate)}
-            detail={`${formatBdt(kpis.codCollectionRate.collectedPoisha)} আদায় / ${formatBdt(kpis.codCollectionRate.duePoisha)} ডেলিভারি-COD মোট`}
+            detail={interpolate(s.kpiCodDetail, { collected: formatBdt(kpis.codCollectionRate.collectedPoisha), due: formatBdt(kpis.codCollectionRate.duePoisha) })}
             icon="banknote"
             accent="bg-emerald-50 text-emerald-600"
           />
           <KpiCard
-            label="বাতিলের হার"
+            label={s.kpiCancelRate}
             headline={rateHeadline(kpis.cancelRate)}
-            detail={`${kpis.cancelRate.numerator}/${kpis.cancelRate.denominator}টি অর্ডার বাতিল হয়েছে`}
+            detail={interpolate(s.kpiCancelDetail, { n: kpis.cancelRate.numerator, d: kpis.cancelRate.denominator })}
             icon="x"
             accent="bg-rose-50 text-rose-600"
             fraction={`${kpis.cancelRate.numerator}/${kpis.cancelRate.denominator}`}

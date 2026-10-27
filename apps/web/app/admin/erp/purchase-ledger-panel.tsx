@@ -18,8 +18,13 @@
 import { DataTable } from "@/components/ui/table";
 import { Money } from "@/components/ui/money";
 import { getPurchaseLedger } from "@/erp/purchase-ledger";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
+import { ERP_STRINGS } from "./strings";
 
 export async function PurchaseLedgerPanel() {
+  const locale = await getRequestLocale();
+  const str = pick(locale, ERP_STRINGS);
   const ledger = await getPurchaseLedger();
 
   const supplierRows = ledger.suppliers.map((s) => ({
@@ -31,7 +36,7 @@ export async function PurchaseLedgerPanel() {
     outstanding: <Money poisha={s.outstandingPoisha} />,
     aging:
       s.outstandingPoisha > 0
-        ? `০–৩০দি: ${s.aging.d0_30} · ৩১–৬০দি: ${s.aging.d31_60} · ৬১–৯০দি: ${s.aging.d61_90} · ৯০দি+: ${s.aging.over90} (পয়সা)`
+        ? interpolate(str.plAging, { a: s.aging.d0_30, b: s.aging.d31_60, c: s.aging.d61_90, d: s.aging.over90 })
         : "—",
   }));
 
@@ -42,65 +47,62 @@ export async function PurchaseLedgerPanel() {
     received: <Money poisha={po.receivedPoisha} />,
     paid: <Money poisha={po.paidPoisha} />,
     outstanding: <Money poisha={po.outstandingPoisha} />,
-    age: po.ageDays !== null ? `${po.ageDays} দিন (${po.agingFromDate})` : "—",
+    age: po.ageDays !== null ? interpolate(str.plAgeDays, { days: po.ageDays, date: po.agingFromDate ?? "" }) : "—",
   }));
 
   return (
     <section>
-      <h2 className="mb-3 mt-8 text-lg font-semibold">ক্রয় খাতা — সরবরাহকারী দেনা (Purchase ledger)</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold">{str.plTitle}</h2>
       <p className="mb-3 max-w-3xl text-sm text-text-muted">
-        বকেয়া = গৃহীত পণ্যের মূল্য − পরিশোধিত। সিস্টেমে এখনো কোনো PO-গ্রহণ (receive) ফ্লো নেই —
-        quantityReceived কোথাও লেখা হয় না — তাই গৃহীত/বকেয়া অঙ্ক গ্রহণ রেকর্ড না হওয়া পর্যন্ত ০ থাকবে;
-        শুধু অর্ডার দেখে দেনা অনুমান করা হয়নি। পরিশোধ = পোস্ট করা supplier_payment জার্নাল এন্ট্রি,
-        PO-এর মাধ্যমে সরবরাহকারীর সাথে যুক্ত।
+        {str.plIntroBefore}
         {ledger.unattributedPaymentsPoisha > 0
-          ? ` PO-ছাড়া পরিশোধ: ${ledger.unattributedPaymentsPoisha} পয়সা (কোনো সরবরাহকারীতে বসানো হয়নি)।`
+          ? interpolate(str.plUnattributed, { amount: ledger.unattributedPaymentsPoisha })
           : ""}
-        {" "}ক্রয়-পক্ষের ভ্যাট ট্র্যাক করা হয় না (PO আইটেমে ভ্যাট বিভাজন নেই) — ভ্যাট রিপোর্ট আগের মতোই শুধু বিক্রয়ের।
+        {str.plIntroAfter}
       </p>
       <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div className="rounded-md border border-border p-3">
-          <div className="text-xs text-text-muted">মোট অর্ডারকৃত</div>
+          <div className="text-xs text-text-muted">{str.plTotalOrdered}</div>
           <div className="text-lg font-semibold"><Money poisha={ledger.totals.orderedPoisha} /></div>
         </div>
         <div className="rounded-md border border-border p-3">
-          <div className="text-xs text-text-muted">মোট গৃহীত</div>
+          <div className="text-xs text-text-muted">{str.plTotalReceived}</div>
           <div className="text-lg font-semibold"><Money poisha={ledger.totals.receivedPoisha} /></div>
         </div>
         <div className="rounded-md border border-border p-3">
-          <div className="text-xs text-text-muted">মোট পরিশোধিত</div>
+          <div className="text-xs text-text-muted">{str.plTotalPaid}</div>
           <div className="text-lg font-semibold"><Money poisha={ledger.totals.paidPoisha} /></div>
         </div>
         <div className="rounded-md border border-border p-3">
-          <div className="text-xs text-text-muted">মোট বকেয়া (গৃহীত − পরিশোধিত)</div>
+          <div className="text-xs text-text-muted">{str.plTotalOutstanding}</div>
           <div className="text-lg font-semibold"><Money poisha={ledger.totals.outstandingPoisha} /></div>
         </div>
       </div>
       <DataTable
-        caption="সরবরাহকারী অনুযায়ী দেনা ও মেয়াদ (aging)"
+        caption={str.plCaptionSuppliers}
         columns={[
-          { key: "supplier", header: "সরবরাহকারী" },
-          { key: "pos", header: "PO সংখ্যা" },
-          { key: "ordered", header: "অর্ডারকৃত" },
-          { key: "received", header: "গৃহীত" },
-          { key: "paid", header: "পরিশোধিত" },
-          { key: "outstanding", header: "বকেয়া" },
-          { key: "aging", header: "মেয়াদ বিভাজন" },
+          { key: "supplier", header: str.colSupplier },
+          { key: "pos", header: str.colPoCount },
+          { key: "ordered", header: str.colOrdered },
+          { key: "received", header: str.colReceived },
+          { key: "paid", header: str.colPaid },
+          { key: "outstanding", header: str.colOutstanding },
+          { key: "aging", header: str.colAging },
         ]}
         rows={supplierRows}
       />
       {poRows.length > 0 ? (
         <div className="mt-4">
           <DataTable
-            caption="ক্রয় আদেশ (PO) অনুযায়ী বিবরণ"
+            caption={str.plCaptionPos}
             columns={[
-              { key: "supplier", header: "সরবরাহকারী" },
-              { key: "status", header: "অবস্থা" },
-              { key: "ordered", header: "অর্ডারকৃত" },
-              { key: "received", header: "গৃহীত" },
-              { key: "paid", header: "পরিশোধিত" },
-              { key: "outstanding", header: "বকেয়া" },
-              { key: "age", header: "বয়স" },
+              { key: "supplier", header: str.colSupplier },
+              { key: "status", header: str.colStatus },
+              { key: "ordered", header: str.colOrdered },
+              { key: "received", header: str.colReceived },
+              { key: "paid", header: str.colPaid },
+              { key: "outstanding", header: str.colOutstanding },
+              { key: "age", header: str.colAge },
             ]}
             rows={poRows}
           />

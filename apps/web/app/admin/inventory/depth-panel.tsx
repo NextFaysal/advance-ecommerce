@@ -2,17 +2,24 @@
 
 /**
  * Inventory depth panel (ADV-20) — mounted on the admin inventory
- * page inside the flag-gated "গভীর বিশ্লেষণ" card. Reads
+ * page inside the flag-gated in-depth analysis card. Reads
  * GET /api/v1/admin/inventory/depth (ABC, dead stock, expiring
  * batches, batch overview, serial census — all computed server-side
  * from real rows) and triggers POST
- * /api/v1/admin/inventory/reorder/run ("এখন চালান"), which creates
+ * /api/v1/admin/inventory/reorder/run ("run now"), which creates
  * DRAFT purchase orders only.
+ *
+ * Language (doc 30, slice L5-D): every string comes from
+ * ./strings (INVENTORY_STRINGS) resolved via useLocale(); dates use
+ * intlLocale(locale).
  */
 import { useCallback, useEffect, useState } from "react";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick } from "@/i18n/locale";
+import { INVENTORY_STRINGS } from "./strings";
 
 interface AbcRow {
   variantId: string;
@@ -67,25 +74,18 @@ const ABC_TONE: Record<"A" | "B" | "C", "success" | "warning" | "neutral"> = {
   C: "neutral",
 };
 
-const SKIP_LABEL: Record<string, string> = {
-  open_po_exists: "খোলা PO আগেই আছে",
-  no_supplier: "সাপ্লায়ার ঠিক নেই",
-  supplier_not_found: "সাপ্লায়ার পাওয়া যায়নি",
-  no_cost: "কস্ট জানা নেই",
-  invalid_rule: "রুল অসম্পূর্ণ",
-  no_warehouse: "গুদাম নেই",
-  create_failed: "তৈরি ব্যর্থ",
-};
-
 function pct(bps: number): string {
   return `${(bps / 100).toFixed(1)}%`;
 }
 
 export default function InventoryDepthPanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, INVENTORY_STRINGS);
   const [report, setReport] = useState<DepthReport | null>(null);
   // ADV-27: cost fields arrive null + meta.costMasked when the
   // viewer lacks products.edit_cost_price — render "—" (hidden),
-  // never "কস্ট নেই" (which would falsely claim no cost is recorded).
+  // never the no-cost label (which would falsely claim no cost is
+  // recorded).
   const [costMasked, setCostMasked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState(90);
@@ -93,18 +93,28 @@ export default function InventoryDepthPanel() {
   const [reorderResult, setReorderResult] = useState<ReorderResult | null>(null);
   const [reorderError, setReorderError] = useState<string | null>(null);
 
+  const SKIP_LABEL: Record<string, string> = {
+    open_po_exists: s.skipOpenPo,
+    no_supplier: s.skipNoSupplier,
+    supplier_not_found: s.skipSupplierNotFound,
+    no_cost: s.skipNoCost,
+    invalid_rule: s.skipInvalidRule,
+    no_warehouse: s.skipNoWarehouse,
+    create_failed: s.skipCreateFailed,
+  };
+
   const load = useCallback(async (rangeDays: number) => {
     try {
       const res = await fetch(`/api/v1/admin/inventory/depth?days=${rangeDays}`);
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error?.message ?? "রিপোর্ট লোড করা যায়নি");
+      if (!res.ok) throw new Error(json?.error?.message ?? s.reportLoadFailed);
       setReport(json.data as DepthReport);
       setCostMasked(json?.meta?.costMasked === true);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "রিপোর্ট লোড করা যায়নি");
+      setError(e instanceof Error ? e.message : s.reportLoadFailed);
     }
-  }, []);
+  }, [s.reportLoadFailed]);
 
   useEffect(() => {
     void load(days);
@@ -118,38 +128,38 @@ export default function InventoryDepthPanel() {
     try {
       const res = await fetch("/api/v1/admin/inventory/reorder/run", { method: "POST" });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error?.message ?? "রি-অর্ডার চালানো যায়নি");
+      if (!res.ok) throw new Error(json?.error?.message ?? s.reorderRunFailed);
       setReorderResult(json.data as ReorderResult);
     } catch (e) {
-      setReorderError(e instanceof Error ? e.message : "রি-অর্ডার চালানো যায়নি");
+      setReorderError(e instanceof Error ? e.message : s.reorderRunFailed);
     } finally {
       setReordering(false);
     }
   }
 
-  if (error) return <p className="text-small text-rose-600">গভীর বিশ্লেষণ লোড করা যায়নি: {error}</p>;
-  if (!report) return <p className="text-small text-text-muted">বিশ্লেষণ লোড হচ্ছে…</p>;
+  if (error) return <p className="text-small text-rose-600">{interpolate(s.depthLoadFailed, { error })}</p>;
+  if (!report) return <p className="text-small text-text-muted">{s.analysisLoading}</p>;
 
   return (
     <div className="space-y-6">
       {/* Serial census */}
       <div className="flex flex-wrap items-center gap-2 text-small text-text-muted">
-        <span className="font-semibold text-text-main">সিরিয়াল / IMEI:</span>
-        <Badge tone="success" dot>স্টকে {report.serials.inStock}টি</Badge>
-        <Badge tone="info" dot>বিক্রি {report.serials.sold}টি</Badge>
-        <Badge tone="warning" dot>ফেরত (নষ্ট) {report.serials.returned}টি</Badge>
-        <span>মোট রেকর্ড {report.serials.total}টি — শুধু রিসিভে ধরা পড়া সিরিয়ালই গণনায় আসে।</span>
+        <span className="font-semibold text-text-main">{s.serialLabel}</span>
+        <Badge tone="success" dot>{interpolate(s.serialInStock, { count: report.serials.inStock })}</Badge>
+        <Badge tone="info" dot>{interpolate(s.serialSold, { count: report.serials.sold })}</Badge>
+        <Badge tone="warning" dot>{interpolate(s.serialReturned, { count: report.serials.returned })}</Badge>
+        <span>{interpolate(s.serialTotalNote, { count: report.serials.total })}</span>
       </div>
 
       {/* ABC */}
       <section>
         <div className="flex flex-wrap items-center gap-3">
-          <h3 className="text-small font-semibold text-text-main">ABC বিশ্লেষণ (আয় অনুযায়ী)</h3>
+          <h3 className="text-small font-semibold text-text-main">{s.abcTitle}</h3>
           <span className="text-caption text-text-muted">
-            A = প্রথম ৭০% আয় · B = পরের ২০% · C = বাকি · মোট আয় {formatBdt(report.abc.totalRevenuePoisha)}
+            {interpolate(s.abcNote, { total: formatBdt(report.abc.totalRevenuePoisha) })}
           </span>
           <span className="ml-auto flex items-center gap-1.5 text-caption text-text-muted">
-            সময়সীমা:
+            {s.rangeLabel}
             {[30, 90, 180, 365].map((d) => (
               <button
                 key={d}
@@ -157,7 +167,7 @@ export default function InventoryDepthPanel() {
                 onClick={() => setDays(d)}
                 className={`rounded-md px-2 py-1 font-mono ${days === d ? "bg-brand-50 font-semibold text-brand-700" : "hover:bg-surface-2"}`}
               >
-                {d} দিন
+                {interpolate(s.daysOption, { days: d })}
               </button>
             ))}
           </span>
@@ -165,19 +175,19 @@ export default function InventoryDepthPanel() {
         <div className="mt-2 flex flex-wrap gap-2">
           {(["A", "B", "C"] as const).map((c) => (
             <Badge key={c} tone={ABC_TONE[c]}>
-              {c}: {report.abc.classSummary[c].variants}টি ভ্যারিয়েন্ট · {formatBdt(report.abc.classSummary[c].revenuePoisha)} ·{" "}
+              {c}: {interpolate(s.abcBadge, { count: report.abc.classSummary[c].variants })} · {formatBdt(report.abc.classSummary[c].revenuePoisha)} ·{" "}
               {pct(report.abc.classSummary[c].shareBps)}
             </Badge>
           ))}
         </div>
         {report.abc.rows.length === 0 ? (
-          <p className="mt-2 text-small text-text-muted">এই সময়সীমায় কোনো বিক্রি নেই।</p>
+          <p className="mt-2 text-small text-text-muted">{s.abcNoSales}</p>
         ) : (
           <div className="mt-2 max-h-96 overflow-auto rounded-lg border border-border">
             <table className="w-full min-w-[560px] border-collapse text-left text-sm">
               <thead>
                 <tr className="bg-surface-2 [&>th]:border-b [&>th]:border-border">
-                  {["শ্রেণি", "পণ্য", "বিক্রি (টি)", "আয়", "অংশ"].map((h) => (
+                  {[s.colClass, s.colProduct, s.colUnitsSold, s.colRevenue, s.colShare].map((h) => (
                     <th key={h} scope="col" className="px-3 py-2 text-caption font-semibold text-text-muted">{h}</th>
                   ))}
                 </tr>
@@ -204,21 +214,23 @@ export default function InventoryDepthPanel() {
       {/* Expiring batches */}
       <section>
         <h3 className="text-small font-semibold text-text-main">
-          মেয়াদ শেষ হতে চলেছে (আগামী {report.expiring.warningDays} দিনে)
+          {interpolate(s.expiringTitle, { days: report.expiring.warningDays })}
         </h3>
         {report.expiring.rows.length === 0 ? (
-          <p className="mt-1 text-small text-text-muted">এই সময়ে মেয়াদ শেষ হওয়ার মতো কোনো ব্যাচ স্টকে নেই।</p>
+          <p className="mt-1 text-small text-text-muted">{s.expiringNone}</p>
         ) : (
           <ul className="mt-2 space-y-1.5">
             {report.expiring.rows.map((b) => (
               <li key={b.batchId} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border px-3 py-2 text-small">
                 <span className="font-mono font-semibold text-text-main">{b.batchCode}</span>
                 <span>{b.productName} <span className="font-mono text-caption text-text-subtle">{b.sku}</span></span>
-                <span className="text-text-muted">{b.warehouseName}{b.bin ? ` · বিন ${b.bin}` : ""} · হাতে {b.quantityOnHand}টি</span>
+                <span className="text-text-muted">{b.warehouseName}{b.bin ? ` · ${interpolate(s.binText, { bin: b.bin })}` : ""} · {interpolate(s.onHandText, { count: b.quantityOnHand })}</span>
                 <Badge tone={b.daysUntilExpiry !== null && b.daysUntilExpiry < 0 ? "danger" : "warning"} dot>
                   {b.daysUntilExpiry !== null && b.daysUntilExpiry < 0
-                    ? `মেয়াদ শেষ (${Math.abs(b.daysUntilExpiry)} দিন আগে)`
-                    : `আর ${b.daysUntilExpiry} দিন`}
+                    ? interpolate(s.expiredBadge, { days: Math.abs(b.daysUntilExpiry) })
+                    : b.daysUntilExpiry !== null
+                      ? interpolate(s.daysLeftBadge, { days: b.daysUntilExpiry })
+                      : s.noExpiryBadge}
                 </Badge>
               </li>
             ))}
@@ -229,21 +241,21 @@ export default function InventoryDepthPanel() {
       {/* Dead stock */}
       <section>
         <h3 className="text-small font-semibold text-text-main">
-          ডেড স্টক ({report.deadStock.thresholdDays} দিনে বিক্রি হয়নি, তবু স্টক আছে)
+          {interpolate(s.deadTitle, { days: report.deadStock.thresholdDays })}
         </h3>
         {costMasked && (
           <p className="mt-1 text-small text-text-muted">
-            কস্ট প্রাইস আপনার অনুমতিতে নেই (products.edit_cost_price লাগে) — তাই আটকে থাকা মূল্য "—" দেখাচ্ছে।
+            {s.deadCostMasked}
           </p>
         )}
         {report.deadStock.rows.length === 0 ? (
-          <p className="mt-1 text-small text-text-muted">ডেড স্টক নেই — স্টক থাকা সব ভ্যারিয়েন্টের সাম্প্রতিক বিক্রি আছে।</p>
+          <p className="mt-1 text-small text-text-muted">{s.deadNone}</p>
         ) : (
           <div className="mt-2 max-h-96 overflow-auto rounded-lg border border-border">
             <table className="w-full min-w-[560px] border-collapse text-left text-sm">
               <thead>
                 <tr className="bg-surface-2 [&>th]:border-b [&>th]:border-border">
-                  {["পণ্য", "স্টক", "আটকে থাকা মূল্য", "শেষ বিক্রি", "গুদাম / বিন"].map((h) => (
+                  {[s.colProduct, s.colStock, s.colStuckValue, s.colLastSale, s.colWarehouseBin].map((h) => (
                     <th key={h} scope="col" className="px-3 py-2 text-caption font-semibold text-text-muted">{h}</th>
                   ))}
                 </tr>
@@ -261,13 +273,13 @@ export default function InventoryDepthPanel() {
                         ? "—"
                         : r.stockValuePoisha !== null
                           ? formatBdt(r.stockValuePoisha)
-                          : "কস্ট নেই"}
+                          : s.noCost}
                     </td>
                     <td className="px-3 py-2 text-text-muted">
-                      {r.lastSaleAt ? new Date(r.lastSaleAt).toLocaleDateString("bn-BD") : "কখনো বিক্রি হয়নি"}
+                      {r.lastSaleAt ? new Date(r.lastSaleAt).toLocaleDateString(intlLocale(locale)) : s.neverSold}
                     </td>
                     <td className="px-3 py-2 text-text-muted">
-                      {r.warehouses.map((w) => `${w.warehouseName}: ${w.onHand}${w.bin ? ` (বিন ${w.bin})` : ""}`).join(" · ") || "—"}
+                      {r.warehouses.map((w) => `${w.warehouseName}: ${w.onHand}${w.bin ? ` ${interpolate(s.binParen, { bin: w.bin })}` : ""}`).join(" · ") || "—"}
                     </td>
                   </tr>
                 ))}
@@ -279,11 +291,10 @@ export default function InventoryDepthPanel() {
 
       {/* Batch overview */}
       <section>
-        <h3 className="text-small font-semibold text-text-main">ব্যাচ / লট (স্টকে আছে এমন)</h3>
+        <h3 className="text-small font-semibold text-text-main">{s.batchTitle}</h3>
         {report.batches.length === 0 ? (
           <p className="mt-1 text-small text-text-muted">
-            কোনো ব্যাচ রেকর্ড নেই — রিসিভের সময় ব্যাচ কোড দিলে এখানে দেখা যাবে। ব্যাচ ছাড়া রিসিভ করা
-            স্টক এই তালিকায় আসে না (তা অনট্র্যাকড, শূন্য নয়)।
+            {s.batchNone}
           </p>
         ) : (
           <ul className="mt-2 space-y-1.5">
@@ -292,8 +303,8 @@ export default function InventoryDepthPanel() {
                 <span className="font-mono font-semibold text-text-main">{b.batchCode}</span>
                 <span>{b.productName} <span className="font-mono text-caption text-text-subtle">{b.sku}</span></span>
                 <span className="text-text-muted">
-                  {b.warehouseName}{b.bin ? ` · বিন ${b.bin}` : ""} · হাতে {b.quantityOnHand}টি
-                  {b.expiryDate ? ` · মেয়াদ ${new Date(b.expiryDate).toLocaleDateString("bn-BD")}` : " · মেয়াদ রেকর্ড নেই"}
+                  {b.warehouseName}{b.bin ? ` · ${interpolate(s.binText, { bin: b.bin })}` : ""} · {interpolate(s.onHandText, { count: b.quantityOnHand })}
+                  {b.expiryDate ? ` · ${interpolate(s.expiryText, { date: new Date(b.expiryDate).toLocaleDateString(intlLocale(locale)) })}` : ` · ${s.noExpiryRecord}`}
                 </span>
               </li>
             ))}
@@ -304,13 +315,12 @@ export default function InventoryDepthPanel() {
       {/* Auto-reorder */}
       <section className="rounded-lg border border-border bg-surface-2/50 px-4 py-3">
         <div className="flex flex-wrap items-center gap-3">
-          <h3 className="text-small font-semibold text-text-main">অটো রি-অর্ডার</h3>
+          <h3 className="text-small font-semibold text-text-main">{s.reorderTitle}</h3>
           <span className="text-caption text-text-muted">
-            রি-অর্ডার পয়েন্টে পৌঁছানো ভ্যারিয়েন্টের জন্য শুধু খসড়া (DRAFT) ক্রয় আদেশ তৈরি হয় —
-            সাপ্লায়ারের কাছে কিছুই পাঠানো হয় না। রুল: সেটিংস inventory.reorder.*
+            {s.reorderNote}
           </span>
           <Button size="sm" className="ml-auto" onClick={() => void runReorder()} loading={reordering}>
-            এখন চালান
+            {s.runNow}
           </Button>
         </div>
         {reorderError ? (
@@ -319,21 +329,27 @@ export default function InventoryDepthPanel() {
         {reorderResult ? (
           <div className="mt-2 text-small">
             <p className="text-text-muted">
-              বিবেচনায় এসেছে {reorderResult.consideredCount}টি ভ্যারিয়েন্ট · তৈরি হয়েছে{" "}
-              {reorderResult.createdPos.length}টি খসড়া PO · বাদ গেছে {reorderResult.skipped.length}টি
+              {interpolate(s.reorderSummary, {
+                considered: reorderResult.consideredCount,
+                created: reorderResult.createdPos.length,
+                skipped: reorderResult.skipped.length,
+              })}
             </p>
             {reorderResult.createdPos.map((po) => (
               <p key={po.purchaseOrderId} className="mt-1 text-emerald-700">
-                খসড়া PO তৈরি: {po.supplierName} — {po.lines.length}টি লাইন (<span className="font-mono">{po.purchaseOrderId}</span>)
-                — উপরের ক্রয় আদেশ তালিকা থেকে রিভিউ করুন।
+                {interpolate(s.draftPoCreated, {
+                  supplier: po.supplierName,
+                  lines: po.lines.length,
+                  id: po.purchaseOrderId,
+                })}
               </p>
             ))}
             {reorderResult.skipped.length > 0 ? (
               <ul className="mt-1 space-y-0.5 text-text-muted">
-                {reorderResult.skipped.map((s) => (
-                  <li key={`${s.variantId}-${s.reason}`}>
-                    <span className="font-mono">{s.sku}</span> — {SKIP_LABEL[s.reason] ?? s.reason}
-                    {s.detail ? ` (${s.detail})` : ""}
+                {reorderResult.skipped.map((sk) => (
+                  <li key={`${sk.variantId}-${sk.reason}`}>
+                    <span className="font-mono">{sk.sku}</span> — {SKIP_LABEL[sk.reason] ?? sk.reason}
+                    {sk.detail ? ` (${sk.detail})` : ""}
                   </li>
                 ))}
               </ul>

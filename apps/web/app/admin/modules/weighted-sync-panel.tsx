@@ -9,6 +9,9 @@
  * that no longer exists. Nothing is claimed beyond the report.
  */
 import { useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick } from "@/i18n/locale";
+import { MODULES_STRINGS } from "./strings";
 
 interface SyncReport {
   checked: number;
@@ -17,11 +20,13 @@ interface SyncReport {
   missingVariantIds: string[];
 }
 
-function bdt(poisha: number): string {
-  return `৳${(poisha / 100).toLocaleString("bn-BD", { maximumFractionDigits: 2 })}`;
+function bdt(poisha: number, locale: "bn" | "en"): string {
+  return `৳${(poisha / 100).toLocaleString(intlLocale(locale), { maximumFractionDigits: 2 })}`;
 }
 
 export function WeightedSyncPanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, MODULES_STRINGS);
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<SyncReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,12 +38,12 @@ export function WeightedSyncPanel() {
       const res = await fetch("/api/v1/admin/grocery/weighted-prices/sync", { method: "POST" });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        setError(json?.error?.message ?? "Sync চালানো যায়নি।");
+        setError(json?.error?.message ?? s.syncFailed);
         return;
       }
       setReport(json.data as SyncReport);
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।");
+      setError(s.networkError);
     } finally {
       setBusy(false);
     }
@@ -47,9 +52,7 @@ export function WeightedSyncPanel() {
   return (
     <div>
       <p className="max-w-xl text-sm text-text-muted">
-        গ্রোসারি প্যাকের weightedVariants কনফিগ অনুযায়ী প্রতিটি ওজন প্যাকের দাম (প্রতি কেজি হার ×
-        প্যাকের ওজন) ভ্যারিয়েন্টের রেকর্ডকৃত দামে লিখে দেয় — চেকআউটে ওই রেকর্ডকৃত দামই চার্জ হয়।
-        হার বদলালে আবার sync করুন; sync না হওয়া পর্যন্ত আগের দামই প্রযোজ্য থাকে।
+        {s.syncDesc}
       </p>
       <button
         type="button"
@@ -57,7 +60,7 @@ export function WeightedSyncPanel() {
         disabled={busy}
         className="mt-3 h-11 rounded-xl bg-indigo-600 px-5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
       >
-        {busy ? "Sync হচ্ছে…" : "ওজন প্যাকের দাম sync করুন"}
+        {busy ? s.syncing : s.syncBtn}
       </button>
       {error ? (
         <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
@@ -67,22 +70,20 @@ export function WeightedSyncPanel() {
       {report ? (
         <div className="mt-3 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
           <p>
-            যাচাই হয়েছে: <strong className="text-text-main">{report.checked}</strong>টি প্যাক ·
-            অপরিবর্তিত: <strong className="text-text-main">{report.unchanged}</strong>টি · হালনাগাদ:{" "}
-            <strong className="text-text-main">{report.updated.length}</strong>টি
+            {interpolate(s.syncReport, { checked: report.checked, unchanged: report.unchanged, updated: report.updated.length })}
           </p>
           {report.updated.length > 0 ? (
             <ul className="mt-1.5 space-y-1">
               {report.updated.map((u) => (
                 <li key={u.variantId} className="font-mono text-[13px]">
-                  {u.sku}: {bdt(u.fromPoisha)} → {bdt(u.toPoisha)}
+                  {u.sku}: {bdt(u.fromPoisha, locale)} → {bdt(u.toPoisha, locale)}
                 </li>
               ))}
             </ul>
           ) : null}
           {report.missingVariantIds.length > 0 ? (
             <p className="mt-1.5 text-amber-700">
-              কনফিগে থাকলেও খুঁজে পাওয়া যায়নি (মুছে ফেলা হয়েছে?): {report.missingVariantIds.join(", ")}
+              {interpolate(s.syncMissing, { ids: report.missingVariantIds.join(", ") })}
             </p>
           ) : null}
         </div>

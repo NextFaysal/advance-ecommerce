@@ -15,6 +15,9 @@ import { accountBalances } from "@/erp/ledger";
 import { buildVatReport } from "@/erp/vat";
 import { ErpPeriodManager } from "@/components/admin/erp-period-manager";
 import type { AccountType, JournalEntry } from "@/erp/types";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { ERP_STRINGS, type ErpStrings } from "./strings";
 
 // Admin > ERP-lite — Agent 20, Step 49 (A16) UI over Agent 17's ledger;
 // real data wired 2026-10-25. Accounts, journal entries and periods are
@@ -38,19 +41,23 @@ import type { AccountType, JournalEntry } from "@/erp/types";
 
 export const dynamic = "force-dynamic";
 
-const ACCOUNT_TYPE_TEXT: Record<AccountType, string> = {
-  asset: "সম্পদ",
-  liability: "দায়",
-  equity: "মূলধন",
-  income: "আয়",
-  expense: "ব্যয়",
-};
+function accountTypeText(s: ErpStrings): Record<AccountType, string> {
+  return {
+    asset: s.typeAsset,
+    liability: s.typeLiability,
+    equity: s.typeEquity,
+    income: s.typeIncome,
+    expense: s.typeExpense,
+  };
+}
 
-const STATUS_TEXT: Record<JournalEntry["status"], { label: string; tone: "success" | "warning" | "neutral" }> = {
-  posted: { label: "পোস্ট করা", tone: "success" },
-  draft: { label: "খসড়া", tone: "warning" },
-  reversed: { label: "রিভার্স করা", tone: "neutral" },
-};
+function statusText(s: ErpStrings): Record<JournalEntry["status"], { label: string; tone: "success" | "warning" | "neutral" }> {
+  return {
+    posted: { label: s.statusPosted, tone: "success" },
+    draft: { label: s.statusDraft, tone: "warning" },
+    reversed: { label: s.statusReversed, tone: "neutral" },
+  };
+}
 
 /** Current accounting period ("YYYY-MM") on the Asia/Dhaka calendar. */
 function currentDhakaPeriod(): string {
@@ -71,6 +78,10 @@ function entryTotals(entry: JournalEntry): { debit: number; credit: number } {
 }
 
 export default async function AdminErpPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, ERP_STRINGS);
+  const ACCOUNT_TYPE_TEXT = accountTypeText(s);
+  const STATUS_TEXT = statusText(s);
   const [accounts, entries, periods] = await Promise.all([
     erpStore.listAccounts(),
     erpStore.listEntries(),
@@ -101,7 +112,7 @@ export default async function AdminErpPage() {
       </span>
     ),
     type: <Badge tone="info">{ACCOUNT_TYPE_TEXT[a.type]}</Badge>,
-    active: a.isActive ? <Badge tone="success">সক্রিয়</Badge> : <Badge tone="neutral">বন্ধ</Badge>,
+    active: a.isActive ? <Badge tone="success">{s.active}</Badge> : <Badge tone="neutral">{s.inactive}</Badge>,
   }));
 
   const entryRows = entries.map((e) => {
@@ -114,7 +125,7 @@ export default async function AdminErpPage() {
           <span className="font-medium">{e.description}</span>
           <span className="block text-xs text-text-muted">
             {e.lines
-              .map((l) => `${l.accountCode} ${l.debitPoisha > 0 ? `ডেবিট ${l.debitPoisha}` : `ক্রেডিট ${l.creditPoisha}`}`)
+              .map((l) => `${l.accountCode} ${l.debitPoisha > 0 ? interpolate(s.lineDebit, { amount: l.debitPoisha }) : interpolate(s.lineCredit, { amount: l.creditPoisha })}`)
               .join(" · ")}
           </span>
         </span>
@@ -144,78 +155,77 @@ export default async function AdminErpPage() {
 
   const periodRows = periods.map((p) => ({
     period: <span className="font-mono">{p.period}</span>,
-    state: p.isLocked ? <Badge tone="danger">লক করা</Badge> : <Badge tone="success">খোলা</Badge>,
-    note: p.isLocked ? "লক করা পিরিয়ডে নতুন এন্ট্রি পোস্ট করা যায় না" : "এন্ট্রি পোস্ট করা যাবে",
+    state: p.isLocked ? <Badge tone="danger">{s.periodLocked}</Badge> : <Badge tone="success">{s.periodOpen}</Badge>,
+    note: p.isLocked ? s.periodLockedNote : s.periodOpenNote,
   }));
 
   return (
     <main>
       <PageHeader
-        title="ERP-lite হিসাবরক্ষণ"
-        description="আসল ডেটা — হিসাব, জার্নাল এন্ট্রি ও পিরিয়ড ডাটাবেস থেকে (erp-journal API-র একই স্টোর)। পোস্ট করা এন্ট্রি অপরিবর্তনীয়; সংশোধন রিভার্সাল দিয়ে হয়।"
-        breadcrumb="Admin / Modules / ERP-lite"
+        title={s.title}
+        description={s.description}
+        breadcrumb={s.breadcrumb}
       />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="হিসাবের সংখ্যা" value={String(accounts.length)} delta="ErpAccount টেবিল" icon={<Icon name="chart" size={22} />} />
-        <StatCard label="পোস্ট করা এন্ট্রি" value={String(postedCount)} delta={`${entries.length}টির মধ্যে`} icon={<Icon name="check" size={22} />} />
-        <StatCard label="খসড়া এন্ট্রি" value={String(draftCount)} delta="এখনো পোস্ট হয়নি" icon={<Icon name="clock" size={22} />} />
-        <StatCard label="ট্রায়াল ব্যালেন্স (ডেবিট)" value={trialDebit.toLocaleString("en-US")} delta="পয়সায়" icon={<Icon name="chart" size={22} />} />
+        <StatCard label={s.statAccounts} value={String(accounts.length)} delta={s.statAccountsDelta} icon={<Icon name="chart" size={22} />} />
+        <StatCard label={s.statPosted} value={String(postedCount)} delta={interpolate(s.statPostedDelta, { total: entries.length })} icon={<Icon name="check" size={22} />} />
+        <StatCard label={s.statDraft} value={String(draftCount)} delta={s.statDraftDelta} icon={<Icon name="clock" size={22} />} />
+        <StatCard label={s.statTrialDebit} value={trialDebit.toLocaleString("en-US")} delta={s.statTrialDelta} icon={<Icon name="chart" size={22} />} />
       </div>
 
       {entries.length === 0 ? (
         <p className="mb-6 rounded-md bg-surface-2 px-3 py-2 text-sm text-text-muted">
-          এখনো কোনো জার্নাল এন্ট্রি সংরক্ষিত হয়নি — erp-journal API দিয়ে প্রথম এন্ট্রি পোস্ট হলেই এখানে
-          দেখা যাবে। নিচের তালিকাগুলো খালি কারণ টেবিল খালি, নমুনা ডেটা নয়।
+          {s.emptyEntries}
         </p>
       ) : null}
 
-      <h2 className="mb-3 text-lg font-semibold">জার্নাল এন্ট্রি</h2>
+      <h2 className="mb-3 text-lg font-semibold">{s.journalTitle}</h2>
       <DataTable
-        caption="পোস্ট করা এন্ট্রি অপরিবর্তনীয় — সংশোধন হয় রিভার্সাল এন্ট্রি দিয়ে। সব পরিমাণ পয়সায় (Money)।"
+        caption={s.journalCaption}
         columns={[
-          { key: "date", header: "তারিখ" },
-          { key: "description", header: "বিবরণ ও লাইন" },
-          { key: "source", header: "উৎস" },
-          { key: "status", header: "অবস্থা" },
-          { key: "debit", header: "ডেবিট" },
-          { key: "credit", header: "ক্রেডিট" },
+          { key: "date", header: s.colDate },
+          { key: "description", header: s.colDescLines },
+          { key: "source", header: s.colSource },
+          { key: "status", header: s.colStatus },
+          { key: "debit", header: s.colDebit },
+          { key: "credit", header: s.colCredit },
         ]}
         rows={entryRows}
       />
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">ট্রায়াল ব্যালেন্স (শুধু পোস্ট করা এন্ট্রি)</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.trialTitle}</h2>
       <DataTable
-        caption={`মোট ডেবিট ${trialDebit.toLocaleString("en-US")} পয়সা · মোট ক্রেডিট ${trialCredit.toLocaleString("en-US")} পয়সা — দ্বি-পক্ষীয় নিয়মে দুটো সবসময় সমান`}
+        caption={interpolate(s.trialCaption, { debit: trialDebit.toLocaleString("en-US"), credit: trialCredit.toLocaleString("en-US") })}
         columns={[
-          { key: "code", header: "কোড" },
-          { key: "name", header: "হিসাব" },
-          { key: "debit", header: "ডেবিট" },
-          { key: "credit", header: "ক্রেডিট" },
-          { key: "balance", header: "ব্যালেন্স (ডেবিট − ক্রেডিট)" },
+          { key: "code", header: s.colCode },
+          { key: "name", header: s.colAccount },
+          { key: "debit", header: s.colDebit },
+          { key: "credit", header: s.colCredit },
+          { key: "balance", header: s.colBalance },
         ]}
         rows={balanceRows}
       />
 
       <div className="mt-8 grid gap-4 lg:grid-cols-2">
         <Card>
-          <h3 className="text-base font-semibold">VAT সারাংশ — বিক্রয় (Sales VAT)</h3>
+          <h3 className="text-base font-semibold">{s.vatTitle}</h3>
           <p className="mt-1 font-mono text-xs text-text-muted">
-            পিরিয়ড: {vatFrom} → {vatTo} · উৎস: অর্ডারে সংরক্ষিত VAT বিভাজন (vatPoisha / vatRateBps)
+            {interpolate(s.vatPeriodLine, { from: vatFrom, to: vatTo })}
           </p>
           {vatReport ? (
             <>
               <dl className="mt-3 space-y-2 text-sm">
                 <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-text-muted">আউটপুট VAT (বিক্রয়ে আদায়)</dt>
+                  <dt className="text-text-muted">{s.vatOutput}</dt>
                   <dd><Money poisha={vatReport.outputVatPoisha} /></dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-text-muted">বিক্রয়ের নিট (VAT ছাড়া)</dt>
+                  <dt className="text-text-muted">{s.vatSalesNet}</dt>
                   <dd><Money poisha={vatReport.salesNetPoisha} /></dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-4 border-t border-border pt-2 font-medium">
-                  <dt>নিট প্রদেয় (শুধু বিক্রয় VAT থেকে)</dt>
+                  <dt>{s.vatNetPayable}</dt>
                   <dd><Money poisha={vatReport.netPayablePoisha} /></dd>
                 </div>
               </dl>
@@ -223,29 +233,23 @@ export default async function AdminErpPage() {
                 <ul className="mt-3 space-y-1 text-sm text-text-muted">
                   {vatReport.byRate.map((r) => (
                     <li key={r.vatRateBps} className="flex items-baseline justify-between gap-4">
-                      <span>হার {r.vatRateBps / 100}% — বিক্রয় VAT</span>
+                      <span>{interpolate(s.vatRateLine, { rate: r.vatRateBps / 100 })}</span>
                       <Money poisha={r.salesVatPoisha} />
                     </li>
                   ))}
                 </ul>
               ) : null}
               <p className="mt-3 text-sm text-text-muted">
-                ইনপুট VAT (ক্রয়): এই সিস্টেমে ক্রয়/ইনভয়েসের কোনো লেজার নেই — তাই ইনপুট VAT
-                হিসাবের বাইরে এবং ওপরের নিট প্রদেয় থেকে কোনো ক্রয় VAT বাদ দেওয়া হয়নি।
+                {s.vatInputNote}
               </p>
             </>
           ) : (
             <>
               <p className="mt-2 text-sm text-text-muted">
-                এই পিরিয়ডে VAT বিভাজনসহ কোনো অর্ডার নেই। VAT বিভাজন রেকর্ড হয় অর্ডার তৈরির
-                সময় — শুধুমাত্র যখন Settings-এ <code className="font-mono text-xs">accounting.vat_rate_bps</code>{" "}
-                হার সেট করা থাকে। হার সেট করার আগের অর্ডারগুলোতে কোনো বিভাজন নেই, এবং পরে তা
-                অনুমান করে বসানো হয় না — তাই হার সেট করে নতুন অর্ডার এলেই এখানে আসল সংখ্যা
-                দেখা যাবে।
+                {s.vatEmpty1}
               </p>
               <p className="mt-2 text-sm text-text-muted">
-                ক্রয় দিকের VAT-এর জন্য ক্রয়/ইনভয়েস লেজার প্রয়োজন — এই সিস্টেমে সেটি এখনো নেই,
-                তাই এই রিপোর্ট শুধু বিক্রয়ের।
+                {s.vatEmpty2}
               </p>
             </>
           )}
@@ -261,19 +265,19 @@ export default async function AdminErpPage() {
         </div>
       </div>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">হিসাবের চার্ট (Chart of Accounts)</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.chartTitle}</h2>
       <DataTable
-        caption="বাংলাদেশি SME ডিফল্ট চার্ট — কোডই স্থিতিশীল কী; VAT দেনা (২১০০) নিজস্ব দায় হিসাব যাতে VAT রিপোর্ট মিলে যায়"
+        caption={s.chartCaption}
         columns={[
-          { key: "code", header: "কোড" },
-          { key: "name", header: "হিসাবের নাম" },
-          { key: "type", header: "ধরন" },
-          { key: "active", header: "অবস্থা" },
+          { key: "code", header: s.colCode },
+          { key: "name", header: s.colAccountName },
+          { key: "type", header: s.colType },
+          { key: "active", header: s.colActiveStatus },
         ]}
         rows={accountRows}
       />
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">ব্যর্থ ডেলিভারির খরচ (Failed-delivery costs)</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.failedDeliveryTitle}</h2>
       <DeliveryCostsPanel />
 
       <PurchaseLedgerPanel />

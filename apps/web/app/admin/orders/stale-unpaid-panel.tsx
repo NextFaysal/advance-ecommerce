@@ -17,6 +17,9 @@ import Link from "next/link";
 import { Badge } from "../../../src/components/ui/badge";
 import { Icon } from "../../../src/components/ui/icon";
 import { formatBdt } from "../../../src/checkout/pricing";
+import { pick, type Locale } from "../../../src/i18n/locale";
+import { useLocale } from "../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "./strings";
 
 interface StaleRow {
   id: string;
@@ -46,24 +49,27 @@ function ageChipClass(ageHours: number): string {
   return "bg-yellow-50 text-yellow-800";
 }
 
-function ageLabel(ageHours: number): string {
-  if (ageHours >= 48) return `${Math.floor(ageHours / 24)} দিন`;
-  return `${Math.round(ageHours)} ঘণ্টা`;
+function ageLabel(ageHours: number, locale: Locale): string {
+  const s = pick(locale, ORDER_STRINGS);
+  if (ageHours >= 48) return `${Math.floor(ageHours / 24)} ${s.ageDays}`;
+  return `${Math.round(ageHours)} ${s.ageHours}`;
 }
 
-const METHOD_LABEL: Record<string, string> = {
-  COD: "ক্যাশ অন ডেলিভারি",
-  BKASH: "বিকাশ",
-  NAGAD: "নগদ",
-  ROCKET: "রকেট",
-  UPAY: "উপায়",
-  SSLCOMMERZ: "SSLCommerz",
-  AAMARPAY: "আমারপে",
-  SHURJOPAY: "সূর্যপে",
-  MANUAL_MOBILE_BANKING: "ম্যানুয়াল মোবাইল ব্যাংকিং",
+const METHOD_LABEL: Record<string, Record<Locale, string>> = {
+  COD: { bn: "ক্যাশ অন ডেলিভারি", en: "Cash on Delivery" },
+  BKASH: { bn: "বিকাশ", en: "bKash" },
+  NAGAD: { bn: "নগদ", en: "Nagad" },
+  ROCKET: { bn: "রকেট", en: "Rocket" },
+  UPAY: { bn: "উপায়", en: "Upay" },
+  SSLCOMMERZ: { bn: "SSLCommerz", en: "SSLCommerz" },
+  AAMARPAY: { bn: "আমারপে", en: "AamarPay" },
+  SHURJOPAY: { bn: "সূর্যপে", en: "ShurjoPay" },
+  MANUAL_MOBILE_BANKING: { bn: "ম্যানুয়াল মোবাইল ব্যাংকিং", en: "Manual mobile banking" },
 };
 
 export function StaleUnpaidPanel() {
+  const { locale, t } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const [state, setState] = useState<StaleResponse | null>(null);
   const [expanded, setExpanded] = useState(false);
 
@@ -89,13 +95,13 @@ export function StaleUnpaidPanel() {
   const { data, meta } = state;
 
   return (
-    <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-card" aria-label="বকেয়া অনপেইড অর্ডার">
+    <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-card" aria-label={s.staleAria}>
       <div className="flex flex-wrap items-center gap-3">
         <Badge tone="warning" icon={<Icon name="clock" size={12} />}>
-          {meta.total}টি বকেয়া
+          {meta.total} {s.staleDue}
         </Badge>
         <p className="text-body font-medium text-amber-900">
-          অগ্রিম/প্রিপেইড বকেয়া অর্ডার {meta.hours} ঘণ্টার বেশি পুরনো
+          {s.staleTitle1} {meta.hours} {s.staleTitle2}
         </p>
         <button
           type="button"
@@ -103,11 +109,11 @@ export function StaleUnpaidPanel() {
           className="ml-auto rounded-md border border-amber-300 bg-surface px-3 py-1.5 text-small font-medium text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           aria-expanded={expanded}
         >
-          {expanded ? "লুকান" : "তালিকা দেখুন"}
+          {expanded ? s.hide : s.staleShowList}
         </button>
       </div>
       <p className="mt-2 text-small text-amber-800">
-        স্বয়ংক্রিয় বাতিল চালু নেই — VPS ওয়ার্কার এলে চালু হবে। তালিকা ধরে ম্যানুয়ালি ফলো-আপ করুন।
+        {s.staleNote}
       </p>
       {expanded && (
         <ul className="mt-3 divide-y divide-amber-200 rounded-md border border-amber-200 bg-surface">
@@ -119,18 +125,18 @@ export function StaleUnpaidPanel() {
               <span
                 className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-caption font-semibold ${ageChipClass(row.ageHours)}`}
               >
-                {ageLabel(row.ageHours)} ধরে আটকে
+                {ageLabel(row.ageHours, locale)} {s.ageStuckSuffix}
               </span>
-              <span>{METHOD_LABEL[row.paymentMethod] ?? row.paymentMethod}</span>
-              <span>মোট {formatBdt(row.totalPoisha)}</span>
+              <span>{METHOD_LABEL[row.paymentMethod] ? pick(locale, METHOD_LABEL[row.paymentMethod]) : row.paymentMethod}</span>
+              <span>{s.totalWord} {formatBdt(row.totalPoisha)}</span>
               {row.advanceRequiredPoisha > 0 ? (
                 row.advanceSatisfied ? (
                   <Badge tone="success" icon={<Icon name="check" size={12} />}>
-                    অগ্রিম পরিশোধিত {formatBdt(row.advanceRequiredPoisha)}
+                    {s.staleAdvancePaid} {formatBdt(row.advanceRequiredPoisha)}
                   </Badge>
                 ) : (
                   <Badge tone="warning" icon={<Icon name="clock" size={12} />}>
-                    অগ্রিম বাকি {formatBdt(row.advanceRequiredPoisha)}
+                    {s.staleAdvanceDue} {formatBdt(row.advanceRequiredPoisha)}
                   </Badge>
                 )
               ) : null}
@@ -139,7 +145,7 @@ export function StaleUnpaidPanel() {
           ))}
           {meta.total > data.length && (
             <li className="px-3 py-2 text-small text-text-muted">
-              আরও {meta.total - data.length}টি অর্ডার তালিকার বাইরে রয়েছে (সর্বোচ্চ {data.length}টি দেখানো হয়)।
+              {s.staleMore1} {meta.total - data.length} {s.staleMore2} {data.length}{s.staleMore3}
             </li>
           )}
         </ul>

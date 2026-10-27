@@ -22,18 +22,20 @@ import { buildMushak63 } from "@/erp/mushak";
 import { qtyNumber } from "@/lib/quantity";
 import { formatBdt } from "@/checkout/pricing";
 import MushakPrintButton from "./print-button";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
+import { ERP_STRINGS, type ErpStrings } from "../../strings";
 
 export const dynamic = "force-dynamic";
 
-const NOTE_TEXT: Record<string, string> = {
-  vat_pro_rata_allocation:
-    "দ্রষ্টব্য: অর্ডারে ভ্যাট মোট হিসেবে রেকর্ড করা — পণ্যের লাইনে ভ্যাট আনুপাতিক হারে বণ্টিত (মোট রেকর্ডকৃত ভ্যাটের সাথে মিলিয়ে)।",
-  vat_not_recorded:
-    "দ্রষ্টব্য: এই অর্ডারে কোনো ভ্যাট বিভাজন রেকর্ড করা হয়নি (অর্ডারের সময় Settings-এ ভ্যাট হার নির্ধারিত ছিল না) — ভ্যাটের ঘর তাই ফাঁকা রাখা হয়েছে; পরে অনুমান করে বসানো হয়নি।",
-  seller_details_blank:
-    "বিক্রেতার ঠিকানা ও BIN: সিস্টেমে এই তথ্যের কোনো Settings ক্ষেত্র নেই — খালি জায়গায় হাতে লিখুন।",
-  buyer_bin_blank: "ক্রেতার BIN: ক্রেতার রেকর্ডে BIN ক্ষেত্র নেই — থাকলে হাতে লিখুন।",
-};
+function noteText(s: ErpStrings): Record<string, string> {
+  return {
+    vat_pro_rata_allocation: s.muNoteProRata,
+    vat_not_recorded: s.muNoteNotRecorded,
+    seller_details_blank: s.muNoteSellerBlank,
+    buyer_bin_blank: s.muNoteBuyerBinBlank,
+  };
+}
 
 function money(poisha: number | null): string {
   return poisha === null ? "—" : formatBdt(poisha);
@@ -45,6 +47,9 @@ export default async function Mushak63Page({
   params: { orderId: string };
 }) {
   const { orderId } = params;
+  const locale = await getRequestLocale();
+  const s = pick(locale, ERP_STRINGS);
+  const NOTE_TEXT = noteText(s);
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: { items: { orderBy: { createdAt: "asc" } } },
@@ -99,8 +104,7 @@ export default async function Mushak63Page({
 
       <div className="mb-4 flex items-center justify-between print:hidden">
         <p className="text-sm text-text-muted">
-          মূসক-৬.৩ চালানপত্র — অর্ডার {doc.challanNo}। বিক্রেতার ঠিকানা/BIN ও ক্রেতার BIN-এর কোনো
-          Settings/রেকর্ড ক্ষেত্র সিস্টেমে নেই — ছাপানো ফর্মে সেগুলো খালি থাকবে, হাতে পূরণ করুন।
+          {interpolate(s.muScreenNote, { challanNo: doc.challanNo })}
         </p>
         <MushakPrintButton />
       </div>
@@ -110,30 +114,30 @@ export default async function Mushak63Page({
           <div className="w-24" />
           <div className="flex-1 text-center">
             <div className="text-lg font-bold">{doc.seller.name || blank}</div>
-            <div className="text-sm">ঠিকানা: {doc.seller.address || blank}</div>
-            <div className="text-sm">BIN: {doc.seller.bin || blank}</div>
-            <div className="mt-2 text-xl font-bold underline">চালানপত্র</div>
+            <div className="text-sm">{s.muAddressLabel}: {doc.seller.address || blank}</div>
+            <div className="text-sm">{s.muBinLabel}: {doc.seller.bin || blank}</div>
+            <div className="mt-2 text-xl font-bold underline">{s.muChallanTitle}</div>
           </div>
           <div className="w-24 border border-black px-2 py-1 text-center text-sm font-bold">
-            মূসক-৬.৩
+            {s.muFormLabel}
           </div>
         </div>
 
         <div className="mt-4 flex justify-between text-sm">
-          <span>চালান নম্বর: <strong>{doc.challanNo}</strong></span>
-          <span>তারিখ: {doc.issueDateDhaka} · সময়: {doc.issueTimeDhaka}</span>
+          <span>{s.muChallanNo}: <strong>{doc.challanNo}</strong></span>
+          <span>{s.muDate}: {doc.issueDateDhaka} · {s.muTime}: {doc.issueTimeDhaka}</span>
         </div>
 
         <div className="mt-3 border border-black p-3 text-sm">
-          <div>ক্রেতার নাম: <strong>{doc.buyer.name}</strong></div>
-          <div>ক্রেতার ঠিকানা: {doc.buyer.address}</div>
-          <div>ক্রেতার BIN: {blank}</div>
+          <div>{s.muBuyerName}: <strong>{doc.buyer.name}</strong></div>
+          <div>{s.muBuyerAddress}: {doc.buyer.address}</div>
+          <div>{s.muBuyerBin}: {blank}</div>
         </div>
 
         <table className="mt-4 w-full border-collapse text-sm">
           <thead>
             <tr>
-              {["ক্রমিক", "পণ্য/সেবার বিবরণ", "পরিমাণ", "একক মূল্য", "মোট মূল্য", "সম্পূরক শুল্ক", "ভ্যাটের হার", "ভ্যাটের পরিমাণ"].map(
+              {[s.muColSl, s.muColDesc, s.muColQty, s.muColUnitPrice, s.muColTotal, s.muColSD, s.muColVatRate, s.muColVatAmt].map(
                 (h) => (
                   <th key={h} className="border border-black px-2 py-1 text-left font-semibold">
                     {h}
@@ -167,43 +171,43 @@ export default async function Mushak63Page({
           <table className="w-72 text-sm">
             <tbody>
               <tr>
-                <td className="py-0.5">মোট পণ্যমূল্য:</td>
+                <td className="py-0.5">{s.muGoodsTotal}:</td>
                 <td className="py-0.5 text-right">{money(doc.totals.goodsValuePoisha)}</td>
               </tr>
               {doc.totals.discountPoisha > 0 ? (
                 <tr>
-                  <td className="py-0.5">বাদ: ছাড়:</td>
+                  <td className="py-0.5">{s.muDiscountLess}:</td>
                   <td className="py-0.5 text-right">−{money(doc.totals.discountPoisha)}</td>
                 </tr>
               ) : null}
               {doc.totals.deliveryPoisha > 0 ? (
                 <tr>
-                  <td className="py-0.5">ডেলিভারি চার্জ:</td>
+                  <td className="py-0.5">{s.muDelivery}:</td>
                   <td className="py-0.5 text-right">{money(doc.totals.deliveryPoisha)}</td>
                 </tr>
               ) : null}
               {doc.totals.codFeePoisha > 0 ? (
                 <tr>
-                  <td className="py-0.5">COD ফি:</td>
+                  <td className="py-0.5">{s.muCodFee}:</td>
                   <td className="py-0.5 text-right">{money(doc.totals.codFeePoisha)}</td>
                 </tr>
               ) : null}
               {doc.totals.otherTaxPoisha > 0 ? (
                 <tr>
-                  <td className="py-0.5">অন্যান্য কর:</td>
+                  <td className="py-0.5">{s.muOtherTax}:</td>
                   <td className="py-0.5 text-right">{money(doc.totals.otherTaxPoisha)}</td>
                 </tr>
               ) : null}
               <tr>
-                <td className="py-0.5">ভ্যাটের পরিমাণ (মোট):</td>
+                <td className="py-0.5">{s.muVatTotal}:</td>
                 <td className="py-0.5 text-right">{money(doc.totals.vatPoisha)}</td>
               </tr>
               <tr>
-                <td className="py-0.5">ভ্যাট ব্যতীত মূল্য:</td>
+                <td className="py-0.5">{s.muExVat}:</td>
                 <td className="py-0.5 text-right">{money(doc.totals.valueExcludingVatPoisha)}</td>
               </tr>
               <tr className="border-t border-black font-bold">
-                <td className="py-1">সর্বমোট পরিশোধযোগ্য:</td>
+                <td className="py-1">{s.muTotalPayable}:</td>
                 <td className="py-1 text-right">{money(doc.totals.totalPayablePoisha)}</td>
               </tr>
             </tbody>
@@ -217,8 +221,8 @@ export default async function Mushak63Page({
         </div>
 
         <div className="mt-10 flex justify-between text-sm">
-          <span>ক্রেতার স্বাক্ষর: {blank}</span>
-          <span>বিক্রেতার স্বাক্ষর ও সিল: {blank}</span>
+          <span>{s.muBuyerSign}: {blank}</span>
+          <span>{s.muSellerSign}: {blank}</span>
         </div>
       </div>
     </main>

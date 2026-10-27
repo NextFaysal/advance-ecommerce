@@ -3,6 +3,7 @@
 // ManualTrxSubmission, CodSettlementRow). No data lives here: the page
 // loads records from the DB-backed stores in src/integrations/sandbox.
 import type { CodSettlementRow, CourierProviderName } from "@/integrations/courier";
+import type { Locale } from "@/i18n/locale";
 import type { ManualTrxSubmission } from "@/integrations/payment";
 import { normalizeTrxId, type SandboxPaymentAttempt } from "@/integrations/sandbox/store";
 
@@ -26,30 +27,54 @@ export function dhakaTime(iso: string): string {
   }).format(new Date(iso));
 }
 
-const METHOD_LABELS_BN: Record<string, string> = {
-  cod: "ক্যাশ অন ডেলিভারি (COD)",
-  bkash: "বিকাশ (bKash)",
-  nagad: "নগদ (Nagad)",
-  rocket: "রকেট (Rocket)",
-  upay: "উপায় (Upay)",
-  sslcommerz: "SSLCommerz",
-  aamarpay: "আমারপে (AamarPay)",
-  shurjopay: "সূর্যপে (ShurjoPay)",
-  stripe: "Stripe",
-  paypal: "PayPal",
-  manual_mobile_banking: "ম্যানুয়াল মোবাইল ব্যাংকিং",
+const METHOD_LABELS: Record<Locale, Record<string, string>> = {
+  bn: {
+    cod: "ক্যাশ অন ডেলিভারি (COD)",
+    bkash: "বিকাশ (bKash)",
+    nagad: "নগদ (Nagad)",
+    rocket: "রকেট (Rocket)",
+    upay: "উপায় (Upay)",
+    sslcommerz: "SSLCommerz",
+    aamarpay: "আমারপে (AamarPay)",
+    shurjopay: "সূর্যপে (ShurjoPay)",
+    stripe: "Stripe",
+    paypal: "PayPal",
+    manual_mobile_banking: "ম্যানুয়াল মোবাইল ব্যাংকিং",
+  },
+  en: {
+    cod: "Cash on Delivery (COD)",
+    bkash: "bKash",
+    nagad: "Nagad",
+    rocket: "Rocket",
+    upay: "Upay",
+    sslcommerz: "SSLCommerz",
+    aamarpay: "AamarPay",
+    shurjopay: "ShurjoPay",
+    stripe: "Stripe",
+    paypal: "PayPal",
+    manual_mobile_banking: "Manual mobile banking",
+  },
 };
 
-export function paymentMethodLabelBn(method: string): string {
-  return METHOD_LABELS_BN[method] ?? method;
+export function paymentMethodLabel(locale: Locale, method: string): string {
+  return METHOD_LABELS[locale][method] ?? method;
 }
 
-export const COURIER_LABELS_BN: Record<CourierProviderName, string> = {
-  steadfast: "স্টেডফাস্ট (Steadfast)",
-  pathao: "পাঠাও (Pathao)",
-  redx: "রেডএক্স (RedX)",
-  paperfly: "পেপারফ্লাই (Paperfly)",
-  ecourier: "ই-কুরিয়ার (eCourier)",
+export const COURIER_LABELS: Record<Locale, Record<CourierProviderName, string>> = {
+  bn: {
+    steadfast: "স্টেডফাস্ট (Steadfast)",
+    pathao: "পাঠাও (Pathao)",
+    redx: "রেডএক্স (RedX)",
+    paperfly: "পেপারফ্লাই (Paperfly)",
+    ecourier: "ই-কুরিয়ার (eCourier)",
+  },
+  en: {
+    steadfast: "Steadfast",
+    pathao: "Pathao",
+    redx: "RedX",
+    paperfly: "Paperfly",
+    ecourier: "eCourier",
+  },
 };
 
 // ---------------------------------------------------------------------------

@@ -21,6 +21,10 @@ import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { interpolate, pick, type Locale } from "../../../../src/i18n/locale";
+import { useLocale } from "../../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "../strings";
+import { formatOrderDateTime } from "../list-helpers";
 
 type Priority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
 
@@ -50,11 +54,11 @@ interface StaffRow {
   status: string;
 }
 
-const PRIORITY_LABEL: Record<Priority, string> = {
-  LOW: "কম",
-  NORMAL: "সাধারণ",
-  HIGH: "বেশি",
-  URGENT: "জরুরি",
+const PRIORITY_LABEL: Record<Priority, Record<Locale, string>> = {
+  LOW: { bn: "কম", en: "Low" },
+  NORMAL: { bn: "সাধারণ", en: "Normal" },
+  HIGH: { bn: "বেশি", en: "High" },
+  URGENT: { bn: "জরুরি", en: "Urgent" },
 };
 
 const PRIORITY_TONE: Record<Priority, "success" | "warning" | "danger" | "info" | "neutral"> = {
@@ -67,15 +71,9 @@ const PRIORITY_TONE: Record<Priority, "success" | "warning" | "danger" | "info" 
 const inputCls =
   "h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString("bn-BD", {
-    timeZone: "Asia/Dhaka",
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
-
 export function ManagementPanel({ orderId }: { orderId: string }) {
+  const { locale, t } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const [view, setView] = useState<ManagementView | null>(null);
   const [staff, setStaff] = useState<StaffRow[]>([]);
   const [staffFailed, setStaffFailed] = useState(false);
@@ -150,13 +148,13 @@ export function ManagementPanel({ orderId }: { orderId: string }) {
         error?: { message?: string };
       };
       if (!res.ok || !json.data) {
-        setError(json.error?.message ?? "সেভ করা যায়নি।");
+        setError(json.error?.message ?? s.mgSaveFail);
         return;
       }
       setSavedMsg(okMsg);
       await load();
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।");
+      setError(s.networkRetry);
     } finally {
       setBusy(false);
     }
@@ -166,14 +164,14 @@ export function ManagementPanel({ orderId }: { orderId: string }) {
   if (loadFailed) {
     return (
       <Card className="p-4">
-        <p className="text-small text-text-subtle">অর্ডার ব্যবস্থাপনার তথ্য লোড করা যায়নি।</p>
+        <p className="text-small text-text-subtle">{s.mgPanelLoadFail}</p>
       </Card>
     );
   }
   if (!view) {
     return (
       <Card className="p-4">
-        <p className="text-small text-text-subtle">লোড হচ্ছে…</p>
+        <p className="text-small text-text-subtle">{t.loading}</p>
       </Card>
     );
   }
@@ -186,9 +184,11 @@ export function ManagementPanel({ orderId }: { orderId: string }) {
   return (
     <Card className="p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-small font-semibold">অর্ডার ব্যবস্থাপনা</h3>
-        <Badge tone={PRIORITY_TONE[view.priority]}>অগ্রাধিকার: {PRIORITY_LABEL[view.priority]}</Badge>
-        {view.held && <Badge tone="danger">হোল্ডে আছে</Badge>}
+        <h3 className="text-small font-semibold">{s.mgPanelTitle}</h3>
+        <Badge tone={PRIORITY_TONE[view.priority]}>
+          {interpolate(s.mgPriorityBadge, { label: pick(locale, PRIORITY_LABEL[view.priority]) })}
+        </Badge>
+        {view.held && <Badge tone="danger">{s.mgHeldBadge}</Badge>}
       </div>
 
       {view.held && (
@@ -197,58 +197,54 @@ export function ManagementPanel({ orderId }: { orderId: string }) {
           className="mt-3 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 dark:border-rose-400/30 dark:bg-rose-500/10"
         >
           <p className="text-sm font-semibold text-rose-900 dark:text-rose-200">
-            ⏸ এই অর্ডার হোল্ডে আছে{view.heldAt ? ` — ${fmtDate(view.heldAt)} থেকে` : ""}
+            {s.mgHeldTitleBase}
+            {view.heldAt ? interpolate(s.mgHeldSince, { date: formatOrderDateTime(view.heldAt, locale) }) : ""}
           </p>
           <p className="mt-0.5 text-small text-rose-800 dark:text-rose-300">
-            কারণ: {view.heldReason ?? "—"}
+            {interpolate(s.tlReason, { reason: view.heldReason ?? "—" })}
           </p>
-          <p className="mt-1 text-caption text-rose-700 dark:text-rose-300">
-            হোল্ড শুধু একটি সতর্ক সংকেত — সিস্টেম স্ট্যাটাস বদল আটকায় না; অর্ডার নিয়ে এগোনোর আগে
-            কারণটি মিটিয়ে নিন।
-          </p>
+          <p className="mt-1 text-caption text-rose-700 dark:text-rose-300">{s.mgHeldNote}</p>
           <Button
             type="button"
             variant="outline"
             size="sm"
             className="mt-2"
             disabled={busy}
-            onClick={() => void patch({ held: false }, "হোল্ড তোলা হয়েছে।")}
+            onClick={() => void patch({ held: false }, s.mgHoldReleased)}
           >
-            হোল্ড তুলুন
+            {s.mgReleaseHold}
           </Button>
         </div>
       )}
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <label className="block">
-          <span className="mb-1 block text-caption font-medium text-text-subtle">দায়িত্বপ্রাপ্ত কর্মী</span>
+          <span className="mb-1 block text-caption font-medium text-text-subtle">{s.mgAssigneeLabel}</span>
           <select
             className={inputCls}
             value={assignedToId}
             onChange={(e) => setAssignedToId(e.target.value)}
             disabled={busy}
           >
-            <option value="">— অনির্ধারিত —</option>
+            <option value="">{s.mgUnassignedOpt}</option>
             {view.assignedToId &&
-              !staff.some((s) => s.id === view.assignedToId) && (
+              !staff.some((st) => st.id === view.assignedToId) && (
                 <option value={view.assignedToId}>
-                  {view.assigneeName ?? "বর্তমান দায়িত্বপ্রাপ্ত"}
+                  {view.assigneeName ?? s.mgCurrentAssignee}
                 </option>
               )}
-            {staff.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} ({s.role})
+            {staff.map((st) => (
+              <option key={st.id} value={st.id}>
+                {st.name} ({st.role})
               </option>
             ))}
           </select>
           {staffFailed && (
-            <span className="mt-1 block text-caption text-text-subtle">
-              কর্মী তালিকা লোড হয়নি (staff.view অনুমতি লাগতে পারে)।
-            </span>
+            <span className="mt-1 block text-caption text-text-subtle">{s.mgStaffFail}</span>
           )}
         </label>
         <label className="block">
-          <span className="mb-1 block text-caption font-medium text-text-subtle">অগ্রাধিকার</span>
+          <span className="mb-1 block text-caption font-medium text-text-subtle">{s.mgmtPriority}</span>
           <select
             className={inputCls}
             value={priority}
@@ -257,7 +253,7 @@ export function ManagementPanel({ orderId }: { orderId: string }) {
           >
             {(Object.keys(PRIORITY_LABEL) as Priority[]).map((p) => (
               <option key={p} value={p}>
-                {PRIORITY_LABEL[p]} ({p})
+                {pick(locale, PRIORITY_LABEL[p])} ({p})
               </option>
             ))}
           </select>
@@ -265,14 +261,12 @@ export function ManagementPanel({ orderId }: { orderId: string }) {
       </div>
 
       <label className="mt-3 block">
-        <span className="mb-1 block text-caption font-medium text-text-subtle">
-          ট্যাগ (কমা দিয়ে আলাদা করুন, সর্বোচ্চ ১০টি)
-        </span>
+        <span className="mb-1 block text-caption font-medium text-text-subtle">{s.mgTagsLabel}</span>
         <input
           className={inputCls}
           value={tagsText}
           onChange={(e) => setTagsText(e.target.value)}
-          placeholder="যেমন: জরুরি, আগে কল করুন"
+          placeholder={s.mgTagsPlaceholder}
           disabled={busy}
         />
       </label>
@@ -297,26 +291,26 @@ export function ManagementPanel({ orderId }: { orderId: string }) {
                 priority,
                 tags: tagsText
                   .split(",")
-                  .map((t) => t.trim())
+                  .map((tg) => tg.trim())
                   .filter(Boolean),
               },
-              "ব্যবস্থাপনা সেভ হয়েছে।",
+              s.mgSaved,
             )
           }
         >
-          {busy ? "সেভ হচ্ছে…" : "সেভ করুন"}
+          {busy ? t.saving : t.save}
         </Button>
       </div>
 
       {!view.held && (
         <div className="mt-4 border-t border-border pt-3">
-          <p className="text-small font-medium">অর্ডার হোল্ড করুন</p>
+          <p className="text-small font-medium">{s.mgHoldSectionTitle}</p>
           <div className="mt-2 flex flex-col gap-2 sm:flex-row">
             <input
               className={inputCls}
               value={holdReason}
               onChange={(e) => setHoldReason(e.target.value)}
-              placeholder="হোল্ডের কারণ (আবশ্যক)"
+              placeholder={s.mgHoldPlaceholder}
               disabled={busy}
             />
             <Button
@@ -324,22 +318,22 @@ export function ManagementPanel({ orderId }: { orderId: string }) {
               variant="destructive"
               disabled={busy || holdReason.trim().length === 0}
               onClick={() =>
-                void patch({ held: true, heldReason: holdReason.trim() }, "অর্ডার হোল্ড করা হয়েছে।")
+                void patch({ held: true, heldReason: holdReason.trim() }, s.mgHeldMsg)
               }
             >
-              হোল্ড করুন
+              {s.mgHoldBtn}
             </Button>
           </div>
         </div>
       )}
 
       <div className="mt-4 border-t border-border pt-3">
-        <p className="text-small font-medium">অভ্যন্তরীণ নোট</p>
+        <p className="text-small font-medium">{s.mgNotesTitle}</p>
         <textarea
           className="mt-2 min-h-[72px] w-full rounded-md border border-border bg-card px-3 py-2 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
           value={noteText}
           onChange={(e) => setNoteText(e.target.value)}
-          placeholder="শুধু কর্মীদের জন্য নোট লিখুন…"
+          placeholder={s.mgNotePlaceholder}
           disabled={busy}
         />
         <div className="mt-2 flex justify-end">
@@ -348,10 +342,10 @@ export function ManagementPanel({ orderId }: { orderId: string }) {
             variant="secondary"
             disabled={busy || noteText.trim().length === 0}
             onClick={() => {
-              void patch({ note: noteText.trim() }, "নোট যোগ হয়েছে।").then(() => setNoteText(""));
+              void patch({ note: noteText.trim() }, s.mgNoteAdded).then(() => setNoteText(""));
             }}
           >
-            নোট যোগ করুন
+            {s.mgNoteAdd}
           </Button>
         </div>
         {view.notes.length > 0 ? (
@@ -360,13 +354,13 @@ export function ManagementPanel({ orderId }: { orderId: string }) {
               <li key={n.id} className="rounded-md bg-surface-2 px-3 py-2">
                 <p className="whitespace-pre-wrap text-small leading-relaxed">{n.text}</p>
                 <p className="mt-1 text-caption text-text-subtle">
-                  {n.authorName ?? "সিস্টেম"} · {fmtDate(n.createdAt)}
+                  {n.authorName ?? s.mgSystem} · {formatOrderDateTime(n.createdAt, locale)}
                 </p>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="mt-2 text-caption text-text-subtle">এখনো কোনো নোট নেই।</p>
+          <p className="mt-2 text-caption text-text-subtle">{s.mgNoNotes}</p>
         )}
       </div>
 

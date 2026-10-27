@@ -44,21 +44,24 @@ import { formatBdt } from "../../../src/checkout/pricing";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
+import { interpolate, intlLocale, pick, type Locale } from "../../../src/i18n/locale";
+import { useLocale } from "../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "./strings";
 
 const inputCls =
   "h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
 const labelCls = "mb-1.5 block text-small font-medium text-text-main";
 
-const SHIPPING_OPTIONS: { value: ManualShippingMethod; label: string }[] = [
-  { value: "inside_dhaka", label: "ঢাকার ভিতরে" },
-  { value: "outside_dhaka", label: "ঢাকার বাইরে" },
-  { value: "pickup", label: "পিকআপ (চার্জ নেই)" },
+const SHIPPING_OPTIONS: { value: ManualShippingMethod; label: Record<Locale, string> }[] = [
+  { value: "inside_dhaka", label: { bn: "ঢাকার ভিতরে", en: "Inside Dhaka" } },
+  { value: "outside_dhaka", label: { bn: "ঢাকার বাইরে", en: "Outside Dhaka" } },
+  { value: "pickup", label: { bn: "পিকআপ (চার্জ নেই)", en: "Pickup (no charge)" } },
 ];
 
-const PAYMENT_LABEL: Record<string, string> = {
-  cod: "ক্যাশ অন ডেলিভারি",
-  bkash: "বিকাশ",
-  nagad: "নগদ",
+const PAYMENT_LABEL: Record<string, Record<Locale, string>> = {
+  cod: { bn: "ক্যাশ অন ডেলিভারি", en: "Cash on delivery" },
+  bkash: { bn: "বিকাশ", en: "bKash" },
+  nagad: { bn: "নগদ", en: "Nagad" },
 };
 
 interface VariantHit {
@@ -111,9 +114,9 @@ function takaToPoisha(raw: string): number | null {
   return Math.round(n * 100);
 }
 
-function variantLabel(attributes: Record<string, string>): string {
+function variantLabel(attributes: Record<string, string>, locale: Locale): string {
   const values = Object.values(attributes).filter((v) => v.trim() !== "");
-  return values.length > 0 ? values.join(" / ") : "স্ট্যান্ডার্ড";
+  return values.length > 0 ? values.join(" / ") : pick(locale, ORDER_STRINGS).mobVariantDefault;
 }
 
 function newIdempotencyKey(): string {
@@ -128,6 +131,10 @@ function newIdempotencyKey(): string {
 }
 
 export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Promise<void> }) {
+  const { locale, t } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
   // Customer + address
   const [phone, setPhone] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -359,7 +366,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
         {
           variantId: variant.id,
           productTitleBn: product.titleBn,
-          variantLabel: variantLabel(variant.attributes),
+          variantLabel: variantLabel(variant.attributes, locale),
           sku: variant.sku,
           catalogPricePoisha: variant.pricePoisha,
           stock: variant.stock,
@@ -414,11 +421,11 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
         if (cancelled) return;
         const draft = body?.data;
         if (!res.ok || !draft) {
-          setDraftMsg("ড্রাফটটি লোড করা যায়নি — তালিকা থেকে আবার চেষ্টা করুন।");
+          setDraftMsg(pick(localeRef.current, ORDER_STRINGS).mobDraftLoadFail);
           return;
         }
         if (draft.status !== "OPEN") {
-          setDraftMsg("এই ড্রাফটটি আর খোলা নেই (রূপান্তরিত বা বাতিল) — নতুন করে শুরু করুন।");
+          setDraftMsg(pick(localeRef.current, ORDER_STRINGS).mobDraftClosed);
           return;
         }
         const p = draft.payload as {
@@ -451,7 +458,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                 const price = typeof i.unitPricePoisha === "number" ? i.unitPricePoisha : 0;
                 return {
                   variantId: i.variantId,
-                  productTitleBn: "ড্রাফট থেকে নেওয়া পণ্য",
+                  productTitleBn: pick(localeRef.current, ORDER_STRINGS).mobDraftFromProduct,
                   variantLabel: "",
                   sku: i.variantId,
                   catalogPricePoisha: price,
@@ -485,14 +492,12 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
           setGiftMessage(p.giftMessage);
         }
         setDraftId(draft.id);
-        setDraftMsg(
-          `ড্রাফট লোড হয়েছে — সাবমিট করলে এই ড্রাফটটি অর্ডারে রূপান্তরিত হবে; "ড্রাফট হিসেবে রাখুন" চাপলে সম্পাদিত অবস্থায় আবার সংরক্ষিত হবে।`,
-        );
+        setDraftMsg(pick(localeRef.current, ORDER_STRINGS).mobDraftLoaded);
         document
           .getElementById("manual-order-builder-form")
           ?.scrollIntoView({ behavior: "smooth", block: "start" });
       } catch {
-        if (!cancelled) setDraftMsg("ড্রাফট লোড করা যায়নি — নেটওয়ার্ক সমস্যা হতে পারে।");
+        if (!cancelled) setDraftMsg(pick(localeRef.current, ORDER_STRINGS).mobDraftNetFail);
       }
     })();
     return () => {
@@ -557,13 +562,18 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
       if (res.ok && body?.data) {
         setDraftId(body.data.id);
         setDraftMsg(
-          `ড্রাফট সংরক্ষিত হয়েছে${body.data.totalPreviewPoisha !== null ? ` — আনুমানিক মোট ${formatBdt(body.data.totalPreviewPoisha)}` : ""}। উপরের ড্রাফট তালিকা থেকে পরে আবার খুলতে পারবেন।`,
+          interpolate(s.mobDraftSaved, {
+            part:
+              body.data.totalPreviewPoisha !== null
+                ? interpolate(s.mobDraftSavedTotal, { total: formatBdt(body.data.totalPreviewPoisha) })
+                : "",
+          }),
         );
       } else {
-        setDraftMsg(body?.error ? `${body.error.code}: ${body.error.message}` : `HTTP ${res.status} — ড্রাফট সংরক্ষণ হয়নি।`);
+        setDraftMsg(body?.error ? `${body.error.code}: ${body.error.message}` : interpolate(s.mobDraftSaveHttp, { status: res.status }));
       }
     } catch {
-      setDraftMsg("নেটওয়ার্ক সমস্যা — ড্রাফট সংরক্ষণ করা যায়নি।");
+      setDraftMsg(s.mobDraftSaveNet);
     } finally {
       setDraftBusy(false);
     }
@@ -581,12 +591,12 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
   async function submitViaDraftConvert(activeDraftId: string) {
     for (const l of lines) {
       if (takaToPoisha(l.priceTaka) === null) {
-        setResult({ ok: false, text: `"${l.productTitleBn}" — একক দাম সঠিক টাকায় লিখুন।` });
+        setResult({ ok: false, text: interpolate(s.mobBadUnitPrice, { name: l.productTitleBn }) });
         return;
       }
     }
     if (overrideOn && takaToPoisha(overrideTaka) === null) {
-      setResult({ ok: false, text: "ডেলিভারি চার্জের override সঠিক টাকায় লিখুন, অথবা override বন্ধ করুন।" });
+      setResult({ ok: false, text: s.mobBadOverride });
       return;
     }
     const payload = buildPayload(false);
@@ -606,7 +616,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
           ok: false,
           text: saveBody?.error
             ? `${saveBody.error.code}: ${saveBody.error.message}`
-            : `HTTP ${saveRes.status} — ড্রাফট হালনাগাদ হয়নি, অর্ডার তৈরি হয়নি।`,
+            : interpolate(s.mobDraftUpdateHttp, { status: saveRes.status }),
         });
         return;
       }
@@ -625,18 +635,18 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
         const order = body.data.order;
         const parts = [
           body.meta?.convertedReplay
-            ? `এই ড্রাফটটি আগেই অর্ডারে রূপান্তরিত হয়েছে: ${order.orderNo} — মোট ${formatBdt(order.totalPoisha)}।`
-            : `ড্রাফট থেকে অর্ডার তৈরি হয়েছে: ${order.orderNo} — মোট ${formatBdt(order.totalPoisha)}।`,
+            ? interpolate(s.mobConvertedReplay, { orderNo: order.orderNo, total: formatBdt(order.totalPoisha) })
+            : interpolate(s.mobConverted, { orderNo: order.orderNo, total: formatBdt(order.totalPoisha) }),
         ];
         if (body.data.pricing) {
           parts.push(
-            `ডেলিভারি চার্জ ${formatBdt(body.data.pricing.shippingPoisha)}` +
+            interpolate(s.mobPricingShip, { shipping: formatBdt(body.data.pricing.shippingPoisha) }) +
               (body.data.pricing.discountPoisha > 0
-                ? `, কুপন ছাড় ${formatBdt(body.data.pricing.discountPoisha)}`
+                ? interpolate(s.mobPricingDiscount, { discount: formatBdt(body.data.pricing.discountPoisha) })
                 : ""),
           );
         }
-        parts.push("নিচের তালিকায় দেখুন।");
+        parts.push(s.mobSeeList);
         setResult({ ok: true, text: parts.join(" ") });
         setDraftId(null);
         setDraftMsg(null);
@@ -649,13 +659,13 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
           ok: false,
           text: body?.error
             ? `${body.error.code}: ${body.error.message}`
-            : `HTTP ${res.status} — ড্রাফট থেকে অর্ডার তৈরি হয়নি।`,
+            : interpolate(s.mobConvertHttp, { status: res.status }),
         });
       }
     } catch {
       setResult({
         ok: false,
-        text: "নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি। আবার চেষ্টা করুন; রূপান্তর idempotent, ডুপ্লিকেট অর্ডার হবে না।",
+        text: s.mobConvertNet,
       });
     } finally {
       setBusy(false);
@@ -675,14 +685,14 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
     for (const l of lines) {
       const unit = takaToPoisha(l.priceTaka);
       if (unit === null) {
-        setResult({ ok: false, text: `"${l.productTitleBn}" — একক দাম সঠিক টাকায় লিখুন।` });
+        setResult({ ok: false, text: interpolate(s.mobBadUnitPrice, { name: l.productTitleBn }) });
         return;
       }
       items.push({ variantId: l.variantId, quantity: l.quantity, unitPricePoisha: unit });
     }
     const overridePoisha = overrideOn ? takaToPoisha(overrideTaka) : undefined;
     if (overrideOn && overridePoisha === null) {
-      setResult({ ok: false, text: "ডেলিভারি চার্জের override সঠিক টাকায় লিখুন, অথবা override বন্ধ করুন।" });
+      setResult({ ok: false, text: s.mobBadOverride });
       return;
     }
     const parsed = manualOrderSchema.safeParse({
@@ -735,21 +745,21 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
         const order = body.data.order;
         const parts = [
           body.meta?.idempotentReplay
-            ? `এই অর্ডারটি আগেই তৈরি হয়েছে: ${order.orderNo} — মোট ${formatBdt(order.totalPoisha)}।`
-            : `অর্ডার তৈরি হয়েছে: ${order.orderNo} — মোট ${formatBdt(order.totalPoisha)}।`,
+            ? interpolate(s.mobCreatedReplay, { orderNo: order.orderNo, total: formatBdt(order.totalPoisha) })
+            : interpolate(s.mobCreated, { orderNo: order.orderNo, total: formatBdt(order.totalPoisha) }),
         ];
         if (body.meta?.pricing) {
           parts.push(
-            `ডেলিভারি চার্জ ${formatBdt(body.meta.pricing.shippingPoisha)}` +
+            interpolate(s.mobPricingShip, { shipping: formatBdt(body.meta.pricing.shippingPoisha) }) +
               (body.meta.pricing.discountPoisha > 0
-                ? `, কুপন ছাড় ${formatBdt(body.meta.pricing.discountPoisha)}`
+                ? interpolate(s.mobPricingDiscount, { discount: formatBdt(body.meta.pricing.discountPoisha) })
                 : ""),
           );
         }
         if (body.meta?.couponStatus === "rejected") {
-          parts.push(`কুপন প্রয়োগ হয়নি: ${body.meta.couponReasonBn ?? "কুপনটি ব্যবহার করা যাচ্ছে না।"}`);
+          parts.push(interpolate(s.mobCouponRejected, { reason: body.meta.couponReasonBn ?? s.mobCouponFallback }));
         }
-        parts.push("নিচের তালিকায় দেখুন।");
+        parts.push(s.mobSeeList);
         setResult({ ok: true, text: parts.join(" ") });
         idemRef.current = null;
         // Ready for the next call: keep caller + address, clear the cart.
@@ -762,13 +772,13 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
           ok: false,
           text: body?.error
             ? `${body.error.code}: ${body.error.message}`
-            : `HTTP ${res.status} — অর্ডার তৈরি হয়নি।`,
+            : interpolate(s.mobCreateHttp, { status: res.status }),
         });
       }
     } catch {
       setResult({
         ok: false,
-        text: "নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি। আবার চেষ্টা করুন; একই চেষ্টায় ডুপ্লিকেট অর্ডার হবে না।",
+        text: s.mobCreateNet,
       });
     } finally {
       setBusy(false);
@@ -784,16 +794,16 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
       {draftId && (
         <p role="status" className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-small font-medium text-amber-800">
           <Icon name="info" size={16} className="shrink-0" />
-          আপনি একটি সংরক্ষিত ড্রাফট সম্পাদনা করছেন — সাবমিট করলে এই ড্রাফটটিই অর্ডারে রূপান্তরিত হবে।
+          {s.mobDraftBanner}
         </p>
       )}
 
       {/* Customer + address */}
-      <section aria-label="গ্রাহক ও ঠিকানা" className="rounded-lg border border-border bg-surface-2/50 p-4">
-        <h3 className="text-small font-bold">১. গ্রাহক ও ঠিকানা</h3>
+      <section aria-label={s.mobSec1Aria} className="rounded-lg border border-border bg-surface-2/50 p-4">
+        <h3 className="text-small font-bold">{s.mobSec1}</h3>
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div>
-            <label className={labelCls} htmlFor="mob-phone">ফোন</label>
+            <label className={labelCls} htmlFor="mob-phone">{t.phone}</label>
             <input
               id="mob-phone"
               value={phone}
@@ -805,43 +815,43 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
             />
           </div>
           <div>
-            <label className={labelCls} htmlFor="mob-name">গ্রাহকের নাম</label>
+            <label className={labelCls} htmlFor="mob-name">{s.mobNameLabel}</label>
             <input
               id="mob-name"
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="নাম"
+              placeholder={s.mobNamePlaceholder}
               required
               className={inputCls}
             />
           </div>
           <div>
-            <label className={labelCls} htmlFor="mob-division">বিভাগ</label>
-            <input id="mob-division" value={division} onChange={(e) => setDivision(e.target.value)} placeholder="বিভাগ" required className={inputCls} />
+            <label className={labelCls} htmlFor="mob-division">{s.mobDivision}</label>
+            <input id="mob-division" value={division} onChange={(e) => setDivision(e.target.value)} placeholder={s.mobDivision} required className={inputCls} />
           </div>
           <div>
-            <label className={labelCls} htmlFor="mob-district">জেলা</label>
-            <input id="mob-district" value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="জেলা" required className={inputCls} />
+            <label className={labelCls} htmlFor="mob-district">{s.mobDistrict}</label>
+            <input id="mob-district" value={district} onChange={(e) => setDistrict(e.target.value)} placeholder={s.mobDistrict} required className={inputCls} />
           </div>
           <div>
-            <label className={labelCls} htmlFor="mob-upazila">উপজেলা</label>
-            <input id="mob-upazila" value={upazila} onChange={(e) => setUpazila(e.target.value)} placeholder="উপজেলা" required className={inputCls} />
+            <label className={labelCls} htmlFor="mob-upazila">{s.mobUpazila}</label>
+            <input id="mob-upazila" value={upazila} onChange={(e) => setUpazila(e.target.value)} placeholder={s.mobUpazila} required className={inputCls} />
           </div>
           <div>
-            <label className={labelCls} htmlFor="mob-address">পুরো ঠিকানা</label>
-            <input id="mob-address" value={addressLine} onChange={(e) => setAddressLine(e.target.value)} placeholder="বাসা/হোল্ডিং/এলাকা" required className={inputCls} />
+            <label className={labelCls} htmlFor="mob-address">{s.mobAddressLabel}</label>
+            <input id="mob-address" value={addressLine} onChange={(e) => setAddressLine(e.target.value)} placeholder={s.mobAddressPlaceholder} required className={inputCls} />
           </div>
         </div>
 
         {/* Lookup outcome */}
         {lookupState === "searching" && (
-          <p role="status" className="mt-3 text-small text-text-muted">গ্রাহক খোঁজা হচ্ছে…</p>
+          <p role="status" className="mt-3 text-small text-text-muted">{s.mobLookupSearching}</p>
         )}
         {lookupState === "notfound" && (
-          <p role="status" className="mt-3 text-small text-text-muted">এই নম্বরে আগের কোনো গ্রাহক পাওয়া যায়নি — নতুন গ্রাহক হিসেবে অর্ডার তৈরি হবে।</p>
+          <p role="status" className="mt-3 text-small text-text-muted">{s.mobLookupNotFound}</p>
         )}
         {lookupState === "unavailable" && (
-          <p role="status" className="mt-3 text-small text-text-muted">গ্রাহক খোঁজা যাচ্ছে না (customers.view অনুমতি লাগতে পারে) — ফর্মটি হাতে পূরণ করে এগিয়ে যান।</p>
+          <p role="status" className="mt-3 text-small text-text-muted">{s.mobLookupUnavailable}</p>
         )}
         {lookupState === "found" && customer && (
           <div className="mt-3 rounded-md border border-brand-200 bg-brand-50/70 px-3.5 py-3">
@@ -853,7 +863,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                 <Icon name="user" size={20} />
               </span>
               <div className="min-w-0">
-                <p className="text-small font-bold text-brand-800">আগের গ্রাহক: {customer.name}</p>
+                <p className="text-small font-bold text-brand-800">{interpolate(s.mobPrevCustomer, { name: customer.name })}</p>
                 <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-caption text-text-muted">
                   <span className="inline-flex items-center gap-1">
                     <Icon name="phone" size={12} />
@@ -868,10 +878,10 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
               </div>
             </div>
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
-              <Badge tone="info">মোট অর্ডার {customer.totalOrders}টি</Badge>
-              <Badge tone="neutral">সর্বমোট কেনাকাটা {formatBdt(customer.lifetimeValuePoisha)}</Badge>
-              {customer.blocked && <Badge tone="danger">ব্লক করা</Badge>}
-              {addressPrefilled && <Badge tone="success">সর্বশেষ অর্ডারের ঠিকানা বসানো হয়েছে</Badge>}
+              <Badge tone="info">{interpolate(s.mobTotalOrders, { n: customer.totalOrders })}</Badge>
+              <Badge tone="neutral">{interpolate(s.mobLifetime, { amount: formatBdt(customer.lifetimeValuePoisha) })}</Badge>
+              {customer.blocked && <Badge tone="danger">{s.mobBlocked}</Badge>}
+              {addressPrefilled && <Badge tone="success">{s.mobAddrPrefilled}</Badge>}
             </div>
             {recentOrders.length > 0 && (
               <ul className="mt-2 space-y-1 text-small text-text-muted">
@@ -882,7 +892,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                     </a>
                     <span>{o.status}</span>
                     <span className="font-mono tabular-nums">{formatBdt(o.totalPoisha)}</span>
-                    <span>{new Date(o.createdAt).toLocaleDateString("bn-BD")}</span>
+                    <span>{new Date(o.createdAt).toLocaleDateString(intlLocale(locale))}</span>
                   </li>
                 ))}
               </ul>
@@ -892,8 +902,8 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
       </section>
 
       {/* Items */}
-      <section aria-label="পণ্য" className="rounded-lg border border-border bg-surface-2/50 p-4">
-        <h3 className="text-small font-bold">২. পণ্য</h3>
+      <section aria-label={s.mobSec2Aria} className="rounded-lg border border-border bg-surface-2/50 p-4">
+        <h3 className="text-small font-bold">{s.mobSec2}</h3>
         <div className="relative mt-3">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle">
             <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
@@ -901,17 +911,17 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="পণ্যের নাম বা SKU লিখে খুঁজুন…"
-            aria-label="পণ্য খুঁজুন"
+            placeholder={s.mobSearchPlaceholder}
+            aria-label={s.mobSearchAria}
             className={`${inputCls} pl-9`}
           />
         </div>
-        {searching && <p role="status" className="mt-2 text-small text-text-muted">খোঁজা হচ্ছে…</p>}
+        {searching && <p role="status" className="mt-2 text-small text-text-muted">{s.mobSearching}</p>}
         {searchFailed && (
-          <p role="alert" className="mt-2 text-small text-rose-600">পণ্য খোঁজা যাচ্ছে না — products.view অনুমতি বা নেটওয়ার্ক সমস্যা হতে পারে।</p>
+          <p role="alert" className="mt-2 text-small text-rose-600">{s.mobSearchFail}</p>
         )}
         {!searching && query.trim().length >= 2 && !searchFailed && hits.length === 0 && (
-          <p role="status" className="mt-2 text-small text-text-muted">কোনো পণ্য পাওয়া যায়নি।</p>
+          <p role="status" className="mt-2 text-small text-text-muted">{s.mobNoProduct}</p>
         )}
         {hits.length > 0 && (
           <ul className="mt-3 space-y-3">
@@ -927,22 +937,22 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                     const added = lines.some((l) => l.variantId === v.id);
                     return (
                       <li key={v.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2 text-small">
-                        <span className="font-medium">{variantLabel(v.attributes)}</span>
+                        <span className="font-medium">{variantLabel(v.attributes, locale)}</span>
                         <span className="font-mono text-caption text-text-muted">{v.sku}</span>
                         <span className="font-mono tabular-nums">{formatBdt(v.pricePoisha)}</span>
                         {out ? (
-                          <Badge tone="danger">স্টক নেই</Badge>
+                          <Badge tone="danger">{s.mobNoStock}</Badge>
                         ) : (
-                          <span className="text-caption text-text-muted">স্টক {v.stock}</span>
+                          <span className="text-caption text-text-muted">{interpolate(s.mobStock, { n: v.stock })}</span>
                         )}
-                        {!v.isActive && <Badge tone="neutral">নিষ্ক্রিয়</Badge>}
+                        {!v.isActive && <Badge tone="neutral">{s.mobInactive}</Badge>}
                         <button
                           type="button"
                           disabled={out || !v.isActive}
                           onClick={() => addLine(p, v)}
                           className="ml-auto min-h-[36px] rounded-md bg-brand-600 px-3 text-small font-semibold text-white transition motion-fast hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-text-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                         >
-                          {added ? "আরও একটা যোগ করুন" : "যোগ করুন"}
+                          {added ? s.mobAddMore : t.add}
                         </button>
                       </li>
                     );
@@ -956,7 +966,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
         {/* Chosen lines */}
         {lines.length === 0 ? (
           <p className="mt-4 rounded-md border border-dashed border-border px-3.5 py-3 text-small text-text-muted">
-            এখনো কোনো পণ্য যোগ হয়নি — উপরে খুঁজে পণ্য যোগ করুন।
+            {s.mobNoLines}
           </p>
         ) : (
           <ul className="mt-4 space-y-2.5">
@@ -969,22 +979,22 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-small font-semibold">{l.productTitleBn}{l.variantLabel ? ` — ${l.variantLabel}` : ""}</p>
                       <p className="text-caption text-text-muted">
-                        <span className="font-mono">{l.sku}</span> · ক্যাটালগ দাম {formatBdt(l.catalogPricePoisha)} · {l.stock >= 0 ? `স্টক ${l.stock}` : "স্টক — (ড্রাফট থেকে; সাবমিটে যাচাই হবে)"}
-                        {overridden && <span className="ml-1 font-semibold text-amber-600">কর্মীর দাম — নোটে লেখা থাকবে</span>}
+                        <span className="font-mono">{l.sku}</span> · {interpolate(s.mobCatalogPrice, { price: formatBdt(l.catalogPricePoisha) })} · {l.stock >= 0 ? interpolate(s.mobStock, { n: l.stock }) : s.mobStockDraft}
+                        {overridden && <span className="ml-1 font-semibold text-amber-600">{s.mobStaffPrice}</span>}
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => removeLine(l.variantId)}
-                      aria-label={`${l.productTitleBn} সরান`}
+                      aria-label={interpolate(s.mobRemoveAria, { name: l.productTitleBn })}
                       className="min-h-[36px] rounded-md border border-border px-3 text-small font-semibold text-rose-600 transition motion-fast hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
-                      সরান
+                      {s.mobRemove}
                     </button>
                   </div>
                   <div className="mt-2.5 grid grid-cols-2 gap-3 sm:max-w-sm">
                     <div>
-                      <label className={labelCls} htmlFor={`mob-qty-${l.variantId}`}>পরিমাণ</label>
+                      <label className={labelCls} htmlFor={`mob-qty-${l.variantId}`}>{t.quantity}</label>
                       <input
                         id={`mob-qty-${l.variantId}`}
                         type="number"
@@ -997,7 +1007,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                       />
                     </div>
                     <div>
-                      <label className={labelCls} htmlFor={`mob-price-${l.variantId}`}>একক দাম (টাকা)</label>
+                      <label className={labelCls} htmlFor={`mob-price-${l.variantId}`}>{s.mobUnitPriceLabel}</label>
                       <input
                         id={`mob-price-${l.variantId}`}
                         type="number"
@@ -1018,11 +1028,11 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
 
       {/* Delivery + payment + totals */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_340px]">
-        <section aria-label="ডেলিভারি ও পেমেন্ট" className="rounded-lg border border-border bg-surface-2/50 p-4">
-          <h3 className="text-small font-bold">৩. ডেলিভারি ও পেমেন্ট</h3>
+        <section aria-label={s.mobSec3Aria} className="rounded-lg border border-border bg-surface-2/50 p-4">
+          <h3 className="text-small font-bold">{s.mobSec3}</h3>
           <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className={labelCls} htmlFor="mob-shipping">ডেলিভারি পদ্ধতি</label>
+              <label className={labelCls} htmlFor="mob-shipping">{s.mobShippingLabel}</label>
               <select
                 id="mob-shipping"
                 value={shippingMethod}
@@ -1031,13 +1041,13 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
               >
                 {SHIPPING_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
-                    {o.label} — {formatBdt(manualShippingPoisha(o.value))}
+                    {pick(locale, o.label)} — {formatBdt(manualShippingPoisha(o.value))}
                   </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className={labelCls} htmlFor="mob-pay">পেমেন্ট</label>
+              <label className={labelCls} htmlFor="mob-pay">{s.mobPaymentLabel}</label>
               <select
                 id="mob-pay"
                 value={paymentMethod}
@@ -1045,7 +1055,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                 className={inputCls}
               >
                 {Object.entries(PAYMENT_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
+                  <option key={value} value={value}>{pick(locale, label)}</option>
                 ))}
               </select>
             </div>
@@ -1057,7 +1067,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                   onChange={(e) => setOverrideOn(e.target.checked)}
                   className="h-4 w-4 rounded accent-brand-600"
                 />
-                নিজে ডেলিভারি চার্জ বসান (override) — যেমন ফ্রি ডেলিভারির প্রতিশ্রুতি দিলে ০ বসান; নোটে লেখা থাকবে
+                {s.mobOverrideLabel}
               </label>
               {overrideOn && (
                 <input
@@ -1066,46 +1076,46 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                   type="number"
                   min={0}
                   step="0.01"
-                  placeholder="ডেলিভারি চার্জ (টাকা)"
-                  aria-label="ডেলিভারি চার্জ override (টাকা)"
+                  placeholder={s.mobOverridePlaceholder}
+                  aria-label={s.mobOverrideAria}
                   className={inputCls}
                 />
               )}
             </div>
             <div>
-              <label className={labelCls} htmlFor="mob-coupon">কুপন কোড (ঐচ্ছিক)</label>
+              <label className={labelCls} htmlFor="mob-coupon">{s.mobCouponLabel}</label>
               <input
                 id="mob-coupon"
                 value={couponCode}
                 onChange={(e) => setCouponCode(e.target.value)}
-                placeholder="যেমন: WELCOME10"
+                placeholder={s.mobCouponPlaceholder}
                 className={inputCls}
               />
-              <p className="mt-1 text-caption text-text-subtle">কুপন সার্ভারে যাচাই হয় — ফলাফল তৈরি হওয়ার পর নিচে দেখানো হবে।</p>
+              <p className="mt-1 text-caption text-text-subtle">{s.mobCouponNote}</p>
             </div>
             <div>
-              <label className={labelCls} htmlFor="mob-reseller">রিসেলার কোড (ঐচ্ছিক)</label>
+              <label className={labelCls} htmlFor="mob-reseller">{s.mobResellerLabel}</label>
               <input
                 id="mob-reseller"
                 value={resellerCode}
                 onChange={(e) => setResellerCode(e.target.value)}
-                placeholder="যেমন: TESTAB24"
+                placeholder={s.mobResellerPlaceholder}
                 className={inputCls}
               />
             </div>
             {slots.length > 0 && (
               <div>
-                <label className={labelCls} htmlFor="mob-slot">ডেলিভারির সময় (ঐচ্ছিক)</label>
+                <label className={labelCls} htmlFor="mob-slot">{s.mobSlotLabel}</label>
                 <select
                   id="mob-slot"
                   value={deliverySlotId}
                   onChange={(e) => setDeliverySlotId(e.target.value)}
                   className={inputCls}
                 >
-                  <option value="">যেকোনো সময়</option>
-                  {slots.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.labelBn} / {s.labelEn}
+                  <option value="">{s.mobAnyTime}</option>
+                  {slots.map((slot) => (
+                    <option key={slot.id} value={slot.id}>
+                      {locale === "bn" ? slot.labelBn : slot.labelEn}
                     </option>
                   ))}
                 </select>
@@ -1119,43 +1129,43 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                   onChange={(e) => setGiftOn(e.target.checked)}
                   className="h-4 w-4 rounded accent-brand-600"
                 />
-                উপহার হিসেবে পাঠানো হবে 🎁
+                {s.mobGiftLabel}
               </label>
               {giftOn && (
                 <input
                   value={giftMessage}
                   onChange={(e) => setGiftMessage(e.target.value)}
                   maxLength={500}
-                  placeholder="উপহারের বার্তা (ঐচ্ছিক)"
-                  aria-label="উপহারের বার্তা"
+                  placeholder={s.mobGiftPlaceholder}
+                  aria-label={s.mobGiftAria}
                   className={inputCls}
                 />
               )}
             </div>
             <div className="sm:col-span-2">
-              <label className={labelCls} htmlFor="mob-note">নোট (ঐচ্ছিক)</label>
+              <label className={labelCls} htmlFor="mob-note">{s.mobNoteLabel}</label>
               <input
                 id="mob-note"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="নোট"
+                placeholder={s.mobNotePlaceholder}
                 className={inputCls}
               />
             </div>
           </div>
         </section>
 
-        <aside aria-label="অর্ডার সারাংশ" className="rounded-lg border border-border bg-card p-4 shadow-card lg:sticky lg:top-5 lg:self-start">
+        <aside aria-label={s.mobSummary} className="rounded-lg border border-border bg-card p-4 shadow-card lg:sticky lg:top-5 lg:self-start">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-small font-bold">অর্ডার সারাংশ</h3>
-            <Badge tone="warning">আনুমানিক</Badge>
+            <h3 className="text-small font-bold">{s.mobSummary}</h3>
+            <Badge tone="warning">{s.mobEstimateBadge}</Badge>
           </div>
 
           {/* Live line items — per-line totals from the same typed
               prices the subtotal below sums (no new evaluator). */}
           {lines.length === 0 ? (
             <p className="mt-3 rounded-md border border-dashed border-border px-3 py-2.5 text-caption text-text-muted">
-              এখনো কোনো পণ্য যোগ হয়নি।
+              {s.mobNoLinesShort}
             </p>
           ) : (
             <ul className="mt-3 divide-y divide-border">
@@ -1171,7 +1181,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                         </span>
                         <span className="text-caption text-text-muted">
                           {unit === null ? (
-                            <span className="font-medium text-rose-600">একক দাম ঠিক করুন</span>
+                            <span className="font-medium text-rose-600">{s.mobFixUnitPrice}</span>
                           ) : (
                             <>
                               {l.quantity} × {formatBdt(unit)}
@@ -1191,30 +1201,29 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
 
           <dl className="mt-3 space-y-2 text-small">
             <div className="flex items-center justify-between">
-              <dt className="text-text-muted">পণ্যের মোট</dt>
+              <dt className="text-text-muted">{s.mobItemsTotal}</dt>
               <dd className="font-mono font-semibold tabular-nums">{formatBdt(subtotalPoisha)}</dd>
             </div>
             <div className="flex items-center justify-between">
-              <dt className="text-text-muted">ডেলিভারি চার্জ{overrideOn ? " (override)" : ""}</dt>
+              <dt className="text-text-muted">{s.mobDeliveryChargeLabel}{overrideOn ? " (override)" : ""}</dt>
               <dd className="font-mono font-semibold tabular-nums">{formatBdt(shippingPoisha)}</dd>
             </div>
             {couponCode.trim() !== "" && (
               <div className="flex items-center justify-between gap-2">
-                <dt className="text-text-muted">কুপন ({couponCode.trim()})</dt>
-                <dd className="text-caption text-text-muted">ছাড় সার্ভারে যাচাই হবে</dd>
+                <dt className="text-text-muted">{interpolate(s.mobCouponRow, { code: couponCode.trim() })}</dt>
+                <dd className="text-caption text-text-muted">{s.mobCouponServerCheck}</dd>
               </div>
             )}
             <div className="flex items-center justify-between border-t border-border pt-2">
-              <dt className="font-semibold">মোট</dt>
+              <dt className="font-semibold">{t.total}</dt>
               <dd className="font-mono text-base font-bold tabular-nums">{formatBdt(estimatedTotalPoisha)}</dd>
             </div>
           </dl>
           <p className="mt-2 text-caption leading-relaxed text-text-subtle">
-            কুপন ছাড় থাকলে চূড়ান্ত মোট আরও কম হবে — সার্ভারের হিসাবই চূড়ান্ত, তৈরি হওয়ার পর নিচে দেখানো হবে।
-            অগ্রিম প্রযোজ্য হলে তা সার্ভারের নিয়মেই নির্ধারিত হয় — এই ফর্মে আগাম দেখানো যায় না।
+            {s.mobFinalNote}
           </p>
           <Button type="submit" variant="primary" className="mt-4 w-full" disabled={busy || lines.length === 0}>
-            {busy ? "তৈরি হচ্ছে…" : draftId ? "ড্রাফট থেকে অর্ডার তৈরি করুন" : "ম্যানুয়াল অর্ডার তৈরি করুন"}
+            {busy ? s.mobSubmitBusy : draftId ? s.mobSubmitDraft : s.mobSubmit}
           </Button>
           <Button
             type="button"
@@ -1223,10 +1232,10 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
             disabled={draftBusy || busy}
             onClick={() => void onSaveDraft()}
           >
-            {draftBusy ? "সংরক্ষণ হচ্ছে…" : draftId ? "ড্রাফট হালনাগাদ রাখুন" : "ড্রাফট হিসেবে রাখুন"}
+            {draftBusy ? s.mobSaveDraftBusy : draftId ? s.mobUpdateDraft : s.mobKeepDraft}
           </Button>
           <p className="mt-2 text-caption leading-relaxed text-text-subtle">
-            ড্রাফটে কোনো অর্ডার নম্বর বা স্টক রিজার্ভ হয় না — অর্ধেক ফর্মও রেখে দেওয়া যায়, পরে ড্রাফট তালিকা থেকে খুলে শেষ করা যায়।
+            {s.mobDraftNote}
           </p>
           {draftMsg && (
             <p role="status" className="mt-2 rounded-md bg-brand-50 px-3 py-2 text-caption leading-relaxed text-brand-800">

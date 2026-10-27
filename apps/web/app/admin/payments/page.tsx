@@ -10,15 +10,18 @@ import type { PaymentStatus } from "@/integrations/payment";
 import { listAttempts } from "@/integrations/sandbox/db-store";
 import { listManualTrx } from "@/integrations/sandbox/manual-trx";
 import { buildCodSettlementReport } from "@/integrations/sandbox/cod-settlement";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
 import {
-  COURIER_LABELS_BN,
+  COURIER_LABELS,
   dhakaTime,
   dhakaYmd,
-  paymentMethodLabelBn,
+  paymentMethodLabel,
   summarizeCodByProvider,
   summarizeTransactions,
   totalCodOutstandingPoisha,
 } from "./lib";
+import { PAYMENTS_STRINGS } from "./strings";
 import { ManualTrxReviewQueue } from "./review-queue";
 
 // Admin > Payments — real data (wired 2026-10-25).
@@ -35,28 +38,30 @@ import { ManualTrxReviewQueue } from "./review-queue";
 
 export const dynamic = "force-dynamic";
 
-const PAYMENT_STATUS_META: Record<
-  PaymentStatus,
-  { labelBn: string; labelEn: string; tone: "warning" | "info" | "success" | "danger" | "brand" }
-> = {
-  UNPAID: { labelBn: "অপরিশোধিত", labelEn: "UNPAID", tone: "warning" },
-  PARTIAL: { labelBn: "আংশিক পরিশোধ", labelEn: "PARTIAL", tone: "info" },
-  PAID: { labelBn: "পরিশোধিত", labelEn: "PAID", tone: "success" },
-  FAILED: { labelBn: "ব্যর্থ", labelEn: "FAILED", tone: "danger" },
-  REFUNDED: { labelBn: "ফেরত দেওয়া", labelEn: "REFUNDED", tone: "info" },
-  PARTIALLY_REFUNDED: { labelBn: "আংশিক ফেরত", labelEn: "PARTIALLY_REFUNDED", tone: "brand" },
+const PAYMENT_STATUS_TONE: Record<PaymentStatus, "warning" | "info" | "success" | "danger" | "brand"> = {
+  UNPAID: "warning",
+  PARTIAL: "info",
+  PAID: "success",
+  FAILED: "danger",
+  REFUNDED: "info",
+  PARTIALLY_REFUNDED: "brand",
 };
 
-function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
-  const s = PAYMENT_STATUS_META[status];
-  return (
-    <Badge tone={s.tone}>
-      {s.labelBn} ({s.labelEn})
-    </Badge>
-  );
-}
+const PAYMENT_STATUS_KEY: Record<PaymentStatus, keyof typeof PAYMENTS_STRINGS.bn> = {
+  UNPAID: "statusUnpaid",
+  PARTIAL: "statusPartial",
+  PAID: "statusPaid",
+  FAILED: "statusFailed",
+  REFUNDED: "statusRefunded",
+  PARTIALLY_REFUNDED: "statusPartiallyRefunded",
+};
 
 export default async function PaymentsPage() {
+  const locale = await getRequestLocale();
+  const t = pick(locale, PAYMENTS_STRINGS);
+  const PaymentStatusBadge = ({ status }: { status: PaymentStatus }) => (
+    <Badge tone={PAYMENT_STATUS_TONE[status]}>{t[PAYMENT_STATUS_KEY[status]]}</Badge>
+  );
   const [attempts, manualSubmissions, codReport] = await Promise.all([
     listAttempts(),
     listManualTrx(),
@@ -72,7 +77,7 @@ export default async function PaymentsPage() {
 
   const transactionRows = attempts.map((t) => ({
     order: <span className="font-mono tabular-nums">#{t.orderId}</span>,
-    method: paymentMethodLabelBn(t.method),
+    method: paymentMethodLabel(locale, t.method),
     amount: <Money poisha={t.amountPoisha} />,
     paid: <Money poisha={t.paidPoisha} />,
     status: <PaymentStatusBadge status={t.status} />,
@@ -85,7 +90,7 @@ export default async function PaymentsPage() {
   }));
 
   const codTableRows = codSummaries.map((s) => ({
-    courier: COURIER_LABELS_BN[s.provider],
+    courier: COURIER_LABELS[locale][s.provider],
     shipments: String(s.shipmentCount),
     collected: <Money poisha={s.collectedPoisha} />,
     charge: <Money poisha={s.courierChargePoisha} />,
@@ -104,34 +109,34 @@ export default async function PaymentsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="পেমেন্ট"
-        description="আসল ডেটা — পেমেন্ট প্রচেষ্টা, ম্যানুয়াল TrxID জমা ও ডেলিভারি হওয়া শিপমেন্টের COD হিসাব ডাটাবেস থেকে। গেটওয়ে বর্তমানে স্যান্ডবক্স মোডে চলে (লাইভ প্রোভাইডার অ্যাকাউন্ট যুক্ত হলে একই রেকর্ডে লাইভ লেনদেন আসবে)।"
+        title={t.title}
+        description={t.description}
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
-          label="আজ সংগৃহীত"
+          label={t.collectedToday}
           value={formatPoisha(txSummary.collectedTodayPoisha)}
-          delta="আজ, Asia/Dhaka"
+          delta={t.todayDhaka}
           icon={<Icon name="banknote" size={22} />}
         />
         <StatCard
-          label="ম্যানুয়াল যাচাই বাকি"
+          label={t.manualPending}
           value={String(pendingManualCount)}
-          delta="TrxID কিউ"
+          delta={t.trxQueue}
           deltaTone={pendingManualCount > 0 ? "down" : "up"}
           icon={<Icon name="clock" size={22} />}
         />
         <StatCard
-          label="COD বকেয়া (কুরিয়ারের কাছে)"
+          label={t.codOutstanding}
           value={formatPoisha(codOutstanding)}
-          delta="pending সেটেলমেন্ট"
+          delta={t.pendingSettlement}
           icon={<Icon name="truck" size={22} />}
         />
         <StatCard
-          label="আজ ফেরত"
+          label={t.refundedToday}
           value={formatPoisha(txSummary.refundedTodayPoisha)}
-          delta="আজ, Asia/Dhaka"
+          delta={t.todayDhaka}
           deltaTone="down"
           icon={<Icon name="rotate-ccw" size={22} />}
         />
@@ -139,68 +144,66 @@ export default async function PaymentsPage() {
 
       {attempts.length > 0 ? (
         <DataTable
-          caption="লেনদেন — payment_attempts টেবিল থেকে (নতুন থেকে পুরনো নয়, রেকর্ডের ক্রমে)"
+          caption={t.txCaption}
           columns={[
-            { key: "order", header: "অর্ডার" },
-            { key: "method", header: "পদ্ধতি" },
-            { key: "amount", header: "পরিমাণ" },
-            { key: "paid", header: "গৃহীত" },
-            { key: "status", header: "অবস্থা" },
-            { key: "trx", header: "গেটওয়ে TrxID" },
-            { key: "time", header: "সময় (Asia/Dhaka)" },
+            { key: "order", header: t.colOrder },
+            { key: "method", header: t.colMethod },
+            { key: "amount", header: t.colAmount },
+            { key: "paid", header: t.colPaid },
+            { key: "status", header: t.colStatus },
+            { key: "trx", header: t.colGatewayTrx },
+            { key: "time", header: t.colTime },
           ]}
           rows={transactionRows}
         />
       ) : (
         <Card className="shadow-card">
           <p className="text-sm text-text-muted">
-            এখনো কোনো পেমেন্ট প্রচেষ্টা রেকর্ড হয়নি — প্রথম অর্ডারের পেমেন্ট এলেই এখানে দেখা যাবে।
+            {t.noAttempts}
           </p>
         </Card>
       )}
 
       <section className="space-y-3">
-        <h2 className="text-h3">ম্যানুয়াল TrxID যাচাই কিউ</h2>
+        <h2 className="text-h3">{t.manualQueueTitle}</h2>
         <ManualTrxReviewQueue submissions={manualSubmissions} />
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-h3">COD সেটেলমেন্ট — কুরিয়ার অনুযায়ী</h2>
+        <h2 className="text-h3">{t.codTitle}</h2>
         <DataTable
-          caption="ডেলিভারি হওয়া শিপমেন্ট থেকে হিসাব করা — বিতর্কিত পরিমাণ আলাদা দেখানো হয়, বকেয়া/পরিশোধিত মোটে কখনো মেশানো হয় না। সেটেলমেন্ট অবস্থা শিপমেন্ট রেকর্ডে সংরক্ষিত হয়; ইনভয়েস অমিলের সারি BD Tools-এর রিকনসিলিয়েশনে বিবাদযুক্ত হয়।"
+          caption={t.codCaption}
           columns={[
-            { key: "courier", header: "কুরিয়ার" },
-            { key: "shipments", header: "শিপমেন্ট" },
-            { key: "collected", header: "সংগৃহীত" },
-            { key: "charge", header: "কুরিয়ার চার্জ" },
-            { key: "outstanding", header: "বকেয়া পাওনা" },
-            { key: "settled", header: "পরিশোধিত" },
-            { key: "disputed", header: "বিতর্কিত" },
+            { key: "courier", header: t.colCourier },
+            { key: "shipments", header: t.colShipments },
+            { key: "collected", header: t.colCollected },
+            { key: "charge", header: t.colCourierCharge },
+            { key: "outstanding", header: t.colOutstanding },
+            { key: "settled", header: t.colSettled },
+            { key: "disputed", header: t.colDisputed },
           ]}
           rows={codTableRows}
         />
         {disputedRows.map((r) => (
           <p key={r.shipmentId} className="flex items-start gap-1.5 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
             <span aria-hidden="true" className="mt-px shrink-0"><Icon name="alert" size={13} /></span>
-            <span>বিতর্কিত: শিপমেন্ট <span className="font-mono">{r.shipmentId}</span> (অর্ডার #{r.orderId},{" "}
-            {COURIER_LABELS_BN[r.provider]}) — কুরিয়ারের দাবি <Money poisha={r.collectedPoisha} />, পাওনা{" "}
-            <Money poisha={r.payablePoisha} />। এই পরিমাণ নিজে থেকে সমন্বয় করা হয়নি — কুরিয়ার ইনভয়েসের সঙ্গে
-            মিলিয়ে নিষ্পত্তি করুন।</span>
+            <span>{t.disputedPrefix} <span className="font-mono">{r.shipmentId}</span> ({t.disputedOrder} #{r.orderId},{" "}
+            {COURIER_LABELS[locale][r.provider]}) — {t.disputedClaim} <Money poisha={r.collectedPoisha} />, {t.disputedPayable}{" "}
+            <Money poisha={r.payablePoisha} />{t.disputedSuffix}</span>
           </p>
         ))}
       </section>
 
       <Card className="shadow-card">
-        <h2 className="text-h3">পেমেন্ট লিংক ও দৈনিক ক্যাশ ক্লোজিং</h2>
+        <h2 className="text-h3">{t.linksTitle}</h2>
         <p className="mt-1 text-sm text-text-muted">
-          পেমেন্ট লিংক তৈরি/তালিকা, bKash/Nagad SMS যাচাই এবং দৈনিক ক্যাশ ক্লোজিং BD Tools-এ আছে — এখানে আবার
-          বানানো হয়নি।
+          {t.linksBody}
         </p>
         <Link
           href="/admin/bd-tools"
           className="mt-3 inline-flex min-h-[44px] items-center rounded-md bg-brand-600 px-4 text-sm font-medium text-white shadow-md transition hover:opacity-90"
         >
-          BD Tools খুলুন →
+          {t.openBdTools}
         </Link>
       </Card>
     </div>

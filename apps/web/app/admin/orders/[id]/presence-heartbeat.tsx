@@ -25,6 +25,9 @@
  * ever surfaced for presence.
  */
 import { useCallback, useEffect, useState } from "react";
+import { pick } from "../../../../src/i18n/locale";
+import { useLocale } from "../../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "../strings";
 
 const POLL_MS = 15_000;
 
@@ -36,6 +39,8 @@ interface PresenceEntry {
 }
 
 export function PresenceHeartbeat({ orderId }: { orderId: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const path = `/admin/orders/${orderId}`;
   const [others, setOthers] = useState<PresenceEntry[]>([]);
 
@@ -62,16 +67,15 @@ export function PresenceHeartbeat({ orderId }: { orderId: string }) {
 
   if (others.length === 0) return null;
 
-  const names = others.map((o) => o.name || "একজন স্টাফ").join(", ");
+  const names = others.map((o) => o.name || s.presenceStaff).join(", ");
   return (
     <div
       role="status"
       className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-small text-amber-900"
     >
-      <p className="font-semibold">{names} এই অর্ডারটি দেখছেন</p>
+      <p className="font-semibold">{names} {s.presenceViewing}</p>
       <p className="mt-1 leading-relaxed">
-        সতর্কতা: একই সময়ে দুজন সম্পাদনা করলে একজনের পরিবর্তন অন্যজনেরটা মুছে ফেলতে পারে — কাজ
-        ভাগ করে নিন। এটি শুধু সতর্কবার্তা; কোনো লক বা বাধা নয়।
+        {s.presenceWarning}
       </p>
     </div>
   );

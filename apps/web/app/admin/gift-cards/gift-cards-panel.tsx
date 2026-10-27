@@ -19,6 +19,9 @@ import { formatBdt } from "@advance-ecommerce/validators";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
+import { GIFT_CARDS_STRINGS, type GiftCardsStrings } from "./strings";
 
 interface GiftCardView {
   id: string;
@@ -39,12 +42,9 @@ interface IssuedCard {
   expiresAt: string | null;
 }
 
-const STATUS_LABEL: Record<GiftCardView["status"], string> = {
-  ACTIVE: "সক্রিয়",
-  DEPLETED: "ব্যালেন্স শেষ",
-  EXPIRED: "মেয়াদোত্তীর্ণ",
-  DISABLED: "নিষ্ক্রিয়",
-};
+function statusLabel(status: GiftCardView["status"], s: GiftCardsStrings): string {
+  return { ACTIVE: s.statusActive, DEPLETED: s.statusDepleted, EXPIRED: s.statusExpired, DISABLED: s.statusDisabled }[status];
+}
 
 const STATUS_TONE: Record<GiftCardView["status"], "success" | "warning" | "neutral" | "danger"> = {
   ACTIVE: "success",
@@ -53,19 +53,16 @@ const STATUS_TONE: Record<GiftCardView["status"], "success" | "warning" | "neutr
   DISABLED: "danger",
 };
 
-const dateFmt = new Intl.DateTimeFormat("bn-BD", {
-  timeZone: "Asia/Dhaka",
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
-function formatDate(iso: string | null): string {
+function formatDate(iso: string | null, locale: Locale): string {
   if (!iso) return "—";
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "—" : dateFmt.format(d);
+  if (Number.isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat(intlLocale(locale), { timeZone: "Asia/Dhaka", dateStyle: "medium", timeStyle: "short" }).format(d);
 }
 
 export function GiftCardsPanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, GIFT_CARDS_STRINGS);
   const [cards, setCards] = useState<GiftCardView[] | null>(null);
   const [loadError, setLoadError] = useState("");
   const [locked, setLocked] = useState(false);
@@ -96,7 +93,7 @@ export function GiftCardsPanel() {
         setLoadError(body?.error ? `${body.error.code}: ${body.error.message}` : `HTTP ${res.status}`);
       }
     } catch {
-      setLoadError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন। (Network error — try again.)");
+      setLoadError(s.networkError);
     }
   }, []);
 
@@ -112,11 +109,11 @@ export function GiftCardsPanel() {
     const amountPoisha = Math.round(taka * 100);
     const n = Number(count);
     if (!Number.isFinite(taka) || amountPoisha <= 0) {
-      setIssueError("সঠিক পরিমাণ দিন (টাকায়)। / Enter a valid amount in taka.");
+      setIssueError(s.amountInvalid);
       return;
     }
     if (!Number.isInteger(n) || n < 1 || n > 100) {
-      setIssueError("সংখ্যা ১–১০০ এর মধ্যে হতে হবে। / Count must be between 1 and 100.");
+      setIssueError(s.countInvalid);
       return;
     }
     setIssuing(true);
@@ -143,7 +140,7 @@ export function GiftCardsPanel() {
         setIssueError(body?.error ? `${body.error.code}: ${body.error.message}` : `HTTP ${res.status}`);
       }
     } catch {
-      setIssueError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন। (Network error — try again.)");
+      setIssueError(s.networkError);
     } finally {
       setIssuing(false);
     }
@@ -162,9 +159,7 @@ export function GiftCardsPanel() {
   if (locked) {
     return (
       <p className="text-small leading-relaxed text-text-muted">
-        মার্কেটিং মেকানিক্স মডিউলটি এই ইনস্টলে বন্ধ আছে (module.marketing_mechanics OFF) — গিফট কার্ড চালু করতে
-        Settings → Feature Flags থেকে মডিউলটি চালু করুন। / The marketing mechanics module is OFF for this
-        install — enable it under Settings → Feature Flags to use gift cards.
+        {s.locked}
       </p>
     );
   }
@@ -172,10 +167,10 @@ export function GiftCardsPanel() {
   return (
     <div className="space-y-6">
       <section className="rounded-lg border border-border bg-surface-2/50 px-4 py-4">
-        <h2 className="text-body font-semibold text-text-main">নতুন গিফট কার্ড ইস্যু করুন</h2>
+        <h2 className="text-body font-semibold text-text-main">{s.issueTitle}</h2>
         <form onSubmit={onIssue} className="mt-3 flex flex-wrap items-end gap-3">
           <label className="block">
-            <span className="mb-1 block text-caption text-text-subtle">পরিমাণ (টাকা)</span>
+            <span className="mb-1 block text-caption text-text-subtle">{s.amountLabel}</span>
             <Input
               type="number"
               min="1"
@@ -187,7 +182,7 @@ export function GiftCardsPanel() {
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-caption text-text-subtle">কয়টি কার্ড</span>
+            <span className="mb-1 block text-caption text-text-subtle">{s.countLabel}</span>
             <Input
               type="number"
               min="1"
@@ -198,7 +193,7 @@ export function GiftCardsPanel() {
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-caption text-text-subtle">মেয়াদ শেষ (ঐচ্ছিক)</span>
+            <span className="mb-1 block text-caption text-text-subtle">{s.expiryLabel}</span>
             <Input
               type="date"
               value={expiresDate}
@@ -207,16 +202,14 @@ export function GiftCardsPanel() {
             />
           </label>
           <Button type="submit" disabled={issuing}>
-            {issuing ? "ইস্যু হচ্ছে…" : "ইস্যু করুন"}
+            {issuing ? s.issuing : s.issueBtn}
           </Button>
         </form>
         {issueError ? <p className="mt-3 text-small text-rose-600">{issueError}</p> : null}
         {issued ? (
           <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
             <p className="text-small font-semibold text-amber-900">
-              ⚠ এই কোডগুলো শুধু এই একবারই দেখা যাবে — এখনই কপি করে রাখুন। সার্ভারে শুধু কোডের হ্যাশ থাকে,
-              কোড হারালে তা আর উদ্ধার করা যাবে না। / These codes are shown ONCE — copy them now. Only their
-              hashes are stored; a lost code cannot be recovered.
+              {s.codesOnce}
             </p>
             <ul className="mt-2 space-y-1">
               {issued.map((c) => (
@@ -230,13 +223,13 @@ export function GiftCardsPanel() {
       </section>
 
       <section>
-        <h2 className="text-body font-semibold text-text-main">ইস্যু করা কার্ডসমূহ</h2>
+        <h2 className="text-body font-semibold text-text-main">{s.listTitle}</h2>
         {loadError ? (
-          <p className="mt-2 text-small text-rose-600">কার্ড লোড করা যায়নি: {loadError}</p>
+          <p className="mt-2 text-small text-rose-600">{interpolate(s.loadFailedPrefix, { error: loadError })}</p>
         ) : cards === null ? (
-          <p className="mt-2 text-small text-text-muted">লোড হচ্ছে…</p>
+          <p className="mt-2 text-small text-text-muted">{s.loading}</p>
         ) : cards.length === 0 ? (
-          <p className="mt-2 text-small text-text-muted">এখনো কোনো গিফট কার্ড ইস্যু করা হয়নি।</p>
+          <p className="mt-2 text-small text-text-muted">{s.noCards}</p>
         ) : (
           <div className="mt-3 space-y-3">
             {cards.map((card) => (
@@ -244,18 +237,18 @@ export function GiftCardsPanel() {
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                   <span className="min-w-0">
                     <span className="block text-small font-semibold text-text-main">
-                      গিফট কার্ড …{card.codeLast4}
+                      {interpolate(s.cardLabel, { last4: card.codeLast4 })}
                     </span>
                     <span className="mt-0.5 block text-caption text-text-subtle">
-                      ইস্যু: {formatDate(card.createdAt)} · মেয়াদ: {card.expiresAt ? formatDate(card.expiresAt) : "মেয়াদ নেই"}
+                      {interpolate(s.issuedLabel, { date: formatDate(card.createdAt, locale) })} · {card.expiresAt ? interpolate(s.expirySep, { date: formatDate(card.expiresAt, locale) }) : s.noExpiry}
                     </span>
                   </span>
                   <span className="flex items-center gap-3">
                     <span className="text-small text-text-main">
-                      ব্যালেন্স {formatBdt(card.balancePoisha)}
+                      {interpolate(s.balanceLabel, { balance: formatBdt(card.balancePoisha) })}
                       <span className="text-text-muted"> / {formatBdt(card.initialPoisha)}</span>
                     </span>
-                    <Badge tone={STATUS_TONE[card.status]}>{STATUS_LABEL[card.status]}</Badge>
+                    <Badge tone={STATUS_TONE[card.status]}>{statusLabel(card.status, s)}</Badge>
                     {card.storedStatus === "ACTIVE" ? (
                       <Button
                         type="button"
@@ -263,7 +256,7 @@ export function GiftCardsPanel() {
                         disabled={disablingId === card.id}
                         onClick={() => void onDisable(card)}
                       >
-                        {disablingId === card.id ? "হচ্ছে…" : "নিষ্ক্রিয় করুন"}
+                        {disablingId === card.id ? s.disabling : s.disableBtn}
                       </Button>
                     ) : null}
                   </span>

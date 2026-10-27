@@ -26,6 +26,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatPoisha } from "@/components/ui/money";
 import { lineTotalPoisha } from "@/lib/quantity";
+import { interpolate, pick, type Locale } from "../../../../src/i18n/locale";
+import { useLocale } from "../../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "../strings";
 
 interface EditLine {
   orderItemId: string;
@@ -90,12 +93,16 @@ interface PendingAdd {
 const inputCls =
   "h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
 
-function variantLabel(attrs: Record<string, string>): string {
+function variantLabel(attrs: Record<string, string>, locale: Locale): string {
   const parts = Object.values(attrs ?? {}).filter(Boolean);
-  return parts.length > 0 ? parts.join(" / ") : "ডিফল্ট";
+  return parts.length > 0
+    ? parts.join(" / ")
+    : pick(locale, ORDER_STRINGS).variantDefault;
 }
 
 export function EditPanel({ orderId }: { orderId: string }) {
+  const { locale, t } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const [view, setView] = useState<EditView | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -178,14 +185,14 @@ export function EditPanel({ orderId }: { orderId: string }) {
   if (loadFailed) {
     return (
       <Card className="p-4">
-        <p className="text-small text-text-subtle">অর্ডার সম্পাদনার তথ্য লোড করা যায়নি।</p>
+        <p className="text-small text-text-subtle">{s.edLoadFail}</p>
       </Card>
     );
   }
   if (!view) {
     return (
       <Card className="p-4">
-        <p className="text-small text-text-subtle">লোড হচ্ছে…</p>
+        <p className="text-small text-text-subtle">{t.loading}</p>
       </Card>
     );
   }
@@ -194,11 +201,11 @@ export function EditPanel({ orderId }: { orderId: string }) {
     return (
       <Card className="p-4">
         <div className="flex items-center gap-2">
-          <h3 className="text-small font-semibold">অর্ডার সম্পাদনা</h3>
+          <h3 className="text-small font-semibold">{s.edTitle}</h3>
           <Badge tone="neutral">{view.status}</Badge>
         </div>
         <p className="mt-2 text-small text-text-subtle">
-          {view.notEditableReasonBn ?? "এই অবস্থায় অর্ডার সম্পাদনা করা যায় না।"}
+          {view.notEditableReasonBn ?? s.edNotEditableFallback}
         </p>
       </Card>
     );
@@ -239,13 +246,13 @@ export function EditPanel({ orderId }: { orderId: string }) {
         error?: { message?: string };
       };
       if (!res.ok || !json.data) {
-        setError(json.error?.message ?? "সম্পাদনা সেভ করা যায়নি।");
+        setError(json.error?.message ?? s.edSaveFail);
         return;
       }
       setOutcome(json.data);
       await load();
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।");
+      setError(s.networkRetry);
     } finally {
       setBusy(false);
     }
@@ -254,14 +261,11 @@ export function EditPanel({ orderId }: { orderId: string }) {
   return (
     <Card className="p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-small font-semibold">অর্ডার সম্পাদনা</h3>
+        <h3 className="text-small font-semibold">{s.edTitle}</h3>
         <Badge tone="info">{view.status}</Badge>
-        {dirty && <Badge tone="warning">অসংরক্ষিত পরিবর্তন</Badge>}
+        {dirty && <Badge tone="warning">{s.edUnsaved}</Badge>}
       </div>
-      <p className="mt-1 text-caption text-text-subtle">
-        পরিমাণ বদলালে স্টক সংরক্ষণ সেই অনুযায়ী বদলায়; সেভ করলে ডেলিভারি চার্জ ও কুপন সার্ভার
-        আবার হিসাব করে। নতুন আইটেম বর্তমান ক্যাটালগ দামে যোগ হয়।
-      </p>
+      <p className="mt-1 text-caption text-text-subtle">{s.edIntro}</p>
 
       <ul className="mt-3 divide-y divide-border">
         {view.lines.map((l) => {
@@ -273,7 +277,7 @@ export function EditPanel({ orderId }: { orderId: string }) {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-small font-medium">{l.productName}</p>
                   <p className="text-caption text-text-subtle">
-                    {l.sku} · {formatPoisha(l.unitPricePoisha)} /টি
+                    {interpolate(s.edLineMeta, { sku: l.sku, price: formatPoisha(l.unitPricePoisha) })}
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -285,7 +289,7 @@ export function EditPanel({ orderId }: { orderId: string }) {
                     onClick={() =>
                       setQty((s) => ({ ...s, [l.orderItemId]: Math.max(1, q - 1) }))
                     }
-                    aria-label="পরিমাণ কমান"
+                    aria-label={s.edQtyDown}
                   >
                     −
                   </Button>
@@ -298,7 +302,7 @@ export function EditPanel({ orderId }: { orderId: string }) {
                     onClick={() =>
                       setQty((s) => ({ ...s, [l.orderItemId]: Math.min(999, q + 1) }))
                     }
-                    aria-label="পরিমাণ বাড়ান"
+                    aria-label={s.edQtyUp}
                   >
                     +
                   </Button>
@@ -320,7 +324,7 @@ export function EditPanel({ orderId }: { orderId: string }) {
                     })
                   }
                 >
-                  {isRemoved ? "ফিরিয়ে আনুন" : "সরান"}
+                  {isRemoved ? s.edRestore : s.edRemove}
                 </Button>
               </div>
             </li>
@@ -335,7 +339,7 @@ export function EditPanel({ orderId }: { orderId: string }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-small font-medium">{a.label}</p>
                 <p className="text-caption text-text-subtle">
-                  {a.sku} · {formatPoisha(a.unitPricePoisha)} /টি · স্টক {a.stock}
+                  {interpolate(s.edAddMeta, { sku: a.sku, price: formatPoisha(a.unitPricePoisha), stock: a.stock })}
                 </p>
               </div>
               <div className="flex items-center gap-1.5">
@@ -353,7 +357,7 @@ export function EditPanel({ orderId }: { orderId: string }) {
                       ),
                     )
                   }
-                  aria-label="পরিমাণ কমান"
+                  aria-label={s.edQtyDown}
                 >
                   −
                 </Button>
@@ -372,7 +376,7 @@ export function EditPanel({ orderId }: { orderId: string }) {
                       ),
                     )
                   }
-                  aria-label="পরিমাণ বাড়ান"
+                  aria-label={s.edQtyUp}
                 >
                   +
                 </Button>
@@ -384,7 +388,7 @@ export function EditPanel({ orderId }: { orderId: string }) {
                 disabled={busy}
                 onClick={() => setAdds((s) => s.filter((x) => x.variantId !== a.variantId))}
               >
-                বাদ দিন
+                {s.edDrop}
               </Button>
             </li>
           ))}
@@ -394,11 +398,11 @@ export function EditPanel({ orderId }: { orderId: string }) {
       <div className="mt-3">
         <input
           className={inputCls}
-          placeholder="নতুন আইটেম খুঁজুন (নাম/SKU, কমপক্ষে ২ অক্ষর)…"
+          placeholder={s.edSearchPlaceholder}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        {searching && <p className="mt-1.5 text-caption text-text-subtle">খোঁজা হচ্ছে…</p>}
+        {searching && <p className="mt-1.5 text-caption text-text-subtle">{s.edSearching}</p>}
         {hits.length > 0 && (
           <ul className="mt-2 space-y-2">
             {hits.map((p) => (
@@ -416,10 +420,10 @@ export function EditPanel({ orderId }: { orderId: string }) {
                         key={v.id}
                         className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-small"
                       >
-                        <span className="font-medium">{variantLabel(v.attributes)}</span>
+                        <span className="font-medium">{variantLabel(v.attributes, locale)}</span>
                         <span className="text-text-subtle">{v.sku}</span>
                         <span>{formatPoisha(v.pricePoisha)}</span>
-                        <span className="text-text-subtle">স্টক {v.stock}</span>
+                        <span className="text-text-subtle">{interpolate(s.edStock, { n: v.stock })}</span>
                         <Button
                           type="button"
                           variant="outline"
@@ -430,7 +434,7 @@ export function EditPanel({ orderId }: { orderId: string }) {
                               ...s,
                               {
                                 variantId: v.id,
-                                label: `${p.titleBn} — ${variantLabel(v.attributes)}`,
+                                label: `${p.titleBn} — ${variantLabel(v.attributes, locale)}`,
                                 sku: v.sku,
                                 unitPricePoisha: v.pricePoisha,
                                 stock: v.stock,
@@ -439,7 +443,7 @@ export function EditPanel({ orderId }: { orderId: string }) {
                             ])
                           }
                         >
-                          {already ? "যোগ হয়েছে" : "যোগ করুন"}
+                          {already ? s.edAdded : s.edAdd}
                         </Button>
                       </li>
                     );
@@ -453,11 +457,11 @@ export function EditPanel({ orderId }: { orderId: string }) {
 
       <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border pt-3">
         <p className="text-small">
-          সাবটোটাল (আনুমানিক): <span className="font-semibold">{formatPoisha(previewSubtotal)}</span>
-          <span className="text-text-subtle"> · ডেলিভারি/কুপন সেভের সময় সার্ভার হিসাব করবে</span>
+          {s.edSubtotalLabel} <span className="font-semibold">{formatPoisha(previewSubtotal)}</span>
+          <span className="text-text-subtle"> {s.edSubtotalNote}</span>
         </p>
         <Button type="button" className="ml-auto" disabled={!dirty || busy} onClick={() => void save()}>
-          {busy ? "সেভ হচ্ছে…" : "পরিবর্তন সেভ করুন"}
+          {busy ? t.saving : s.edSaveBtn}
         </Button>
       </div>
 
@@ -467,16 +471,18 @@ export function EditPanel({ orderId }: { orderId: string }) {
       {outcome && (
         <div role="status" className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-small text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-200">
           <p>
-            সেভ হয়েছে — মোট: {formatPoisha(outcome.before.totalPoisha)} →{" "}
-            <span className="font-semibold">{formatPoisha(outcome.after.totalPoisha)}</span>{" "}
-            (সাবটোটাল {formatPoisha(outcome.before.subtotalPoisha)} →{" "}
-            {formatPoisha(outcome.after.subtotalPoisha)}, ডেলিভারি{" "}
-            {formatPoisha(outcome.before.shippingPoisha)} →{" "}
-            {formatPoisha(outcome.after.shippingPoisha)})
+            {interpolate(s.edSaved, {
+              bTotal: formatPoisha(outcome.before.totalPoisha),
+              aTotal: formatPoisha(outcome.after.totalPoisha),
+              bSub: formatPoisha(outcome.before.subtotalPoisha),
+              aSub: formatPoisha(outcome.after.subtotalPoisha),
+              bShip: formatPoisha(outcome.before.shippingPoisha),
+              aShip: formatPoisha(outcome.after.shippingPoisha),
+            })}
           </p>
           {outcome.couponRemoved && (
             <p className="mt-1 font-medium">
-              কুপন {outcome.couponCode} সরিয়ে দেওয়া হয়েছে — নতুন সাবটোটালে শর্ত পূরণ হয়নি।
+              {interpolate(s.edCouponRemoved, { code: outcome.couponCode ?? "" })}
             </p>
           )}
         </div>

@@ -17,6 +17,9 @@
  * raw HTML.
  */
 import { useCallback, useEffect, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { COURSES_STRINGS } from "./strings";
 
 type LessonKind = "video" | "text" | "link";
 
@@ -69,6 +72,8 @@ function emptyLesson(): LessonForm {
 }
 
 export function CoursesContentCard() {
+  const { locale } = useLocale();
+  const s = pick(locale, COURSES_STRINGS);
   const [products, setProducts] = useState<ProductSummary[] | null>(null);
   const [productId, setProductId] = useState<string>("");
   const [modules, setModules] = useState<ModuleForm[]>([]);
@@ -87,14 +92,14 @@ export function CoursesContentCard() {
         error?: { message?: string };
       } | null;
       if (!res.ok || !json?.data) {
-        setError(json?.error?.message ?? "কোর্স পণ্যের তালিকা লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.productsLoadFailed);
         return;
       }
       setProducts(json.data.products);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — কোর্স পণ্যের তালিকা লোড করা যায়নি।");
+      setError(s.productsLoadNetwork);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void loadProducts();
@@ -120,7 +125,7 @@ export function CoursesContentCard() {
         error?: { message?: string };
       } | null;
       if (!res.ok || !json?.data) {
-        setError(json?.error?.message ?? "কন্টেন্ট লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.docLoadFailed);
         setModules([]);
         return;
       }
@@ -142,11 +147,11 @@ export function CoursesContentCard() {
           : [],
       );
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — কন্টেন্ট লোড করা যায়নি।");
+      setError(s.docLoadNetwork);
     } finally {
       setLoadingDoc(false);
     }
-  }, []);
+  }, [s]);
 
   function updateModule(mi: number, patch: Partial<ModuleForm>) {
     setModules((prev) => prev.map((m, i) => (i === mi ? { ...m, ...patch } : m)));
@@ -200,15 +205,15 @@ export function CoursesContentCard() {
         const details = Array.isArray(json?.error?.details)
           ? ` (${(json.error.details as string[]).join("; ")})`
           : "";
-        setError((json?.error?.message ?? "কন্টেন্ট সংরক্ষণ করা যায়নি।") + details);
+        setError((json?.error?.message ?? s.contentSaveFailed) + details);
         return;
       }
-      setNotice("কন্টেন্ট সংরক্ষিত হয়েছে।");
+      setNotice(s.contentSaved);
       setReason("");
       await loadProducts();
       await loadDoc(productId);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — কন্টেন্ট সংরক্ষণ করা যায়নি।");
+      setError(s.contentSaveNetwork);
     } finally {
       setBusy(false);
     }
@@ -216,11 +221,9 @@ export function CoursesContentCard() {
 
   return (
     <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
-      <h2 className="font-display text-base font-bold text-text-main">পাঠ্যক্রম (কন্টেন্ট)</h2>
+      <h2 className="font-display text-base font-bold text-text-main">{s.contentTitle}</h2>
       <p className="mt-1 text-sm leading-6 text-text-muted">
-        পণ্য বেছে মডিউল ও লেসন সাজান। সর্বোচ্চ ২০টি মডিউল, প্রতি মডিউলে ৫০টি লেসন। PDP-তে
-        শুধু মডিউল/লেসনের <strong>নাম</strong> সবাই দেখতে পায় — লেসনের ভেতরের কন্টেন্ট শুধু
-        ক্রেতারা অ্যাকাউন্ট থেকে দেখতে পায়।
+        {s.contentIntroA} <strong>{s.contentIntroStrong}</strong> {s.contentIntroB}
       </p>
 
       {error ? (
@@ -236,7 +239,7 @@ export function CoursesContentCard() {
 
       <div className="mt-4 grid gap-4">
         <label className="grid gap-1.5 text-sm">
-          <span className="font-medium text-text-main">কোর্স পণ্য</span>
+          <span className="font-medium text-text-main">{s.productLabel}</span>
           <select
             className={INPUT_CLASS + " max-w-xl"}
             value={productId}
@@ -245,22 +248,24 @@ export function CoursesContentCard() {
               void loadDoc(e.target.value);
             }}
           >
-            <option value="">— পণ্য বেছে নিন —</option>
+            <option value="">{s.productPlaceholder}</option>
             {(products ?? []).map((p) => (
               <option key={p.productId} value={p.productId}>
                 {p.productName ?? p.productId} ({p.variants.map((v) => v.sku).join(", ")}) —{" "}
-                {p.hasContent ? `${p.moduleCount}টি মডিউল, ${p.lessonCount}টি লেসন` : "কন্টেন্ট নেই"}
+                {p.hasContent
+                  ? interpolate(s.productSummary, { modules: p.moduleCount, lessons: p.lessonCount })
+                  : s.productNoContent}
               </option>
             ))}
           </select>
           {products !== null && products.length === 0 ? (
-            <span className="text-xs text-text-muted">
-              কোনো কোর্স পণ্য নেই — আগে নিচের কনফিগ কার্ডে কোর্স ভ্যারিয়েন্টের আইডি যোগ করুন।
-            </span>
+            <span className="text-xs text-text-muted">{s.noProductsNote}</span>
           ) : null}
           {docSource ? (
             <span className="text-xs text-text-muted">
-              উৎস: {docSource === "saved" ? "সংরক্ষিত ডকুমেন্ট" : "এখনো কোনো কন্টেন্ট সংরক্ষণ হয়নি"}
+              {interpolate(s.docSourceLine, {
+                source: docSource === "saved" ? s.docSourceSaved : s.docSourceNone,
+              })}
             </span>
           ) : null}
         </label>
@@ -271,12 +276,12 @@ export function CoursesContentCard() {
               {modules.map((mod, mi) => (
                 <fieldset key={mi} className="rounded-xl border border-border p-3 sm:p-4">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-bold text-text-main">মডিউল {mi + 1}</span>
+                    <span className="text-sm font-bold text-text-main">{interpolate(s.moduleLabel, { n: mi + 1 })}</span>
                     <input
                       className={INPUT_CLASS + " min-w-[220px] flex-1"}
                       value={mod.title}
                       onChange={(e) => updateModule(mi, { title: e.target.value })}
-                      placeholder="মডিউলের নাম"
+                      placeholder={s.moduleTitlePlaceholder}
                     />
                     <button type="button" className={SMALL_BUTTON} disabled={mi === 0} onClick={() => setModules((p) => move(p, mi, mi - 1))}>↑</button>
                     <button type="button" className={SMALL_BUTTON} disabled={mi === modules.length - 1} onClick={() => setModules((p) => move(p, mi, mi + 1))}>↓</button>
@@ -285,7 +290,7 @@ export function CoursesContentCard() {
                       className={SMALL_BUTTON}
                       onClick={() => setModules((p) => p.filter((_, i) => i !== mi))}
                     >
-                      মডিউল মুছুন
+                      {s.deleteModule}
                     </button>
                   </div>
 
@@ -297,16 +302,16 @@ export function CoursesContentCard() {
                             className={INPUT_CLASS + " min-w-[200px] flex-1"}
                             value={lesson.title}
                             onChange={(e) => updateLesson(mi, li, { title: e.target.value })}
-                            placeholder="লেসনের নাম"
+                            placeholder={s.lessonTitlePlaceholder}
                           />
                           <select
                             className={INPUT_CLASS + " w-auto"}
                             value={lesson.kind}
                             onChange={(e) => updateLesson(mi, li, { kind: e.target.value as LessonKind })}
                           >
-                            <option value="video">ভিডিও</option>
-                            <option value="text">লেখা</option>
-                            <option value="link">লিংক</option>
+                            <option value="video">{s.kindVideo}</option>
+                            <option value="text">{s.kindText}</option>
+                            <option value="link">{s.kindLink}</option>
                           </select>
                           <button type="button" className={SMALL_BUTTON} disabled={li === 0} onClick={() => updateModule(mi, { lessons: move(mod.lessons, li, li - 1) })}>↑</button>
                           <button type="button" className={SMALL_BUTTON} disabled={li === mod.lessons.length - 1} onClick={() => updateModule(mi, { lessons: move(mod.lessons, li, li + 1) })}>↓</button>
@@ -315,7 +320,7 @@ export function CoursesContentCard() {
                             className={SMALL_BUTTON}
                             onClick={() => updateModule(mi, { lessons: mod.lessons.filter((_, j) => j !== li) })}
                           >
-                            মুছুন
+                            {s.delete}
                           </button>
                         </div>
                         {lesson.kind === "video" ? (
@@ -323,7 +328,7 @@ export function CoursesContentCard() {
                             className={INPUT_CLASS + " mt-2"}
                             value={lesson.videoUrl}
                             onChange={(e) => updateLesson(mi, li, { videoUrl: e.target.value })}
-                            placeholder="YouTube বা Vimeo লিংক (watch/share/embed যেকোনোটি)"
+                            placeholder={s.videoUrlPlaceholder}
                           />
                         ) : null}
                         {lesson.kind === "text" ? (
@@ -331,7 +336,7 @@ export function CoursesContentCard() {
                             className={INPUT_CLASS + " mt-2 min-h-[140px]"}
                             value={lesson.bodyMd}
                             onChange={(e) => updateLesson(mi, li, { bodyMd: e.target.value })}
-                            placeholder={"লেসনের লেখা (Markdown: ## শিরোনাম, **বোল্ড**, - তালিকা) — সর্বোচ্চ ২০,০০০ অক্ষর"}
+                            placeholder={s.textPlaceholder}
                           />
                         ) : null}
                         {lesson.kind === "link" ? (
@@ -352,7 +357,7 @@ export function CoursesContentCard() {
                     disabled={mod.lessons.length >= 50}
                     onClick={() => updateModule(mi, { lessons: [...mod.lessons, emptyLesson()] })}
                   >
-                    + লেসন যোগ করুন
+                    {s.addLesson}
                   </button>
                 </fieldset>
               ))}
@@ -365,17 +370,17 @@ export function CoursesContentCard() {
                 disabled={modules.length >= 20}
                 onClick={() => setModules((p) => [...p, { title: "", lessons: [] }])}
               >
-                + মডিউল যোগ করুন
+                {s.addModule}
               </button>
             </div>
 
             <label className="grid gap-1.5 text-sm">
-              <span className="font-medium text-text-main">পরিবর্তনের কারণ (বাধ্যতামূলক)</span>
+              <span className="font-medium text-text-main">{s.reasonLabel}</span>
               <input
                 className={INPUT_CLASS}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="যেমন: ৩ নম্বর মডিউল যোগ"
+                placeholder={s.reasonPlaceholderContent}
               />
             </label>
 
@@ -386,7 +391,7 @@ export function CoursesContentCard() {
                 onClick={save}
                 className="inline-flex items-center justify-center rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {busy ? "সংরক্ষণ হচ্ছে…" : "কন্টেন্ট সংরক্ষণ করুন"}
+                {busy ? s.saving : s.saveContent}
               </button>
             </div>
           </>

@@ -21,6 +21,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { formatSubscriptionDate } from "@/subscriptions/labels";
+import { pick } from "../../../../src/i18n/locale";
+import { useLocale } from "../../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "../strings";
 
 interface PickupOtpStatus {
   applicable: boolean;
@@ -33,6 +36,8 @@ interface PickupOtpStatus {
 }
 
 export function PickupOtpPanel({ orderId }: { orderId: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const [status, setStatus] = useState<PickupOtpStatus | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [code, setCode] = useState("");
@@ -76,19 +81,19 @@ export function PickupOtpPanel({ orderId }: { orderId: string }) {
       if (!res.ok) {
         setError(
           json?.error?.details === "EXPIRED"
-            ? "কোডটির মেয়াদ শেষ — নতুন কোড পাঠান।"
+            ? s.otpExpiredErr
             : json?.error?.details === "TOO_MANY_ATTEMPTS"
-              ? "অনেকবার ভুল কোড দেওয়া হয়েছে — নতুন কোড পাঠান।"
-              : (json?.error?.message ?? "যাচাই করা যায়নি।"),
+              ? s.otpTooMany
+              : (json?.error?.message ?? s.otpVerifyFail),
         );
         await load();
         return;
       }
       setCode("");
-      setNotice("OTP যাচাই হয়েছে — এখন অর্ডারটি ডেলিভার্ড করা যাবে।");
+      setNotice(s.otpVerifiedNotice);
       await load();
     } catch {
-      setError("যাচাই করা যায়নি — সংযোগ যাচাই করুন।");
+      setError(s.otpVerifyConn);
     } finally {
       setBusy(false);
     }
@@ -107,17 +112,17 @@ export function PickupOtpPanel({ orderId }: { orderId: string }) {
         error?: { message?: string };
       } | null;
       if (!res.ok) {
-        setError(json?.error?.message ?? "নতুন কোড পাঠানো যায়নি।");
+        setError(json?.error?.message ?? s.otpResendFail);
         return;
       }
       setNotice(
         json?.data?.sms === "queued"
-          ? "নতুন কোড পাঠানো হয়েছে (SMS queue-তে আছে — worker চালু থাকলে ডেলিভার হবে)।"
-          : "নতুন কোড তৈরি হয়েছে, তবে SMS queue-তে পাঠানো যায়নি — কোডটি কাস্টমারকে ফোনে জানিয়ে দিন।",
+          ? s.otpResendQueued
+          : s.otpResendNoQueue,
       );
       await load();
     } catch {
-      setError("নতুন কোড পাঠানো যায়নি — সংযোগ যাচাই করুন।");
+      setError(s.otpResendConn);
     } finally {
       setBusy(false);
     }
@@ -128,50 +133,48 @@ export function PickupOtpPanel({ orderId }: { orderId: string }) {
   return (
     <Card className="p-4">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-text-main">পিকআপ OTP</h3>
+        <h3 className="text-sm font-bold text-text-main">{s.otpTitle}</h3>
         {status.verified ? (
-          <Badge tone="success">যাচাই হয়েছে</Badge>
+          <Badge tone="success">{s.otpVerified}</Badge>
         ) : status.issued ? (
-          <Badge tone="warning">যাচাই বাকি</Badge>
+          <Badge tone="warning">{s.otpPending}</Badge>
         ) : (
-          <Badge tone="neutral">কোড ইস্যু হয়নি</Badge>
+          <Badge tone="neutral">{s.otpNotIssued}</Badge>
         )}
       </div>
 
       {status.verified ? (
         <p className="mt-2 text-sm leading-6 text-text-muted">
-          কাস্টমারের পিকআপ OTP যাচাই হয়েছে ({formatSubscriptionDate(status.verifiedAt)}) —
-          অর্ডারটি ডেলিভার্ড করা যাবে।
+          {s.otpVerifiedBody1} ({formatSubscriptionDate(status.verifiedAt)}) {s.otpVerifiedBody2}
         </p>
       ) : (
         <>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            পিকআপের সময় কাস্টমারের ফোনে পাঠানো ৬-সংখ্যার কোডটি যাচাই করুন। যাচাই ছাড়া এই
-            অর্ডার ডেলিভার্ড করা যাবে না।
+            {s.otpIntro}
             {status.issued && !status.expired
-              ? ` কোডের মেয়াদ: ${formatSubscriptionDate(status.expiresAt)}${status.attemptsLeft !== null ? ` · চেষ্টা বাকি: ${status.attemptsLeft}` : ""}।`
+              ? ` ${s.otpExpiry}: ${formatSubscriptionDate(status.expiresAt)}${status.attemptsLeft !== null ? ` · ${s.otpAttemptsLeft}: ${status.attemptsLeft}` : ""}.`
               : status.issued
-                ? " আগের কোডটির মেয়াদ শেষ — নতুন কোড পাঠান।"
-                : " এখনো কোনো কোড পাঠানো হয়নি — নতুন কোড পাঠান।"}
+                ? ` ${s.otpExpiredPrev}`
+                : ` ${s.otpNotSent}`}
           </p>
           {status.issued && !status.expired ? (
             <div className="mt-3 flex gap-2">
               <Input
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                placeholder="OTP কোড"
+                placeholder={s.otpPlaceholder}
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 className="font-mono"
               />
               <Button type="button" disabled={busy || code.length < 4} onClick={verify}>
-                যাচাই
+                {s.otpVerifyBtn}
               </Button>
             </div>
           ) : null}
           <div className="mt-3">
             <Button type="button" variant="outline" disabled={busy} onClick={resend}>
-              নতুন কোড পাঠান
+              {s.otpResend}
             </Button>
           </div>
         </>

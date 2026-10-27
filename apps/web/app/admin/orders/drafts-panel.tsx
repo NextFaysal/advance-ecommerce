@@ -22,6 +22,10 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { formatBdt } from "../../../src/checkout/pricing";
+import { interpolate, intlLocale, pick } from "../../../src/i18n/locale";
+import { useLocale } from "../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "./strings";
+import { orderAgeLabel } from "./list-helpers";
 
 interface DraftSummary {
   id: string;
@@ -33,18 +37,9 @@ interface DraftSummary {
   updatedAt: string;
 }
 
-function ageText(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  const minutes = Math.max(0, Math.floor(ms / 60000));
-  const bn = (n: number) => n.toLocaleString("bn-BD");
-  if (minutes < 1) return "এখনই";
-  if (minutes < 60) return `${bn(minutes)} মিনিট আগে`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${bn(hours)} ঘণ্টা আগে`;
-  return `${bn(Math.floor(hours / 24))} দিন আগে`;
-}
-
 export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promise<void> }) {
+  const { locale, t } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const [drafts, setDrafts] = useState<DraftSummary[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -81,8 +76,8 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
         setMsg({
           ok: true,
           text: body.meta?.convertedReplay
-            ? `এই ড্রাফটটি আগেই রূপান্তরিত হয়েছে: ${body.data.orderNo}।`
-            : `ড্রাফট থেকে অর্ডার তৈরি হয়েছে: ${body.data.orderNo} — নিচের তালিকায় দেখুন।`,
+            ? interpolate(s.draftConvertedReplay, { orderNo: body.data.orderNo })
+            : interpolate(s.draftConverted, { orderNo: body.data.orderNo }),
         });
         await load();
         await onConverted?.();
@@ -91,11 +86,11 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
           ok: false,
           text: body?.error
             ? `${body.error.code}: ${body.error.message}`
-            : `HTTP ${res.status} — রূপান্তর হয়নি। "আবার খুলুন" দিয়ে ফর্মে ঠিক করে সাবমিট করুন।`,
+            : interpolate(s.draftConvertHttp, { status: res.status }),
         });
       }
     } catch {
-      setMsg({ ok: false, text: "নেটওয়ার্ক সমস্যা — রূপান্তর করা যায়নি।" });
+      setMsg({ ok: false, text: s.draftConvertNet });
     } finally {
       setBusyId(null);
     }
@@ -107,7 +102,7 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
     try {
       const res = await fetch(`/api/v1/admin/orders/drafts/${id}`, { method: "DELETE" });
       if (res.ok) {
-        setMsg({ ok: true, text: "ড্রাফট বাতিল করা হয়েছে।" });
+        setMsg({ ok: true, text: s.draftDiscarded });
         await load();
       } else {
         const body = (await res.json().catch(() => null)) as {
@@ -115,11 +110,13 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
         } | null;
         setMsg({
           ok: false,
-          text: body?.error ? `${body.error.code}: ${body.error.message}` : `HTTP ${res.status} — বাতিল হয়নি।`,
+          text: body?.error
+            ? `${body.error.code}: ${body.error.message}`
+            : interpolate(s.draftDiscardHttp, { status: res.status }),
         });
       }
     } catch {
-      setMsg({ ok: false, text: "নেটওয়ার্ক সমস্যা — বাতিল করা যায়নি।" });
+      setMsg({ ok: false, text: s.draftDiscardNet });
     } finally {
       setBusyId(null);
     }
@@ -128,23 +125,25 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
   if (!drafts || drafts.length === 0) return null;
 
   return (
-    <section aria-label="সংরক্ষিত ড্রাফট অর্ডার" className="mt-8 rounded-lg border border-amber-200 bg-amber-50/60 p-4 shadow-card">
+    <section aria-label={s.draftsAria} className="mt-8 rounded-lg border border-amber-200 bg-amber-50/60 p-4 shadow-card">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-h3">সংরক্ষিত ড্রাফট ({drafts.length.toLocaleString("bn-BD")}টি)</h2>
-        <p className="text-caption text-text-muted">
-          ড্রাফট আসল অর্ডার নয় — অর্ডার নম্বর ও স্টক রিজার্ভ হয়নি; মোট মূল্য আনুমানিক, রূপান্তরের সময় আবার যাচাই হয়।
-        </p>
+        <h2 className="text-h3">
+          {interpolate(s.draftsTitle, { n: drafts.length.toLocaleString(intlLocale(locale)) })}
+        </h2>
+        <p className="text-caption text-text-muted">{s.draftsNote}</p>
       </div>
       <ul className="mt-3 divide-y divide-amber-200/70">
         {drafts.map((d) => (
           <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5 text-small">
-            <span className="font-semibold">{d.customerName ?? "নাম নেই"}</span>
+            <span className="font-semibold">{d.customerName ?? s.draftNoName}</span>
             {d.customerPhone && <span className="font-mono text-text-muted">{d.customerPhone}</span>}
-            <span className="text-text-muted">{d.itemCount.toLocaleString("bn-BD")}টি পণ্য</span>
-            <span className="font-mono font-semibold tabular-nums">
-              {d.totalPreviewPoisha !== null ? formatBdt(d.totalPreviewPoisha) : "মূল্য নির্ধারণ হয়নি"}
+            <span className="text-text-muted">
+              {interpolate(s.draftItems, { n: d.itemCount.toLocaleString(intlLocale(locale)) })}
             </span>
-            <span className="text-caption text-text-subtle">{ageText(d.updatedAt)}</span>
+            <span className="font-mono font-semibold tabular-nums">
+              {d.totalPreviewPoisha !== null ? formatBdt(d.totalPreviewPoisha) : s.draftNoPrice}
+            </span>
+            <span className="text-caption text-text-subtle">{orderAgeLabel(d.updatedAt, Date.now(), locale)}</span>
             <span className="ml-auto flex flex-wrap gap-2">
               <button
                 type="button"
@@ -152,7 +151,7 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
                 onClick={() => window.location.assign(`/admin/orders?draft=${d.id}`)}
                 className="min-h-[36px] rounded-md border border-border bg-card px-3 font-semibold transition motion-fast hover:bg-surface-2 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
-                আবার খুলুন
+                {s.draftResume}
               </button>
               <button
                 type="button"
@@ -160,7 +159,7 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
                 onClick={() => void convert(d.id)}
                 className="min-h-[36px] rounded-md bg-brand-600 px-3 font-semibold text-white transition motion-fast hover:bg-brand-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
-                {busyId === d.id ? "হচ্ছে…" : "অর্ডারে রূপান্তর"}
+                {busyId === d.id ? s.draftBusy : s.draftConvert}
               </button>
               <button
                 type="button"
@@ -168,7 +167,7 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
                 onClick={() => void discard(d.id)}
                 className="min-h-[36px] rounded-md border border-border bg-card px-3 font-semibold text-rose-600 transition motion-fast hover:bg-rose-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
-                বাতিল
+                {t.cancel}
               </button>
             </span>
           </li>

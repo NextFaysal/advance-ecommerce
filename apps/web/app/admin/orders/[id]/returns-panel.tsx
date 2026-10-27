@@ -24,6 +24,10 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatPoisha } from "@/components/ui/money";
+import { interpolate, pick, type Locale } from "../../../../src/i18n/locale";
+import { useLocale } from "../../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "../strings";
+import { formatOrderDateTime } from "../list-helpers";
 
 interface PanelLine {
   orderItemId: string;
@@ -56,13 +60,22 @@ interface PanelReturn {
   createdAt: string;
 }
 
-const STATUS_UI: Record<string, { label: string; tone: "success" | "warning" | "danger" | "info" | "neutral" }> = {
-  REQUESTED: { label: "অনুরোধ এসেছে", tone: "warning" },
-  APPROVED: { label: "অনুমোদিত — পণ্য আসছে", tone: "info" },
-  REJECTED: { label: "বাতিল", tone: "danger" },
-  RECEIVED: { label: "পণ্য পৌঁছেছে", tone: "info" },
-  COMPLETED: { label: "সম্পন্ন (রিফান্ড PENDING)", tone: "success" },
-  CLOSED: { label: "বন্ধ (রিফান্ড নেই)", tone: "neutral" },
+const STATUS_LABEL: Record<string, Record<Locale, string>> = {
+  REQUESTED: { bn: "অনুরোধ এসেছে", en: "Requested" },
+  APPROVED: { bn: "অনুমোদিত — পণ্য আসছে", en: "Approved — goods incoming" },
+  REJECTED: { bn: "বাতিল", en: "Rejected" },
+  RECEIVED: { bn: "পণ্য পৌঁছেছে", en: "Goods received" },
+  COMPLETED: { bn: "সম্পন্ন (রিফান্ড PENDING)", en: "Completed (refund PENDING)" },
+  CLOSED: { bn: "বন্ধ (রিফান্ড নেই)", en: "Closed (no refund)" },
+};
+
+const STATUS_TONE_MAP: Record<string, "success" | "warning" | "danger" | "info" | "neutral"> = {
+  REQUESTED: "warning",
+  APPROVED: "info",
+  REJECTED: "danger",
+  RECEIVED: "info",
+  COMPLETED: "success",
+  CLOSED: "neutral",
 };
 
 const inputCls =
@@ -70,15 +83,9 @@ const inputCls =
 const qtyCls =
   "h-10 w-20 rounded-md border border-border bg-card px-2 text-sm shadow-sm outline-none transition focus:border-brand-500";
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString("bn-BD", {
-    timeZone: "Asia/Dhaka",
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
-
 export function ReturnsPanel({ orderId }: { orderId: string }) {
+  const { locale, t } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const [returns, setReturns] = useState<PanelReturn[] | null>(null);
   const [lines, setLines] = useState<PanelLine[]>([]);
   const [orderStatus, setOrderStatus] = useState<string | null>(null);
@@ -106,7 +113,7 @@ export function ReturnsPanel({ orderId }: { orderId: string }) {
       setOrderStatus(json.data?.orderStatus ?? null);
       setLoadError(null);
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "লোড ব্যর্থ হয়েছে");
+      setLoadError(e instanceof Error ? e.message : s.rtLoadFailFallback);
       setReturns([]);
     }
   }, [orderId]);
@@ -124,7 +131,7 @@ export function ReturnsPanel({ orderId }: { orderId: string }) {
         reason: reasons[l.orderItemId]?.trim() ? reasons[l.orderItemId].trim() : undefined,
       }));
     if (items.length === 0) {
-      setActionError("অন্তত একটি পণ্যের পরিমাণ দিন।");
+      setActionError(s.rtCreateQtyErr);
       return;
     }
     setBusy(true);
@@ -138,13 +145,13 @@ export function ReturnsPanel({ orderId }: { orderId: string }) {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error?.message ?? `HTTP ${res.status}`);
-      setNotice("রিটার্নের অনুরোধ তৈরি হয়েছে — অনুমোদন ও পরের ধাপগুলো রিটার্ন কিউতে করুন।");
+      setNotice(s.rtCreated);
       setQty({});
       setReasons({});
       setNote("");
       await load();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "রিটার্ন তৈরি ব্যর্থ হয়েছে");
+      setActionError(e instanceof Error ? e.message : s.rtCreateFailFallback);
     } finally {
       setBusy(false);
     }
@@ -153,8 +160,8 @@ export function ReturnsPanel({ orderId }: { orderId: string }) {
   if (forbidden) {
     return (
       <Card className="p-4">
-        <h3 className="text-small font-semibold text-text-main">রিটার্ন (RMA)</h3>
-        <p className="mt-1 text-small text-text-muted">রিটার্ন দেখার অনুমতি নেই (returns.view)।</p>
+        <h3 className="text-small font-semibold text-text-main">{s.rtTitle}</h3>
+        <p className="mt-1 text-small text-text-muted">{s.rtForbidden}</p>
       </Card>
     );
   }
@@ -165,9 +172,9 @@ export function ReturnsPanel({ orderId }: { orderId: string }) {
   return (
     <Card className="p-4">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-small font-semibold text-text-main">রিটার্ন (RMA)</h3>
+        <h3 className="text-small font-semibold text-text-main">{s.rtTitle}</h3>
         <Link href="/admin/returns" className="text-small font-medium text-brand-700 hover:underline">
-          রিটার্ন কিউ খুলুন →
+          {s.rtQueueLink}
         </Link>
       </div>
 
@@ -188,34 +195,42 @@ export function ReturnsPanel({ orderId }: { orderId: string }) {
       )}
 
       {returns === null ? (
-        <p className="mt-3 text-small text-text-muted">লোড হচ্ছে…</p>
+        <p className="mt-3 text-small text-text-muted">{t.loading}</p>
       ) : returns.length === 0 ? (
-        <p className="mt-3 text-small text-text-muted">এই অর্ডারে এখনো কোনো রিটার্ন নেই।</p>
+        <p className="mt-3 text-small text-text-muted">{s.rtNone}</p>
       ) : (
         <ul className="mt-3 space-y-2.5">
           {returns.map((r) => {
-            const ui = STATUS_UI[r.status] ?? { label: r.status, tone: "neutral" as const };
+            const uiLabel = STATUS_LABEL[r.status]
+              ? pick(locale, STATUS_LABEL[r.status])
+              : r.status;
+            const uiTone = STATUS_TONE_MAP[r.status] ?? "neutral";
             return (
               <li key={r.id} className="rounded-md border border-border px-3 py-2.5">
                 <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-                  <Badge tone={ui.tone}>{ui.label}</Badge>
+                  <Badge tone={uiTone}>{uiLabel}</Badge>
                   <span className="text-small text-text-muted">
                     {r.items.map((i) => `${i.productName} ×${i.quantity}`).join(", ")} ·{" "}
                     {formatPoisha(r.goodsValuePoisha)}
                   </span>
-                  <span className="text-caption text-text-subtle">{fmtDate(r.createdAt)}</span>
+                  <span className="text-caption text-text-subtle">{formatOrderDateTime(r.createdAt, locale)}</span>
                 </div>
                 <p className="mt-1 text-small text-text-muted">
-                  কারণ: {r.reason}
+                  {interpolate(s.tlReason, { reason: r.reason })}
                   {r.items.some((i) => i.condition) ? (
                     <>
-                      {" "}· অবস্থা:{" "}
-                      {r.items
-                        .map((i) => `${i.productName}: ${i.condition === "restockable" ? "ভালো" : i.condition === "damaged" ? "নষ্ট" : "—"}`)
-                        .join(", ")}
+                      {" "}·{" "}
+                      {interpolate(s.rtCondition, {
+                        list: r.items
+                          .map(
+                            (i) =>
+                              `${i.productName}: ${i.condition === "restockable" ? s.rtCondGood : i.condition === "damaged" ? s.rtCondDamaged : "—"}`,
+                          )
+                          .join(", "),
+                      })}
                     </>
                   ) : null}
-                  {r.refundId ? <> · রিফান্ড রেকর্ড হয়েছে (PENDING)</> : null}
+                  {r.refundId ? <> {s.rtRefundRecorded}</> : null}
                 </p>
               </li>
             );
@@ -226,16 +241,18 @@ export function ReturnsPanel({ orderId }: { orderId: string }) {
       {orderStatus === "DELIVERED" ? (
         canCreate ? (
           <div className="mt-4 border-t border-border pt-3.5">
-            <h4 className="text-small font-semibold text-text-main">নতুন রিটার্ন তৈরি করুন</h4>
+            <h4 className="text-small font-semibold text-text-main">{s.rtNewTitle}</h4>
             <div className="mt-2.5 space-y-2">
               {lines.map((l) => (
                 <div key={l.orderItemId} className="flex flex-wrap items-center gap-2">
                   <span className="min-w-40 flex-1 text-small">
                     {l.productName}
                     <span className="block text-caption text-text-subtle">
-                      {l.sku} · অর্ডার {l.orderedQuantity}টি
-                      {l.returnedQuantity > 0 ? ` · ফিরেছে ${l.returnedQuantity}টি` : ""}
-                      {l.openReturn ? " · একটি রিটার্ন চলমান" : ""}
+                      {l.sku} · {interpolate(s.rtOrdered, { n: l.orderedQuantity })}
+                      {l.returnedQuantity > 0
+                        ? ` ${interpolate(s.rtReturnedPart, { n: l.returnedQuantity })}`
+                        : ""}
+                      {l.openReturn ? ` ${s.rtOpenPart}` : ""}
                     </span>
                   </span>
                   <input
@@ -248,11 +265,11 @@ export function ReturnsPanel({ orderId }: { orderId: string }) {
                     onChange={(e) =>
                       setQty((prev) => ({ ...prev, [l.orderItemId]: Number(e.target.value) }))
                     }
-                    aria-label={`${l.productName} রিটার্নের পরিমাণ`}
+                    aria-label={interpolate(s.rtQtyAria, { name: l.productName })}
                   />
                   <input
                     className={`${inputCls} min-w-44 flex-1`}
-                    placeholder="কারণ (ঐচ্ছিক)"
+                    placeholder={s.rtReasonOptPlaceholder}
                     value={reasons[l.orderItemId] ?? ""}
                     disabled={l.openReturn || l.returnableQuantity === 0}
                     onChange={(e) =>
@@ -264,23 +281,19 @@ export function ReturnsPanel({ orderId }: { orderId: string }) {
             </div>
             <input
               className={`${inputCls} mt-2.5`}
-              placeholder="নোট (ঐচ্ছিক)"
+              placeholder={s.rtNoteOptPlaceholder}
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
             <Button className="mt-3" disabled={busy} onClick={() => void create()}>
-              রিটার্নের অনুরোধ তৈরি করুন
+              {s.rtCreateBtn}
             </Button>
           </div>
         ) : (
-          <p className="mt-3 text-small text-text-muted">
-            সব পণ্য ইতিমধ্যে ফেরত এসেছে অথবা একটি রিটার্ন চলমান আছে — নতুন রিটার্ন এখন তৈরি করা যাবে না।
-          </p>
+          <p className="mt-3 text-small text-text-muted">{s.rtAllReturned}</p>
         )
       ) : (
-        <p className="mt-3 text-small text-text-muted">
-          রিটার্ন শুধু ডেলিভারি সম্পন্ন (DELIVERED) অর্ডারেই তৈরি করা যায়।
-        </p>
+        <p className="mt-3 text-small text-text-muted">{s.rtOnlyDelivered}</p>
       )}
     </Card>
   );

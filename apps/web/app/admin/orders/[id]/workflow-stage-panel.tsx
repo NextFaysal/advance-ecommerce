@@ -22,6 +22,9 @@ import { ORDER_STATUS_VISUAL } from "../../../../src/orders/components/labels";
 import { WorkflowStageChip } from "../../../../src/orders/components/WorkflowStageChip";
 import type { OrderStatus } from "../../../../src/orders/types";
 import type { WorkflowStageTone } from "../../../../src/orders/stages";
+import { pick } from "../../../../src/i18n/locale";
+import { useLocale } from "../../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "../strings";
 
 interface StageDef {
   id: string;
@@ -56,6 +59,8 @@ export function WorkflowStagePanel({
   /** Reload the workspace after a change (header chip truth). */
   onChanged?: () => void;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const [data, setData] = useState<PickerData | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [selected, setSelected] = useState<string>("");
@@ -111,7 +116,7 @@ export function WorkflowStagePanel({
         );
       }
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।");
+      setError(s.stageNetwork);
     } finally {
       setBusy(false);
     }
@@ -119,43 +124,41 @@ export function WorkflowStagePanel({
 
   return (
     <Card>
-      <h3 className="font-display text-base font-semibold text-text-main">ওয়ার্কফ্লো ধাপ</h3>
+      <h3 className="font-display text-base font-semibold text-text-main">{s.stageTitle}</h3>
       <p className="mt-1 text-small leading-relaxed text-text-muted">
-        ধাপ হলো এই স্ট্যাটাসের ভেতরের একটি লেবেল (যেমন "মান যাচাই") — এটি স্ট্যাটাস বদলায় না;
-        স্টক, পেমেন্ট ও কুরিয়ারের হিসাব আগের মতোই ক্যানোনিকাল স্ট্যাটাস দিয়ে চলে। স্ট্যাটাস
-        বদলালে ধাপের অ্যাংকর না মিললে ধাপটি নিজে থেকে সরে যায়।
+        {s.stageIntro}
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className="text-small text-text-muted">বর্তমান ধাপ:</span>
+        <span className="text-small text-text-muted">{s.stageCurrent}</span>
         {data.current ? (
-          <WorkflowStageChip label={data.current.labelBn} tone={data.current.tone} />
+          <WorkflowStageChip label={locale === "bn" ? data.current.labelBn : data.current.labelEn} tone={data.current.tone} />
         ) : data.assignedStageId ? (
           <span className="text-small font-medium text-text-main">{data.assignedStageId}</span>
         ) : (
-          <span className="text-small font-medium text-text-main">কোনো ধাপ বসানো নেই</span>
+          <span className="text-small font-medium text-text-main">{s.stageNone}</span>
         )}
       </div>
 
       {data.stages.length === 0 ? (
         <p className="mt-3 text-small text-text-muted">
-          এখনো কোনো ধাপ তৈরি হয়নি — সেটিংস → অর্ডার পেজে ধাপ তৈরি করুন।
+          {s.stageEmpty}
         </p>
       ) : (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <select
-            aria-label="ওয়ার্কফ্লো ধাপ বেছে নিন"
+            aria-label={s.stagePick}
             value={selected}
             onChange={(e) => setSelected(e.target.value)}
             className="min-h-[40px] rounded-[9px] border border-border bg-card px-2.5 text-small font-medium text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
-            <option value="">— ধাপ নেই —</option>
-            {data.stages.map((s) => {
-              const anchoredHere = s.anchorStatus === data.orderStatus;
+            <option value="">{s.stageNoStage}</option>
+            {data.stages.map((stage) => {
+              const anchoredHere = stage.anchorStatus === data.orderStatus;
               return (
-                <option key={s.id} value={s.id} disabled={!anchoredHere}>
-                  {s.labelBn} ({ORDER_STATUS_VISUAL[s.anchorStatus].labelBn}
-                  {anchoredHere ? "" : " স্ট্যাটাসে"})
+                <option key={stage.id} value={stage.id} disabled={!anchoredHere}>
+                  {locale === "bn" ? stage.labelBn : stage.labelEn} ({locale === "bn" ? ORDER_STATUS_VISUAL[stage.anchorStatus].labelBn : ORDER_STATUS_VISUAL[stage.anchorStatus].labelEn}
+                  {anchoredHere ? "" : ` ${s.stageAtStatus}`})
                 </option>
               );
             })}
@@ -165,11 +168,11 @@ export function WorkflowStagePanel({
             disabled={busy || selected === (data.assignedStageId ?? "")}
             onClick={() => void apply(selected === "" ? null : selected)}
           >
-            {busy ? "সেভ হচ্ছে…" : "ধাপ বসান"}
+            {busy ? s.savingStage : s.stageSet}
           </Button>
           {data.assignedStageId ? (
             <Button type="button" variant="secondary" disabled={busy} onClick={() => void apply(null)}>
-              ধাপ সরান
+              {s.stageRemove}
             </Button>
           ) : null}
         </div>

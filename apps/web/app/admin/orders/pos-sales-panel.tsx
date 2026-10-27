@@ -15,6 +15,9 @@
 import { useEffect, useState } from "react";
 import { formatBdt } from "../../../src/checkout/pricing";
 import { shiftYmd, todayDhakaYmd } from "../../../src/lib/dhaka-date";
+import { pick, intlLocale, type Locale } from "../../../src/i18n/locale";
+import { useLocale } from "../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "./strings";
 
 interface PosSaleRow {
   id: string;
@@ -37,17 +40,17 @@ interface PosSalesReport {
 
 type RangeKey = "today" | "7d" | "30d";
 
-const RANGE_OPTIONS: Array<{ key: RangeKey; label: string; days: number }> = [
-  { key: "today", label: "আজ", days: 0 },
-  { key: "7d", label: "শেষ ৭ দিন", days: 6 },
-  { key: "30d", label: "শেষ ৩০ দিন", days: 29 },
+const RANGE_OPTIONS: Array<{ key: RangeKey; label: Record<Locale, string>; days: number }> = [
+  { key: "today", label: { bn: "আজ", en: "Today" }, days: 0 },
+  { key: "7d", label: { bn: "শেষ ৭ দিন", en: "Last 7 days" }, days: 6 },
+  { key: "30d", label: { bn: "শেষ ৩০ দিন", en: "Last 30 days" }, days: 29 },
 ];
 
-const METHOD_LABEL: Record<string, string> = {
-  CASH: "নগদ",
-  BKASH: "বিকাশ",
-  NAGAD: "নগদ (Nagad)",
-  CARD: "কার্ড",
+const METHOD_LABEL: Record<string, Record<Locale, string>> = {
+  CASH: { bn: "নগদ", en: "Cash" },
+  BKASH: { bn: "বিকাশ", en: "bKash" },
+  NAGAD: { bn: "নগদ (Nagad)", en: "Cash (Nagad)" },
+  CARD: { bn: "কার্ড", en: "Card" },
 };
 
 function rangeFor(key: RangeKey): { from: string; to: string } {
@@ -57,6 +60,8 @@ function rangeFor(key: RangeKey): { from: string; to: string } {
 }
 
 export function PosSalesPanel() {
+  const { locale, t } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const [rangeKey, setRangeKey] = useState<RangeKey>("30d");
   const [report, setReport] = useState<PosSalesReport | null>(null);
   const [failed, setFailed] = useState(false);
@@ -82,20 +87,19 @@ export function PosSalesPanel() {
   }, [rangeKey]);
 
   return (
-    <section aria-label="দোকানের বিক্রি (POS)" className="mt-4 rounded-lg border border-border bg-card p-4 shadow-card">
+    <section aria-label={s.posAria} className="mt-4 rounded-lg border border-border bg-card p-4 shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-h3">দোকানের বিক্রি (POS)</h2>
+          <h2 className="text-h3">{s.posTitle}</h2>
           <p className="mt-0.5 max-w-2xl text-small leading-relaxed text-text-muted">
-            কাউন্টারের বিক্রি এখানে শুধু দেখার জন্য — এগুলো অর্ডারে রূপান্তর হয় না, কারণ POS বিক্রির স্টক
-            POS ফ্লোতেই কমে গেছে (রূপান্তর করলে স্টক ও আয় দুবার গণনা হতো)। বিক্রি করতে{" "}
+            {s.posIntro1}{" "}
             <a href="/admin/pos" className="font-semibold text-brand-700 hover:underline">
-              POS রেজিস্টার
+              {s.posRegister}
             </a>{" "}
-            ব্যবহার করুন।
+            {s.posIntro2}
           </p>
         </div>
-        <div className="flex gap-1.5" role="group" aria-label="সময়সীমা">
+        <div className="flex gap-1.5" role="group" aria-label={s.rangeAria}>
           {RANGE_OPTIONS.map((o) => (
             <button
               key={o.key}
@@ -108,7 +112,7 @@ export function PosSalesPanel() {
                   : "border border-border bg-card hover:bg-surface-2"
               } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
             >
-              {o.label}
+              {pick(locale, o.label)}
             </button>
           ))}
         </div>
@@ -116,39 +120,39 @@ export function PosSalesPanel() {
 
       {failed && (
         <p role="alert" className="mt-3 text-small text-rose-600">
-          POS বিক্রি লোড করা যায়নি।
+          {s.posLoadFail}
         </p>
       )}
       {!failed && !report && (
         <p role="status" className="mt-3 text-small text-text-muted">
-          লোড হচ্ছে…
+          {t.loading}
         </p>
       )}
       {report && (
         <>
           <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-small">
             <span>
-              মোট বিক্রি:{" "}
+              {s.posTotalSales}{" "}
               <span className="font-mono font-bold tabular-nums">{formatBdt(report.totalPoisha)}</span>
             </span>
             <span className="text-text-muted">
-              {report.count.toLocaleString("bn-BD")}টি রসিদ
-              {report.rowsTruncated ? ` (সর্বশেষ ${report.rows.length.toLocaleString("bn-BD")}টি দেখানো হচ্ছে; মোট হিসাব পুরো সময়সীমার)` : ""}
+              {report.count.toLocaleString(intlLocale(locale))} {s.posReceipts}
+              {report.rowsTruncated ? ` ${s.posTruncated1} ${report.rows.length.toLocaleString(intlLocale(locale))}${s.posTruncated2}` : ""}
             </span>
           </div>
           {report.rows.length === 0 ? (
-            <p className="mt-3 text-small text-text-muted">এই সময়সীমায় কোনো POS বিক্রি নেই।</p>
+            <p className="mt-3 text-small text-text-muted">{s.posEmpty}</p>
           ) : (
             <div className="mt-3 overflow-x-auto">
               <table className="w-full min-w-[560px] text-left text-small">
                 <thead>
                   <tr className="border-b border-border text-caption uppercase tracking-wide text-text-subtle">
-                    <th className="py-2 pr-3 font-semibold">রসিদ</th>
-                    <th className="py-2 pr-3 font-semibold">সময়</th>
-                    <th className="py-2 pr-3 font-semibold">ক্যাশিয়ার / কাউন্টার</th>
-                    <th className="py-2 pr-3 font-semibold">পেমেন্ট</th>
-                    <th className="py-2 pr-3 text-right font-semibold">পণ্য</th>
-                    <th className="py-2 text-right font-semibold">মোট</th>
+                    <th className="py-2 pr-3 font-semibold">{s.posColReceipt}</th>
+                    <th className="py-2 pr-3 font-semibold">{s.posColTime}</th>
+                    <th className="py-2 pr-3 font-semibold">{s.posColCashier}</th>
+                    <th className="py-2 pr-3 font-semibold">{s.posColPayment}</th>
+                    <th className="py-2 pr-3 text-right font-semibold">{s.posColItems}</th>
+                    <th className="py-2 text-right font-semibold">{s.posColTotal}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -156,13 +160,13 @@ export function PosSalesPanel() {
                     <tr key={r.id}>
                       <td className="py-2 pr-3 font-mono font-semibold">{r.receiptRef}</td>
                       <td className="py-2 pr-3 text-text-muted">
-                        {new Date(r.createdAt).toLocaleString("bn-BD", { timeZone: "Asia/Dhaka" })}
+                        {new Date(r.createdAt).toLocaleString(intlLocale(locale), { timeZone: "Asia/Dhaka" })}
                       </td>
                       <td className="py-2 pr-3 text-text-muted">
                         {[r.cashierLabel, r.registerName].filter(Boolean).join(" · ") || "—"}
                       </td>
-                      <td className="py-2 pr-3">{METHOD_LABEL[r.paymentMethod] ?? r.paymentMethod}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{r.itemsCount.toLocaleString("bn-BD")}</td>
+                      <td className="py-2 pr-3">{METHOD_LABEL[r.paymentMethod] ? pick(locale, METHOD_LABEL[r.paymentMethod]) : r.paymentMethod}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{r.itemsCount.toLocaleString(intlLocale(locale))}</td>
                       <td className="py-2 text-right font-mono font-semibold tabular-nums">
                         {formatBdt(r.totalPoisha)}
                       </td>

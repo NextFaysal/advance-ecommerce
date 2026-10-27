@@ -1,5 +1,8 @@
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { PageHeader } from "@/components/ui/page-header";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { INBOX_STRINGS } from "./strings";
 import { maskPhone } from "@/checkout/validation";
 import { demoInboxFlags, isInboxEnabled } from "@/inbox/flags";
 import { extractPhoneFromMessages } from "@/inbox/conversion";
@@ -29,18 +32,19 @@ import InboxClient from "./inbox-client";
 // Full numbers stay server-side; the order draft is built by POST
 // /api/v1/admin/inbox/draft, which resolves the phone server-side.
 export default async function AdminInboxPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, INBOX_STRINGS);
   await ensureDbFeatureFlags().catch(() => {});
   if (!isInboxEnabled(demoInboxFlags)) {
     return (
       <main>
         <PageHeader
-          title="ইনবক্স (F-commerce)"
-          description="Messenger, WhatsApp ও Instagram-এর সব কথোপকথন এক জায়গায় (ধাপ ৪৬, A6)"
+          title={s.pageTitle}
+          description={s.lockedDesc}
         />
         <p role="status">
-          🔒 এই মডিউলটি এই ইনস্টলে লক করা আছে। F-commerce ইনবক্স একটি পেইড অ্যাড-অন —
-          আনলক করতে Admin &gt; Settings &gt; Feature Flags থেকে{" "}
-          <code>module.f_commerce</code> চালু করুন।
+          {s.lockedTextA}
+          <code>module.f_commerce</code>{s.lockedTextB}
         </p>
       </main>
     );
@@ -67,20 +71,20 @@ export default async function AdminInboxPage() {
   return (
     <main>
       <PageHeader
-        title="ইনবক্স (F-commerce)"
-        description="ডেটা ডাটাবেস থেকে (src/inbox/store.ts)। সেটআপ করা চ্যানেলে আসল মেসেজ webhook হয়ে এখানে আসে এবং উত্তরও সত্যিকারে পাঠানো হয়; সেটআপ না-করা চ্যানেলে উত্তর কিউ-ইনটেন্ট (ডেমো) হিসেবে থাকে। কথোপকথন থেকে তৈরি ড্রাফট কোনো অর্ডার নয়।"
-        breadcrumb="Admin / Sales"
+        title={s.pageTitle}
+        description={s.pageDesc}
+        breadcrumb={s.pageBreadcrumb}
       />
       <p role="status">
-        চ্যানেল অবস্থা:{" "}
+        {s.channelStatusLabel}{" "}
         {(Object.keys(channelLabels) as InboxChannel[]).map((channel, i) => (
           <span key={channel}>
             {i > 0 ? " · " : ""}
             {channelLabels[channel]}:{" "}
-            {channelsMeta.channels[channel] ? "লাইভ (মেসেজ আসছে)" : "সেটআপ হয়নি"}
+            {channelsMeta.channels[channel] ? s.channelLiveLabel : s.channelNotSetup}
           </span>
         ))}
-        {" — "}সেটআপ: Admin &gt; Settings-এ Meta তথ্য (meta.*)।
+        {" — "}{s.channelSetupSuffix}
       </p>
       <InboxClient
         conversations={conversations.map(toConversationView)}

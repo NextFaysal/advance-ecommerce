@@ -27,8 +27,11 @@ import { Money, formatPoisha } from "@/components/ui/money";
 import { CountUp } from "@/components/ui/count-up";
 import { Phone } from "@/components/ui/phone";
 import { StatusBadge, type OrderStatus as BadgeOrderStatus } from "@/components/ui/status-badge";
-import { ADMIN_NAV, isLockedAddOn } from "@/admin-nav/config";
+import { ADMIN_NAV, isLockedAddOn, navItemLabel } from "@/admin-nav/config";
 import { RevenueChart, Sparkline } from "@/admin/revenue-chart";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { ADMIN_STRINGS, type AdminStrings } from "@/admin/strings";
 import { getDashboardData } from "@/reports/dashboard";
 import { AttendanceCard } from "@/team/attendance-card";
 import type { OrderStatus } from "@/orders/types";
@@ -101,15 +104,15 @@ function Icon({ name, className = "h-5 w-5" }: { name: string; className?: strin
   );
 }
 
-function greetingBn(): string {
+function greeting(s: AdminStrings): string {
   const hour = Number(
     new Intl.DateTimeFormat("en-GB", { hour: "numeric", hour12: false, timeZone: "Asia/Dhaka" }).format(new Date()),
   );
-  if (hour < 5) return "শুভ রাত্রি";
-  if (hour < 12) return "শুভ সকাল";
-  if (hour < 16) return "শুভ দুপুর";
-  if (hour < 19) return "শুভ বিকেল";
-  return "শুভ সন্ধ্যা";
+  if (hour < 5) return s.greetNight;
+  if (hour < 12) return s.greetMorning;
+  if (hour < 16) return s.greetNoon;
+  if (hour < 19) return s.greetAfternoon;
+  return s.greetEvening;
 }
 
 function statusCell(status: OrderStatus) {
@@ -167,6 +170,8 @@ function PeriodStrip({ items }: { items: { label: string; value: string }[] }) {
 }
 
 export default async function AdminHome() {
+  const locale: Locale = await getRequestLocale();
+  const s = pick(locale, ADMIN_STRINGS);
   const data = await getDashboardData();
   const { totals } = data;
   const tiles = ADMIN_NAV.filter((item) => item.id !== "dashboard");
@@ -194,9 +199,9 @@ export default async function AdminHome() {
   const aovSpark = data.dailySeries.map((d) => (d.orders > 0 ? Math.round(d.revenuePoisha / d.orders) : 0));
 
   const pendingActions = [
-    { label: "মুলতুবি অর্ডার নিশ্চিত করা বাকি", count: data.pendingCount, href: "/admin/orders?status=PENDING", icon: "Clock", accent: "bg-amber-50 text-amber-600" },
-    { label: "ম্যানুয়াল TrxID যাচাই বাকি", count: data.pendingTrxReviews, href: "/admin/payments", icon: "ClipboardCheck", accent: "bg-sky-50 text-sky-600" },
-    { label: "কম স্টক আইটেম", count: data.lowStock.length, href: "/admin/inventory", icon: "TriangleAlert", accent: "bg-rose-50 text-rose-600" },
+    { label: s.pendingOrdersLabel, count: data.pendingCount, href: "/admin/orders?status=PENDING", icon: "Clock", accent: "bg-amber-50 text-amber-600" },
+    { label: s.pendingTrxLabel, count: data.pendingTrxReviews, href: "/admin/payments", icon: "ClipboardCheck", accent: "bg-sky-50 text-sky-600" },
+    { label: s.lowStockItemsLabel, count: data.lowStock.length, href: "/admin/inventory", icon: "TriangleAlert", accent: "bg-rose-50 text-rose-600" },
   ];
   const pendingTotal = pendingActions.reduce((s, a) => s + a.count, 0);
 
@@ -207,23 +212,23 @@ export default async function AdminHome() {
         <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-white/10" />
         <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 right-40 h-56 w-56 rounded-full bg-white/10" />
         <div className="relative">
-          <p className="text-small font-medium text-white/80">Advance Ecommerce — অ্যাডমিন</p>
-          <h1 className="mt-1 text-h2">{greetingBn()}!</h1>
+          <p className="text-small font-medium text-white/80">{s.heroAdminLabel}</p>
+          <h1 className="mt-1 text-h2">{greeting(s)}!</h1>
           <p className="mt-1 max-w-xl text-small leading-relaxed text-white/90">
-            আজকের বিক্রয় {formatPoisha(data.today.revenuePoisha)} ({data.today.orders}টি অর্ডার) — সব সংখ্যা আসল ডাটাবেস থেকে হিসাব করা (Asia/Dhaka)।
+            {interpolate(s.heroTodaySales, { sales: formatPoisha(data.today.revenuePoisha), orders: data.today.orders })}
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Link href="/admin/orders" className="flex min-h-[44px] items-center gap-2 rounded-md bg-white px-4 text-sm font-semibold text-brand-700 shadow-sm transition motion-fast hover:bg-brand-50">
               <Icon name="ShoppingCart" className="h-4 w-4" />
-              অর্ডার দেখুন
+              {s.viewOrders}
             </Link>
             <Link href="/admin/products/new" className="flex min-h-[44px] items-center gap-2 rounded-md bg-white/15 px-4 text-sm font-medium text-white ring-1 ring-white/40 transition motion-fast hover:bg-white/25">
               <Icon name="Package" className="h-4 w-4" />
-              পণ্য যোগ করুন
+              {s.addProduct}
             </Link>
             <Link href="/admin/riders" className="flex min-h-[44px] items-center gap-2 rounded-md bg-white/15 px-4 text-sm font-medium text-white ring-1 ring-white/40 transition motion-fast hover:bg-white/25">
               <Icon name="Bike" className="h-4 w-4" />
-              নিজের রাইডার
+              {s.myRiders}
             </Link>
           </div>
         </div>
@@ -234,26 +239,26 @@ export default async function AdminHome() {
 
       {/* KPI row */}
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="মোট বিক্রয় (৩০ দিন)" value={<CountUp value={totals.revenuePoisha} format="poisha" />} icon="Banknote" accent="bg-brand-50 text-brand-600" sparkline={<Sparkline values={revenueSpark} stroke="#6366F1" />}>
+        <KpiCard label={s.totalSales30} value={<CountUp value={totals.revenuePoisha} format="poisha" />} icon="Banknote" accent="bg-brand-50 text-brand-600" sparkline={<Sparkline values={revenueSpark} stroke="#6366F1" />}>
           <PeriodStrip items={[
-            { label: "আজ", value: formatPoisha(data.today.revenuePoisha) },
-            { label: "সপ্তাহ", value: formatPoisha(data.week.revenuePoisha) },
+            { label: s.today, value: formatPoisha(data.today.revenuePoisha) },
+            { label: s.week, value: formatPoisha(data.week.revenuePoisha) },
           ]} />
         </KpiCard>
-        <KpiCard label="অর্ডার (৩০ দিন)" value={<CountUp value={totals.orders} format="plain" />} icon="ShoppingCart" accent="bg-violet-500/10 text-violet-600" sparkline={<Sparkline values={ordersSpark} stroke="#8B5CF6" />}>
+        <KpiCard label={s.orders30} value={<CountUp value={totals.orders} format="plain" />} icon="ShoppingCart" accent="bg-violet-500/10 text-violet-600" sparkline={<Sparkline values={ordersSpark} stroke="#8B5CF6" />}>
           <PeriodStrip items={[
-            { label: "আজ", value: `${data.today.orders}টি` },
-            { label: "সপ্তাহ", value: `${data.week.orders}টি` },
+            { label: s.today, value: interpolate(s.ordersCount, { count: data.today.orders }) },
+            { label: s.week, value: interpolate(s.ordersCount, { count: data.week.orders }) },
           ]} />
         </KpiCard>
-        <KpiCard label="মোট লাভ (৩০ দিন)" value={<CountUp value={totals.grossProfitPoisha} format="poisha" />} icon="TrendingUp" accent="bg-emerald-50 text-emerald-600">
+        <KpiCard label={s.totalProfit30} value={<CountUp value={totals.grossProfitPoisha} format="poisha" />} icon="TrendingUp" accent="bg-emerald-50 text-emerald-600">
           <p className="mt-3 border-t border-border pt-3 text-caption text-text-muted">
-            নিট আয় {formatPoisha(totals.netRevenuePoisha)} · বিক্রিত পণ্য {totals.units}টি
+            {interpolate(s.netAndUnits, { net: formatPoisha(totals.netRevenuePoisha), units: totals.units })}
           </p>
         </KpiCard>
-        <KpiCard label="গড় অর্ডার মূল্য" value={<CountUp value={aovPoisha} format="poisha" />} icon="Calculator" accent="bg-sky-50 text-sky-600" sparkline={<Sparkline values={aovSpark} stroke="#0EA5E9" />}>
+        <KpiCard label={s.avgOrderValue} value={<CountUp value={aovPoisha} format="poisha" />} icon="Calculator" accent="bg-sky-50 text-sky-600" sparkline={<Sparkline values={aovSpark} stroke="#0EA5E9" />}>
           <p className="mt-3 border-t border-border pt-3 text-caption text-text-muted">
-            রিফান্ড {formatPoisha(totals.refundPoisha)} · শিপিং চার্জ {formatPoisha(totals.shippingPoisha)}
+            {interpolate(s.refundAndShipping, { refund: formatPoisha(totals.refundPoisha), shipping: formatPoisha(totals.shippingPoisha) })}
           </p>
         </KpiCard>
       </div>
@@ -263,13 +268,13 @@ export default async function AdminHome() {
         <Card className="shadow-card xl:col-span-2">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <h2 className="text-h3">বিক্রয় চিত্র</h2>
+              <h2 className="text-h3">{s.salesChart}</h2>
               <p className="mt-0.5 text-caption text-text-muted">
-                {data.range.from} → {data.range.to} · প্রতিদিনের বিক্রয় (অর্ডার আইটেম থেকে, Asia/Dhaka)। যেকোনো দিনের ওপর কার্সর রাখলেই ওই দিনের হিসাব দেখা যাবে।
+                {interpolate(s.salesChartDesc, { from: data.range.from, to: data.range.to })}
               </p>
             </div>
             <Link href="/admin/reports" className="flex items-center gap-1 text-small font-semibold text-brand-700 hover:underline">
-              রিপোর্ট খুলুন
+              {s.openReport}
               <Icon name="ChevronRight" className="h-4 w-4" />
             </Link>
           </div>
@@ -278,10 +283,10 @@ export default async function AdminHome() {
           </div>
           <div className="mt-6 grid grid-cols-2 gap-3 border-t border-border pt-4 sm:grid-cols-4">
             {[
-              { label: "মোট লাভ", value: formatPoisha(totals.grossProfitPoisha) },
-              { label: "নিট আয়", value: formatPoisha(totals.netRevenuePoisha) },
-              { label: "রিফান্ড", value: formatPoisha(totals.refundPoisha) },
-              { label: "খরচ (পণ্য)", value: formatPoisha(totals.costPoisha) },
+              { label: s.grossProfit, value: formatPoisha(totals.grossProfitPoisha) },
+              { label: s.netRevenue, value: formatPoisha(totals.netRevenuePoisha) },
+              { label: s.refund, value: formatPoisha(totals.refundPoisha) },
+              { label: s.productCost, value: formatPoisha(totals.costPoisha) },
             ].map((m) => (
               <div key={m.label}>
                 <p className="text-caption text-text-subtle">{m.label}</p>
@@ -292,15 +297,15 @@ export default async function AdminHome() {
         </Card>
 
         <Card className="shadow-card">
-          <h2 className="text-h3">স্ট্যাটাস অনুযায়ী অর্ডার</h2>
-          <p className="mt-0.5 text-caption text-text-muted">সব সময়ের মোট অর্ডার — স্ট্যাটাসভিত্তিক হিসাব।</p>
+          <h2 className="text-h3">{s.ordersByStatus}</h2>
+          <p className="mt-0.5 text-caption text-text-muted">{s.ordersByStatusDesc}</p>
           {statusTotal === 0 ? (
             <div className="flex flex-col items-center px-2 py-10 text-center">
               <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 text-brand-500">
                 <Icon name="ShoppingCart" className="h-6 w-6" />
               </span>
-              <p className="mt-3 text-small font-medium">এখনো কোনো অর্ডার নেই</p>
-              <p className="mt-1 text-caption text-text-muted">প্রথম অর্ডার এলেই এখানে স্ট্যাটাসের ছবি দেখা যাবে।</p>
+              <p className="mt-3 text-small font-medium">{s.noOrdersYet}</p>
+              <p className="mt-1 text-caption text-text-muted">{s.noOrdersYetDesc}</p>
             </div>
           ) : (
             <>
@@ -323,7 +328,7 @@ export default async function AdminHome() {
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <span className="font-mono text-2xl font-bold tabular-nums">{statusTotal}</span>
-                  <span className="text-caption text-text-muted">মোট অর্ডার</span>
+                  <span className="text-caption text-text-muted">{s.totalOrders}</span>
                 </div>
               </div>
               <ul className="mt-4 space-y-1.5">
@@ -348,11 +353,11 @@ export default async function AdminHome() {
         <Card className="shadow-card xl:col-span-2">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <h2 className="text-h3">সাম্প্রতিক অর্ডার</h2>
-              <p className="mt-0.5 text-caption text-text-muted">ডাটাবেসের সর্বশেষ ৫টি অর্ডার।</p>
+              <h2 className="text-h3">{s.recentOrders}</h2>
+              <p className="mt-0.5 text-caption text-text-muted">{s.recentOrdersDesc}</p>
             </div>
             <Link href="/admin/orders" className="flex items-center gap-1 text-small font-semibold text-brand-700 hover:underline">
-              সব অর্ডার
+              {s.allOrders}
               <Icon name="ChevronRight" className="h-4 w-4" />
             </Link>
           </div>
@@ -361,12 +366,12 @@ export default async function AdminHome() {
               <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 text-brand-500">
                 <Icon name="Inbox" className="h-6 w-6" />
               </span>
-              <p className="mt-3 text-small font-medium">এখনো কোনো অর্ডার আসেনি</p>
+              <p className="mt-3 text-small font-medium">{s.noOrdersYetLong}</p>
               <p className="mt-1 max-w-sm text-caption text-text-muted">
-                স্টোরফ্রন্ট থেকে প্রথম অর্ডার এলেই এখানে দেখা যাবে। পণ্য যোগ করা থাকলে দোকান প্রস্তুত।
+                {s.noOrdersYetLongDesc}
               </p>
               <Link href="/admin/products/new" className="brand-gradient mt-4 flex min-h-[40px] items-center rounded-md px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:opacity-95">
-                পণ্য যোগ করুন
+                {s.addProduct}
               </Link>
             </div>
           ) : (
@@ -398,8 +403,8 @@ export default async function AdminHome() {
           {/* Pending actions */}
           <Card className="shadow-card">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-h3">করণীয়</h2>
-              {pendingTotal > 0 ? <Badge tone="warning">{pendingTotal}টি বাকি</Badge> : <Badge tone="success">সব ঠিক আছে</Badge>}
+              <h2 className="text-h3">{s.toDo}</h2>
+              {pendingTotal > 0 ? <Badge tone="warning">{interpolate(s.pendingBadge, { count: pendingTotal })}</Badge> : <Badge tone="success">{s.allGood}</Badge>}
             </div>
             <ul className="mt-2 divide-y divide-border">
               {pendingActions.map((a) => (
@@ -422,26 +427,26 @@ export default async function AdminHome() {
           {/* Low stock */}
           <Card className="shadow-card">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-h3">কম স্টক</h2>
+              <h2 className="text-h3">{s.lowStock}</h2>
               <Link href="/admin/inventory" className="flex items-center gap-1 text-small font-semibold text-brand-700 hover:underline">
-                ইনভেন্টরি
+                {s.inventory}
                 <Icon name="ChevronRight" className="h-4 w-4" />
               </Link>
             </div>
-            <p className="mt-0.5 text-caption text-text-muted">উপলব্ধ স্টক থ্রেশহোল্ড (≤ {data.lowStockThreshold})-এর নিচে।</p>
+            <p className="mt-0.5 text-caption text-text-muted">{interpolate(s.lowStockDesc, { threshold: data.lowStockThreshold })}</p>
             {data.lowStock.length === 0 ? (
-              <p className="py-4 text-small text-text-muted">কম স্টকের কোনো আইটেম নেই।</p>
+              <p className="py-4 text-small text-text-muted">{s.noLowStock}</p>
             ) : (
               <ul className="divide-y divide-border">
                 {data.lowStock.map((row) => (
                   <li key={`${row.warehouseId}-${row.variantId}`} className="flex items-center justify-between gap-2 py-3">
                     <div className="min-w-0">
                       <p className="truncate font-mono text-small">{row.variantId}</p>
-                      <p className="text-caption text-text-muted">গুদাম: {row.warehouseName} · রিজার্ভ: {row.quantityReserved}</p>
+                      <p className="text-caption text-text-muted">{s.warehouseLabel}: {row.warehouseName} · {s.reservedLabel}: {row.quantityReserved}</p>
                     </div>
                     <Badge tone={row.quantityAvailable === 0 ? "danger" : "warning"}>
                       <Icon name="TriangleAlert" className="h-3 w-3" />
-                      {row.quantityAvailable === 0 ? "স্টক শেষ" : `বাকি ${row.quantityAvailable}`}
+                      {row.quantityAvailable === 0 ? s.outOfStock : interpolate(s.remaining, { count: row.quantityAvailable })}
                     </Badge>
                   </li>
                 ))}
@@ -452,7 +457,7 @@ export default async function AdminHome() {
       </div>
 
       {/* All modules */}
-      <PageHeader title="সব মডিউল" description="প্রতিটি অ্যাডমিন পেজ — লক ব্যাজের অ্যাড-অনগুলো ফিচার ফ্ল্যাগ চালু হলে খুলবে।" />
+      <PageHeader title={s.allModules} description={s.allModulesDesc} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
         {tiles.map((item) => (
           <Link key={item.id} href={item.path} className="group block">
@@ -464,12 +469,12 @@ export default async function AdminHome() {
                 {isLockedAddOn(item) ? (
                   <span className="flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-caption font-semibold text-amber-700">
                     <Icon name="Lock" className="h-3 w-3" />
-                    অ্যাড-অন
+                    {s.addOn}
                   </span>
                 ) : null}
               </div>
-              <p className="mt-3 font-semibold leading-snug">{item.labelBn}</p>
-              <p className="mt-0.5 truncate text-caption text-text-muted">{item.labelEn} · {item.path}</p>
+              <p className="mt-3 font-semibold leading-snug">{navItemLabel(item, locale)}</p>
+              <p className="mt-0.5 truncate text-caption text-text-muted">{item.path}</p>
             </Card>
           </Link>
         ))}

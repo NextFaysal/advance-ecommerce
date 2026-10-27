@@ -10,6 +10,9 @@
  * checkout and the order seams honour the effective value.
  */
 import { useCallback, useEffect, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { KITCHEN_STRINGS } from "./strings";
 
 interface ConfigData {
   moduleEnabled: boolean;
@@ -19,6 +22,8 @@ interface ConfigData {
 }
 
 export function KitchenConfigCard() {
+  const { locale } = useLocale();
+  const s = pick(locale, KITCHEN_STRINGS);
   const [data, setData] = useState<ConfigData | null>(null);
   const [tablesText, setTablesText] = useState("");
   const [takeaway, setTakeaway] = useState(true);
@@ -36,7 +41,7 @@ export function KitchenConfigCard() {
         error?: { message?: string };
       } | null;
       if (!res.ok || !json?.data) {
-        setError(json?.error?.message ?? "কনফিগ লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.configLoadFailed);
         return;
       }
       setData(json.data);
@@ -45,9 +50,9 @@ export function KitchenConfigCard() {
       setDineIn(json.data.config.dineInEnabled);
       setError(null);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — কনফিগ লোড করা যায়নি।");
+      setError(s.configLoadNetwork);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load();
@@ -60,11 +65,11 @@ export function KitchenConfigCard() {
       .map((t) => t.trim())
       .filter((t) => t !== "");
     if (tables.length > 50) {
-      setError("সর্বোচ্চ ৫০টি টেবিল রাখা যাবে।");
+      setError(s.tooManyTables);
       return;
     }
     if (!reason.trim()) {
-      setError("পরিবর্তনের কারণ লিখুন (অডিটের জন্য আবশ্যক)।");
+      setError(s.reasonRequired);
       return;
     }
     setBusy(true);
@@ -82,35 +87,36 @@ export function KitchenConfigCard() {
       });
       const json = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
       if (!res.ok) {
-        setError(json?.error?.message ?? "কনফিগ সংরক্ষণ করা যায়নি।");
+        setError(json?.error?.message ?? s.configSaveFailed);
         return;
       }
       setReason("");
-      setNotice("কনফিগ সংরক্ষিত হয়েছে।");
+      setNotice(s.configSaved);
       await load();
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — কনফিগ সংরক্ষণ করা যায়নি।");
+      setError(s.configSaveNetwork);
     } finally {
       setBusy(false);
     }
   }
 
   if (!data && !error) {
-    return <p className="text-sm text-text-muted">কনফিগ লোড হচ্ছে…</p>;
+    return <p className="text-sm text-text-muted">{s.configLoading}</p>;
   }
 
   return (
-    <section aria-label="রেস্টুরেন্ট কনফিগ" className="rounded-2xl border border-border bg-card p-5 shadow-card">
-      <h2 className="text-base font-semibold text-text-main">রেস্টুরেন্ট সেটিংস</h2>
+    <section aria-label={s.configAria} className="rounded-2xl border border-border bg-card p-5 shadow-card">
+      <h2 className="text-base font-semibold text-text-main">{s.configTitle}</h2>
       <p className="mt-1 text-sm leading-6 text-text-muted">
-        টেবিলের তালিকা আর ডাইন-ইন / টেকঅওয়ে চালু-বন্ধ — Setting ডকুমেন্ট <code>restaurant.config</code>-এ
-        থাকে{data?.source === "default" ? " (এখনো কিছু সংরক্ষিত হয়নি — কোডের ডিফল্ট চলছে)" : ""}।
-        টেবিল একটিও না থাকলে ডাইন-ইন কার্যত বন্ধ থাকে, টগল যাই হোক।
+        {s.configIntroA} <code>restaurant.config</code>
+        {data?.source === "default" ? ` ${s.configIntroDefaultSuffix}` : ""} {s.configIntroB}
         {data && (
           <>
             {" "}
-            বর্তমানে কার্যকর: ডাইন-ইন <strong>{data.effective.dineInEnabled ? "চালু" : "বন্ধ"}</strong>,
-            টেকঅওয়ে <strong>{data.effective.takeawayEnabled ? "চালু" : "বন্ধ"}</strong>।
+            {interpolate(s.effectiveLine, {
+              dineIn: data.effective.dineInEnabled ? s.stateOn : s.stateOff,
+              takeaway: data.effective.takeawayEnabled ? s.stateOn : s.stateOff,
+            })}
           </>
         )}
       </p>
@@ -126,12 +132,12 @@ export function KitchenConfigCard() {
       )}
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">টেবিল (প্রতি লাইনে একটি লেবেল)</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{s.tablesLabel}</span>
           <textarea
             value={tablesText}
             onChange={(e) => setTablesText(e.target.value)}
             rows={6}
-            placeholder={"টেবিল ১\nটেবিল ২\nবারান্দা ১"}
+            placeholder={s.tablesPlaceholder}
             className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm text-text-main outline-none transition placeholder:text-text-subtle focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
           />
         </label>
@@ -143,7 +149,7 @@ export function KitchenConfigCard() {
               onChange={(e) => setDineIn(e.target.checked)}
               className="h-4 w-4 shrink-0 accent-brand-600"
             />
-            ডাইন-ইন চালু
+            {s.dineInOn}
           </label>
           <label className="flex cursor-pointer items-center gap-2.5 text-sm font-medium text-text-main">
             <input
@@ -152,15 +158,15 @@ export function KitchenConfigCard() {
               onChange={(e) => setTakeaway(e.target.checked)}
               className="h-4 w-4 shrink-0 accent-brand-600"
             />
-            টেকঅওয়ে চালু
+            {s.takeawayOn}
           </label>
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-text-main">পরিবর্তনের কারণ (আবশ্যক)</span>
+            <span className="mb-1.5 block text-sm font-medium text-text-main">{s.reasonLabel}</span>
             <input
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               maxLength={300}
-              placeholder="যেমন: নতুন টেবিল যোগ হলো"
+              placeholder={s.reasonPlaceholder}
               className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm text-text-main outline-none transition placeholder:text-text-subtle focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
             />
           </label>
@@ -170,7 +176,7 @@ export function KitchenConfigCard() {
             onClick={() => void save()}
             className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
           >
-            {busy ? "সংরক্ষণ হচ্ছে…" : "সংরক্ষণ করুন"}
+            {busy ? s.saving : s.save}
           </button>
         </div>
       </div>

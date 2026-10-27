@@ -15,6 +15,9 @@
  * credentials exist).
  */
 import { useCallback, useEffect, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { PRINT_QUEUE_STRINGS } from "./strings";
 
 interface PodConfig {
   podVariantIds: string[];
@@ -47,6 +50,8 @@ function takaInputToPoisha(text: string): number | null {
 }
 
 export function PodConfigCard() {
+  const { locale } = useLocale();
+  const s = pick(locale, PRINT_QUEUE_STRINGS);
   const [data, setData] = useState<ConfigData | null>(null);
   const [variantIdsText, setVariantIdsText] = useState("");
   const [feeTaka, setFeeTaka] = useState("0");
@@ -66,7 +71,7 @@ export function PodConfigCard() {
         error?: { message?: string };
       } | null;
       if (!res.ok || !json?.data) {
-        setError(json?.error?.message ?? "কনফিগ লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.configLoadFailed);
         return;
       }
       const cfg = json.data.config;
@@ -78,9 +83,9 @@ export function PodConfigCard() {
       setColorsText(cfg.colors.join("\n"));
       setError(null);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — কনফিগ লোড করা যায়নি।");
+      setError(s.networkConfigLoad);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load();
@@ -89,12 +94,12 @@ export function PodConfigCard() {
   async function save() {
     if (busy) return;
     if (!reason.trim()) {
-      setError("পরিবর্তনের কারণ লিখুন (অডিটের জন্য আবশ্যক)।");
+      setError(s.reasonRequired);
       return;
     }
     const printFeePoisha = takaInputToPoisha(feeTaka);
     if (printFeePoisha === null) {
-      setError("প্রিন্ট ফি সঠিক সংখ্যা হতে হবে (ঋণাত্মক নয়)।");
+      setError(s.feeInvalid);
       return;
     }
     const podVariantIds = variantIdsText
@@ -126,40 +131,38 @@ export function PodConfigCard() {
       } | null;
       if (!res.ok || !json?.data) {
         setError(
-          json?.error?.details?.join("; ") ?? json?.error?.message ?? "কনফিগ সংরক্ষণ করা যায়নি।",
+          json?.error?.details?.join("; ") ?? json?.error?.message ?? s.configSaveFailed,
         );
         return;
       }
       setData(json.data);
       setReason("");
-      setNotice("কনফিগ সংরক্ষিত হয়েছে।");
+      setNotice(s.configSaved);
       setError(null);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — কনফিগ সংরক্ষণ করা যায়নি।");
+      setError(s.networkConfigSave);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <section aria-label="প্রিন্ট-অন-ডিমান্ড কনফিগ" className="rounded-2xl border border-border bg-card p-5 shadow-card">
-      <h2 className="text-base font-bold text-text-main">প্রিন্ট-অন-ডিমান্ড কনফিগ</h2>
+    <section aria-label={s.configAria} className="rounded-2xl border border-border bg-card p-5 shadow-card">
+      <h2 className="text-base font-bold text-text-main">{s.configTitle}</h2>
       <p className="mt-1 text-sm text-text-muted">
-        কোন ভ্যারিয়েন্টে কাস্টম প্রিন্ট হবে, প্রতি আইটেমে প্রিন্ট ফি কত, আর লেখার সর্বোচ্চ দৈর্ঘ্য — সব এখান থেকে।
-        ফি বা সীমা বদলালে শুধু নতুন অর্ডারে প্রযোজ্য হয়; আগের অর্ডারের লেখা ও ফি অর্ডারের নোটেই নির্ধারিত (frozen) থাকে।
+        {s.configIntro}
         {data && (
           <>
             {" "}
-            উৎস: <strong className="text-text-main">{data.source === "saved" ? "সংরক্ষিত" : "ডিফল্ট"}</strong>
-            {!data.moduleEnabled && (
-              <> · মডিউল এখন বন্ধ (module.print_on_demand) — কনফিগ আগে থেকে তৈরি রাখা যায়।</>
-            )}
+            {s.sourceLabel}{" "}
+            <strong className="text-text-main">{data.source === "saved" ? s.sourceSaved : s.sourceDefault}</strong>
+            {!data.moduleEnabled && <>{s.moduleOffNote}</>}
           </>
         )}
       </p>
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">প্রিন্ট ফি (টাকা / আইটেম)</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{s.feeLabel}</span>
           <input
             type="number"
             min={0}
@@ -169,11 +172,11 @@ export function PodConfigCard() {
             className={INPUT_CLASS}
           />
           <span className="mt-1 block text-xs text-text-muted">
-            ০ মানে প্রিন্ট ফি নেই — ছাপানোর খরচ পণ্যের দামেই ধরা আছে।
+            {s.feeHint}
           </span>
         </label>
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">লেখার সর্বোচ্চ দৈর্ঘ্য (অক্ষর)</span>
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{s.textMaxLabel}</span>
           <input
             type="number"
             min={1}
@@ -191,10 +194,9 @@ export function PodConfigCard() {
             className="mt-1 h-4 w-4 shrink-0 accent-brand-600"
           />
           <span>
-            <span className="block text-sm font-medium text-text-main">ছবি/আর্টওয়ার্ক আপলোড (ভবিষ্যতের জন্য)</span>
+            <span className="block text-sm font-medium text-text-main">{s.imageUploadTitle}</span>
             <span className="mt-1 block text-xs text-text-muted">
-              এখন শুধু পছন্দটি সংরক্ষিত থাকে — স্টোরেজ (R2/S3) সেটআপ না হওয়া পর্যন্ত কোথাও আপলোডের
-              সুবিধা দেখানো হয় না। এই সংস্করণে কাস্টম প্রিন্ট মানে শুধু লেখা + রঙ।
+              {s.imageUploadHint}
             </span>
           </span>
         </label>
@@ -202,7 +204,7 @@ export function PodConfigCard() {
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-text-main">
-            কাস্টম-প্রিন্টযোগ্য ভ্যারিয়েন্ট ID (প্রতি লাইনে একটি)
+            {s.variantIdsLabel}
           </span>
           <textarea
             value={variantIdsText}
@@ -212,32 +214,31 @@ export function PodConfigCard() {
             className={`${INPUT_CLASS} font-mono text-xs`}
           />
           <span className="mt-1 block text-xs text-text-muted">
-            তালিকার বাইরের কোনো ভ্যারিয়েন্টে কাস্টম প্রিন্ট হবে না। ভ্যারিয়েন্ট ID পণ্যের সম্পাদনা পেজে পাওয়া যায়।
+            {s.variantIdsHint}
           </span>
         </label>
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-text-main">
-            প্রিন্টের রঙের তালিকা (প্রতি লাইনে একটি, ঐচ্ছিক)
+            {s.colorsLabel}
           </span>
           <textarea
             value={colorsText}
             onChange={(e) => setColorsText(e.target.value)}
             rows={4}
-            placeholder={"কালো\nসাদা\n#C0392B"}
+            placeholder={s.colorsPlaceholder}
             className={`${INPUT_CLASS} font-mono text-xs`}
           />
           <span className="mt-1 block text-xs text-text-muted">
-            গ্রাহক চেকআউটে এই তালিকা থেকেই রঙ বেছে নেবেন; তালিকা ফাঁকা থাকলে রঙ বেছে নেওয়ার সুবিধাই থাকবে না
-            (দোকানের ডিফল্ট কালিতেই ছাপা হবে)। #RRGGBB আকারে লিখলে চেকআউটে রঙের নমুনা দেখাবে।
+            {s.colorsHint}
           </span>
         </label>
       </div>
       <label className="mt-4 block">
-        <span className="mb-1.5 block text-sm font-medium text-text-main">পরিবর্তনের কারণ (আবশ্যক)</span>
+        <span className="mb-1.5 block text-sm font-medium text-text-main">{s.reasonLabel}</span>
         <input
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="যেমন: নতুন কাস্টম টি-শার্ট যোগ করা হলো"
+          placeholder={s.reasonPlaceholder}
           className={INPUT_CLASS}
         />
       </label>
@@ -258,7 +259,7 @@ export function PodConfigCard() {
           onClick={() => void save()}
           className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
         >
-          {busy ? "সংরক্ষণ হচ্ছে…" : "কনফিগ সংরক্ষণ করুন"}
+          {busy ? s.saving : s.saveConfig}
         </button>
       </div>
     </section>

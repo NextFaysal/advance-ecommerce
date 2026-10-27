@@ -18,6 +18,9 @@ import { formatBdt } from "@/checkout/pricing";
 import { getPayrollDoc } from "@/erp/payroll";
 import { dhakaTimestampText } from "@/erp/exports";
 import PayslipPrintButton from "./print-button";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
+import { ERP_STRINGS } from "../../../strings";
 
 export const dynamic = "force-dynamic";
 
@@ -26,11 +29,13 @@ export default async function PayslipPage({
 }: {
   params: { runId: string; userId: string };
 }) {
+  const locale = await getRequestLocale();
+  const s = pick(locale, ERP_STRINGS);
   if (!isFeatureEnabled("module.erp_lite")) {
     return (
       <main className="mx-auto max-w-3xl p-4">
         <p className="rounded-md bg-surface-2 px-3 py-2 text-sm text-text-muted">
-          ERP-lite মডিউল বন্ধ (module.erp_lite OFF) — পে-স্লিপ দেখতে মডিউলটি চালু করুন।
+          {s.psLockedNote}
         </p>
       </main>
     );
@@ -58,8 +63,7 @@ export default async function PayslipPage({
 
       <div className="mb-4 flex items-center justify-between print:hidden">
         <p className="text-sm text-text-muted">
-          পে-স্লিপ — {line.name}, মাস {run.month}। অঙ্কগুলো রান তৈরি হওয়ার সময়ের স্ন্যাপশট; রান লাইনে
-          কম্পোনেন্ট-ভিত্তিক বিভাজন সংরক্ষিত থাকে না, তাই স্লিপে মোট/কর্তন/নিটই দেখানো হয়।
+          {interpolate(s.psScreenNote, { name: line.name, month: run.month })}
         </p>
         <PayslipPrintButton />
       </div>
@@ -68,36 +72,36 @@ export default async function PayslipPage({
         <div className="text-center">
           <div className="text-lg font-bold">{storeName || blank}</div>
           {storeAddress ? <div className="text-sm">{storeAddress}</div> : null}
-          <div className="mt-2 text-xl font-bold underline">বেতন স্লিপ (Payslip)</div>
+          <div className="mt-2 text-xl font-bold underline">{s.psTitle}</div>
         </div>
 
         <div className="mt-4 flex justify-between text-sm">
           <span>
-            কর্মীর নাম: <strong>{line.name}</strong>
+            {s.psEmployee}: <strong>{line.name}</strong>
           </span>
           <span>
-            মাস: <strong>{run.month}</strong>
+            {s.psMonth}: <strong>{run.month}</strong>
           </span>
         </div>
         <div className="mt-1 flex justify-between text-sm">
           <span>
-            রানের অবস্থা: <strong>{run.status === "FINALIZED" ? "ফাইনালাইজড" : "খসড়া"}</strong>
+            {s.psRunStatus}: <strong>{run.status === "FINALIZED" ? s.psFinalized : s.psDraft}</strong>
           </span>
-          <span>তৈরি: {dhakaTimestampText(new Date())} (Asia/Dhaka)</span>
+          <span>{s.psCreated}: {dhakaTimestampText(new Date())} (Asia/Dhaka)</span>
         </div>
 
         <table className="mt-4 w-full border-collapse text-sm">
           <tbody>
             <tr className="border border-black">
-              <td className="border border-black px-3 py-2">মোট বেতন (Gross)</td>
+              <td className="border border-black px-3 py-2">{s.psGross}</td>
               <td className="border border-black px-3 py-2 text-right">{formatBdt(line.grossPoisha)}</td>
             </tr>
             <tr className="border border-black">
-              <td className="border border-black px-3 py-2">কর্তন (Deduction)</td>
+              <td className="border border-black px-3 py-2">{s.psDeduction}</td>
               <td className="border border-black px-3 py-2 text-right">− {formatBdt(line.deductionPoisha)}</td>
             </tr>
             <tr className="border border-black font-bold">
-              <td className="border border-black px-3 py-2">নিট প্রদেয় (Net pay)</td>
+              <td className="border border-black px-3 py-2">{s.psNet}</td>
               <td className="border border-black px-3 py-2 text-right">{formatBdt(line.netPoisha)}</td>
             </tr>
           </tbody>
@@ -105,18 +109,18 @@ export default async function PayslipPage({
 
         {run.status === "FINALIZED" ? (
           <p className="mt-3 text-sm">
-            জার্নাল এন্ট্রি: {run.journalEntryId ?? "— (মোট ০ হওয়ায় কোনো এন্ট্রি পোস্ট হয়নি)"}
-            {run.finalizedAt ? ` · ফাইনালাইজ: ${dhakaTimestampText(new Date(run.finalizedAt))} (Asia/Dhaka)` : ""}
+            {s.psJournalLabel}: {run.journalEntryId ?? s.psJournalNone}
+            {run.finalizedAt ? interpolate(s.psFinalizedAt, { ts: dhakaTimestampText(new Date(run.finalizedAt)) }) : ""}
           </p>
         ) : (
           <p className="mt-3 text-sm">
-            দ্রষ্টব্য: এই রান এখনো খসড়া — ফাইনালাইজ না করা পর্যন্ত এই স্লিপের অঙ্ক চূড়ান্ত নয়।
+            {s.psDraftNote}
           </p>
         )}
 
         <div className="mt-10 flex justify-between text-sm">
-          <span>কর্মীর স্বাক্ষর: {blank}</span>
-          <span>কর্তৃপক্ষের স্বাক্ষর: {blank}</span>
+          <span>{s.psEmployeeSign}: {blank}</span>
+          <span>{s.psAuthoritySign}: {blank}</span>
         </div>
       </div>
     </main>

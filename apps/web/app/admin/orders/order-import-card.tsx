@@ -15,6 +15,9 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { interpolate, pick } from "../../../src/i18n/locale";
+import { useLocale } from "../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "./strings";
 
 interface GroupResult {
   phone: string;
@@ -29,10 +32,6 @@ interface ImportResponse {
   error?: { code: string; message: string };
 }
 
-const FORMAT_DOC_BN =
-  "কলাম: phone,name,division,district,upazila,addressLine,sku,quantity,paymentMethod(ঐচ্ছিক),note(ঐচ্ছিক)। প্রতি সারিতে একটি আইটেম — একই ফোনের সারিগুলো মিলে একটি অর্ডার হয়। দাম ক্যাটালগ থেকে নেওয়া হয়, ডেলিভারি চার্জ জেলা অনুযায়ী ইঞ্জিন হিসাব করে।";
-const FORMAT_DOC_EN =
-  "Columns: phone,name,division,district,upazila,addressLine,sku,quantity,paymentMethod(optional),note(optional). One row per item; rows sharing a phone become one order. Prices come from the catalog; shipping is computed by the engine from the district.";
 const EXAMPLE_CSV = [
   "phone,name,division,district,upazila,addressLine,sku,quantity,paymentMethod,note",
   "01712345678,রহিম উদ্দিন,Dhaka,Dhaka,Mirpur,\"বাসা ১২, রোড ৫, মিরপুর ১০\",SKU-001,2,cod,",
@@ -40,6 +39,8 @@ const EXAMPLE_CSV = [
 ].join("\n");
 
 export function OrderImportCard({ onImported }: { onImported?: () => void }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const [csv, setCsv] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
@@ -75,7 +76,7 @@ export function OrderImportCard({ onImported }: { onImported?: () => void }) {
         );
       }
     } catch {
-      setRequestError("নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি। / Network error — the API could not be reached.");
+      setRequestError(s.impNetErr);
     } finally {
       setSubmitting(false);
     }
@@ -83,13 +84,9 @@ export function OrderImportCard({ onImported }: { onImported?: () => void }) {
 
   return (
     <Card className="mt-6 shadow-card">
-      <h2 className="text-h3">অর্ডার ইমপোর্ট (CSV)</h2>
-      <p className="mt-1 text-small leading-relaxed text-text-muted">{FORMAT_DOC_BN}</p>
-      <p className="mt-1 text-small leading-relaxed text-text-muted">{FORMAT_DOC_EN}</p>
-      <p className="mt-1 text-caption text-text-subtle">
-        সীমা: একবারে সর্বোচ্চ ২০০ সারি / ৫০টি গ্রাহক-গ্রুপ। / Limit: 200 rows / 50 customer groups per upload.
-        প্রতিটি গ্রুপ আলাদা লেনদেনে তৈরি হয় — একটি গ্রুপ ব্যর্থ হলে বাকিগুলো ঠিকই ইমপোর্ট হয়।
-      </p>
+      <h2 className="text-h3">{s.impTitle}</h2>
+      <p className="mt-1 text-small leading-relaxed text-text-muted">{s.impFormat}</p>
+      <p className="mt-1 text-caption text-text-subtle">{s.impLimits}</p>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <input
@@ -97,16 +94,16 @@ export function OrderImportCard({ onImported }: { onImported?: () => void }) {
           type="file"
           accept=".csv,text/csv,text/plain"
           className="hidden"
-          aria-label="CSV ফাইল বেছে নিন"
+          aria-label={s.impFileAria}
           onChange={(e) => void onFile(e.target.files?.[0])}
         />
         <Button variant="outline" onClick={() => fileRef.current?.click()}>
-          ফাইল বেছে নিন
+          {s.impChooseFile}
         </Button>
         <Button variant="outline" onClick={() => setCsv(EXAMPLE_CSV)}>
-          উদাহরণ বসান
+          {s.impExample}
         </Button>
-        <span className="text-caption text-text-muted">অথবা নিচের ঘরে CSV পেস্ট করুন</span>
+        <span className="text-caption text-text-muted">{s.impPasteHint}</span>
       </div>
 
       <textarea
@@ -115,19 +112,19 @@ export function OrderImportCard({ onImported }: { onImported?: () => void }) {
         rows={7}
         spellCheck={false}
         placeholder={"phone,name,division,district,upazila,addressLine,sku,quantity\n01712345678,..."}
-        aria-label="CSV লেখা"
+        aria-label={s.impTextAria}
         className="mt-3 w-full rounded-md border border-border bg-card px-3 py-2 font-mono text-small shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
       />
 
       <div className="mt-3">
         <Button onClick={() => void submit()} disabled={submitting || csv.trim() === ""}>
-          {submitting ? "ইমপোর্ট হচ্ছে…" : "ইমপোর্ট করুন"}
+          {submitting ? s.impSubmitting : s.impSubmit}
         </Button>
       </div>
 
       {requestError ? (
         <div role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-4 text-small text-rose-900">
-          <p className="font-semibold">ইমপোর্ট হয়নি / Import did not run</p>
+          <p className="font-semibold">{s.impFailedTitle}</p>
           <p className="mt-1">{requestError}</p>
         </div>
       ) : null}
@@ -135,9 +132,7 @@ export function OrderImportCard({ onImported }: { onImported?: () => void }) {
       {results && summary ? (
         <div className="mt-4">
           <p className="text-small font-medium">
-            ফলাফল: {summary.created}টি অর্ডার তৈরি হয়েছে, {summary.failed}টি গ্রুপ ব্যর্থ।
-            {" / "}
-            Result: {summary.created} order(s) created, {summary.failed} group(s) failed.
+            {interpolate(s.impResult, { created: summary.created, failed: summary.failed })}
           </p>
           <ul className="mt-2 divide-y divide-border rounded-md border border-border">
             {results.map((r, i) => (
@@ -145,7 +140,7 @@ export function OrderImportCard({ onImported }: { onImported?: () => void }) {
                 <span className="font-mono tabular-nums">{r.phone}</span>
                 {r.ok ? (
                   <>
-                    <span className="text-emerald-700">✓ তৈরি হয়েছে</span>
+                    <span className="text-emerald-700">{s.impCreated}</span>
                     {r.orderId && r.orderNo ? (
                       <Link href={`/admin/orders/${r.orderId}`} className="font-mono font-semibold text-brand-700 hover:underline">
                         {r.orderNo}
@@ -153,7 +148,7 @@ export function OrderImportCard({ onImported }: { onImported?: () => void }) {
                     ) : null}
                   </>
                 ) : (
-                  <span className="text-rose-700">✗ {r.error ?? "ব্যর্থ / Failed"}</span>
+                  <span className="text-rose-700">✗ {r.error ?? s.impFailedWord}</span>
                 )}
               </li>
             ))}

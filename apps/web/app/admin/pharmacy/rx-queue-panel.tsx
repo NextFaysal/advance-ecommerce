@@ -10,6 +10,9 @@
  * un-confirmable until staff cancel it through the order flow).
  */
 import { useCallback, useEffect, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
+import { PHARMACY_STRINGS } from "./strings";
 
 interface RxQueueRow {
   orderId: string;
@@ -29,11 +32,13 @@ interface RxQueueRow {
   queuedAt: string;
 }
 
-function formatBdt(poisha: number): string {
-  return `৳${(poisha / 100).toLocaleString("bn-BD", { maximumFractionDigits: 2 })}`;
+function formatBdt(locale: Locale, poisha: number): string {
+  return `৳${(poisha / 100).toLocaleString(intlLocale(locale), { maximumFractionDigits: 2 })}`;
 }
 
 export function RxQueuePanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, PHARMACY_STRINGS);
   const [queue, setQueue] = useState<RxQueueRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -45,15 +50,15 @@ export function RxQueuePanel() {
       const res = await fetch("/api/v1/admin/pharmacy/rx-queue");
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        setError(json?.error?.message ?? "কিউ লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.loadFailed);
         return;
       }
       setQueue(json.data.queue as RxQueueRow[]);
       setError(null);
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।");
+      setError(s.networkError);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load();
@@ -62,7 +67,7 @@ export function RxQueuePanel() {
   async function decide(row: RxQueueRow, decision: "APPROVED" | "REJECTED") {
     const note = (notes[row.orderId] ?? "").trim();
     if (note.length < 2) {
-      setError("সিদ্ধান্তের সঙ্গে একটি মন্তব্য লিখুন — যাচাইয়ের রেকর্ড হিসেবে এটি অর্ডারে থাকবে।");
+      setError(s.noteRequired);
       return;
     }
     setBusyId(row.orderId);
@@ -75,24 +80,22 @@ export function RxQueuePanel() {
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        setError(json?.error?.message ?? "সিদ্ধান্ত সংরক্ষণ করা যায়নি।");
+        setError(json?.error?.message ?? s.decisionSaveFailed);
         return;
       }
       setDoneMessage(
-        decision === "APPROVED"
-          ? `${row.orderNo}: প্রেসক্রিপশন অনুমোদিত — অর্ডারটি এখন নিশ্চিত করা যাবে।`
-          : `${row.orderNo}: প্রেসক্রিপশন বাতিল — অর্ডারটি নিশ্চিত করা যাবে না; প্রয়োজনে অর্ডার বাতিল করুন।`,
+        interpolate(decision === "APPROVED" ? s.approvedMsg : s.rejectedMsg, { orderNo: row.orderNo }),
       );
       await load();
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।");
+      setError(s.networkError);
     } finally {
       setBusyId(null);
     }
   }
 
   if (queue === null && !error) {
-    return <p className="mt-6 text-sm text-slate-500">লোড হচ্ছে…</p>;
+    return <p className="mt-6 text-sm text-slate-500">{s.loading}</p>;
   }
 
   return (
@@ -109,8 +112,8 @@ export function RxQueuePanel() {
       ) : null}
       {queue && queue.length === 0 ? (
         <div className="rounded-2xl bg-white p-8 text-center ring-1 ring-slate-200">
-          <p className="text-lg font-bold text-slate-900">কিউ খালি</p>
-          <p className="mt-1 text-sm text-slate-500">যাচাইয়ের অপেক্ষায় কোনো প্রেসক্রিপশন অর্ডার নেই।</p>
+          <p className="text-lg font-bold text-slate-900">{s.emptyTitle}</p>
+          <p className="mt-1 text-sm text-slate-500">{s.emptyText}</p>
         </div>
       ) : null}
       <div className="space-y-4">
@@ -119,11 +122,12 @@ export function RxQueuePanel() {
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h2 className="font-mono text-base font-bold text-slate-900">{row.orderNo}</h2>
               <span className="text-sm text-slate-500">
-                {new Date(row.queuedAt).toLocaleString("bn-BD")} · মোট {formatBdt(row.totalPoisha)}
+                {new Date(row.queuedAt).toLocaleString(intlLocale(locale))} ·{" "}
+                {interpolate(s.totalLabel, { amount: formatBdt(locale, row.totalPoisha) })}
               </span>
             </div>
             <p className="mt-1 text-sm text-slate-600">
-              {row.customerName} · <span className="tabular-nums">{row.customerPhone}</span> · অবস্থা:{" "}
+              {row.customerName} · <span className="tabular-nums">{row.customerPhone}</span> · {s.statusLabel}{" "}
               {row.status}
             </p>
             <ul className="mt-3 space-y-1 text-sm text-slate-700">
@@ -136,16 +140,16 @@ export function RxQueuePanel() {
             {row.prescription ? (
               <dl className="mt-3 rounded-xl bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">
                 <div>
-                  <dt className="inline font-semibold">চিকিৎসক: </dt>
+                  <dt className="inline font-semibold">{s.prescriberLabel} </dt>
                   <dd className="inline">{row.prescription.prescriberName}</dd>
                 </div>
                 <div>
-                  <dt className="inline font-semibold">রেজিস্ট্রেশন নং: </dt>
+                  <dt className="inline font-semibold">{s.registrationLabel} </dt>
                   <dd className="inline tabular-nums">{row.prescription.registrationNo}</dd>
                 </div>
                 {row.prescription.imageUrl ? (
                   <div>
-                    <dt className="inline font-semibold">ছবি: </dt>
+                    <dt className="inline font-semibold">{s.imageLabel} </dt>
                     <dd className="inline">
                       <a
                         href={row.prescription.imageUrl}
@@ -153,30 +157,24 @@ export function RxQueuePanel() {
                         rel="noreferrer"
                         className="font-medium text-indigo-600 hover:underline"
                       >
-                        গ্রাহকের দেওয়া লিংক খুলুন
+                        {s.imageLink}
                       </a>
                     </dd>
                   </div>
                 ) : null}
-                <p className="mt-1 text-xs text-slate-500">
-                  গ্রাহক নিশ্চিত করেছেন যে তাঁর কাছে প্রেসক্রিপশনটি আছে — এটি যাচাইকৃত প্রেসক্রিপশন নয়,
-                  যাচাইয়ের সিদ্ধান্ত আপনার।
-                </p>
+                <p className="mt-1 text-xs text-slate-500">{s.attestationNote}</p>
               </dl>
             ) : (
               <p className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-                সতর্কতা: এই অর্ডারে প্রেসক্রিপশন রেকর্ড পাওয়া যায়নি — অনুমোদনের আগে গ্রাহকের সঙ্গে
-                যোগাযোগ করুন।
+                {s.noRecordWarning}
               </p>
             )}
             <label className="mt-4 block">
-              <span className="mb-1.5 block text-sm font-medium text-slate-700">
-                সিদ্ধান্তের মন্তব্য (আবশ্যক)
-              </span>
+              <span className="mb-1.5 block text-sm font-medium text-slate-700">{s.noteLabel}</span>
               <input
                 value={notes[row.orderId] ?? ""}
                 onChange={(e) => setNotes((n) => ({ ...n, [row.orderId]: e.target.value }))}
-                placeholder="যেমন: প্রেসক্রিপশন মিলিয়ে দেখা হয়েছে"
+                placeholder={s.notePlaceholder}
                 className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-indigo-400"
               />
             </label>
@@ -187,7 +185,7 @@ export function RxQueuePanel() {
                 onClick={() => void decide(row, "APPROVED")}
                 className="h-11 rounded-xl bg-emerald-600 px-5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
               >
-                ✓ অনুমোদন করুন
+                {s.approveBtn}
               </button>
               <button
                 type="button"
@@ -195,13 +193,13 @@ export function RxQueuePanel() {
                 onClick={() => void decide(row, "REJECTED")}
                 className="h-11 rounded-xl bg-rose-600 px-5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
               >
-                ✕ বাতিল করুন
+                {s.rejectBtn}
               </button>
               <a
                 href={`/admin/orders/${row.orderId}`}
                 className="inline-flex h-11 items-center rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               >
-                অর্ডার খুলুন
+                {s.openOrder}
               </a>
             </div>
           </article>

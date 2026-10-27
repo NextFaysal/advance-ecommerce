@@ -15,26 +15,27 @@ import { Icon } from "@/components/ui/icon";
 import { PaymentBadge, type PaymentStatus as UiPaymentStatus } from "@/components/ui/status-badge";
 import { formatBdt } from "../../../src/checkout/pricing";
 import { lineTotalPoisha } from "../../../src/lib/quantity";
-import {
-  ORDER_STATUS_VISUAL,
-  formatDhakaTime,
-} from "../../../src/orders/components/labels";
+import { ORDER_STATUS_VISUAL } from "../../../src/orders/components/labels";
 import { OrderStatusBadge } from "../../../src/orders/components/OrderStatusBadge";
 import { MoneyBreakdown } from "../../../src/orders/components/MoneyBreakdown";
 import {
+  formatOrderDateTime,
   orderAgeLabel,
   previewMoneyProps,
   timelineHead,
   type PreviewOrder,
 } from "./list-helpers";
+import { interpolate, intlLocale, pick, type Locale } from "../../../src/i18n/locale";
+import { useLocale } from "../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "./strings";
 
-const PAYMENT_METHOD_LABEL: Record<string, string> = {
-  cod: "ক্যাশ অন ডেলিভারি",
-  bkash: "বিকাশ",
-  nagad: "নগদ",
-  rocket: "রকেট",
-  card: "কার্ড",
-  sslcommerz: "SSLCommerz",
+const PAYMENT_METHOD_LABEL: Record<string, Record<Locale, string>> = {
+  cod: { bn: "ক্যাশ অন ডেলিভারি", en: "Cash on Delivery" },
+  bkash: { bn: "বিকাশ", en: "bKash" },
+  nagad: { bn: "নগদ", en: "Nagad" },
+  rocket: { bn: "রকেট", en: "Rocket" },
+  card: { bn: "কার্ড", en: "Card" },
+  sslcommerz: { bn: "SSLCommerz", en: "SSLCommerz" },
 };
 
 const UI_PAYMENT_STATUSES: readonly string[] = ["UNPAID", "PARTIAL", "PAID", "FAILED", "REFUNDED"];
@@ -51,6 +52,7 @@ type DetailResponse =
  * wrong label).
  */
 function SlotLabel({ slotId }: { slotId: string }) {
+  const { locale } = useLocale();
   const [label, setLabel] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -59,7 +61,7 @@ function SlotLabel({ slotId }: { slotId: string }) {
       .then((json: { data?: { slots?: { id: string; labelBn: string; labelEn: string }[] } }) => {
         if (cancelled) return;
         const match = json.data?.slots?.find((s) => s.id === slotId);
-        if (match) setLabel(`${match.labelBn} / ${match.labelEn}`);
+        if (match) setLabel(locale === "bn" ? match.labelBn : match.labelEn);
       })
       .catch(() => {
         // Raw id fallback below.
@@ -67,13 +69,15 @@ function SlotLabel({ slotId }: { slotId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [slotId]);
+  }, [slotId, locale]);
   return <>{label ?? slotId}</>;
 }
 
 function PreviewSkeleton() {
+  const { locale } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   return (
-    <div role="status" aria-label="অর্ডার লোড হচ্ছে" className="space-y-4">
+    <div role="status" aria-label={s.ordLoadingAria} className="space-y-4">
       <div className="flex gap-2">
         <div className="h-6 w-24 animate-pulse rounded-full bg-border" />
         <div className="h-6 w-20 animate-pulse rounded-full bg-border" />
@@ -88,7 +92,7 @@ function PreviewSkeleton() {
         <div className="h-4 w-full animate-pulse rounded bg-border" />
         <div className="h-4 w-2/3 animate-pulse rounded bg-border" />
       </div>
-      <p className="text-small text-text-muted">অর্ডার লোড হচ্ছে…</p>
+      <p className="text-small text-text-muted">{s.prevLoading}</p>
     </div>
   );
 }
@@ -100,6 +104,8 @@ export function OrderPreviewDrawer({
   orderId: string | null;
   onClose: () => void;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const [order, setOrder] = useState<PreviewOrder | null>(null);
   const [state, setState] = useState<"loading" | "error" | "ready">("loading");
   const [error, setError] = useState("");
@@ -129,7 +135,7 @@ export function OrderPreviewDrawer({
       })
       .catch(() => {
         if (cancelled) return;
-        setError("নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি।");
+        setError(s.networkApi);
         setState("error");
       });
     return () => {
@@ -144,7 +150,7 @@ export function OrderPreviewDrawer({
           href={`/admin/orders/${order.id}`}
           className="flex-1 rounded-md bg-brand-600 px-4 py-2.5 text-center text-small font-semibold text-white shadow-sm transition motion-fast hover:bg-brand-700"
         >
-          সম্পূর্ণ বিবরণ
+          {s.prevFullDetails}
         </a>
         <a
           href={`/admin/orders/print?ids=${order.id}`}
@@ -152,7 +158,7 @@ export function OrderPreviewDrawer({
           rel="noreferrer"
           className="flex-1 rounded-md border border-border bg-card px-4 py-2.5 text-center text-small font-semibold text-text-main transition motion-fast hover:border-brand-300 hover:text-brand-700"
         >
-          ইনভয়েস প্রিন্ট
+          {s.prevPrintInvoice}
         </a>
       </div>
     ) : null;
@@ -161,21 +167,21 @@ export function OrderPreviewDrawer({
     <Drawer
       open={orderId !== null}
       onClose={onClose}
-      title={order ? order.orderNo : "অর্ডার প্রিভিউ"}
+      title={order ? order.orderNo : s.prevTitle}
       footer={footer}
     >
       {state === "loading" ? <PreviewSkeleton /> : null}
 
       {state === "error" ? (
         <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4">
-          <p className="font-semibold text-rose-700">প্রিভিউ লোড হয়নি</p>
+          <p className="font-semibold text-rose-700">{s.prevLoadFail}</p>
           <p className="mt-1 text-small text-rose-600">{error}</p>
           <button
             type="button"
             onClick={() => setNonce((n) => n + 1)}
             className="mt-3 rounded-md border border-border bg-card px-3.5 py-2 text-small font-semibold text-text-main transition motion-fast hover:border-brand-300 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
-            আবার চেষ্টা করুন
+            {s.tryAgain}
           </button>
         </div>
       ) : null}
@@ -184,7 +190,7 @@ export function OrderPreviewDrawer({
         <div className="space-y-5">
           {/* Status + age */}
           <div className="flex flex-wrap items-center gap-2">
-            <OrderStatusBadge status={order.status} />
+            <OrderStatusBadge status={order.status} lang={locale} />
             {UI_PAYMENT_STATUSES.includes(order.paymentStatus) ? (
               <PaymentBadge status={order.paymentStatus as UiPaymentStatus} />
             ) : (
@@ -192,13 +198,13 @@ export function OrderPreviewDrawer({
             )}
             <span className="ml-auto flex items-center gap-1 text-caption text-text-muted">
               <Icon name="clock" size={13} />
-              {orderAgeLabel(order.createdAt, Date.now())} · {formatDhakaTime(order.createdAt)}
+              {orderAgeLabel(order.createdAt, Date.now(), locale)} · {formatOrderDateTime(order.createdAt, locale)}
             </span>
           </div>
 
           {/* Customer block — phone verbatim from the payload (the
            *  route already applied the viewer's mask). */}
-          <section aria-label="গ্রাহক">
+          <section aria-label={s.prevCustomerAria}>
             <p className="text-base font-semibold leading-snug">{order.customerName}</p>
             <p className="mt-0.5 font-mono text-small tabular-nums text-text-muted">
               {order.customerPhone}
@@ -217,7 +223,9 @@ export function OrderPreviewDrawer({
             <div className="mt-2.5 flex flex-wrap gap-1.5">
               <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-1 text-caption font-semibold text-text-muted">
                 <Icon name="credit-card" size={12} />
-                {PAYMENT_METHOD_LABEL[order.paymentMethod] ?? order.paymentMethod}
+                {PAYMENT_METHOD_LABEL[order.paymentMethod]
+                  ? pick(locale, PAYMENT_METHOD_LABEL[order.paymentMethod])
+                  : order.paymentMethod}
               </span>
               {order.deliverySlot ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-1 text-caption font-semibold text-text-muted">
@@ -228,7 +236,7 @@ export function OrderPreviewDrawer({
               {order.giftMessage !== null && order.giftMessage !== undefined ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-caption font-semibold text-brand-700">
                   <Icon name="sparkles" size={12} />
-                  উপহার{order.giftMessage ? `: ${order.giftMessage}` : ""}
+                  {s.prevGift}{order.giftMessage ? `: ${order.giftMessage}` : ""}
                 </span>
               ) : null}
               {order.courier ? (
@@ -242,7 +250,7 @@ export function OrderPreviewDrawer({
           </section>
 
           {/* Items */}
-          <section aria-label="আইটেম" className="border-t border-border pt-4">
+          <section aria-label={s.prevItemsAria} className="border-t border-border pt-4">
             <ul className="space-y-2.5">
               {order.items.map((item) => (
                 <li key={item.variantId} className="flex items-start gap-3">
@@ -254,7 +262,7 @@ export function OrderPreviewDrawer({
                       {item.productName}
                     </span>
                     <span className="block text-caption text-text-subtle">
-                      {item.sku} · ×{item.quantity.toLocaleString("bn-BD")}
+                      {item.sku} · ×{item.quantity.toLocaleString(intlLocale(locale))}
                     </span>
                   </span>
                   <span className="font-mono text-small font-semibold tabular-nums">
@@ -266,25 +274,28 @@ export function OrderPreviewDrawer({
           </section>
 
           {/* Money — OD0 MoneyBreakdown; identical split to print. */}
-          <section aria-label="হিসাব" className="border-t border-border pt-4">
-            <MoneyBreakdown {...previewMoneyProps(order)} />
+          <section aria-label={s.prevMoneyAria} className="border-t border-border pt-4">
+            <MoneyBreakdown {...previewMoneyProps(order)} lang={locale} />
             {order.advance && order.advance.requiredPoisha > 0 ? (
               <p className="mt-2 text-caption leading-relaxed text-text-muted">
-                অগ্রিম প্রয়োজন ছিল {formatBdt(order.advance.requiredPoisha)} — পরিশোধিত{" "}
-                {formatBdt(order.advance.paidPoisha)}
+                {interpolate(s.prevAdvance, {
+                  required: formatBdt(order.advance.requiredPoisha),
+                  paid: formatBdt(order.advance.paidPoisha),
+                })}
                 {order.advance.requiredPoisha - order.advance.paidPoisha > 0
-                  ? `, বাকি ${formatBdt(order.advance.requiredPoisha - order.advance.paidPoisha)}`
-                  : " (পূর্ণ)"}
-                ।
+                  ? interpolate(s.prevAdvanceDue, {
+                      due: formatBdt(order.advance.requiredPoisha - order.advance.paidPoisha),
+                    })
+                  : s.prevAdvanceFull}
               </p>
             ) : null}
           </section>
 
           {/* Timeline head — newest history entries the payload carries. */}
-          <section aria-label="সাম্প্রতিক ইতিহাস" className="border-t border-border pt-4">
-            <h3 className="text-small font-semibold">সাম্প্রতিক ইতিহাস</h3>
+          <section aria-label={s.prevHistoryAria} className="border-t border-border pt-4">
+            <h3 className="text-small font-semibold">{s.prevHistoryTitle}</h3>
             {order.history.length === 0 ? (
-              <p className="mt-2 text-small text-text-muted">ইতিহাস নেই।</p>
+              <p className="mt-2 text-small text-text-muted">{s.prevNoHistory}</p>
             ) : (
               <ol className="mt-3 space-y-3">
                 {timelineHead(order.history, 4).map((entry, i) => {
@@ -296,10 +307,10 @@ export function OrderPreviewDrawer({
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block text-small font-medium leading-snug">
-                          {visual.labelBn}
+                          {locale === "bn" ? visual.labelBn : visual.labelEn}
                         </span>
                         <span className="block text-caption text-text-subtle">
-                          {entry.changedBy} · {formatDhakaTime(entry.changedAt)}
+                          {entry.changedBy} · {formatOrderDateTime(entry.changedAt, locale)}
                         </span>
                         {entry.reason ? (
                           <span className="block text-caption leading-relaxed text-text-muted">

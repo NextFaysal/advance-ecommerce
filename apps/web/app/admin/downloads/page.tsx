@@ -30,6 +30,9 @@ import { Button } from "@/components/ui/button";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SkeletonCard } from "@/components/ui/skeleton";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
+import { DOWNLOADS_STRINGS, type DownloadsStrings } from "./strings";
 
 interface ReissueItem {
   id: string;
@@ -66,37 +69,39 @@ interface OrderGrant {
 /* OD6 (doc 19 §3-S6) — request + grant states in the OD0 visual shape
  * ({ tone, icon, labelBn }); icons verified against
  * src/components/ui/icon.tsx. */
-const REQUEST_VISUAL: Record<
-  string,
-  { tone: "success" | "warning" | "danger" | "neutral"; icon: IconName; label: string }
-> = {
-  PENDING: { tone: "warning", icon: "clock", label: "অপেক্ষমাণ" },
-  APPROVED: { tone: "success", icon: "check", label: "অনুমোদিত" },
-  REJECTED: { tone: "danger", icon: "x", label: "বাতিল" },
-};
+type Visual = { tone: "success" | "warning" | "danger" | "neutral"; icon: IconName; label: string };
 
-const GRANT_VISUAL: Record<
-  string,
-  { tone: "success" | "warning" | "danger" | "neutral"; icon: IconName; label: string }
-> = {
-  active: { tone: "success", icon: "check", label: "সক্রিয়" },
-  expired: { tone: "warning", icon: "clock", label: "মেয়াদ শেষ" },
-  exhausted: { tone: "warning", icon: "alert", label: "ডাউনলোড শেষ" },
-  revoked: { tone: "danger", icon: "x", label: "বাতিলকৃত" },
-};
+function requestVisual(s: DownloadsStrings): Record<string, Visual> {
+  return {
+    PENDING: { tone: "warning", icon: "clock", label: s.reqPending },
+    APPROVED: { tone: "success", icon: "check", label: s.reqApproved },
+    REJECTED: { tone: "danger", icon: "x", label: s.reqRejected },
+  };
+}
 
-const FILTERS: { key: string; label: string }[] = [
-  { key: "", label: "সব" },
-  { key: "PENDING", label: "অপেক্ষমাণ" },
-  { key: "APPROVED", label: "অনুমোদিত" },
-  { key: "REJECTED", label: "বাতিল" },
-];
+function grantVisual(s: DownloadsStrings): Record<string, Visual> {
+  return {
+    active: { tone: "success", icon: "check", label: s.grantActive },
+    expired: { tone: "warning", icon: "clock", label: s.grantExpired },
+    exhausted: { tone: "warning", icon: "alert", label: s.grantExhausted },
+    revoked: { tone: "danger", icon: "x", label: s.grantRevoked },
+  };
+}
+
+function filters(s: DownloadsStrings): { key: string; label: string }[] {
+  return [
+    { key: "", label: s.filterAll },
+    { key: "PENDING", label: s.reqPending },
+    { key: "APPROVED", label: s.reqApproved },
+    { key: "REJECTED", label: s.reqRejected },
+  ];
+}
 
 const inputCls =
   "h-10 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString("bn-BD", {
+function fmtDate(iso: string, locale: Locale): string {
+  return new Date(iso).toLocaleString(intlLocale(locale), {
     timeZone: "Asia/Dhaka",
     dateStyle: "medium",
     timeStyle: "short",
@@ -104,6 +109,11 @@ function fmtDate(iso: string): string {
 }
 
 export default function AdminDownloadsPage() {
+  const { locale } = useLocale();
+  const s = pick(locale, DOWNLOADS_STRINGS);
+  const REQUEST_VISUAL = requestVisual(s);
+  const GRANT_VISUAL = grantVisual(s);
+  const FILTERS = filters(s);
   const [rows, setRows] = useState<ReissueItem[] | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [total, setTotal] = useState(0);
@@ -135,10 +145,10 @@ export default function AdminDownloadsPage() {
       setCounts(json.meta?.counts ?? {});
       setLoadError(null);
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "লোড ব্যর্থ হয়েছে");
+      setLoadError(e instanceof Error ? e.message : s.loadFailed);
       setRows([]);
     }
-  }, [page, status]);
+  }, [page, status, s]);
 
   useEffect(() => {
     void load();
@@ -147,7 +157,7 @@ export default function AdminDownloadsPage() {
   async function decide(row: ReissueItem, kind: "approve" | "reject") {
     const note = (notes[row.id] ?? "").trim();
     if (kind === "reject" && note === "") {
-      setActionError("বাতিল করতে হলে কারণ (নোট) লিখতে হবে।");
+      setActionError(s.rejectNeedsNote);
       return;
     }
     setBusyId(row.id);
@@ -163,18 +173,16 @@ export default function AdminDownloadsPage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error?.message ?? `HTTP ${res.status}`);
       if (kind === "approve") {
-        setNotice(
-          "অনুমোদিত — নতুন ডাউনলোড তৈরি হয়েছে এবং পুরনো লিংকটি বাতিল করা হয়েছে। গ্রাহক এখন অ্যাকাউন্ট থেকেই ডাউনলোড করতে পারবেন।",
-        );
+        setNotice(s.approvedNotice);
         if (typeof json.data?.downloadPath === "string") {
           setOneTimeLink(json.data.downloadPath);
         }
       } else {
-        setNotice("অনুরোধটি বাতিল করা হয়েছে। পুরনো ডাউনলোডে কোনো পরিবর্তন হয়নি।");
+        setNotice(s.rejectedNotice);
       }
       await load();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "অ্যাকশন ব্যর্থ হয়েছে");
+      setActionError(e instanceof Error ? e.message : s.actionFailed);
     } finally {
       setBusyId(null);
     }
@@ -192,7 +200,7 @@ export default function AdminDownloadsPage() {
       if (!res.ok) throw new Error(json?.error?.message ?? `HTTP ${res.status}`);
       setLookupResult({ orderNo: json.data.orderNo, grants: json.data.grants ?? [] });
     } catch (e) {
-      setLookupError(e instanceof Error ? e.message : "খোঁজ ব্যর্থ হয়েছে");
+      setLookupError(e instanceof Error ? e.message : s.lookupFailed);
     } finally {
       setLookupBusy(false);
     }
@@ -201,8 +209,8 @@ export default function AdminDownloadsPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="ডাউনলোড রি-ইস্যু"
-        description="ডিজিটাল পণ্যের হারানো/মেয়াদোত্তীর্ণ ডাউনলোড লিংকের বদলি অনুরোধ। অনুমোদন দিলে নতুন গ্রান্ট তৈরি হয় ও পুরনোটি বাতিল হয় — পুরনো টোকেন কোনোভাবেই ফেরত পাওয়া যায় না (শুধু হ্যাশ রাখা হয়)।"
+        title={s.title}
+        description={s.description}
       />
 
       {notice !== null ? (
@@ -210,7 +218,7 @@ export default function AdminDownloadsPage() {
           {notice}
           {oneTimeLink !== null ? (
             <span className="mt-2 block">
-              <span className="font-semibold">একবারের ডাউনলোড লিংক (শুধু এখনই দেখা যাচ্ছে):</span>{" "}
+              <span className="font-semibold">{s.oneTimeLinkLabel}</span>{" "}
               <code className="break-all rounded bg-surface/70 px-1.5 py-0.5 text-xs">{oneTimeLink}</code>
             </span>
           ) : null}
@@ -224,7 +232,7 @@ export default function AdminDownloadsPage() {
       ) : null}
 
       <Card className="p-4">
-        <h2 className="text-sm font-bold text-text-main">অর্ডার দিয়ে ডাউনলোড খুঁজুন</h2>
+        <h2 className="text-sm font-bold text-text-main">{s.lookupTitle}</h2>
         <div className="mt-3 flex gap-2">
           <input
             value={lookupRef}
@@ -232,18 +240,18 @@ export default function AdminDownloadsPage() {
             onKeyDown={(e) => {
               if (e.key === "Enter") void runLookup();
             }}
-            placeholder="অর্ডার নম্বর (যেমন ORD-20261025-0001)"
+            placeholder={s.lookupPlaceholder}
             className={inputCls}
           />
           <Button type="button" onClick={() => void runLookup()} disabled={lookupBusy} className="shrink-0">
-            {lookupBusy ? "খোঁজা হচ্ছে…" : "খুঁজুন"}
+            {lookupBusy ? s.searching : s.search}
           </Button>
         </div>
         {lookupError !== null ? <p className="mt-2 text-sm leading-6 text-danger-700">{lookupError}</p> : null}
         {lookupResult !== null ? (
           lookupResult.grants.length === 0 ? (
             <p className="mt-3 text-sm leading-6 text-text-muted">
-              {lookupResult.orderNo} অর্ডারে কোনো ডাউনলোড গ্রান্ট নেই।
+              {interpolate(s.noGrants, { orderNo: lookupResult.orderNo })}
             </p>
           ) : (
             <ul className="mt-3 space-y-2">
@@ -257,9 +265,10 @@ export default function AdminDownloadsPage() {
                       {g.productName} — {g.fileName}
                     </span>
                     <span className="mt-0.5 block text-xs text-text-muted">
-                      দেওয়া: {fmtDate(g.issuedAt)} · মেয়াদ: {fmtDate(g.expiresAt)} · ব্যবহার{" "}
-                      {g.downloadsUsed}/{g.maxDownloads}
-                      {g.reissuePending ? " · রি-ইস্যু অনুরোধ অপেক্ষমাণ" : ""}
+                      {interpolate(s.issuedLabel, { date: fmtDate(g.issuedAt, locale) })} ·{" "}
+                      {interpolate(s.expiresLabel, { date: fmtDate(g.expiresAt, locale) })} ·{" "}
+                      {interpolate(s.usageLabel, { used: g.downloadsUsed, max: g.maxDownloads })}
+                      {g.reissuePending ? s.reissuePendingSuffix : ""}
                     </span>
                   </span>
                   <Badge
@@ -300,7 +309,7 @@ export default function AdminDownloadsPage() {
             )}
           </button>
         ))}
-        <span className="ml-auto text-xs text-text-muted">মোট {total}টি</span>
+        <span className="ml-auto text-xs text-text-muted">{interpolate(s.totalLabel, { total })}</span>
       </div>
 
       {rows === null ? (
@@ -311,8 +320,8 @@ export default function AdminDownloadsPage() {
         </div>
       ) : rows.length === 0 ? (
         <EmptyState
-          title="এই ফিল্টারে কোনো অনুরোধ নেই"
-          description="ডাউনলোড রি-ইস্যুর নতুন অনুরোধ এলে এখানে দেখা যাবে। গ্রাহক তাদের অ্যাকাউন্টের ডাউনলোড অংশ থেকে অনুরোধ পাঠান।"
+          title={s.emptyTitle}
+          description={s.emptyDesc}
         />
       ) : (
         <ul className="space-y-3">
@@ -329,21 +338,25 @@ export default function AdminDownloadsPage() {
                       {row.productName} — {row.fileName}
                     </p>
                     <p className="mt-0.5 text-xs leading-5 text-text-muted">
-                      অর্ডার{" "}
+                      {s.orderLabel}{" "}
                       <Link
                         href={`/admin/orders/${row.orderId}`}
                         className="font-semibold text-brand-700 hover:underline"
                       >
                         {row.orderNo}
                       </Link>{" "}
-                      · অনুরোধ: {fmtDate(row.createdAt)} · পুরনো গ্রান্ট: ব্যবহার {row.grantDownloadsUsed}/
-                      {row.grantMaxDownloads}, মেয়াদ {fmtDate(row.grantExpiresAt)}
+                      · {interpolate(s.requestedLabel, { date: fmtDate(row.createdAt, locale) })} ·{" "}
+                      {interpolate(s.oldGrantLabel, {
+                        used: row.grantDownloadsUsed,
+                        max: row.grantMaxDownloads,
+                        date: fmtDate(row.grantExpiresAt, locale),
+                      })}
                     </p>
                     {row.reason ? (
-                      <p className="mt-1 text-xs leading-5 text-text-muted">গ্রাহকের কারণ: {row.reason}</p>
+                      <p className="mt-1 text-xs leading-5 text-text-muted">{interpolate(s.customerReason, { reason: row.reason })}</p>
                     ) : null}
                     {row.decisionNote ? (
-                      <p className="mt-1 text-xs leading-5 text-text-muted">সিদ্ধান্তের নোট: {row.decisionNote}</p>
+                      <p className="mt-1 text-xs leading-5 text-text-muted">{interpolate(s.decisionNote, { note: row.decisionNote })}</p>
                     ) : null}
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1.5">
@@ -357,7 +370,7 @@ export default function AdminDownloadsPage() {
                       tone={GRANT_VISUAL[row.grantStatus]?.tone ?? "neutral"}
                       icon={<Icon name={GRANT_VISUAL[row.grantStatus]?.icon ?? "info"} size={12} />}
                     >
-                      গ্রান্ট: {GRANT_VISUAL[row.grantStatus]?.label ?? row.grantStatus}
+                      {interpolate(s.grantPrefix, { label: GRANT_VISUAL[row.grantStatus]?.label ?? row.grantStatus })}
                     </Badge>
                   </div>
                 </div>
@@ -367,7 +380,7 @@ export default function AdminDownloadsPage() {
                     <input
                       value={notes[row.id] ?? ""}
                       onChange={(e) => setNotes((prev) => ({ ...prev, [row.id]: e.target.value }))}
-                      placeholder="নোট (বাতিলের জন্য আবশ্যক) / Note (required to reject)"
+                      placeholder={s.notePlaceholder}
                       className={inputCls}
                     />
                     <div className="flex shrink-0 gap-2">
@@ -377,7 +390,7 @@ export default function AdminDownloadsPage() {
                         onClick={() => void decide(row, "approve")}
                         className="flex-1 sm:flex-initial"
                       >
-                        {busyId === row.id ? "হচ্ছে…" : "অনুমোদন — নতুন গ্রান্ট"}
+                        {busyId === row.id ? s.working : s.approve}
                       </Button>
                       <Button
                         type="button"
@@ -386,7 +399,7 @@ export default function AdminDownloadsPage() {
                         onClick={() => void decide(row, "reject")}
                         className="flex-1 sm:flex-initial"
                       >
-                        বাতিল
+                        {s.reject}
                       </Button>
                     </div>
                   </div>
@@ -405,10 +418,10 @@ export default function AdminDownloadsPage() {
             disabled={page <= 1}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
           >
-            আগের পেজ
+            {s.prevPage}
           </Button>
           <span className="text-xs text-text-muted">
-            পেজ {page} / {Math.ceil(total / pageSize)}
+            {interpolate(s.pageLabel, { page, total: Math.ceil(total / pageSize) })}
           </span>
           <Button
             type="button"
@@ -416,7 +429,7 @@ export default function AdminDownloadsPage() {
             disabled={page >= Math.ceil(total / pageSize)}
             onClick={() => setPage((p) => p + 1)}
           >
-            পরের পেজ
+            {s.nextPage}
           </Button>
         </div>
       ) : null}

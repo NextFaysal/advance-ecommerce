@@ -10,6 +10,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { PRODUCTS_STRINGS } from "./strings";
 
 export function DeleteProductButton({
   productId,
@@ -24,6 +27,8 @@ export function DeleteProductButton({
   onDeleted?: () => void;
 }) {
   const router = useRouter();
+  const { locale } = useLocale();
+  const s = pick(locale, PRODUCTS_STRINGS);
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -32,7 +37,7 @@ export function DeleteProductButton({
   async function confirmDelete() {
     if (busy) return;
     if (reason.trim() === "") {
-      setError("মুছে ফেলার কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setError(s.deleteReasonRequired);
       return;
     }
     setBusy(true);
@@ -55,7 +60,7 @@ export function DeleteProductButton({
         setError(body?.error ? `${body.error.code}: ${body.error.message}` : `HTTP ${res.status}`);
       }
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি।");
+      setError(s.netError);
     } finally {
       setBusy(false);
     }
@@ -68,29 +73,27 @@ export function DeleteProductButton({
         onClick={() => setOpen(true)}
         className="inline-flex min-h-[44px] items-center rounded-md px-3 text-small font-semibold text-rose-600 transition motion-fast hover:bg-rose-50"
       >
-        মুছুন
+        {s.deleteBtn}
       </button>
       <Modal
         open={open}
         onClose={() => {
           if (!busy) setOpen(false);
         }}
-        title="পণ্য মুছে ফেলুন"
+        title={s.deleteTitle}
         onConfirm={() => void confirmDelete()}
       >
         <p className="text-small leading-relaxed">
-          <span className="font-medium">{productTitle}</span> — এই পণ্যটি সফট-ডিলিট হবে: স্টোরফ্রন্ট ও
-          সার্চ থেকে সরে যাবে এবং এর ভ্যারিয়েন্টগুলো আর অর্ডার করা যাবে না। পুরনো অর্ডারের ইতিহাসে
-          তথ্য থেকে যাবে (হার্ড ডিলিট হয় না)।
+          <span className="font-medium">{productTitle}</span>{s.deleteBodySuffix}
         </p>
         <label className="mb-1.5 mt-4 block text-small font-medium" htmlFor={`del-reason-${productId}`}>
-          মুছে ফেলার কারণ (আবশ্যক)
+          {s.deleteReasonLabel}
         </label>
         <input
           id={`del-reason-${productId}`}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="যেমন: পণ্য বন্ধ হয়ে গেছে"
+          placeholder={s.deleteReasonPh}
           className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
         />
         {error && (
@@ -98,7 +101,7 @@ export function DeleteProductButton({
             {error}
           </p>
         )}
-        {busy && <p className="mt-3 text-small text-text-muted">মুছে ফেলা হচ্ছে…</p>}
+        {busy && <p className="mt-3 text-small text-text-muted">{s.deleting}</p>}
       </Modal>
     </>
   );

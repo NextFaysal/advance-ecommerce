@@ -11,11 +11,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate } from "@/i18n/locale";
+import { FEATURE_FLAGS_STRINGS } from "./strings";
 
 export interface FlagListItem {
   key: string;
-  descriptionEn: string; // exact string from seed.ts FEATURE_FLAGS
-  descriptionBn: string;
+  /** Description resolved to the active locale server-side (bn text or the exact seed.ts FEATURE_FLAGS string). */
+  description: string;
   linkPath: string | null;
   linkLabel: string | null;
   /** Stored state from the feature_flags table (read server-side). */
@@ -24,6 +27,8 @@ export interface FlagListItem {
 
 export function FlagList({ items }: { items: FlagListItem[] }) {
   const router = useRouter();
+  const { locale } = useLocale();
+  const t = FEATURE_FLAGS_STRINGS[locale];
   // Local overrides sit on top of the server-read props until the next
   // refresh replaces them with the stored state.
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
@@ -42,7 +47,7 @@ export function FlagList({ items }: { items: FlagListItem[] }) {
   async function confirmToggle() {
     if (!pending || busy) return;
     if (reason.trim() === "") {
-      setError("ফ্ল্যাগ বদলের কারণ লিখুন — এটি অডিট লগে সংরক্ষিত থাকে।");
+      setError(t.reasonRequired);
       return;
     }
     setBusy(true);
@@ -65,7 +70,7 @@ export function FlagList({ items }: { items: FlagListItem[] }) {
         setError(body?.error ? `${body.error.code}: ${body.error.message}` : `HTTP ${res.status}`);
       }
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি।");
+      setError(t.networkError);
     } finally {
       setBusy(false);
     }
@@ -80,15 +85,13 @@ export function FlagList({ items }: { items: FlagListItem[] }) {
             <li key={item.key} className="flex flex-wrap items-center gap-3 py-4">
               <div className="min-w-[240px] flex-1">
                 <p className="font-mono text-sm font-medium">{item.key}</p>
-                <p className="mt-0.5 text-sm text-text-muted">
-                  {item.descriptionBn} <span className="text-text-subtle">({item.descriptionEn})</span>
-                </p>
+                <p className="mt-0.5 text-sm text-text-muted">{item.description}</p>
                 {item.linkPath ? (
                   <a href={item.linkPath} className="mt-1 inline-block text-sm font-medium text-brand-700 hover:underline">
-                    মডিউল পেজ: {item.linkLabel} →
+                    {interpolate(t.modulePage, { label: item.linkLabel ?? "" })}
                   </a>
                 ) : (
-                  <p className="mt-1 text-xs text-text-subtle">আলাদা অ্যাডমিন পেজ নেই — API / সেটিংস দিয়ে চলে</p>
+                  <p className="mt-1 text-xs text-text-subtle">{t.noPage}</p>
                 )}
               </div>
               <Badge tone={on ? "success" : "neutral"}>{on ? "ON" : "OFF"}</Badge>
@@ -96,7 +99,7 @@ export function FlagList({ items }: { items: FlagListItem[] }) {
                 type="button"
                 role="switch"
                 aria-checked={on}
-                aria-label={`${item.key} টগল`}
+                aria-label={interpolate(t.toggleAria, { key: item.key })}
                 onClick={() => {
                   setError("");
                   setReason("");
@@ -118,28 +121,22 @@ export function FlagList({ items }: { items: FlagListItem[] }) {
         onClose={() => {
           if (!busy) setPending(null);
         }}
-        title={pending ? `ফ্ল্যাগ ${pending.target ? "চালু" : "বন্ধ"} করুন` : "ফ্ল্যাগ বদলান"}
+        title={pending ? (pending.target ? t.modalTitleOn : t.modalTitleOff) : t.modalTitleChange}
         onConfirm={() => void confirmToggle()}
       >
         <p className="text-small leading-relaxed">
-          <span className="font-mono font-medium">{pending?.key}</span> — এই বদলটি DB-তে সংরক্ষিত
-          হবে এবং সংশ্লিষ্ট মডিউল সঙ্গে সঙ্গে নতুন অবস্থা দেখবে। ফ্ল্যাগ বদল সংবেদনশীল কাজ
-          (feature_flags.manage) — কারণটি অডিট লগে থাকবে।
-          {pendingItem ? (
-            <>
-              {" "}
-              মডিউল: {pendingItem.descriptionBn}
-            </>
-          ) : null}
+          <span className="font-mono font-medium">{pending?.key}</span>
+          {t.modalBodyA}
+          {pendingItem ? <>{interpolate(t.modalModule, { description: pendingItem.description })}</> : null}
         </p>
         <label className="mb-1.5 mt-4 block text-small font-medium" htmlFor="flag-toggle-reason">
-          বদলের কারণ (আবশ্যক)
+          {t.reasonLabel}
         </label>
         <input
           id="flag-toggle-reason"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="যেমন: ক্লায়েন্টের জন্য পাইলট চালু করা হলো"
+          placeholder={t.reasonPlaceholder}
           className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
         />
         {error && (
@@ -147,7 +144,7 @@ export function FlagList({ items }: { items: FlagListItem[] }) {
             {error}
           </p>
         )}
-        {busy && <p className="mt-3 text-small text-text-muted">সংরক্ষণ হচ্ছে…</p>}
+        {busy && <p className="mt-3 text-small text-text-muted">{t.saving}</p>}
       </Modal>
     </>
   );

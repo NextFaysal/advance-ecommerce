@@ -27,10 +27,15 @@ import {
   browserSupportsWebAuthn,
   startAuthentication,
 } from "@simplewebauthn/browser";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick } from "@/i18n/locale";
+import { LOGIN_STRINGS } from "./strings";
 
 type Step = "login" | "totp" | "error";
 
 export default function AdminLoginPage() {
+  const { locale } = useLocale();
+  const s = pick(locale, LOGIN_STRINGS);
   const [step, setStep] = useState<Step>("login");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -53,7 +58,7 @@ export default function AdminLoginPage() {
   async function handlePasskey() {
     setMessage("");
     if (identifier.trim() === "") {
-      setMessage("আগে ইমেইল / ফোন লিখুন, তারপর পাসকি দিয়ে চেষ্টা করুন।");
+      setMessage(s.errPasskeyNeedsId);
       return;
     }
     setPasskeyBusy(true);
@@ -68,14 +73,14 @@ export default function AdminLoginPage() {
         error?: { message?: string };
       };
       if (!optionsRes.ok || !optionsJson.data?.options) {
-        setMessage(optionsJson.error?.message ?? "Login failed. Please try again.");
+        setMessage(optionsJson.error?.message ?? s.errLoginFailed);
         return;
       }
       let assertion;
       try {
         assertion = await startAuthentication({ optionsJSON: optionsJson.data.options });
       } catch {
-        setMessage("পাসকি লগইন সম্পন্ন হয়নি — প্রম্পট বাতিল হয়ে থাকতে পারে। পাসওয়ার্ড দিয়ে লগইন করুন।");
+        setMessage(s.errPasskeyCancelled);
         return;
       }
       const verifyRes = await fetch("/api/v1/admin/auth/passkey/login/verify", {
@@ -87,12 +92,12 @@ export default function AdminLoginPage() {
         const verifyJson = (await verifyRes.json().catch(() => ({}))) as {
           error?: { message?: string };
         };
-        setMessage(verifyJson.error?.message ?? "Login failed. Please try again.");
+        setMessage(verifyJson.error?.message ?? s.errLoginFailed);
         return;
       }
       window.location.href = "/admin";
     } catch {
-      setMessage("Network error. Check your connection and try again.");
+      setMessage(s.errNetwork);
     } finally {
       setPasskeyBusy(false);
     }
@@ -113,7 +118,7 @@ export default function AdminLoginPage() {
         error?: { message?: string };
       };
       if (!res.ok) {
-        setMessage(data.error?.message ?? "Login failed. Please try again.");
+        setMessage(data.error?.message ?? s.errLoginFailed);
         setStep("error");
         return;
       }
@@ -123,7 +128,7 @@ export default function AdminLoginPage() {
         window.location.href = "/admin";
       }
     } catch {
-      setMessage("Network error. Check your connection and try again.");
+      setMessage(s.errNetwork);
       setStep("error");
     } finally {
       setLoading(false);
@@ -141,12 +146,12 @@ export default function AdminLoginPage() {
         body: JSON.stringify({ code }),
       });
       if (!res.ok) {
-        setMessage("Invalid code. Please try again.");
+        setMessage(s.errInvalidCode);
         return;
       }
       window.location.href = "/admin";
     } catch {
-      setMessage("Network error. Check your connection and try again.");
+      setMessage(s.errNetwork);
     } finally {
       setLoading(false);
     }
@@ -164,17 +169,17 @@ export default function AdminLoginPage() {
         </div>
         <div>
           <h2 className="max-w-md text-4xl font-extrabold leading-snug">
-            আপনার দোকান,
+            {s.brandHeadline1}
             <br />
-            এক ড্যাশবোর্ডেই সব।
+            {s.brandHeadline2}
           </h2>
           <p className="mt-4 max-w-md text-sm leading-relaxed text-white/85">
-            অর্ডার, পেমেন্ট, কুরিয়ার আর কাস্টমার — সবকিছু এক জায়গা থেকে পরিচালনা করুন। ক্যাশ অন ডেলিভারি থেকে bKash অটো-ভেরিফাই পর্যন্ত, বাংলাদেশি ব্যবসার জন্যই তৈরি।
+            {s.brandText}
           </p>
           <ul className="mt-8 space-y-2 text-sm text-white/90">
-            <li>✓ সারাদেশে কুরিয়ার ট্র্যাকিং</li>
-            <li>✓ দৈনিক ক্যাশ ক্লোজিং ও রিপোর্ট</li>
-            <li>✓ ফ্রড স্কোরিং ও অটোমেশন</li>
+            <li>{s.brandFeat1}</li>
+            <li>{s.brandFeat2}</li>
+            <li>{s.brandFeat3}</li>
           </ul>
         </div>
         <p className="text-xs text-white/70">© 2026 Advance Ecommerce</p>
@@ -189,14 +194,14 @@ export default function AdminLoginPage() {
             </span>
             <span className="font-bold text-text-main">Advance Ecommerce</span>
           </div>
-          <h1 className="text-2xl font-bold text-text-main">অ্যাডমিন লগইন</h1>
-          <p className="mt-1 text-sm text-text-muted">শুধুমাত্র স্টাফদের জন্য। ইমেইল বা ফোন নম্বর ও পাসওয়ার্ড দিয়ে লগইন করুন।</p>
+          <h1 className="text-2xl font-bold text-text-main">{s.title}</h1>
+          <p className="mt-1 text-sm text-text-muted">{s.subtitle}</p>
 
           {step === "login" && (
             <form onSubmit={handleLogin} className="mt-6 space-y-4">
               <div>
                 <label htmlFor="identifier" className="mb-1.5 block text-sm font-medium text-text-main">
-                  ইমেইল / ফোন
+                  {s.identifierLabel}
                 </label>
                 <input
                   id="identifier"
@@ -211,7 +216,7 @@ export default function AdminLoginPage() {
               </div>
               <div>
                 <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-text-main">
-                  পাসওয়ার্ড
+                  {s.passwordLabel}
                 </label>
                 <input
                   id="password"
@@ -232,20 +237,20 @@ export default function AdminLoginPage() {
                   onChange={(e) => setShowPassword(e.target.checked)}
                   className="h-4 w-4 rounded border-border accent-[#4F46E5]"
                 />
-                পাসওয়ার্ড দেখুন
+                {s.showPassword}
               </label>
               <button
                 type="submit"
                 disabled={loading}
                 className="brand-gradient h-12 w-full rounded-xl text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
               >
-                {loading ? "লগইন হচ্ছে…" : "লগইন"}
+                {loading ? s.loggingIn : s.login}
               </button>
               {passkeySupported && (
                 <>
                   <div className="flex items-center gap-3 pt-1" aria-hidden="true">
                     <span className="h-px flex-1 bg-border" />
-                    <span className="text-xs text-text-muted">অথবা</span>
+                    <span className="text-xs text-text-muted">{s.or}</span>
                     <span className="h-px flex-1 bg-border" />
                   </div>
                   <button
@@ -254,7 +259,7 @@ export default function AdminLoginPage() {
                     disabled={passkeyBusy}
                     className="h-12 w-full rounded-xl border border-border bg-bg-app text-sm font-semibold text-text-main transition hover:border-brand-500 disabled:opacity-60"
                   >
-                    {passkeyBusy ? "পাসকি যাচাই হচ্ছে…" : "পাসকি দিয়ে প্রবেশ"}
+                    {passkeyBusy ? s.passkeyBusy : s.passkeyLogin}
                   </button>
                 </>
               )}
@@ -265,7 +270,7 @@ export default function AdminLoginPage() {
             <form onSubmit={handleTotp} className="mt-6 space-y-4">
               <div>
                 <label htmlFor="code" className="mb-1.5 block text-sm font-medium text-text-main">
-                  2FA কোড (৬ সংখ্যা, authenticator app থেকে)
+                  {s.totpLabel}
                 </label>
                 <input
                   id="code"
@@ -284,7 +289,7 @@ export default function AdminLoginPage() {
                 disabled={loading || code.length !== 6}
                 className="brand-gradient h-12 w-full rounded-xl text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
               >
-                {loading ? "যাচাই হচ্ছে…" : "যাচাই করুন"}
+                {loading ? s.verifying : s.verify}
               </button>
             </form>
           )}
@@ -300,15 +305,15 @@ export default function AdminLoginPage() {
               onClick={() => setStep("login")}
               className="mt-3 text-sm font-medium text-brand-600 hover:underline"
             >
-              লগইনে ফিরে যান
+              {s.backToLogin}
             </button>
           )}
           <p className="mt-6 border-t border-border pt-4 text-xs leading-relaxed text-text-subtle">
-            নিরাপত্তা: ৫ বার ভুল লগইন করলে অ্যাকাউন্ট ৩০ মিনিটের জন্য লক হবে। সন্দেহজনক লগইন হলে অ্যাডমিনকে জানানো হবে।
+            {s.securityNote}
           </p>
           <p className="mt-3 text-xs text-text-subtle">
             <a href="/" className="font-medium text-brand-600 hover:underline">
-              ← দোকানে ফিরে যান
+              {s.backToStore}
             </a>
           </p>
         </div>

@@ -5,11 +5,37 @@
 // page and the slide-over preview both consume these; nothing here
 // changes what the API returns or how it is counted.
 import { addQty, lineTotalPoisha } from "../../../src/lib/quantity";
+import { interpolate, intlLocale, pick, type Locale } from "../../../src/i18n/locale";
 import type {
   Order,
   OrderStatus,
   OrderStatusHistoryEntry,
 } from "../../../src/orders/types";
+import { ORDER_STRINGS } from "./strings";
+
+/** Date + time in the active locale (Asia/Dhaka) — the orders
+ *  surface's shared formatter (doc 30: dates via intlLocale). */
+export function formatOrderDateTime(iso: string, locale: Locale): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(intlLocale(locale), {
+    timeZone: "Asia/Dhaka",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+/** Date only in the active locale (Asia/Dhaka). */
+export function formatOrderDate(iso: string, locale: Locale): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return new Intl.DateTimeFormat(intlLocale(locale), {
+    timeZone: "Asia/Dhaka",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(d);
+}
 
 /** The 13 order statuses in funnel (lifecycle) order — the same order
  *  the chips have always rendered in, now also the kanban column order. */
@@ -69,29 +95,35 @@ export function itemUnitCount(order: Pick<Order, "items">): number {
 }
 
 /** One-line item summary for cards: first product + unit count, e.g.
- *  "কটন টি-শার্ট + আরও ২টি · মোট ৪টি আইটেম". Empty order → "—". */
-export function itemsSummaryLabel(order: Pick<Order, "items">): string {
+ *  bn "কটন টি-শার্ট + আরও ২টি · মোট ৪টি আইটেম" / en "Cotton T-shirt
+ *  + 2 more · 4 items in total". Empty order → "—". The product name
+ *  is merchant data and is never translated. */
+export function itemsSummaryLabel(order: Pick<Order, "items">, locale: Locale): string {
   if (order.items.length === 0) return "—";
-  const bn = (n: number) => n.toLocaleString("bn-BD");
+  const s = pick(locale, ORDER_STRINGS);
+  const num = (n: number) => n.toLocaleString(intlLocale(locale));
   const first = order.items[0].productName;
   const units = itemUnitCount(order);
   const more =
-    order.items.length > 1 ? ` + আরও ${bn(order.items.length - 1)}টি` : "";
-  return `${first}${more} · মোট ${bn(units)}টি আইটেম`;
+    order.items.length > 1
+      ? interpolate(s.sumMore, { n: num(order.items.length - 1) })
+      : "";
+  return interpolate(s.sumTotal, { first, more, units: num(units) });
 }
 
-/** Relative age in Bangla, mirroring the drafts strip's ageText but
- *  with `now` injected so the smoke can pin it deterministically. */
-export function orderAgeLabel(iso: string, nowMs: number): string {
+/** Relative age in the active locale, with `now` injected so the
+ *  smoke can pin it deterministically. */
+export function orderAgeLabel(iso: string, nowMs: number, locale: Locale): string {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "";
+  const s = pick(locale, ORDER_STRINGS);
+  const num = (n: number) => n.toLocaleString(intlLocale(locale));
   const minutes = Math.max(0, Math.floor((nowMs - then) / 60000));
-  const bn = (n: number) => n.toLocaleString("bn-BD");
-  if (minutes < 1) return "এখনই";
-  if (minutes < 60) return `${bn(minutes)} মিনিট আগে`;
+  if (minutes < 1) return s.agoNow;
+  if (minutes < 60) return interpolate(s.agoMinutes, { n: num(minutes) });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${bn(hours)} ঘণ্টা আগে`;
-  return `${bn(Math.floor(hours / 24))} দিন আগে`;
+  if (hours < 24) return interpolate(s.agoHours, { n: num(hours) });
+  return interpolate(s.agoDays, { n: num(Math.floor(hours / 24)) });
 }
 
 /** The newest `n` history entries, newest first. Returns a copy —

@@ -1,5 +1,8 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { coursesEnabled } from "@/courses/flags";
+import { pick } from "@/i18n/locale";
+import { getRequestLocale } from "@/i18n/server";
+import { COURSES_STRINGS } from "./strings";
 import { CoursesConfigCard } from "./courses-config-card";
 import { CoursesContentCard } from "./courses-content-card";
 
@@ -13,14 +16,14 @@ import { CoursesContentCard } from "./courses-content-card";
 
 export const dynamic = "force-dynamic";
 
-export default function CoursesPage() {
+export default async function CoursesPage() {
+  const s = pick(await getRequestLocale(), COURSES_STRINGS);
   if (!coursesEnabled()) {
     return (
       <main style={{ padding: 24, fontFamily: "system-ui" }}>
-        <h1>কোর্স (LMS-lite)</h1>
+        <h1>{s.title}</h1>
         <p role="status">
-          🔒 This module is locked for this install. Courses is a paid add-on — enable{" "}
-          <code>module.courses</code> in Admin &gt; Settings &gt; Feature Flags to unlock it.
+          {s.lockedPrefix} <code>module.courses</code> {s.lockedSuffix}
         </p>
       </main>
     );
@@ -28,10 +31,7 @@ export default function CoursesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="কোর্স (LMS-lite)"
-        description="কোর্স হলো সাধারণ DIGITAL পণ্য — কনফিগে তালিকাভুক্ত ভ্যারিয়েন্ট কিনলেই ক্রেতা পাঠ্যক্রমের অ্যাক্সেস পায়। আলাদা এনরোলমেন্ট টেবিল নেই: অ্যাক্সেস প্রতিবার অর্ডার থেকে যাচাই হয় — পেইড (বা ডেলিভার্ড) অর্ডার অ্যাক্সেস দেয়, রিফান্ড/রিটার্ন/বাতিল হলে অ্যাক্সেস সরে যায় (আংশিক রিফান্ডেও)। ভিডিও লেসনে শুধু YouTube/Vimeo এম্বেড — ভিডিও হোস্টিং এই প্ল্যাটফর্মে হয় না।"
-      />
+      <PageHeader title={s.title} description={s.description} />
       <CoursesContentCard />
       <CoursesConfigCard />
     </div>

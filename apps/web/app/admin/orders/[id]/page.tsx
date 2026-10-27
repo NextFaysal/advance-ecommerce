@@ -21,10 +21,10 @@
 // Every panel keeps its established mount contract (self-fetching
 // by orderId, serialisable props only). On mobile the rail stacks
 // above the tabs and the tab list scrolls horizontally.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Customer, Order, OrderStatus } from "../../../../src/orders/types";
-import { nextStepLabel, nextStepTarget, ORDER_TRANSITIONS } from "../../../../src/orders/state-machine";
+import { nextStepTarget, ORDER_TRANSITIONS } from "../../../../src/orders/state-machine";
 import { displayPhone, riskLevel } from "../../../../src/orders/customer";
 import { formatBdt } from "../../../../src/checkout/pricing";
 import { lineTotalPoisha } from "../../../../src/lib/quantity";
@@ -47,9 +47,12 @@ import {
   OrderStatusBadge,
 } from "../../../../src/orders/components/OrderStatusBadge";
 import {
-  ORDER_STATUS_BN,
+  ORDER_STATUS_VISUAL,
   PAYMENT_STATUS_VISUAL,
 } from "../../../../src/orders/components/labels";
+import { interpolate, pick, type Locale } from "../../../../src/i18n/locale";
+import { useLocale } from "../../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "../strings";
 import { MoneyBreakdown } from "../../../../src/orders/components/MoneyBreakdown";
 import { ORDER_DENSITY } from "../../../../src/orders/components/density";
 import { orderAgeLabel, previewMoneyProps } from "../list-helpers";
@@ -133,6 +136,7 @@ type DetailOrder = Order & {
  * was placed still shows SOMETHING truthful, never a wrong label).
  */
 function SlotLabel({ slotId }: { slotId: string }) {
+  const { locale } = useLocale();
   const [label, setLabel] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -141,7 +145,7 @@ function SlotLabel({ slotId }: { slotId: string }) {
       .then((json: { data?: { slots?: { id: string; labelBn: string; labelEn: string }[] } }) => {
         if (cancelled) return;
         const match = json.data?.slots?.find((s) => s.id === slotId);
-        if (match) setLabel(`${match.labelBn} / ${match.labelEn}`);
+        if (match) setLabel(locale === "bn" ? match.labelBn : match.labelEn);
       })
       .catch(() => {
         // Raw id fallback below.
@@ -149,7 +153,7 @@ function SlotLabel({ slotId }: { slotId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [slotId]);
+  }, [slotId, locale]);
   return <>{label ?? slotId}</>;
 }
 
@@ -157,13 +161,25 @@ type DetailResponse =
   | { data: DetailOrder; meta?: unknown }
   | { error: { code: string; message: string } };
 
-const PAYMENT_METHOD_LABEL: Record<string, string> = {
-  cod: "ক্যাশ অন ডেলিভারি",
-  bkash: "বিকাশ",
-  nagad: "নগদ",
-  rocket: "রকেট",
-  card: "কার্ড",
-  sslcommerz: "SSLCommerz",
+const PAYMENT_METHOD_LABEL: Record<string, Record<Locale, string>> = {
+  cod: { bn: "ক্যাশ অন ডেলিভারি", en: "Cash on Delivery" },
+  bkash: { bn: "বিকাশ", en: "bKash" },
+  nagad: { bn: "নগদ", en: "Nagad" },
+  rocket: { bn: "রকেট", en: "Rocket" },
+  card: { bn: "কার্ড", en: "Card" },
+  sslcommerz: { bn: "SSLCommerz", en: "SSLCommerz" },
+};
+
+/** Localized primary next-step label per TARGET status — the state
+ *  machine's nextStepLabel (src/orders) is English-only, so the
+ *  button text is resolved here from the target it computes. */
+const NEXT_STEP_LABEL: Partial<Record<OrderStatus, Record<Locale, string>>> = {
+  CONFIRMED: { bn: "কনফার্ম করুন", en: "Confirm" },
+  PROCESSING: { bn: "প্রসেসিং শুরু করুন", en: "Start Processing" },
+  PACKED: { bn: "প্যাকড হিসেবে চিহ্নিত করুন", en: "Mark Packed" },
+  SHIPPED: { bn: "শিপ করুন", en: "Ship" },
+  DELIVERED: { bn: "ডেলিভারি সম্পন্ন করুন", en: "Mark Delivered" },
+  RETURN_REQUESTED: { bn: "রিটার্ন অনুরোধ করুন", en: "Request Return" },
 };
 
 function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: string }) {
@@ -177,6 +193,10 @@ function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: stri
 
 export default function AdminOrderDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter();
+  const { locale, t } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
   const [order, setOrder] = useState<DetailOrder | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "error" | "notfound" | "ready">("loading");
@@ -221,7 +241,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
         setLoadState("error");
       }
     } catch {
-      setLoadError("নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি।");
+      setLoadError(pick(localeRef.current, ORDER_STRINGS).networkApi);
       setLoadState("error");
     }
   }, [params.id]);
@@ -310,14 +330,19 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
         // The PATCH payload is the plain order (no advance read
         // model) — keep the loaded advance block across the change.
         setOrder({ ...body.data, advance: order.advance, approval: order.approval });
-        setMessage(`স্ট্যাটাস বদল হয়েছে (ডাটাবেসে সেভ হয়েছে): ${order.status} → ${to}`);
+        setMessage(interpolate(s.dtStatusChanged, { from: order.status, to }));
       } else if (body && "error" in body) {
-        setMessage(`বাতিল হয়েছে (${res.status}): ${body.error.code}: ${body.error.message} — কিছু সেভ হয়নি।`);
+        setMessage(
+          interpolate(s.dtRejectedWith, {
+            status: res.status,
+            error: `${body.error.code}: ${body.error.message}`,
+          }),
+        );
       } else {
-        setMessage(`বাতিল হয়েছে: HTTP ${res.status} — কিছু সেভ হয়নি।`);
+        setMessage(interpolate(s.dtRejectedHttp, { status: res.status }));
       }
     } catch {
-      setMessage("নেটওয়ার্ক সমস্যা — স্ট্যাটাস বদল পাঠানো যায়নি, কিছু সেভ হয়নি।");
+      setMessage(s.dtTransitionNet);
     } finally {
       setBusy(false);
     }
@@ -326,13 +351,13 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
   if (loadState === "loading") {
     return (
       <main>
-        <div role="status" aria-label="অর্ডার লোড হচ্ছে" className="rounded-lg border border-border bg-card p-6 shadow-card">
+        <div role="status" aria-label={s.ordLoadingAria} className="rounded-lg border border-border bg-card p-6 shadow-card">
           <div className="h-6 w-48 animate-pulse rounded bg-border" />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="h-24 animate-pulse rounded-md bg-surface-2" />
             <div className="h-24 animate-pulse rounded-md bg-surface-2" />
           </div>
-          <p className="mt-4 text-small text-text-muted">অর্ডার লোড হচ্ছে…</p>
+          <p className="mt-4 text-small text-text-muted">{s.ordLoading}</p>
         </div>
       </main>
     );
@@ -346,15 +371,15 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
               <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
             </svg>
           </span>
-          <h1 className="mt-4 text-h2">অর্ডার পাওয়া যায়নি</h1>
+          <h1 className="mt-4 text-h2">{s.dtNotFoundTitle}</h1>
           <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
-            আইডি: <span className="font-mono">{params.id}</span> — ডাটাবেসে এই আইডি/অর্ডার নম্বরের কোনো অর্ডার নেই।
+            {interpolate(s.dtNotFoundBody, { id: params.id })}
           </p>
           <a
             href="/admin/orders"
             className="mt-5 inline-flex min-h-[44px] items-center justify-center rounded-md border border-border bg-card px-4 text-sm font-semibold shadow-sm transition motion-fast hover:bg-surface-2"
           >
-            অর্ডার তালিকায় ফিরুন
+            {s.dtBackBtn}
           </a>
         </div>
       </main>
@@ -364,25 +389,25 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
     return (
       <main>
         <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-5 shadow-card">
-          <p className="font-semibold text-rose-700">অর্ডার লোড হয়নি</p>
+          <p className="font-semibold text-rose-700">{s.ordLoadFailTitle}</p>
           <p className="mt-1 text-small text-rose-600">{loadError}</p>
           <Button variant="outline" className="mt-4 bg-card" onClick={() => void load()}>
-            আবার চেষ্টা করুন
+            {s.tryAgain}
           </Button>
         </div>
       </main>
     );
   }
 
-  const nextLabel = nextStepLabel(order.status);
   const nextTarget = nextStepTarget(order.status);
+  const nextLabel = nextTarget ? NEXT_STEP_LABEL[nextTarget] : undefined;
   const level = riskLevel(order.riskScore);
   const addressLine = [order.address.addressLine, order.address.upazila, order.address.district, order.address.division]
     .filter(Boolean)
     .join(", ");
-  const ageLabel = orderAgeLabel(order.createdAt, Date.now());
+  const ageLabel = orderAgeLabel(order.createdAt, Date.now(), locale);
   const paymentKnown = (Object.keys(PAYMENT_STATUS_VISUAL) as string[]).includes(order.paymentStatus);
-  const timelineEntries = buildWorkspaceTimelineEntries(order);
+  const timelineEntries = buildWorkspaceTimelineEntries(order, locale);
   const stack = ORDER_DENSITY.comfortable.stack;
   const hasGift = order.giftMessage !== null && order.giftMessage !== undefined;
   const showDeliveryCard = Boolean(order.courier || order.trackingId || order.deliverySlot || hasGift);
@@ -393,7 +418,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
           <path d="m15 18-6-6 6-6" />
         </svg>
-        সব অর্ডার
+        {s.dtBackToList}
       </a>
 
       {/* Header band — order no, OD0 status language, age, total and
@@ -405,18 +430,29 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
           <div className="min-w-0">
             <h1 className="truncate font-mono text-h2 font-bold">{order.orderNo}</h1>
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-              <OrderStatusBadge status={order.status} />
+              <OrderStatusBadge status={order.status} lang={locale} />
               {order.workflowStage ? (
-                <WorkflowStageChip label={order.workflowStage.labelBn} tone={order.workflowStage.tone} />
+                <WorkflowStageChip
+                  label={locale === "bn" ? order.workflowStage.labelBn : order.workflowStage.labelEn}
+                  tone={order.workflowStage.tone}
+                />
               ) : null}
               {paymentKnown ? (
-                <OrderPaymentBadge status={order.paymentStatus} />
+                <OrderPaymentBadge status={order.paymentStatus} lang={locale} />
               ) : (
                 <Badge tone="neutral">{order.paymentStatus}</Badge>
               )}
-              <Badge tone="neutral">{PAYMENT_METHOD_LABEL[order.paymentMethod] ?? order.paymentMethod}</Badge>
+              <Badge tone="neutral">
+                {PAYMENT_METHOD_LABEL[order.paymentMethod]
+                  ? pick(locale, PAYMENT_METHOD_LABEL[order.paymentMethod])
+                  : order.paymentMethod}
+              </Badge>
               <Badge tone={level === "High" ? "danger" : level === "Medium" ? "warning" : "success"}>
-                ঝুঁকি: {level === "High" ? "বেশি" : level === "Medium" ? "মাঝারি" : "কম"} ({order.riskScore})
+                {interpolate(s.dtRisk, {
+                  level:
+                    level === "High" ? s.riskWordHigh : level === "Medium" ? s.riskWordMedium : s.riskWordLow,
+                  score: order.riskScore,
+                })}
               </Badge>
               {ageLabel ? (
                 <Badge tone="neutral" icon={<Icon name="clock" size={12} />}>
@@ -425,11 +461,11 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
               ) : null}
             </div>
             <p className="mt-2.5 text-small leading-relaxed text-text-muted">
-              গ্রাহক: <span className="font-medium text-text-main">{order.customerName}</span>
+              {s.dtCustomerPrefix} <span className="font-medium text-text-main">{order.customerName}</span>
             </p>
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-caption font-medium text-text-muted">মোট</p>
+            <p className="text-caption font-medium text-text-muted">{t.total}</p>
             <p className="font-mono text-h1 font-bold tabular-nums">{formatBdt(order.totalPoisha)}</p>
             {nextLabel && nextTarget && (
               <Button
@@ -438,7 +474,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
                 disabled={busy}
                 onClick={() => void applyTransition(nextTarget)}
               >
-                {nextLabel}
+                {pick(locale, nextLabel)}
               </Button>
             )}
             {/* OD8 — keyboard shortcut hint ("?" toggles; the keys
@@ -446,28 +482,28 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
             <div className="relative mt-3">
               <button
                 type="button"
-                aria-label="কীবোর্ড শর্টকাটের তালিকা"
+                aria-label={s.dtShortcutsAria}
                 aria-expanded={showShortcuts}
                 onClick={() => setShowShortcuts((v) => !v)}
                 className="inline-flex items-center gap-1.5 text-caption font-medium text-text-muted transition motion-fast hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center rounded-full border border-border font-mono text-[11px] font-bold">?</span>
-                কীবোর্ড শর্টকাট
+                {s.dtShortcuts}
               </button>
               {showShortcuts ? (
                 <div className="absolute right-0 top-[calc(100%+8px)] z-30 w-72 rounded-lg border border-border bg-card p-3.5 text-left shadow-pop">
-                  <p className="text-small font-semibold">কীবোর্ড শর্টকাট</p>
+                  <p className="text-small font-semibold">{s.dtShortcuts}</p>
                   <ul className="mt-2 space-y-1.5 text-small text-text-muted">
                     {[
-                      ["P", "প্রিন্ট সেন্টার (এই অর্ডার)"],
-                      ["E", "পরিচালনা ট্যাব"],
-                      ["A", "কাজ ট্যাব"],
-                      ["M", "পেমেন্ট ও রিফান্ড ট্যাব"],
-                      ["S", "শিপমেন্ট ট্যাব"],
-                      ["R", "রিটার্ন ট্যাব"],
-                      ["H", "ইতিহাস ট্যাব"],
-                      ["⌘K", "অর্ডার খুঁজুন (যেকোনো পেজ থেকে)"],
-                      ["?", "এই তালিকা খুলুন / বন্ধ করুন"],
+                      ["P", s.scPrint],
+                      ["E", s.scManagement],
+                      ["A", s.scActions],
+                      ["M", s.scPayment],
+                      ["S", s.scShipments],
+                      ["R", s.scReturns],
+                      ["H", s.scHistory],
+                      ["⌘K", s.scSearch],
+                      ["?", s.scToggle],
                     ].map(([key, label]) => (
                       <li key={key} className="flex items-center justify-between gap-3">
                         <span>{label}</span>
@@ -478,7 +514,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
                     ))}
                   </ul>
                   <p className="mt-2.5 border-t border-border pt-2 text-caption leading-relaxed text-text-subtle">
-                    কোনো ইনপুটে লিখছেন এমন সময় বা কোনো পপআপ খোলা থাকলে শর্টকাট কাজ করে না।
+                    {s.dtShortcutsNote}
                   </p>
                 </div>
               ) : null}
@@ -509,17 +545,17 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
               customer block (audited reveal; the payload's phone
               stays masked until it is used). */}
           <Card className="shadow-card">
-            <h2 className="mb-3 text-base font-semibold">যোগাযোগ ও ঠিকানা</h2>
+            <h2 className="mb-3 text-base font-semibold">{s.dtContactTitle}</h2>
             <dl className="space-y-2 text-sm">
               <div className="flex items-center justify-between gap-4">
-                <dt className="text-text-muted">ফোন</dt>
+                <dt className="text-text-muted">{t.phone}</dt>
                 <dd>
                   <PhoneReveal orderId={order.id} maskedPhone={displayPhone(order.customerPhone, false)} />
                 </dd>
               </div>
               {addressLine ? (
                 <div>
-                  <dt className="text-text-muted">ঠিকানা</dt>
+                  <dt className="text-text-muted">{t.address}</dt>
                   <dd className="mt-0.5 leading-relaxed">{addressLine}</dd>
                 </div>
               ) : null}
@@ -530,9 +566,9 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
                   href={`/admin/customers?search=${encodeURIComponent(order.customerName)}`}
                   className="font-medium text-brand-700 hover:underline"
                 >
-                  গ্রাহকের প্রোফাইল ও সব অর্ডার দেখুন
+                  {s.dtProfileLink}
                 </a>
-                {customer ? "" : " — এই ভিউতে গ্রাহকের ইতিহাস দেখার অনুমতি না থাকলে কার্ডে শুধু এই অর্ডারের তথ্য দেখায়।"}
+                {customer ? "" : s.dtProfileNoteSuffix}
               </p>
             )}
           </Card>
@@ -541,8 +577,8 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
               preview feeds it (subtotal from items, doc-18 split
               passthrough, paid from the advance read model). */}
           <Card className="shadow-card">
-            <h2 className="mb-3 text-base font-semibold">টাকার হিসাব</h2>
-            <MoneyBreakdown {...previewMoneyProps(order)} />
+            <h2 className="mb-3 text-base font-semibold">{s.dtMoneyTitle}</h2>
+            <MoneyBreakdown {...previewMoneyProps(order)} lang={locale} />
           </Card>
 
           {/* Custom print (ADV-23 vertical 5) — renders only when
@@ -552,32 +588,32 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
               the staff attestation from the print queue. */}
           {order.pod ? (
             <Card className="shadow-card">
-              <h2 className="mb-3 text-base font-semibold">কাস্টম প্রিন্ট</h2>
+              <h2 className="mb-3 text-base font-semibold">{s.dtPodTitle}</h2>
               <dl className="space-y-2 text-sm">
                 <div>
-                  <dt className="text-text-muted">ছাপানোর লেখা</dt>
+                  <dt className="text-text-muted">{s.dtPodText}</dt>
                   <dd className="mt-0.5 text-base font-bold leading-relaxed">
                     «{order.pod.printText}»
                   </dd>
                 </div>
                 {order.pod.printColor ? (
                   <div className="flex items-center justify-between gap-3">
-                    <dt className="text-text-muted">রঙ</dt>
+                    <dt className="text-text-muted">{s.dtPodColor}</dt>
                     <dd className="font-medium">{order.pod.printColor}</dd>
                   </div>
                 ) : null}
                 {order.pod.productName ? (
                   <div className="flex items-center justify-between gap-3">
-                    <dt className="text-text-muted">পণ্য</dt>
+                    <dt className="text-text-muted">{s.prodWord}</dt>
                     <dd className="font-medium">
                       {order.pod.productName} × {order.pod.quantity}
                     </dd>
                   </div>
                 ) : null}
                 <div className="flex items-center justify-between gap-3">
-                  <dt className="text-text-muted">অবস্থা</dt>
+                  <dt className="text-text-muted">{s.status}</dt>
                   <dd className="font-medium">
-                    {order.pod.printed ? "ছাপানো হয়েছে ✓" : "ছাপানো বাকি — প্রিন্ট কিউতে আছে"}
+                    {order.pod.printed ? s.dtPodPrinted : s.dtPodPending}
                   </dd>
                 </div>
               </dl>
@@ -599,23 +635,23 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
           {/* Delivery — courier / tracking / slot + gift chips. */}
           {showDeliveryCard ? (
             <Card className="shadow-card">
-              <h2 className="mb-3 text-base font-semibold">ডেলিভারি</h2>
+              <h2 className="mb-3 text-base font-semibold">{s.dtDeliveryTitle}</h2>
               <dl className="space-y-2 text-sm">
                 {order.courier ? (
                   <div className="flex items-center justify-between gap-3">
-                    <dt className="text-text-muted">কুরিয়ার</dt>
+                    <dt className="text-text-muted">{s.colCourier}</dt>
                     <dd className="font-medium">{order.courier}</dd>
                   </div>
                 ) : null}
                 {order.trackingId ? (
                   <div className="flex items-center justify-between gap-3">
-                    <dt className="text-text-muted">ট্র্যাকিং</dt>
+                    <dt className="text-text-muted">{s.dtTracking}</dt>
                     <dd className="font-mono">{order.trackingId}</dd>
                   </div>
                 ) : null}
                 {order.deliverySlot ? (
                   <div className="flex items-center justify-between gap-3">
-                    <dt className="text-text-muted">ডেলিভারির সময়</dt>
+                    <dt className="text-text-muted">{s.dtSlot}</dt>
                     <dd>
                       <Badge tone="info" icon={<Icon name="clock" size={12} />}>
                         <SlotLabel slotId={order.deliverySlot} />
@@ -626,18 +662,18 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
                 {hasGift ? (
                   <div>
                     <div className="flex items-center justify-between gap-3">
-                      <dt className="text-text-muted">উপহার</dt>
+                      <dt className="text-text-muted">{s.prevGift}</dt>
                       <dd>
                         <Badge tone="brand" icon={<Icon name="sparkles" size={12} />}>
-                          উপহার হিসেবে পাঠান
+                          {s.dtGiftSend}
                         </Badge>
                       </dd>
                     </div>
                     <p className="mt-1.5 leading-relaxed text-text-muted">
                       {order.giftMessage ? (
-                        <>বার্তা: <span className="font-medium text-text-main">“{order.giftMessage}”</span></>
+                        <>{s.dtGiftMsgPrefix} <span className="font-medium text-text-main">“{order.giftMessage}”</span></>
                       ) : (
-                        "বার্তা নেই"
+                        s.dtGiftNoMsg
                       )}
                     </p>
                   </div>
@@ -678,12 +714,12 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
             tabs={[
               {
                 id: "actions",
-                label: "কাজ",
+                label: s.tabActions,
                 content: (
                   <div className={stack}>
                     {/* Items */}
                     <Card className="shadow-card">
-                      <SectionTitle>আইটেম ({order.items.length})</SectionTitle>
+                      <SectionTitle>{interpolate(s.dtItemsTitle, { n: order.items.length })}</SectionTitle>
                       <ul className="divide-y divide-border">
                         {order.items.map((i) => (
                           <li key={i.variantId} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
@@ -702,7 +738,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
                         ))}
                       </ul>
                       <div className="mt-4 flex items-center justify-between border-t border-border pt-3.5">
-                        <span className="font-semibold">মোট</span>
+                        <span className="font-semibold">{s.totalWord}</span>
                         <span className="font-mono text-h3 font-bold tabular-nums">{formatBdt(order.totalPoisha)}</span>
                       </div>
                     </Card>
@@ -711,17 +747,17 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
                         with the reason input (the primary next step
                         also sits in the header). */}
                     <Card className="shadow-card">
-                      <SectionTitle sub="প্রতিটি বদল সার্ভারে স্টেট মেশিন দিয়ে যাচাই হয়ে ডাটাবেসে সেভ হয়; অবৈধ বদল বাতিল হয়ে উপরে দেখানো হয়।">
-                        স্ট্যাটাস বদল
+                      <SectionTitle sub={s.dtStatusChangeSub}>
+                        {s.dtStatusChangeTitle}
                       </SectionTitle>
                       <label className="mb-1.5 block text-small font-medium" htmlFor="transition-reason">
-                        কারণ (বাতিল/রিফান্ডের জন্য আবশ্যক)
+                        {s.dtReasonLabel}
                       </label>
                       <input
                         id="transition-reason"
                         value={reason}
                         onChange={(e) => setReason(e.target.value)}
-                        placeholder="কারণ লিখুন"
+                        placeholder={s.dtReasonPlaceholder}
                         className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                       />
                       <div className="mt-4 flex flex-wrap gap-2">
@@ -733,7 +769,12 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
                             disabled={busy}
                             onClick={() => void applyTransition(to)}
                           >
-                            {ORDER_STATUS_BN[to]} করুন
+                            {interpolate(s.dtTransitionBtn, {
+                              label:
+                                locale === "bn"
+                                  ? ORDER_STATUS_VISUAL[to].labelBn
+                                  : ORDER_STATUS_VISUAL[to].labelEn,
+                            })}
                           </Button>
                         ))}
                       </div>
@@ -753,7 +794,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
               },
               {
                 id: "payment",
-                label: "পেমেন্ট ও রিফান্ড",
+                label: s.tabPayment,
                 content: (
                   <div className={stack}>
                     {/* Advance payment (doc 17, O3) — required/paid/
@@ -769,21 +810,21 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
               },
               {
                 id: "shipments",
-                label: "শিপমেন্ট",
+                label: s.tabShipments,
                 // Shipments (doc 17, O5) — bookings incl. split
                 // parcels; self-fetches by order id.
                 content: <ShipmentsPanel orderId={order.id} />,
               },
               {
                 id: "returns",
-                label: "রিটার্ন",
+                label: s.tabReturns,
                 // Returns / RMA (doc 17, O7) — self-fetches by
                 // order id.
                 content: <ReturnsPanel orderId={order.id} />,
               },
               {
                 id: "management",
-                label: "পরিচালনা",
+                label: s.tabManagement,
                 content: (
                   <div className={stack}>
                     {/* Order management (doc 17, O6) — assignee /
@@ -805,7 +846,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
               },
               {
                 id: "history",
-                label: "ইতিহাস",
+                label: s.tabHistory,
                 count: timelineEntries.length,
                 // Timeline v2 — typed entries built only from the
                 // payload's history + notes streams (see
@@ -819,7 +860,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
       </div>
 
       <p className="mt-5 text-caption text-text-subtle">
-        ডেটা উৎস: অ্যাডমিন অর্ডার API (ডাটাবেস) — স্ট্যাটাস বদল PATCH দিয়ে ডাটাবেসে সেভ হয়।
+        {s.dtDataSource}
       </p>
     </main>
   );

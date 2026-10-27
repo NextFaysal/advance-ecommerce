@@ -71,16 +71,20 @@ import { useSearchParams } from "next/navigation";
 import { Icon } from "@/components/ui/icon";
 import { formatBdt } from "../../../../src/checkout/pricing";
 import { addQty, lineTotalPoisha } from "../../../../src/lib/quantity";
+import { interpolate, pick, type Locale } from "../../../../src/i18n/locale";
+import { useLocale } from "../../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "../strings";
+import { formatOrderDate } from "../list-helpers";
 
 const MAX_INVOICES = 50;
 
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  cod: "ক্যাশ অন ডেলিভারি (COD)",
-  bkash: "বিকাশ",
-  nagad: "নগদ",
-  rocket: "রকেট",
-  card: "কার্ড",
-  sslcommerz: "SSLCommerz",
+const PAYMENT_METHOD_LABELS: Record<string, Record<Locale, string>> = {
+  cod: { bn: "ক্যাশ অন ডেলিভারি (COD)", en: "Cash on delivery (COD)" },
+  bkash: { bn: "বিকাশ", en: "bKash" },
+  nagad: { bn: "নগদ", en: "Nagad" },
+  rocket: { bn: "রকেট", en: "Rocket" },
+  card: { bn: "কার্ড", en: "Card" },
+  sslcommerz: { bn: "SSLCommerz", en: "SSLCommerz" },
 };
 
 interface InvoiceItem {
@@ -207,13 +211,6 @@ function toInvoice(order: InvoiceOrder): LoadedInvoice {
   };
 }
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? iso
-    : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-}
-
 function addressText(order: InvoiceOrder): string {
   return [
     order.address.addressLine,
@@ -251,6 +248,8 @@ function InvoiceSheet({
   format: PrintFormat;
   template?: InvoiceTemplateTexts;
 }) {
+  const { locale, t } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const { order, subtotalPoisha, shippingPoisha, discountPoisha, otherPoisha, netAdjustmentPoisha, giftCardNetPoisha, giftCardLast4, grossTotalPoisha, paidPoisha, duePoisha, rentalDepositPoisha, printFeePoisha } = invoice;
   return (
     <section
@@ -265,12 +264,12 @@ function InvoiceSheet({
           </span>
           <div>
             {storeName && <p className="text-h2 font-bold leading-tight">{storeName}</p>}
-            <p className="text-small font-semibold uppercase tracking-wide text-text-muted">ইনভয়েস / Invoice</p>
+            <p className="text-small font-semibold uppercase tracking-wide text-text-muted">{s.prInvoice}</p>
           </div>
         </div>
         <div className="text-right">
           <p className="font-mono text-body font-bold">{order.orderNo}</p>
-          <p className="text-small text-text-muted">{formatDate(order.createdAt)}</p>
+          <p className="text-small text-text-muted">{formatOrderDate(order.createdAt, locale)}</p>
         </div>
       </header>
 
@@ -283,17 +282,20 @@ function InvoiceSheet({
         <p>{order.customerPhone}</p>
         <p className="text-text-muted">{addressText(order)}</p>
         <p className="mt-1 text-text-muted">
-          পেমেন্ট: {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
+          {s.prPaymentPrefix}{" "}
+          {PAYMENT_METHOD_LABELS[order.paymentMethod]
+            ? pick(locale, PAYMENT_METHOD_LABELS[order.paymentMethod])
+            : order.paymentMethod}
         </p>
       </div>
 
       <table className="mt-5 w-full text-left text-small">
         <thead>
           <tr className="border-b border-border text-text-muted">
-            <th scope="col" className="py-2 font-medium">পণ্য</th>
-            <th scope="col" className="py-2 text-center font-medium">পরিমাণ</th>
-            <th scope="col" className="py-2 text-right font-medium">একক দাম</th>
-            <th scope="col" className="py-2 text-right font-medium">মোট</th>
+            <th scope="col" className="py-2 font-medium">{s.prodWord}</th>
+            <th scope="col" className="py-2 text-center font-medium">{t.quantity}</th>
+            <th scope="col" className="py-2 text-right font-medium">{s.prColUnitPrice}</th>
+            <th scope="col" className="py-2 text-right font-medium">{t.total}</th>
           </tr>
         </thead>
         <tbody>
@@ -316,36 +318,36 @@ function InvoiceSheet({
       <div className="mt-4 rounded-lg border border-border bg-slate-50/60 px-4 py-3 print:bg-transparent">
         <dl className="space-y-1.5 text-small">
           <div className="flex justify-between">
-            <dt className="text-text-muted">সাবটোটাল (পণ্য)</dt>
+            <dt className="text-text-muted">{s.prSubtotal}</dt>
             <dd className="tabular-nums">{formatBdt(subtotalPoisha)}</dd>
           </div>
           {shippingPoisha !== null && discountPoisha !== null ? (
             <>
               <div className="flex justify-between">
-                <dt className="text-text-muted">ডেলিভারি চার্জ</dt>
+                <dt className="text-text-muted">{t.deliveryCharge}</dt>
                 <dd className="tabular-nums">{formatBdt(shippingPoisha)}</dd>
               </div>
               {discountPoisha > 0 && (
                 <div className="flex justify-between">
-                  <dt className="text-text-muted">ছাড়</dt>
+                  <dt className="text-text-muted">{t.discount}</dt>
                   <dd className="tabular-nums">−{formatBdt(discountPoisha)}</dd>
                 </div>
               )}
               {rentalDepositPoisha > 0 && (
                 <div className="flex justify-between">
-                  <dt className="text-text-muted">ভাড়ার জামানত (ফেরতযোগ্য)</dt>
+                  <dt className="text-text-muted">{s.prRentalDeposit}</dt>
                   <dd className="tabular-nums">{formatBdt(rentalDepositPoisha)}</dd>
                 </div>
               )}
               {printFeePoisha > 0 && (
                 <div className="flex justify-between">
-                  <dt className="text-text-muted">প্রিন্ট ফি</dt>
+                  <dt className="text-text-muted">{s.prPrintFee}</dt>
                   <dd className="tabular-nums">{formatBdt(printFeePoisha)}</dd>
                 </div>
               )}
               {otherPoisha !== 0 && (
                 <div className="flex justify-between">
-                  <dt className="text-text-muted">সিওডি ফি ও অন্যান্য চার্জ</dt>
+                  <dt className="text-text-muted">{s.prOtherCharges}</dt>
                   <dd className="tabular-nums">{formatBdt(otherPoisha)}</dd>
                 </div>
               )}
@@ -353,7 +355,7 @@ function InvoiceSheet({
           ) : (
             netAdjustmentPoisha !== 0 && (
               <div className="flex justify-between">
-                <dt className="text-text-muted">ডেলিভারি চার্জ ও সমন্বয় (ছাড় বাদে নিট)</dt>
+                <dt className="text-text-muted">{s.prNetAdjustment}</dt>
                 <dd className="tabular-nums">{formatBdt(netAdjustmentPoisha)}</dd>
               </div>
             )
@@ -361,22 +363,22 @@ function InvoiceSheet({
           {giftCardNetPoisha > 0 && (
             <>
               <div className="flex justify-between border-t border-border pt-2 font-semibold">
-                <dt>মোট (গিফট কার্ডের আগে)</dt>
+                <dt>{s.prGrossBeforeGift}</dt>
                 <dd className="tabular-nums">{formatBdt(grossTotalPoisha)}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-text-muted">গিফট কার্ড (…{giftCardLast4 ?? "????"})</dt>
+                <dt className="text-text-muted">{interpolate(s.prGiftCard, { last4: giftCardLast4 ?? "????" })}</dt>
                 <dd className="tabular-nums">−{formatBdt(giftCardNetPoisha)}</dd>
               </div>
             </>
           )}
           <div className="flex justify-between border-t border-border pt-2 text-body font-bold">
-            <dt>সর্বমোট</dt>
+            <dt>{s.prGrandTotal}</dt>
             <dd className="tabular-nums">{formatBdt(order.totalPoisha)}</dd>
           </div>
           {paidPoisha > 0 && (
             <div className="flex justify-between">
-              <dt className="text-text-muted">পরিশোধিত</dt>
+              <dt className="text-text-muted">{s.prPaidWord}</dt>
               <dd className="tabular-nums">{formatBdt(paidPoisha)}</dd>
             </div>
           )}
@@ -388,17 +390,17 @@ function InvoiceSheet({
           <p className="flex items-center gap-2 text-body font-bold text-amber-900">
             <Icon name="banknote" size={20} />
             <span>
-              সংগ্রহ করুন / Amount due: {formatBdt(duePoisha)}
+              {s.prDueLabel}: {formatBdt(duePoisha)}
             </span>
           </p>
           <p className="mt-1 text-caption text-amber-800">
-            ডেলিভারির সময় কাস্টমারের কাছ থেকে এই পরিমাণ টাকা সংগ্রহ করতে হবে।
+            {s.prDueNote}
           </p>
         </div>
       ) : (
         <p className="mt-5 flex items-center gap-2 rounded-md bg-emerald-50 px-4 py-3 text-small font-semibold text-emerald-800">
           <Icon name="check" size={16} />
-          সম্পূর্ণ পরিশোধিত / Paid in full
+          {s.prPaidFull}
         </p>
       )}
 
@@ -421,6 +423,8 @@ function PackingSlipSheet({
   storeName: string;
   format: PrintFormat;
 }) {
+  const { locale, t } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const { order } = invoice;
   const totalQuantity = order.items.reduce((sum, i) => addQty(sum, i.quantity), 0);
   return (
@@ -436,17 +440,17 @@ function PackingSlipSheet({
           </span>
           <div>
             {storeName && <p className="text-h3 font-bold leading-tight">{storeName}</p>}
-            <p className="text-small font-semibold uppercase tracking-wide text-text-muted">প্যাকিং স্লিপ / Packing slip</p>
+            <p className="text-small font-semibold uppercase tracking-wide text-text-muted">{s.prPackingSlip}</p>
           </div>
         </div>
         <div className="text-right">
           <p className="font-mono text-body font-bold">{order.orderNo}</p>
-          <p className="text-small text-text-muted">{formatDate(order.createdAt)}</p>
+          <p className="text-small text-text-muted">{formatOrderDate(order.createdAt, locale)}</p>
         </div>
       </header>
 
       <div className="mt-5 leading-relaxed">
-        <p className="text-caption font-semibold uppercase tracking-wide text-text-muted">ডেলিভারি ঠিকানা</p>
+        <p className="text-caption font-semibold uppercase tracking-wide text-text-muted">{s.prDeliveryAddress}</p>
         <p className="mt-1 text-h2 font-bold leading-snug">{order.customerName}</p>
         <p className="font-mono text-h3 font-semibold">{order.customerPhone}</p>
         <p className="mt-1 text-body font-medium leading-relaxed">{addressText(order)}</p>
@@ -455,8 +459,8 @@ function PackingSlipSheet({
       <table className="mt-5 w-full text-left">
         <thead>
           <tr className="border-b border-border text-text-muted">
-            <th scope="col" className="py-2 text-small font-medium">পণ্য</th>
-            <th scope="col" className="py-2 text-right text-small font-medium">পরিমাণ</th>
+            <th scope="col" className="py-2 text-small font-medium">{s.prodWord}</th>
+            <th scope="col" className="py-2 text-right text-small font-medium">{t.quantity}</th>
           </tr>
         </thead>
         <tbody>
@@ -474,16 +478,18 @@ function PackingSlipSheet({
 
       <p className="mt-4 flex items-center gap-2 text-body font-semibold">
         <Icon name="box" size={18} />
-        মোট আইটেম: {totalQuantity}টি
+        {interpolate(s.prTotalItems, { n: totalQuantity })}
       </p>
       <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-caption text-text-muted print:bg-transparent">
-        এই স্লিপে টাকার হিসাব নেই — টাকার জন্য ইনভয়েসটি দেখুন।
+        {s.prSlipNoMoney}
       </p>
     </section>
   );
 }
 
 function PrintCentreInner() {
+  const { locale } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const searchParams = useSearchParams();
   const ids = useMemo(() => {
     const raw = searchParams.get("ids") ?? "";
@@ -601,35 +607,38 @@ function PrintCentreInner() {
 
       <div className="mb-5 flex flex-wrap items-center gap-3 print:hidden">
         <div>
-          <h1 className="text-h2">ইনভয়েস প্রিন্ট</h1>
+          <h1 className="text-h2">{s.prTitle}</h1>
           <p className="text-small text-text-muted">
             {ids.length === 0
-              ? "কোনো অর্ডার সিলেক্ট করা হয়নি — অর্ডার তালিকা থেকে সিলেক্ট করে আবার আসুন।"
+              ? s.prNoneSelected
               : invoices === null
-                ? `${ids.length}টি অর্ডারের ইনভয়েস লোড হচ্ছে…`
-                : `${invoices.length}টি ইনভয়েস তৈরি${failedIds.length > 0 ? ` · ${failedIds.length}টি লোড হয়নি` : ""}`}
+                ? interpolate(s.prLoadingCount, { n: ids.length })
+                : interpolate(s.prReadyCount, { n: invoices.length }) +
+                  (failedIds.length > 0
+                    ? interpolate(s.prFailedCountPart, { n: failedIds.length })
+                    : "")}
           </p>
           {invoices !== null && !storeName && (
             <p className="mt-1 text-caption text-text-muted">
-              স্টোরের নাম Settings → General (general.store_name) থেকে আসে — এখনো সেট হয়নি, তাই শিরোনামে নাম ছাপা হচ্ছে না।
+              {s.prStoreNameHint}
             </p>
           )}
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5" role="group" aria-label="প্রিন্টের ধরন">
+          <div className="flex items-center gap-1.5" role="group" aria-label={s.prVariantAria}>
             <button type="button" aria-pressed={variant === "invoice"} onClick={() => setVariant("invoice")} className={toggleBtnCls(variant === "invoice")}>
-              ইনভয়েস
+              {s.prInvoiceBtn}
             </button>
             <button type="button" aria-pressed={variant === "slip"} onClick={() => setVariant("slip")} className={toggleBtnCls(variant === "slip")}>
-              প্যাকিং স্লিপ
+              {s.prSlipBtn}
             </button>
           </div>
-          <div className="flex items-center gap-1.5" role="group" aria-label="কাগজের ফরম্যাট">
+          <div className="flex items-center gap-1.5" role="group" aria-label={s.prFormatAria}>
             <button type="button" aria-pressed={format === "a4"} onClick={() => setFormat("a4")} className={toggleBtnCls(format === "a4")}>
               A4
             </button>
             <button type="button" aria-pressed={format === "thermal"} onClick={() => setFormat("thermal")} className={toggleBtnCls(format === "thermal")}>
-              থার্মাল 4×6
+              {s.prThermal}
             </button>
           </div>
           <button
@@ -638,19 +647,19 @@ function PrintCentreInner() {
             disabled={!invoices || invoices.length === 0}
             className="rounded-md bg-brand-600 px-4 py-2 text-small font-semibold text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
-            আবার প্রিন্ট করুন
+            {s.prPrintAgain}
           </button>
         </div>
       </div>
 
       {failedIds.length > 0 && (
         <div role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-small text-rose-700 print:hidden">
-          এই অর্ডারগুলো লোড হয়নি (মুছে ফেলা বা অ্যাক্সেস নেই): {failedIds.join(", ")}
+          {interpolate(s.prFailedList, { ids: failedIds.join(", ") })}
         </div>
       )}
 
       {invoices !== null && invoices.length === 0 && ids.length > 0 && (
-        <p className="text-small text-text-muted print:hidden">কোনো ইনভয়েস তৈরি হয়নি।</p>
+        <p className="text-small text-text-muted print:hidden">{s.prNoneCreated}</p>
       )}
 
       <div id="order-invoice-print">
@@ -666,9 +675,14 @@ function PrintCentreInner() {
   );
 }
 
+function PrintFallback() {
+  const { t } = useLocale();
+  return <>{t.loading}</>;
+}
+
 export default function OrderPrintPage() {
   return (
-    <Suspense fallback={<main className="mx-auto max-w-3xl p-6 text-small text-text-muted">লোড হচ্ছে…</main>}>
+    <Suspense fallback={<main className="mx-auto max-w-3xl p-6 text-small text-text-muted"><PrintFallback /></main>}>
       <PrintCentreInner />
     </Suspense>
   );

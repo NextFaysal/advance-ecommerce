@@ -10,6 +10,10 @@ import {
 } from "@/inventory/repository";
 import { getSetting } from "@/lib/settings";
 import { isFeatureEnabled } from "@/lib/feature-flags";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
+import { COMMON_STRINGS } from "@/i18n/dictionaries";
+import { INVENTORY_STRINGS, type InventoryStrings } from "./strings";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,10 +39,10 @@ import InventoryDepthPanel from "./depth-panel";
 // products/customers pages. Data reads and computations unchanged.
 export const dynamic = "force-dynamic";
 
-function stockBadge(available: number, threshold: number) {
-  if (available <= 0) return <Badge tone="danger">স্টক শেষ</Badge>;
-  if (available <= threshold) return <Badge tone="warning">কম স্টক</Badge>;
-  return <Badge tone="success">ঠিক আছে</Badge>;
+function stockBadge(available: number, threshold: number, s: InventoryStrings, outOfStock: string) {
+  if (available <= 0) return <Badge tone="danger">{outOfStock}</Badge>;
+  if (available <= threshold) return <Badge tone="warning">{s.badgeLowStock}</Badge>;
+  return <Badge tone="success">{s.badgeOk}</Badge>;
 }
 
 interface LowStockNamed {
@@ -52,6 +56,9 @@ interface LowStockNamed {
 }
 
 export default async function AdminInventoryPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, INVENTORY_STRINGS);
+  const ct = pick(locale, COMMON_STRINGS);
   const items = await listInventoryItemsDb();
   const variantIds = items.map((i) => i.variantId);
   const [costMap, metaMap, stockCacheMap, settingsThresholdRaw] = await Promise.all([
@@ -115,29 +122,29 @@ export default async function AdminInventoryPage() {
   return (
     <main className="min-w-0">
       <PageHeader
-        title="ইনভেন্টরি"
-        description={`স্টক লেজার থেকে আসল ডেটা — মোট ${items.length}টি আইটেম (ভ্যারিয়েন্ট × গুদাম)। সরাসরি সংখ্যা বদলানো যায় না; স্টক বদলায় শুধু মুভমেন্টে।`}
+        title={s.title}
+        description={interpolate(s.description, { count: items.length })}
       />
 
       {/* Summary strip */}
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Card className="shadow-card">
-          <p className="text-caption font-medium text-text-muted">মোট মূল্য (কস্ট)</p>
+          <p className="text-caption font-medium text-text-muted">{s.totalValueCost}</p>
           <p className="mt-1 font-mono text-h3 font-bold tabular-nums">{formatBdt(valuation)}</p>
           {missingCost > 0 ? (
-            <p className="mt-1 text-caption text-text-muted">{missingCost}টি আইটেমের কস্ট নেই — মূল্যায়নে ধরা হয়নি</p>
+            <p className="mt-1 text-caption text-text-muted">{interpolate(s.missingCostNote, { count: missingCost })}</p>
           ) : null}
         </Card>
         <Card className="shadow-card">
-          <p className="text-caption font-medium text-text-muted">মোট আইটেম</p>
+          <p className="text-caption font-medium text-text-muted">{s.totalItems}</p>
           <p className="mt-1 font-mono text-h3 font-bold tabular-nums">{items.length}</p>
-          <p className="mt-1 text-caption text-text-muted">ভ্যারিয়েন্ট × গুদাম হিসেবে</p>
+          <p className="mt-1 text-caption text-text-muted">{s.itemsCaption}</p>
         </Card>
         <Card className="shadow-card">
-          <p className="text-caption font-medium text-text-muted">কম স্টক সতর্কতা</p>
+          <p className="text-caption font-medium text-text-muted">{s.lowStockAlerts}</p>
           <p className="mt-1 font-mono text-h3 font-bold tabular-nums">{low.length}</p>
           <p className="mt-1 text-caption text-text-muted">
-            প্রতিটি পণ্যের নিজস্ব থ্রেশহোল্ড; না থাকলে ডিফল্ট {settingsThreshold ?? LOW_STOCK_THRESHOLD}
+            {interpolate(s.lowStockCaption, { threshold: settingsThreshold ?? LOW_STOCK_THRESHOLD })}
           </p>
         </Card>
       </div>
@@ -150,24 +157,23 @@ export default async function AdminInventoryPage() {
               <path d="M6 18h12" /><path d="M6 14h12" /><path d="M10 22v-4h4v4" />
             </svg>
           </span>
-          <h2 className="mt-4 text-h3">ইনভেন্টরিতে কোনো আইটেম নেই</h2>
+          <h2 className="mt-4 text-h3">{s.emptyTitle}</h2>
           <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
-            পণ্যের ভ্যারিয়েন্টে স্টক মুভমেন্ট এলেই এখানে আইটেম দেখা যাবে।
+            {s.emptyBody}
           </p>
         </div>
       ) : (
         <div>
-          <p className="mb-2 text-small font-semibold text-text-main">গুদাম অনুযায়ী বিবরণ (সেকেন্ডারি)</p>
+          <p className="mb-2 text-small font-semibold text-text-main">{s.breakdownTitle}</p>
           <p className="mb-3 max-w-3xl text-caption leading-relaxed text-text-muted">
-            প্রতি গুদামের লেজার হিসাব নিচে — কিন্তু অর্ডার/চেকআউট যে সংখ্যা দেখে বিক্রি করে, তা হলো
-            <span className="font-semibold text-text-main"> "মোট উপলব্ধ (অর্ডারের হিসাব)"</span> কলামের সংখ্যা
-            (ভ্যারিয়েন্টের ক্যাশ স্টক)। রিজার্ভ করা অর্ডারের কারণে গুদামের "উপলব্ধ" যোগফল এর চেয়ে কম দেখাতে পারে।
+            {s.breakdownNoteBefore}
+            <span className="font-semibold text-text-main"> {s.breakdownNoteEmphasis}</span> {s.breakdownNoteAfter}
           </p>
           <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
             <table className="w-full min-w-[720px] border-collapse text-left text-sm">
               <thead>
                 <tr className="bg-surface-2 text-left [&>th]:border-b [&>th]:border-border">
-                  {["ভ্যারিয়েন্ট", "গুদাম", "হাতে আছে", "রিজার্ভ", "এই গুদামে উপলব্ধ", "মোট উপলব্ধ (অর্ডারের হিসাব)", "অবস্থা"].map((h) => (
+                  {[s.colVariant, s.colWarehouse, s.colOnHand, s.colReserved, s.colAvailableHere, s.colTotalAvailable, ct.status].map((h) => (
                     <th key={h} scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">{h}</th>
                   ))}
                 </tr>
@@ -181,7 +187,7 @@ export default async function AdminInventoryPage() {
                     <td className="px-4 py-3 font-mono tabular-nums">{i.quantityReserved}</td>
                     <td className="px-4 py-3 font-mono tabular-nums">{i.quantityAvailable}</td>
                     <td className="px-4 py-3 font-mono font-semibold tabular-nums">{stockCacheMap.get(i.variantId) ?? "—"}</td>
-                    <td className="px-4 py-3">{stockBadge(headlineFor(i.variantId, i.quantityAvailable), thresholdFor(i.variantId).threshold)}</td>
+                    <td className="px-4 py-3">{stockBadge(headlineFor(i.variantId, i.quantityAvailable), thresholdFor(i.variantId).threshold, s, ct.outOfStock)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -202,13 +208,13 @@ export default async function AdminInventoryPage() {
           >
             <Icon name={low.length > 0 ? "alert" : "check"} size={20} />
           </span>
-          <h2 className="text-h3">কম স্টক সতর্কতা</h2>
+          <h2 className="text-h3">{s.lowStockAlerts}</h2>
           <Badge tone={low.length > 0 ? "warning" : "success"} dot>
-            {low.length}টি পণ্য
+            {interpolate(s.productsCount, { count: low.length })}
           </Badge>
         </div>
         {low.length === 0 ? (
-          <p className="mt-3 text-small leading-relaxed text-text-muted">কম স্টকের কোনো পণ্য নেই — সব ভ্যারিয়েন্টের মোট উপলব্ধ স্টক নিজ নিজ থ্রেশহোল্ডের উপরে।</p>
+          <p className="mt-3 text-small leading-relaxed text-text-muted">{s.lowStockNone}</p>
         ) : (
           <ul className="mt-4 space-y-2">
             {low.map((r) => {
@@ -235,15 +241,15 @@ export default async function AdminInventoryPage() {
                     )}
                     <span className="mt-1 flex flex-wrap items-center gap-1.5 text-caption text-text-subtle">
                       <span>
-                        {r.sku ? `SKU: ${r.sku} · ` : ""}থ্রেশহোল্ড: {r.threshold}
+                        {r.sku ? `SKU: ${r.sku} · ` : ""}{interpolate(s.thresholdText, { threshold: r.threshold })}
                       </span>
                       <Badge tone={r.thresholdSource === "product" ? "brand" : r.thresholdSource === "settings" ? "info" : "neutral"}>
-                        {r.thresholdSource === "product" ? "পণ্যের নিজস্ব" : r.thresholdSource === "settings" ? "সেটিংস" : "ডিফল্ট"}
+                        {r.thresholdSource === "product" ? s.sourceProduct : r.thresholdSource === "settings" ? s.sourceSettings : s.sourceDefault}
                       </Badge>
                     </span>
                   </span>
                   <Badge tone={out ? "danger" : "warning"} dot>
-                    {out ? "স্টক শেষ" : `উপলব্ধ ${r.quantityAvailable}`}
+                    {out ? ct.outOfStock : interpolate(s.availableBadge, { count: r.quantityAvailable })}
                   </Badge>
                 </li>
               );
@@ -260,13 +266,10 @@ export default async function AdminInventoryPage() {
           >
             <Icon name="truck" size={20} />
           </span>
-          <h2 className="text-h3">ক্রয় আদেশ ও পণ্য গ্রহণ</h2>
+          <h2 className="text-h3">{s.poSectionTitle}</h2>
         </div>
         <p className="mt-2 max-w-3xl text-small leading-relaxed text-text-muted">
-          সাপ্লায়ারের চালান এলে এখান থেকে রিসিভ করুন — প্রতিটি রিসিভ স্টক লেজারে
-          PURCHASE_RECEIVE মুভমেন্ট হিসেবে জমা হয় (অর্ডারের রেফারেন্সসহ), আংশিক রিসিভ
-          বারবার করা যায়, আর অর্ডারের বেশি রিসিভ সিস্টেম নেবে না। অর্ডার সম্পূর্ণ
-          রিসিভ হলে ERP জার্নালে ক্রয়-প্রাপ্তির পোস্টিং হয় (module.erp_lite চালু থাকলে)।
+          {s.poSectionBody}
         </p>
         <div className="mt-4">
           <PurchaseOrdersPanel />
@@ -285,13 +288,11 @@ export default async function AdminInventoryPage() {
             >
               <Icon name="chart" size={20} />
             </span>
-            <h2 className="text-h3">গভীর বিশ্লেষণ</h2>
+            <h2 className="text-h3">{s.depthSectionTitle}</h2>
             <Badge tone="brand">ADV-20</Badge>
           </div>
           <p className="mt-2 max-w-3xl text-small leading-relaxed text-text-muted">
-            ব্যাচ/লট ও মেয়াদ, সিরিয়াল/IMEI হিসাব, ABC আয়-বিশ্লেষণ, ডেড স্টক এবং অটো রি-অর্ডার —
-            সব সংখ্যা আসল রেকর্ড থেকে হিসাব করা। ব্যাচ ছাড়া রিসিভ করা স্টক এই বিশ্লেষণে আসে না
-            (অনট্র্যাকড — শূন্য ধরা হয় না)।
+            {s.depthSectionBody}
           </p>
           <div className="mt-4">
             <InventoryDepthPanel />
@@ -300,8 +301,7 @@ export default async function AdminInventoryPage() {
       ) : null}
 
       <p className="mt-4 text-caption leading-relaxed text-text-subtle">
-        ডাটাবেস থেকে — API: GET/POST /api/v1/admin/inventory, POST /api/v1/admin/inventory/purchase-orders,
-        GET /api/v1/admin/purchase-orders/[id], POST /api/v1/admin/purchase-orders/[id]/receive (RBAC + ledger, Prisma)। Adjustment-এর জন্য কারণ লাগে; স্টক বদলায় শুধু মুভমেন্টে।
+        {s.footerNote}
       </p>
     </main>
   );

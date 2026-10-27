@@ -63,11 +63,14 @@ import { PaymentBadge, type PaymentStatus as UiPaymentStatus } from "@/component
 import {
   ColumnPicker,
   SavedViewsBar,
-  TABLE_PREFS_NOTE,
   useHiddenColumns,
   useSavedViews,
   type SavedView,
 } from "../../../src/admin/table-prefs";
+import { interpolate, pick, type Locale } from "../../../src/i18n/locale";
+import { useLocale } from "../../../src/i18n/LocaleProvider";
+import { ADMIN_STRINGS } from "@/admin/strings";
+import { ORDER_STRINGS } from "./strings";
 
 const STATUSES: ("ALL" | OrderStatus)[] = [
   "ALL", "PENDING", "CONFIRMED", "PROCESSING", "PACKED", "SHIPPED",
@@ -80,13 +83,29 @@ const STATUSES: ("ALL" | OrderStatus)[] = [
  *  (ORDER_STATUS_VISUAL + OrderStatusBadge in src/orders/components),
  *  so the list, kanban, preview and detail all render one language. */
 
-const PAYMENT_METHOD_LABEL: Record<string, string> = {
-  cod: "ক্যাশ অন ডেলিভারি",
-  bkash: "বিকাশ",
-  nagad: "নগদ",
-  rocket: "রকেট",
-  card: "কার্ড",
-  sslcommerz: "SSLCommerz",
+const PAYMENT_METHOD_LABEL: Record<string, Record<Locale, string>> = {
+  cod: { bn: "ক্যাশ অন ডেলিভারি", en: "Cash on Delivery" },
+  bkash: { bn: "বিকাশ", en: "bKash" },
+  nagad: { bn: "নগদ", en: "Nagad" },
+  rocket: { bn: "রকেট", en: "Rocket" },
+  card: { bn: "কার্ড", en: "Card" },
+  sslcommerz: { bn: "SSLCommerz", en: "SSLCommerz" },
+};
+
+function paymentMethodLabel(method: string, locale: Locale): string {
+  const entry = PAYMENT_METHOD_LABEL[method];
+  return entry ? pick(locale, entry) : method;
+}
+
+/** Bangla for the manual-order step names — MANUAL_ORDER_STEPS itself
+ *  lives in src/orders/manual-order (English consts); only the display
+ *  is localized here. Unknown future steps fall back to the raw text. */
+const MANUAL_STEP_BN: Record<string, string> = {
+  "Customer lookup (phone)": "গ্রাহক খোঁজা (ফোন)",
+  "Add items": "পণ্য যোগ",
+  Address: "ঠিকানা",
+  "Payment method": "পেমেন্ট পদ্ধতি",
+  Confirm: "নিশ্চিত করা",
 };
 
 const UI_PAYMENT_STATUSES: readonly string[] = ["UNPAID", "PARTIAL", "PAID", "FAILED", "REFUNDED"];
@@ -103,15 +122,8 @@ interface OrderViewState {
   search: string;
   sort: OrderSort | null;
 }
-const ORDER_PICKER_COLUMNS = [
-  { key: "customer", label: "গ্রাহক" },
-  { key: "total", label: "মোট" },
-  { key: "payment", label: "পেমেন্ট" },
-  { key: "status", label: "স্ট্যাটাস" },
-  { key: "risk", label: "ঝুঁকি" },
-  { key: "courier", label: "কুরিয়ার" },
-] as const;
-const ORDER_HIDEABLE_KEYS = ORDER_PICKER_COLUMNS.map((c) => c.key);
+const ORDER_PICKER_COLUMN_KEYS = ["customer", "total", "payment", "status", "risk", "courier"] as const;
+const ORDER_HIDEABLE_KEYS: readonly string[] = ORDER_PICKER_COLUMN_KEYS;
 
 /** Sortable column header (table v2): click toggles direction; the
  *  chevron points up for ascending, down for descending, and stays
@@ -130,6 +142,8 @@ function SortHeader({
   /** OD0 density token (ORDER_DENSITY[density].headerCell). */
   cellClassName: string;
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const active = sort?.key === sortKey;
   return (
     <th
@@ -140,7 +154,7 @@ function SortHeader({
       <button
         type="button"
         onClick={() => onSort(sortKey)}
-        aria-label={`${label} অনুযায়ী সাজান`}
+        aria-label={interpolate(s.lpSortBy, { label })}
         className={`flex items-center gap-1 transition motion-fast hover:text-brand-700 ${active ? "text-brand-700" : ""} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
       >
         {label}
@@ -186,13 +200,17 @@ interface WorkflowStageDef {
 function stageChipOf(
   order: Order,
   defs: readonly WorkflowStageDef[],
+  locale: Locale,
 ): { label: string; tone: WorkflowStageTone } | null {
   if (defs.length === 0) return null;
   const tag = order.tags.find((t) => t.startsWith("stage:"));
   if (!tag) return null;
   const id = tag.slice("stage:".length);
   const def = defs.find((d) => d.id === id);
-  return { label: def?.labelBn ?? id, tone: def?.color ?? "neutral" };
+  return {
+    label: def ? (locale === "bn" ? def.labelBn : def.labelEn) : id,
+    tone: def?.color ?? "neutral",
+  };
 }
 
 /** Map the table's sort state to the list API's `sort` param
@@ -206,6 +224,18 @@ function apiSortParam(sort: OrderSort | null): string {
 }
 
 export default function AdminOrdersPage() {
+  const { locale, t } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
+  const pickerColumns = [
+    { key: "customer", label: s.colCustomer },
+    { key: "total", label: t.total },
+    { key: "payment", label: s.colPayment },
+    { key: "status", label: s.colStatus },
+    { key: "risk", label: s.colRisk },
+    { key: "courier", label: s.colCourier },
+  ];
   /* List v2: pageOrders is ONLY the current page's rows — the server
    * owns filtering, searching, counting and sorting now. */
   const [pageOrders, setPageOrders] = useState<Order[]>([]);
@@ -290,7 +320,7 @@ export default function AdminOrdersPage() {
       }
     } catch {
       if (seq !== requestSeq.current) return;
-      setLoadError("নেটওয়ার্ক সমস্যা — API-তে পৌঁছানো যায়নি।");
+      setLoadError(pick(localeRef.current, ORDER_STRINGS).networkApi);
       if (!readyRef.current) setLoadState("error");
     } finally {
       if (seq === requestSeq.current) setFetching(false);
@@ -389,11 +419,11 @@ export default function AdminOrdersPage() {
   return (
     <main>
       <PageHeader
-        title="অর্ডার"
-        description="ডাটাবেস থেকে আসল অর্ডার — ফোন নম্বর ডিফল্টভাবে মাস্ক করা থাকে।"
+        title={s.lpTitle}
+        description={s.lpDesc}
         actions={
           <Button variant="outline" onClick={() => void load()}>
-            রিফ্রেশ
+            {s.lpRefresh}
           </Button>
         }
       />
@@ -407,7 +437,7 @@ export default function AdminOrdersPage() {
       <PosSalesPanel />
 
       {loadState === "loading" && (
-        <div role="status" aria-label="অর্ডার লোড হচ্ছে" className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
+        <div role="status" aria-label={s.ordLoadingAria} className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
           <div className="border-b border-border bg-surface-2 px-4 py-3">
             <div className="h-4 w-40 animate-pulse rounded bg-border" />
           </div>
@@ -419,16 +449,16 @@ export default function AdminOrdersPage() {
               <div className="ml-auto h-4 w-16 animate-pulse rounded bg-border" />
             </div>
           ))}
-          <p className="px-4 py-3 text-small text-text-muted">অর্ডার লোড হচ্ছে…</p>
+          <p className="px-4 py-3 text-small text-text-muted">{s.ordLoading}</p>
         </div>
       )}
 
       {loadState === "error" && (
         <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-5 shadow-card">
-          <p className="font-semibold text-rose-700">অর্ডার লোড হয়নি</p>
+          <p className="font-semibold text-rose-700">{s.ordLoadFailTitle}</p>
           <p className="mt-1 text-small text-rose-600">{loadError}</p>
           <Button variant="outline" className="mt-4 bg-card" onClick={() => void load()}>
-            আবার চেষ্টা করুন
+            {s.tryAgain}
           </Button>
         </div>
       )}
@@ -447,13 +477,13 @@ export default function AdminOrdersPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="অর্ডার নম্বর, নাম, ফোনের শেষাংশ বা জেলা খুঁজুন…"
-                aria-label="অর্ডার খুঁজুন"
+                placeholder={s.lpSearchPlaceholder}
+                aria-label={s.lpSearchAria}
                 className="h-12 w-full rounded-md border border-border bg-card pl-11 pr-3 text-base shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
               />
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <div className="flex rounded-md bg-surface-2 p-1" role="group" aria-label="ভিউ বেছে নিন">
+              <div className="flex rounded-md bg-surface-2 p-1" role="group" aria-label={s.lpViewAria}>
                 {(["table", "kanban"] as const).map((v) => (
                   <button
                     key={v}
@@ -464,12 +494,12 @@ export default function AdminOrdersPage() {
                       view === v ? "bg-card text-brand-700 shadow-sm" : "text-text-muted hover:text-text-main"
                     } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
                   >
-                    {v === "table" ? "টেবিল" : "কানবান"}
+                    {v === "table" ? s.lpViewTable : s.lpViewKanban}
                   </button>
                 ))}
               </div>
               {view === "table" ? (
-                <div className="flex rounded-md bg-surface-2 p-1" role="group" aria-label="টেবিলের ঘনত্ব">
+                <div className="flex rounded-md bg-surface-2 p-1" role="group" aria-label={s.lpDensityAria}>
                   {(["comfortable", "compact"] as const).map((d) => (
                     <button
                       key={d}
@@ -480,13 +510,13 @@ export default function AdminOrdersPage() {
                         density === d ? "bg-card text-brand-700 shadow-sm" : "text-text-muted hover:text-text-main"
                       } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
                     >
-                      {d === "comfortable" ? "স্বাভাবিক" : "ঘন"}
+                      {d === "comfortable" ? s.lpComfortable : s.lpCompact}
                     </button>
                   ))}
                 </div>
               ) : null}
               <span className="ml-auto text-caption text-text-muted">
-                এই পেজে {orders.length}টি · ফিল্টার অনুযায়ী মোট {total}টি · পেজ {page}/{totalPages}
+                {interpolate(s.lpPageSummary, { shown: orders.length, total, page, pages: totalPages })}
               </span>
             </div>
             {/* Funnel strip (OD1): ALL + the 13 statuses in lifecycle
@@ -494,7 +524,7 @@ export default function AdminOrdersPage() {
              *  aggregates over the set filtered by everything EXCEPT
              *  status — passed through untouched. Explicit zeros are
              *  dimmed, never hidden. Language/icons: ORDER_STATUS_VISUAL. */}
-            <div className="mt-3 flex flex-wrap items-center gap-1.5" role="group" aria-label="স্ট্যাটাস ফিল্টার">
+            <div className="mt-3 flex flex-wrap items-center gap-1.5" role="group" aria-label={s.lpStatusFilterAria}>
               {funnelChips(counts).map((chip) => {
                 const active = filter === chip.status;
                 if (chip.status === "ALL") {
@@ -508,7 +538,7 @@ export default function AdminOrdersPage() {
                         active ? "bg-brand-600 text-white shadow-sm" : "border border-border bg-card text-text-muted hover:border-brand-300 hover:text-brand-700"
                       } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
                     >
-                      সব
+                      {s.lpAll}
                       <span className={`font-mono tabular-nums ${active ? "text-white/85" : "text-text-subtle"}`}>{chip.count ?? "—"}</span>
                     </button>
                   );
@@ -527,7 +557,7 @@ export default function AdminOrdersPage() {
                     } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
                   >
                     <Icon name={visual.icon} size={12} className={active ? "text-white" : "text-text-subtle"} />
-                    {visual.labelBn}
+                    {locale === "bn" ? visual.labelBn : visual.labelEn}
                     <span className={`font-mono tabular-nums ${active ? "text-white/85" : "text-text-subtle"}`}>{chip.count ?? "—"}</span>
                   </button>
                 );
@@ -541,7 +571,7 @@ export default function AdminOrdersPage() {
             {stageDefs.length > 0 ? (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <label htmlFor="orders-stage-filter" className="text-caption font-semibold text-text-muted">
-                  ওয়ার্কফ্লো ধাপ
+                  {s.lpStageFilterLabel}
                 </label>
                 <select
                   id="orders-stage-filter"
@@ -549,10 +579,10 @@ export default function AdminOrdersPage() {
                   onChange={(e) => { setStageFilter(e.target.value); setPage(1); }}
                   className="min-h-[36px] rounded-[9px] border border-border bg-card px-2.5 text-small font-medium text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                 >
-                  <option value="">সব ধাপ</option>
-                  {stageDefs.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.labelBn} ({ORDER_STATUS_VISUAL[s.anchorStatus].labelBn})
+                  <option value="">{s.lpAllStages}</option>
+                  {stageDefs.map((sd) => (
+                    <option key={sd.id} value={sd.id}>
+                      {locale === "bn" ? sd.labelBn : sd.labelEn} ({locale === "bn" ? ORDER_STATUS_VISUAL[sd.anchorStatus].labelBn : ORDER_STATUS_VISUAL[sd.anchorStatus].labelEn})
                     </option>
                   ))}
                 </select>
@@ -562,7 +592,7 @@ export default function AdminOrdersPage() {
                     onClick={() => { setStageFilter(""); setPage(1); }}
                     className="text-caption font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                   >
-                    ফিল্টার সরান
+                    {s.lpClearFilter}
                   </button>
                 ) : null}
               </div>
@@ -582,7 +612,7 @@ export default function AdminOrdersPage() {
               {view === "table" ? (
                 <span className="ml-auto">
                   <ColumnPicker
-                    columns={ORDER_PICKER_COLUMNS}
+                    columns={pickerColumns}
                     hidden={orderCols.hidden}
                     onToggle={orderCols.toggleColumn}
                     ready={orderCols.ready}
@@ -590,16 +620,16 @@ export default function AdminOrdersPage() {
                 </span>
               ) : null}
             </div>
-            <p className="mt-2 text-caption leading-relaxed text-text-subtle">{TABLE_PREFS_NOTE}</p>
+            <p className="mt-2 text-caption leading-relaxed text-text-subtle">{pick(locale, ADMIN_STRINGS).tpStorageNote}</p>
           </Card>
 
           {/* A failed REFETCH (rows already on screen) surfaces here
            *  instead of replacing the list with the error state. */}
           {loadError ? (
             <div role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-small text-rose-700">
-              তালিকা রিফ্রেশ হয়নি: {loadError}
+              {interpolate(s.lpRefreshFail, { error: loadError })}
               <button type="button" onClick={() => void load()} className="ml-3 font-semibold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
-                আবার চেষ্টা করুন
+                {s.tryAgain}
               </button>
             </div>
           ) : null}
@@ -622,12 +652,12 @@ export default function AdminOrdersPage() {
                   : "cursor-not-allowed border border-border bg-card text-text-subtle"
               }`}
             >
-              ইনভয়েস প্রিন্ট / Print invoices
+              {s.lpPrintInvoices}
             </a>
             <span className="text-caption text-text-muted">
               {selected.size > 0
-                ? `${selected.size}টি সিলেক্ট করা অর্ডারের ইনভয়েস নতুন ট্যাবে খুলবে`
-                : "ইনভয়েস ছাপতে আগে তালিকা থেকে অর্ডার সিলেক্ট করুন"}
+                ? interpolate(s.lpPrintHintSelected, { n: selected.size })
+                : s.lpPrintHintEmpty}
             </span>
           </div>
 
@@ -661,11 +691,11 @@ export default function AdminOrdersPage() {
                   <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
                 </svg>
               </span>
-              <h2 className="mt-4 text-h3">কোনো অর্ডার পাওয়া যায়নি</h2>
+              <h2 className="mt-4 text-h3">{s.lpEmptyTitle}</h2>
               <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
                 {filter !== "ALL" || search.trim() !== ""
-                  ? "এই ফিল্টার/খোঁজে ডাটাবেসে কোনো অর্ডার নেই। ফিল্টার বদলে আবার দেখুন।"
-                  : "ডাটাবেসে এখনো কোনো অর্ডার নেই। নতুন অর্ডার চেকআউট থেকে এলেই এখানে দেখা যাবে।"}
+                  ? s.lpEmptyFiltered
+                  : s.lpEmptyNone}
               </p>
               {filter !== "ALL" || search.trim() !== "" ? (
                 <Button
@@ -673,7 +703,7 @@ export default function AdminOrdersPage() {
                   className="mt-5"
                   onClick={() => { setFilter("ALL"); setSearch(""); setPage(1); }}
                 >
-                  ফিল্টার মুছে ফেলুন
+                  {s.lpClearFiltersBtn}
                 </Button>
               ) : null}
             </div>
@@ -690,35 +720,35 @@ export default function AdminOrdersPage() {
                         type="checkbox"
                         checked={allVisibleSelected}
                         onChange={toggleSelectAllVisible}
-                        aria-label="দৃশ্যমান সব অর্ডার সিলেক্ট করুন"
+                        aria-label={s.lpSelectAllAria}
                         className="h-4 w-4 rounded accent-brand-600"
                       />
                     </th>
-                    <SortHeader label="অর্ডার" sortKey="date" sort={sort} onSort={toggleSort} cellClassName={ORDER_DENSITY[density].headerCell} />
+                    <SortHeader label={s.colOrder} sortKey="date" sort={sort} onSort={toggleSort} cellClassName={ORDER_DENSITY[density].headerCell} />
                     {orderCols.isVisible("customer") ? (
-                      <th scope="col" className={`${ORDER_DENSITY[density].headerCell} text-caption font-semibold text-text-muted`}>গ্রাহক</th>
+                      <th scope="col" className={`${ORDER_DENSITY[density].headerCell} text-caption font-semibold text-text-muted`}>{s.colCustomer}</th>
                     ) : null}
                     {orderCols.isVisible("total") ? (
-                      <SortHeader label="মোট" sortKey="total" sort={sort} onSort={toggleSort} cellClassName={ORDER_DENSITY[density].headerCell} />
+                      <SortHeader label={t.total} sortKey="total" sort={sort} onSort={toggleSort} cellClassName={ORDER_DENSITY[density].headerCell} />
                     ) : null}
                     {orderCols.isVisible("payment") ? (
-                      <th scope="col" className={`${ORDER_DENSITY[density].headerCell} text-caption font-semibold text-text-muted`}>পেমেন্ট</th>
+                      <th scope="col" className={`${ORDER_DENSITY[density].headerCell} text-caption font-semibold text-text-muted`}>{s.colPayment}</th>
                     ) : null}
                     {orderCols.isVisible("status") ? (
-                      <SortHeader label="স্ট্যাটাস" sortKey="status" sort={sort} onSort={toggleSort} cellClassName={ORDER_DENSITY[density].headerCell} />
+                      <SortHeader label={s.colStatus} sortKey="status" sort={sort} onSort={toggleSort} cellClassName={ORDER_DENSITY[density].headerCell} />
                     ) : null}
                     {orderCols.isVisible("risk") ? (
-                      <th scope="col" className={`${ORDER_DENSITY[density].headerCell} text-caption font-semibold text-text-muted`}>ঝুঁকি</th>
+                      <th scope="col" className={`${ORDER_DENSITY[density].headerCell} text-caption font-semibold text-text-muted`}>{s.colRisk}</th>
                     ) : null}
                     {orderCols.isVisible("courier") ? (
-                      <th scope="col" className={`${ORDER_DENSITY[density].headerCell} text-caption font-semibold text-text-muted`}>কুরিয়ার</th>
+                      <th scope="col" className={`${ORDER_DENSITY[density].headerCell} text-caption font-semibold text-text-muted`}>{s.colCourier}</th>
                     ) : null}
                   </tr>
                 </thead>
                 <tbody>
                   {orders.map((o) => {
                     const level = riskLevel(o.riskScore);
-                    const stageChip = stageChipOf(o, stageDefs);
+                    const stageChip = stageChipOf(o, stageDefs, locale);
                     return (
                       <tr
                         key={o.id}
@@ -730,7 +760,7 @@ export default function AdminOrdersPage() {
                             type="checkbox"
                             checked={selected.has(o.id)}
                             onChange={() => toggleSelected(o.id)}
-                            aria-label={`${o.orderNo} সিলেক্ট করুন`}
+                            aria-label={interpolate(s.lpSelectAria, { orderNo: o.orderNo })}
                             className="h-4 w-4 rounded accent-brand-600"
                           />
                         </td>
@@ -744,7 +774,7 @@ export default function AdminOrdersPage() {
                            *  rows already carry their notes. */}
                           {o.notes.some((n) => n.text.includes("[pickup:")) ? (
                             <span className="mt-1 block">
-                              <Badge tone="info">পিকআপ</Badge>
+                              <Badge tone="info">{s.lpPickup}</Badge>
                             </span>
                           ) : null}
                           <span className="block text-caption text-text-subtle">{o.address.district}, {o.address.division}</span>
@@ -761,7 +791,7 @@ export default function AdminOrdersPage() {
                         {orderCols.isVisible("payment") ? (
                           <td className={ORDER_DENSITY[density].cell}>
                             <span className="flex flex-wrap items-center gap-1.5">
-                              <Badge tone="neutral">{PAYMENT_METHOD_LABEL[o.paymentMethod] ?? o.paymentMethod}</Badge>
+                              <Badge tone="neutral">{paymentMethodLabel(o.paymentMethod, locale)}</Badge>
                               {UI_PAYMENT_STATUSES.includes(o.paymentStatus)
                                 ? <PaymentBadge status={o.paymentStatus as UiPaymentStatus} />
                                 : <Badge tone="neutral">{o.paymentStatus}</Badge>}
@@ -771,7 +801,7 @@ export default function AdminOrdersPage() {
                         {orderCols.isVisible("status") ? (
                           <td className={ORDER_DENSITY[density].cell}>
                             <span className="flex flex-wrap items-center gap-1.5">
-                              <OrderStatusBadge status={o.status} />
+                              <OrderStatusBadge status={o.status} lang={locale} />
                               {stageChip ? <WorkflowStageChip label={stageChip.label} tone={stageChip.tone} /> : null}
                             </span>
                           </td>
@@ -780,7 +810,7 @@ export default function AdminOrdersPage() {
                           <td className={ORDER_DENSITY[density].cell}>
                             <span className="flex items-center gap-1.5">
                               <Badge tone={level === "High" ? "danger" : level === "Medium" ? "warning" : "success"}>
-                                {level === "High" ? "বেশি ঝুঁকি" : level === "Medium" ? "মাঝারি ঝুঁকি" : "কম ঝুঁকি"}
+                                {level === "High" ? s.riskHigh : level === "Medium" ? s.riskMedium : s.riskLow}
                               </Badge>
                               <span className="font-mono text-caption tabular-nums text-text-muted">{o.riskScore}</span>
                             </span>
@@ -801,7 +831,7 @@ export default function AdminOrdersPage() {
             <div className="space-y-3 md:hidden">
               {orders.map((o) => {
                 const level = riskLevel(o.riskScore);
-                const stageChip = stageChipOf(o, stageDefs);
+                const stageChip = stageChipOf(o, stageDefs, locale);
                 return (
                   <article
                     key={o.id}
@@ -813,7 +843,7 @@ export default function AdminOrdersPage() {
                         type="checkbox"
                         checked={selected.has(o.id)}
                         onChange={() => toggleSelected(o.id)}
-                        aria-label={`${o.orderNo} সিলেক্ট করুন`}
+                        aria-label={interpolate(s.lpSelectAria, { orderNo: o.orderNo })}
                         className="mt-0.5 h-4 w-4 shrink-0 rounded accent-brand-600"
                       />
                       <div className="min-w-0 flex-1">
@@ -822,29 +852,29 @@ export default function AdminOrdersPage() {
                             {o.orderNo}
                           </a>
                           <span className="flex items-center gap-1.5">
-                            {o.notes.some((n) => n.text.includes("[pickup:")) ? <Badge tone="info">পিকআপ</Badge> : null}
+                            {o.notes.some((n) => n.text.includes("[pickup:")) ? <Badge tone="info">{s.lpPickup}</Badge> : null}
                             {stageChip ? <WorkflowStageChip label={stageChip.label} tone={stageChip.tone} /> : null}
-                            <OrderStatusBadge status={o.status} />
+                            <OrderStatusBadge status={o.status} lang={locale} />
                           </span>
                         </div>
                         <p className="mt-1.5 truncate text-small font-medium leading-snug">{o.customerName}</p>
                         <p className="text-caption text-text-muted">
                           {displayPhone(o.customerPhone, false)} · {o.address.district}, {o.address.division}
                         </p>
-                        <p className="mt-1 truncate text-small text-text-muted">{itemsSummaryLabel(o)}</p>
+                        <p className="mt-1 truncate text-small text-text-muted">{itemsSummaryLabel(o, locale)}</p>
                         <div className="mt-2.5 flex items-center gap-2 border-t border-border pt-2.5">
                           <span className="font-mono text-small font-bold tabular-nums">{formatBdt(o.totalPoisha)}</span>
-                          <Badge tone="neutral">{PAYMENT_METHOD_LABEL[o.paymentMethod] ?? o.paymentMethod}</Badge>
+                          <Badge tone="neutral">{paymentMethodLabel(o.paymentMethod, locale)}</Badge>
                           <Badge tone={level === "High" ? "danger" : level === "Medium" ? "warning" : "success"}>
-                            {level === "High" ? "বেশি ঝুঁকি" : level === "Medium" ? "মাঝারি ঝুঁকি" : "কম ঝুঁকি"}
+                            {level === "High" ? s.riskHigh : level === "Medium" ? s.riskMedium : s.riskLow}
                           </Badge>
                           <span className="ml-auto flex items-center gap-1 text-caption text-text-subtle">
                             <Icon name="clock" size={12} />
-                            {orderAgeLabel(o.createdAt, Date.now())}
+                            {orderAgeLabel(o.createdAt, Date.now(), locale)}
                           </span>
                           <a
                             href={`/admin/orders/${o.id}`}
-                            aria-label={`${o.orderNo} বিস্তারিত দেখুন`}
+                            aria-label={interpolate(s.lpDetailsAria, { orderNo: o.orderNo })}
                             className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-2 text-text-muted transition motion-fast hover:bg-brand-50 hover:text-brand-700"
                           >
                             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
@@ -865,7 +895,7 @@ export default function AdminOrdersPage() {
              *  rows (server-filtered), not the whole dataset — the
              *  column counts are this page's counts. */}
             <p className="mb-3 text-caption leading-relaxed text-text-muted">
-              কানবান বোর্ডটি <strong className="font-semibold text-text-main">শুধু এই পেজের অর্ডার</strong> দেখায় — {orders.length}টি (ফিল্টার অনুযায়ী মোট {total}টি); কলামের সংখ্যা পুরো ডেটাসেটের হিসাব নয়।
+              {s.lpKanbanNote1} <strong className="font-semibold text-text-main">{s.lpKanbanNoteBold}</strong> {interpolate(s.lpKanbanNote2, { shown: orders.length, total })}
             </p>
             <div className="flex gap-3 overflow-x-auto pb-2">
               {STATUSES.filter((s) => s !== "ALL").map((status) => {
@@ -873,14 +903,14 @@ export default function AdminOrdersPage() {
                 return (
                   <section key={status} className="flex w-[264px] shrink-0 flex-col rounded-lg border border-border bg-surface-2/60 shadow-card">
                     <header className="flex items-center gap-2 px-3.5 pb-1 pt-3.5">
-                      <OrderStatusBadge status={status} />
+                      <OrderStatusBadge status={status} lang={locale} />
                       <span className="ml-auto rounded-full bg-card px-2 py-0.5 font-mono text-caption font-semibold tabular-nums text-text-muted">
                         {column.length}
                       </span>
                     </header>
                     <div className="space-y-2 overflow-y-auto px-2.5 pb-3 pt-1.5" style={{ maxHeight: "60vh" }}>
                       {column.length === 0 ? (
-                        <p className="px-1.5 py-2 text-caption text-text-subtle">এখানে কোনো অর্ডার নেই</p>
+                        <p className="px-1.5 py-2 text-caption text-text-subtle">{s.lpKanbanEmpty}</p>
                       ) : column.map((o) => (
                         <article
                           key={o.id}
@@ -894,10 +924,10 @@ export default function AdminOrdersPage() {
                           <p className="text-caption text-text-muted">{displayPhone(o.customerPhone, false)}</p>
                           <p className="mt-2 flex items-center justify-between text-caption">
                             <span className="font-mono font-semibold tabular-nums text-text-main">{formatBdt(o.totalPoisha)}</span>
-                            <span className="text-text-muted">{PAYMENT_METHOD_LABEL[o.paymentMethod] ?? o.paymentMethod}</span>
+                            <span className="text-text-muted">{paymentMethodLabel(o.paymentMethod, locale)}</span>
                           </p>
                           {(() => {
-                            const chip = stageChipOf(o, stageDefs);
+                            const chip = stageChipOf(o, stageDefs, locale);
                             return chip ? (
                               <p className="mt-2">
                                 <WorkflowStageChip label={chip.label} tone={chip.tone} />
@@ -918,11 +948,11 @@ export default function AdminOrdersPage() {
            *  so page N of M is true at any dataset size. */}
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <p className="text-small text-text-muted">
-              মোট <span className="font-semibold text-text-main">{total}</span>টি অর্ডার · পেজ {page} / {totalPages}
-              {fetching ? <span className="ml-2 text-text-subtle">লোড হচ্ছে…</span> : null}
+              {interpolate(s.lpPagerText, { total, page, pages: totalPages })}
+              {fetching ? <span className="ml-2 text-text-subtle">{t.loading}</span> : null}
             </p>
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              <label className="text-caption text-text-muted" htmlFor="orders-page-size">প্রতি পেজে</label>
+              <label className="text-caption text-text-muted" htmlFor="orders-page-size">{s.lpPerPage}</label>
               <select
                 id="orders-page-size"
                 value={pageSize}
@@ -934,16 +964,16 @@ export default function AdminOrdersPage() {
                 ))}
               </select>
               <Button variant="outline" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || fetching}>
-                ← আগের পেজ
+                {s.lpPrevPage}
               </Button>
               <Button variant="outline" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages || fetching}>
-                পরের পেজ →
+                {s.lpNextPage}
               </Button>
             </div>
           </div>
 
           <p className="mt-3 text-caption leading-relaxed text-text-subtle">
-            বাল্ক কাজ: টেবিল ভিউতে অর্ডার সিলেক্ট করে উপরের বাল্ক বার থেকে কনফার্ম / লেবেল প্রিন্ট / কুরিয়ার বুকিং পাঠানো যায় — আসল জব তৈরি হয়, প্রতি-অর্ডারের ফলাফল Jobs API থেকে দেখানো হয়। কানবান ভিউতে বাল্ক সিলেকশন নেই।
+            {s.lpBulkNote}
           </p>
         </>
       )}
@@ -957,12 +987,18 @@ export default function AdminOrdersPage() {
       <Card className="mt-8 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-h3">ম্যানুয়াল অর্ডার</h2>
-            <p className="mt-0.5 text-small text-text-muted">লক্ষ্য: ৩০ সেকেন্ডে অর্ডার নেওয়া। ধাপ: {MANUAL_ORDER_STEPS.join(" → ")}</p>
+            <h2 className="text-h3">{s.lpManualTitle}</h2>
+            <p className="mt-0.5 text-small text-text-muted">
+              {interpolate(s.lpManualSteps, {
+                steps: MANUAL_ORDER_STEPS.map((step) =>
+                  locale === "bn" ? (MANUAL_STEP_BN[step] ?? step) : step,
+                ).join(" → "),
+              })}
+            </p>
           </div>
         </div>
         <p className="mt-3 rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
-          সাবমিটে আসল অর্ডার তৈরি হয় — পণ্যের নাম, SKU ও স্টক ডাটাবেস থেকে যাচাই হয়, ফ্রড স্কোরিং চলে এবং অর্ডারটি ওয়েবসাইট অর্ডারের মতোই সংরক্ষিত হয় (সোর্স: ম্যানুয়াল)। একক দাম কর্মী দিতে পারেন; ক্যাটালগ দাম থেকে ভিন্ন হলে তা অর্ডার নোটে লেখা থাকে। ডেলিভারি চার্জ ওয়েবসাইটের হারেই ধরা হয় (নিজে বসানোর সুযোগ আছে) এবং কুপন কোড ওয়েবসাইটের নিয়মেই যাচাই হয়।
+          {s.lpManualNote}
         </p>
         <ManualOrderBuilder onCreated={load} />
       </Card>

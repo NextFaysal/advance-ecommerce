@@ -1,0 +1,43 @@
+import type { Locale } from "@/i18n/locale";
+const bn = {
+  title: "গিফট কার্ড",
+  description: "গিফট কার্ড ইস্যু করুন, ব্যালেন্স দেখুন ও প্রয়োজনে নিষ্ক্রিয় করুন। ব্যালেন্স সবসময় লেজার (GiftCardTransaction) থেকে হিসাব করা হয় — কোডের পূর্ণ রূপ কখনো সংরক্ষিত হয় না, ইস্যুর সময় একবারই দেখা যায়।",
+  locked: "মার্কেটিং মেকানিক্স মডিউলটি এই ইনস্টলে বন্ধ আছে (module.marketing_mechanics OFF) — গিফট কার্ড চালু করতে Settings → Feature Flags থেকে মডিউলটি চালু করুন।",
+  networkError: "নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।",
+  amountInvalid: "সঠিক পরিমাণ দিন (টাকায়)।",
+  countInvalid: "সংখ্যা ১–১০০ এর মধ্যে হতে হবে।",
+  issueTitle: "নতুন গিফট কার্ড ইস্যু করুন",
+  amountLabel: "পরিমাণ (টাকা)", countLabel: "কয়টি কার্ড", expiryLabel: "মেয়াদ শেষ (ঐচ্ছিক)",
+  issuing: "ইস্যু হচ্ছে…", issueBtn: "ইস্যু করুন",
+  codesOnce: "⚠ এই কোডগুলো শুধু এই একবারই দেখা যাবে — এখনই কপি করে রাখুন। সার্ভারে শুধু কোডের হ্যাশ থাকে, কোড হারালে তা আর উদ্ধার করা যাবে না।",
+  listTitle: "ইস্যু করা কার্ডসমূহ",
+  loadFailedPrefix: "কার্ড লোড করা যায়নি: {error}",
+  loading: "লোড হচ্ছে…", noCards: "এখনো কোনো গিফট কার্ড ইস্যু করা হয়নি।",
+  cardLabel: "গিফট কার্ড …{last4}",
+  issuedLabel: "ইস্যু: {date}", expirySep: "মেয়াদ: {date}", noExpiry: "মেয়াদ নেই",
+  balanceLabel: "ব্যালেন্স {balance}",
+  statusActive: "সক্রিয়", statusDepleted: "ব্যালেন্স শেষ", statusExpired: "মেয়াদোত্তীর্ণ", statusDisabled: "নিষ্ক্রিয়",
+  disabling: "হচ্ছে…", disableBtn: "নিষ্ক্রিয় করুন",
+};
+export type GiftCardsStrings = { [K in keyof typeof bn]: string };
+const en: GiftCardsStrings = {
+  title: "Gift Cards",
+  description: "Issue gift cards, view balances and disable them when needed. Balances are always computed from the ledger (GiftCardTransaction) — the full code is never stored and is shown only once, at issue time.",
+  locked: "The marketing mechanics module is OFF for this install (module.marketing_mechanics OFF) — enable it under Settings → Feature Flags to use gift cards.",
+  networkError: "Network error — try again.",
+  amountInvalid: "Enter a valid amount in taka.",
+  countInvalid: "Count must be between 1 and 100.",
+  issueTitle: "Issue new gift cards",
+  amountLabel: "Amount (taka)", countLabel: "How many cards", expiryLabel: "Expiry (optional)",
+  issuing: "Issuing…", issueBtn: "Issue",
+  codesOnce: "⚠ These codes are shown only this once — copy them now. Only their hashes are stored on the server; a lost code cannot be recovered.",
+  listTitle: "Issued cards",
+  loadFailedPrefix: "Cards could not be loaded: {error}",
+  loading: "Loading…", noCards: "No gift cards have been issued yet.",
+  cardLabel: "Gift card …{last4}",
+  issuedLabel: "Issued: {date}", expirySep: "Expiry: {date}", noExpiry: "No expiry",
+  balanceLabel: "Balance {balance}",
+  statusActive: "Active", statusDepleted: "Balance depleted", statusExpired: "Expired", statusDisabled: "Disabled",
+  disabling: "Working…", disableBtn: "Disable",
+};
+export const GIFT_CARDS_STRINGS: Record<Locale, GiftCardsStrings> = { bn, en };

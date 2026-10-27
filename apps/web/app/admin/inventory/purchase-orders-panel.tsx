@@ -16,12 +16,19 @@
  * button disables while a request is in flight, so a double click
  * or a network retry cannot book the same delivery twice; the
  * server re-checks the key inside its transaction as well.
+ *
+ * Language (doc 30, slice L5-D): every string comes from ./strings
+ * (INVENTORY_STRINGS) resolved via useLocale(); dates use
+ * intlLocale(locale).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick } from "@/i18n/locale";
+import { INVENTORY_STRINGS, type InventoryStrings } from "./strings";
 
 interface PoListRow {
   id: string;
@@ -85,14 +92,6 @@ interface DepthDraft {
 
 const EMPTY_DEPTH: DepthDraft = { batchCode: "", expiryDate: "", bin: "", serials: "" };
 
-const STATUS_LABEL: Record<PoListRow["status"], string> = {
-  draft: "খসড়া",
-  ordered: "অর্ডার করা",
-  partially_received: "আংশিক গৃহীত",
-  received: "সম্পূর্ণ গৃহীত",
-  cancelled: "বাতিল",
-};
-
 const STATUS_TONE: Record<PoListRow["status"], "neutral" | "info" | "warning" | "success" | "danger"> = {
   draft: "neutral",
   ordered: "info",
@@ -101,12 +100,24 @@ const STATUS_TONE: Record<PoListRow["status"], "neutral" | "info" | "warning" | 
   cancelled: "danger",
 };
 
+function statusLabel(s: InventoryStrings, status: PoListRow["status"]): string {
+  switch (status) {
+    case "draft": return s.poStatusDraft;
+    case "ordered": return s.poStatusOrdered;
+    case "partially_received": return s.poStatusPartial;
+    case "received": return s.poStatusReceived;
+    case "cancelled": return s.poStatusCancelled;
+  }
+}
+
 function newKey(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `recv-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
 }
 
 export default function PurchaseOrdersPanel() {
+  const { locale, t: ct } = useLocale();
+  const s = pick(locale, INVENTORY_STRINGS);
   const [orders, setOrders] = useState<PoListRow[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -126,30 +137,30 @@ export default function PurchaseOrdersPanel() {
     try {
       const res = await fetch("/api/v1/admin/inventory/purchase-orders");
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error?.message ?? "তালিকা লোড করা যায়নি");
+      if (!res.ok) throw new Error(json?.error?.message ?? s.listLoadFailed);
       setOrders(json.data.purchaseOrders as PoListRow[]);
       setCostMasked(json?.meta?.costMasked === true);
       setListError(null);
     } catch (e) {
-      setListError(e instanceof Error ? e.message : "তালিকা লোড করা যায়নি");
+      setListError(e instanceof Error ? e.message : s.listLoadFailed);
     }
-  }, []);
+  }, [s.listLoadFailed]);
 
   const loadDetail = useCallback(async (poId: string) => {
     setDetailLoading(true);
     try {
       const res = await fetch(`/api/v1/admin/purchase-orders/${poId}`);
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error?.message ?? "বিস্তারিত লোড করা যায়নি");
+      if (!res.ok) throw new Error(json?.error?.message ?? s.detailLoadFailed);
       setDetail(json.data.purchaseOrder as PoDetail);
       setCostMasked(json?.meta?.costMasked === true);
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : "বিস্তারিত লোড করা যায়নি");
+      setFormError(e instanceof Error ? e.message : s.detailLoadFailed);
       setDetail(null);
     } finally {
       setDetailLoading(false);
     }
-  }, []);
+  }, [s.detailLoadFailed]);
 
   useEffect(() => {
     void loadOrders();
@@ -182,8 +193,8 @@ export default function PurchaseOrdersPanel() {
         const draft = depthDrafts[l.itemId] ?? EMPTY_DEPTH;
         const serials = draft.serials
           .split(/[\n,]+/)
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0);
+          .map((x) => x.trim())
+          .filter((x) => x.length > 0);
         return {
           ...base,
           ...(draft.batchCode.trim() ? { batchCode: draft.batchCode.trim() } : {}),
@@ -194,7 +205,7 @@ export default function PurchaseOrdersPanel() {
       })
       .filter((l) => Number.isInteger(l.quantity) && l.quantity > 0);
     if (lines.length === 0) {
-      setFormError("অন্তত একটি লাইনে গৃহীত পরিমাণ লিখুন।");
+      setFormError(s.errAtLeastOne);
       return;
     }
     setSubmitting(true);
@@ -212,14 +223,14 @@ export default function PurchaseOrdersPanel() {
         const d = json?.error?.details as { remaining?: number } | undefined;
         setFormError(
           code === "over_receive" && d?.remaining !== undefined
-            ? `অতিরিক্ত রিসিভ — এই লাইনে বাকি আছে মাত্র ${d.remaining}টি। পুরো রিসিভটাই বাতিল হয়েছে, কিছুই জমা হয়নি।`
+            ? interpolate(s.errOverReceive, { remaining: d.remaining })
             : code === "serial_count_mismatch"
-              ? "সিরিয়াল সংখ্যা গৃহীত পরিমাণের সমান হতে হবে — প্রতিটি পণ্যের একটি করে সিরিয়াল/IMEI দিন। পুরো রিসিভটাই বাতিল হয়েছে।"
+              ? s.errSerialMismatch
               : code === "duplicate_serial"
-                ? "এই সিরিয়ালটি আগেই রেকর্ড করা আছে (একই ভ্যারিয়েন্টে এক সিরিয়াল দুবার নয়)। পুরো রিসিভটাই বাতিল হয়েছে।"
+                ? s.errDuplicateSerial
                 : code === "inventory_depth_disabled"
-                  ? "ব্যাচ/সিরিয়াল রেকর্ড করতে module.inventory_depth ফিচারটি চালু থাকতে হবে — সেটিংস → ফিচার ফ্ল্যাগ থেকে চালু করুন, অথবা ব্যাচ/সিরিয়াল ছাড়া রিসিভ করুন।"
-                  : (json?.error?.message ?? "রিসিভ করা যায়নি।"),
+                  ? s.errDepthDisabled
+                  : (json?.error?.message ?? s.errReceiveFailed),
         );
         return;
       }
@@ -231,12 +242,20 @@ export default function PurchaseOrdersPanel() {
       };
       setFormNotice(
         r.idempotentReplay
-          ? "এই রিসিভটি আগেই জমা হয়েছিল — নতুন করে কিছু যোগ হয়নি।"
-          : `রিসিভ জমা হয়েছে — এই চালানে ${formatBdt(r.receivedValueDeltaPoisha)} মূল্যের পণ্য স্টকে যোগ হয়েছে। অবস্থা: ${STATUS_LABEL[r.status]}।` +
+          ? s.noticeReplay
+          : interpolate(s.noticeReceived, {
+              amount: formatBdt(r.receivedValueDeltaPoisha),
+              status: statusLabel(s, r.status),
+            }) +
               (r.erpPosting
                 ? r.erpPosting.status === "posted"
-                  ? " ERP জার্নালে ক্রয়-প্রাপ্তি পোস্ট হয়েছে।"
-                  : ` ERP পোস্টিং হয়নি (${r.erpPosting.status}${r.erpPosting.reason ? `: ${r.erpPosting.reason}` : ""}) — স্টক ঠিকই জমা হয়েছে।`
+                  ? s.erpPosted
+                  : interpolate(s.erpNotPosted, {
+                      status: r.erpPosting.status,
+                      reason: r.erpPosting.reason
+                        ? interpolate(s.erpReasonPrefix, { reason: r.erpPosting.reason })
+                        : "",
+                    })
                 : ""),
       );
       idempotencyKey.current = newKey();
@@ -246,23 +265,22 @@ export default function PurchaseOrdersPanel() {
       await loadDetail(detail.id);
       await loadOrders();
     } catch {
-      setFormError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন। একই বোতামে আবার চাপ দিলে একই রিসিভ দুবার জমা হবে না (idempotency key সক্রিয়)।");
+      setFormError(s.networkError);
     } finally {
       setSubmitting(false);
     }
   }
 
   if (listError) {
-    return <p className="text-small text-rose-600">ক্রয় আদেশ লোড করা যায়নি: {listError}</p>;
+    return <p className="text-small text-rose-600">{interpolate(s.poListLoadFailed, { error: listError })}</p>;
   }
   if (orders === null) {
-    return <p className="text-small text-text-muted">ক্রয় আদেশ লোড হচ্ছে…</p>;
+    return <p className="text-small text-text-muted">{s.poListLoading}</p>;
   }
   if (orders.length === 0) {
     return (
       <p className="text-small leading-relaxed text-text-muted">
-        কোনো ক্রয় আদেশ নেই। API দিয়ে তৈরি করা যায়: POST /api/v1/admin/inventory/purchase-orders
-        (সাপ্লায়ার + গুদাম + ভ্যারিয়েন্ট লাইন)। তৈরি হলেই এখানে রিসিভ করা যাবে।
+        {s.poEmpty}
       </p>
     );
   }
@@ -277,17 +295,17 @@ export default function PurchaseOrdersPanel() {
               <span className="min-w-0">
                 <span className="block truncate text-small font-semibold text-text-main">{po.supplierName}</span>
                 <span className="mt-0.5 block text-caption text-text-subtle">
-                  {new Date(po.createdAt).toLocaleString("bn-BD")} · মোট{" "}
+                  {new Date(po.createdAt).toLocaleString(intlLocale(locale))} · {s.totalText}{" "}
                   {po.totalPoisha !== null ? formatBdt(po.totalPoisha) : "—"} ·{" "}
                   <span className="font-mono">{po.id}</span>
                 </span>
               </span>
               <span className="flex items-center gap-2">
                 <Badge tone={STATUS_TONE[po.status]} dot>
-                  {STATUS_LABEL[po.status]}
+                  {statusLabel(s, po.status)}
                 </Badge>
                 <Button variant="outline" size="sm" onClick={() => toggle(po.id)}>
-                  {open ? "বন্ধ করুন" : "রিসিভ / বিস্তারিত"}
+                  {open ? ct.close : s.receiveDetail}
                 </Button>
               </span>
             </div>
@@ -295,23 +313,23 @@ export default function PurchaseOrdersPanel() {
             {open ? (
               <div className="mt-3 border-t border-border pt-3">
                 {detailLoading || !detail ? (
-                  <p className="text-small text-text-muted">লোড হচ্ছে…</p>
+                  <p className="text-small text-text-muted">{ct.loading}</p>
                 ) : (
                   <>
                     <p className="text-caption leading-relaxed text-text-muted">
-                      গুদাম:{" "}
+                      {s.warehouseText}{" "}
                       <span className="font-mono">{detail.effectiveWarehouseId ?? "—"}</span>
-                      {detail.warehouseIsDefault ? " (ডিফল্ট গুদাম — এই অর্ডারে গুদাম নির্দিষ্ট করা নেই)" : ""}
-                      {" · "}এখন পর্যন্ত গৃহীত মূল্য:{" "}
+                      {detail.warehouseIsDefault ? ` ${s.defaultWarehouseNote}` : ""}
+                      {" · "}{s.receivedValueText}{" "}
                       {detail.receivedValuePoisha !== null ? formatBdt(detail.receivedValuePoisha) : "—"}
-                      {costMasked && " (কস্ট প্রাইস আপনার অনুমতিতে নেই — products.edit_cost_price লাগে)"}
+                      {costMasked && ` ${s.costMaskedNote}`}
                     </p>
 
                     <div className="mt-2 overflow-x-auto">
                       <table className="w-full min-w-[560px] border-collapse text-left text-sm">
                         <thead>
                           <tr className="text-left [&>th]:border-b [&>th]:border-border">
-                            {["পণ্য", "অর্ডার", "গৃহীত", "বাকি", "এবার গ্রহণ"].map((h) => (
+                            {[s.colProduct, s.colOrdered, s.colReceived, s.colRemaining, s.colReceiveNow].map((h) => (
                               <th key={h} scope="col" className="px-2 py-2 text-caption font-semibold text-text-muted">
                                 {h}
                               </th>
@@ -326,7 +344,7 @@ export default function PurchaseOrdersPanel() {
                                   {l.productTitleBn ?? l.variantId}
                                 </span>
                                 <span className="block text-caption text-text-subtle">
-                                  {l.sku ? `SKU: ${l.sku} · ` : ""}কস্ট{" "}
+                                  {l.sku ? `SKU: ${l.sku} · ` : ""}{s.costText}{" "}
                                   {l.costPoisha !== null ? formatBdt(l.costPoisha) : "—"}
                                 </span>
                               </td>
@@ -341,8 +359,8 @@ export default function PurchaseOrdersPanel() {
                                     max={l.remaining}
                                     step={1}
                                     inputMode="numeric"
-                                    placeholder={`সর্বোচ্চ ${l.remaining}`}
-                                    aria-label={`${l.productTitleBn ?? l.variantId} — এবার গ্রহণের পরিমাণ`}
+                                    placeholder={interpolate(s.maxPlaceholder, { max: l.remaining })}
+                                    aria-label={interpolate(s.receiveQtyAria, { name: l.productTitleBn ?? l.variantId })}
                                     className="w-28"
                                     value={quantities[l.itemId] ?? ""}
                                     disabled={submitting}
@@ -385,36 +403,36 @@ export default function PurchaseOrdersPanel() {
                                       setDepthOpen((o) => ({ ...o, [l.itemId]: e.target.checked }))
                                     }
                                   />
-                                  ব্যাচ / সিরিয়াল (ঐচ্ছিক) — {l.productTitleBn ?? l.variantId}
+                                  {interpolate(s.depthToggle, { name: l.productTitleBn ?? l.variantId })}
                                   {l.sku ? <span className="font-mono text-caption text-text-subtle">{l.sku}</span> : null}
                                 </label>
                                 {openDepth ? (
                                   <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                                     <Input
-                                      placeholder="ব্যাচ / লট কোড (যেমন LOT-2026-01)"
-                                      aria-label="ব্যাচ কোড"
+                                      placeholder={s.batchPlaceholder}
+                                      aria-label={s.batchAria}
                                       value={draft.batchCode}
                                       disabled={submitting}
                                       onChange={(e) => setDraft({ batchCode: e.target.value })}
                                     />
                                     <Input
                                       type="date"
-                                      aria-label="মেয়াদ শেষের তারিখ"
+                                      aria-label={s.expiryAria}
                                       value={draft.expiryDate}
                                       disabled={submitting}
                                       onChange={(e) => setDraft({ expiryDate: e.target.value })}
                                     />
                                     <Input
-                                      placeholder="বিন / শেলফ (যেমন A-01)"
-                                      aria-label="বিন / শেলফ"
+                                      placeholder={s.binPlaceholder}
+                                      aria-label={s.binAria}
                                       value={draft.bin}
                                       disabled={submitting}
                                       onChange={(e) => setDraft({ bin: e.target.value })}
                                     />
                                     <textarea
                                       className="min-h-16 rounded-md border border-border bg-card px-3 py-2 text-small"
-                                      placeholder="সিরিয়াল / IMEI — প্রতিটি লাইনে একটি (সংখ্যা গৃহীত পরিমাণের সমান হতে হবে)"
-                                      aria-label="সিরিয়াল / IMEI তালিকা"
+                                      placeholder={s.serialsPlaceholder}
+                                      aria-label={s.serialsAria}
                                       value={draft.serials}
                                       disabled={submitting}
                                       onChange={(e) => setDraft({ serials: e.target.value })}
@@ -437,25 +455,28 @@ export default function PurchaseOrdersPanel() {
                     {detail.status !== "cancelled" && detail.lines.some((l) => l.remaining > 0) ? (
                       <div className="mt-3 flex flex-wrap items-center gap-3">
                         <Button onClick={() => void submitReceive()} loading={submitting}>
-                          রিসিভ জমা দিন
+                          {s.submitReceive}
                         </Button>
                         <span className="text-caption text-text-subtle">
-                          জমা দিলেই স্টক লেজারে PURCHASE_RECEIVE মুভমেন্ট যুক্ত হবে — সংখ্যা শুধু এখানে যা লিখবেন তাই।
+                          {s.submitNote}
                         </span>
                       </div>
                     ) : null}
 
                     <div className="mt-4">
-                      <p className="text-small font-semibold text-text-main">রিসিভ ইতিহাস</p>
+                      <p className="text-small font-semibold text-text-main">{s.historyTitle}</p>
                       {detail.history.length === 0 ? (
-                        <p className="mt-1 text-caption text-text-muted">এখনো কোনো রিসিভ হয়নি।</p>
+                        <p className="mt-1 text-caption text-text-muted">{s.historyNone}</p>
                       ) : (
                         <ul className="mt-1 space-y-1">
                           {detail.history.map((h) => (
                             <li key={h.id} className="text-caption text-text-muted">
-                              {new Date(h.createdAt).toLocaleString("bn-BD")} ·{" "}
-                              <span className="font-mono">{h.variantId}</span> · +{h.quantityDelta} (রিসিভের পর
-                              হাতে {h.quantityAfter})
+                              {interpolate(s.historyLine, {
+                                date: new Date(h.createdAt).toLocaleString(intlLocale(locale)),
+                                variantId: h.variantId,
+                                delta: h.quantityDelta,
+                                after: h.quantityAfter,
+                              })}
                             </li>
                           ))}
                         </ul>
@@ -464,23 +485,22 @@ export default function PurchaseOrdersPanel() {
 
                     {detail.batches.length > 0 ? (
                       <div className="mt-4">
-                        <p className="text-small font-semibold text-text-main">এই অর্ডারে রেকর্ড করা ব্যাচ</p>
+                        <p className="text-small font-semibold text-text-main">{s.batchesTitle}</p>
                         <ul className="mt-1 space-y-1">
                           {detail.batches.map((b) => (
                             <li key={b.batchId} className="text-caption text-text-muted">
                               <span className="font-mono font-semibold text-text-main">{b.batchCode}</span>
-                              {b.sku ? ` · SKU: ${b.sku}` : ""} · হাতে {b.quantityOnHand}টি
+                              {b.sku ? ` · ${interpolate(s.batchSkuText, { sku: b.sku })}` : ""} · {interpolate(s.onHandText, { count: b.quantityOnHand })}
                               {b.expiryDate
-                                ? ` · মেয়াদ: ${new Date(b.expiryDate).toLocaleDateString("bn-BD")}`
-                                : " · মেয়াদ রেকর্ড নেই"}
-                              {b.bin ? ` · বিন: ${b.bin}` : ""}
-                              {b.serialCount > 0 ? ` · সিরিয়াল: ${b.serialCount}টি` : ""}
+                                ? ` · ${interpolate(s.batchExpiryText, { date: new Date(b.expiryDate).toLocaleDateString(intlLocale(locale)) })}`
+                                : ` · ${s.batchNoExpiry}`}
+                              {b.bin ? ` · ${interpolate(s.batchBinText, { bin: b.bin })}` : ""}
+                              {b.serialCount > 0 ? ` · ${interpolate(s.batchSerialText, { count: b.serialCount })}` : ""}
                             </li>
                           ))}
                         </ul>
                         <p className="mt-1 text-caption text-text-subtle">
-                          ব্যাচ ছাড়া রিসিভ করা সিরিয়াল এই অর্ডারের সঙ্গে যুক্ত থাকে না — সেগুলো গভীর
-                          বিশ্লেষণে গণনা হয়, এখানে দেখানো যায় না।
+                          {s.batchesNote}
                         </p>
                       </div>
                     ) : null}

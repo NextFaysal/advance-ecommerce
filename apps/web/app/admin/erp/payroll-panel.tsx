@@ -15,6 +15,9 @@
  * are audited server-side.
  */
 import { useCallback, useEffect, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { ERP_STRINGS } from "./strings";
 
 interface StaffRow {
   id: string;
@@ -90,6 +93,8 @@ const inputCls =
 const labelCls = "block text-xs text-text-muted";
 
 export function PayrollPanel() {
+  const { locale } = useLocale();
+  const s = pick(locale, ERP_STRINGS);
   const [locked, setLocked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +120,7 @@ export function PayrollPanel() {
           setLocked(true);
           return;
         }
-        setError(json.error?.message ?? "পেরোল তথ্য লোড করা যায়নি।");
+        setError(json.error?.message ?? s.prLoadFailed);
         return;
       }
       const data = json.data;
@@ -140,7 +145,7 @@ export function PayrollPanel() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load();
@@ -148,7 +153,7 @@ export function PayrollPanel() {
 
   function requireReason(): boolean {
     if (reason.trim() === "") {
-      setError("কারণ আবশ্যক — ওপরের 'পরিবর্তনের কারণ' ঘরে কারণ লিখুন।");
+      setError(s.prReasonRequired);
       return false;
     }
     setError(null);
@@ -170,11 +175,11 @@ export function PayrollPanel() {
       const other = parseBdtInput(draft.other);
       const deduction = parseBdtInput(draft.deduction);
       if (basic === null || houseRent === null || transport === null || other === null || deduction === null) {
-        setError(`${member.name || member.email}: টাকার অঙ্ক সঠিক ফরম্যাটে লিখুন (যেমন 45000 বা 45000.50)।`);
+        setError(interpolate(s.prAmountFormat, { name: member.name || member.email }));
         return;
       }
       if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(draft.effectiveFrom)) {
-        setError(`${member.name || member.email}: কার্যকর মাস (effectiveFrom) আবশ্যক।`);
+        setError(interpolate(s.prEffectiveRequired, { name: member.name || member.email }));
         return;
       }
       salaries[member.id] = {
@@ -196,10 +201,10 @@ export function PayrollPanel() {
       });
       const json = (await res.json().catch(() => ({}))) as { error?: { message: string } };
       if (!res.ok) {
-        setError(json.error?.message ?? "বেতন কনফিগ সংরক্ষণ করা যায়নি।");
+        setError(json.error?.message ?? s.prSaveFailed);
         return;
       }
-      setNotice("বেতন কনফিগ সংরক্ষিত হয়েছে।");
+      setNotice(s.prSaved);
       await load();
     } finally {
       setBusy(false);
@@ -209,7 +214,7 @@ export function PayrollPanel() {
   async function createRun() {
     if (!requireReason()) return;
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(runMonth)) {
-      setError("রানের মাস সঠিকভাবে বেছে নিন।");
+      setError(s.prRunMonthInvalid);
       return;
     }
     setBusy(true);
@@ -222,10 +227,10 @@ export function PayrollPanel() {
       });
       const json = (await res.json().catch(() => ({}))) as { error?: { message: string } };
       if (!res.ok) {
-        setError(json.error?.message ?? "রান তৈরি করা যায়নি।");
+        setError(json.error?.message ?? s.prRunCreateFailed);
         return;
       }
-      setNotice(`${runMonth} মাসের পেরোল রান তৈরি হয়েছে (খসড়া)।`);
+      setNotice(interpolate(s.prRunCreated, { month: runMonth }));
       await load();
     } finally {
       setBusy(false);
@@ -247,13 +252,13 @@ export function PayrollPanel() {
         error?: { message: string };
       };
       if (!res.ok) {
-        setError(json.error?.message ?? "রান ফাইনালাইজ করা যায়নি।");
+        setError(json.error?.message ?? s.prFinalizeFailed);
         return;
       }
       setNotice(
         json.data?.journal.status === "not_required"
-          ? `${run.month} রান ফাইনালাইজ হয়েছে — মোট ০ হওয়ায় কোনো জার্নাল এন্ট্রি পোস্ট হয়নি।`
-          : `${run.month} রান ফাইনালাইজ হয়েছে এবং জার্নাল এন্ট্রি পোস্ট হয়েছে।`,
+          ? interpolate(s.prFinalizedZero, { month: run.month })
+          : interpolate(s.prFinalizedPosted, { month: run.month }),
       );
       await load();
     } finally {
@@ -264,9 +269,9 @@ export function PayrollPanel() {
   if (locked) {
     return (
       <section>
-        <h2 className="mb-3 mt-8 text-lg font-semibold">পেরোল (Payroll-lite)</h2>
+        <h2 className="mb-3 mt-8 text-lg font-semibold">{s.prTitle}</h2>
         <p className="rounded-md bg-surface-2 px-3 py-2 text-sm text-text-muted">
-          ERP-lite মডিউল বন্ধ (module.erp_lite OFF) — পেরোল দেখতে মডিউলটি চালু করুন।
+          {s.prLockedNote}
         </p>
       </section>
     );
@@ -274,12 +279,9 @@ export function PayrollPanel() {
 
   return (
     <section>
-      <h2 className="mb-3 mt-8 text-lg font-semibold">পেরোল (Payroll-lite)</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.prTitle}</h2>
       <p className="mb-3 max-w-3xl text-sm text-text-muted">
-        মাসিক বেতন রান: বর্তমান বেতন কনফিগ থেকে ACTIVE কর্মীদের লাইন তৈরি হয় (স্ন্যাপশট — পরে কনফিগ
-        বদলালে পুরনো রান বদলায় না)। ফাইনালাইজ করলে একটি জার্নাল এন্ট্রি পোস্ট হয় — ডেবিট ৫৩০০ বেতন
-        (মোট), ক্রেডিট ১০১০ ব্যাংক (নিট প্রদেয়), কর্তন থাকলে ক্রেডিট ২০০০ দেনা (চার্টে আলাদা বেতন-দেনা
-        হিসাব নেই বলে)। সব অঙ্ক টাকায় লিখুন; সিস্টেমে পয়সায় সংরক্ষিত হয়।
+        {s.prIntro}
       </p>
 
       {error ? (
@@ -290,33 +292,33 @@ export function PayrollPanel() {
       ) : null}
 
       <div className="mb-4 max-w-md">
-        <label className={labelCls} htmlFor="payroll-reason">পরিবর্তনের কারণ (সব অ্যাকশনের জন্য আবশ্যক)</label>
+        <label className={labelCls} htmlFor="payroll-reason">{s.prReasonLabel}</label>
         <input
           id="payroll-reason"
           className={inputCls}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="যেমন: অক্টোবরের বেতন প্রস্তুত"
+          placeholder={s.prReasonPlaceholder}
         />
       </div>
 
-      <h3 className="mb-2 text-base font-semibold">বেতন কনফিগ (প্রতি কর্মী, টাকায়)</h3>
+      <h3 className="mb-2 text-base font-semibold">{s.prConfigTitle}</h3>
       {loading ? (
-        <p className="text-sm text-text-muted">লোড হচ্ছে…</p>
+        <p className="text-sm text-text-muted">{s.prLoading}</p>
       ) : staff.length === 0 ? (
-        <p className="text-sm text-text-muted">কোনো কর্মী পাওয়া যায়নি।</p>
+        <p className="text-sm text-text-muted">{s.prNoStaff}</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-text-muted">
-                <th className="py-2 pr-2">কর্মী</th>
-                <th className="py-2 pr-2">মূল বেতন</th>
-                <th className="py-2 pr-2">বাড়ি ভাড়া</th>
-                <th className="py-2 pr-2">যাতায়াত</th>
-                <th className="py-2 pr-2">অন্যান্য</th>
-                <th className="py-2 pr-2">কর্তন</th>
-                <th className="py-2">কার্যকর (মাস থেকে)</th>
+                <th className="py-2 pr-2">{s.colStaff}</th>
+                <th className="py-2 pr-2">{s.colBasic}</th>
+                <th className="py-2 pr-2">{s.colHouseRent}</th>
+                <th className="py-2 pr-2">{s.colTransport}</th>
+                <th className="py-2 pr-2">{s.colOther}</th>
+                <th className="py-2 pr-2">{s.colDeduction}</th>
+                <th className="py-2">{s.colEffective}</th>
               </tr>
             </thead>
             <tbody>
@@ -367,16 +369,16 @@ export function PayrollPanel() {
         onClick={() => void saveSalaries()}
         className="mt-3 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
       >
-        বেতন কনফিগ সংরক্ষণ করুন
+        {s.prSaveConfigBtn}
       </button>
       <p className="mt-1 text-xs text-text-muted">
-        সতর্কতা: সংরক্ষণ পুরো কনফিগ প্রতিস্থাপন করে — কোনো সারি সম্পূর্ণ ফাঁকা রাখলে সেই কর্মীর কনফিগ মুছে যাবে।
+        {s.prReplaceWarning}
       </p>
 
-      <h3 className="mb-2 mt-8 text-base font-semibold">মাসিক রান</h3>
+      <h3 className="mb-2 mt-8 text-base font-semibold">{s.prRunsTitle}</h3>
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <div>
-          <label className={labelCls} htmlFor="payroll-run-month">রানের মাস</label>
+          <label className={labelCls} htmlFor="payroll-run-month">{s.prRunMonthLabel}</label>
           <input
             id="payroll-run-month"
             type="month"
@@ -391,13 +393,13 @@ export function PayrollPanel() {
           onClick={() => void createRun()}
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
-          রান তৈরি করুন
+          {s.prCreateRunBtn}
         </button>
-        <span className="text-xs text-text-muted">প্রতি মাসে একটি রানই তৈরি হয়; ডুপ্লিকেট হলে সার্ভার 409 দেবে।</span>
+        <span className="text-xs text-text-muted">{s.prOneRunNote}</span>
       </div>
 
       {runs.length === 0 ? (
-        <p className="text-sm text-text-muted">এখনো কোনো পেরোল রান তৈরি হয়নি।</p>
+        <p className="text-sm text-text-muted">{s.prNoRuns}</p>
       ) : (
         <div className="space-y-3">
           {runs.map((run) => (
@@ -408,11 +410,11 @@ export function PayrollPanel() {
                   <span
                     className={`rounded px-2 py-0.5 text-xs ${run.status === "FINALIZED" ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}
                   >
-                    {run.status === "FINALIZED" ? "ফাইনালাইজড" : "খসড়া"}
+                    {run.status === "FINALIZED" ? s.prFinalized : s.prDraft}
                   </span>{" "}
                   <span className="text-text-muted">
-                    {run.lines.length} জন · নিট মোট {formatPoisha(run.totalPoisha)}
-                    {run.journalEntryId ? ` · জার্নাল: ${run.journalEntryId}` : ""}
+                    {interpolate(s.prRunMeta, { count: run.lines.length, total: formatPoisha(run.totalPoisha) })}
+                    {run.journalEntryId ? interpolate(s.prJournalSuffix, { id: run.journalEntryId }) : ""}
                   </span>
                 </div>
                 <div className="flex gap-2">
@@ -421,7 +423,7 @@ export function PayrollPanel() {
                     onClick={() => setExpandedRunId(expandedRunId === run.id ? null : run.id)}
                     className="rounded-md border border-border px-3 py-1.5 text-sm"
                   >
-                    {expandedRunId === run.id ? "বিস্তারিত লুকান" : "লাইন বিস্তারিত"}
+                    {expandedRunId === run.id ? s.prHideDetails : s.prShowDetails}
                   </button>
                   {run.status === "DRAFT" ? (
                     <button
@@ -430,7 +432,7 @@ export function PayrollPanel() {
                       onClick={() => void finalizeRun(run)}
                       className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
                     >
-                      ফাইনালাইজ + জার্নাল পোস্ট
+                      {s.prFinalizeBtn}
                     </button>
                   ) : null}
                 </div>
@@ -439,11 +441,11 @@ export function PayrollPanel() {
                 <table className="mt-3 w-full border-collapse text-sm">
                   <thead>
                     <tr className="border-b border-border text-left text-xs text-text-muted">
-                      <th className="py-1.5 pr-2">কর্মী</th>
-                      <th className="py-1.5 pr-2">মোট বেতন</th>
-                      <th className="py-1.5 pr-2">কর্তন</th>
-                      <th className="py-1.5 pr-2">নিট</th>
-                      <th className="py-1.5">পে-স্লিপ</th>
+                      <th className="py-1.5 pr-2">{s.colStaff}</th>
+                      <th className="py-1.5 pr-2">{s.colGross}</th>
+                      <th className="py-1.5 pr-2">{s.colDeduction}</th>
+                      <th className="py-1.5 pr-2">{s.colNet}</th>
+                      <th className="py-1.5">{s.colPayslip}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -460,7 +462,7 @@ export function PayrollPanel() {
                             target="_blank"
                             rel="noreferrer"
                           >
-                            প্রিন্ট করুন
+                            {s.prPrint}
                           </a>
                         </td>
                       </tr>

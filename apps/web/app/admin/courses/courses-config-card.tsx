@@ -10,6 +10,9 @@
  * itself is authored per product in the content card above).
  */
 import { useCallback, useEffect, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { COURSES_STRINGS } from "./strings";
 
 interface CoursesConfig {
   courseVariantIds: string[];
@@ -25,6 +28,8 @@ const INPUT_CLASS =
   "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-text-main";
 
 export function CoursesConfigCard() {
+  const { locale } = useLocale();
+  const s = pick(locale, COURSES_STRINGS);
   const [data, setData] = useState<ConfigData | null>(null);
   const [variantIdsText, setVariantIdsText] = useState("");
   const [reason, setReason] = useState("");
@@ -40,16 +45,16 @@ export function CoursesConfigCard() {
         error?: { message?: string };
       } | null;
       if (!res.ok || !json?.data) {
-        setError(json?.error?.message ?? "কনফিগ লোড করা যায়নি।");
+        setError(json?.error?.message ?? s.configLoadFailed);
         return;
       }
       setData(json.data);
       setVariantIdsText(json.data.config.courseVariantIds.join("\n"));
       setError(null);
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — কনফিগ লোড করা যায়নি।");
+      setError(s.configLoadNetwork);
     }
-  }, []);
+  }, [s]);
 
   useEffect(() => {
     void load();
@@ -73,14 +78,14 @@ export function CoursesConfigCard() {
         error?: { message?: string };
       } | null;
       if (!res.ok) {
-        setError(json?.error?.message ?? "কনফিগ সংরক্ষণ করা যায়নি।");
+        setError(json?.error?.message ?? s.configSaveFailed);
         return;
       }
-      setNotice("কনফিগ সংরক্ষিত হয়েছে।");
+      setNotice(s.configSaved);
       setReason("");
       await load();
     } catch {
-      setError("নেটওয়ার্ক ত্রুটি — কনফিগ সংরক্ষণ করা যায়নি।");
+      setError(s.configSaveNetwork);
     } finally {
       setBusy(false);
     }
@@ -88,11 +93,14 @@ export function CoursesConfigCard() {
 
   return (
     <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
-      <h2 className="font-display text-base font-bold text-text-main">কোর্স কনফিগ</h2>
+      <h2 className="font-display text-base font-bold text-text-main">{s.configTitle}</h2>
       <p className="mt-1 text-sm leading-6 text-text-muted">
-        কোন ভ্যারিয়েন্টগুলো কোর্স বিক্রি করে।{" "}
+        {s.configIntro}{" "}
         {data
-          ? `উৎস: ${data.source === "saved" ? "সংরক্ষিত ডকুমেন্ট" : "ডিফল্ট (এখনো সংরক্ষণ হয়নি)"} · কোর্স মডিউল: ${data.moduleEnabled ? "চালু" : "বন্ধ"}`
+          ? interpolate(s.configSourceLine, {
+              source: data.source === "saved" ? s.sourceSaved : s.sourceDefault,
+              state: data.moduleEnabled ? s.stateOn : s.stateOff,
+            })
           : ""}
       </p>
 
@@ -109,28 +117,23 @@ export function CoursesConfigCard() {
 
       <div className="mt-4 grid gap-4">
         <label className="grid gap-1.5 text-sm">
-          <span className="font-medium text-text-main">কোর্স ভ্যারিয়েন্ট আইডি (প্রতি লাইনে একটি)</span>
+          <span className="font-medium text-text-main">{s.variantIdsLabel}</span>
           <textarea
             className={INPUT_CLASS + " min-h-[96px] font-mono text-xs"}
             value={variantIdsText}
             onChange={(e) => setVariantIdsText(e.target.value)}
             placeholder={"variant-id-1\nvariant-id-2"}
           />
-          <span className="text-xs text-text-muted">
-            সাধারণত DIGITAL ধরনের পণ্যের ভ্যারিয়েন্ট তালিকায় দিন। তালিকার যেকোনো ভ্যারিয়েন্ট
-            কিনলেই ওই পণ্যের পুরো কোর্স খুলে যায়; তালিকা থেকে সরালে নতুন ক্রেতা অ্যাক্সেস
-            পাবে না — আগের ক্রেতার অর্ডার-ভিত্তিক অ্যাক্সেসও ওই ভ্যারিয়েন্ট দিয়ে আর যাচাই
-            হবে না।
-          </span>
+          <span className="text-xs text-text-muted">{s.variantIdsHelp}</span>
         </label>
 
         <label className="grid gap-1.5 text-sm">
-          <span className="font-medium text-text-main">পরিবর্তনের কারণ (বাধ্যতামূলক)</span>
+          <span className="font-medium text-text-main">{s.reasonLabel}</span>
           <input
             className={INPUT_CLASS}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="যেমন: প্রথম কোর্স চালু"
+            placeholder={s.reasonPlaceholderConfig}
           />
         </label>
 
@@ -141,7 +144,7 @@ export function CoursesConfigCard() {
             onClick={save}
             className="inline-flex items-center justify-center rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? "সংরক্ষণ হচ্ছে…" : "কনফিগ সংরক্ষণ করুন"}
+            {busy ? s.saving : s.saveConfig}
           </button>
         </div>
       </div>

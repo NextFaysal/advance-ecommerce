@@ -1,5 +1,8 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { GiftCardsPanel } from "./gift-cards-panel";
+import { getRequestLocale } from "@/i18n/server";
+import { pick } from "@/i18n/locale";
+import { GIFT_CARDS_STRINGS } from "./strings";
 
 // Gift cards admin (ADV-18A) — issue / list / disable. The page is a
 // thin shell; the panel is a self-fetching client component over
@@ -9,13 +12,12 @@ import { GiftCardsPanel } from "./gift-cards-panel";
 // and the panel says so plainly).
 export const dynamic = "force-dynamic";
 
-export default function AdminGiftCardsPage() {
+export default async function AdminGiftCardsPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, GIFT_CARDS_STRINGS);
   return (
     <main>
-      <PageHeader
-        title="গিফট কার্ড"
-        description="গিফট কার্ড ইস্যু করুন, ব্যালেন্স দেখুন ও প্রয়োজনে নিষ্ক্রিয় করুন। ব্যালেন্স সবসময় লেজার (GiftCardTransaction) থেকে হিসাব করা হয় — কোডের পূর্ণ রূপ কখনো সংরক্ষিত হয় না, ইস্যুর সময় একবারই দেখা যায়।"
-      />
+      <PageHeader title={s.title} description={s.description} />
       <GiftCardsPanel />
     </main>
   );

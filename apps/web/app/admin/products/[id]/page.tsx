@@ -15,6 +15,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ProductEditor, type AttributeSetOption, type CategoryOption } from "../product-editor";
 import { RelatedPicker, type RelatedPick } from "./related-picker";
 import { CustomFieldsPanel } from "@/components/admin/custom-fields-panel";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
+import { PRODUCTS_STRINGS } from "../strings";
 
 export const dynamic = "force-dynamic";
 
@@ -25,14 +28,16 @@ export default async function EditProductPage({
   params: { id: string };
   searchParams?: { created?: string; ledger?: string };
 }) {
+  const locale = await getRequestLocale();
+  const s = pick(locale, PRODUCTS_STRINGS);
   const product = await getProductForAdminEdit(params.id);
   if (!product) {
     return (
       <main className="min-w-0">
         <PageHeader
-          title="পণ্য পাওয়া যায়নি"
-          description="এই আইডির কোনো পণ্য ক্যাটালগে নেই — হয়তো মুছে ফেলা হয়েছে, অথবা লিংকটি ভুল।"
-          breadcrumb="পণ্য / এডিট"
+          title={s.notFoundTitle}
+          description={s.notFoundDesc}
+          breadcrumb={s.notFoundBreadcrumb}
         />
         <div className="anim-rise flex flex-col items-center rounded-lg border border-dashed border-border bg-card px-6 py-10 text-center shadow-card">
           <span aria-hidden="true" className="brand-soft-gradient flex h-[72px] w-[72px] items-center justify-center rounded-full text-brand-600 shadow-sm">
@@ -46,7 +51,7 @@ export default async function EditProductPage({
             href="/admin/products"
             className="brand-gradient mt-5 inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105"
           >
-            ← পণ্যের তালিকায় ফিরুন
+            {s.backToList}
           </Link>
         </div>
       </main>
@@ -89,14 +94,14 @@ export default async function EditProductPage({
   return (
     <main className="min-w-0">
       <PageHeader
-        title="পণ্য এডিট করুন"
-        description={`${product.title.bn} — সব পরিবর্তন PATCH API দিয়ে সেভ হয়; দাম বদলালে কারণ লিখতে হবে (অডিটে থাকবে)।`}
-        breadcrumb={`পণ্য / ${product.title.bn}`}
+        title={s.editTitle}
+        description={interpolate(s.editDesc, { title: product.title.bn })}
+        breadcrumb={interpolate(s.editBreadcrumb, { title: product.title.bn })}
       />
       {justCreated && (
         <p role="status" className="anim-fade-in mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-card">
-          ✅ পণ্য তৈরি হয়েছে — এখন এখান থেকে ছবি, ভেরিয়েন্টের দাম/স্টক ঠিক করে প্রকাশ করতে পারবেন।
-          {ledgerPending && " তবে প্রাথমিক স্টকের ledger এন্ট্রি এখনো pending আছে (ডিফল্ট গুদাম পাওয়া যায়নি)।"}
+          {s.createdBanner}
+          {ledgerPending && s.ledgerPendingSuffix}
         </p>
       )}
       <ProductEditor

@@ -4,7 +4,10 @@ import { listActiveProducts } from "@/catalog/server-read";
 import { demoPosFlags, isPosEnabled } from "@/pos/flags";
 import { openShiftForRegister } from "@/pos/register";
 import { listRegistersDb, listSalesDb, listShiftsDb } from "@/pos/store";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
 import PosRegisterClient, { type PosCatalogEntry } from "./register-client";
+import { POS_STRINGS } from "./strings";
 
 // POS register — Agent 38 (module built by Agent 14 in src/pos).
 // Locked state: while module.pos is OFF (seeded default, paid add-on),
@@ -15,15 +18,14 @@ import PosRegisterClient, { type PosCatalogEntry } from "./register-client";
 export const dynamic = "force-dynamic";
 
 export default async function AdminPosPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, POS_STRINGS);
   await ensureDbFeatureFlags().catch(() => {});
   if (!isPosEnabled(demoPosFlags)) {
     return (
       <main>
-        <PageHeader title="পয়েন্ট অব সেল (POS)" description="দোকান / আউটলেট কাউন্টারের অফলাইন-ফার্স্ট রেজিস্টার" />
-        <p role="status">
-          🔒 এই মডিউলটি এই ইনস্টলে লক করা আছে। POS একটি পেইড অ্যাড-অন — আনলক করতে Admin &gt; Settings &gt; Feature Flags থেকে{" "}
-          <code>module.pos</code> চালু করুন।
-        </p>
+        <PageHeader title={s.pageTitle} description={s.lockedDesc} />
+        <p role="status">{interpolate(s.lockedText, { flag: "module.pos" })}</p>
       </main>
     );
   }
@@ -35,17 +37,18 @@ export default async function AdminPosPage() {
   ]);
   const register = registers[0]!;
   const initialShift = openShiftForRegister(shifts, register.id);
-  const initialSales = initialShift ? sales.filter((s) => s.shiftId === initialShift.id) : [];
+  const initialSales = initialShift ? sales.filter((sale) => sale.shiftId === initialShift.id) : [];
 
   const catalog: PosCatalogEntry[] = [];
   for (const product of await listActiveProducts(100)) {
     for (const variant of product.variants) {
       if (!variant.isActive) continue;
       const attributeText = Object.values(variant.attributes).join(" / ");
+      const productName = product.title[locale];
       catalog.push({
         variantId: variant.id,
         sku: variant.sku,
-        productName: attributeText ? `${product.title.bn} (${attributeText})` : product.title.bn,
+        productName: attributeText ? `${productName} (${attributeText})` : productName,
         pricePoisha: variant.pricePoisha,
         stock: variant.stock,
       });
@@ -54,11 +57,7 @@ export default async function AdminPosPage() {
 
   return (
     <main>
-      <PageHeader
-        title="পয়েন্ট অব সেল (POS)"
-        description="শিফট/বিক্রির ডেটা আসল ডাটাবেসে থাকে (src/pos/store.ts), পণ্যের ক্যাটালগও আসল ডাটাবেস থেকে আসে। POS বিক্রি এখানে ডাটাবেস রেকর্ড — আসল Order তৈরি হয় না।"
-        breadcrumb="Admin / Sales"
-      />
+      <PageHeader title={s.pageTitle} description={s.pageDescription} breadcrumb="Admin / Sales" />
       <PosRegisterClient
         register={{ id: register.id, name: register.name }}
         catalog={catalog}

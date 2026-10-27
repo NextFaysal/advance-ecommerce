@@ -14,6 +14,9 @@
  * number itself.
  */
 import { useState } from "react";
+import { pick } from "../../../../src/i18n/locale";
+import { useLocale } from "../../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "../strings";
 
 type RevealState =
   | { kind: "masked" }
@@ -29,6 +32,8 @@ export function PhoneReveal({
   orderId: string;
   maskedPhone: string;
 }) {
+  const { locale, t } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const [state, setState] = useState<RevealState>({ kind: "masked" });
 
   async function reveal() {
@@ -58,7 +63,7 @@ export function PhoneReveal({
     return (
       <span className="inline-flex flex-wrap items-center gap-2">
         <span className="font-mono tabular-nums">{state.phone}</span>
-        <span className="text-caption text-text-subtle">এই নম্বর দেখাটি অডিট লগে সংরক্ষিত হয়েছে</span>
+        <span className="text-caption text-text-subtle">{s.phoneAudited}</span>
       </span>
     );
   }
@@ -72,13 +77,13 @@ export function PhoneReveal({
         disabled={state.kind === "loading"}
         className="rounded-md border border-border bg-card px-2 py-1 text-caption font-semibold text-brand-700 transition motion-fast hover:border-brand-300 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
       >
-        {state.kind === "loading" ? "লোড হচ্ছে…" : "নম্বর দেখুন"}
+        {state.kind === "loading" ? t.loading : s.phoneShow}
       </button>
       {state.kind === "denied" && (
-        <span className="text-caption text-text-subtle">পূর্ণ নম্বর দেখার অনুমতি নেই</span>
+        <span className="text-caption text-text-subtle">{s.phoneNoPermission}</span>
       )}
       {state.kind === "error" && (
-        <span className="text-caption text-rose-600">নম্বর লোড হয়নি — আবার চেষ্টা করুন</span>
+        <span className="text-caption text-rose-600">{s.phoneLoadFailed}</span>
       )}
     </span>
   );

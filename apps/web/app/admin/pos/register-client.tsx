@@ -39,6 +39,9 @@ import {
 } from "@/pos/register";
 import { enqueuePosSale, loadQueuedPosSales } from "@/pos/offline-queue";
 import { flushQueuedPosSales } from "@/pos/sync";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, intlLocale, pick } from "@/i18n/locale";
+import { POS_STRINGS, type PosStrings } from "./strings";
 import type {
   CreatePosSaleInput,
   PosPaymentMethod,
@@ -56,11 +59,11 @@ export interface PosCatalogEntry {
   stock: number;
 }
 
-const PAYMENT_METHODS: { id: PosPaymentMethod; labelBn: string }[] = [
-  { id: "CASH", labelBn: "নগদ" },
-  { id: "BKASH", labelBn: "বিকাশ" },
-  { id: "NAGAD", labelBn: "নগদ (মোবাইল)" },
-  { id: "CARD", labelBn: "কার্ড / ম্যানুয়াল" },
+const PAYMENT_METHODS: { id: PosPaymentMethod; labelKey: keyof PosStrings }[] = [
+  { id: "CASH", labelKey: "payCash" },
+  { id: "BKASH", labelKey: "payBkash" },
+  { id: "NAGAD", labelKey: "payNagad" },
+  { id: "CARD", labelKey: "payCard" },
 ];
 
 /** "123.45" -> 12345 poisha with integer math only. Null when invalid. */
@@ -86,8 +89,8 @@ function newIdempotencyKey(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-function dhakaTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString("en-GB", { timeZone: "Asia/Dhaka", hour: "2-digit", minute: "2-digit" });
+function dhakaTime(iso: string, locale: "bn" | "en"): string {
+  return new Date(iso).toLocaleTimeString(intlLocale(locale), { timeZone: "Asia/Dhaka", hour: "2-digit", minute: "2-digit" });
 }
 
 export default function PosRegisterClient({
@@ -101,6 +104,8 @@ export default function PosRegisterClient({
   initialShift: PosShift | null;
   initialSales: PosSale[];
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, POS_STRINGS);
   const [shift, setShift] = useState<PosShift | null>(initialShift);
   const [sales, setSales] = useState<PosSale[]>(initialSales);
   // Offline queue mirror: localStorage (src/pos/offline-queue.ts) is
@@ -220,14 +225,14 @@ export default function PosRegisterClient({
   function addItem(item: PosCatalogEntry) {
     setError(null);
     if (item.stock <= 0) {
-      flashError(`"${item.productName}" — স্টক নেই, কার্টে যোগ করা যাবে না।`);
+      flashError(interpolate(s.errNoStock, { name: item.productName }));
       return;
     }
     setLines((prev) => {
       const existing = prev.find((l) => l.variantId === item.variantId);
       if (existing) {
         if (existing.quantity >= item.stock) {
-          flashError(`"${item.productName}" — স্টকের বেশি যোগ করা যাবে না (স্টক ${item.stock})।`);
+          flashError(interpolate(s.errOverStock, { name: item.productName, stock: item.stock }));
           return prev;
         }
         return prev.map((l) => (l.variantId === item.variantId ? { ...l, quantity: l.quantity + 1 } : l));
@@ -244,7 +249,7 @@ export default function PosRegisterClient({
     if (!code) return;
     const item = catalog.find((c) => c.sku === code);
     if (!item) {
-      flashError(`SKU "${code}" ক্যাটালগে পাওয়া যায়নি — হাতে এন্ট্রি দিন।`);
+      flashError(interpolate(s.errSkuNotFound, { code }));
       return;
     }
     addItem(item);
@@ -262,15 +267,15 @@ export default function PosRegisterClient({
 
   async function completeSale() {
     if (!shift) {
-      flashError("আগে শিফট খুলুন — খোলা শিফট ছাড়া বিক্রি হবে না।");
+      flashError(s.errOpenShiftFirst);
       return;
     }
     if (lines.length === 0) {
-      flashError("কার্ট খালি — আগে পণ্য যোগ করুন।");
+      flashError(s.errCartEmpty);
       return;
     }
     if (takaInputToPoisha(discountTaka) === null) {
-      flashError("ছাড়ের পরিমাণ ঠিকমতো লিখুন (যেমন 50 বা 50.50)।");
+      flashError(s.errDiscountInvalid);
       return;
     }
     const input: CreatePosSaleInput = {
@@ -308,15 +313,15 @@ export default function PosRegisterClient({
     const stillQueued = loadQueuedPosSales().some((q) => q.input.idempotencyKey === input.idempotencyKey);
     setMessage(
       stillQueued
-        ? `বিক্রি অফলাইনে জমা হয়েছে — মোট ${formatPoisha(result.sale.totalPoisha)}। নেটওয়ার্ক ফিরলেই সিঙ্ক হবে।`
-        : `বিক্রি সম্পন্ন ও সিঙ্ক হয়েছে — মোট ${formatPoisha(result.sale.totalPoisha)}।`,
+        ? interpolate(s.msgSaleOffline, { total: formatPoisha(result.sale.totalPoisha) })
+        : interpolate(s.msgSaleSynced, { total: formatPoisha(result.sale.totalPoisha) }),
     );
   }
 
   async function openShift() {
     const floatPoisha = takaInputToPoisha(floatTaka);
     if (floatPoisha === null) {
-      flashError("শুরুর ফ্লোট ঠিকমতো লিখুন।");
+      flashError(s.errFloatInvalid);
       return;
     }
     try {
@@ -330,18 +335,16 @@ export default function PosRegisterClient({
         error?: { message?: string };
       };
       if (!res.ok || !body.data?.shift) {
-        flashError(body.error?.message ?? "শিফট খোলা যায়নি — আবার চেষ্টা করুন।");
+        flashError(body.error?.message ?? s.errShiftOpenFailed);
         return;
       }
       setShift(body.data.shift);
       setSales([]);
       setLastClosedShift(null);
       setError(null);
-      setMessage(`শিফট খোলা হয়েছে — ফ্লোট ${formatPoisha(floatPoisha)}।`);
+      setMessage(interpolate(s.msgShiftOpened, { float: formatPoisha(floatPoisha) }));
     } catch {
-      flashError(
-        "সার্ভারে পৌঁছানো যাচ্ছে না — শিফট খুলতে নেটওয়ার্ক লাগবে (বিক্রি অফলাইনে জমা হয়, কিন্তু শিফট সার্ভারেই খোলে)।",
-      );
+      flashError(s.errServerUnreachableShiftOpen);
     }
   }
 
@@ -349,7 +352,7 @@ export default function PosRegisterClient({
     if (!shift) return;
     const counted = takaInputToPoisha(countedTaka);
     if (counted === null) {
-      flashError("গণনা করা নগদ ঠিকমতো লিখুন।");
+      flashError(s.errCountedInvalid);
       return;
     }
     // The server counts expected cash from ITS records; a sale still
@@ -359,9 +362,7 @@ export default function PosRegisterClient({
     await flushQueue();
     const stillPending = loadQueuedPosSales().filter((q) => q.input.shiftId === shift.id);
     if (stillPending.length > 0) {
-      flashError(
-        `এই শিফটের ${stillPending.length}টি বিক্রি এখনো সিঙ্ক হয়নি — আগে সিঙ্ক করুন (নেটওয়ার্ক দেখুন), তারপর শিফট বন্ধ করুন।`,
-      );
+      flashError(interpolate(s.errPendingSync, { count: stillPending.length }));
       return;
     }
     try {
@@ -380,7 +381,7 @@ export default function PosRegisterClient({
         error?: { message?: string };
       };
       if (!res.ok || !body.data?.shift) {
-        flashError(body.error?.message ?? "শিফট বন্ধ করা যায়নি — আবার চেষ্টা করুন।");
+        flashError(body.error?.message ?? s.errShiftCloseFailed);
         return;
       }
       setLastClosedShift(body.data.shift);
@@ -388,9 +389,9 @@ export default function PosRegisterClient({
       setCountedTaka("");
       setCloseNote("");
       setError(null);
-      setMessage("শিফট বন্ধ হয়েছে — হিসাব নিচে দেখুন। পার্থক্য থাকলে তা যেমন ছিল তেমনই রিপোর্ট করা হয়েছে, মিলিয়ে দেওয়া হয়নি।");
+      setMessage(s.msgShiftClosed);
     } catch {
-      flashError("সার্ভারে পৌঁছানো যাচ্ছে না — শিফট বন্ধ করতে নেটওয়ার্ক লাগবে।");
+      flashError(s.errServerUnreachableShiftClose);
     }
   }
 
@@ -407,17 +408,20 @@ export default function PosRegisterClient({
   const expectedCash = shift ? expectedCashPoisha(shift, displaySales) : 0;
   const cashSalesPoisha = shift ? expectedCash - shift.openingFloatPoisha : 0;
 
-  const saleRows = displaySales.map((sale) => ({
-    time: dhakaTime(sale.createdAt),
-    items: String(sale.lines.reduce((sum, l) => sum + l.quantity, 0)),
-    method: PAYMENT_METHODS.find((m) => m.id === sale.paymentMethod)?.labelBn ?? sale.paymentMethod,
-    total: <Money poisha={sale.totalPoisha} />,
-    status: (
-      <Badge tone={sale.status === "QUEUED_OFFLINE" ? "warning" : sale.status === "VOIDED" ? "danger" : "success"}>
-        {sale.status === "QUEUED_OFFLINE" ? "সিঙ্ক বাকি" : sale.status === "VOIDED" ? "বাতিল" : "সিঙ্ক হয়েছে"}
-      </Badge>
-    ),
-  }));
+  const saleRows = displaySales.map((sale) => {
+    const method = PAYMENT_METHODS.find((m) => m.id === sale.paymentMethod);
+    return {
+      time: dhakaTime(sale.createdAt, locale),
+      items: String(sale.lines.reduce((sum, l) => sum + l.quantity, 0)),
+      method: method ? s[method.labelKey] : sale.paymentMethod,
+      total: <Money poisha={sale.totalPoisha} />,
+      status: (
+        <Badge tone={sale.status === "QUEUED_OFFLINE" ? "warning" : sale.status === "VOIDED" ? "danger" : "success"}>
+          {sale.status === "QUEUED_OFFLINE" ? s.saleStatusQueued : sale.status === "VOIDED" ? s.saleStatusVoided : s.saleStatusSynced}
+        </Badge>
+      ),
+    };
+  });
 
   return (
     <div>
@@ -431,15 +435,15 @@ export default function PosRegisterClient({
       <div className="grid gap-4 lg:grid-cols-3">
         {/* ---- Product picker + cart ---- */}
         <Card className="p-4 lg:col-span-2">
-          <h2 className="text-lg font-semibold">{register.name} — পণ্য খুঁজুন / স্ক্যান করুন</h2>
+          <h2 className="text-lg font-semibold">{interpolate(s.productsHeading, { name: register.name })}</h2>
           <div className="mt-3 flex flex-wrap gap-2">
             <div className="min-w-52 flex-1">
-              <Input label="বারকোড / SKU স্ক্যান" placeholder="SKU লিখে Enter চাপুন" value={scanCode}
+              <Input label={s.scanLabel} placeholder={s.scanPlaceholder} value={scanCode}
                 onChange={(e) => setScanCode(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") handleScan(); }} />
             </div>
             <div className="min-w-52 flex-1">
-              <Input label="নাম বা SKU দিয়ে খুঁজুন" placeholder="যেমন: শাড়ি / JAMDANI" value={query}
+              <Input label={s.searchLabel} placeholder={s.searchPlaceholder} value={query}
                 onChange={(e) => setQuery(e.target.value)} />
             </div>
           </div>
@@ -453,18 +457,18 @@ export default function PosRegisterClient({
                 <span className="mt-1 block font-mono text-xs text-text-muted">{item.sku}</span>
                 <span className="mt-1 flex items-center justify-between">
                   <Money poisha={item.pricePoisha} />
-                  <span className="text-xs text-text-muted">{item.stock > 0 ? `স্টক ${item.stock}` : "স্টক নেই"}</span>
+                  <span className="text-xs text-text-muted">{item.stock > 0 ? interpolate(s.stockCount, { count: item.stock }) : s.outOfStock}</span>
                 </span>
               </button>
             ))}
           </div>
           {filteredCatalog.length === 0 ? (
-            <p className="mt-3 text-sm text-text-muted">কোনো পণ্য মিলছে না — অন্য নাম বা SKU দিয়ে চেষ্টা করুন।</p>
+            <p className="mt-3 text-sm text-text-muted">{s.noProductsMatch}</p>
           ) : null}
 
-          <h3 className="mt-6 text-base font-semibold">বর্তমান বিক্রি</h3>
+          <h3 className="mt-6 text-base font-semibold">{s.currentSale}</h3>
           {lines.length === 0 ? (
-            <EmptyState title="কার্ট খালি" description="উপরের তালিকা থেকে পণ্যে চাপ দিলে বা SKU স্ক্যান করলে এখানে যোগ হবে।" />
+            <EmptyState title={s.cartEmptyTitle} description={s.cartEmptyDesc} />
           ) : (
             <div className="mt-2 space-y-2">
               {lines.map((line) => (
@@ -479,21 +483,21 @@ export default function PosRegisterClient({
                     <Button size="sm" variant="outline" onClick={() => setQuantity(line.variantId, line.quantity + 1)}>+</Button>
                   </span>
                   <Money poisha={line.unitPricePoisha * line.quantity} />
-                  <Button size="sm" variant="ghost" onClick={() => setQuantity(line.variantId, 0)}>সরান</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setQuantity(line.variantId, 0)}>{s.remove}</Button>
                 </div>
               ))}
             </div>
           )}
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <Input label="ছাড় (টাকা)" placeholder="0" value={discountTaka} onChange={(e) => setDiscountTaka(e.target.value)} />
+            <Input label={s.discountLabel} placeholder="0" value={discountTaka} onChange={(e) => setDiscountTaka(e.target.value)} />
             <div>
-              <span className="mb-1 block text-xs font-medium text-text-muted">পেমেন্ট মাধ্যম</span>
+              <span className="mb-1 block text-xs font-medium text-text-muted">{s.paymentMethodLabel}</span>
               <div className="flex flex-wrap gap-1">
                 {PAYMENT_METHODS.map((method) => (
                   <Button key={method.id} size="sm" variant={paymentMethod === method.id ? "primary" : "outline"}
                     onClick={() => setPaymentMethod(method.id)}>
-                    {method.labelBn}
+                    {s[method.labelKey]}
                   </Button>
                 ))}
               </div>
@@ -502,66 +506,66 @@ export default function PosRegisterClient({
 
           {paymentMethod === "CASH" ? (
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <Input label="ক্রেতার দেওয়া নগদ (টাকা)" placeholder="যেমন 1000" value={tenderedTaka}
+              <Input label={s.tenderedLabel} placeholder={s.tenderedPlaceholder} value={tenderedTaka}
                 onChange={(e) => setTenderedTaka(e.target.value)} />
               <p className="self-end text-sm">
-                ফেরত: {change?.ok ? <Money poisha={change.changePoisha} /> : change ? <span className="text-rose-600">{change.error}</span> : "—"}
+                {s.changeLabel} {change?.ok ? <Money poisha={change.changePoisha} /> : change ? <span className="text-rose-600">{change.error}</span> : "—"}
               </p>
             </div>
           ) : null}
 
           <div className="mt-4 space-y-1 border-t border-border pt-3 text-sm">
-            <p className="flex justify-between"><span>উপমোট</span><Money poisha={subtotalPoisha} /></p>
-            <p className="flex justify-between"><span>ছাড়</span><span>− <Money poisha={discountPoisha} /></span></p>
-            <p className="flex justify-between text-base font-bold"><span>মোট</span><Money poisha={totalPoisha} /></p>
+            <p className="flex justify-between"><span>{s.subtotal}</span><Money poisha={subtotalPoisha} /></p>
+            <p className="flex justify-between"><span>{s.discountLine}</span><span>− <Money poisha={discountPoisha} /></span></p>
+            <p className="flex justify-between text-base font-bold"><span>{s.total}</span><Money poisha={totalPoisha} /></p>
             {totals && !totals.ok ? <p className="text-rose-600">{totals.error}</p> : null}
           </div>
           <Button variant="gradient" className="mt-3 w-full" onClick={completeSale} disabled={!shift || lines.length === 0}>
-            বিক্রি সম্পন্ন করুন {!shift ? "(আগে শিফট খুলুন)" : ""}
+            {s.completeSale} {!shift ? s.completeSaleNeedShift : ""}
           </Button>
           {lastChangePoisha !== null ? (
-            <p className="mt-2 text-sm">শেষ বিক্রিতে ফেরত: <Money poisha={lastChangePoisha} /></p>
+            <p className="mt-2 text-sm">{s.lastChange} <Money poisha={lastChangePoisha} /></p>
           ) : null}
         </Card>
 
         {/* ---- Shift panel + receipt ---- */}
         <div className="space-y-4">
           <Card className="p-4">
-            <h2 className="text-lg font-semibold">শিফট</h2>
+            <h2 className="text-lg font-semibold">{s.shiftTitle}</h2>
             {shift ? (
               <div className="mt-2 space-y-1 text-sm">
-                <p className="flex justify-between"><span>অবস্থা</span><Badge tone="success">খোলা</Badge></p>
-                <p className="flex justify-between"><span>খোলা হয়েছে</span><span>{dhakaTime(shift.openedAt)} (ঢাকা)</span></p>
-                <p className="flex justify-between"><span>শুরুর ফ্লোট</span><Money poisha={shift.openingFloatPoisha} /></p>
-                <p className="flex justify-between"><span>নগদ বিক্রি</span><Money poisha={cashSalesPoisha} /></p>
-                <p className="flex justify-between font-semibold"><span>প্রত্যাশিত নগদ</span><Money poisha={expectedCash} /></p>
+                <p className="flex justify-between"><span>{s.statusLabel}</span><Badge tone="success">{s.shiftOpenBadge}</Badge></p>
+                <p className="flex justify-between"><span>{s.openedAtLabel}</span><span>{dhakaTime(shift.openedAt, locale)} {s.dhakaSuffix}</span></p>
+                <p className="flex justify-between"><span>{s.openingFloat}</span><Money poisha={shift.openingFloatPoisha} /></p>
+                <p className="flex justify-between"><span>{s.cashSales}</span><Money poisha={cashSalesPoisha} /></p>
+                <p className="flex justify-between font-semibold"><span>{s.expectedCash}</span><Money poisha={expectedCash} /></p>
                 <div className="pt-2">
-                  <Input label="গণনা করা নগদ (টাকা)" placeholder="ড্রয়ার গুনে লিখুন" value={countedTaka}
+                  <Input label={s.countedLabel} placeholder={s.countedPlaceholder} value={countedTaka}
                     onChange={(e) => setCountedTaka(e.target.value)} />
                 </div>
                 <div className="pt-2">
-                  <Input label="নোট (পার্থক্য থাকলে আবশ্যক)" placeholder="কম/বেশি হলে কারণ লিখুন" value={closeNote}
+                  <Input label={s.closeNoteLabel} placeholder={s.closeNotePlaceholder} value={closeNote}
                     onChange={(e) => setCloseNote(e.target.value)} />
                 </div>
-                <Button variant="secondary" className="mt-2 w-full" onClick={closeCurrentShift}>শিফট বন্ধ করুন</Button>
-                <p className="text-xs text-text-muted">পার্থক্য থাকলে তা কখনো মিলিয়ে দেওয়া হয় না — গণনা করা অঙ্কই সংরক্ষিত হয়, পার্থক্য রিপোর্টে দেখা যায়।</p>
+                <Button variant="secondary" className="mt-2 w-full" onClick={closeCurrentShift}>{s.closeShift}</Button>
+                <p className="text-xs text-text-muted">{s.varianceNote}</p>
               </div>
             ) : (
               <div className="mt-2 space-y-2">
-                <p className="text-sm text-text-muted">কোনো শিফট খোলা নেই।</p>
-                <Input label="শুরুর ফ্লোট (টাকা)" value={floatTaka} onChange={(e) => setFloatTaka(e.target.value)} />
-                <Button className="w-full" onClick={openShift}>শিফট খুলুন</Button>
+                <p className="text-sm text-text-muted">{s.noShiftOpen}</p>
+                <Input label={s.openingFloatLabel} value={floatTaka} onChange={(e) => setFloatTaka(e.target.value)} />
+                <Button className="w-full" onClick={openShift}>{s.openShift}</Button>
               </div>
             )}
             {lastClosedShift ? (
               <div className="mt-3 rounded-md bg-surface-2 p-3 text-sm">
-                <p className="font-semibold">সর্বশেষ বন্ধ শিফটের হিসাব</p>
-                <p className="flex justify-between"><span>প্রত্যাশিত</span><Money poisha={lastClosedShift.expectedCashPoisha ?? 0} /></p>
-                <p className="flex justify-between"><span>গণনা করা</span><Money poisha={lastClosedShift.countedCashPoisha ?? 0} /></p>
+                <p className="font-semibold">{s.lastClosedTitle}</p>
+                <p className="flex justify-between"><span>{s.expectedLabel}</span><Money poisha={lastClosedShift.expectedCashPoisha ?? 0} /></p>
+                <p className="flex justify-between"><span>{s.countedShort}</span><Money poisha={lastClosedShift.countedCashPoisha ?? 0} /></p>
                 <p className="flex justify-between">
-                  <span>পার্থক্য</span>
+                  <span>{s.varianceLabel}</span>
                   {(lastClosedShift.variancePoisha ?? 0) !== 0 ? (
-                    <span className="font-semibold text-rose-600"><Money poisha={lastClosedShift.variancePoisha ?? 0} /> ⚠ ফ্ল্যাগ করা</span>
+                    <span className="font-semibold text-rose-600"><Money poisha={lastClosedShift.variancePoisha ?? 0} /> {s.flaggedSuffix}</span>
                   ) : (
                     <Money poisha={0} />
                   )}
@@ -571,7 +575,7 @@ export default function PosRegisterClient({
           </Card>
 
           <Card className="p-4">
-            <h2 className="text-lg font-semibold">রসিদ প্রিভিউ</h2>
+            <h2 className="text-lg font-semibold">{s.receiptTitle}</h2>
             {receipt ? (
               <div className="mx-auto mt-3 max-w-60 bg-white p-3 font-mono text-xs text-black shadow-sm">
                 <p className="text-center font-bold">{receipt.orderNo}</p>
@@ -581,56 +585,52 @@ export default function PosRegisterClient({
                   <p key={i}>{line}</p>
                 ))}
                 <div className="my-2 border-t border-dashed" />
-                <p className="flex justify-between font-bold"><span>মোট</span><span>{receipt.totalText}</span></p>
+                <p className="flex justify-between font-bold"><span>{s.receiptTotal}</span><span>{receipt.totalText}</span></p>
                 <p className="mt-2 text-center">{receipt.barcodeValue}</p>
               </div>
             ) : (
-              <p className="mt-2 text-sm text-text-muted">বিক্রি সম্পন্ন হলে রসিদ এখানে দেখা যাবে (shared PrintData — invoice / THERMAL_80)।</p>
+              <p className="mt-2 text-sm text-text-muted">{s.receiptNote}</p>
             )}
           </Card>
 
           <Card className="p-4">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-base font-semibold">সিঙ্ক অবস্থা</h2>
-              <Badge tone={online ? "success" : "danger"}>{online ? "অনলাইন" : "অফলাইন"}</Badge>
+              <h2 className="text-base font-semibold">{s.syncTitle}</h2>
+              <Badge tone={online ? "success" : "danger"}>{online ? s.online : s.offline}</Badge>
             </div>
             {pendingSales.length > 0 ? (
               <p className="mt-2 text-sm text-amber-700">
-                সিঙ্ক বাকি: {pendingSales.length}টি বিক্রি এই ডিভাইসের কিউতে আছে — নেটওয়ার্ক ফিরলেই পাঠিয়ে দেওয়া হবে।
+                {interpolate(s.syncPending, { count: pendingSales.length })}
               </p>
             ) : (
-              <p className="mt-2 text-sm text-emerald-700">সব বিক্রি সিঙ্ক হয়েছে।</p>
+              <p className="mt-2 text-sm text-emerald-700">{s.allSynced}</p>
             )}
-            {syncError ? <p className="mt-1 text-sm text-rose-600">শেষ সিঙ্কে সমস্যা: {syncError}</p> : null}
+            {syncError ? <p className="mt-1 text-sm text-rose-600">{interpolate(s.syncErrorPrefix, { error: syncError })}</p> : null}
             <Button
               variant="secondary"
               className="mt-3 w-full"
               onClick={() => void flushQueue()}
               disabled={syncing || pendingSales.length === 0}
             >
-              {syncing ? "সিঙ্ক হচ্ছে…" : "এখনই সিঙ্ক করুন"}
+              {syncing ? s.syncing : s.syncNow}
             </Button>
-            <p className="mt-2 text-xs text-text-muted">
-              অফলাইনে করা বিক্রি এই ব্রাউজারেই জমা থাকে (localStorage), প্রতিটির আলাদা idempotency key থাকে — সিঙ্ক
-              আবার চালালেও একই বিক্রি দুবার রেকর্ড হয় না। সিঙ্ক মানে বিক্রিটি POS ডাটাবেসে রেকর্ড হওয়া; এটি অনলাইন
-              Order তৈরি করে না।
-            </p>
+            <p className="mt-2 text-xs text-text-muted">{s.syncNote}</p>
           </Card>
         </div>
       </div>
 
-      <h2 className="mb-3 mt-6 text-lg font-semibold">এই শিফটের বিক্রি ({displaySales.length})</h2>
+      <h2 className="mb-3 mt-6 text-lg font-semibold">{interpolate(s.shiftSalesTitle, { count: displaySales.length })}</h2>
       {displaySales.length === 0 ? (
-        <EmptyState title="এখনো কোনো বিক্রি হয়নি" description="বিক্রি সম্পন্ন হলে এই তালিকায় দেখা যাবে।" />
+        <EmptyState title={s.noSalesTitle} description={s.noSalesDesc} />
       ) : (
         <DataTable
-          caption="এই শিফটের POS বিক্রি — 'সিঙ্ক হয়েছে' মানে সার্ভার ডাটাবেসে রেকর্ড; 'সিঙ্ক বাকি' মানে এই ডিভাইসের কিউতে"
+          caption={s.salesCaption}
           columns={[
-            { key: "time", header: "সময়" },
-            { key: "items", header: "আইটেম" },
-            { key: "method", header: "মাধ্যম" },
-            { key: "total", header: "মোট" },
-            { key: "status", header: "অবস্থা" },
+            { key: "time", header: s.colTime },
+            { key: "items", header: s.colItems },
+            { key: "method", header: s.colMethod },
+            { key: "total", header: s.colTotal },
+            { key: "status", header: s.colStatus },
           ]}
           rows={saleRows}
         />

@@ -1,5 +1,8 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { isRestaurantEnabled } from "@/restaurant/flags";
+import { pick } from "@/i18n/locale";
+import { getRequestLocale } from "@/i18n/server";
+import { KITCHEN_STRINGS } from "./strings";
 import { KitchenBoard } from "./kitchen-board";
 import { KitchenConfigCard } from "./kitchen-config-card";
 
@@ -13,14 +16,14 @@ import { KitchenConfigCard } from "./kitchen-config-card";
 
 export const dynamic = "force-dynamic";
 
-export default function KitchenPage() {
+export default async function KitchenPage() {
+  const s = pick(await getRequestLocale(), KITCHEN_STRINGS);
   if (!isRestaurantEnabled()) {
     return (
       <main style={{ padding: 24, fontFamily: "system-ui" }}>
-        <h1>কিচেন (KDS)</h1>
+        <h1>{s.title}</h1>
         <p role="status">
-          🔒 This module is locked for this install. Restaurant + kitchen display is a paid add-on —
-          enable <code>module.restaurant</code> in Admin &gt; Settings &gt; Feature Flags to unlock it.
+          {s.lockedPrefix} <code>module.restaurant</code> {s.lockedSuffix}
         </p>
       </main>
     );
@@ -28,10 +31,7 @@ export default function KitchenPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="কিচেন (KDS)"
-        description="রেস্টুরেন্ট অর্ডারের রান্নাঘরের কিউ — অপেক্ষমাণ → তৈরি হচ্ছে → প্রস্তুত → পরিবেশন। বোর্ডটি প্রতি ১৫ সেকেন্ডে নিজে হালনাগাদ হয় (polling — live realtime নয়)। অর্ডার বাতিল হলে তার টিকিটও নিজে থেকে বাতিল হয়ে যায়।"
-      />
+      <PageHeader title={s.title} description={s.description} />
       <KitchenBoard />
       <KitchenConfigCard />
     </div>

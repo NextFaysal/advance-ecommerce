@@ -6,6 +6,9 @@ import { Card } from "@/components/ui/card";
 import { cmsStore, type CmsPage } from "@/reports/cms";
 import { readSiteContent } from "@/cms/site-content";
 import SiteContentEditor from "./site-content-editor";
+import { getRequestLocale } from "@/i18n/server";
+import { interpolate, pick } from "@/i18n/locale";
+import { CONTENT_STRINGS, type ContentStrings } from "./strings";
 
 // Content / CMS admin — Step 29.
 // The page/post list is REAL: the DB-backed CMS store (Prisma
@@ -20,14 +23,16 @@ import SiteContentEditor from "./site-content-editor";
 // back to built-in defaults, labelled as defaults in the editor.
 export const dynamic = "force-dynamic";
 
-function seoSummary(p: CmsPage): string {
+function seoSummary(p: CmsPage, s: ContentStrings): string {
   const hasTitle = p.seo.title.trim().length > 0;
   const descLen = p.seo.description.trim().length;
-  if (!hasTitle && descLen === 0) return "SEO শিরোনাম/বিবরণ নেই";
-  return `${hasTitle ? "শিরোনাম ✓" : "শিরোনাম ✗"} · বিবরণ ${descLen} অক্ষর`;
+  if (!hasTitle && descLen === 0) return s.seoNone;
+  return interpolate(s.seoSummary, { title: hasTitle ? s.seoTitleYes : s.seoTitleNo, len: descLen });
 }
 
 export default async function AdminContentPage() {
+  const locale = await getRequestLocale();
+  const s = pick(locale, CONTENT_STRINGS);
   const all = await cmsStore.list();
   const redirects = await cmsStore.listRedirects();
   const siteContent = await readSiteContent();
@@ -44,45 +49,41 @@ export default async function AdminContentPage() {
       </span>
     ),
     slug: <span className="font-mono">/{p.slug}</span>,
-    kind: <Badge tone={p.kind === "page" ? "brand" : "info"}>{p.kind === "page" ? "পেজ" : "পোস্ট"}</Badge>,
+    kind: <Badge tone={p.kind === "page" ? "brand" : "info"}>{p.kind === "page" ? s.kindPage : s.kindPost}</Badge>,
     status: (
       <Badge tone={p.status === "published" ? "success" : p.status === "scheduled" ? "info" : "warning"}>
-        {p.status === "published" ? "প্রকাশিত" : p.status === "scheduled" ? "নির্ধারিত" : "খসড়া"}
+        {p.status === "published" ? s.statusPublished : p.status === "scheduled" ? s.statusScheduled : s.statusDraft}
       </Badge>
     ),
-    seo: seoSummary(p),
+    seo: seoSummary(p, s),
     updated: p.updatedAt.slice(0, 10),
   }));
 
   return (
     <main>
-      <PageHeader
-        title="কন্টেন্ট (CMS)"
-        description="ডাটাবেসের পেজ/পোস্ট তালিকা। তৈরি/সম্পাদনা Pages API দিয়ে হয়; স্লাগ বদলালে পুরনো URL-এর জন্য SEO রিডাইরেক্ট রেকর্ড হয়। (Content / CMS)"
-        breadcrumb="Admin / Catalog"
-      />
+      <PageHeader title={s.title} description={s.description} breadcrumb={s.breadcrumb} />
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="পেজ" value={String(pages.length)} delta="ডাটাবেস" icon="📄" />
-        <StatCard label="পোস্ট" value={String(posts.length)} delta="ডাটাবেস" icon="✍️" />
-        <StatCard label="প্রকাশিত" value={String(published)} delta="লাইভ" icon="✅" />
-        <StatCard label="খসড়া" value={String(drafts)} delta="অপ্রকাশিত" deltaTone="down" icon="📝" />
+        <StatCard label={s.statPages} value={String(pages.length)} delta={s.deltaDb} icon="📄" />
+        <StatCard label={s.statPosts} value={String(posts.length)} delta={s.deltaDb} icon="✍️" />
+        <StatCard label={s.statPublished} value={String(published)} delta={s.deltaLive} icon="✅" />
+        <StatCard label={s.statDrafts} value={String(drafts)} delta={s.deltaUnpublished} deltaTone="down" icon="📝" />
       </div>
 
-      <h2 className="mb-3 text-lg font-semibold">পেজ ও পোস্ট</h2>
+      <h2 className="mb-3 text-lg font-semibold">{s.listTitle}</h2>
       {all.length === 0 ? (
         <Card>
-          <p className="text-sm text-text-muted">এখনো কোনো পেজ বা পোস্ট তৈরি হয়নি — Pages API দিয়ে প্রথমটি তৈরি করুন।</p>
+          <p className="text-sm text-text-muted">{s.empty}</p>
         </Card>
       ) : (
         <DataTable
-          caption="CMS তালিকা — প্রতিটি আইটেমে বাংলা + ইংরেজি শিরোনাম, kebab-case স্লাগ, অবস্থা ও SEO সারাংশ"
+          caption={s.caption}
           columns={[
-            { key: "title", header: "শিরোনাম" },
-            { key: "slug", header: "স্লাগ" },
-            { key: "kind", header: "ধরন" },
-            { key: "status", header: "অবস্থা" },
-            { key: "seo", header: "SEO সারাংশ" },
-            { key: "updated", header: "হালনাগাদ" },
+            { key: "title", header: s.colTitle },
+            { key: "slug", header: s.colSlug },
+            { key: "kind", header: s.colKind },
+            { key: "status", header: s.colStatus },
+            { key: "seo", header: s.colSeo },
+            { key: "updated", header: s.colUpdated },
           ]}
           rows={rows}
         />
@@ -92,13 +93,13 @@ export default async function AdminContentPage() {
         <Card>
           <p className="text-sm text-text-muted">
             {redirects.length === 0
-              ? "রিডাইরেক্ট: বর্তমানে কোনো রিডাইরেক্ট নেই — স্লাগ বদলালে API স্বয়ংক্রিয়ভাবে পুরনো → নতুন স্লাগের রিডাইরেক্ট রেকর্ড করে।"
-              : `রিডাইরেক্ট (${redirects.length}): ${redirects.map((r) => `/${r.from} → /${r.to}`).join(" · ")}`}
+              ? s.redirectsNone
+              : interpolate(s.redirectsSome, { count: redirects.length, list: redirects.map((r) => `/${r.from} → /${r.to}`).join(" · ") })}
           </p>
         </Card>
       </div>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">মেনু ও হোমপেজ হিরো</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.menuHeroTitle}</h2>
       <SiteContentEditor initial={siteContent.content} configured={siteContent.configured} />
     </main>
   );

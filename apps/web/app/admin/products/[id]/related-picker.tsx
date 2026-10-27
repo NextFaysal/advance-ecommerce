@@ -13,6 +13,9 @@
  * status badge next to each pick says exactly that.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { PRODUCTS_STRINGS } from "../strings";
 
 export interface RelatedPick {
   id: string;
@@ -32,11 +35,9 @@ interface SearchHit {
 
 const MAX_PICKS = 20;
 
-const STATUS_LABEL: Record<string, string> = {
-  ACTIVE: "প্রকাশিত",
-  DRAFT: "খসড়া",
-  ARCHIVED: "আর্কাইভ",
-};
+type RelStrings = (typeof PRODUCTS_STRINGS)["bn"];
+const statusLabel = (s: RelStrings, status: string): string =>
+  status === "ACTIVE" ? s.relStatusPublished : status === "DRAFT" ? s.relStatusDraft : status === "ARCHIVED" ? s.relStatusArchived : status;
 
 export function RelatedPicker({
   productId,
@@ -45,6 +46,8 @@ export function RelatedPicker({
   productId: string;
   initialPicks: RelatedPick[];
 }) {
+  const { locale } = useLocale();
+  const s = pick(locale, PRODUCTS_STRINGS);
   const [picks, setPicks] = useState<RelatedPick[]>(initialPicks);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -123,12 +126,12 @@ export function RelatedPicker({
       });
       const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
       if (!res.ok) {
-        setNotice({ tone: "err", text: json.error?.message ?? "সেভ করা যায়নি — আবার চেষ্টা করুন।" });
+        setNotice({ tone: "err", text: json.error?.message ?? s.relSaveFail });
         return;
       }
-      setNotice({ tone: "ok", text: "সম্পর্কিত পণ্যের তালিকা সেভ হয়েছে।" });
+      setNotice({ tone: "ok", text: s.relSaved });
     } catch {
-      setNotice({ tone: "err", text: "সেভ করা যায়নি — নেটওয়ার্ক সমস্যা হতে পারে।" });
+      setNotice({ tone: "err", text: s.relSaveNetFail });
     } finally {
       setSaving(false);
     }
@@ -146,10 +149,9 @@ export function RelatedPicker({
           </svg>
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="font-display text-h3">সম্পর্কিত পণ্য</h2>
+          <h2 className="font-display text-h3">{s.relTitle}</h2>
           <p className="mt-1 text-small leading-relaxed text-text-muted">
-            পণ্যের পেজে "সম্পর্কিত পণ্য" অংশে এগুলো আগে দেখাবে (শুধু প্রকাশিত ও সময় হলে লাইভগুলো)। বাকি জায়গা
-            একই ক্যাটাগরির সেরা রেটিংয়ের পণ্য দিয়ে নিজে নিজে পূরণ হবে। সর্বোচ্চ {MAX_PICKS}টি।
+            {interpolate(s.relDesc, { max: MAX_PICKS })}
           </p>
         </div>
         <span className="brand-gradient shrink-0 rounded-full px-3 py-1.5 text-xs font-bold tabular-nums text-white shadow-md">
@@ -160,7 +162,7 @@ export function RelatedPicker({
       {/* Search */}
       <div className="mt-5">
         <label htmlFor="related-search" className="text-small font-semibold text-text-main">
-          পণ্য খুঁজে যোগ করুন
+          {s.relSearchLabel}
         </label>
         <div className="relative mt-1.5">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-text-subtle">
@@ -172,11 +174,11 @@ export function RelatedPicker({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="নাম বা slug লিখুন (কমপক্ষে ২ অক্ষর)"
+            placeholder={s.relSearchPh}
             className="h-12 w-full rounded-md border border-border bg-card pl-10 pr-3 text-sm text-text-main shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-200"
           />
         </div>
-        {searching ? <p className="mt-2 text-small text-text-muted">খোঁজা হচ্ছে…</p> : null}
+        {searching ? <p className="mt-2 text-small text-text-muted">{s.relSearching}</p> : null}
         {hits.length > 0 ? (
           <ul className="anim-fade-in mt-2.5 divide-y divide-border/70 rounded-lg border border-border/70 bg-card px-3 shadow-sm">
             {hits.map((hit) => (
@@ -184,7 +186,7 @@ export function RelatedPicker({
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium text-text-main">{hit.titleBn}</span>
                   <span className="block truncate text-caption text-text-subtle">
-                    {hit.slug} · {STATUS_LABEL[hit.status] ?? hit.status}
+                    {hit.slug} · {statusLabel(s, hit.status)}
                   </span>
                 </span>
                 <button
@@ -193,7 +195,7 @@ export function RelatedPicker({
                   onClick={() => add(hit)}
                   className="inline-flex min-h-[44px] shrink-0 items-center rounded-md bg-brand-600 px-3.5 text-sm font-semibold text-white shadow-sm transition motion-fast hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {pickedIds.has(hit.id) ? "যোগ হয়েছে" : "যোগ করুন"}
+                  {pickedIds.has(hit.id) ? s.relAdded : s.relAdd}
                 </button>
               </li>
             ))}
@@ -202,10 +204,10 @@ export function RelatedPicker({
       </div>
 
       {/* Current picks */}
-      <h3 className="mt-6 text-small font-semibold text-text-main">নির্বাচিত ({picks.length})</h3>
+      <h3 className="mt-6 text-small font-semibold text-text-main">{interpolate(s.relSelected, { count: picks.length })}</h3>
       {picks.length === 0 ? (
         <p className="mt-2 rounded-lg border border-dashed border-border px-4 py-5 text-center text-small text-text-muted">
-          এখনো কিছু বাছাই করেননি — পণ্যের পেজে তখন একই ক্যাটাগরির সেরা পণ্যগুলো নিজে নিজে দেখাবে।
+          {s.relEmpty}
         </p>
       ) : (
         <ol className="mt-2.5 space-y-2">
@@ -224,20 +226,20 @@ export function RelatedPicker({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-text-main">
-                    {pick.missing ? "(মুছে ফেলা পণ্য)" : pick.titleBn}
+                    {pick.missing ? s.relDeleted : pick.titleBn}
                   </span>
                   <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-text-subtle">
                     <span className="truncate font-mono">{pick.slug}</span>
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${chipCls}`}>
-                      {pick.missing ? "পাওয়া যাচ্ছে না" : STATUS_LABEL[pick.status] ?? pick.status}
+                      {pick.missing ? s.relNotFound : statusLabel(s, pick.status)}
                     </span>
-                    {pick.status !== "ACTIVE" && !pick.missing ? <span>প্রকাশিত হলেই পেজে দেখাবে</span> : null}
+                    {pick.status !== "ACTIVE" && !pick.missing ? <span>{s.relLiveNote}</span> : null}
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-1">
                   <button
                     type="button"
-                    aria-label="উপরে নিন"
+                    aria-label={s.relMoveUp}
                     disabled={i === 0}
                     onClick={() => move(i, -1)}
                     className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-border bg-card text-text-muted shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
@@ -246,7 +248,7 @@ export function RelatedPicker({
                   </button>
                   <button
                     type="button"
-                    aria-label="নিচে নিন"
+                    aria-label={s.relMoveDown}
                     disabled={i === picks.length - 1}
                     onClick={() => move(i, 1)}
                     className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-border bg-card text-text-muted shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
@@ -258,7 +260,7 @@ export function RelatedPicker({
                     onClick={() => remove(pick.id)}
                     className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-semibold text-rose-600 shadow-sm transition motion-fast hover:border-rose-200 hover:bg-rose-50"
                   >
-                    সরান
+                    {s.relRemove}
                   </button>
                 </span>
               </li>
@@ -274,7 +276,7 @@ export function RelatedPicker({
           disabled={saving}
           className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
         >
-          {saving ? "সেভ হচ্ছে…" : "সম্পর্কিত পণ্য সেভ করুন"}
+          {saving ? s.saving : s.relSaveBtn}
         </button>
         {notice ? (
           <p

@@ -42,6 +42,10 @@ import { Button } from "@/components/ui/button";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { qtyNumber } from "@/lib/quantity";
 import { formatPoisha } from "@/components/ui/money";
+import { interpolate, pick, type Locale } from "../../../../src/i18n/locale";
+import { useLocale } from "../../../../src/i18n/LocaleProvider";
+import { ORDER_STRINGS } from "../strings";
+import { formatOrderDate } from "../list-helpers";
 
 interface BookingItem {
   orderItemId: string;
@@ -124,40 +128,38 @@ const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "info" | "n
  * these five or one of the off-path terminals below — the smoke
  * asserts this mapping against the status set in code. */
 const PIPELINE_STEPS = [
-  { status: "CREATED", labelBn: "তৈরি", icon: "package" },
-  { status: "PICKED_UP", labelBn: "পিকআপ", icon: "box" },
-  { status: "IN_TRANSIT", labelBn: "পথে", icon: "truck" },
-  { status: "OUT_FOR_DELIVERY", labelBn: "ডেলিভারিতে", icon: "arrow-right" },
-  { status: "DELIVERED", labelBn: "ডেলিভার্ড", icon: "check" },
-] as const satisfies readonly { status: string; labelBn: string; icon: IconName }[];
+  { status: "CREATED", label: { bn: "তৈরি", en: "Created" }, icon: "package" },
+  { status: "PICKED_UP", label: { bn: "পিকআপ", en: "Picked up" }, icon: "box" },
+  { status: "IN_TRANSIT", label: { bn: "পথে", en: "In transit" }, icon: "truck" },
+  { status: "OUT_FOR_DELIVERY", label: { bn: "ডেলিভারিতে", en: "Out for delivery" }, icon: "arrow-right" },
+  { status: "DELIVERED", label: { bn: "ডেলিভার্ড", en: "Delivered" }, icon: "check" },
+] as const satisfies readonly { status: string; label: Record<Locale, string>; icon: IconName }[];
 
-const OFF_PATH: Record<string, { labelBn: string; icon: IconName; cls: string }> = {
-  FAILED: { labelBn: "ডেলিভারি ব্যর্থ হয়েছে", icon: "alert", cls: "border-rose-200 bg-rose-50 text-rose-700" },
-  RETURNING: { labelBn: "পার্সেলটি ফেরত আসছে", icon: "rotate-ccw", cls: "border-amber-200 bg-amber-50 text-amber-800" },
-  RETURNED: { labelBn: "পার্সেলটি ফেরত এসেছে", icon: "rotate-ccw", cls: "border-border bg-slate-50 text-slate-600" },
+const OFF_PATH: Record<string, { label: Record<Locale, string>; icon: IconName; cls: string }> = {
+  FAILED: { label: { bn: "ডেলিভারি ব্যর্থ হয়েছে", en: "Delivery failed" }, icon: "alert", cls: "border-rose-200 bg-rose-50 text-rose-700" },
+  RETURNING: { label: { bn: "পার্সেলটি ফেরত আসছে", en: "The parcel is returning" }, icon: "rotate-ccw", cls: "border-amber-200 bg-amber-50 text-amber-800" },
+  RETURNED: { label: { bn: "পার্সেলটি ফেরত এসেছে", en: "The parcel has been returned" }, icon: "rotate-ccw", cls: "border-border bg-slate-50 text-slate-600" },
 };
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? iso
-    : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-}
-
 function ParcelStepper({ status }: { status: string }) {
-  const activeIdx = PIPELINE_STEPS.findIndex((s) => s.status === status);
+  const { locale } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
+  const activeIdx = PIPELINE_STEPS.findIndex((st) => st.status === status);
   if (activeIdx === -1) {
     const off = OFF_PATH[status];
     if (!off) return null;
     return (
       <p className={`mt-3 flex items-center gap-2 rounded-md border px-3 py-2 text-small font-medium ${off.cls}`}>
         <Icon name={off.icon} size={16} />
-        {off.labelBn}
+        {pick(locale, off.label)}
       </p>
     );
   }
   return (
-    <ol className="mt-3 flex items-start" aria-label={`পার্সেলের অবস্থা: ${PIPELINE_STEPS[activeIdx].labelBn}`}>
+    <ol
+      className="mt-3 flex items-start"
+      aria-label={interpolate(s.shParcelStatusAria, { label: pick(locale, PIPELINE_STEPS[activeIdx].label) })}
+    >
       {PIPELINE_STEPS.map((step, idx) => {
         const done = idx < activeIdx || status === "DELIVERED";
         const active = idx === activeIdx && status !== "DELIVERED";
@@ -180,7 +182,7 @@ function ParcelStepper({ status }: { status: string }) {
                 <Icon name={done ? "check" : step.icon} size={14} />
               </span>
               <span className={`text-caption leading-tight ${done || active ? "font-semibold text-text-main" : "text-text-muted"}`}>
-                {step.labelBn}
+                {pick(locale, step.label)}
               </span>
             </span>
           </li>
@@ -191,6 +193,8 @@ function ParcelStepper({ status }: { status: string }) {
 }
 
 export function ShipmentsPanel({ orderId }: { orderId: string }) {
+  const { locale } = useLocale();
+  const s = pick(locale, ORDER_STRINGS);
   const [data, setData] = useState<CoverageData | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -231,8 +235,8 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
   if (forbidden) {
     return (
       <Card className="p-5">
-        <h2 className="text-h3">শিপমেন্ট</h2>
-        <p className="mt-1 text-small text-text-muted">শিপমেন্ট দেখার অনুমতি নেই (shipments.view আবশ্যক)।</p>
+        <h2 className="text-h3">{s.tabShipments}</h2>
+        <p className="mt-1 text-small text-text-muted">{s.shForbiddenNote}</p>
       </Card>
     );
   }
@@ -265,7 +269,7 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
   async function fetchRecommendation() {
     const items = selectedItems();
     if (items.length === 0) {
-      setError("সুপারিশের জন্য আগে অন্তত একটি লাইন সিলেক্ট করুন।");
+      setError(s.shRecSelectFirst);
       return;
     }
     setRecBusy(true);
@@ -281,14 +285,14 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
         error?: { message?: string };
       };
       if (!res.ok || !json.data) {
-        setError(json.error?.message ?? `সুপারিশ পাওয়া যায়নি (HTTP ${res.status})`);
+        setError(json.error?.message ?? interpolate(s.shRecFail, { status: res.status }));
         return;
       }
       setRecommendation(json.data);
       setOverrideReason("");
       if (json.data.recommended) setProvider(json.data.recommended.provider);
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।");
+      setError(s.networkRetry);
     } finally {
       setRecBusy(false);
     }
@@ -300,11 +304,11 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
   async function createSplit() {
     const items = selectedItems();
     if (items.length === 0) {
-      setError("অন্তত একটি লাইন সিলেক্ট করুন।");
+      setError(s.shSelectFirst);
       return;
     }
     if (isOverride && !overrideReason.trim()) {
-      setError("সুপারিশের বাইরে কুরিয়ার বুক করতে কারণ লেখা আবশ্যক।");
+      setError(s.shOverrideReasonRequired);
       return;
     }
     setBusy(true);
@@ -332,15 +336,15 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
         error?: { message?: string };
       };
       if (!res.ok || !json.data) {
-        setError(json.error?.message ?? `বুকিং তৈরি হয়নি (HTTP ${res.status})`);
+        setError(json.error?.message ?? interpolate(s.shBookingFail, { status: res.status }));
         return;
       }
-      setMessage(`বিভক্ত বুকিং তৈরি হয়েছে — ট্র্যাকিং: ${json.data.trackingId ?? json.data.id}`);
+      setMessage(interpolate(s.shBookingCreated, { tracking: json.data.trackingId ?? json.data.id }));
       setSelected({});
       clearRecommendation();
       await load();
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।");
+      setError(s.networkRetry);
     } finally {
       setBusy(false);
     }
@@ -360,17 +364,13 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
         error?: { message?: string };
       };
       if (!res.ok) {
-        setError(json.error?.message ?? `ডেলিভার্ড চিহ্নিত হয়নি (HTTP ${res.status})`);
+        setError(json.error?.message ?? interpolate(s.shDeliverFail, { status: res.status }));
         return;
       }
-      setMessage(
-        json.data?.fullyDelivered
-          ? "সব পার্সেল ডেলিভার্ড — অর্ডার DELIVERED হয়েছে।"
-          : "পার্সেলটি ডেলিভার্ড — বাকি লাইন বাকি থাকায় অর্ডার SHIPPED-ই থাকল (আংশিক ডেলিভারি)।",
-      );
+      setMessage(json.data?.fullyDelivered ? s.shAllDeliveredMsg : s.shPartialDeliveredMsg);
       await load();
     } catch {
-      setError("নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।");
+      setError(s.networkRetry);
     } finally {
       setBusy(false);
     }
@@ -379,17 +379,16 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
   return (
     <Card className="p-5">
       <div className="mb-4">
-        <h2 className="text-h3">শিপমেন্ট (বিভক্ত বুকিংসহ)</h2>
+        <h2 className="text-h3">{s.shTitle}</h2>
         <p className="mt-0.5 text-small text-text-muted">
-          কভারেজ: মোট {totalLines} লাইন — বরাদ্দ {allocatedLines}, ডেলিভার্ড{" "}
-          {deliveredLines}। এগুলো স্যান্ডবক্স বুকিং (SBX ট্র্যাকিং); আসল কুরিয়ারে কোনো বুকিং যায় না।
+          {interpolate(s.shCoverage, { total: totalLines, allocated: allocatedLines, delivered: deliveredLines })}
         </p>
         {totalLines > 0 && (
           <div className="mt-3">
             <div
               className="relative h-2.5 overflow-hidden rounded-full bg-slate-100"
               role="img"
-              aria-label={`লাইন কভারেজ: বরাদ্দ ${allocatedPct}%, ডেলিভার্ড ${deliveredPct}%`}
+              aria-label={interpolate(s.shCoverageAria, { a: allocatedPct, d: deliveredPct })}
             >
               <span className="absolute inset-y-0 left-0 bg-sky-300" style={{ width: `${allocatedPct}%` }} />
               <span className="absolute inset-y-0 left-0 bg-emerald-500" style={{ width: `${deliveredPct}%` }} />
@@ -397,11 +396,11 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
             <p className="mt-1.5 flex flex-wrap gap-x-4 text-caption text-text-muted">
               <span>
                 <span aria-hidden="true" className="mr-1 inline-block h-2 w-2 rounded-full bg-emerald-500" />
-                ডেলিভার্ড {deliveredLines}/{totalLines} লাইন
+                {interpolate(s.shDeliveredLines, { d: deliveredLines, t: totalLines })}
               </span>
               <span>
                 <span aria-hidden="true" className="mr-1 inline-block h-2 w-2 rounded-full bg-sky-300" />
-                বরাদ্দ {allocatedLines}/{totalLines} লাইন
+                {interpolate(s.shAllocatedLines, { a: allocatedLines, t: totalLines })}
               </span>
             </p>
           </div>
@@ -409,16 +408,13 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
         {partialDelivery && (
           <p className="mt-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-small text-amber-800">
             <Icon name="alert" size={16} className="mt-0.5 shrink-0" />
-            <span>
-              আংশিক ডেলিভারি: {deliveredLines}টি লাইন পৌঁছেছে, বাকিগুলো এখনো পথে/বাকি। সব লাইন ডেলিভার্ড
-              না হলে অর্ডার SHIPPED-ই থাকে — একটি পার্সেল পৌঁছানো মানেই অর্ডার ডেলিভার্ড নয়।
-            </span>
+            <span>{interpolate(s.shPartial, { n: deliveredLines })}</span>
           </p>
         )}
       </div>
 
       {data.bookings.length === 0 ? (
-        <p className="text-small text-text-muted">এখনো কোনো বুকিং নেই।</p>
+        <p className="text-small text-text-muted">{s.shNoBookings}</p>
       ) : (
         <ul className="space-y-3">
           {data.bookings.map((b) => (
@@ -430,16 +426,16 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
                 </span>
                 <Badge tone="neutral">{b.provider}</Badge>
                 <Badge tone={STATUS_TONE[b.status] ?? "neutral"}>{b.status}</Badge>
-                {b.items === null ? <Badge tone="info">পুরো অর্ডার</Badge> : <Badge tone="warning">বিভক্ত</Badge>}
+                {b.items === null ? <Badge tone="info">{s.shWholeOrder}</Badge> : <Badge tone="warning">{s.shSplit}</Badge>}
                 {b.status === "DELIVERED" && (
                   <Badge tone="success">
                     <span className="inline-flex items-center gap-1">
-                      <Icon name="check" size={12} /> ডেলিভার্ড
+                      <Icon name="check" size={12} /> {s.shDeliveredWord}
                     </span>
                   </Badge>
                 )}
                 <span className="ml-auto font-mono text-small tabular-nums">
-                  COD {formatPoisha(b.codAmountPoisha)} · চার্জ {formatPoisha(b.chargePoisha)}
+                  {interpolate(s.shCodCharge, { cod: formatPoisha(b.codAmountPoisha), charge: formatPoisha(b.chargePoisha) })}
                   {b.weightGrams ? ` · ${b.weightGrams}g` : ""}
                 </span>
               </div>
@@ -457,13 +453,15 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
                   ))}
                 </ul>
               ) : (
-                <p className="mt-2 text-caption text-text-muted">এই বুকিংয়ে অর্ডারের সব লাইন আছে।</p>
+                <p className="mt-2 text-caption text-text-muted">{s.shAllLinesNote}</p>
               )}
-              <p className="mt-2 text-caption text-text-muted">বুকিং: {formatDate(b.createdAt)}</p>
+              <p className="mt-2 text-caption text-text-muted">
+                {interpolate(s.shBookedAt, { date: formatOrderDate(b.createdAt, locale) })}
+              </p>
               {b.items !== null && b.status !== "DELIVERED" && (
                 <div className="mt-2">
                   <Button variant="outline" disabled={busy} onClick={() => void markDelivered(b.id)}>
-                    এই পার্সেল ডেলিভার্ড চিহ্নিত করুন
+                    {s.shMarkDelivered}
                   </Button>
                 </div>
               )}
@@ -474,10 +472,8 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
 
       {openLines.length > 0 && (
         <div className="mt-5 border-t border-border pt-4">
-          <h3 className="text-small font-semibold">নতুন বিভক্ত বুকিং</h3>
-          <p className="mt-0.5 text-caption text-text-muted">
-            যেসব লাইন এখনো কোনো বুকিংয়ে যায়নি, সেগুলো থেকে বেছে আলাদা পার্সেল বানান।
-          </p>
+          <h3 className="text-small font-semibold">{s.shNewSplitTitle}</h3>
+          <p className="mt-0.5 text-caption text-text-muted">{s.shNewSplitHint}</p>
           <div className="mt-3 space-y-2">
             {openLines.map((l) => (
               <label key={l.orderItemId} className="flex flex-wrap items-center gap-3 text-sm">
@@ -486,15 +482,18 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
                   className="h-4 w-4 rounded accent-brand-600"
                   checked={!!selected[l.orderItemId]}
                   onChange={(e) => {
-                    setSelected((s) => ({ ...s, [l.orderItemId]: e.target.checked }));
+                    setSelected((prev) => ({ ...prev, [l.orderItemId]: e.target.checked }));
                     clearRecommendation();
                   }}
                 />
                 <span className="min-w-0 flex-1">
-                  {l.productName} <span className="text-text-muted">({l.sku}) — বাকি {l.remainingQuantity}টি</span>
+                  {l.productName}{" "}
+                  <span className="text-text-muted">
+                    {interpolate(s.shLineRemaining, { sku: l.sku, n: l.remainingQuantity })}
+                  </span>
                 </span>
                 <input
-                  aria-label={`${l.productName} পরিমাণ`}
+                  aria-label={interpolate(s.shQtyAria, { name: l.productName })}
                   className="h-9 w-20 rounded-md border border-border bg-card px-2 text-sm shadow-sm outline-none focus:border-brand-500"
                   type="number"
                   min={0.001}
@@ -511,29 +510,31 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
           </div>
           <div className="mt-4 rounded-lg border border-border bg-slate-50/60 px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
-              <h4 className="text-small font-semibold">কুরিয়ার সুপারিশ (ইতিহাসভিত্তিক)</h4>
+              <h4 className="text-small font-semibold">{s.shRecTitle}</h4>
               <Button variant="outline" disabled={recBusy || busy} onClick={() => void fetchRecommendation()}>
-                {recommendation ? "আবার হিসাব করুন" : "সুপারিশ দেখুন"}
+                {recommendation ? s.shRecalcBtn : s.shRecBtn}
               </Button>
               {recommendation && (
                 <span className="text-caption text-text-muted">
-                  {recommendation.facts.district} · ওজন {recommendation.facts.weightGrams}g
-                  {recommendation.weightEstimated ? " (আনুমানিক)" : ""} · COD{" "}
-                  {formatPoisha(recommendation.facts.codAmountPoisha)} · ইতিহাস:{" "}
-                  {recommendation.historyShipments}টি সম্পন্ন শিপমেন্ট
+                  {recommendation.facts.district}{" "}
+                  {interpolate(s.shRecWeight, { w: recommendation.facts.weightGrams })}
+                  {recommendation.weightEstimated ? ` ${s.shRecEstimated}` : ""}{" "}
+                  {interpolate(s.shRecCodHist, {
+                    cod: formatPoisha(recommendation.facts.codAmountPoisha),
+                    n: recommendation.historyShipments,
+                  })}
                 </span>
               )}
             </div>
             {!recommendation && (
-              <p className="mt-1.5 text-caption text-text-muted">
-                সিলেক্ট করা লাইনগুলোর জন্য আসল শিপমেন্ট ইতিহাস থেকে কুরিয়ারদের র‍্যাংক করা হবে —
-                সুপারিশ মেনে বুক করতে পারবেন, কিংবা কারণ লিখে অন্য কুরিয়ার বেছতে পারবেন।
-              </p>
+              <p className="mt-1.5 text-caption text-text-muted">{s.shRecIntro}</p>
             )}
             {recommendation?.status === "insufficient_data" && (
               <p className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-small text-amber-800">
                 <Icon name="alert" size={16} className="mt-0.5 shrink-0" />
-                <span>{recommendation.noteBn} নিচে ম্যানুয়ালি কুরিয়ার বেছে বুকিং করুন।</span>
+                <span>
+                  {recommendation.noteBn} {s.shRecManualSuffix}
+                </span>
               </p>
             )}
             {recommendation && recommendation.status !== "insufficient_data" && (
@@ -558,30 +559,36 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
                           >
                             <span className="flex flex-wrap items-center gap-2">
                               <span className="font-semibold">{r.provider}</span>
-                              {isTop && <Badge tone="success">সুপারিশকৃত</Badge>}
+                              {isTop && <Badge tone="success">{s.shRecommendedBadge}</Badge>}
                               {isPicked && (
                                 <Badge tone="info">
                                   <span className="inline-flex items-center gap-1">
-                                    <Icon name="check" size={12} /> বেছে নেওয়া হয়েছে
+                                    <Icon name="check" size={12} /> {s.shPickedBadge}
                                   </span>
                                 </Badge>
                               )}
                               {r.hasHistory ? (
-                                <span className="tabular-nums text-text-muted">স্কোর {r.score ?? "—"}/১০০</span>
+                                <span className="tabular-nums text-text-muted">
+                                  {interpolate(s.shScore, { score: r.score ?? "—" })}
+                                </span>
                               ) : (
-                                <Badge tone="warning">ইতিহাস নেই — হার অজানা</Badge>
+                                <Badge tone="warning">{s.shNoHistoryBadge}</Badge>
                               )}
                               <span className="ml-auto tabular-nums text-text-muted">
-                                আনুমানিক চার্জ {r.chargePoisha !== null ? formatPoisha(r.chargePoisha) : "—"}
-                                {r.estimatedDays ? ` · ~${r.estimatedDays} দিন` : ""}
+                                {interpolate(s.shEstCharge, {
+                                  charge: r.chargePoisha !== null ? formatPoisha(r.chargePoisha) : "—",
+                                })}
+                                {r.estimatedDays
+                                  ? ` ${interpolate(s.shEstDays, { days: r.estimatedDays })}`
+                                  : ""}
                                 {r.deliveryRateBps !== null
-                                  ? ` · ডেলিভারি হার ${(r.deliveryRateBps / 100).toFixed(1)}%`
+                                  ? ` ${interpolate(s.shDeliveryRate, { rate: (r.deliveryRateBps / 100).toFixed(1) })}`
                                   : ""}
                               </span>
                             </span>
                             {isTop && r.reasonsBn.length > 0 && (
                               <span className="mt-1 block text-caption text-text-muted">
-                                কারণ: {r.reasonsBn.join(" · ")}
+                                {interpolate(s.tlReason, { reason: r.reasonsBn.join(" · ") })}
                               </span>
                             )}
                           </button>
@@ -593,7 +600,10 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
                 {recommendation.excluded.length > 0 && (
                   <ul className="mt-2 space-y-0.5 text-caption text-text-muted">
                     {recommendation.excluded.map((r) => (
-                      <li key={r.provider}>{r.exclusionReasonsBn[0] ?? `${r.provider}: যোগ্য নয়`}</li>
+                      <li key={r.provider}>
+                        {r.exclusionReasonsBn[0] ??
+                          interpolate(s.shExcludedFallback, { provider: r.provider })}
+                      </li>
                     ))}
                   </ul>
                 )}
@@ -602,7 +612,7 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <select
-              aria-label="কুরিয়ার প্রোভাইডার"
+              aria-label={s.shProviderAria}
               className={`${inputCls} w-44`}
               value={provider}
               onChange={(e) => setProvider(e.target.value)}
@@ -614,14 +624,13 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
               ))}
             </select>
             <Button disabled={busy} onClick={() => void createSplit()}>
-              বিভক্ত বুকিং তৈরি করুন
+              {s.shCreateSplitBtn}
             </Button>
           </div>
           {isOverride && (
             <div className="mt-3">
               <label htmlFor="courier-override-reason" className="text-small font-medium">
-                সুপারিশ ছিল {recommendation?.recommended?.provider} — অন্য কুরিয়ার বেছে নেওয়ার কারণ
-                (আবশ্যক)
+                {interpolate(s.shOverrideLabel, { provider: recommendation?.recommended?.provider ?? "" })}
               </label>
               <textarea
                 id="courier-override-reason"
@@ -629,11 +638,9 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
                 rows={2}
                 value={overrideReason}
                 onChange={(e) => setOverrideReason(e.target.value)}
-                placeholder="যেমন: কাস্টমার এই কুরিয়ারেই ডেলিভারি চেয়েছেন"
+                placeholder={s.shOverridePlaceholder}
               />
-              <p className="mt-1 text-caption text-text-muted">
-                কারণটি সুপারিশসহ অর্ডারের টাইমলাইনে রেকর্ড থাকবে।
-              </p>
+              <p className="mt-1 text-caption text-text-muted">{s.shOverrideNote}</p>
             </div>
           )}
         </div>
