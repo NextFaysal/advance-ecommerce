@@ -109,6 +109,19 @@
  *   its own visible breakdown line, included in the grand total,
  *   frozen on the RentalBooking row; the refund on return is a
  *   manual admin action in v1.
+ * - Dynamic checkout fields (doc 28): the merchant-editable field
+ *   config (Setting doc checkout.fields, src/checkout/fields.ts) is
+ *   enforced HERE — this public route is the storefront create path
+ *   only; staff manual orders go through createManualOrder and keep
+ *   the standard schema. A hidden email/union/note is treated as
+ *   absent, a visible+required one refuses the create (400
+ *   CHECKOUT_FIELD_REQUIRED), and the merchant's extra fields ride
+ *   the body as `fieldAnswers` (required enforced, trimmed, <= 200
+ *   chars — 400 CHECKOUT_FIELD_TOO_LONG; unknown keys dropped).
+ *   Answers persist on the create-time OrderNote (one human line per
+ *   answer + the `[checkout-fields] {json}` machine line). With the
+ *   default config nothing changes: the toggleable fields are
+ *   visible + optional and there are no extras.
  * - Print-on-demand (ADV-23 vertical 5, wave 56): an optional
  *   `pod` customisation (variant + print text + optional palette
  *   colour) is gated by module.print_on_demand — field present +
@@ -134,7 +147,10 @@
  *   module owns the ledger wiring).
  */
 import { NextResponse } from "next/server";
-import { checkoutFormSchema, type CheckoutForm } from "@/checkout/validation";
+import { z } from "zod";
+import { checkoutFormSchema } from "@/checkout/validation";
+import { fieldByKey, MAX_ANSWER_LENGTH } from "@/checkout/fields";
+import { getCheckoutFieldsConfig } from "@/checkout/fields-server";
 import { computePricing, formatBdt } from "@/checkout/pricing";
 import { InMemoryIdempotencyStore } from "@/checkout/idempotency";
 import { computeOrderShipping } from "@/checkout/shipping";
@@ -214,6 +230,104 @@ function errorResponse(code: string, message: string, status: number, details?: 
   return NextResponse.json({ error: { code, message, details } }, { status });
 }
 
+// Doc 28: the create body additionally carries the merchant-defined
+// extra fields' answers. The extension is additive and lives here
+// (not in src/checkout/validation.ts) because the answers are a
+// storefront-only surface — the shared checkoutFormSchema also backs
+// the staff manual-create seam, which never sees fieldAnswers.
+// Unknown keys inside fieldAnswers are NOT a schema error: the
+// enforcement below reads only config-defined keys and drops the
+// rest.
+const createOrderBodySchema = checkoutFormSchema.extend({
+  fieldAnswers: z.record(z.string(), z.string()).optional(),
+});
+type CreateOrderBody = z.infer<typeof createOrderBodySchema>;
+
+type CheckoutFieldsGate =
+  | { ok: true; form: CreateOrderBody; noteText?: string }
+  | { ok: false; code: string; message: string; details: { field: string } };
+
+/**
+ * Doc 28 enforcement against the saved checkout.fields config.
+ * Returns the (possibly adjusted) form plus the OrderNote text for
+ * the extra-field answers, or the refusal to return. With the
+ * default config this is a no-op: email/union/note are visible +
+ * optional and there are no extra fields.
+ */
+async function enforceCheckoutFields(form: CreateOrderBody): Promise<CheckoutFieldsGate> {
+  const config = await getCheckoutFieldsConfig();
+
+  // Built-in toggleable fields: a hidden field's submitted value is
+  // treated as absent; a visible + required field must be non-empty.
+  let email = form.email;
+  let union = form.address.union;
+  let note = form.note;
+  const builtins = [
+    { key: "email", value: form.email, apply: (v: string | undefined) => { email = v; } },
+    { key: "union", value: form.address.union, apply: (v: string | undefined) => { union = v; } },
+    { key: "note", value: form.note, apply: (v: string | undefined) => { note = v; } },
+  ] as const;
+  for (const field of builtins) {
+    const def = fieldByKey(config, field.key);
+    if (!def) continue;
+    if (!def.visible) {
+      field.apply(undefined);
+      continue;
+    }
+    if (def.required && (field.value === undefined || field.value.trim() === "")) {
+      return {
+        ok: false,
+        code: "CHECKOUT_FIELD_REQUIRED",
+        message: `চেকআউটের আবশ্যক ঘরটি পূরণ করুন: ${field.key} / Please fill in the required checkout field: ${field.key}.`,
+        details: { field: field.key },
+      };
+    }
+  }
+
+  // Extra fields: answers come from fieldAnswers by config key only
+  // (unknown keys dropped). Hidden extras are ignored entirely.
+  const answers: Record<string, string> = {};
+  const humanLines: string[] = [];
+  for (const def of config.fields) {
+    if (!def.extra || !def.visible) continue;
+    const raw = form.fieldAnswers?.[def.key];
+    const value = typeof raw === "string" ? raw.trim() : "";
+    if (value.length > MAX_ANSWER_LENGTH) {
+      return {
+        ok: false,
+        code: "CHECKOUT_FIELD_TOO_LONG",
+        message: `উত্তরটি সর্বোচ্চ ${MAX_ANSWER_LENGTH} অক্ষরের মধ্যে হতে হবে: ${def.key} / Answer must be at most ${MAX_ANSWER_LENGTH} characters: ${def.key}.`,
+        details: { field: def.key },
+      };
+    }
+    if (def.required && value === "") {
+      return {
+        ok: false,
+        code: "CHECKOUT_FIELD_REQUIRED",
+        message: `চেকআউটের আবশ্যক ঘরটি পূরণ করুন: ${def.key} / Please fill in the required checkout field: ${def.key}.`,
+        details: { field: def.key },
+      };
+    }
+    if (value !== "") {
+      answers[def.key] = value;
+      humanLines.push(`${def.labelBn || def.labelEn}: ${value}`);
+    }
+  }
+  const noteText =
+    humanLines.length > 0
+      ? [...humanLines, `[checkout-fields] ${JSON.stringify(answers)}`].join("\n")
+      : undefined;
+
+  // Rebuild the form ONLY when a hidden field actually carried a
+  // value — with the default config nothing is rebuilt and the
+  // downstream path is byte-identical.
+  let adjusted = form;
+  if (email !== form.email) adjusted = { ...adjusted, email };
+  if (note !== form.note) adjusted = { ...adjusted, note };
+  if (union !== form.address.union) adjusted = { ...adjusted, address: { ...adjusted.address, union } };
+  return { ok: true, form: adjusted, noteText };
+}
+
 // In-process claim guard (double-submit inside this process) + the
 // exact create-time EnrichedOrder per order id, so a same-process
 // idempotent replay returns the order with its ORIGINAL coupon/fraud
@@ -224,7 +338,7 @@ const enrichmentByOrderId = new Map<string, EnrichedOrder>();
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
-  const parsed = checkoutFormSchema.safeParse(body);
+  const parsed = createOrderBodySchema.safeParse(body);
   if (!parsed.success) {
     return errorResponse(
       "VALIDATION_ERROR",
@@ -285,7 +399,19 @@ export async function POST(req: Request) {
   }
 }
 
-async function processCreate(form: CheckoutForm): Promise<NextResponse> {
+async function processCreate(form: CreateOrderBody): Promise<NextResponse> {
+  // Dynamic checkout fields (doc 28): enforce the merchant's saved
+  // checkout.fields config before anything else — hidden
+  // email/union/note values are dropped from the form the rest of
+  // this flow sees, a missing required field refuses the create,
+  // and the extra-field answers ride along to the create-time note
+  // below. Default config -> the gate is a no-op.
+  const fieldsGate = await enforceCheckoutFields(form);
+  if (!fieldsGate.ok) {
+    return errorResponse(fieldsGate.code, fieldsGate.message, 400, fieldsGate.details);
+  }
+  form = fieldsGate.form;
+  const checkoutFieldsNoteText = fieldsGate.noteText;
   // Wave 59: fractional quantities are sellable ONLY on grocery
   // weighted variants (and must land on the pack's weight step) —
   // gated here, before any pricing, with a clear 400.
@@ -709,6 +835,13 @@ async function processCreate(form: CheckoutForm): Promise<NextResponse> {
       // contains (the Order row has no deposit column — the frozen
       // figure lives on the RentalBooking row).
       rentalPrep.rental ? rentalOrderNoteText(rentalPrep.rental) : null,
+      // Doc 28: the merchant-defined checkout fields' answers ride
+      // the same create-time note seam — one human line per answer
+      // (`label: value`) + the `[checkout-fields] {json}` machine
+      // line. Present only when the config defines extra fields and
+      // the customer answered at least one. Kept before the POD part
+      // so the `[pod:]` machine line still ends the note.
+      checkoutFieldsNoteText ?? null,
       // ADV-23 vertical 5 (wave 56): the custom print rides the
       // same create-time note seam — a human line the print shop
       // works from + the `[pod:{...}]` machine line the admin

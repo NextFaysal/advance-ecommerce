@@ -32,7 +32,7 @@
 // the checkoutSessionKey flow are exactly as before; the mobile
 // sticky bar's button is a form-associated submit for the SAME form
 // (one submit path — see the bar's comment below).
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Cart } from "../../../src/cart/types";
 import { cartSubtotalPoisha } from "../../../src/cart/types";
@@ -66,6 +66,14 @@ import { PAYMENT_NOT_LIVE_MESSAGE_BN } from "../../../src/checkout/payment-metho
 import { shiftYmd, todayDhakaYmd } from "@/lib/dhaka-date";
 import { useThemeView } from "@/themes/theme-view";
 import { getCheckoutSkin } from "@/themes/skin-registry";
+import {
+  coerceCheckoutFieldsConfig,
+  DEFAULT_CHECKOUT_FIELDS_CONFIG,
+  fieldByKey,
+  visibleFieldsForGroup,
+  type CheckoutFieldDef,
+  type CheckoutFieldsConfig,
+} from "@/checkout/fields";
 
 // Responsive pass (Design v3 §3): single-column flow at every width,
 // 44px+ touch targets (h-12 fields, 52px payment tiles), numeric keypad
@@ -237,6 +245,31 @@ export default function CheckoutPage() {
       )
       .catch(() => {
         // No restaurant section; the order flow is unaffected.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // Checkout fields (doc 28): the merchant-editable field config
+  // from GET /api/v1/public/checkout-config — labels, placeholders,
+  // visibility, required flags and order for Steps ১/২, plus up to
+  // 5 custom text fields. State starts at DEFAULT_CHECKOUT_FIELDS_CONFIG
+  // (the original hardcoded form, exactly), so a pending or failed
+  // fetch renders today's checkout unchanged; a successful fetch is
+  // passed through the shared coercion before it is trusted.
+  const [fieldsConfig, setFieldsConfig] = useState<CheckoutFieldsConfig>(
+    DEFAULT_CHECKOUT_FIELDS_CONFIG,
+  );
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/public/checkout-config")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("checkout config fetch failed"))))
+      .then((json: { data?: unknown }) => {
+        if (cancelled) return;
+        if (json.data) setFieldsConfig(coerceCheckoutFieldsConfig(json.data));
+      })
+      .catch(() => {
+        // The default config stays — the form is the original one.
       });
     return () => {
       cancelled = true;
@@ -941,6 +974,21 @@ export default function CheckoutPage() {
       }
     }
     const data = new FormData(e.currentTarget);
+    // Checkout extra fields (doc 28): answers for the VISIBLE custom
+    // fields ride the create body as fieldAnswers, keyed by field
+    // key. Empty answers are omitted entirely; an empty REQUIRED
+    // extra never reaches this line — its required attribute stops
+    // the submit natively before the handler runs. Hidden built-ins
+    // (email/union/note) need no handling here: an unrendered input
+    // is absent from FormData, and the reads below already map that
+    // to the same empty/absent values an untouched optional field
+    // produces today.
+    const fieldAnswers: Record<string, string> = {};
+    for (const def of visibleFieldsForGroup(fieldsConfig, "address")) {
+      if (!def.extra) continue;
+      const value = String(data.get(def.key) ?? "").trim();
+      if (value) fieldAnswers[def.key] = value;
+    }
     const result = validateCheckoutForm({
       customerName: data.get("customerName"),
       phone: data.get("phone"),
@@ -1064,7 +1112,11 @@ export default function CheckoutPage() {
       const res = await fetch("/api/v1/public/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(result.data),
+        body: JSON.stringify(
+          Object.keys(fieldAnswers).length > 0
+            ? { ...result.data, fieldAnswers }
+            : result.data,
+        ),
       });
       const json = (await res.json().catch(() => null)) as {
         data?: {
@@ -1169,6 +1221,239 @@ export default function CheckoutPage() {
   // path as the in-form button: same onSubmit, same native + custom
   // validation, same idempotency key, same stock guard. There is no
   // second submit handler anywhere (OD3).
+
+  // Checkout field rendering (doc 28): Steps ১/২ render from
+  // fieldsConfig. Labels render exactly as the config carries them
+  // (the default labels are the original form's); the required
+  // attribute comes from the def. Under the DEFAULT config the
+  // emitted fields, order and flags are the original form's.
+  const infoFieldDefs = visibleFieldsForGroup(fieldsConfig, "info");
+  const addressFieldDefs = visibleFieldsForGroup(fieldsConfig, "address");
+  const divisionDef = fieldByKey(fieldsConfig, "division");
+  const districtDef = fieldByKey(fieldsConfig, "district");
+  const upazilaDef = fieldByKey(fieldsConfig, "upazila");
+  // Display label: the original form marked required fields with
+  // " *". Config labels don't carry the marker, so append it for
+  // required fields (unless the merchant typed one already).
+  const fieldLabel = (def?: CheckoutFieldDef): string => {
+    if (!def) return "";
+    const label = def.labelBn || def.labelEn || "";
+    return label + (def.required && !label.includes("*") ? " *" : "");
+  };
+
+  function renderInfoField(def: CheckoutFieldDef) {
+    if (def.key === "customerName") {
+      return (
+        <label key={def.key} className="block">
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{fieldLabel(def)}</span>
+          <input
+            name="customerName"
+            required={def.required}
+            autoComplete="name"
+            placeholder={def.placeholder || undefined}
+            className={INPUT_CLASS}
+          />
+        </label>
+      );
+    }
+    if (def.key === "phone") {
+      return (
+        <label key={def.key} className="block">
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{fieldLabel(def)}</span>
+          <input
+            name="phone"
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            placeholder={def.placeholder || undefined}
+            required={def.required}
+            className={INPUT_CLASS}
+          />
+        </label>
+      );
+    }
+    if (def.key === "email") {
+      return (
+        <label key={def.key} className="block">
+          <span className="mb-1.5 block text-sm font-medium text-text-main">{fieldLabel(def)}</span>
+          <input
+            name="email"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            placeholder={def.placeholder || undefined}
+            required={def.required}
+            className={INPUT_CLASS}
+          />
+        </label>
+      );
+    }
+    return null;
+  }
+
+  // The address cascade as ONE block: the three selects (or the
+  // geo-failure text inputs, or the loading placeholder) keep their
+  // existing structure and logic verbatim — only the labels and the
+  // required attributes come from the field defs.
+  function renderCascade() {
+    const divisionLabel = fieldLabel(divisionDef) || "বিভাগ *";
+    const districtLabel = fieldLabel(districtDef) || "জেলা *";
+    const upazilaLabel = fieldLabel(upazilaDef) || "উপজেলা *";
+    if (geoTree) {
+      return (
+        <>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-text-main">{divisionLabel}</span>
+            <select
+              name="division"
+              required={divisionDef?.required ?? true}
+              value={division}
+              onChange={(e) => onDivisionChange(e.target.value)}
+              className={INPUT_CLASS}
+            >
+              <option value="">বিভাগ বেছে নিন</option>
+              {geoTree.map((d) => (
+                <option key={d.nameEn} value={d.nameEn}>
+                  {d.nameBn}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-text-main">{districtLabel}</span>
+            <select
+              name="district"
+              required={districtDef?.required ?? true}
+              value={district}
+              disabled={!division}
+              onChange={(e) => onDistrictChange(e.target.value)}
+              className={INPUT_CLASS}
+            >
+              <option value="">জেলা বেছে নিন</option>
+              {districtsOf(geoTree, division).map((d) => (
+                <option key={d.nameEn} value={d.nameEn}>
+                  {d.nameBn}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-text-main">{upazilaLabel}</span>
+            <select
+              name="upazila"
+              required={upazilaDef?.required ?? true}
+              value={upazila}
+              disabled={!district}
+              onChange={(e) => setUpazila(e.target.value)}
+              className={INPUT_CLASS}
+            >
+              <option value="">উপজেলা বেছে নিন</option>
+              {upazilasOf(geoTree, division, district).map((u) => (
+                <option key={u.nameEn} value={u.nameEn}>
+                  {u.nameBn}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      );
+    }
+    if (geoFailed) {
+      return (
+        <>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-text-main">{divisionLabel}</span>
+            <input name="division" required={divisionDef?.required ?? true} className={INPUT_CLASS} />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-text-main">{districtLabel}</span>
+            <input name="district" required={districtDef?.required ?? true} className={INPUT_CLASS} />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-text-main">{upazilaLabel}</span>
+            <input name="upazila" required={upazilaDef?.required ?? true} className={INPUT_CLASS} />
+          </label>
+        </>
+      );
+    }
+    return (
+      <label className="block">
+        <span className="mb-1.5 block text-sm font-medium text-text-main">
+          {divisionLabel} / {districtLabel} / {upazilaLabel}
+        </span>
+        <select disabled className={INPUT_CLASS}>
+          <option>এলাকার তালিকা লোড হচ্ছে…</option>
+        </select>
+      </label>
+    );
+  }
+
+  function renderAddressFields() {
+    let cascadeRendered = false;
+    return addressFieldDefs.map((def) => {
+      if (def.key === "division" || def.key === "district" || def.key === "upazila") {
+        // The cascade renders once, as a unit, at the position of
+        // its first key in the group's order.
+        if (cascadeRendered) return null;
+        cascadeRendered = true;
+        return <Fragment key="address-cascade">{renderCascade()}</Fragment>;
+      }
+      if (def.extra) {
+        return (
+          <label key={def.key} className="block">
+            <span className="mb-1.5 block text-sm font-medium text-text-main">{fieldLabel(def)}</span>
+            <input
+              name={def.key}
+              placeholder={def.placeholder || undefined}
+              required={def.required}
+              className={INPUT_CLASS}
+            />
+          </label>
+        );
+      }
+      if (def.key === "union") {
+        return (
+          <label key={def.key} className="block">
+            <span className="mb-1.5 block text-sm font-medium text-text-main">{fieldLabel(def)}</span>
+            <input
+              name="union"
+              placeholder={def.placeholder || undefined}
+              required={def.required}
+              className={INPUT_CLASS}
+            />
+          </label>
+        );
+      }
+      if (def.key === "addressLine") {
+        return (
+          <label key={def.key} className="block">
+            <span className="mb-1.5 block text-sm font-medium text-text-main">{fieldLabel(def)}</span>
+            <input
+              name="addressLine"
+              required={def.required}
+              autoComplete="street-address"
+              placeholder={def.placeholder || undefined}
+              className={INPUT_CLASS}
+            />
+          </label>
+        );
+      }
+      if (def.key === "note") {
+        return (
+          <label key={def.key} className="block">
+            <span className="mb-1.5 block text-sm font-medium text-text-main">{fieldLabel(def)}</span>
+            <input
+              name="note"
+              placeholder={def.placeholder || undefined}
+              required={def.required}
+              className={INPUT_CLASS}
+            />
+          </label>
+        );
+      }
+      return null;
+    });
+  }
 
   if (!loaded) {
     return (
@@ -1536,26 +1821,7 @@ export default function CheckoutPage() {
             আপনার তথ্য
           </h2>
           <div className="mt-4 grid gap-4">
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">আপনার নাম *</span>
-          <input name="customerName" required autoComplete="name" className={INPUT_CLASS} />
-        </label>
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">মোবাইল নম্বর *</span>
-          <input
-            name="phone"
-            type="tel"
-            inputMode="tel"
-            autoComplete="tel"
-            placeholder="01XXXXXXXXX"
-            required
-            className={INPUT_CLASS}
-          />
-        </label>
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">ইমেইল (ঐচ্ছিক)</span>
-          <input name="email" type="email" inputMode="email" autoComplete="email" className={INPUT_CLASS} />
-        </label>
+        {infoFieldDefs.map((def) => renderInfoField(def))}
           </div>
         </section>
         {/* Step ২ — ঠিকানা */}
@@ -1602,97 +1868,7 @@ export default function CheckoutPage() {
             </button>
           </div>
         ) : null}
-        {geoTree ? (
-          <>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-text-main">বিভাগ *</span>
-              <select
-                name="division"
-                required
-                value={division}
-                onChange={(e) => onDivisionChange(e.target.value)}
-                className={INPUT_CLASS}
-              >
-                <option value="">বিভাগ বেছে নিন</option>
-                {geoTree.map((d) => (
-                  <option key={d.nameEn} value={d.nameEn}>
-                    {d.nameBn}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-text-main">জেলা *</span>
-              <select
-                name="district"
-                required
-                value={district}
-                disabled={!division}
-                onChange={(e) => onDistrictChange(e.target.value)}
-                className={INPUT_CLASS}
-              >
-                <option value="">জেলা বেছে নিন</option>
-                {districtsOf(geoTree, division).map((d) => (
-                  <option key={d.nameEn} value={d.nameEn}>
-                    {d.nameBn}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-text-main">উপজেলা *</span>
-              <select
-                name="upazila"
-                required
-                value={upazila}
-                disabled={!district}
-                onChange={(e) => setUpazila(e.target.value)}
-                className={INPUT_CLASS}
-              >
-                <option value="">উপজেলা বেছে নিন</option>
-                {upazilasOf(geoTree, division, district).map((u) => (
-                  <option key={u.nameEn} value={u.nameEn}>
-                    {u.nameBn}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </>
-        ) : geoFailed ? (
-          <>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-text-main">বিভাগ *</span>
-              <input name="division" required className={INPUT_CLASS} />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-text-main">জেলা *</span>
-              <input name="district" required className={INPUT_CLASS} />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-text-main">উপজেলা *</span>
-              <input name="upazila" required className={INPUT_CLASS} />
-            </label>
-          </>
-        ) : (
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-text-main">বিভাগ / জেলা / উপজেলা *</span>
-            <select disabled className={INPUT_CLASS}>
-              <option>এলাকার তালিকা লোড হচ্ছে…</option>
-            </select>
-          </label>
-        )}
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">ইউনিয়ন (ঐচ্ছিক)</span>
-          <input name="union" className={INPUT_CLASS} />
-        </label>
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">বিস্তারিত ঠিকানা *</span>
-          <input name="addressLine" required autoComplete="street-address" className={INPUT_CLASS} />
-        </label>
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-text-main">নোট (ঐচ্ছিক)</span>
-          <input name="note" className={INPUT_CLASS} />
-        </label>
+        {renderAddressFields()}
           </div>
         </section>
         {/* Step ৩ — ডেলিভারি */}

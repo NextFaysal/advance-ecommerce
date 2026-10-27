@@ -260,6 +260,25 @@ export default async function AdminSettingsPage() {
     } satisfies CardStatus;
   });
 
+  // Checkout fields (doc 28): whether the merchant has saved a
+  // custom field config in the Setting doc `checkout.fields`. No
+  // saved doc = the built-in default form runs, which is a healthy
+  // state, so it reads neutral rather than as a gap.
+  const checkoutFields = await probe(async () => {
+    const saved = await getSetting("checkout.fields");
+    return saved
+      ? {
+          tone: "success",
+          label: "কাস্টমাইজ করা",
+          detail: "নিজের সাজানো ফিল্ড কনফিগ সংরক্ষিত আছে — স্টোরফ্রন্ট চেকআউট সেটাই চালাচ্ছে।",
+        } satisfies CardStatus
+      : {
+          tone: "neutral",
+          label: "ডিফল্ট ফর্ম",
+          detail: "কোনো কাস্টম কনফিগ নেই — চেকআউটে প্ল্যাটফর্মের ডিফল্ট ফিল্ড সাজানোই চলছে।",
+        } satisfies CardStatus;
+  });
+
   // Call-center timings (doc 21, G3-17): the effective values of the
   // seven call_center.* keys — getSetting() resolves DB row -> env ->
   // built-in default, the same resolution the consumers read live.
@@ -423,6 +442,14 @@ export default async function AdminSettingsPage() {
       titleEn: "Order Rules & Slots",
       description: "সর্বনিম্ন অর্ডার, অগ্রিমের সীমা ও হার, COD বন্ধের জেলা/ক্যাটাগরি (orders.rules.*) এবং ডেলিভারি স্লট (orders.delivery_slots)।",
       status: orders,
+    },
+    {
+      href: "/admin/settings/checkout-fields",
+      icon: <Icon name="package" size={22} />,
+      titleBn: "চেকআউট ফিল্ড",
+      titleEn: "Checkout Fields",
+      description: "চেকআউট ফর্মের ফিল্ডের লেবেল, ক্রম, দৃশ্যমানতা ও আবশ্যকতা এবং নিজের যোগ করা অতিরিক্ত ফিল্ড (checkout.fields)।",
+      status: checkoutFields,
     },
     {
       href: "/admin/settings/call-center",
