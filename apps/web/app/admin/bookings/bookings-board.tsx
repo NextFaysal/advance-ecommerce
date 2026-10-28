@@ -13,6 +13,7 @@
  * phone only (the API projects them that way).
  */
 import { useCallback, useEffect, useState } from "react";
+import { EmptyState } from "@/components/ui/empty-state";
 import Link from "next/link";
 import {
   SERVICE_BOOKING_STATUS_LABELS_BN,
@@ -55,10 +56,10 @@ function todayDhakaYmd(): string {
 }
 
 const STATUS_BADGE: Record<ServiceBookingStatus, string> = {
-  BOOKED: "bg-sky-100 text-sky-800",
-  COMPLETED: "bg-emerald-100 text-emerald-800",
-  CANCELLED: "bg-rose-100 text-rose-700",
-  NO_SHOW: "bg-amber-100 text-amber-800",
+  BOOKED: "bg-info-soft text-info-solid",
+  COMPLETED: "bg-success-soft text-success-solid",
+  CANCELLED: "bg-danger-soft text-danger",
+  NO_SHOW: "bg-warning-soft text-warning-solid",
 };
 
 export function BookingsBoard() {
@@ -120,7 +121,7 @@ export function BookingsBoard() {
   const total = board ? Object.values(board.counts).reduce((a, b) => a + b, 0) : 0;
 
   return (
-    <section aria-label={s.boardAria} className="space-y-3">
+    <section aria-label={s.boardAria} className="space-y-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-text-muted">
         <label className="flex items-center gap-2">
           <span className="font-medium text-text-main">{s.dayLabel}</span>
@@ -128,47 +129,45 @@ export function BookingsBoard() {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-text-main"
+            className="min-h-11 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 md:min-h-0"
           />
         </label>
         <button
           type="button"
           onClick={() => setDate(todayDhakaYmd())}
-          className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-text-main transition hover:bg-surface-2"
+          className="min-h-11 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-text-main transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 md:min-h-0"
         >
           {s.today}
         </button>
         <span>
-          <strong className="text-text-main">{interpolate(s.totalCount, { count: total })}</strong>
+          <strong className="tnum text-text-main">{interpolate(s.totalCount, { count: total })}</strong>
         </span>
         <span>
-          <strong className="text-text-main">{interpolate(s.bookedCount, { count: board?.counts.BOOKED ?? 0 })}</strong>{" "}
+          <strong className="tnum text-text-main">{interpolate(s.bookedCount, { count: board?.counts.BOOKED ?? 0 })}</strong>{" "}
           ·{" "}
-          <strong className="text-text-main">{interpolate(s.completedCount, { count: board?.counts.COMPLETED ?? 0 })}</strong>{" "}
+          <strong className="tnum text-text-main">{interpolate(s.completedCount, { count: board?.counts.COMPLETED ?? 0 })}</strong>{" "}
           ·{" "}
-          <strong className="text-text-main">{interpolate(s.noShowCount, { count: board?.counts.NO_SHOW ?? 0 })}</strong>{" "}
+          <strong className="tnum text-text-main">{interpolate(s.noShowCount, { count: board?.counts.NO_SHOW ?? 0 })}</strong>{" "}
           ·{" "}
-          <strong className="text-text-main">{interpolate(s.cancelledCount, { count: board?.counts.CANCELLED ?? 0 })}</strong>
+          <strong className="tnum text-text-main">{interpolate(s.cancelledCount, { count: board?.counts.CANCELLED ?? 0 })}</strong>
         </span>
         <span>{s.pollNote}</span>
       </div>
       {error && (
-        <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
+        <p role="alert" className="rounded-xl bg-danger-soft px-4 py-3 text-sm font-medium text-danger">
           {error}
         </p>
       )}
       {!board && !error && <p className="text-sm text-text-muted">{s.boardLoading}</p>}
       {board && board.groups.length === 0 && (
-        <p className="rounded-2xl border border-border bg-surface-2/50 px-4 py-6 text-sm text-text-muted">
-          {s.emptyDay}
-        </p>
+        <EmptyState title={s.dayEmptyTitle} description={s.dayEmptyDesc} />
       )}
       <div className="space-y-4">
         {(board?.groups ?? []).map((group) => (
           <div key={`${group.slotStart}-${group.slotEnd}`} className="rounded-2xl border border-border bg-surface-2/50 p-3">
-            <h3 className="mb-3 flex items-center justify-between px-1 text-sm font-bold text-text-main">
-              {group.slotStart} – {group.slotEnd}
-              <span className="rounded-full bg-card px-2 py-0.5 text-xs font-semibold text-text-muted">
+            <h3 className="mb-3 flex items-center justify-between px-1 font-display text-sm font-semibold text-text-main">
+              <span className="tnum">{group.slotStart} – {group.slotEnd}</span>
+              <span className="tnum rounded-full bg-card px-2 py-0.5 text-xs font-semibold text-text-muted">
                 {interpolate(s.groupBookings, { count: group.bookings.length })}
               </span>
             </h3>
@@ -187,7 +186,7 @@ export function BookingsBoard() {
                         {statusLabels[row.status]}
                       </span>
                       {row.staffLabel && (
-                        <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-800">
+                        <span className="rounded-full bg-brand-soft px-2.5 py-0.5 text-xs font-semibold text-brand-ink">
                           {row.staffLabel}
                         </span>
                       )}
@@ -206,7 +205,7 @@ export function BookingsBoard() {
                         type="button"
                         disabled={busyId === row.id}
                         onClick={() => void advance(row, "COMPLETED")}
-                        className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+                        className="min-h-11 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:opacity-50 md:min-h-0"
                       >
                         {s.completeBtn}
                       </button>
@@ -214,7 +213,7 @@ export function BookingsBoard() {
                         type="button"
                         disabled={busyId === row.id}
                         onClick={() => void advance(row, "NO_SHOW")}
-                        className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-text-main transition hover:bg-surface-2 disabled:opacity-50"
+                        className="min-h-11 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-text-main transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:opacity-50 md:min-h-0"
                       >
                         {s.noShowBtn}
                       </button>

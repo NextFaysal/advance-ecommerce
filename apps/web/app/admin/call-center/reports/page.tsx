@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { SourceChip } from "@/callcenter/components/badges";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
@@ -84,7 +84,7 @@ function RateCard({
         </span>
       </div>
       <p className="mt-4 text-xs font-medium text-text-muted">{label}</p>
-      <p className="mt-0.5 font-mono text-[1.7rem] font-bold leading-9 tabular-nums text-text-main">
+      <p className="tnum mt-0.5 font-mono text-[1.7rem] font-bold leading-9 tabular-nums text-text-main">
         {value}
       </p>
       <p className="mt-2 text-xs leading-relaxed text-text-muted">{detail}</p>
@@ -95,26 +95,26 @@ function RateCard({
 /** Mono fraction span so every rate's n/d reads as one exact figure. */
 function Frac({ n, d }: { n: number; d: number }) {
   return (
-    <span className="font-mono font-semibold tabular-nums text-text-main">
+    <span className="tnum font-mono font-semibold tabular-nums text-text-main">
       {n}/{d}
     </span>
   );
 }
 
 const MIX_BAR_CLASS: Record<string, string> = {
-  confirmed: "bg-emerald-500",
-  callbacks: "bg-amber-400",
-  cancelled: "bg-rose-400",
-  noAnswer: "bg-slate-300",
-  wrongNumber: "bg-slate-500",
+  confirmed: "bg-success-solid",
+  callbacks: "bg-warning-solid",
+  cancelled: "bg-danger",
+  noAnswer: "bg-border-strong",
+  wrongNumber: "bg-text-subtle",
 };
 
 const MIX_DOT_CLASS: Record<string, string> = {
-  confirmed: "bg-emerald-500",
-  callbacks: "bg-amber-400",
-  cancelled: "bg-rose-400",
-  noAnswer: "bg-slate-300",
-  wrongNumber: "bg-slate-500",
+  confirmed: "bg-success-solid",
+  callbacks: "bg-warning-solid",
+  cancelled: "bg-danger",
+  noAnswer: "bg-border-strong",
+  wrongNumber: "bg-text-subtle",
 };
 
 function mixLabels(s: CallCenterStrings): Record<string, string> {
@@ -141,8 +141,7 @@ export default async function AdminCallCenterReportsPage({
       <main>
         <PageHeader
           title={s.reportsTitle}
-          description={s.reportsDescShort}
-          breadcrumb={s.breadcrumb}
+          subtitle={s.reportsDescShort}
         />
         <p role="status">
           {s.lockedA} <code>module.call_center</code> {s.lockedB}
@@ -175,8 +174,7 @@ export default async function AdminCallCenterReportsPage({
     <main>
       <PageHeader
         title={s.reportsTitle}
-        description={interpolate(s.reportsDescLong, { from: range.from, to: range.to })}
-        breadcrumb={s.breadcrumb}
+        subtitle={interpolate(s.reportsDescLong, { from: range.from, to: range.to })}
       />
       <CallCenterTabs active="reports" />
 
@@ -188,7 +186,7 @@ export default async function AdminCallCenterReportsPage({
       {report === null ? (
         <p
           role="alert"
-          className="rounded-md bg-rose-50 px-3.5 py-2.5 text-small leading-relaxed text-rose-700"
+          className="rounded-xl bg-danger-soft px-3.5 py-2.5 text-small leading-relaxed text-danger"
         >
           {s.reportReadError}
         </p>
@@ -201,7 +199,7 @@ export default async function AdminCallCenterReportsPage({
               detail={
                 <>
                   {s.newTasksLead}{" "}
-                  <span className="font-mono font-semibold tabular-nums text-text-main">
+                  <span className="tnum font-mono font-semibold tabular-nums text-text-main">
                     {report.tasksCreated}
                   </span>
                   {s.countSuffix}
@@ -219,7 +217,7 @@ export default async function AdminCallCenterReportsPage({
                 </>
               }
               icon={<Icon name="users" size={22} />}
-              accent="bg-sky-50 text-sky-600"
+              accent="bg-info-soft text-info-solid"
             />
             <RateCard
               label={s.rateConfirmation}
@@ -231,7 +229,7 @@ export default async function AdminCallCenterReportsPage({
                 </>
               }
               icon={<Icon name="check" size={22} />}
-              accent="bg-emerald-50 text-emerald-600"
+              accent="bg-success-soft text-success-solid"
             />
             <RateCard
               label={s.rateRescue}
@@ -243,7 +241,7 @@ export default async function AdminCallCenterReportsPage({
                 </>
               }
               icon={<Icon name="truck" size={22} />}
-              accent="bg-amber-50 text-amber-600"
+              accent="bg-warning-soft text-warning-solid"
             />
             <RateCard
               label={s.rateCallbackKept}
@@ -254,14 +252,14 @@ export default async function AdminCallCenterReportsPage({
                 </>
               }
               icon={<Icon name="rotate-ccw" size={22} />}
-              accent="bg-teal-50 text-teal-600"
+              accent="bg-brand-soft text-brand-ink"
             />
             <RateCard
               label={s.rateAvgAttempts}
               value={String(report.avgAttemptsPerCompletedTask)}
               detail={
                 <>
-                  {s.completedTasksLead} <span className="font-mono font-semibold tabular-nums text-text-main">{report.tasksCompleted}</span>{s.avgSuffix}
+                  {s.completedTasksLead} <span className="tnum font-mono font-semibold tabular-nums text-text-main">{report.tasksCompleted}</span>{s.avgSuffix}
                 </>
               }
               icon={<Icon name="refresh-ccw" size={22} />}
@@ -269,7 +267,7 @@ export default async function AdminCallCenterReportsPage({
             />
           </div>
 
-          <h2 className="mb-1 text-lg font-semibold">{s.bySourceTitle}</h2>
+          <h2 className="mb-1 font-display text-base font-semibold text-text-main">{s.bySourceTitle}</h2>
           <p className="mb-3 text-xs text-text-muted">
             {s.bySourceDesc}
           </p>
@@ -277,10 +275,10 @@ export default async function AdminCallCenterReportsPage({
             {report.bySource.map((src) => {
               const totalCreated = report.bySource.reduce((sum, x) => sum + x.created, 0);
               return (
-                <div key={src.source} className="rounded-md border border-border p-4">
+                <div key={src.source} className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                     <SourceChip source={src.source} lang={locale} />
-                    <span className="font-mono text-xs tabular-nums text-text-muted">
+                    <span className="tnum font-mono text-xs tabular-nums text-text-muted">
                       {interpolate(s.bySourceStats, { created: src.created, completed: src.completed, confirmed: src.confirmedFinal, attempts: src.attempts })}
                     </span>
                   </div>
@@ -297,7 +295,7 @@ export default async function AdminCallCenterReportsPage({
                   <div className="mt-2 flex items-center gap-2">
                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
                       <div
-                        className="h-full rounded-full bg-emerald-500"
+                        className="h-full rounded-full bg-success-solid"
                         style={{ width: `${sharePct(src.completed, src.created)}%` }}
                       />
                     </div>
@@ -310,8 +308,8 @@ export default async function AdminCallCenterReportsPage({
             })}
           </div>
 
-          <h2 className="mb-3 mt-8 text-lg font-semibold">{s.byHourTitle}</h2>
-          <div className="rounded-md border border-border p-4">
+          <h2 className="mb-3 mt-8 font-display text-base font-semibold text-text-main">{s.byHourTitle}</h2>
+          <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
             <div className="flex gap-1 overflow-x-auto pb-2 lg:grid lg:grid-cols-12 lg:overflow-visible">
               {report.byHour.map((b) => {
                 const max = Math.max(1, ...report.byHour.map((x) => x.attempts));
@@ -359,7 +357,7 @@ export default async function AdminCallCenterReportsPage({
             </p>
           </div>
 
-          <h2 className="mb-1 mt-8 text-lg font-semibold">{s.byAgentTitle}</h2>
+          <h2 className="mb-1 mt-8 font-display text-base font-semibold text-text-main">{s.byAgentTitle}</h2>
           <p className="mb-3 text-xs text-text-muted">
             {s.byAgentDesc}
           </p>
@@ -375,10 +373,10 @@ export default async function AdminCallCenterReportsPage({
             {report.agents.map((a) => {
               const maxTalk = Math.max(1, ...report.agents.map((x) => x.totalTalkSeconds));
               return (
-                <div key={a.agentId} className="rounded-md border border-border p-4">
+                <div key={a.agentId} className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className="font-medium">{a.agentName ?? a.agentId}</span>
-                    <span className="font-mono text-xs tabular-nums text-text-muted">
+                    <span className="tnum font-mono text-xs tabular-nums text-text-muted">
                       {interpolate(s.agentStatsLine, { calls: a.totalCalls, rate: pct(a.confirmRateBps) })}
                     </span>
                   </div>
@@ -398,7 +396,7 @@ export default async function AdminCallCenterReportsPage({
                       ) : null,
                     )}
                   </div>
-                  <p className="mt-2 font-mono text-xs tabular-nums text-text-muted">
+                  <p className="tnum mt-2 font-mono text-xs tabular-nums text-text-muted">
                     {interpolate(s.agentMixLine, { confirmed: a.confirmed, callbacks: a.callbacks, cancelled: a.cancelled, noAnswer: a.noAnswer, wrongNumber: a.wrongNumber, kept: a.callbacksKept, rate: pct(a.callbackKeptRateBps) })}
                   </p>
                   <div className="mt-3 flex items-center gap-2">
@@ -409,7 +407,7 @@ export default async function AdminCallCenterReportsPage({
                         style={{ width: `${sharePct(a.totalTalkSeconds, maxTalk)}%` }}
                       />
                     </div>
-                    <span className="font-mono text-xs tabular-nums text-text-muted">
+                    <span className="tnum font-mono text-xs tabular-nums text-text-muted">
                       {interpolate(s.secondsText, { n: a.totalTalkSeconds })}
                     </span>
                   </div>

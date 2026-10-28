@@ -72,7 +72,7 @@ export function ConvertQuotationButton({ quotationId }: { quotationId: string })
         {busy ? s.converting : s.convertBtn}
       </Button>
       {message ? (
-        <span role="status" className={message.ok ? "text-xs text-emerald-700" : "text-xs text-rose-700"}>
+        <span role="status" className={message.ok ? "text-xs text-success-solid" : "text-xs text-danger"}>
           {message.text}
         </span>
       ) : null}

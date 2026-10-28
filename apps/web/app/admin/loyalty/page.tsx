@@ -131,8 +131,8 @@ export default async function LoyaltyPage() {
   const memberTableRows = view.members.map((m) => ({
     name: m.name,
     phone: <Phone phone={m.phone} />,
-    balance: String(m.balance),
-    lifetime: String(m.lifetime),
+    balance: <span className="tnum">{m.balance}</span>,
+    lifetime: <span className="tnum">{m.lifetime}</span>,
     tier: <Badge>{m.tierLabel}</Badge>,
     redeemValue: <Money poisha={m.balance * config.redeemPoishaPerPoint} />,
   }));
@@ -141,14 +141,14 @@ export default async function LoyaltyPage() {
     code: r.code,
     referrer: r.referrerName,
     status: <Badge>{r.status}</Badge>,
-    reward: `${config.referrerRewardPoints} / ${config.refereeRewardPoints} পয়েন্ট`,
+    reward: <span className="tnum">{`${config.referrerRewardPoints} / ${config.refereeRewardPoints} পয়েন্ট`}</span>,
     order: r.qualifyingOrderId ?? "—",
   }));
 
   const affiliateTableRows = view.affiliates.map((a) => ({
     name: a.name,
     code: a.code,
-    commission: `${(a.commissionBps / 100).toFixed(2)}%`,
+    commission: <span className="tnum">{`${(a.commissionBps / 100).toFixed(2)}%`}</span>,
     pending: <Money poisha={a.pendingPoisha} />,
     payable: <Money poisha={a.payablePoisha} />,
     paid: <Money poisha={a.paidPoisha} />,

@@ -14,7 +14,8 @@ import { getRequestLocale } from "@/i18n/server";
 import { interpolate, pick } from "@/i18n/locale";
 import { COMMON_STRINGS } from "@/i18n/dictionaries";
 import { INVENTORY_STRINGS, type InventoryStrings } from "./strings";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
@@ -120,27 +121,27 @@ export default async function AdminInventoryPage() {
     .filter((r) => r.quantityAvailable <= r.threshold)
     .sort((a, b) => a.quantityAvailable - b.quantityAvailable);
   return (
-    <main className="min-w-0">
+    <main className="min-w-0 space-y-6">
       <PageHeader
         title={s.title}
-        description={interpolate(s.description, { count: items.length })}
+        subtitle={interpolate(s.description, { count: items.length })}
       />
 
       {/* Summary strip */}
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Card className="shadow-card">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Card>
           <p className="text-caption font-medium text-text-muted">{s.totalValueCost}</p>
           <p className="mt-1 font-mono text-h3 font-bold tabular-nums">{formatBdt(valuation)}</p>
           {missingCost > 0 ? (
             <p className="mt-1 text-caption text-text-muted">{interpolate(s.missingCostNote, { count: missingCost })}</p>
           ) : null}
         </Card>
-        <Card className="shadow-card">
+        <Card>
           <p className="text-caption font-medium text-text-muted">{s.totalItems}</p>
           <p className="mt-1 font-mono text-h3 font-bold tabular-nums">{items.length}</p>
           <p className="mt-1 text-caption text-text-muted">{s.itemsCaption}</p>
         </Card>
-        <Card className="shadow-card">
+        <Card>
           <p className="text-caption font-medium text-text-muted">{s.lowStockAlerts}</p>
           <p className="mt-1 font-mono text-h3 font-bold tabular-nums">{low.length}</p>
           <p className="mt-1 text-caption text-text-muted">
@@ -150,18 +151,7 @@ export default async function AdminInventoryPage() {
       </div>
 
       {items.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card px-6 py-14 text-center shadow-card">
-          <span aria-hidden="true" className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 text-brand-500">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7">
-              <path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35Z" />
-              <path d="M6 18h12" /><path d="M6 14h12" /><path d="M10 22v-4h4v4" />
-            </svg>
-          </span>
-          <h2 className="mt-4 text-h3">{s.emptyTitle}</h2>
-          <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
-            {s.emptyBody}
-          </p>
-        </div>
+        <EmptyState title={s.emptyTitle} description={s.emptyBody} />
       ) : (
         <div>
           <p className="mb-2 text-small font-semibold text-text-main">{s.breakdownTitle}</p>
@@ -169,18 +159,18 @@ export default async function AdminInventoryPage() {
             {s.breakdownNoteBefore}
             <span className="font-semibold text-text-main"> {s.breakdownNoteEmphasis}</span> {s.breakdownNoteAfter}
           </p>
-          <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-card">
+          <div className="hidden overflow-x-auto rounded-2xl border border-border/60 bg-card shadow-xs md:block">
             <table className="w-full min-w-[720px] border-collapse text-left text-sm">
               <thead>
-                <tr className="bg-surface-2 text-left [&>th]:border-b [&>th]:border-border">
+                <tr className="bg-surface-2/80 text-left">
                   {[s.colVariant, s.colWarehouse, s.colOnHand, s.colReserved, s.colAvailableHere, s.colTotalAvailable, ct.status].map((h) => (
-                    <th key={h} scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">{h}</th>
+                    <th key={h} scope="col" className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {items.map((i) => (
-                  <tr key={`${i.variantId}-${i.warehouseId}`} className="border-t border-border transition motion-fast first:border-t-0 hover:bg-surface-2/70">
+                  <tr key={`${i.variantId}-${i.warehouseId}`} className="border-t border-border/60 transition duration-fast ease-smooth first:border-t-0 hover:bg-brand-soft/60">
                     <td className="px-4 py-3 font-mono text-small">{i.variantId}</td>
                     <td className="px-4 py-3 text-text-muted">{i.warehouseId}</td>
                     <td className="px-4 py-3 font-mono tabular-nums">{i.quantityOnHand}</td>
@@ -193,22 +183,48 @@ export default async function AdminInventoryPage() {
               </tbody>
             </table>
           </div>
+          {/* Mobile card view (under md) — same warehouse rows, key fields only. */}
+          <div className="space-y-3 md:hidden">
+            {items.map((i) => (
+              <article key={`m-${i.variantId}-${i.warehouseId}`} className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="min-w-0 truncate font-mono text-small font-medium">{i.variantId}</span>
+                  {stockBadge(headlineFor(i.variantId, i.quantityAvailable), thresholdFor(i.variantId).threshold, s, ct.outOfStock)}
+                </div>
+                <p className="mt-1 text-small text-text-muted">{i.warehouseId}</p>
+                <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border/60 pt-3 text-center">
+                  <span>
+                    <span className="block text-caption text-text-subtle">{s.colOnHand}</span>
+                    <span className="tnum font-mono font-semibold">{i.quantityOnHand}</span>
+                  </span>
+                  <span>
+                    <span className="block text-caption text-text-subtle">{s.colReserved}</span>
+                    <span className="tnum font-mono font-semibold">{i.quantityReserved}</span>
+                  </span>
+                  <span>
+                    <span className="block text-caption text-text-subtle">{s.colTotalAvailable}</span>
+                    <span className="tnum font-mono font-semibold">{stockCacheMap.get(i.variantId) ?? "—"}</span>
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
         </div>
       )}
 
-      <Card className="mt-5 overflow-hidden shadow-card">
+      <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center gap-3">
           <span
             aria-hidden="true"
             className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1 ${
               low.length > 0
-                ? "bg-amber-50 text-amber-600 ring-amber-100"
-                : "bg-emerald-50 text-emerald-600 ring-emerald-100"
+                ? "bg-warning-soft text-warning-solid ring-warning-solid/20"
+                : "bg-success-soft text-success-solid ring-success-solid/20"
             }`}
           >
             <Icon name={low.length > 0 ? "alert" : "check"} size={20} />
           </span>
-          <h2 className="text-h3">{s.lowStockAlerts}</h2>
+          <h2 className="font-display text-h3 font-semibold">{s.lowStockAlerts}</h2>
           <Badge tone={low.length > 0 ? "warning" : "success"} dot>
             {interpolate(s.productsCount, { count: low.length })}
           </Badge>
@@ -222,10 +238,10 @@ export default async function AdminInventoryPage() {
               return (
                 <li
                   key={r.variantId}
-                  className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-lg border-l-4 px-3.5 py-3 transition motion-fast ${
+                  className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl border-l-4 px-3.5 py-3 transition duration-fast ease-smooth ${
                     out
-                      ? "border-rose-400 bg-rose-50/60 hover:bg-rose-50"
-                      : "border-amber-400 bg-amber-50/50 hover:bg-amber-50/80"
+                      ? "border-danger bg-danger-soft/60 hover:bg-danger-soft"
+                      : "border-warning-solid bg-warning-soft/50 hover:bg-warning-soft/80"
                   }`}
                 >
                   <span className="min-w-0">
@@ -258,15 +274,15 @@ export default async function AdminInventoryPage() {
         )}
       </Card>
 
-      <Card className="mt-5 shadow-card">
+      <Card>
         <div className="flex flex-wrap items-center gap-3">
           <span
             aria-hidden="true"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-500 ring-1 ring-brand-100"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-ink ring-1 ring-brand-ink/10"
           >
             <Icon name="truck" size={20} />
           </span>
-          <h2 className="text-h3">{s.poSectionTitle}</h2>
+          <h2 className="font-display text-h3 font-semibold">{s.poSectionTitle}</h2>
         </div>
         <p className="mt-2 max-w-3xl text-small leading-relaxed text-text-muted">
           {s.poSectionBody}
@@ -280,15 +296,15 @@ export default async function AdminInventoryPage() {
           ABC + dead stock + expiring batches + auto-reorder, all from
           src/inventory/analytics.ts + reorder.ts via the depth API. */}
       {isFeatureEnabled("module.inventory_depth") ? (
-        <Card className="mt-5 shadow-card">
+        <Card>
           <div className="flex flex-wrap items-center gap-3">
             <span
               aria-hidden="true"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-500 ring-1 ring-brand-100"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-ink ring-1 ring-brand-ink/10"
             >
               <Icon name="chart" size={20} />
             </span>
-            <h2 className="text-h3">{s.depthSectionTitle}</h2>
+            <h2 className="font-display text-h3 font-semibold">{s.depthSectionTitle}</h2>
             <Badge tone="brand">ADV-20</Badge>
           </div>
           <p className="mt-2 max-w-3xl text-small leading-relaxed text-text-muted">

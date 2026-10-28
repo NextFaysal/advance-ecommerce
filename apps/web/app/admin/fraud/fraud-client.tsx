@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
-import { DataTable } from "@/components/ui/table";
+import { DataTable, DataTableSkeleton } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -97,7 +97,7 @@ async function apiJson<T>(url: string, init?: RequestInit): Promise<{ ok: boolea
   return { ok: res.ok, status: res.status, data: body?.data, error: body?.error };
 }
 
-const SELECT_CLASS = "h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm outline-none focus:border-brand-500";
+const SELECT_CLASS = "h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs outline-none transition focus:border-brand-500";
 
 interface ListsData {
   bands: { low: string; medium: string; high: string };
@@ -249,10 +249,13 @@ export function FraudClient() {
       <main>
         <PageHeader title={pageTitle} description={t.descShort} breadcrumb={t.breadcrumb} />
         {state === "loading" ? (
-          <p role="status" className="text-sm text-text-muted">{t.loading}</p>
+          <div className="space-y-3">
+            <p role="status" className="text-sm text-text-muted">{t.loading}</p>
+            <DataTableSkeleton columns={5} rows={5} />
+          </div>
         ) : (
           <div>
-            <p role="alert" className="text-sm text-rose-500">{interpolate(t.loadFailed, { message: errorMessage })}</p>
+            <p role="alert" className="text-sm text-danger">{interpolate(t.loadFailed, { message: errorMessage })}</p>
             <Button type="button" className="mt-3" onClick={() => void load()}>{t.retry}</Button>
           </div>
         )}
@@ -275,7 +278,7 @@ export function FraudClient() {
       ),
       phone: <Phone phone={input.phone} />,
       total: <Money poisha={input.totalPoisha} />,
-      score: assessment ? <span className="font-mono font-bold tabular-nums">{assessment.score}</span> : <span className="text-text-muted">—</span>,
+      score: assessment ? <span className="tnum font-mono font-bold tabular-nums">{assessment.score}</span> : <span className="text-text-muted">—</span>,
       level: assessment ? <RiskBadge level={RISK_BADGE_LEVEL[assessment.level]} /> : <span className="text-text-muted">—</span>,
       action: assessment ? (
         <Badge tone={ACTION_TONE[assessment.suggestedAction]}>{ACTION_LABEL[locale][assessment.suggestedAction]}</Badge>
@@ -294,7 +297,7 @@ export function FraudClient() {
     ? selected.signals.map((sig) => ({
         signal: SIGNAL_TEXT[locale][sig.key] ?? sig.key,
         points: (
-          <span className="font-mono tabular-nums">
+          <span className="tnum font-mono tabular-nums">
             {sig.points > 0 ? `+${sig.points}` : sig.points}
           </span>
         ),
@@ -325,28 +328,30 @@ export function FraudClient() {
   }));
 
   return (
-    <main>
+    <main className="space-y-6">
       <PageHeader title={pageTitle} description={t.descLong} breadcrumb={t.breadcrumb} />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label={t.statBlacklist} value={String(lists.blacklist.length)} delta={t.statFromDb} icon="⛔" />
         <StatCard label={t.statWhitelist} value={String(lists.whitelist.length)} delta={t.statFromDb} icon="✓" />
         <StatCard label={t.statScored} value={String(resultList.length)} delta={t.statScoredDelta} icon="🔎" />
         <StatCard label={t.statHighRisk} value={String(highRisk)} delta={highRisk > 0 ? t.statHighRiskAction : t.statHighRiskNone} deltaTone={highRisk > 0 ? "down" : "up"} icon="⚠" />
       </div>
 
-      <Card className="mb-8">
-        <h2 className="mb-1 text-base font-semibold">{t.bandsTitle}</h2>
+      <Card>
+        <h2 className="mb-1 font-display text-base font-semibold text-text-main">{t.bandsTitle}</h2>
         <p className="text-sm text-text-muted">
           {interpolate(t.bandsLine, { low: lists.bands.low, medium: lists.bands.medium, high: lists.bands.high })}
         </p>
       </Card>
 
-      <h2 className="mb-3 text-lg font-semibold">{t.testerTitle}</h2>
-      <p className="mb-3 text-xs text-text-muted">{t.testerNote}</p>
-      <Button type="button" loading={scoreBusy} onClick={() => void scoreAll()}>{t.scoreAll}</Button>
-      {scoreStatus ? <p role="status" className="mt-2 text-sm">{scoreStatus}</p> : null}
-      <div className="mt-3">
+      <section className="space-y-3">
+        <h2 className="font-display text-lg font-semibold text-text-main">{t.testerTitle}</h2>
+        <p className="text-xs text-text-muted">{t.testerNote}</p>
+        <div>
+          <Button type="button" loading={scoreBusy} onClick={() => void scoreAll()}>{t.scoreAll}</Button>
+          {scoreStatus ? <p role="status" className="mt-2 text-sm">{scoreStatus}</p> : null}
+        </div>
         <DataTable
           caption={t.scenarioCaption}
           columns={[
@@ -360,10 +365,11 @@ export function FraudClient() {
           ]}
           rows={scenarioRows}
         />
-      </div>
+      </section>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{t.signalsTitle}{selectedLabel ? ` — ${selectedLabel}` : ""}</h2>
-      {selected ? (
+      <section className="space-y-3">
+        <h2 className="font-display text-lg font-semibold text-text-main">{t.signalsTitle}{selectedLabel ? ` — ${selectedLabel}` : ""}</h2>
+        {selected ? (
         <DataTable
           caption={interpolate(t.signalsCaption, { score: selected.score })}
           columns={[
@@ -375,11 +381,13 @@ export function FraudClient() {
           rows={signalRows}
         />
       ) : (
-        <EmptyState title={t.noResultTitle} description={t.noResultDesc} />
-      )}
+          <EmptyState title={t.noResultTitle} description={t.noResultDesc} />
+        )}
+      </section>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{t.listsTitle}</h2>
-      {listRows.length === 0 ? (
+      <section className="space-y-3">
+        <h2 className="font-display text-lg font-semibold text-text-main">{t.listsTitle}</h2>
+        {listRows.length === 0 ? (
         <EmptyState title={t.listsEmptyTitle} description={t.listsEmptyDesc} />
       ) : (
         <DataTable
@@ -392,12 +400,14 @@ export function FraudClient() {
             { key: "added", header: t.colAdded },
             { key: "remove", header: "" },
           ]}
-          rows={listRows}
-        />
-      )}
+            rows={listRows}
+          />
+        )}
+      </section>
 
-      <h3 className="mb-3 mt-8 text-base font-semibold">{t.addTitle}</h3>
-      <Card>
+      <section className="space-y-3">
+        <h3 className="font-display text-lg font-semibold text-text-main">{t.addTitle}</h3>
+        <Card>
         <form onSubmit={(e) => void addEntry(e)} className="grid gap-3 sm:grid-cols-2">
           <div>
             <span className="mb-1 block text-xs font-medium text-text-muted">{t.fList}</span>
@@ -430,7 +440,8 @@ export function FraudClient() {
           </div>
         </form>
         {entryStatus ? <p role="status" className="mt-3 text-sm">{entryStatus}</p> : null}
-      </Card>
+        </Card>
+      </section>
     </main>
   );
 }

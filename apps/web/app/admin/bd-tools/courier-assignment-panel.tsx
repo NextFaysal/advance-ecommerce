@@ -137,12 +137,12 @@ export function CourierAssignmentPanel({ stats, shipmentCount, providersWithHist
         {result.ranked.map((r, i) => (
           <div
             key={r.provider}
-            className={`rounded-lg border p-3 ${i === 0 ? "border-emerald-300 bg-emerald-50" : "border-border bg-surface-2"}`}
+            className={`rounded-lg border p-3 ${i === 0 ? "border-success-solid/40 bg-success-soft" : "border-border bg-surface-2"}`}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-sm font-semibold">
                 #{i + 1} {PROVIDER_LABELS[r.provider] ?? r.provider}
-                {i === 0 ? <span className="ml-2 text-emerald-700">{s.caRecommended}</span> : null}
+                {i === 0 ? <span className="ml-2 text-success-solid">{s.caRecommended}</span> : null}
               </span>
               <span className="flex flex-wrap items-center gap-2 text-sm">
                 <Badge tone={i === 0 ? "success" : "info"}>{interpolate(s.caScoreBadge, { score: r.score ?? "—" })}</Badge>
@@ -167,7 +167,7 @@ export function CourierAssignmentPanel({ stats, shipmentCount, providersWithHist
 
       {result.excluded.length > 0 ? (
         <div>
-          <h3 className="mb-2 text-sm font-semibold">{s.caExcludedTitle}</h3>
+          <h3 className="mb-2 font-display text-sm font-semibold text-text-main">{s.caExcludedTitle}</h3>
           <ul className="space-y-1 text-sm text-text-muted">
             {result.excluded.map((r) => (
               <li key={r.provider}>
@@ -181,7 +181,7 @@ export function CourierAssignmentPanel({ stats, shipmentCount, providersWithHist
       ) : null}
 
       <details>
-        <summary className="cursor-pointer text-sm font-medium">{s.caTraceTitle}</summary>
+        <summary className="cursor-pointer font-display text-sm font-semibold text-text-main">{s.caTraceTitle}</summary>
         <ul className="mt-2 space-y-1 font-mono text-xs text-text-muted">
           {result.trace.map((t, i) => (
             <li key={i}>

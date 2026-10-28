@@ -14,6 +14,7 @@ import { generateSmartPalette } from "@/lib/theme-palette-generator";
 import { ThemeLivePreview } from "@/components/admin/theme-live-preview";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { APPEARANCE_STRINGS, TOKEN_GROUP_LABELS, TOKEN_META_LABELS } from "../../strings";
+import { PageHeader } from "@/components/ui/page-header";
 
 export default function NewThemePage() {
   const router = useRouter();
@@ -109,22 +110,20 @@ export default function NewThemePage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-8">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <Link href="/admin/appearance/themes" className="text-sm font-medium text-primary hover:underline">
-            {t.backToList}
-          </Link>
-          <h1 className="mt-1 font-display text-2xl font-bold text-text-main">{t.newTitle}</h1>
-          <p className="text-sm text-text-muted">{t.newSubtitle}</p>
-        </div>
-
-        {/* JSON Import button */}
-        <label className="cursor-pointer inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3.5 py-2 text-xs font-semibold text-text-main shadow-sm hover:bg-muted">
-          {t.importJson}
-          <input type="file" accept=".json" onChange={handleJsonImport} className="hidden" />
-        </label>
-      </div>
+    <main className="min-w-0">
+      <Link href="/admin/appearance/themes" className="mb-2 inline-block text-sm font-medium text-primary hover:underline">
+        {t.backToList}
+      </Link>
+      <PageHeader
+        title={t.newTitle}
+        description={t.newSubtitle}
+        actions={
+          <label className="inline-flex min-h-[40px] cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-semibold text-text-main shadow-xs transition duration-fast hover:bg-surface-2">
+            {t.importJson}
+            <input type="file" accept=".json" onChange={handleJsonImport} className="hidden" />
+          </label>
+        }
+      />
 
       {error && (
         <div className="mb-6 rounded-xl border border-destructive/20 bg-destructive/10 px-5 py-4 text-sm text-destructive">
@@ -133,7 +132,7 @@ export default function NewThemePage() {
       )}
 
       {/* Quick Starter Presets Bar */}
-      <div className="mb-8 rounded-2xl border border-border bg-card p-5 shadow-sm">
+      <div className="mb-8 rounded-3xl border border-border/60 bg-card p-5 shadow-card">
         <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-text-muted">
           {t.presetsTitle}
         </h3>
@@ -161,12 +160,12 @@ export default function NewThemePage() {
       </div>
 
       {/* Main 2-Column Workspace */}
-      <div className="grid gap-8 lg:grid-cols-12">
+      <div className="grid gap-6 lg:grid-cols-12">
         {/* Left Form (7 cols) */}
         <div className="space-y-6 lg:col-span-7">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* General Info */}
-            <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <div className="rounded-3xl border border-border/60 bg-card p-5 shadow-card">
               <h2 className="mb-4 text-sm font-bold text-text-main">{t.generalInfo}</h2>
               <div className="space-y-4">
                 <div>
@@ -196,7 +195,7 @@ export default function NewThemePage() {
             </div>
 
             {/* Smart 1-Click Palette Generator */}
-            <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 shadow-sm">
+            <div className="rounded-3xl border border-primary/20 bg-primary/5 p-5 shadow-card">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-bold text-primary">{t.generatorTitle}</h3>
@@ -224,7 +223,7 @@ export default function NewThemePage() {
             <div className="space-y-4">
               <h2 className="text-sm font-bold text-text-main">{t.tokensTitle}</h2>
               {THEME_TOKEN_GROUPS.map((group) => (
-                <div key={group.label} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+                <div key={group.label} className="rounded-3xl border border-border/60 bg-card p-5 shadow-card">
                   <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-text-muted">
                     {TOKEN_GROUP_LABELS[locale][group.label] ?? group.label}
                   </h3>

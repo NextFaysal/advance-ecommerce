@@ -1,4 +1,4 @@
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { listEffectiveScripts } from "@/callcenter/scripts-store";
@@ -24,7 +24,7 @@ export default async function AdminCallCenterScriptsPage() {
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
       <main>
-        <PageHeader title={s.scriptsTitle} description={s.scriptsDescShort} breadcrumb={s.breadcrumb} />
+        <PageHeader title={s.scriptsTitle} subtitle={s.scriptsDescShort} />
         <p role="status">
           {s.lockedA} <code>module.call_center</code> {s.lockedB}
         </p>
@@ -51,12 +51,11 @@ export default async function AdminCallCenterScriptsPage() {
     <main>
       <PageHeader
         title={s.scriptsTitle}
-        description={s.scriptsDescLong}
-        breadcrumb={s.breadcrumb}
+        subtitle={s.scriptsDescLong}
       />
       <CallCenterTabs active="scripts" />
       {scripts === null ? (
-        <p role="alert" className="rounded-md bg-rose-50 px-3.5 py-2.5 text-small leading-relaxed text-rose-700">
+        <p role="alert" className="rounded-xl bg-danger-soft px-3.5 py-2.5 text-small leading-relaxed text-danger">
           {s.scriptsReadError}
         </p>
       ) : (

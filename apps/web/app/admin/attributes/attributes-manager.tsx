@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/drawer";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -139,18 +140,18 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
         </div>
       ) : null}
 
-      <div className="mb-4 flex gap-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3.5 shadow-card">
-        <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700">
+      <div className="mb-4 flex gap-3 rounded-2xl border border-info-solid/30 bg-info-soft px-4 py-3.5 shadow-xs">
+        <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-info-soft text-info-solid">
           <Icon name="info" size={17} />
         </span>
-        <p className="text-sm leading-relaxed text-sky-900">
+        <p className="text-sm leading-relaxed text-text-main">
           {s.libraryNote}
         </p>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="flex items-center gap-2.5 text-sm text-text-muted">
-          <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
+          <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-soft text-brand-600">
             <Icon name="package" size={17} />
           </span>
           {interpolate(s.totalLabel, { count: sets.length })}
@@ -161,43 +162,36 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
       </div>
 
       {sets.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-card px-6 py-14 text-center shadow-card">
-          <span aria-hidden="true" className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 text-brand-500">
-            <Icon name="package" size={28} />
-          </span>
-          <p className="mt-4 text-sm leading-relaxed text-text-muted">
-            {s.empty}
-          </p>
-        </div>
+        <EmptyState title={s.pageTitle} description={s.empty} actionLabel={s.newSet} onAction={openCreate} />
       ) : (
         <>
           {/* Desktop / tablet: v2 table */}
-          <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-card max-md:hidden">
+          <div className="overflow-x-auto rounded-2xl border border-border/60 bg-card shadow-xs max-md:hidden">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-surface-2/80 text-left">
-                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">{s.colAttribute}</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">{s.colKey}</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">{s.colValues}</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-text-muted">{s.colActions}</th>
+              <thead className="bg-surface-2/80">
+                <tr className="text-left">
+                  <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{s.colAttribute}</th>
+                  <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{s.colKey}</th>
+                  <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{s.colValues}</th>
+                  <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-right text-xs font-semibold text-text-muted">{s.colActions}</th>
                 </tr>
               </thead>
               <tbody>
                 {sets.map((set) => (
-                  <tr key={set.id} className="border-t border-border/60 transition motion-fast first:border-t-0 hover:bg-brand-50/50">
+                  <tr key={set.id} className="border-t border-border/60 transition duration-fast ease-smooth first:border-t-0 hover:bg-brand-soft/60">
                     <td className="px-4 py-3">
                       <span className="block font-medium text-text-main">{set.labelBn}</span>
                       <span className="block text-xs text-text-muted">{set.labelEn}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs text-text-muted ring-1 ring-inset ring-black/5">
+                      <span className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs text-text-muted ring-1 ring-inset ring-border/60">
                         {set.key}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <span className="flex max-w-md flex-wrap gap-1.5">
                         {set.values.map((v) => (
-                          <span key={v} className="inline-flex h-6 items-center rounded-full bg-brand-50 px-2.5 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-100">
+                          <span key={v} className="inline-flex h-6 items-center rounded-full bg-brand-soft px-2.5 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-ink/10">
                             {v}
                           </span>
                         ))}
@@ -222,19 +216,19 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
           {/* Mobile: card list */}
           <ul className="space-y-2.5 md:hidden">
             {sets.map((set) => (
-              <li key={set.id} className="rounded-lg border border-border/70 bg-card p-4 shadow-card">
+              <li key={set.id} className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="min-w-0">
                     <span className="block truncate font-medium text-text-main">{set.labelBn}</span>
                     <span className="block truncate text-xs text-text-muted">{set.labelEn}</span>
                   </span>
-                  <span className="ml-auto inline-flex h-6 shrink-0 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs text-text-muted ring-1 ring-inset ring-black/5">
+                  <span className="ml-auto inline-flex h-6 shrink-0 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs text-text-muted ring-1 ring-inset ring-border/60">
                     {set.key}
                   </span>
                 </div>
                 <span className="mt-2.5 flex flex-wrap gap-1.5">
                   {set.values.map((v) => (
-                    <span key={v} className="inline-flex h-6 items-center rounded-full bg-brand-50 px-2.5 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-100">
+                    <span key={v} className="inline-flex h-6 items-center rounded-full bg-brand-soft px-2.5 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-ink/10">
                       {v}
                     </span>
                   ))}
@@ -312,7 +306,7 @@ export function AttributesManager({ initial }: { initial: AdminAttributeSet[] })
         onConfirm={confirmDelete}
       >
         <div className="flex gap-3">
-          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-600 ring-1 ring-inset ring-rose-100">
+          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-danger-soft text-danger ring-1 ring-inset ring-danger/20">
             <Icon name="alert" size={20} />
           </span>
           <p className="text-sm leading-relaxed text-text-muted">

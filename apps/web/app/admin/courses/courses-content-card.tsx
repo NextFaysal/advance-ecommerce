@@ -57,9 +57,9 @@ interface StoredLesson {
 }
 
 const INPUT_CLASS =
-  "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-text-main";
+  "w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-text-main shadow-xs outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
 const SMALL_BUTTON =
-  "rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-text-main transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50";
+  "rounded-xl border border-border bg-card px-2.5 py-1.5 text-xs font-semibold text-text-main shadow-xs transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 let idCounter = 0;
 function newLessonId(): string {
@@ -220,14 +220,14 @@ export function CoursesContentCard() {
   }
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+    <section className="rounded-2xl border border-border/60 bg-card p-5 shadow-xs">
       <h2 className="font-display text-base font-bold text-text-main">{s.contentTitle}</h2>
       <p className="mt-1 text-sm leading-6 text-text-muted">
         {s.contentIntroA} <strong>{s.contentIntroStrong}</strong> {s.contentIntroB}
       </p>
 
       {error ? (
-        <p role="alert" className="mt-3 text-sm font-medium text-red-700 dark:text-red-300">
+        <p role="alert" className="mt-3 text-sm font-medium text-danger">
           {error}
         </p>
       ) : null}
@@ -274,7 +274,7 @@ export function CoursesContentCard() {
           <>
             <div className="space-y-4">
               {modules.map((mod, mi) => (
-                <fieldset key={mi} className="rounded-xl border border-border p-3 sm:p-4">
+                <fieldset key={mi} className="rounded-2xl border border-border/60 bg-surface-2/40 p-3 sm:p-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-bold text-text-main">{interpolate(s.moduleLabel, { n: mi + 1 })}</span>
                     <input
@@ -296,7 +296,7 @@ export function CoursesContentCard() {
 
                   <div className="mt-3 space-y-3">
                     {mod.lessons.map((lesson, li) => (
-                      <div key={lesson.id} className="rounded-lg bg-card p-3">
+                      <div key={lesson.id} className="rounded-xl border border-border/50 bg-card p-3 shadow-xs">
                         <div className="flex flex-wrap items-center gap-2">
                           <input
                             className={INPUT_CLASS + " min-w-[200px] flex-1"}

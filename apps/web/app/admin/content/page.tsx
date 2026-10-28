@@ -56,51 +56,53 @@ export default async function AdminContentPage() {
       </Badge>
     ),
     seo: seoSummary(p, s),
-    updated: p.updatedAt.slice(0, 10),
+    updated: <span className="tnum">{p.updatedAt.slice(0, 10)}</span>,
   }));
 
   return (
-    <main>
+    <main className="space-y-6">
       <PageHeader title={s.title} description={s.description} breadcrumb={s.breadcrumb} />
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label={s.statPages} value={String(pages.length)} delta={s.deltaDb} icon="📄" />
         <StatCard label={s.statPosts} value={String(posts.length)} delta={s.deltaDb} icon="✍️" />
         <StatCard label={s.statPublished} value={String(published)} delta={s.deltaLive} icon="✅" />
         <StatCard label={s.statDrafts} value={String(drafts)} delta={s.deltaUnpublished} deltaTone="down" icon="📝" />
       </div>
 
-      <h2 className="mb-3 text-lg font-semibold">{s.listTitle}</h2>
-      {all.length === 0 ? (
-        <Card>
-          <p className="text-sm text-text-muted">{s.empty}</p>
-        </Card>
-      ) : (
-        <DataTable
-          caption={s.caption}
-          columns={[
-            { key: "title", header: s.colTitle },
-            { key: "slug", header: s.colSlug },
-            { key: "kind", header: s.colKind },
-            { key: "status", header: s.colStatus },
-            { key: "seo", header: s.colSeo },
-            { key: "updated", header: s.colUpdated },
-          ]}
-          rows={rows}
-        />
-      )}
-
-      <div className="mt-6">
-        <Card>
-          <p className="text-sm text-text-muted">
-            {redirects.length === 0
-              ? s.redirectsNone
-              : interpolate(s.redirectsSome, { count: redirects.length, list: redirects.map((r) => `/${r.from} → /${r.to}`).join(" · ") })}
-          </p>
-        </Card>
+      <div className="space-y-3">
+        <h2 className="font-display text-lg font-semibold text-text-main">{s.listTitle}</h2>
+        {all.length === 0 ? (
+          <Card>
+            <p className="text-sm text-text-muted">{s.empty}</p>
+          </Card>
+        ) : (
+          <DataTable
+            caption={s.caption}
+            columns={[
+              { key: "title", header: s.colTitle },
+              { key: "slug", header: s.colSlug },
+              { key: "kind", header: s.colKind },
+              { key: "status", header: s.colStatus },
+              { key: "seo", header: s.colSeo },
+              { key: "updated", header: s.colUpdated },
+            ]}
+            rows={rows}
+          />
+        )}
       </div>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.menuHeroTitle}</h2>
-      <SiteContentEditor initial={siteContent.content} configured={siteContent.configured} />
+      <Card>
+        <p className="text-sm text-text-muted">
+          {redirects.length === 0
+            ? s.redirectsNone
+            : interpolate(s.redirectsSome, { count: redirects.length, list: redirects.map((r) => `/${r.from} → /${r.to}`).join(" · ") })}
+        </p>
+      </Card>
+
+      <div className="space-y-3">
+        <h2 className="font-display text-lg font-semibold text-text-main">{s.menuHeroTitle}</h2>
+        <SiteContentEditor initial={siteContent.content} configured={siteContent.configured} />
+      </div>
     </main>
   );
 }

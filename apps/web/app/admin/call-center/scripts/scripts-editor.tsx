@@ -145,7 +145,7 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {scripts.map((script) => {
         const sourceV = (SOURCE_VISUAL as Record<string, StatusVisual>)[script.source];
         return (
@@ -155,7 +155,7 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
           >
             <div className="mb-1 flex flex-wrap items-center gap-2">
               {sourceV ? <SourceChip source={script.source as CallQueueSource} lang={locale} /> : null}
-              <h2 className="text-base font-semibold">{sourceLabel(s, script.source)}</h2>
+              <h2 className="font-display text-base font-semibold text-text-main">{sourceLabel(s, script.source)}</h2>
               <span className="ml-auto flex flex-wrap items-center gap-2">
                 <Badge tone="info" icon={<Icon name="tag" size={12} />}>
                   {script.versionLabel}
@@ -179,7 +179,7 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
 
             <div className="space-y-3">
               {script.steps.map((step, idx) => (
-                <div key={idx} className="rounded-md border border-border p-3">
+                <div key={idx} className="rounded-xl border border-border/60 bg-surface-2/40 p-3">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     <span className="inline-flex items-center gap-2 text-sm font-medium">
                       <span
@@ -191,18 +191,18 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
                       {s.stepWord}
                     </span>
                     <input
-                      className="h-9 w-44 rounded-md border border-border px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                      className="h-9 w-44 rounded-xl border border-border bg-surface px-2.5 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                       value={step.key}
                       onChange={(e) => patchStep(script.source, idx, "key", e.target.value)}
                       placeholder="step-key"
                       aria-label={s.stepKeyAria}
                     />
                     <span className="ml-auto flex gap-1">
-                      <button type="button" className="rounded-md border border-border px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300" onClick={() => moveStep(script.source, idx, -1)} disabled={idx === 0} aria-label={s.moveUpAria}>↑</button>
-                      <button type="button" className="rounded-md border border-border px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300" onClick={() => moveStep(script.source, idx, 1)} disabled={idx === script.steps.length - 1} aria-label={s.moveDownAria}>↓</button>
+                      <button type="button" className="rounded-lg border border-border/60 bg-card px-2 py-1 text-sm shadow-xs hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300" onClick={() => moveStep(script.source, idx, -1)} disabled={idx === 0} aria-label={s.moveUpAria}>↑</button>
+                      <button type="button" className="rounded-lg border border-border/60 bg-card px-2 py-1 text-sm shadow-xs hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300" onClick={() => moveStep(script.source, idx, 1)} disabled={idx === script.steps.length - 1} aria-label={s.moveDownAria}>↓</button>
                       <button
                         type="button"
-                        className="rounded-md border border-border px-2 py-1 text-sm text-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                        className="rounded-lg border border-border/60 bg-card px-2 py-1 text-sm text-danger shadow-xs hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                         onClick={() => patch(script.source, script.steps.filter((_, i) => i !== idx))}
                         disabled={script.steps.length <= 1}
                         aria-label={s.removeStepAria}
@@ -212,7 +212,7 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
                     </span>
                   </div>
                   <textarea
-                    className="mb-2 w-full rounded-md border border-border px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                    className="mb-2 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     rows={2}
                     value={step.promptBn}
                     onChange={(e) => patchStep(script.source, idx, "promptBn", e.target.value)}
@@ -220,7 +220,7 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
                     aria-label={s.banglaPromptAria}
                   />
                   <input
-                    className="w-full rounded-md border border-border px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                    className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     value={step.promptEn}
                     onChange={(e) => patchStep(script.source, idx, "promptEn", e.target.value)}
                     placeholder={s.englishPromptPlaceholder}
@@ -233,21 +233,21 @@ export function ScriptsEditor({ initialScripts }: { initialScripts: ScriptSource
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                className="rounded-md border border-border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                className="rounded-xl border border-border/60 bg-card px-3 py-2 text-sm shadow-xs hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                 onClick={() => patch(script.source, [...script.steps, { key: "", promptBn: "", promptEn: "" }])}
               >
                 {s.addStepBtn}
               </button>
               <button
                 type="button"
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                className="brand-gradient rounded-xl px-4 py-2 text-sm font-medium text-white shadow-glow hover:brightness-105 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                 onClick={() => save(script)}
                 disabled={savingSource === script.source || script.steps.some((st) => !st.promptBn.trim())}
               >
                 {savingSource === script.source ? s.savingText : s.saveBtn}
               </button>
-              {notice[script.source] ? <span className="text-sm text-emerald-700">{notice[script.source]}</span> : null}
-              {error[script.source] ? <span className="text-sm text-rose-700">{error[script.source]}</span> : null}
+              {notice[script.source] ? <span className="text-sm text-success-solid">{notice[script.source]}</span> : null}
+              {error[script.source] ? <span className="text-sm text-danger">{error[script.source]}</span> : null}
             </div>
           </Card>
         );

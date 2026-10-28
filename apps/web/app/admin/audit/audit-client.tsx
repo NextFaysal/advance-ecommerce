@@ -9,7 +9,7 @@
 // export itself is recorded in the AuditLog table.
 import { useCallback, useEffect, useState } from "react";
 import { StatCard } from "@/components/ui/stat-card";
-import { DataTable } from "@/components/ui/table";
+import { DataTable, DataTableSkeleton } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -120,7 +120,7 @@ export function AuditClient() {
   const withReasonOnPage = entries.filter((e) => e.reason !== null && e.reason.trim() !== "").length;
 
   const rows = entries.map((e) => ({
-    time: <span className="whitespace-nowrap">{formatDhakaTime(e.createdAt, locale)}</span>,
+    time: <span className="tnum whitespace-nowrap">{formatDhakaTime(e.createdAt, locale)}</span>,
     actor: <span className="font-medium">{e.actorLabel ?? e.actorId ?? t.systemActor}</span>,
     action: (
       <span className="inline-flex items-center gap-2">
@@ -135,7 +135,7 @@ export function AuditClient() {
       </span>
     ),
     reason: e.sensitive ? (
-      <span className="block rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900">
+      <span className="block rounded-lg bg-warning-soft px-2 py-1 text-xs font-medium text-warning-solid">
         {interpolate(t.reasonRequired, { reason: e.reason ?? "—" })}
       </span>
     ) : e.reason !== null ? (
@@ -203,16 +203,16 @@ export function AuditClient() {
   }
 
   return (
-    <>
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label={t.statTotal} value={String(total)} delta={t.statTotalDelta} icon={<Icon name="info" size={22} />} />
         <StatCard label={t.statSensitive} value={String(sensitiveOnPage)} delta={t.statSensitiveDelta} deltaTone="down" icon={<Icon name="alert" size={22} />} />
         <StatCard label={t.statWithReason} value={String(withReasonOnPage)} delta={t.statWithReasonDelta} icon={<Icon name="check" size={22} />} />
         <StatCard label={t.statRetention} value={t.statRetentionValue} delta={t.statRetentionDelta} icon={<Icon name="shield" size={22} />} />
       </div>
 
-      <Card className="mb-6">
-        <p className="mb-3 text-sm font-medium">{t.filtersTitle}</p>
+      <Card>
+        <p className="mb-3 font-display text-base font-semibold text-text-main">{t.filtersTitle}</p>
         <div className="grid gap-4 sm:grid-cols-3">
           <Input
             name="audit-actor"
@@ -260,16 +260,18 @@ export function AuditClient() {
         </div>
       </Card>
 
-      <h2 className="mb-3 text-lg font-semibold">{t.recentActivity}</h2>
-      {error ? (
-        <Card className="border-rose-300 bg-rose-50 text-sm text-rose-900">
-          {interpolate(t.readError, { error })}
-        </Card>
-      ) : loading ? (
-        <Card>
-          <p className="text-sm text-text-muted">{t.loading}</p>
-        </Card>
-      ) : entries.length === 0 ? (
+      <div className="space-y-3">
+        <h2 className="font-display text-lg font-semibold text-text-main">{t.recentActivity}</h2>
+        {error ? (
+          <Card className="border-danger/40 bg-danger-soft text-sm text-danger">
+            {interpolate(t.readError, { error })}
+          </Card>
+        ) : loading ? (
+          <div className="space-y-3">
+            <p role="status" className="text-sm text-text-muted">{t.loading}</p>
+            <DataTableSkeleton columns={5} rows={6} />
+          </div>
+        ) : entries.length === 0 ? (
         <Card>
           <p className="text-sm text-text-muted">{t.empty}</p>
         </Card>
@@ -309,14 +311,15 @@ export function AuditClient() {
               </Button>
             </div>
           </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
 
-      <Card className="mt-6">
-        <p className="text-sm font-medium">{t.exportRulesTitle}</p>
+      <Card>
+        <p className="font-display text-base font-semibold text-text-main">{t.exportRulesTitle}</p>
         <p className="mt-1 text-sm text-text-muted">{t.exportRules}</p>
         {exportDone ? (
-          <p role="status" className="mt-3 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          <p role="status" className="mt-3 rounded-xl bg-success-soft px-3 py-2 text-sm text-success-solid">
             {exportDone}
           </p>
         ) : null}
@@ -344,15 +347,15 @@ export function AuditClient() {
           value={exportReason}
           onChange={(e) => setExportReason(e.target.value)}
           placeholder={t.exportReasonPlaceholder}
-          className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
         />
         {exportError && (
-          <p role="alert" className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-small text-rose-700">
+          <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-small text-danger">
             {exportError}
           </p>
         )}
         {exportBusy && <p className="mt-3 text-small text-text-muted">{t.exportBusy}</p>}
       </Modal>
-    </>
+    </div>
   );
 }

@@ -38,6 +38,8 @@ const bn = {
   engineOffNote: "সাবস্ক্রিপশন ইঞ্জিন (module.subscriptions) এখন বন্ধ — জেনারেশন সম্পূর্ণ বন্ধ আছে।",
   listLoadFailed: "বক্স সাবস্ক্রিপশনের তালিকা লোড করা যায়নি।",
   listLoadFailedConn: "বক্স সাবস্ক্রিপশনের তালিকা লোড করা যায়নি — সংযোগ যাচাই করুন।",
+  listEmptyTitle: "কোনো বক্স সাবস্ক্রিপশন নেই",
+  listEmptyDesc: "কনফিগে বক্স ভ্যারিয়েন্ট যোগ করলে ওই পণ্যের পেজ থেকে কাস্টমার সাবস্ক্রাইব করতে পারবেন।",
   listEmpty:
     "কোনো বক্স সাবস্ক্রিপশন নেই — কনফিগে বক্স ভ্যারিয়েন্ট যোগ করলে ওই পণ্যের পেজ থেকে কাস্টমার সাবস্ক্রাইব করতে পারবেন।",
   colCustomer: "কাস্টমার",
@@ -141,6 +143,8 @@ const en: BoxesStrings = {
   engineOffNote: "The subscription engine (module.subscriptions) is currently off — generation is fully stopped.",
   listLoadFailed: "Could not load the box subscriptions list.",
   listLoadFailedConn: "Could not load the box subscriptions list — check your connection.",
+  listEmptyTitle: "No box subscriptions",
+  listEmptyDesc: "Add a box variant in the config and customers will be able to subscribe from that product's page.",
   listEmpty:
     "No box subscriptions — once a box variant is added in the config, customers can subscribe from that product's page.",
   colCustomer: "Customer",

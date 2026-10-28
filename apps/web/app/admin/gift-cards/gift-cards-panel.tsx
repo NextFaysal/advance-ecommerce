@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from "react";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
@@ -166,7 +167,7 @@ export function GiftCardsPanel() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-lg border border-border bg-surface-2/50 px-4 py-4">
+      <Card>
         <h2 className="text-body font-semibold text-text-main">{s.issueTitle}</h2>
         <form onSubmit={onIssue} className="mt-3 flex flex-wrap items-end gap-3">
           <label className="block">
@@ -207,7 +208,7 @@ export function GiftCardsPanel() {
         </form>
         {issueError ? <p className="mt-3 text-small text-rose-600">{issueError}</p> : null}
         {issued ? (
-          <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
+          <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
             <p className="text-small font-semibold text-amber-900">
               {s.codesOnce}
             </p>
@@ -220,7 +221,7 @@ export function GiftCardsPanel() {
             </ul>
           </div>
         ) : null}
-      </section>
+      </Card>
 
       <section>
         <h2 className="text-body font-semibold text-text-main">{s.listTitle}</h2>
@@ -233,7 +234,7 @@ export function GiftCardsPanel() {
         ) : (
           <div className="mt-3 space-y-3">
             {cards.map((card) => (
-              <div key={card.id} className="rounded-lg border border-border bg-surface-2/50 px-4 py-3">
+              <div key={card.id} className="rounded-2xl border border-border/60 bg-card px-4 py-3 shadow-xs">
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                   <span className="min-w-0">
                     <span className="block text-small font-semibold text-text-main">
@@ -244,7 +245,7 @@ export function GiftCardsPanel() {
                     </span>
                   </span>
                   <span className="flex items-center gap-3">
-                    <span className="text-small text-text-main">
+                    <span className="tnum text-small text-text-main">
                       {interpolate(s.balanceLabel, { balance: formatBdt(card.balancePoisha) })}
                       <span className="text-text-muted"> / {formatBdt(card.initialPoisha)}</span>
                     </span>

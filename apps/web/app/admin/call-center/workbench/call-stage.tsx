@@ -12,6 +12,7 @@
  * outcome buttons themselves. In the idle state the stage shows the
  * claim prompt exactly as the monolith did.
  */
+import { EmptyState } from "@/components/ui/empty-state";
 import { OutcomeBadge, SourceChip } from "@/callcenter/components";
 import { formatBdt } from "@/checkout/pricing";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -98,7 +99,7 @@ export function OutcomeControls({
           value={note}
           maxLength={500}
           onChange={(e) => onNoteChange(e.target.value)}
-          className="mt-1 w-full rounded-md border border-border px-2.5 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+          className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           placeholder={s.notePlaceholder}
         />
       </label>
@@ -110,7 +111,7 @@ export function OutcomeControls({
             type="datetime-local"
             value={callbackAt}
             onChange={(e) => onCallbackAtChange(e.target.value)}
-            className="mt-1 w-full rounded-md border border-amber-400 px-2.5 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+            className="mt-1 w-full rounded-xl border border-warning-solid bg-surface px-3 py-2 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           />
         </label>
       ) : null}
@@ -121,7 +122,7 @@ export function OutcomeControls({
           <select
             value={disposition}
             onChange={(e) => onDispositionChange(e.target.value)}
-            className="mt-1 w-full rounded-md border border-border bg-card px-2.5 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+            className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             <option value="">{s.dispositionPlaceholder}</option>
             {DISPOSITIONS.map((d) => (
@@ -206,31 +207,23 @@ export function CallStage({
   const { locale } = useLocale();
   const s = pick(locale, CALL_CENTER_STRINGS);
   if (!current) {
-    return (
-      <div className="rounded-xl border border-dashed border-border bg-surface-2 p-6 text-center">
-        <p className="text-4xl" aria-hidden="true">📞</p>
-        <h3 className="mt-2 text-base font-semibold">{s.noCallTitle}</h3>
-        <p className="mx-auto mt-1 max-w-sm text-sm text-text-muted">
-          {s.noCallText}
-        </p>
-      </div>
-    );
+    return <EmptyState title={s.noCallTitle} description={s.noCallText} />;
   }
 
   const wa = whatsAppUrl(current, locale);
 
   return (
-    <div className="rounded-xl border-2 border-indigo-200 bg-indigo-50/50 p-4">
+    <div className="rounded-2xl border-2 border-brand-ink/25 bg-brand-soft/40 p-4">
       {/* Customer hero + timer */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-indigo-900">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-brand-ink">
             {s.currentCall}
           </h3>
           <p className="mt-1 truncate text-2xl font-bold">{current.customerName}</p>
           <p className="mt-0.5 text-lg font-medium">
             {current.phoneFull ? (
-              <a className="rounded-sm text-indigo-700 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300" href={`tel:${current.phoneFull}`}>
+              <a className="rounded-sm text-brand-700 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300" href={`tel:${current.phoneFull}`}>
                 {current.phoneFull}
               </a>
             ) : (
@@ -308,7 +301,7 @@ export function CallStage({
 
       {/* Script card */}
       {(current.script?.steps ?? script).length > 0 ? (
-        <details className="mt-3 rounded-lg border border-indigo-100 bg-card p-3" open>
+        <details className="mt-3 rounded-xl border border-border/60 bg-card p-3 shadow-xs" open>
           <summary className="cursor-pointer rounded-sm text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
             {s.scriptCardTitle}{current.script ? ` — ${current.script.version}` : ""}
           </summary>

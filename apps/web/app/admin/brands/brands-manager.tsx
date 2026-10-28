@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/drawer";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -132,7 +133,7 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="flex items-center gap-2.5 text-sm text-text-muted">
-          <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
+          <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-soft text-brand-600">
             <Icon name="tag" size={17} />
           </span>
           {interpolate(s.totalLabel, { count: brands.length })}
@@ -143,37 +144,30 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
       </div>
 
       {brands.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-card px-6 py-14 text-center shadow-card">
-          <span aria-hidden="true" className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 text-brand-500">
-            <Icon name="tag" size={28} />
-          </span>
-          <p className="mt-4 text-sm leading-relaxed text-text-muted">
-            {s.empty}
-          </p>
-        </div>
+        <EmptyState title={s.pageTitle} description={s.empty} actionLabel={s.newBrand} onAction={openCreate} />
       ) : (
         <>
           {/* Desktop / tablet: v2 table */}
-          <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-card max-md:hidden">
+          <div className="overflow-x-auto rounded-2xl border border-border/60 bg-card shadow-xs max-md:hidden">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-surface-2/80 text-left">
-                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">{s.colBrand}</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">{s.colSlug}</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-text-muted">{s.colProducts}</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-text-muted">{s.colActions}</th>
+              <thead className="bg-surface-2/80">
+                <tr className="text-left">
+                  <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{s.colBrand}</th>
+                  <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{s.colSlug}</th>
+                  <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{s.colProducts}</th>
+                  <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-right text-xs font-semibold text-text-muted">{s.colActions}</th>
                 </tr>
               </thead>
               <tbody>
                 {brands.map((brand) => (
-                  <tr key={brand.id} className="border-t border-border/60 transition motion-fast first:border-t-0 hover:bg-brand-50/50">
+                  <tr key={brand.id} className="border-t border-border/60 transition duration-fast ease-smooth first:border-t-0 hover:bg-brand-soft/60">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         {brand.logoUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={brand.logoUrl} alt="" className="h-11 w-11 rounded-xl bg-surface-2 object-contain ring-1 ring-border" />
                         ) : (
-                          <span aria-hidden="true" className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-500 ring-1 ring-brand-100">
+                          <span aria-hidden="true" className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-soft text-brand-500 ring-1 ring-brand-ink/10">
                             <Icon name="tag" size={19} />
                           </span>
                         )}
@@ -186,7 +180,7 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
                       </div>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-text-muted">{brand.slug}</td>
-                    <td className="px-4 py-3">{interpolate(s.productsCount, { count: brand.productCount })}</td>
+                    <td className="tnum px-4 py-3">{interpolate(s.productsCount, { count: brand.productCount })}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
                         <Button size="sm" variant="secondary" onClick={() => openEdit(brand)}>
@@ -206,13 +200,13 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
           {/* Mobile: card list */}
           <ul className="space-y-2.5 md:hidden">
             {brands.map((brand) => (
-              <li key={brand.id} className="rounded-lg border border-border/70 bg-card p-4 shadow-card">
+              <li key={brand.id} className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
                 <div className="flex items-center gap-3">
                   {brand.logoUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={brand.logoUrl} alt="" className="h-11 w-11 shrink-0 rounded-xl bg-surface-2 object-contain ring-1 ring-border" />
                   ) : (
-                    <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-500 ring-1 ring-brand-100">
+                    <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-500 ring-1 ring-brand-ink/10">
                       <Icon name="tag" size={19} />
                     </span>
                   )}
@@ -220,7 +214,7 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
                     <span className="block truncate font-medium text-text-main">{brand.name}</span>
                     <span className="block truncate font-mono text-xs text-text-muted">{brand.slug}</span>
                   </span>
-                  <span className="ml-auto inline-flex h-6 shrink-0 items-center rounded-full bg-surface-2 px-2.5 text-xs text-text-muted ring-1 ring-inset ring-black/5">
+                  <span className="tnum ml-auto inline-flex h-6 shrink-0 items-center rounded-full bg-surface-2 px-2.5 text-xs text-text-muted ring-1 ring-inset ring-border/60">
                     {interpolate(s.productsCountFull, { count: brand.productCount })}
                   </span>
                 </div>
@@ -276,7 +270,7 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
             placeholder={s.logoPh}
           />
           {form.logoUrl.trim() !== "" ? (
-            <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2.5">
+            <div className="flex items-center gap-3 rounded-2xl border border-border/60 bg-surface-2 px-3 py-2.5">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={form.logoUrl.trim()} alt={s.logoPreviewAlt} className="h-11 w-11 rounded-lg bg-card object-contain ring-1 ring-border" />
               <span className="text-xs text-text-muted">{s.logoPreview}</span>
@@ -302,7 +296,7 @@ export function BrandsManager({ initial }: { initial: AdminBrand[] }) {
         onConfirm={confirmDelete}
       >
         <div className="flex gap-3">
-          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-600 ring-1 ring-inset ring-rose-100">
+          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-danger-soft text-danger ring-1 ring-inset ring-danger/20">
             <Icon name="alert" size={20} />
           </span>
           <p className="text-sm leading-relaxed text-text-muted">

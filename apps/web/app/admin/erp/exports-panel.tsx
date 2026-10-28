@@ -9,6 +9,9 @@
  * journal-import CSV.
  */
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { ERP_STRINGS } from "./strings";
@@ -22,9 +25,6 @@ function monthStartYmd(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 }
-
-const inputCls = "w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-text";
-const labelCls = "block text-xs text-text-muted";
 
 export function ErpExportsPanel() {
   const { locale } = useLocale();
@@ -76,49 +76,48 @@ export function ErpExportsPanel() {
   }
 
   return (
-    <section>
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.exTitle}</h2>
-      <p className="mb-3 max-w-3xl text-sm text-text-muted">
-        {s.exDescBefore}<code className="font-mono text-xs">#</code>{s.exDescAfter}
-      </p>
-      {error ? <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-      {notice ? <p className="mb-3 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{notice}</p> : null}
-      <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <label className={labelCls} htmlFor="erp-export-from">{s.exFromLabel}</label>
-          <input id="erp-export-from" type="date" className={inputCls} value={from} onChange={(e) => setFrom(e.target.value)} />
+    <Card>
+      <div className="space-y-4">
+        <div className="space-y-1">
+          <h2 className="font-display text-base font-semibold">{s.exTitle}</h2>
+          <p className="max-w-3xl text-sm text-text-muted">
+            {s.exDescBefore}<code className="font-mono text-xs">#</code>{s.exDescAfter}
+          </p>
         </div>
-        <div>
-          <label className={labelCls} htmlFor="erp-export-to">{s.exToLabel}</label>
-          <input id="erp-export-to" type="date" className={inputCls} value={to} onChange={(e) => setTo(e.target.value)} />
+        {error ? <p className="rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p> : null}
+        {notice ? <p className="rounded-xl bg-success-soft px-3 py-2 text-sm text-success-solid">{notice}</p> : null}
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <Input id="erp-export-from" type="date" label={s.exFromLabel} value={from} onChange={(e) => setFrom(e.target.value)} />
+          </div>
+          <div>
+            <Input id="erp-export-to" type="date" label={s.exToLabel} value={to} onChange={(e) => setTo(e.target.value)} />
+          </div>
+          <div className="min-w-[220px] flex-1">
+            <Input
+              id="erp-export-reason"
+              label={s.exReasonLabel}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder={s.exReasonPlaceholder}
+            />
+          </div>
+          <Button
+            type="button"
+            disabled={busy}
+            onClick={() => void download("tally")}
+          >
+            {s.exTallyBtn}
+          </Button>
+          <Button
+            type="button"
+            disabled={busy}
+            onClick={() => void download("quickbooks")}
+          >
+            {s.exQbBtn}
+          </Button>
         </div>
-        <div className="min-w-[220px] flex-1">
-          <label className={labelCls} htmlFor="erp-export-reason">{s.exReasonLabel}</label>
-          <input
-            id="erp-export-reason"
-            className={inputCls}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder={s.exReasonPlaceholder}
-          />
-        </div>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void download("tally")}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {s.exTallyBtn}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void download("quickbooks")}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {s.exQbBtn}
-        </button>
       </div>
-    </section>
+    </Card>
   );
 }

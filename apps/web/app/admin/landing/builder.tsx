@@ -48,7 +48,7 @@ function TextField({ label, value, onChange, placeholder }: { label: string; val
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm outline-none focus:border-brand-500"
+        className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs outline-none transition focus:border-brand-500"
       />
     </label>
   );
@@ -62,7 +62,7 @@ function TextArea({ label, value, onChange }: { label: string; value: string; on
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={2}
-        className="w-full rounded-[10px] border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand-500"
+        className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm shadow-xs outline-none transition focus:border-brand-500"
       />
     </label>
   );
@@ -225,21 +225,21 @@ export default function LandingBuilder({ catalogProducts, initialPages }: { cata
         <Button type="button" variant="secondary" onClick={saveSelected} disabled={!selected || saving}>
           {saving ? s.saving : s.save}
         </Button>
-        {dirty ? <span className="text-xs font-medium text-amber-600">{s.unsavedChanges}</span> : null}
+        {dirty ? <span className="text-xs font-medium text-warning-solid">{s.unsavedChanges}</span> : null}
       </div>
-      {notice ? <p role="status" className="rounded-lg bg-surface-2 px-4 py-2 text-sm">{notice}</p> : null}
+      {notice ? <p role="status" className="rounded-xl bg-surface-2 px-4 py-3 text-sm">{notice}</p> : null}
 
       <div className="grid gap-6 xl:grid-cols-2">
         <div className="space-y-6">
           <Card>
-            <h2 className="mb-3 font-semibold">{s.pagesListTitle}</h2>
+            <h2 className="mb-3 font-display text-base font-semibold text-text-main">{s.pagesListTitle}</h2>
             <ul className="space-y-2">
               {pages.map((p) => (
                 <li key={p.id}>
                   <button
                     type="button"
                     onClick={() => setSelectedId(p.id)}
-                    className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm ${p.id === selectedId ? "border-brand-500 bg-brand-50" : "border-border bg-card"}`}
+                    className={`flex min-h-[44px] w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-sm shadow-xs transition ${p.id === selectedId ? "border-brand-500 bg-brand-soft" : "border-border bg-card hover:bg-surface-2"}`}
                   >
                     <span>
                       <span className="font-medium">{locale === "bn" ? p.titleBn : p.titleEn}</span>
@@ -256,7 +256,7 @@ export default function LandingBuilder({ catalogProducts, initialPages }: { cata
 
           {selected ? (
             <Card>
-              <h2 className="mb-3 font-semibold">{s.pageSettings}</h2>
+              <h2 className="mb-3 font-display text-base font-semibold text-text-main">{s.pageSettings}</h2>
               <div className="grid gap-3 sm:grid-cols-2">
                 <TextField label={s.titleBn} value={selected.titleBn} onChange={(v) => updateSelected((p) => ({ ...p, titleBn: v }))} />
                 <TextField label={s.titleEn} value={selected.titleEn} onChange={(v) => updateSelected((p) => ({ ...p, titleEn: v }))} />
@@ -281,28 +281,28 @@ export default function LandingBuilder({ catalogProducts, initialPages }: { cata
               </div>
 
               {validation && !validation.ok ? (
-                <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                <div className="mt-4 rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm text-danger">
                   <p className="font-medium">{interpolate(s.validationProblems, { count: validation.errors.length })}</p>
                   <ul className="mt-1 list-disc pl-5">
                     {validation.errors.map((e, i) => <li key={i}>{e.messageBn}</li>)}
                   </ul>
                 </div>
               ) : (
-                <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{s.validationOk}</p>
+                <p className="mt-4 rounded-xl bg-success-soft p-4 text-sm text-success-solid">{s.validationOk}</p>
               )}
             </Card>
           ) : null}
 
           {selected ? (
             <Card>
-              <h2 className="mb-3 font-semibold">{s.sectionsTitle}</h2>
+              <h2 className="mb-3 font-display text-base font-semibold text-text-main">{s.sectionsTitle}</h2>
               <div className="mb-4 flex flex-wrap items-end gap-2">
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-text-muted">{s.paletteLabel}</span>
                   <select
                     value={paletteType}
                     onChange={(e) => setPaletteType(e.target.value as LandingSectionType)}
-                    className="h-10 rounded-[10px] border border-border bg-card px-3 text-sm"
+                    className="h-11 rounded-xl border border-border bg-card px-3 text-sm shadow-xs"
                   >
                     {SECTION_TYPES.map((t) => <option key={t} value={t}>{LANDING_SECTION_LABELS[t][locale]}</option>)}
                   </select>
@@ -318,7 +318,7 @@ export default function LandingBuilder({ catalogProducts, initialPages }: { cata
 
               <div className="space-y-4">
                 {selected.sections.map((section, index) => (
-                  <div key={section.id} className="rounded-lg border border-border p-3">
+                  <div key={section.id} className="rounded-2xl border border-border/60 bg-surface-2/40 p-4">
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                       <span className="text-sm font-semibold">{index + 1}. {LANDING_SECTION_LABELS[section.type][locale]}</span>
                       <span className="flex gap-1">
@@ -344,7 +344,7 @@ export default function LandingBuilder({ catalogProducts, initialPages }: { cata
                           <select
                             value={section.productId}
                             onChange={(e) => updateSection(section.id, (s) => (s.type === "product_offer" ? { ...s, productId: e.target.value, variantId: null } : s))}
-                            className="h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm"
+                            className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs"
                           >
                             <option value="">{s.chooseProduct}</option>
                             {catalogProducts.map((p) => <option key={p.id} value={p.id}>{p.title[locale]} ({p.id})</option>)}
@@ -355,7 +355,7 @@ export default function LandingBuilder({ catalogProducts, initialPages }: { cata
                           <select
                             value={section.variantId ?? ""}
                             onChange={(e) => updateSection(section.id, (s) => (s.type === "product_offer" ? { ...s, variantId: e.target.value || null } : s))}
-                            className="h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm"
+                            className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs"
                           >
                             <option value="">{s.autoVariant}</option>
                             {(catalogProducts.find((p) => p.id === section.productId)?.variants ?? []).map((v) => (
@@ -387,7 +387,7 @@ export default function LandingBuilder({ catalogProducts, initialPages }: { cata
                           <select
                             value={section.productId ?? ""}
                             onChange={(e) => updateSection(section.id, (s) => (s.type === "quick_order" ? { ...s, productId: e.target.value, variantId: null } : s))}
-                            className="h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm"
+                            className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs"
                           >
                             <option value="">{s.chooseProduct}</option>
                             {catalogProducts.map((p) => <option key={p.id} value={p.id}>{p.title[locale]} ({p.id})</option>)}
@@ -398,7 +398,7 @@ export default function LandingBuilder({ catalogProducts, initialPages }: { cata
                           <select
                             value={section.variantId ?? ""}
                             onChange={(e) => updateSection(section.id, (s) => (s.type === "quick_order" ? { ...s, variantId: e.target.value || null } : s))}
-                            className="h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm"
+                            className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs"
                           >
                             <option value="">{s.autoVariant}</option>
                             {(catalogProducts.find((p) => p.id === section.productId)?.variants ?? []).map((v) => (
@@ -416,8 +416,8 @@ export default function LandingBuilder({ catalogProducts, initialPages }: { cata
                       <div className="space-y-2">
                         {section.items.map((item, i) => (
                           <div key={i} className="flex gap-2">
-                            <input value={item.icon} onChange={(e) => updateSection(section.id, (s) => (s.type === "benefits" ? { ...s, items: s.items.map((it, j) => (j === i ? { ...it, icon: e.target.value } : it)) } : s))} className="h-10 w-16 rounded-[10px] border border-border px-2 text-center" aria-label={s.iconAria} />
-                            <input value={item.textBn} onChange={(e) => updateSection(section.id, (s) => (s.type === "benefits" ? { ...s, items: s.items.map((it, j) => (j === i ? { ...it, textBn: e.target.value } : it)) } : s))} className="h-10 flex-1 rounded-[10px] border border-border px-3 text-sm" placeholder={s.benefitPlaceholder} />
+                            <input value={item.icon} onChange={(e) => updateSection(section.id, (s) => (s.type === "benefits" ? { ...s, items: s.items.map((it, j) => (j === i ? { ...it, icon: e.target.value } : it)) } : s))} className="h-11 w-16 rounded-xl border border-border bg-card px-2 text-center shadow-xs" aria-label={s.iconAria} />
+                            <input value={item.textBn} onChange={(e) => updateSection(section.id, (s) => (s.type === "benefits" ? { ...s, items: s.items.map((it, j) => (j === i ? { ...it, textBn: e.target.value } : it)) } : s))} className="h-11 flex-1 rounded-xl border border-border bg-card px-3 text-sm shadow-xs" placeholder={s.benefitPlaceholder} />
                             <Button type="button" size="sm" variant="ghost" onClick={() => updateSection(section.id, (s) => (s.type === "benefits" ? { ...s, items: s.items.filter((_, j) => j !== i) } : s))}>✕</Button>
                           </div>
                         ))}
@@ -428,7 +428,7 @@ export default function LandingBuilder({ catalogProducts, initialPages }: { cata
                     {section.type === "how_to_order" ? (
                       <div className="space-y-2">
                         {section.steps.map((step, i) => (
-                          <input key={i} value={step.textBn} onChange={(e) => updateSection(section.id, (s) => (s.type === "how_to_order" ? { ...s, steps: s.steps.map((st, j) => (j === i ? { ...st, textBn: e.target.value } : st)) } : s))} className="h-10 w-full rounded-[10px] border border-border px-3 text-sm" placeholder={interpolate(s.stepPlaceholder, { n: i + 1 })} />
+                          <input key={i} value={step.textBn} onChange={(e) => updateSection(section.id, (s) => (s.type === "how_to_order" ? { ...s, steps: s.steps.map((st, j) => (j === i ? { ...st, textBn: e.target.value } : st)) } : s))} className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs" placeholder={interpolate(s.stepPlaceholder, { n: i + 1 })} />
                         ))}
                         <Button type="button" size="sm" variant="outline" onClick={() => updateSection(section.id, (s) => (s.type === "how_to_order" ? { ...s, steps: [...s.steps, { textBn: "", textEn: "" }] } : s))}>{s.addStep}</Button>
                       </div>
@@ -458,13 +458,13 @@ export default function LandingBuilder({ catalogProducts, initialPages }: { cata
 
         <div>
           <Card className="sticky top-4">
-            <h2 className="mb-1 font-semibold">{s.livePreview}</h2>
+            <h2 className="mb-1 font-display text-base font-semibold text-text-main">{s.livePreview}</h2>
             <p className="mb-3 text-xs text-text-muted">
               {s.previewNote}{" "}
               {selected ? <span className="font-mono">/lp/{selected.slug}</span> : null}
               {selected && selected.status !== "PUBLISHED" ? s.previewDraftSuffix : ""}
             </p>
-            <div className="overflow-hidden rounded-xl border border-border">
+            <div className="overflow-hidden rounded-2xl border border-border/60 shadow-xs">
               {view ? <LandingView view={view} /> : <p className="p-4 text-sm text-text-muted">{s.noPageSelected}</p>}
             </div>
           </Card>

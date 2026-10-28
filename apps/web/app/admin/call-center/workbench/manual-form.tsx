@@ -6,6 +6,7 @@
  * (createManual) and passes them down.
  */
 import type { FormEvent } from "react";
+import { Button } from "@/components/ui/button";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
 import { CALL_CENTER_STRINGS } from "../strings";
@@ -36,8 +37,8 @@ export function ManualTaskForm({
   const { locale } = useLocale();
   const s = pick(locale, CALL_CENTER_STRINGS);
   return (
-    <form onSubmit={onSubmit} className="rounded-xl border border-border p-4">
-      <h3 className="text-sm font-semibold">{s.manualTitle}</h3>
+    <form onSubmit={onSubmit} className="rounded-2xl border border-border/60 p-4 shadow-xs">
+      <h3 className="font-display text-sm font-semibold text-text-main">{s.manualTitle}</h3>
       <p className="mt-1 text-xs text-text-muted">
         {s.manualHelp}
       </p>
@@ -50,7 +51,7 @@ export function ManualTaskForm({
             minLength={2}
             value={mName}
             onChange={(e) => onNameChange(e.target.value)}
-            className="mt-1 w-full rounded-md border border-border px-2.5 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+            className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           />
         </label>
         <label className="block text-sm">
@@ -61,7 +62,7 @@ export function ManualTaskForm({
             value={mPhone}
             onChange={(e) => onPhoneChange(e.target.value)}
             placeholder="01XXXXXXXXX"
-            className="mt-1 w-full rounded-md border border-border px-2.5 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+            className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           />
         </label>
         <label className="block text-sm">
@@ -71,27 +72,27 @@ export function ManualTaskForm({
             maxLength={500}
             value={mNote}
             onChange={(e) => onNoteChange(e.target.value)}
-            className="mt-1 w-full rounded-md border border-border px-2.5 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+            className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           />
         </label>
       </div>
       {mError ? (
-        <p role="alert" className="mt-2 text-sm text-rose-700">
+        <p role="alert" className="mt-2 text-sm text-danger">
           {mError}
         </p>
       ) : null}
       {mNotice ? (
-        <p role="status" className="mt-2 text-sm text-emerald-700">
+        <p role="status" className="mt-2 text-sm text-success-solid">
           {mNotice}
         </p>
       ) : null}
-      <button
+      <Button
         type="submit"
         disabled={mBusy}
-        className="mt-3 w-full rounded-md bg-slate-700 px-3.5 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+        className="mt-3 w-full"
       >
         {s.addTaskBtn}
-      </button>
+      </Button>
     </form>
   );
 }

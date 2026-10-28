@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Icon, type IconName } from "@/components/ui/icon";
@@ -40,7 +40,7 @@ import { ageLabel } from "./board-ui";
 
 function SectionTitle({ icon, children, tone }: { icon: IconName; children: ReactNode; tone?: string }) {
   return (
-    <h2 className={`mt-8 mb-3 flex items-center gap-2 text-base font-semibold ${tone ?? "text-text-main"}`}>
+    <h2 className={`mt-8 mb-3 flex items-center gap-2 font-display text-base font-semibold ${tone ?? "text-text-main"}`}>
       <Icon name={icon} size={18} />
       {children}
     </h2>
@@ -61,13 +61,13 @@ function SlaTile({
   valueClass: string;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border/70 bg-card p-4 shadow-card">
+    <div className="flex items-center gap-3 rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
       <span aria-hidden="true" className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] ${accent}`}>
         <Icon name={icon} size={20} />
       </span>
       <div className="min-w-0">
         <p className="text-xs font-medium text-text-muted">{label}</p>
-        <p className={`font-mono text-2xl font-bold leading-7 tabular-nums ${valueClass}`}>{value}</p>
+        <p className={`tnum font-mono text-2xl font-bold leading-7 tabular-nums ${valueClass}`}>{value}</p>
       </div>
     </div>
   );
@@ -75,9 +75,9 @@ function SlaTile({
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border/70 bg-card px-3.5 py-3 shadow-card">
+    <div className="rounded-2xl border border-border/60 bg-card px-3.5 py-3 shadow-xs">
       <p className="text-[11px] font-medium text-text-muted">{label}</p>
-      <p className="mt-0.5 font-mono text-lg font-bold leading-6 tabular-nums text-text-main">{value}</p>
+      <p className="tnum mt-0.5 font-mono text-lg font-bold leading-6 tabular-nums text-text-main">{value}</p>
     </div>
   );
 }
@@ -88,7 +88,7 @@ function AgentLoadCard({ load, maxActive, locale }: { load: SupervisorAgentLoad;
   const loadPct = maxActive > 0 ? Math.round((active / maxActive) * 100) : 0;
   const confirmPct = load.outcomesToday > 0 ? Math.round((load.confirmedToday / load.outcomesToday) * 100) : 0;
   return (
-    <article className="rounded-lg border border-border/70 bg-card p-4 shadow-card">
+    <article className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
       <div className="flex items-center justify-between gap-2">
         <p className="min-w-0 truncate text-sm font-semibold text-text-main">
           {load.agentName ?? load.agentId}
@@ -101,7 +101,7 @@ function AgentLoadCard({ load, maxActive, locale }: { load: SupervisorAgentLoad;
       <div className="mt-3">
         <div className="flex justify-between text-xs text-text-muted">
           <span>{s.activeTasksLabel}</span>
-          <span className="font-mono font-semibold tabular-nums text-text-main">{active}</span>
+          <span className="tnum font-mono font-semibold tabular-nums text-text-main">{active}</span>
         </div>
         <div
           className="mt-1.5 h-2 overflow-hidden rounded-full bg-surface-2"
@@ -119,17 +119,17 @@ function AgentLoadCard({ load, maxActive, locale }: { load: SupervisorAgentLoad;
       <div className="mt-3 border-t border-border/60 pt-3">
         <div className="flex justify-between text-xs text-text-muted">
           <span>{s.todayOutcomes}</span>
-          <span className="font-mono font-semibold tabular-nums text-text-main">{load.outcomesToday}</span>
+          <span className="tnum font-mono font-semibold tabular-nums text-text-main">{load.outcomesToday}</span>
         </div>
         <div
           className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-surface-2"
           role="img"
           aria-label={interpolate(s.ariaConfirmed, { confirmed: load.confirmedToday, total: load.outcomesToday })}
         >
-          <div className="h-full bg-emerald-500 transition-all" style={{ width: `${confirmPct}%` }} />
+          <div className="h-full bg-success-solid transition-all" style={{ width: `${confirmPct}%` }} />
         </div>
         <p className="mt-1.5 text-xs text-text-muted">
-          {s.confirmedWord} <span className="font-medium text-emerald-700">{load.confirmedToday}</span> · {s.otherOutcomesWord}{" "}
+          {s.confirmedWord} <span className="font-medium text-success-solid">{load.confirmedToday}</span> · {s.otherOutcomesWord}{" "}
           <span className="font-medium text-text-main">{load.outcomesToday - load.confirmedToday}</span>
         </p>
       </div>
@@ -156,8 +156,7 @@ function Board({ board, locale }: { board: SupervisorBoard; locale: Locale }) {
     <main>
       <PageHeader
         title={s.supervisorTitle}
-        description={s.supervisorDesc}
-        breadcrumb={s.breadcrumb}
+        subtitle={s.supervisorDesc}
       />
       <CallCenterTabs active="supervisor" />
 
@@ -174,22 +173,22 @@ function Board({ board, locale }: { board: SupervisorBoard; locale: Locale }) {
           label={s.tileWithinSla}
           value={String(withinSla)}
           icon="shield"
-          accent="bg-emerald-50 text-emerald-600"
-          valueClass="text-emerald-700"
+          accent="bg-success-soft text-success-solid"
+          valueClass="text-success-solid"
         />
         <SlaTile
           label={s.tileCallbacksDue}
           value={String(board.dueCallbacks.length)}
           icon="clock"
-          accent="bg-amber-50 text-amber-600"
-          valueClass={board.dueCallbacks.length > 0 ? "text-amber-700" : "text-text-main"}
+          accent="bg-warning-soft text-warning-solid"
+          valueClass={board.dueCallbacks.length > 0 ? "text-warning-solid" : "text-text-main"}
         />
         <SlaTile
           label={s.tileSlaBreached}
           value={String(board.slaBreaches.length)}
           icon="alert"
-          accent="bg-rose-50 text-rose-600"
-          valueClass={board.slaBreaches.length > 0 ? "text-rose-700" : "text-text-main"}
+          accent="bg-danger-soft text-danger"
+          valueClass={board.slaBreaches.length > 0 ? "text-danger" : "text-text-main"}
         />
       </div>
 
@@ -211,31 +210,31 @@ function Board({ board, locale }: { board: SupervisorBoard; locale: Locale }) {
           ([source, count]) => (
             <span key={source} className="inline-flex items-center gap-1.5">
               <SourceChip source={source} lang={locale} />
-              <span className="font-mono text-xs font-semibold tabular-nums text-text-main">{count}</span>
+              <span className="tnum font-mono text-xs font-semibold tabular-nums text-text-main">{count}</span>
             </span>
           ),
         )}
       </div>
 
       {/* Due / overdue callbacks — attention strip */}
-      <SectionTitle icon="bell" tone={board.dueCallbacks.length > 0 ? "text-rose-700" : undefined}>
+      <SectionTitle icon="bell" tone={board.dueCallbacks.length > 0 ? "text-danger" : undefined}>
         {interpolate(s.dueSectionTitle, { count: board.dueCallbacks.length })}
       </SectionTitle>
       {board.dueCallbacks.length === 0 ? (
         <p className="text-sm text-text-muted">{s.noCallbacksDue}</p>
       ) : (
-        <Card className="border-rose-200 bg-rose-50/60 p-4">
+        <Card className="border-danger/30 bg-danger-soft/60 p-4">
           <ul className="grid gap-2.5 lg:grid-cols-2">
             {board.dueCallbacks.map((cb) => {
               const cbState = callbackStateById.get(cb.id);
               return (
                 <li
                   key={cb.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-100 bg-card px-3.5 py-3"
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger/20 bg-card px-3.5 py-3"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-text-main">{cb.customerName || "—"}</p>
-                    <p className="mt-0.5 font-mono text-xs tabular-nums text-text-muted">
+                    <p className="tnum mt-0.5 font-mono text-xs tabular-nums text-text-muted">
                       {cb.phoneMasked} · {s.callbackPrefix} {cb.callbackAt ? formatDhakaTime(cb.callbackAt) : "—"} ·{" "}
                       {cb.assignedAgentName ?? cb.assignedAgentId ?? s.nobody}
                     </p>
@@ -260,7 +259,7 @@ function Board({ board, locale }: { board: SupervisorBoard; locale: Locale }) {
       )}
 
       {/* SLA breaches */}
-      <SectionTitle icon="alert" tone={board.slaBreaches.length > 0 ? "text-rose-700" : undefined}>
+      <SectionTitle icon="alert" tone={board.slaBreaches.length > 0 ? "text-danger" : undefined}>
         {interpolate(s.breachesSectionTitle, { count: board.slaBreaches.length })}
       </SectionTitle>
       {board.slaBreaches.length === 0 ? (
@@ -270,7 +269,7 @@ function Board({ board, locale }: { board: SupervisorBoard; locale: Locale }) {
       ) : (
         <ul className="grid gap-2.5 lg:grid-cols-2">
           {board.slaBreaches.map((b) => (
-            <li key={b.id} className="rounded-lg border-2 border-rose-200 bg-card p-4 shadow-card">
+            <li key={b.id} className="rounded-2xl border-2 border-danger/40 bg-card p-4 shadow-xs">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="min-w-0 truncate text-sm font-semibold text-text-main">{b.customerName || "—"}</p>
                 <div className="flex items-center gap-1.5">
@@ -278,7 +277,7 @@ function Board({ board, locale }: { board: SupervisorBoard; locale: Locale }) {
                   <SlaChip state="overdue" lang={locale} label={interpolate(s.overdueLabel, { mins: b.overdueByMinutes })} />
                 </div>
               </div>
-              <p className="mt-1 font-mono text-xs tabular-nums text-text-muted">
+              <p className="tnum mt-1 font-mono text-xs tabular-nums text-text-muted">
                 {b.phoneMasked}
                 {b.orderNo ? ` · ${b.orderNo}` : ""}
               </p>
@@ -325,13 +324,13 @@ function Board({ board, locale }: { board: SupervisorBoard; locale: Locale }) {
             { status: "IN_CALL" as const, title: s.colInCallTitle, tasks: inCallTasks, count: board.countsByStatus.IN_CALL },
           ]
         ).map((col) => (
-          <section key={col.status} aria-label={col.title} className="rounded-lg border border-border/70 bg-surface-2/60 p-3.5">
-            <h3 className="mb-3 flex items-center justify-between text-sm font-semibold text-text-main">
+          <section key={col.status} aria-label={col.title} className="rounded-2xl border border-border/60 bg-surface-2/60 p-3.5">
+            <h3 className="mb-3 flex items-center justify-between font-display text-sm font-semibold text-text-main">
               <span className="flex items-center gap-2">
                 <Icon name={col.status === "QUEUED" ? "clock" : "phone"} size={16} />
                 {col.title}
               </span>
-              <span className="rounded-full bg-card px-2 py-0.5 font-mono text-xs font-bold tabular-nums ring-1 ring-inset ring-black/5">
+              <span className="tnum rounded-full bg-card px-2 py-0.5 font-mono text-xs font-bold tabular-nums ring-1 ring-inset ring-black/5">
                 {col.count}
               </span>
             </h3>
@@ -366,8 +365,7 @@ export default async function AdminCallCenterSupervisorPage() {
       <main>
         <PageHeader
           title={s.supervisorTitle}
-          description={s.supervisorDescShort}
-          breadcrumb={s.breadcrumb}
+          subtitle={s.supervisorDescShort}
         />
         <p role="status">
           {s.lockedA} <code>module.call_center</code> {s.lockedB}
@@ -383,8 +381,7 @@ export default async function AdminCallCenterSupervisorPage() {
       <main>
         <PageHeader
           title={s.supervisorTitle}
-          description={s.supervisorDescShort}
-          breadcrumb={s.breadcrumb}
+          subtitle={s.supervisorDescShort}
         />
         <p role="alert">{s.boardReadError}</p>
       </main>

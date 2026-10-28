@@ -484,7 +484,7 @@ export default function InboxClient({
   return (
     <div className="space-y-6">
       {anyChannelLive ? (
-        <Card className="border-emerald-300 bg-emerald-50 text-sm text-emerald-900">
+        <Card className="border-success-solid/30 bg-success-soft text-sm text-text-main">
           ✅ যেসব চ্যানেলের Meta সেটিংস দেওয়া আছে সেগুলো <strong>লাইভ</strong>:{" "}
           {(Object.keys(CHANNEL_LABEL) as InboxChannel[])
             .map((ch) => `${CHANNEL_LABEL[ch]} — ${channelLive[ch] ? "উত্তর সত্যিকারে যাবে" : "কিউ-ইনটেন্ট (ডেমো)"}`)
@@ -494,7 +494,7 @@ export default function InboxClient({
           ব্যবহার করুন।
         </Card>
       ) : (
-        <Card className="border-amber-300 bg-amber-50 text-sm text-amber-900">
+        <Card className="border-warning-solid/30 bg-warning-soft text-sm text-text-main">
           ⚠️ TEMPORARY DEMO — কোনো চ্যানেল API সংযুক্ত নেই। উত্তর <strong>পাঠানো যায় না</strong>:
           কম্পোজার শুধু এই পেজের state-এ “কিউ করা” অভিপ্রায় রাখে। ড্রাফট কোনো অর্ডার নয় এবং
           কোথাও জমা হয় না — নিশ্চিত করতে ম্যানুয়াল অর্ডার ফর্ম ব্যবহার করুন।
@@ -542,7 +542,7 @@ export default function InboxClient({
 
       <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
         <Card className="h-fit">
-          <h2 className="mb-3 font-semibold">কথোপকথন</h2>
+          <h2 className="mb-3 font-display text-base font-semibold text-text-main">কথোপকথন</h2>
           {filteredViews.length === 0 ? (
             <EmptyState
               title="কোনো কথোপকথন নেই"
@@ -560,7 +560,7 @@ export default function InboxClient({
                       type="button"
                       onClick={() => setSelectedId(v.id)}
                       aria-current={isActive}
-                      className={`w-full px-2 py-3 text-left ${isActive ? "bg-brand-50" : "hover:bg-surface-2"}`}
+                      className={`w-full rounded-xl px-2 py-3 text-left ${isActive ? "bg-brand-soft" : "hover:bg-surface-2"}`}
                     >
                       <span className="flex items-center justify-between gap-2">
                         <span className="font-medium">{v.customerDisplayName}</span>
@@ -593,7 +593,7 @@ export default function InboxClient({
             <>
               <Card>
                 <div className="mb-4 flex flex-wrap items-center gap-2">
-                  <h2 className="font-semibold">{selected.customerDisplayName}</h2>
+                  <h2 className="font-display text-base font-semibold text-text-main">{selected.customerDisplayName}</h2>
                   <Badge tone={CHANNEL_TONE[selected.channel]}>
                     {CHANNEL_LABEL[selected.channel]}
                   </Badge>
@@ -611,7 +611,7 @@ export default function InboxClient({
                       className={`flex ${m.direction === "OUTBOUND" ? "justify-end" : "justify-start"}`}
                     >
                       <div
-                        className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                        className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
                           m.direction === "OUTBOUND"
                             ? "bg-brand-600 text-white"
                             : "bg-surface-2 text-text-main"
@@ -630,7 +630,7 @@ export default function InboxClient({
                   ))}
                   {selectedQueued.map((q, i) => (
                     <div key={`queued-${i}`} className="flex justify-end">
-                      <div className="max-w-[80%] rounded-lg border border-dashed border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      <div className="max-w-[80%] rounded-2xl border border-dashed border-warning-solid/50 bg-warning-soft px-3 py-2 text-sm text-text-main">
                         <p>{q.text}</p>
                         <p className="mt-1 text-right text-[11px]">
                           <Badge tone="warning">কিউ করা — পাঠানো হয়নি</Badge>{" "}
@@ -644,7 +644,7 @@ export default function InboxClient({
                   ) : null}
                 </div>
 
-                <div className="mt-5 border-t border-border pt-4">
+                <div className="mt-5 rounded-2xl border border-border/60 bg-surface-2/40 p-4">
                   <label htmlFor="inbox-reply" className="mb-1 block text-xs font-medium text-text-muted">
                     {selectedLive
                       ? `উত্তর লিখুন — ${CHANNEL_LABEL[selected.channel]} লাইভ, সত্যিকারে পাঠানো হবে`
@@ -668,7 +668,7 @@ export default function InboxClient({
                         {sendPhase.kind === "sending" ? "পাঠানো হচ্ছে…" : "পাঠান"}
                       </Button>
                       {sendPhase.kind === "failed" ? (
-                        <p role="alert" className="text-xs font-medium text-rose-700">
+                        <p role="alert" className="text-xs font-medium text-danger">
                           ⚠ পাঠানো যায়নি: {sendPhase.message} — লেখা রেখে দেওয়া হয়েছে, আবার
                           চেষ্টা করুন।
                         </p>
@@ -697,7 +697,7 @@ export default function InboxClient({
               {selected ? <BotDraftPanel conversationId={selected.id} /> : null}
 
               <Card>
-                <h2 className="mb-1 font-semibold">অর্ডার ড্রাফটে রূপান্তর</h2>
+                <h2 className="mb-1 font-display text-base font-semibold text-text-main">অর্ডার ড্রাফটে রূপান্তর</h2>
                 <p className="mb-4 text-sm text-text-muted">
                   কথোপকথন থেকে নাম ও ঠিকানা পাঠালে সার্ভারে <code>buildOrderDraft()</code> দিয়ে
                   ড্রাফট তৈরি হয় — ফোন চ্যাটের বার্তা থেকে সার্ভারেই শনাক্ত করা হয় (এখানে শুধু
@@ -758,7 +758,7 @@ export default function InboxClient({
 
                 {draftResult ? (
                   draftResult.ok ? (
-                    <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                    <div className="mt-4 rounded-2xl border border-success-solid/30 bg-success-soft p-4 text-sm text-text-main">
                       <p className="font-semibold">
                         ✅ ড্রাফট তৈরি হয়েছে — এটি অর্ডার নয়, কোথাও জমা হয়নি।
                       </p>
@@ -810,7 +810,7 @@ export default function InboxClient({
                       </p>
                     </div>
                   ) : (
-                    <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+                    <div className="mt-4 rounded-2xl border border-danger/30 bg-danger-soft p-4 text-sm text-text-main">
                       <p className="font-semibold">⚠ ড্রাফট তৈরি হয়নি:</p>
                       <ul className="mt-2 list-disc space-y-1 pl-5">
                         {draftResult.errors.map((err, i) => (
@@ -829,7 +829,7 @@ export default function InboxClient({
                   persists. The phone is resolved server-side from the
                   conversation; no full number is held or sent here. */}
               <Card>
-                <h2 className="mb-1 font-semibold">অর্ডার তৈরি করুন (আসল অর্ডার)</h2>
+                <h2 className="mb-1 font-display text-base font-semibold text-text-main">অর্ডার তৈরি করুন (আসল অর্ডার)</h2>
                 <p className="mb-4 text-sm text-text-muted">
                   এটি ড্রাফট নয় — জমা দিলে <strong>আসল অর্ডার</strong> তৈরি হবে (সোর্স: ইনবক্স)
                   এবং অর্ডার নম্বর এখানেই দেখা যাবে। ফোন নম্বর সার্ভারে কথোপকথন থেকে নেওয়া হয় —
@@ -985,7 +985,7 @@ export default function InboxClient({
 
                 {convResult ? (
                   convResult.ok ? (
-                    <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                    <div className="mt-4 rounded-2xl border border-success-solid/30 bg-success-soft p-4 text-sm text-text-main">
                       <p className="font-semibold">✅ অর্ডার তৈরি হয়েছে।</p>
                       <p className="mt-1">
                         অর্ডার নম্বর:{" "}
@@ -1001,7 +1001,7 @@ export default function InboxClient({
                       </p>
                     </div>
                   ) : (
-                    <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+                    <div className="mt-4 rounded-2xl border border-danger/30 bg-danger-soft p-4 text-sm text-text-main">
                       <p className="font-semibold">⚠ অর্ডার তৈরি হয়নি:</p>
                       <p className="mt-1">{convResult.message}</p>
                     </div>

@@ -40,7 +40,7 @@ function formatDhaka(iso: string): string {
   }).format(new Date(iso));
 }
 
-const inputClass = "mt-1 w-full rounded-[10px] border border-border bg-card px-3 py-2";
+const inputClass = "mt-1 min-h-[44px] w-full rounded-xl border border-border bg-card px-3 py-2 text-text-main";
 
 export default function CampaignManager({
   initialCampaigns,
@@ -117,7 +117,7 @@ export default function CampaignManager({
   if (!dbReady) {
     return (
       <Card>
-        <h3 className="font-semibold">ক্যাম্পেইন তালিকা পাওয়া যাচ্ছে না</h3>
+        <h3 className="font-semibold text-text-main">ক্যাম্পেইন তালিকা পাওয়া যাচ্ছে না</h3>
         <p className="mt-1 text-sm text-text-muted">
           ডাটাবেস থেকে ক্যাম্পেইন পড়া যায়নি — কোনো নমুনা সারি দেখানো হচ্ছে না। ডাটাবেস চালু
           হলে আসল ক্যাম্পেইনগুলো এখানে আসবে।
@@ -135,9 +135,9 @@ export default function CampaignManager({
       // recipientCount is echoed by the create response but is NOT a
       // Campaign column — after a reload the repository reports 0, so
       // an unknown count renders as "—", never as a false zero.
-      recipients: c.recipientCount > 0 ? String(c.recipientCount) : "—",
+      recipients: c.recipientCount > 0 ? <span className="tnum">{c.recipientCount}</span> : "—",
       estimate: c.costEstimatePoisha !== null ? <Money poisha={c.costEstimatePoisha} /> : "—",
-      sent: `${c.sentCount} / ${c.deliveredCount} / ${c.failedCount}`,
+      sent: <span className="tnum">{`${c.sentCount} / ${c.deliveredCount} / ${c.failedCount}`}</span>,
       scheduled: c.scheduledAt ? formatDhaka(c.scheduledAt) : "—",
       status: <Badge tone={meta.tone}>{meta.label}</Badge>,
     };
@@ -166,7 +166,7 @@ export default function CampaignManager({
       ) : null}
 
       <Card className="mt-6">
-        <h3 className="mb-1 font-semibold">নতুন ক্যাম্পেইন রেকর্ড করুন</h3>
+        <h3 className="mb-1 font-semibold text-text-main">নতুন ক্যাম্পেইন রেকর্ড করুন</h3>
         <p className="mb-4 text-xs text-text-muted">
           এই ফর্ম ক্যাম্পেইনটি ডাটাবেসে রেকর্ড করে ও খরচের হিসাব সংরক্ষণ করে —{" "}
           <strong>কোনো SMS/ইমেইল পাঠায় না।</strong> আসল পাঠানো হবে BullMQ ওয়ার্কার ও

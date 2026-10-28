@@ -72,13 +72,15 @@ export default async function AdminAiAssistPage() {
   await ensureDbFeatureFlags().catch(() => {});
   if (!isAiAssistEnabled(demoAiAssistFlags)) {
     return (
-      <main>
+      <main className="space-y-6">
         <PageHeader title={s.title} description={s.description} />
-        <p role="status">
-          {s.lockedText1}
-          <code>{AI_FEATURE_FLAG}</code>
-          {s.lockedText2}
-        </p>
+        <Card>
+          <p role="status" className="text-sm leading-relaxed text-text-muted">
+            {s.lockedText1}
+            <code>{AI_FEATURE_FLAG}</code>
+            {s.lockedText2}
+          </p>
+        </Card>
       </main>
     );
   }
@@ -87,7 +89,7 @@ export default async function AdminAiAssistPage() {
     <main className="space-y-6">
       <PageHeader title={s.title} description={s.description} />
 
-      <p role="note" className="rounded-lg border border-border bg-surface-2 p-3 text-sm">
+      <p role="note" className="rounded-2xl border border-border/60 bg-surface-2/60 p-4 text-sm leading-relaxed shadow-xs">
         {s.demoNote1}
         <strong>{s.demoNoteStrong1}</strong>
         {s.demoNote2}
@@ -99,8 +101,8 @@ export default async function AdminAiAssistPage() {
 
       <AiAssistTools samples={await sampleOptions(locale)} />
 
-      <Card className="p-4">
-        <h3 className="text-base font-semibold">{s.providerTitle}</h3>
+      <Card>
+        <h3 className="font-display text-base font-semibold text-text-main">{s.providerTitle}</h3>
         <p className="mt-1 text-sm leading-relaxed text-text-muted">
           {s.providerText1}
           <code>AiProvider</code>

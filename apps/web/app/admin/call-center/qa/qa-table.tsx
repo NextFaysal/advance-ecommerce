@@ -22,7 +22,10 @@
  */
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
+import { DataTableSkeleton } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
 import { dispositionDef, isCallDisposition } from "@/callcenter/dispositions";
 import { DispositionChip, OutcomeBadge, SourceChip } from "@/callcenter/components/badges";
 import { OUTCOME_VISUAL, SOURCE_VISUAL, type StatusVisual } from "@/callcenter/components/visuals";
@@ -46,10 +49,10 @@ function ScoreMeter({ score, locale }: { score: number | null; locale: Locale })
           key={i}
           name="star"
           size={13}
-          className={score !== null && i < score ? "text-amber-500" : "text-slate-300"}
+          className={score !== null && i < score ? "text-warning-solid" : "text-text-subtle/50"}
         />
       ))}
-      <span className="ml-1 font-mono text-[11px] tabular-nums text-text-muted">
+      <span className="tnum ml-1 font-mono text-[11px] tabular-nums text-text-muted">
         {score === null ? s.scoreFractionNone : interpolate(s.scoreFraction, { score })}
       </span>
     </span>
@@ -220,17 +223,23 @@ export function QaTable() {
     }
   }
 
-  if (logs === null) return <p className="text-sm text-text-muted">{s.loadingText}</p>;
+  if (logs === null)
+    return (
+      <div aria-busy="true">
+        <p className="mb-3 text-sm text-text-muted">{s.loadingText}</p>
+        <DataTableSkeleton columns={9} rows={5} />
+      </div>
+    );
   if (locked) {
     return (
-      <p role="status" className="rounded-md bg-amber-50 px-3.5 py-2.5 text-small leading-relaxed text-amber-800">
+      <p role="status" className="rounded-xl bg-warning-soft px-3.5 py-2.5 text-small leading-relaxed text-warning-solid">
         {s.lockedQa}
       </p>
     );
   }
   if (loadError) {
     return (
-      <p role="alert" className="rounded-md bg-rose-50 px-3.5 py-2.5 text-small leading-relaxed text-rose-700">
+      <p role="alert" className="rounded-xl bg-danger-soft px-3.5 py-2.5 text-small leading-relaxed text-danger">
         {loadError}
       </p>
     );
@@ -242,7 +251,7 @@ export function QaTable() {
         <label className="text-sm">
           {s.agentFilterLabel}{" "}
           <select
-            className="h-10 rounded-md border border-border px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+            className="h-11 rounded-xl border border-border bg-surface px-2.5 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             value={agentFilter}
             onChange={(e) => setAgentFilter(e.target.value)}
           >
@@ -255,7 +264,7 @@ export function QaTable() {
         <label className="text-sm">
           {s.minScoreLabel}{" "}
           <select
-            className="h-10 rounded-md border border-border px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+            className="h-11 rounded-xl border border-border bg-surface px-2.5 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             value={minScoreFilter}
             onChange={(e) => setMinScoreFilter(e.target.value)}
           >
@@ -272,12 +281,12 @@ export function QaTable() {
       </div>
 
       {logs.length === 0 ? (
-        <p className="text-sm text-text-muted">{s.noCompletedCalls}</p>
+        <EmptyState title={s.qaEmptyTitle} description={s.qaEmptyDesc} />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm max-lg:block">
             <thead className="max-lg:hidden">
-              <tr className="border-b border-border text-left">
+              <tr className="border-b border-border bg-surface-2/80 text-left text-xs font-semibold text-text-muted">
                 <th className="py-2 pr-3">{s.colTime}</th>
                 <th className="py-2 pr-3">{s.colSource}</th>
                 <th className="py-2 pr-3">{s.colAgent}</th>
@@ -303,7 +312,7 @@ export function QaTable() {
                 return (
                   <tr
                     key={log.id}
-                    className="border-b border-border align-top max-lg:mb-3 max-lg:block max-lg:rounded-md max-lg:border max-lg:p-3"
+                    className="border-b border-border/60 align-top max-lg:mb-3 max-lg:block max-lg:rounded-2xl max-lg:border max-lg:bg-card max-lg:p-3 max-lg:shadow-xs"
                   >
                     <td className="py-2 pr-3 whitespace-nowrap max-lg:block max-lg:py-1 max-lg:pr-0">
                       {new Date(log.calledAt).toLocaleString(intlLocale(locale), { timeZone: "Asia/Dhaka" })}
@@ -359,13 +368,13 @@ export function QaTable() {
                           min={0}
                           max={5}
                           step={1}
-                          className="h-10 w-16 rounded-md border border-border px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                          className="h-11 w-16 rounded-xl border border-border bg-surface px-2 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                           value={draft.score}
                           onChange={(e) => setDrafts((p) => ({ ...p, [log.id]: { ...draft, score: e.target.value } }))}
                           aria-label={s.qaScoreAria}
                         />
                         <input
-                          className="h-10 w-full rounded-md border border-border px-2 sm:w-48 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                          className="h-11 w-full rounded-xl border border-border bg-surface px-2 shadow-xs sm:w-48 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                           value={draft.comment}
                           onChange={(e) => setDrafts((p) => ({ ...p, [log.id]: { ...draft, comment: e.target.value } }))}
                           placeholder={s.qaCommentPlaceholder}
@@ -373,17 +382,17 @@ export function QaTable() {
                         />
                       </div>
                       {log.qaScore !== null ? (
-                        <span className="text-xs text-emerald-700">{interpolate(s.currentScore, { score: log.qaScore })}</span>
+                        <span className="text-xs text-success-solid">{interpolate(s.currentScore, { score: log.qaScore })}</span>
                       ) : (
                         <span className="text-xs text-text-muted">{s.scoreNotYet}</span>
                       )}
                       <ScoreMeter score={log.qaScore} locale={locale} />
-                      {rowError[log.id] ? <div className="text-xs text-rose-700">{rowError[log.id]}</div> : null}
+                      {rowError[log.id] ? <div className="text-xs text-danger">{rowError[log.id]}</div> : null}
                     </td>
                     <td className="py-2 max-lg:block max-lg:py-1">
                       <button
                         type="button"
-                        className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                        className="brand-gradient rounded-xl px-3 py-2 text-sm font-medium text-white shadow-glow hover:brightness-105 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                         onClick={() => saveScore(log)}
                         disabled={savingId === log.id}
                       >
@@ -400,16 +409,16 @@ export function QaTable() {
 
       {nextCursor ? (
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button
+          <Button
             type="button"
-            className="rounded-md border border-border px-4 py-2 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+            variant="outline"
             onClick={loadMore}
             disabled={loadingMore}
           >
             {loadingMore ? s.loadingText : s.loadMoreBtn}
-          </button>
+          </Button>
           {moreError ? (
-            <span role="alert" className="text-sm text-rose-700">{moreError}</span>
+            <span role="alert" className="text-sm text-danger">{moreError}</span>
           ) : null}
         </div>
       ) : null}

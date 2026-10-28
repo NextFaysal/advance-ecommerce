@@ -26,6 +26,7 @@ import { formatBdt } from "@advance-ecommerce/validators";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DataTableSkeleton } from "@/components/ui/table";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, intlLocale, pick } from "@/i18n/locale";
 import { INVENTORY_STRINGS, type InventoryStrings } from "./strings";
@@ -272,10 +273,15 @@ export default function PurchaseOrdersPanel() {
   }
 
   if (listError) {
-    return <p className="text-small text-rose-600">{interpolate(s.poListLoadFailed, { error: listError })}</p>;
+    return <p className="text-small text-danger">{interpolate(s.poListLoadFailed, { error: listError })}</p>;
   }
   if (orders === null) {
-    return <p className="text-small text-text-muted">{s.poListLoading}</p>;
+    return (
+      <div role="status" aria-label={s.poListLoading}>
+        <DataTableSkeleton columns={3} rows={3} density="compact" />
+        <p className="mt-3 text-small text-text-muted">{s.poListLoading}</p>
+      </div>
+    );
   }
   if (orders.length === 0) {
     return (
@@ -286,15 +292,15 @@ export default function PurchaseOrdersPanel() {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {orders.map((po) => {
         const open = openId === po.id;
         return (
-          <div key={po.id} className="rounded-lg border border-border bg-surface-2/50 px-4 py-3">
+          <div key={po.id} className="rounded-2xl border border-border/60 bg-surface-2/50 px-4 py-3 shadow-xs">
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
               <span className="min-w-0">
                 <span className="block truncate text-small font-semibold text-text-main">{po.supplierName}</span>
-                <span className="mt-0.5 block text-caption text-text-subtle">
+                <span className="tnum mt-0.5 block text-caption text-text-subtle">
                   {new Date(po.createdAt).toLocaleString(intlLocale(locale))} · {s.totalText}{" "}
                   {po.totalPoisha !== null ? formatBdt(po.totalPoisha) : "—"} ·{" "}
                   <span className="font-mono">{po.id}</span>
@@ -311,9 +317,9 @@ export default function PurchaseOrdersPanel() {
             </div>
 
             {open ? (
-              <div className="mt-3 border-t border-border pt-3">
+              <div className="mt-3 border-t border-border/60 pt-3">
                 {detailLoading || !detail ? (
-                  <p className="text-small text-text-muted">{ct.loading}</p>
+                  <><DataTableSkeleton columns={5} rows={3} density="compact" /><p className="mt-3 text-small text-text-muted">{ct.loading}</p></>
                 ) : (
                   <>
                     <p className="text-caption leading-relaxed text-text-muted">
@@ -325,12 +331,12 @@ export default function PurchaseOrdersPanel() {
                       {costMasked && ` ${s.costMaskedNote}`}
                     </p>
 
-                    <div className="mt-2 overflow-x-auto">
+                    <div className="mt-2 hidden overflow-x-auto rounded-2xl border border-border/60 bg-card shadow-xs md:block">
                       <table className="w-full min-w-[560px] border-collapse text-left text-sm">
                         <thead>
-                          <tr className="text-left [&>th]:border-b [&>th]:border-border">
+                          <tr className="bg-surface-2/80 text-left">
                             {[s.colProduct, s.colOrdered, s.colReceived, s.colRemaining, s.colReceiveNow].map((h) => (
-                              <th key={h} scope="col" className="px-2 py-2 text-caption font-semibold text-text-muted">
+                              <th key={h} scope="col" className="sticky top-0 z-10 bg-surface-2 px-4 py-2 text-xs font-semibold text-text-muted">
                                 {h}
                               </th>
                             ))}
@@ -338,8 +344,8 @@ export default function PurchaseOrdersPanel() {
                         </thead>
                         <tbody>
                           {detail.lines.map((l) => (
-                            <tr key={l.itemId} className="border-t border-border first:border-t-0">
-                              <td className="px-2 py-2">
+                            <tr key={l.itemId} className="border-t border-border/60 transition duration-fast ease-smooth first:border-t-0 hover:bg-brand-soft/60">
+                              <td className="px-4 py-2">
                                 <span className="block text-small font-medium text-text-main">
                                   {l.productTitleBn ?? l.variantId}
                                 </span>
@@ -348,10 +354,10 @@ export default function PurchaseOrdersPanel() {
                                   {l.costPoisha !== null ? formatBdt(l.costPoisha) : "—"}
                                 </span>
                               </td>
-                              <td className="px-2 py-2 font-mono tabular-nums">{l.quantityOrdered}</td>
-                              <td className="px-2 py-2 font-mono tabular-nums">{l.quantityReceived}</td>
-                              <td className="px-2 py-2 font-mono tabular-nums">{l.remaining}</td>
-                              <td className="px-2 py-2">
+                              <td className="tnum px-4 py-2 font-mono">{l.quantityOrdered}</td>
+                              <td className="tnum px-4 py-2 font-mono">{l.quantityReceived}</td>
+                              <td className="tnum px-4 py-2 font-mono">{l.remaining}</td>
+                              <td className="px-4 py-2">
                                 {detail.status !== "cancelled" && l.remaining > 0 ? (
                                   <Input
                                     type="number"
@@ -377,6 +383,25 @@ export default function PurchaseOrdersPanel() {
                         </tbody>
                       </table>
                     </div>
+                    {/* Mobile card view (under md) — same PO lines, key fields + receive input. */}
+                    <div className="mt-2 space-y-3 md:hidden">
+                      {detail.lines.map((l) => (
+                        <article key={`m-${l.itemId}`} className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
+                          <span className="block text-small font-medium text-text-main">{l.productTitleBn ?? l.variantId}</span>
+                          <span className="block text-caption text-text-subtle">{l.sku ? `SKU: ${l.sku} · ` : ""}{s.costText} {l.costPoisha !== null ? formatBdt(l.costPoisha) : "—"}</span>
+                          <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border/60 pt-3 text-center">
+                            <span><span className="block text-caption text-text-subtle">{s.colOrdered}</span><span className="tnum font-mono font-semibold">{l.quantityOrdered}</span></span>
+                            <span><span className="block text-caption text-text-subtle">{s.colReceived}</span><span className="tnum font-mono font-semibold">{l.quantityReceived}</span></span>
+                            <span><span className="block text-caption text-text-subtle">{s.colRemaining}</span><span className="tnum font-mono font-semibold">{l.remaining}</span></span>
+                          </div>
+                          {detail.status !== "cancelled" && l.remaining > 0 ? (
+                            <div className="mt-3">
+                              <Input type="number" min={1} max={l.remaining} step={1} inputMode="numeric" placeholder={interpolate(s.maxPlaceholder, { max: l.remaining })} aria-label={interpolate(s.receiveQtyAria, { name: l.productTitleBn ?? l.variantId })} value={quantities[l.itemId] ?? ""} disabled={submitting} onChange={(e) => setQuantities((q) => ({ ...q, [l.itemId]: e.target.value }))} />
+                            </div>
+                          ) : null}
+                        </article>
+                      ))}
+                    </div>
 
                     {/* ADV-20: optional batch / serial capture per
                         line. Collapsed by default — a plain receive
@@ -393,7 +418,7 @@ export default function PurchaseOrdersPanel() {
                             const setDraft = (patch: Partial<DepthDraft>) =>
                               setDepthDrafts((d) => ({ ...d, [l.itemId]: { ...(d[l.itemId] ?? EMPTY_DEPTH), ...patch } }));
                             return (
-                              <div key={l.itemId} className="rounded-md border border-border bg-card px-3 py-2">
+                              <div key={l.itemId} className="rounded-xl border border-border/60 bg-card px-3 py-2 shadow-xs">
                                 <label className="flex cursor-pointer items-center gap-2 text-small font-medium text-text-main">
                                   <input
                                     type="checkbox"
@@ -430,7 +455,7 @@ export default function PurchaseOrdersPanel() {
                                       onChange={(e) => setDraft({ bin: e.target.value })}
                                     />
                                     <textarea
-                                      className="min-h-16 rounded-md border border-border bg-card px-3 py-2 text-small"
+                                      className="min-h-16 rounded-xl border border-border/60 bg-card px-3 py-2 text-small"
                                       placeholder={s.serialsPlaceholder}
                                       aria-label={s.serialsAria}
                                       value={draft.serials}
@@ -446,10 +471,10 @@ export default function PurchaseOrdersPanel() {
                     ) : null}
 
                     {formError ? (
-                      <p className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-small text-rose-700">{formError}</p>
+                      <p className="mt-2 rounded-xl bg-danger-soft px-3 py-2 text-small text-danger">{formError}</p>
                     ) : null}
                     {formNotice ? (
-                      <p className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-small text-emerald-700">{formNotice}</p>
+                      <p className="mt-2 rounded-xl bg-success-soft px-3 py-2 text-small text-success-solid">{formNotice}</p>
                     ) : null}
 
                     {detail.status !== "cancelled" && detail.lines.some((l) => l.remaining > 0) ? (
@@ -464,7 +489,7 @@ export default function PurchaseOrdersPanel() {
                     ) : null}
 
                     <div className="mt-4">
-                      <p className="text-small font-semibold text-text-main">{s.historyTitle}</p>
+                      <p className="font-display text-small font-semibold text-text-main">{s.historyTitle}</p>
                       {detail.history.length === 0 ? (
                         <p className="mt-1 text-caption text-text-muted">{s.historyNone}</p>
                       ) : (
@@ -485,7 +510,7 @@ export default function PurchaseOrdersPanel() {
 
                     {detail.batches.length > 0 ? (
                       <div className="mt-4">
-                        <p className="text-small font-semibold text-text-main">{s.batchesTitle}</p>
+                        <p className="font-display text-small font-semibold text-text-main">{s.batchesTitle}</p>
                         <ul className="mt-1 space-y-1">
                           {detail.batches.map((b) => (
                             <li key={b.batchId} className="text-caption text-text-muted">

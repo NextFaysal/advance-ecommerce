@@ -1,10 +1,11 @@
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { StatCard } from "@/components/ui/stat-card";
 import { DataTable } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Money, formatPoisha } from "@/components/ui/money";
 import { Phone } from "@/components/ui/phone";
 import { Icon } from "@/components/ui/icon";
+import { EmptyState } from "@/components/ui/empty-state";
 import { demoB2bFlags, isB2bEnabled } from "@/b2b/flags";
 import { ConvertQuotationButton } from "./convert-button";
 import { B2bGroupsCard } from "./groups-card";
@@ -40,8 +41,8 @@ export default async function AdminB2bPage() {
   await ensureDbFeatureFlags();
   if (!isB2bEnabled(demoB2bFlags)) {
     return (
-      <main>
-        <PageHeader title={s.title} description={s.lockedDesc} />
+      <main className="space-y-6">
+        <PageHeader title={s.title} subtitle={s.lockedDesc} />
         <p role="status">{s.locked}</p>
       </main>
     );
@@ -108,7 +109,7 @@ export default async function AdminB2bPage() {
     const status =
       request !== null && q.status === "DRAFT" ? "DRAFT" : effectiveQuotationStatus(q, todayIso);
     return {
-      id: <span className="font-mono">{q.id}</span>,
+      id: <span className="tnum font-mono">{q.id}</span>,
       source:
         request !== null ? (
           <span>
@@ -124,9 +125,9 @@ export default async function AdminB2bPage() {
           <Badge>{s.staffCreated}</Badge>
         ),
       business: businessName(q.b2bCustomerId),
-      lines: q.lines.reduce((s, l) => s + l.quantity, 0),
+      lines: <span className="tnum">{q.lines.reduce((s, l) => s + l.quantity, 0)}</span>,
       total: <Money poisha={q.totalPoisha} />,
-      validUntil: q.validUntil,
+      validUntil: <span className="tnum">{q.validUntil}</span>,
       status: (
         <Badge
           tone={
@@ -159,85 +160,166 @@ export default async function AdminB2bPage() {
     business: <span className="font-medium">{c.businessName}</span>,
     contact: c.contactName,
     phone: <Phone phone={c.phone} />,
-    applied: c.createdAt.slice(0, 10),
+    applied: <span className="tnum">{c.createdAt.slice(0, 10)}</span>,
     note: c.tradeLicenseNo
       ? interpolate(s.queueNoteLicense, { no: c.tradeLicenseNo })
       : s.queueNotePlain,
   }));
 
   return (
-    <main>
-      <PageHeader title={s.title} description={s.description} breadcrumb={s.breadcrumb} />
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <main className="space-y-6">
+      <PageHeader title={s.title} subtitle={s.description} />
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label={s.statCustomers} value={String(customers.length)} delta={interpolate(s.statPending, { count: approvalQueue.length })} icon={<Icon name="users" size={22} />} />
         <StatCard label={s.statOutstanding} value={formatPoisha(totalOutstanding)} delta={s.statOutstandingDelta} icon={<Icon name="banknote" size={22} />} />
         <StatCard label={s.statOverdue} value={String(overdueCount)} delta={overdueCount > 0 ? s.statOverdueYes : s.statOverdueNo} deltaTone={overdueCount > 0 ? "down" : "up"} icon={<Icon name="clock" size={22} />} />
         <StatCard label={s.statQuotations} value={String(quotations.length)} delta={s.statQuotationsDelta} icon={<Icon name="tag" size={22} />} />
       </div>
 
-      <p className="mb-6 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+      <p className="rounded-xl bg-success-soft px-3 py-2 text-xs text-text-main">
         {s.creditRuleNote}
         </p>
 
       {customers.length === 0 ? (
-        <p className="mb-6 text-sm text-text-muted">
-          {s.noCustomers}
-        </p>
+        <EmptyState title={s.customersEmptyTitle} description={s.customersEmptyDesc} />
       ) : null}
 
-      <h2 className="mb-3 text-lg font-semibold">{s.customersTitle}</h2>
-      <DataTable
-        caption={s.customersCaption}
-        columns={[
-          { key: "business", header: s.colBusiness },
-          { key: "contact", header: s.colContact },
-          { key: "phone", header: s.colPhone },
-          { key: "approval", header: s.colApproval },
-          { key: "limit", header: s.colLimit },
-          { key: "outstanding", header: s.colOutstanding },
-          { key: "available", header: s.colAvailable },
-          { key: "creditState", header: s.colCreditState },
-        ]}
-        rows={customerRows}
-      />
+      <section className="space-y-3">
+        <h2 className="font-display text-lg font-semibold">{s.customersTitle}</h2>
+        <div className="space-y-3 md:hidden">
+          {customerRows.map((r, i) => (
+            <div key={i} className="space-y-2 rounded-2xl border border-border bg-card p-4 shadow-xs">
+              <div className="flex items-center justify-between gap-2">
+                {r.business}
+                {r.creditState}
+              </div>
+              <p className="text-sm text-text-muted">
+                {r.contact} · {r.phone}
+              </p>
+              <p>{r.approval}</p>
+              <div className="grid grid-cols-3 gap-2 border-t border-border pt-2 text-sm">
+                <span>
+                  <span className="block text-xs text-text-muted">{s.colLimit}</span>
+                  {r.limit}
+                </span>
+                <span>
+                  <span className="block text-xs text-text-muted">{s.colOutstanding}</span>
+                  {r.outstanding}
+                </span>
+                <span>
+                  <span className="block text-xs text-text-muted">{s.colAvailable}</span>
+                  {r.available}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden md:block">
+          <DataTable
+            caption={s.customersCaption}
+            columns={[
+              { key: "business", header: s.colBusiness },
+              { key: "contact", header: s.colContact },
+              { key: "phone", header: s.colPhone },
+              { key: "approval", header: s.colApproval },
+              { key: "limit", header: s.colLimit },
+              { key: "outstanding", header: s.colOutstanding },
+              { key: "available", header: s.colAvailable },
+              { key: "creditState", header: s.colCreditState },
+            ]}
+            rows={customerRows}
+          />
+        </div>
+      </section>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.queueTitle}</h2>
-      {queueRows.length > 0 ? (
-        <DataTable
-          caption={s.queueCaption}
-          columns={[
-            { key: "business", header: s.colBusiness },
-            { key: "contact", header: s.colContact },
-            { key: "phone", header: s.colPhone },
-            { key: "applied", header: s.colApplied },
-            { key: "note", header: s.colNote },
-          ]}
-          rows={queueRows}
-        />
-      ) : (
-        <p className="text-sm text-text-muted">{s.noQueue}</p>
-      )}
+      <section className="space-y-3">
+        <h2 className="font-display text-lg font-semibold">{s.queueTitle}</h2>
+        {queueRows.length > 0 ? (
+          <>
+            <div className="space-y-3 md:hidden">
+              {queueRows.map((r, i) => (
+                <div key={i} className="space-y-2 rounded-2xl border border-border bg-card p-4 shadow-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    {r.business}
+                    {r.applied}
+                  </div>
+                  <p className="text-sm text-text-muted">
+                    {r.contact} · {r.phone}
+                  </p>
+                  <p className="text-sm">{r.note}</p>
+                </div>
+              ))}
+            </div>
+            <div className="hidden md:block">
+              <DataTable
+                caption={s.queueCaption}
+                columns={[
+                  { key: "business", header: s.colBusiness },
+                  { key: "contact", header: s.colContact },
+                  { key: "phone", header: s.colPhone },
+                  { key: "applied", header: s.colApplied },
+                  { key: "note", header: s.colNote },
+                ]}
+                rows={queueRows}
+              />
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-text-muted">{s.noQueue}</p>
+        )}
+      </section>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.groupPricingTitle}</h2>
-      <div className="mb-8">
+      <section className="space-y-3">
+        <h2 className="font-display text-lg font-semibold">{s.groupPricingTitle}</h2>
         <B2bGroupsCard />
-      </div>
+      </section>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.quotationsTitle}</h2>
-      <DataTable
-        caption={s.quotationsCaption}
-        columns={[
-          { key: "id", header: s.colQuotation },
-          { key: "source", header: s.colSource },
-          { key: "business", header: s.colBusiness },
-          { key: "lines", header: s.colLines },
-          { key: "total", header: s.colTotal },
-          { key: "validUntil", header: s.colValidUntil },
-          { key: "status", header: s.colStatus },
-          { key: "action", header: s.colAction },
-        ]}
-        rows={quotationRows}
-      />
+      <section className="space-y-3">
+        <h2 className="font-display text-lg font-semibold">{s.quotationsTitle}</h2>
+        <div className="space-y-3 md:hidden">
+          {quotationRows.map((r, i) => (
+            <div key={i} className="space-y-2 rounded-2xl border border-border bg-card p-4 shadow-xs">
+              <div className="flex items-center justify-between gap-2">
+                {r.id}
+                {r.status}
+              </div>
+              <p>{r.source}</p>
+              <p className="text-sm">{r.business}</p>
+              <div className="grid grid-cols-3 gap-2 border-t border-border pt-2 text-sm">
+                <span>
+                  <span className="block text-xs text-text-muted">{s.colLines}</span>
+                  {r.lines}
+                </span>
+                <span>
+                  <span className="block text-xs text-text-muted">{s.colTotal}</span>
+                  {r.total}
+                </span>
+                <span>
+                  <span className="block text-xs text-text-muted">{s.colValidUntil}</span>
+                  {r.validUntil}
+                </span>
+              </div>
+              <div>{r.action}</div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden md:block">
+          <DataTable
+            caption={s.quotationsCaption}
+            columns={[
+              { key: "id", header: s.colQuotation },
+              { key: "source", header: s.colSource },
+              { key: "business", header: s.colBusiness },
+              { key: "lines", header: s.colLines },
+              { key: "total", header: s.colTotal },
+              { key: "validUntil", header: s.colValidUntil },
+              { key: "status", header: s.colStatus },
+              { key: "action", header: s.colAction },
+            ]}
+            rows={quotationRows}
+          />
+        </div>
+      </section>
     </main>
   );
 }

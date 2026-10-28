@@ -1,6 +1,7 @@
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { getRequestLocale } from "@/i18n/server";
 import { pick } from "@/i18n/locale";
+import { ADMIN_STRINGS } from "@/admin/strings";
 import { ADVANCED_ORDERS_STRINGS } from "./strings";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { AdvancedOrdersClient } from "./advanced-orders-client";
@@ -30,14 +31,17 @@ import { demoAdvancedOrdersFlag, isAdvancedOrdersEnabled } from "./flags";
 export default async function AdvancedOrdersPage() {
   const locale = await getRequestLocale();
   const t = pick(locale, ADVANCED_ORDERS_STRINGS);
+  const common = pick(locale, ADMIN_STRINGS);
+  const breadcrumbs = t.breadcrumb.split(" / ").map((label) => ({ label }));
   await ensureDbFeatureFlags();
   if (!isAdvancedOrdersEnabled()) {
     return (
-      <main>
+      <main className="space-y-6">
         <PageHeader
           title={t.title}
-          description={t.lockedDesc}
-          breadcrumb={t.breadcrumb}
+          subtitle={t.lockedDesc}
+          breadcrumbs={breadcrumbs}
+          breadcrumbLabel={common.breadcrumb}
         />
         <p role="status">
           {t.lockedPrefix} <code>{demoAdvancedOrdersFlag.key}</code> {t.lockedSuffix}
@@ -48,11 +52,12 @@ export default async function AdvancedOrdersPage() {
   }
 
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
         title={t.title}
-        description={t.desc}
-        breadcrumb={t.breadcrumb}
+        subtitle={t.desc}
+        breadcrumbs={breadcrumbs}
+        breadcrumbLabel={common.breadcrumb}
       />
       <AdvancedOrdersClient />
     </div>

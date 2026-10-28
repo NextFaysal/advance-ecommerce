@@ -1,4 +1,4 @@
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { demoCallCenterFlags, isCallCenterEnabled } from "@/callcenter/flags";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { pick } from "@/i18n/locale";
@@ -21,7 +21,7 @@ export default async function AdminCallCenterQaPage() {
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
       <main>
-        <PageHeader title={s.qaTitle} description={s.qaDescShort} breadcrumb={s.breadcrumb} />
+        <PageHeader title={s.qaTitle} subtitle={s.qaDescShort} />
         <p role="status">
           {s.lockedA} <code>module.call_center</code> {s.lockedB}
         </p>
@@ -33,8 +33,7 @@ export default async function AdminCallCenterQaPage() {
     <main>
       <PageHeader
         title={s.qaTitle}
-        description={s.qaDescLong}
-        breadcrumb={s.breadcrumb}
+        subtitle={s.qaDescLong}
       />
       <CallCenterTabs active="qa" />
       <QaTable />

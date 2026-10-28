@@ -16,7 +16,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SkeletonCard } from "@/components/ui/skeleton";
@@ -67,10 +67,10 @@ function ageLabel(ageMinutes: number): string {
  * the hotter the chip. Thresholds mirror ageChipClass there. */
 function ageChipClass(ageMinutes: number): string {
   const ageHours = ageMinutes / 60;
-  if (ageHours >= 7 * 24) return "bg-rose-100 text-rose-800";
-  if (ageHours >= 5 * 24) return "bg-orange-100 text-orange-800";
-  if (ageHours >= 48) return "bg-amber-100 text-amber-800";
-  return "bg-yellow-50 text-yellow-800";
+  if (ageHours >= 7 * 24) return "bg-danger-solid text-white";
+  if (ageHours >= 5 * 24) return "bg-danger-soft text-danger";
+  if (ageHours >= 48) return "bg-warning-soft text-warning-solid";
+  return "bg-surface-2 text-text-muted";
 }
 
 export default function AdminAbandonedPage() {
@@ -146,31 +146,31 @@ export default function AdminAbandonedPage() {
   }
 
   return (
-    <main>
+    <main className="space-y-6">
       <PageHeader
         title="পরিত্যক্ত চেকআউট"
-        description="যেসব ক্রেতা ফোন নম্বর দিয়ে কার্টে পণ্য রেখে অর্ডার না করেই চলে গেছেন। ক্যাপচার ৭ দিন পর্যন্ত থাকে — মেয়াদ শেষ হলে তালিকা থেকে সরে যায়। ফোন নম্বর এখানে সবসময় আড়াল করা থাকে; ফলো-আপের জন্য কল টাস্ক তৈরি করুন।"
+        subtitle="যেসব ক্রেতা ফোন নম্বর দিয়ে কার্টে পণ্য রেখে অর্ডার না করেই চলে গেছেন। ক্যাপচার ৭ দিন পর্যন্ত থাকে — মেয়াদ শেষ হলে তালিকা থেকে সরে যায়। ফোন নম্বর এখানে সবসময় আড়াল করা থাকে; ফলো-আপের জন্য কল টাস্ক তৈরি করুন।"
       />
 
       {notice && (
-        <p role="status" className="mb-4 rounded-md bg-success-50 px-3.5 py-2.5 text-small text-success-700">
+        <p role="status" className="mb-4 rounded-xl bg-success-50 px-3.5 py-2.5 text-small text-success-700">
           {notice}
         </p>
       )}
       {actionError && (
-        <p role="alert" className="mb-4 rounded-md bg-danger-50 px-3.5 py-2.5 text-small text-danger-700">
+        <p role="alert" className="mb-4 rounded-xl bg-danger-50 px-3.5 py-2.5 text-small text-danger-700">
           {actionError}
         </p>
       )}
 
       {loadError && (
         <Card>
-          <p className="text-sm text-rose-600">{loadError}</p>
+          <p className="text-sm text-danger">{loadError}</p>
         </Card>
       )}
 
       {rows === null && !loadError && (
-        <div className="grid gap-3" aria-hidden="true">
+        <div className="grid gap-3 sm:gap-4" aria-hidden="true">
           <SkeletonCard />
           <SkeletonCard />
         </div>
@@ -194,13 +194,13 @@ export default function AdminAbandonedPage() {
             <div className="flex flex-wrap gap-x-8 gap-y-3">
               <div>
                 <p className="text-caption font-medium text-text-subtle">খোলা ক্যাপচার</p>
-                <p className="mt-0.5 text-lg font-bold text-text-main">{total}টি</p>
+                <p className="tnum mt-0.5 text-lg font-bold text-text-main">{total}টি</p>
               </div>
               <div>
                 <p className="text-caption font-medium text-text-subtle">
                   সম্ভাব্য বিক্রি{total > rows.length ? ` (এই পেজে — সর্বশেষ ${rows.length}টি)` : ""}
                 </p>
-                <p className="mt-0.5 text-lg font-bold text-text-main">
+                <p className="tnum mt-0.5 text-lg font-bold text-text-main">
                   {formatBdt(rows.reduce((s, r) => s + r.subtotalPoisha, 0))}
                 </p>
               </div>
@@ -216,13 +216,13 @@ export default function AdminAbandonedPage() {
               </div>
             </div>
           </Card>
-          <ul className="grid gap-3">
+          <ul className="grid gap-3 sm:gap-4">
             {rows.map((row) => (
               <li key={row.id}>
                 <Card>
                   <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
                     <div className="min-w-0">
-                      <p className="font-semibold text-text-main">
+                      <p className="font-display font-semibold text-text-main">
                         {row.customerName ?? "নাম দেয়নি"}{" "}
                         <span className="ml-1 font-normal text-text-muted">{row.customerPhoneMasked}</span>
                       </p>
@@ -239,17 +239,17 @@ export default function AdminAbandonedPage() {
                       </p>
                     </div>
                     <div className="ml-auto text-right">
-                      <p className="font-semibold">{formatBdt(row.subtotalPoisha)}</p>
-                      <p className="text-small text-text-muted">{row.itemCount}টি পণ্য</p>
+                      <p className="tnum font-semibold">{formatBdt(row.subtotalPoisha)}</p>
+                      <p className="tnum text-small text-text-muted">{row.itemCount}টি পণ্য</p>
                     </div>
                   </div>
 
-                  <ul className="mt-3 divide-y divide-border rounded-md border border-border">
+                  <ul className="mt-3 divide-y divide-border/60 rounded-xl border border-border/60 bg-surface-2/40">
                     {row.items.map((item) => (
                       <li key={item.variantId} className="flex flex-wrap items-center gap-x-3 px-3 py-1.5 text-small">
                         <span className="font-medium">{item.productName ?? "পণ্য পাওয়া যাচ্ছে না"}</span>
                         {item.sku && <span className="text-text-muted">{item.sku}</span>}
-                        <span className="ml-auto text-text-muted">
+                        <span className="tnum ml-auto text-text-muted">
                           × {item.quantity} · {formatBdt(item.pricePoishaAtCapture)} (ধরার সময়ের দাম)
                         </span>
                       </li>
@@ -261,7 +261,7 @@ export default function AdminAbandonedPage() {
                       type="button"
                       disabled={busyId === row.id || row.hasCallTask}
                       onClick={() => void act(row.id, "call-task")}
-                      className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-small font-medium text-text-main transition disabled:opacity-50 sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                      className="w-full rounded-xl border border-border bg-surface px-3 py-1.5 text-small font-medium text-text-main transition duration-fast ease-smooth disabled:opacity-50 sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
                       {row.hasCallTask ? "কল টাস্ক তৈরি আছে" : "কল টাস্ক তৈরি করুন"}
                     </button>
@@ -269,7 +269,7 @@ export default function AdminAbandonedPage() {
                       type="button"
                       disabled={busyId === row.id}
                       onClick={() => void act(row.id, "convert")}
-                      className="w-full rounded-md bg-brand-600 px-3 py-1.5 text-small font-medium text-white transition disabled:opacity-50 sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                      className="w-full rounded-xl bg-brand-600 px-3 py-1.5 text-small font-medium text-white transition duration-fast ease-smooth disabled:opacity-50 sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
                       অর্ডারে রূপান্তর করুন
                     </button>
@@ -277,7 +277,7 @@ export default function AdminAbandonedPage() {
                       type="button"
                       disabled={busyId === row.id}
                       onClick={() => void act(row.id, "dismiss")}
-                      className="w-full rounded-md border border-rose-200 bg-surface px-3 py-1.5 text-small font-medium text-rose-600 transition disabled:opacity-50 sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                      className="w-full rounded-xl border border-danger/30 bg-surface px-3 py-1.5 text-small font-medium text-danger transition duration-fast ease-smooth disabled:opacity-50 sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
                       বাতিল করুন
                     </button>

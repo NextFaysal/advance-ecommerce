@@ -20,12 +20,12 @@ export default async function CoursesPage() {
   const s = pick(await getRequestLocale(), COURSES_STRINGS);
   if (!coursesEnabled()) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui" }}>
-        <h1>{s.title}</h1>
-        <p role="status">
-          {s.lockedPrefix} <code>module.courses</code> {s.lockedSuffix}
+      <div className="space-y-6">
+        <PageHeader title={s.title} />
+        <p role="status" className="rounded-2xl border border-border/60 bg-card px-5 py-4 text-sm text-text-muted shadow-xs">
+          {s.lockedPrefix} <code className="font-mono text-xs">module.courses</code> {s.lockedSuffix}
         </p>
-      </main>
+      </div>
     );
   }
 

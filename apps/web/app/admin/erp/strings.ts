@@ -20,6 +20,8 @@ const bn = {
   statDraftDelta: "এখনো পোস্ট হয়নি",
   statTrialDebit: "ট্রায়াল ব্যালেন্স (ডেবিট)",
   statTrialDelta: "পয়সায়",
+  entriesEmptyTitle: "এখনো কোনো জার্নাল এন্ট্রি নেই",
+  entriesEmptyDesc: "ERP জার্নাল API দিয়ে প্রথম এন্ট্রি পোস্ট হলেই তা এখানে দেখা যাবে।",
   emptyEntries:
     "এখনো কোনো জার্নাল এন্ট্রি সংরক্ষিত হয়নি — erp-journal API দিয়ে প্রথম এন্ট্রি পোস্ট হলেই এখানে দেখা যাবে। নিচের তালিকাগুলো খালি কারণ টেবিল খালি, নমুনা ডেটা নয়।",
   journalTitle: "জার্নাল এন্ট্রি",
@@ -50,6 +52,8 @@ const bn = {
   vatRateLine: "হার {rate}% — বিক্রয় VAT",
   vatInputNote:
     "ইনপুট VAT (ক্রয়): এই সিস্টেমে ক্রয়/ইনভয়েসের কোনো লেজার নেই — তাই ইনপুট VAT হিসাবের বাইরে এবং ওপরের নিট প্রদেয় থেকে কোনো ক্রয় VAT বাদ দেওয়া হয়নি।",
+  vatEmptyTitle: "এই পিরিয়ডে কোনো VAT বিভাজন নেই",
+  vatEmptyDesc: "VAT বিভাজন রেকর্ড হয় অর্ডার তৈরির সময়, শুধুমাত্র যখন Settings-এ হার সেট করা থাকে — হার সেট করে নতুন অর্ডার এলেই এখানে সংখ্যা দেখা যাবে। ক্রয় দিকের VAT-এর জন্য ক্রয়/ইনভয়েস লেজার প্রয়োজন, যা এই সিস্টেমে এখনো নেই।",
   vatEmpty1:
     "এই পিরিয়ডে VAT বিভাজনসহ কোনো অর্ডার নেই। VAT বিভাজন রেকর্ড হয় অর্ডার তৈরির সময় — শুধুমাত্র যখন Settings-এ হার সেট করা থাকে। হার সেট করার আগের অর্ডারগুলোতে কোনো বিভাজন নেই, এবং পরে তা অনুমান করে বসানো হয় না — তাই হার সেট করে নতুন অর্ডার এলেই এখানে আসল সংখ্যা দেখা যাবে।",
   vatEmpty2:
@@ -97,6 +101,8 @@ const bn = {
   dcFailedBadge: "ডেলিভারি ব্যর্থ",
   dcReturnedBadge: "ফেরত এসেছে",
   dcNotRecorded: "রেকর্ড নেই",
+  dcEmptyTitle: "এই পরিসরে কোনো ডেলিভারি খরচ নেই",
+  dcEmptyDesc: "নির্বাচিত পরিসরে কোনো ব্যর্থ বা ফেরত ডেলিভারি নেই — তাই খরচও নেই।",
   dcEmptyRange: "এই পরিসরে কোনো ব্যর্থ বা ফেরত ডেলিভারি নেই — খরচও নেই।",
 
   // ---- Exports panel (client) ----
@@ -161,6 +167,8 @@ const bn = {
   prReasonPlaceholder: "যেমন: অক্টোবরের বেতন প্রস্তুত",
   prConfigTitle: "বেতন কনফিগ (প্রতি কর্মী, টাকায়)",
   prLoading: "লোড হচ্ছে…",
+  prStaffEmptyTitle: "কোনো কর্মী পাওয়া যায়নি",
+  prStaffEmptyDesc: "পেরোল কনফিগারে কর্মী যোগ হলে তাদের বেতন কাঠামো এখানে দেখা যাবে।",
   prNoStaff: "কোনো কর্মী পাওয়া যায়নি।",
   colStaff: "কর্মী",
   colBasic: "মূল বেতন",
@@ -176,6 +184,8 @@ const bn = {
   prRunMonthLabel: "রানের মাস",
   prCreateRunBtn: "রান তৈরি করুন",
   prOneRunNote: "প্রতি মাসে একটি রানই তৈরি হয়; ডুপ্লিকেট হলে সার্ভার 409 দেবে।",
+  prRunsEmptyTitle: "এখনো কোনো পেরোল রান তৈরি হয়নি",
+  prRunsEmptyDesc: "একটি মাস বেছে প্রথম পেরোল রান তৈরি করলেই তা এখানে দেখা যাবে।",
   prNoRuns: "এখনো কোনো পেরোল রান তৈরি হয়নি।",
   prFinalized: "ফাইনালাইজড",
   prDraft: "খসড়া",
@@ -265,6 +275,8 @@ const en: ErpStrings = {
   statDraftDelta: "Not posted yet",
   statTrialDebit: "Trial balance (debit)",
   statTrialDelta: "In poisha",
+  entriesEmptyTitle: "No journal entries yet",
+  entriesEmptyDesc: "The first entry posted via the erp-journal API will appear here.",
   emptyEntries:
     "No journal entries have been saved yet — the first entry posted via the erp-journal API will appear here. The lists below are empty because the tables are empty, not sample data.",
   journalTitle: "Journal Entries",
@@ -295,6 +307,8 @@ const en: ErpStrings = {
   vatRateLine: "Rate {rate}% — sales VAT",
   vatInputNote:
     "Input VAT (purchases): this system has no purchase/invoice ledger — so input VAT is out of scope and no purchase VAT has been deducted from the net payable above.",
+  vatEmptyTitle: "No VAT split in this period",
+  vatEmptyDesc: "The VAT split is recorded when an order is created, only when a rate is set in Settings — set a rate and new orders will show figures here. Purchase-side VAT needs a purchase/invoice ledger, which this system does not have yet.",
   vatEmpty1:
     "There are no orders with a recorded VAT split in this period. A VAT split is recorded when an order is created — only while a rate is set in Settings. Orders from before the rate was set carry no split, and one is never guessed in afterwards — so once the rate is set and new orders arrive, the real figures will appear here.",
   vatEmpty2:
@@ -341,6 +355,8 @@ const en: ErpStrings = {
   dcFailedBadge: "Delivery failed",
   dcReturnedBadge: "Returned",
   dcNotRecorded: "Not recorded",
+  dcEmptyTitle: "No delivery costs in this range",
+  dcEmptyDesc: "There are no failed or returned deliveries in the selected range — and no cost.",
   dcEmptyRange: "No failed or returned deliveries in this range — and no cost.",
 
   exTitle: "Accounting Export — Tally / QuickBooks",
@@ -402,6 +418,8 @@ const en: ErpStrings = {
   prReasonPlaceholder: "e.g. Preparing October salaries",
   prConfigTitle: "Salary config (per staff member, in taka)",
   prLoading: "Loading…",
+  prStaffEmptyTitle: "No staff members found",
+  prStaffEmptyDesc: "Staff added to the payroll configuration will appear here with their salary structure.",
   prNoStaff: "No staff members found.",
   colStaff: "Staff",
   colBasic: "Basic salary",
@@ -417,6 +435,8 @@ const en: ErpStrings = {
   prRunMonthLabel: "Run month",
   prCreateRunBtn: "Create run",
   prOneRunNote: "Only one run is created per month; the server returns 409 on a duplicate.",
+  prRunsEmptyTitle: "No payroll runs created yet",
+  prRunsEmptyDesc: "Create the first payroll run for a month and it will appear here.",
   prNoRuns: "No payroll runs have been created yet.",
   prFinalized: "Finalized",
   prDraft: "Draft",

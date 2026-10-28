@@ -12,6 +12,10 @@ import type { SalesRow } from "@/reports/types";
 import { getRequestLocale } from "@/i18n/server";
 import { interpolate, pick } from "@/i18n/locale";
 import { ANALYTICS_STRINGS, SEGMENT_LABEL_KEYS } from "./strings";
+import { PageHeader } from "@/components/ui/page-header";
+import { Card } from "@/components/ui/card";
+import { DataTable } from "@/components/ui/table";
+import { DonutChart } from "@/components/ui/chart-kit";
 
 // Admin > Analytics (Step 47, A8; wired out in ADV-8, doc 22).
 // Everything on this page is computed by the pure functions in
@@ -125,160 +129,180 @@ export default async function AdminAnalyticsPage() {
 
   return (
     <main className="min-w-0">
-      <h1 className="text-xl font-bold">{t.title}</h1>
-      <p role="note" className="mt-2 text-sm text-text-muted">
-        {t.note}
-      </p>
+      <PageHeader title={t.title} description={t.note} />
 
-      <section className="mt-6">
-        <h2 className="font-semibold">{t.overview}</h2>
-        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <div className="rounded-xl border p-3"><div className="text-xs">{t.netRevenue}</div><div className="text-lg font-bold">{formatBdt(totalRevenue)}</div></div>
-          <div className="rounded-xl border p-3"><div className="text-xs">{t.orders}</div><div className="text-lg font-bold">{orderIds.size}</div></div>
-          <div className="rounded-xl border p-3"><div className="text-xs">{t.customersInData}</div><div className="text-lg font-bold">{rfm.length}</div></div>
-          <div className="rounded-xl border p-3"><div className="text-xs">{t.aov}</div><div className="text-lg font-bold">{formatBdt(aov)}</div></div>
-        </div>
-      </section>
+      <div className="space-y-6">
+        <section>
+          <h2 className="font-display text-base font-semibold text-text-main">{t.overview}</h2>
+          <div className="mt-3 grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <Card>
+              <p className="text-xs font-medium text-text-muted">{t.netRevenue}</p>
+              <p className="tnum mt-1 text-kpi text-text-main">{formatBdt(totalRevenue)}</p>
+            </Card>
+            <Card>
+              <p className="text-xs font-medium text-text-muted">{t.orders}</p>
+              <p className="tnum mt-1 text-kpi text-text-main">{orderIds.size}</p>
+            </Card>
+            <Card>
+              <p className="text-xs font-medium text-text-muted">{t.customersInData}</p>
+              <p className="tnum mt-1 text-kpi text-text-main">{rfm.length}</p>
+            </Card>
+            <Card>
+              <p className="text-xs font-medium text-text-muted">{t.aov}</p>
+              <p className="tnum mt-1 text-kpi text-text-main">{formatBdt(aov)}</p>
+            </Card>
+          </div>
+        </section>
 
-      <section className="mt-6">
-        <h2 className="font-semibold">{t.funnelTitle}</h2>
-        {funnel.state === "not_collecting" ? (
-          <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{locale === "bn" ? funnel.messageBn : t.funnelNotCollecting}</p>
-        ) : (
-          <ul className="mt-2 text-sm">
-            {funnel.steps.map((s) => (
-              <li key={s.stage}>
-                {s.stage}: {s.count} · {t.funnelFromPrev} {pct(s.conversionFromPreviousBps)} · {t.funnelFromStart} {pct(s.conversionFromStartBps)}
+        <Card>
+          <h2 className="font-display text-base font-semibold text-text-main">{t.funnelTitle}</h2>
+          {funnel.state === "not_collecting" ? (
+            <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">{locale === "bn" ? funnel.messageBn : t.funnelNotCollecting}</p>
+          ) : (
+            <ul className="mt-2 divide-y divide-border/60 text-sm">
+              {funnel.steps.map((s) => (
+                <li key={s.stage} className="flex flex-wrap items-baseline justify-between gap-2 py-2.5">
+                  <span className="font-medium text-text-main">{s.stage}</span>
+                  <span className="tnum text-text-muted">
+                    {s.count} · {t.funnelFromPrev} {pct(s.conversionFromPreviousBps)} · {t.funnelFromStart} {pct(s.conversionFromStartBps)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card>
+          <h2 className="font-display text-base font-semibold text-text-main">{t.unitEconomics}</h2>
+          <ul className="mt-2 divide-y divide-border/60 text-sm">
+            <li className="tnum py-2.5">{interpolate(t.ltvLine, { amount: formatBdt(ue.ltvPoisha), count: customerCount })}</li>
+            <li className="py-2.5">{t.cacLine}</li>
+            <li className="tnum py-2.5">{interpolate(t.ltvCacLine, { value: ue.ltvToCacBps === null ? t.cacUnknown : `${(ue.ltvToCacBps / 10000).toFixed(2)}x` })}</li>
+            <li className="tnum py-2.5">{interpolate(t.roasLine, { value: ue.roasBps === null ? t.roasUnknown : pct(ue.roasBps) })}</li>
+          </ul>
+        </Card>
+
+        <Card>
+          <h2 className="font-display text-base font-semibold text-text-main">{t.rfmTitle}</h2>
+          {Object.values(segments).reduce((a, b) => a + b, 0) > 0 ? (
+            <div className="mt-3">
+              <DonutChart
+                data={Object.entries(segments).map(([segment, count]) => ({
+                  label: SEGMENT_LABEL_KEYS[segment] ? t[SEGMENT_LABEL_KEYS[segment]] : segment,
+                  value: count,
+                  displayValue: String(count),
+                }))}
+                ariaLabel={t.rfmTitle}
+              />
+            </div>
+          ) : (
+            <ul className="mt-2 divide-y divide-border/60 text-sm">
+              {Object.entries(segments).map(([segment, count]) => (
+                <li key={segment} className="flex items-baseline justify-between gap-2 py-2.5">
+                  <span>{SEGMENT_LABEL_KEYS[segment] ? t[SEGMENT_LABEL_KEYS[segment]] : segment}</span>
+                  <span className="tnum font-medium">{count}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <section>
+          <h2 className="font-display text-base font-semibold text-text-main">{t.cohortTitle}</h2>
+          {cohort.length === 0 ? (
+            <p className="mt-2 text-sm text-text-muted">{t.cohortEmpty}</p>
+          ) : (
+            <div className="mt-3">
+              <DataTable
+                columns={[
+                  { key: "month", header: t.cohortColMonth },
+                  { key: "customers", header: t.cohortColCustomers },
+                  ...Array.from({ length: maxCohortCells }, (_, i) => ({
+                    key: `m${i}`,
+                    header: interpolate(t.cohortMonth, { n: i }),
+                  })),
+                ]}
+                rows={cohort.map((row) => {
+                  const cells: Record<string, React.ReactNode> = {
+                    month: <span className="font-medium">{row.cohortMonth}</span>,
+                    customers: <span className="tnum">{row.size}</span>,
+                  };
+                  for (let i = 0; i < maxCohortCells; i++) {
+                    const cell = row.cells[i];
+                    cells[`m${i}`] = (
+                      <span className="tnum">{cell ? `${cell.activeCustomers}/${row.size} (${pct(cell.retentionBps)})` : "—"}</span>
+                    );
+                  }
+                  return cells;
+                })}
+              />
+            </div>
+          )}
+          <p className="mt-2 text-xs text-text-muted">{t.cohortNote}</p>
+        </section>
+
+        <Card>
+          <h2 className="font-display text-base font-semibold text-text-main">{t.courierTitle}</h2>
+          <ul className="mt-2 divide-y divide-border/60 text-sm">
+            {couriers.map((c) => (
+              <li key={c.provider} className="tnum py-2.5">
+                {interpolate(t.courierLine, { provider: c.provider, score: c.score, delivery: pct(c.deliveryRateBps), returns: pct(c.returnRateBps) })}
               </li>
             ))}
           </ul>
-        )}
-      </section>
+          {couriers.length === 0 && <p className="mt-2 text-sm text-text-muted">{t.courierEmpty}</p>}
+        </Card>
 
-      <section className="mt-6">
-        <h2 className="font-semibold">{t.unitEconomics}</h2>
-        <ul className="mt-2 text-sm">
-          <li>{interpolate(t.ltvLine, { amount: formatBdt(ue.ltvPoisha), count: customerCount })}</li>
-          <li>{t.cacLine}</li>
-          <li>{interpolate(t.ltvCacLine, { value: ue.ltvToCacBps === null ? t.cacUnknown : `${(ue.ltvToCacBps / 10000).toFixed(2)}x` })}</li>
-          <li>{interpolate(t.roasLine, { value: ue.roasBps === null ? t.roasUnknown : pct(ue.roasBps) })}</li>
-        </ul>
-      </section>
+        <section>
+          <h2 className="font-display text-base font-semibold text-text-main">{t.staffTitle}</h2>
+          {staffScores.length === 0 ? (
+            <p className="mt-2 text-sm text-text-muted">{t.staffEmpty}</p>
+          ) : (
+            <div className="mt-3">
+              <DataTable
+                columns={[
+                  { key: "name", header: t.staffColName },
+                  { key: "orders", header: t.staffColOrders },
+                  { key: "confirm", header: t.staffColConfirm },
+                  { key: "sla", header: t.staffColSla },
+                ]}
+                rows={staffScores.map((s) => ({
+                  name: <span className="font-medium">{s.name}</span>,
+                  orders: <span className="tnum">{interpolate(t.staffOrdersCell, { count: s.ordersProcessed })}</span>,
+                  confirm: <span className="tnum">{(s.confirmRateBps / 100).toFixed(1)}%</span>,
+                  sla: <span className="tnum">{(s.slaRateBps / 100).toFixed(1)}%</span>,
+                }))}
+              />
+            </div>
+          )}
+          <p className="mt-2 text-xs text-text-muted">{t.staffNote}</p>
+        </section>
 
-      <section className="mt-6">
-        <h2 className="font-semibold">{t.rfmTitle}</h2>
-        <ul className="mt-2 text-sm">
-          {Object.entries(segments).map(([segment, count]) => (
-            <li key={segment}>{SEGMENT_LABEL_KEYS[segment] ? t[SEGMENT_LABEL_KEYS[segment]] : segment}: {count}</li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="mt-6">
-        <h2 className="font-semibold">{t.cohortTitle}</h2>
-        {cohort.length === 0 ? (
-          <p className="mt-2 text-sm text-text-muted">{t.cohortEmpty}</p>
-        ) : (
-          <div className="mt-2 overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead>
-                <tr>
-                  <th className="border-b p-2">{t.cohortColMonth}</th>
-                  <th className="border-b p-2">{t.cohortColCustomers}</th>
-                  {Array.from({ length: maxCohortCells }, (_, i) => (
-                    <th key={i} className="border-b p-2">{interpolate(t.cohortMonth, { n: i })}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {cohort.map((row) => (
-                  <tr key={row.cohortMonth}>
-                    <td className="border-b p-2 font-medium">{row.cohortMonth}</td>
-                    <td className="border-b p-2">{row.size}</td>
-                    {Array.from({ length: maxCohortCells }, (_, i) => {
-                      const cell = row.cells[i];
-                      return (
-                        <td key={i} className="border-b p-2">
-                          {cell ? `${cell.activeCustomers}/${row.size} (${pct(cell.retentionBps)})` : "—"}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p className="mt-2 text-xs text-text-muted">{t.cohortNote}</p>
-      </section>
-
-      <section className="mt-6">
-        <h2 className="font-semibold">{t.courierTitle}</h2>
-        <ul className="mt-2 text-sm">
-          {couriers.map((c) => (
-            <li key={c.provider}>
-              {interpolate(t.courierLine, { provider: c.provider, score: c.score, delivery: pct(c.deliveryRateBps), returns: pct(c.returnRateBps) })}
-            </li>
-          ))}
-        </ul>
-        {couriers.length === 0 && <p className="mt-2 text-sm text-text-muted">{t.courierEmpty}</p>}
-      </section>
-
-      <section className="mt-6">
-        <h2 className="font-semibold">{t.staffTitle}</h2>
-        {staffScores.length === 0 ? (
-          <p className="mt-2 text-sm text-text-muted">{t.staffEmpty}</p>
-        ) : (
-          <div className="mt-2 overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead>
-                <tr>
-                  <th className="border-b p-2">{t.staffColName}</th>
-                  <th className="border-b p-2">{t.staffColOrders}</th>
-                  <th className="border-b p-2">{t.staffColConfirm}</th>
-                  <th className="border-b p-2">{t.staffColSla}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {staffScores.map((s) => (
-                  <tr key={s.staffId}>
-                    <td className="border-b p-2 font-medium">{s.name}</td>
-                    <td className="border-b p-2">{interpolate(t.staffOrdersCell, { count: s.ordersProcessed })}</td>
-                    <td className="border-b p-2">{(s.confirmRateBps / 100).toFixed(1)}%</td>
-                    <td className="border-b p-2">{(s.slaRateBps / 100).toFixed(1)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p className="mt-2 text-xs text-text-muted">{t.staffNote}</p>
-      </section>
-
-      <section className="mt-6">
-        <h2 className="font-semibold">{t.heatmapTitle}</h2>
-        {heatmap.length === 0 ? (
-          <p className="mt-2 text-sm text-text-muted">{t.heatmapEmpty}</p>
-        ) : (
-          <ul className="mt-2 space-y-2">
-            {heatmap.slice(0, 15).map((d) => (
-              <li key={d.district} className="text-sm">
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="font-medium">{d.district}</span>
-                  <span>{interpolate(t.heatmapOrders, { count: d.orders, share: pct(d.shareBps), revenue: formatBdt(d.revenuePoisha) })}</span>
-                </div>
-                <div className="mt-1 h-2.5 w-full overflow-hidden rounded bg-slate-100">
-                  <div
-                    className="h-full rounded bg-orange-500"
-                    style={{ width: `${Math.max(2, Math.round(d.intensity * 100))}%`, opacity: 0.35 + d.intensity * 0.65 }}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-        <p className="mt-2 text-xs text-text-muted">{t.heatmapNote}</p>
-      </section>
+        <Card>
+          <h2 className="font-display text-base font-semibold text-text-main">{t.heatmapTitle}</h2>
+          {heatmap.length === 0 ? (
+            <p className="mt-2 text-sm text-text-muted">{t.heatmapEmpty}</p>
+          ) : (
+            <ul className="mt-3 space-y-3">
+              {heatmap.slice(0, 15).map((d) => (
+                <li key={d.district} className="text-sm">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="font-medium text-text-main">{d.district}</span>
+                    <span className="tnum text-text-muted">{interpolate(t.heatmapOrders, { count: d.orders, share: pct(d.shareBps), revenue: formatBdt(d.revenuePoisha) })}</span>
+                  </div>
+                  <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-surface-2">
+                    <div
+                      className="h-full rounded-full bg-warning-solid"
+                      style={{ width: `${Math.max(2, Math.round(d.intensity * 100))}%`, opacity: 0.35 + d.intensity * 0.65 }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-2 text-xs text-text-muted">{t.heatmapNote}</p>
+        </Card>
+      </div>
     </main>
   );
 }

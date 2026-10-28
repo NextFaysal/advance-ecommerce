@@ -25,7 +25,7 @@ interface ConfigData {
 }
 
 const INPUT_CLASS =
-  "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-text-main";
+  "w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-text-main shadow-xs outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
 
 export function CoursesConfigCard() {
   const { locale } = useLocale();
@@ -92,7 +92,7 @@ export function CoursesConfigCard() {
   }
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+    <section className="rounded-2xl border border-border/60 bg-card p-5 shadow-xs">
       <h2 className="font-display text-base font-bold text-text-main">{s.configTitle}</h2>
       <p className="mt-1 text-sm leading-6 text-text-muted">
         {s.configIntro}{" "}
@@ -105,7 +105,7 @@ export function CoursesConfigCard() {
       </p>
 
       {error ? (
-        <p role="alert" className="mt-3 text-sm font-medium text-red-700 dark:text-red-300">
+        <p role="alert" className="mt-3 text-sm font-medium text-danger">
           {error}
         </p>
       ) : null}

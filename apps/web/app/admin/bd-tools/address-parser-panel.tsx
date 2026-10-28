@@ -101,14 +101,14 @@ export function AddressParserPanel() {
         />
       </label>
       {error ? (
-        <p role="alert" className="text-sm text-rose-600">⚠ {error}</p>
+        <p role="alert" className="text-sm text-danger">⚠ {error}</p>
       ) : null}
       <Button type="button" onClick={run}>{s.addrRun}</Button>
 
       {result ? (
-        <div className="rounded-lg border border-border bg-surface-2 p-4">
+        <div className="rounded-xl border border-border bg-surface-2 p-4">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold">{s.addrResult}</h3>
+            <h3 className="font-display text-sm font-semibold text-text-main">{s.addrResult}</h3>
             {confidenceBadge(result.confidence, s)}
           </div>
           <FieldRow locale={locale} s={s} label={s.fieldDivision} en={result.division} bn={result.divisionBn} matchedBy={result.matchedBy.division} />
@@ -120,7 +120,7 @@ export function AddressParserPanel() {
             <p className="mt-1 text-sm">{result.addressLine}</p>
           </div>
           {result.confidence < 0.5 ? (
-            <p className="mt-3 text-sm text-amber-700">
+            <p className="mt-3 text-sm text-warning-solid">
               {s.lowConfNote}
             </p>
           ) : null}

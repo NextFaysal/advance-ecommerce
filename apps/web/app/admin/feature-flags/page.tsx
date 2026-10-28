@@ -189,19 +189,19 @@ export default async function AdminFeatureFlagsPage() {
   const onCount = items.filter((f) => f.enabled).length;
 
   return (
-    <main>
+    <main className="space-y-6">
       <PageHeader title={t.title} description={t.description} breadcrumb={t.breadcrumb} />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label={t.statTotal} value={String(FLAG_CATALOGUE.length)} delta={t.statTotalDelta} icon={<Icon name="grid" size={22} />} />
         <StatCard label={t.statOn} value={states === null ? "—" : String(onCount)} delta={t.statOnDelta} icon={<Icon name="check" size={22} />} />
         <StatCard label={t.statWithPage} value={String(withPage)} delta={t.statWithPageDelta} icon={<Icon name="package" size={22} />} />
         <StatCard label={t.statPermission} value="settings.edit" delta={t.statPermissionDelta} icon={<Icon name="shield" size={22} />} />
       </div>
 
-      <Card className="mb-6 border-sky-200 bg-sky-50">
-        <p className="text-sm font-medium text-sky-900">{t.realTogglesTitle}</p>
-        <p className="mt-1 text-sm text-sky-800">
+      <Card className="border-border/60 bg-surface-2/60">
+        <p className="text-sm font-medium text-text-main">{t.realTogglesTitle}</p>
+        <p className="mt-1 text-sm text-text-muted">
           {t.realTogglesA}
           <code className="font-mono text-xs">feature_flags</code>
           {t.realTogglesB}
@@ -210,14 +210,16 @@ export default async function AdminFeatureFlagsPage() {
         </p>
       </Card>
 
-      <h2 className="mb-3 text-lg font-semibold">{t.allFlagsTitle}</h2>
-      {states === null ? (
-        <Card className="border-rose-300 bg-rose-50 text-sm text-rose-900">{t.dbReadFailed}</Card>
-      ) : (
-        <Card>
-          <FlagList items={items} />
-        </Card>
-      )}
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-text-main">{t.allFlagsTitle}</h2>
+        {states === null ? (
+          <Card className="border-danger/30 bg-danger-soft text-sm text-danger">{t.dbReadFailed}</Card>
+        ) : (
+          <Card>
+            <FlagList items={items} />
+          </Card>
+        )}
+      </section>
     </main>
   );
 }

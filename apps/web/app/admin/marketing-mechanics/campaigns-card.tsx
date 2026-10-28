@@ -9,6 +9,7 @@
 // /campaign/<slug> and renders only while a campaign is enabled
 // here; products always come from the real catalogue source.
 import { useCallback, useEffect, useState } from "react";
+import { Card } from "@/components/ui/card";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -24,8 +25,8 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return (json as { data: T }).data;
 }
 
-const inputCls = "w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm text-slate-900";
-const labelCls = "block text-xs font-semibold text-slate-500";
+const inputCls = "min-h-[44px] w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-text-main";
+const labelCls = "block text-xs font-semibold text-text-muted";
 
 type SourceState =
   | { kind: "category"; slug: string }
@@ -178,20 +179,20 @@ export function CampaignsCard() {
   };
 
   return (
-    <section className="mt-8 rounded-2xl bg-white p-6 ring-1 ring-slate-200">
-      <h2 className="text-lg font-bold text-slate-900">সিজনাল ক্যাম্পেইন ও এক্সিট-ইনটেন্ট পপআপ</h2>
-      <p className="mt-1 text-sm text-slate-500">
+    <Card className="mt-8">
+      <h2 className="text-lg font-bold text-text-main">সিজনাল ক্যাম্পেইন ও এক্সিট-ইনটেন্ট পপআপ</h2>
+      <p className="mt-1 text-sm text-text-muted">
         টেমপ্লেট বেছে স্লট পূরণ করুন — পণ্য আসবে আসল ক্যাটালগ থেকে (ক্যাটাগরি / ট্যাগ / চলমান ফ্ল্যাশ সেল),
         কুপন কোড থাকতে হবে আসল Coupon তালিকায়। কাউন্টডাউন শুধু শেষ তারিখ দিলেই দেখাবে।
       </p>
 
       {error ? (
-        <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p>
+        <p className="mt-4 rounded-xl bg-danger-soft px-3 py-2 text-sm font-medium text-danger">{error}</p>
       ) : null}
       {notice ? (
-        <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{notice}</p>
+        <p className="mt-4 rounded-xl bg-success-soft px-3 py-2 text-sm font-medium text-success-solid">{notice}</p>
       ) : null}
-      {data === null && !error ? <p className="mt-4 text-sm text-slate-400">লোড হচ্ছে…</p> : null}
+      {data === null && !error ? <p className="mt-4 text-sm text-text-subtle">লোড হচ্ছে…</p> : null}
 
       {data !== null ? (
         <>
@@ -204,12 +205,12 @@ export function CampaignsCard() {
                   ? data.couponStates[row.couponCode].reason
                   : null;
               return (
-                <div key={preset.slug} className="rounded-xl border border-slate-200 p-4">
+                <div key={preset.slug} className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="font-bold text-slate-900">
-                      {preset.nameBn} <span className="text-xs font-medium text-slate-400">/campaign/{preset.slug}</span>
+                    <h3 className="font-bold text-text-main">
+                      {preset.nameBn} <span className="text-xs font-medium text-text-subtle">/campaign/{preset.slug}</span>
                     </h3>
-                    <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-text-muted">
                       <input
                         type="checkbox"
                         checked={row.enabled}
@@ -287,7 +288,7 @@ export function CampaignsCard() {
                             placeholder="যেমন: eid"
                           />
                         ) : (
-                          <p className="px-1 py-2 text-xs text-slate-500">যে ফ্ল্যাশ সেলটি তখন লাইভ থাকবে</p>
+                          <p className="px-1 py-2 text-xs text-text-muted">যে ফ্ল্যাশ সেলটি তখন লাইভ থাকবে</p>
                         )}
                       </div>
                     </div>
@@ -301,7 +302,7 @@ export function CampaignsCard() {
                           placeholder="যেমন: EID10"
                         />
                         {couponProblem ? (
-                          <p className="mt-1 text-xs font-medium text-rose-600">
+                          <p className="mt-1 text-xs font-medium text-danger">
                             সতর্কতা: এই কোডটি এখন {couponProblem} — পেজে দেখানো হবে না।
                           </p>
                         ) : null}
@@ -322,10 +323,10 @@ export function CampaignsCard() {
             })}
           </div>
 
-          <div className="mt-5 rounded-xl border border-slate-200 p-4">
+          <div className="mt-5 rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="font-bold text-slate-900">এক্সিট-ইনটেন্ট পপআপ</h3>
-              <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+              <h3 className="font-bold text-text-main">এক্সিট-ইনটেন্ট পপআপ</h3>
+              <label className="flex items-center gap-2 text-sm font-semibold text-text-muted">
                 <input
                   type="checkbox"
                   checked={exit.enabled}
@@ -334,7 +335,7 @@ export function CampaignsCard() {
                 সক্রিয়
               </label>
             </div>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-text-muted">
               ডেস্কটপে পেজ ছাড়ার ইঙ্গিতে, মোবাইলে ৬০ সেকেন্ড পর — সেশনে সর্বোচ্চ একবার, বন্ধ করলে ৭ দিন আর
               দেখাবে না। চেকআউট/অ্যাকাউন্ট পেজে কখনো নয়।
             </p>
@@ -382,13 +383,13 @@ export function CampaignsCard() {
               type="button"
               onClick={() => void save()}
               disabled={saving}
-              className="rounded-xl bg-brand-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-brand-700 disabled:opacity-50"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-brand-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-brand-700 disabled:opacity-50"
             >
               {saving ? "সেভ হচ্ছে…" : "সব সেভ করুন"}
             </button>
           </div>
         </>
       ) : null}
-    </section>
+    </Card>
   );
 }

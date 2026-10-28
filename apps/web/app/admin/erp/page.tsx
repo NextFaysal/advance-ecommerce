@@ -1,10 +1,11 @@
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { StatCard } from "@/components/ui/stat-card";
 import { DataTable } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
 import { Icon } from "@/components/ui/icon";
+import { EmptyState } from "@/components/ui/empty-state";
 import { DeliveryCostsPanel } from "./delivery-costs-panel";
 import { PurchaseLedgerPanel } from "./purchase-ledger-panel";
 import { PayrollPanel } from "./payroll-panel";
@@ -105,7 +106,7 @@ export default async function AdminErpPage() {
   const trialCredit = balances.reduce((s, b) => s + b.creditPoisha, 0);
 
   const accountRows = accounts.map((a) => ({
-    code: <span className="font-mono">{a.code}</span>,
+    code: <span className="tnum font-mono">{a.code}</span>,
     name: (
       <span>
         {a.nameBn} <span className="text-text-muted">({a.nameEn})</span>
@@ -119,7 +120,7 @@ export default async function AdminErpPage() {
     const totals = entryTotals(e);
     const status = STATUS_TEXT[e.status];
     return {
-      date: <span className="font-mono text-xs">{e.date}</span>,
+      date: <span className="tnum font-mono text-xs">{e.date}</span>,
       description: (
         <span>
           <span className="font-medium">{e.description}</span>
@@ -145,7 +146,7 @@ export default async function AdminErpPage() {
   const balanceRows = balances.map((b) => {
     const account = accountByCode(accounts, b.accountCode);
     return {
-      code: <span className="font-mono">{b.accountCode}</span>,
+      code: <span className="tnum font-mono">{b.accountCode}</span>,
       name: account ? `${account.nameBn} (${account.nameEn})` : b.accountCode,
       debit: <Money poisha={b.debitPoisha} />,
       credit: <Money poisha={b.creditPoisha} />,
@@ -154,20 +155,19 @@ export default async function AdminErpPage() {
   });
 
   const periodRows = periods.map((p) => ({
-    period: <span className="font-mono">{p.period}</span>,
+    period: <span className="tnum font-mono">{p.period}</span>,
     state: p.isLocked ? <Badge tone="danger">{s.periodLocked}</Badge> : <Badge tone="success">{s.periodOpen}</Badge>,
     note: p.isLocked ? s.periodLockedNote : s.periodOpenNote,
   }));
 
   return (
-    <main>
+    <main className="space-y-6">
       <PageHeader
         title={s.title}
-        description={s.description}
-        breadcrumb={s.breadcrumb}
+        subtitle={s.description}
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label={s.statAccounts} value={String(accounts.length)} delta={s.statAccountsDelta} icon={<Icon name="chart" size={22} />} />
         <StatCard label={s.statPosted} value={String(postedCount)} delta={interpolate(s.statPostedDelta, { total: entries.length })} icon={<Icon name="check" size={22} />} />
         <StatCard label={s.statDraft} value={String(draftCount)} delta={s.statDraftDelta} icon={<Icon name="clock" size={22} />} />
@@ -175,42 +175,94 @@ export default async function AdminErpPage() {
       </div>
 
       {entries.length === 0 ? (
-        <p className="mb-6 rounded-md bg-surface-2 px-3 py-2 text-sm text-text-muted">
-          {s.emptyEntries}
-        </p>
+        <EmptyState title={s.entriesEmptyTitle} description={s.entriesEmptyDesc} />
       ) : null}
 
-      <h2 className="mb-3 text-lg font-semibold">{s.journalTitle}</h2>
-      <DataTable
-        caption={s.journalCaption}
-        columns={[
-          { key: "date", header: s.colDate },
-          { key: "description", header: s.colDescLines },
-          { key: "source", header: s.colSource },
-          { key: "status", header: s.colStatus },
-          { key: "debit", header: s.colDebit },
-          { key: "credit", header: s.colCredit },
-        ]}
-        rows={entryRows}
-      />
+      <section className="space-y-3">
+        <h2 className="font-display text-lg font-semibold">{s.journalTitle}</h2>
+        <div className="space-y-3 md:hidden">
+          {entryRows.map((r, i) => (
+            <div key={i} className="space-y-2 rounded-2xl border border-border bg-card p-4 shadow-xs">
+              <div className="flex items-center justify-between gap-2">
+                {r.date}
+                {r.status}
+              </div>
+              {r.description}
+              <p>{r.source}</p>
+              <div className="grid grid-cols-2 gap-2 border-t border-border pt-2 text-sm">
+                <span>
+                  <span className="block text-xs text-text-muted">{s.colDebit}</span>
+                  {r.debit}
+                </span>
+                <span>
+                  <span className="block text-xs text-text-muted">{s.colCredit}</span>
+                  {r.credit}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden md:block">
+          <DataTable
+            caption={s.journalCaption}
+            columns={[
+              { key: "date", header: s.colDate },
+              { key: "description", header: s.colDescLines },
+              { key: "source", header: s.colSource },
+              { key: "status", header: s.colStatus },
+              { key: "debit", header: s.colDebit },
+              { key: "credit", header: s.colCredit },
+            ]}
+            rows={entryRows}
+          />
+        </div>
+      </section>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.trialTitle}</h2>
-      <DataTable
-        caption={interpolate(s.trialCaption, { debit: trialDebit.toLocaleString("en-US"), credit: trialCredit.toLocaleString("en-US") })}
-        columns={[
-          { key: "code", header: s.colCode },
-          { key: "name", header: s.colAccount },
-          { key: "debit", header: s.colDebit },
-          { key: "credit", header: s.colCredit },
-          { key: "balance", header: s.colBalance },
-        ]}
-        rows={balanceRows}
-      />
+      <section className="space-y-3">
+        <h2 className="font-display text-lg font-semibold">{s.trialTitle}</h2>
+        <div className="space-y-3 md:hidden">
+          {balanceRows.map((r, i) => (
+            <div key={i} className="space-y-2 rounded-2xl border border-border bg-card p-4 shadow-xs">
+              <div className="flex items-center justify-between gap-2">
+                {r.code}
+                <span className="text-sm">{r.name}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 border-t border-border pt-2 text-sm">
+                <span>
+                  <span className="block text-xs text-text-muted">{s.colDebit}</span>
+                  {r.debit}
+                </span>
+                <span>
+                  <span className="block text-xs text-text-muted">{s.colCredit}</span>
+                  {r.credit}
+                </span>
+                <span>
+                  <span className="block text-xs text-text-muted">{s.colBalance}</span>
+                  {r.balance}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden md:block">
+          <DataTable
+            caption={interpolate(s.trialCaption, { debit: trialDebit.toLocaleString("en-US"), credit: trialCredit.toLocaleString("en-US") })}
+            columns={[
+              { key: "code", header: s.colCode },
+              { key: "name", header: s.colAccount },
+              { key: "debit", header: s.colDebit },
+              { key: "credit", header: s.colCredit },
+              { key: "balance", header: s.colBalance },
+            ]}
+            rows={balanceRows}
+          />
+        </div>
+      </section>
 
-      <div className="mt-8 grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <h3 className="text-base font-semibold">{s.vatTitle}</h3>
-          <p className="mt-1 font-mono text-xs text-text-muted">
+          <h3 className="font-display text-base font-semibold">{s.vatTitle}</h3>
+          <p className="tnum mt-1 font-mono text-xs text-text-muted">
             {interpolate(s.vatPeriodLine, { from: vatFrom, to: vatTo })}
           </p>
           {vatReport ? (
@@ -245,12 +297,9 @@ export default async function AdminErpPage() {
             </>
           ) : (
             <>
-              <p className="mt-2 text-sm text-text-muted">
-                {s.vatEmpty1}
-              </p>
-              <p className="mt-2 text-sm text-text-muted">
-                {s.vatEmpty2}
-              </p>
+              <div className="mt-2">
+                <EmptyState title={s.vatEmptyTitle} description={s.vatEmptyDesc} />
+              </div>
             </>
           )}
         </Card>
@@ -265,20 +314,38 @@ export default async function AdminErpPage() {
         </div>
       </div>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.chartTitle}</h2>
-      <DataTable
-        caption={s.chartCaption}
-        columns={[
-          { key: "code", header: s.colCode },
-          { key: "name", header: s.colAccountName },
-          { key: "type", header: s.colType },
-          { key: "active", header: s.colActiveStatus },
-        ]}
-        rows={accountRows}
-      />
+      <section className="space-y-3">
+        <h2 className="font-display text-lg font-semibold">{s.chartTitle}</h2>
+        <div className="space-y-3 md:hidden">
+          {accountRows.map((r, i) => (
+            <div key={i} className="space-y-2 rounded-2xl border border-border bg-card p-4 shadow-xs">
+              <div className="flex items-center justify-between gap-2">
+                {r.code}
+                {r.active}
+              </div>
+              <p className="text-sm">{r.name}</p>
+              <p>{r.type}</p>
+            </div>
+          ))}
+        </div>
+        <div className="hidden md:block">
+          <DataTable
+            caption={s.chartCaption}
+            columns={[
+              { key: "code", header: s.colCode },
+              { key: "name", header: s.colAccountName },
+              { key: "type", header: s.colType },
+              { key: "active", header: s.colActiveStatus },
+            ]}
+            rows={accountRows}
+          />
+        </div>
+      </section>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.failedDeliveryTitle}</h2>
-      <DeliveryCostsPanel />
+      <section className="space-y-3">
+        <h2 className="font-display text-lg font-semibold">{s.failedDeliveryTitle}</h2>
+        <DeliveryCostsPanel />
+      </section>
 
       <PurchaseLedgerPanel />
 

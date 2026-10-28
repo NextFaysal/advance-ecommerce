@@ -6,6 +6,8 @@
 // numbers are raw TrackingEvent counts (labelled descriptive), and
 // a broadcast is only "sent" when the Meta adapter really sent it.
 import { useCallback, useEffect, useState } from "react";
+import { Card } from "@/components/ui/card";
+import { DataTable } from "@/components/ui/table";
 
 /* ------------------------------------------------------------------ */
 /* Shared helpers                                                      */
@@ -24,8 +26,8 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return (json as { data: T }).data;
 }
 
-const inputCls = "w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm text-slate-900";
-const labelCls = "block text-xs font-semibold text-slate-500";
+const inputCls = "min-h-[44px] w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-text-main";
+const labelCls = "block text-xs font-semibold text-text-muted";
 
 /* ------------------------------------------------------------------ */
 /* Spin                                                                */
@@ -114,14 +116,14 @@ function SpinSection() {
   const oddsFor = (id: string) => data?.display.segments.find((s) => s.id === id)?.oddsPercent;
 
   return (
-    <section className="mt-6 rounded-2xl bg-white p-5 ring-1 ring-slate-200">
-      <h2 className="text-lg font-bold text-slate-900">স্পিন হুইল</h2>
-      <p className="mt-1 text-sm text-slate-500">
+    <Card className="mt-6">
+      <h2 className="text-lg font-bold text-text-main">স্পিন হুইল</h2>
+      <p className="mt-1 text-sm text-text-muted">
         ওজন অনুযায়ী সার্ভার ফলাফল ঠিক করে। অন্তত একটি &ldquo;পুরস্কার নেই&rdquo; সেগমেন্ট (কুপন খালি) থাকতেই হবে —
         ছাড়া সেভ হবে না। যেসব পুরস্কার-সেগমেন্টের কুপন এখন সক্রিয় নয়, সেগুলো ড্র থেকে বাদ যায় (নিচে দেখুন)।
       </p>
-      {error !== null ? <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-      {message !== null ? <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p> : null}
+      {error !== null ? <p className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p> : null}
+      {message !== null ? <p className="mt-3 rounded-xl bg-success-soft px-3 py-2 text-sm text-success-solid">{message}</p> : null}
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <label className={labelCls}>
           চালু আছে
@@ -141,7 +143,7 @@ function SpinSection() {
       </div>
       <div className="mt-4 space-y-2">
         {segments.map((segment, i) => (
-          <div key={segment.id} className="grid items-end gap-2 rounded-xl bg-slate-50 p-3 sm:grid-cols-[1fr_1fr_110px_110px_36px]">
+          <div key={segment.id} className="grid items-end gap-2 rounded-2xl border border-border/60 bg-surface-2/50 p-3 sm:grid-cols-[1fr_1fr_110px_110px_36px]">
             <label className={labelCls}>
               লেবেল
               <input className={inputCls} value={segment.labelBn} onChange={(e) => setSegments((rows) => rows.map((r, j) => (j === i ? { ...r, labelBn: e.target.value } : r)))} />
@@ -154,43 +156,43 @@ function SpinSection() {
               ওজন (bps)
               <input type="number" min={1} max={10000} className={inputCls} value={segment.weightBps} onChange={(e) => setSegments((rows) => rows.map((r, j) => (j === i ? { ...r, weightBps: Number(e.target.value) } : r)))} />
             </label>
-            <p className="pb-2 text-xs text-slate-500">
+            <p className="tnum pb-2 text-xs text-text-muted">
               আসল সম্ভাবনা: {oddsFor(segment.id) !== undefined ? `${oddsFor(segment.id)}%` : "ড্রতে নেই"}
             </p>
-            <button type="button" aria-label="সেগমেন্ট মুছুন" className="mb-1 h-9 w-9 rounded-lg bg-white text-slate-500 ring-1 ring-slate-200 hover:text-red-600" onClick={() => setSegments((rows) => rows.filter((_, j) => j !== i))}>
+            <button type="button" aria-label="সেগমেন্ট মুছুন" className="mb-1 flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-text-muted hover:text-danger" onClick={() => setSegments((rows) => rows.filter((_, j) => j !== i))}>
               ✕
             </button>
           </div>
         ))}
         <button
           type="button"
-          className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+          className="min-h-[44px] rounded-xl bg-surface-2 px-3 py-1.5 text-sm font-semibold text-text-main hover:bg-brand-soft"
           onClick={() => setSegments((rows) => [...rows, { id: `seg-${rows.length + 1}-${Date.now().toString(36)}`, labelBn: "", couponCode: "", weightBps: 1000 }])}
         >
           + সেগমেন্ট যোগ করুন
         </button>
       </div>
       {data !== null && data.display.excludedPrizeSegments.length > 0 ? (
-        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
           ড্র থেকে বাদ: {data.display.excludedPrizeSegments.map((x) => `${x.couponCode} (${x.reason})`).join(", ")}
         </p>
       ) : null}
-      <button type="button" onClick={() => void save()} className="mt-4 rounded-full bg-violet-600 px-5 py-2 text-sm font-bold text-white hover:bg-violet-700">
+      <button type="button" onClick={() => void save()} className="mt-4 inline-flex min-h-[44px] items-center justify-center rounded-xl bg-brand-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-brand-700">
         সংরক্ষণ করুন
       </button>
       {data !== null && data.recentSpins.length > 0 ? (
         <div className="mt-5">
-          <h3 className="text-sm font-bold text-slate-700">সাম্প্রতিক স্পিন (Redis অডিট লগ — সাময়িক)</h3>
-          <ul className="mt-2 max-h-48 space-y-1 overflow-auto text-xs text-slate-500">
+          <h3 className="text-sm font-bold text-text-main">সাম্প্রতিক স্পিন (Redis অডিট লগ — সাময়িক)</h3>
+          <ul className="mt-2 max-h-48 space-y-1 overflow-auto text-xs text-text-muted">
             {data.recentSpins.map((entry, i) => (
-              <li key={i} className="rounded bg-slate-50 px-2 py-1 font-mono">
+              <li key={i} className="rounded-lg bg-surface-2 px-2 py-1 font-mono">
                 {JSON.stringify(entry)}
               </li>
             ))}
           </ul>
         </div>
       ) : null}
-    </section>
+    </Card>
   );
 }
 
@@ -293,16 +295,16 @@ function ExperimentsSection() {
   };
 
   return (
-    <section className="mt-6 rounded-2xl bg-white p-5 ring-1 ring-slate-200">
-      <h2 className="text-lg font-bold text-slate-900">A/B এক্সপেরিমেন্ট — হোমপেজ হিরো</h2>
-      <p className="mt-1 text-sm text-slate-500">
+    <Card className="mt-6">
+      <h2 className="text-lg font-bold text-text-main">A/B এক্সপেরিমেন্ট — হোমপেজ হিরো</h2>
+      <p className="mt-1 text-sm text-text-muted">
         A = কন্ট্রোল (বর্তমান হিরো), B = নতুন হেডলাইন/CTA। ভিজিটর আইডির হ্যাশ দিয়ে নির্ধারিতভাবে ভ্যারিয়েন্ট দেওয়া হয় —
         একই ভিজিটর সবসময় একই ভ্যারিয়েন্ট দেখে। সংখ্যাগুলো কাঁচা কাউন্ট মাত্র; কোনো সিগনিফিক্যান্স দাবি করা হয় না।
       </p>
-      {error !== null ? <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-      {message !== null ? <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p> : null}
+      {error !== null ? <p className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p> : null}
+      {message !== null ? <p className="mt-3 rounded-xl bg-success-soft px-3 py-2 text-sm text-success-solid">{message}</p> : null}
 
-      <div className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2">
+      <div className="mt-4 grid gap-3 rounded-2xl border border-border/60 bg-surface-2/50 p-4 sm:grid-cols-2">
         <label className={labelCls}>
           এক্সপেরিমেন্টের নাম
           <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="হিরো হেডলাইন টেস্ট" />
@@ -334,7 +336,7 @@ function ExperimentsSection() {
           <input className={inputCls} value={variantB.ctaHref} onChange={(e) => setVariantB((v) => ({ ...v, ctaHref: e.target.value }))} />
         </label>
         <div>
-          <button type="button" onClick={() => void create()} className="rounded-full bg-violet-600 px-5 py-2 text-sm font-bold text-white hover:bg-violet-700">
+          <button type="button" onClick={() => void create()} className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-brand-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-brand-700">
             ড্রাফট তৈরি করুন
           </button>
         </div>
@@ -342,56 +344,52 @@ function ExperimentsSection() {
 
       <div className="mt-5 space-y-3">
         {experiments.map((experiment) => (
-          <div key={experiment.id} className="rounded-xl ring-1 ring-slate-200 p-4">
+          <div key={experiment.id} className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
             <div className="flex flex-wrap items-center gap-3">
-              <p className="font-bold text-slate-900">{experiment.name}</p>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">{experiment.status}</span>
-              <span className="text-xs text-slate-400">{experiment.id}</span>
+              <p className="font-bold text-text-main">{experiment.name}</p>
+              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs font-semibold text-text-muted">{experiment.status}</span>
+              <span className="text-xs text-text-subtle">{experiment.id}</span>
               <span className="ml-auto flex gap-2">
                 {experiment.status !== "running" ? (
-                  <button type="button" className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-bold text-white" onClick={() => void setStatus(experiment.id, "running")}>
+                  <button type="button" className="rounded-xl bg-emerald-600 px-3 py-1 text-xs font-bold text-white" onClick={() => void setStatus(experiment.id, "running")}>
                     শুরু করুন
                   </button>
                 ) : (
-                  <button type="button" className="rounded-lg bg-red-600 px-3 py-1 text-xs font-bold text-white" onClick={() => void setStatus(experiment.id, "stopped")}>
+                  <button type="button" className="rounded-xl bg-red-600 px-3 py-1 text-xs font-bold text-white" onClick={() => void setStatus(experiment.id, "stopped")}>
                     বন্ধ করুন
                   </button>
                 )}
-                <button type="button" className="rounded-lg bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700" onClick={() => void loadStats(experiment.id)}>
+                <button type="button" className="rounded-xl bg-surface-2 px-3 py-1 text-xs font-bold text-text-main" onClick={() => void loadStats(experiment.id)}>
                   ফলাফল দেখুন
                 </button>
               </span>
             </div>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="tnum mt-1 text-xs text-text-muted">
               {experiment.variants.map((v) => `${v.key}: ওজন ${v.weightBps}${v.hero ? ` — “${v.hero.headlineBn}”` : " (কন্ট্রোল)"}`).join(" · ")}
             </p>
             {stats[experiment.id] !== undefined ? (
-              <table className="mt-3 w-full text-left text-sm">
-                <thead>
-                  <tr className="text-xs text-slate-400">
-                    <th className="py-1">ভ্যারিয়েন্ট</th>
-                    <th>ইউনিক এক্সপোজার</th>
-                    <th>অর্ডার (কনভার্সন)</th>
-                    <th>কনভার্সন % (বর্ণনামূলক)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stats[experiment.id]?.variants.map((v) => (
-                    <tr key={v.variantKey} className="border-t border-slate-100">
-                      <td className="py-1 font-mono">{v.variantKey}</td>
-                      <td>{v.exposures}</td>
-                      <td>{v.conversions}</td>
-                      <td>{v.conversionPercent !== null ? `${v.conversionPercent}%` : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="mt-3">
+                <DataTable
+                  columns={[
+                    { key: "variant", header: "ভ্যারিয়েন্ট" },
+                    { key: "exposures", header: "ইউনিক এক্সপোজার" },
+                    { key: "conversions", header: "অর্ডার (কনভার্সন)" },
+                    { key: "conversionPercent", header: "কনভার্সন % (বর্ণনামূলক)" },
+                  ]}
+                  rows={(stats[experiment.id]?.variants ?? []).map((v) => ({
+                    variant: <span className="font-mono">{v.variantKey}</span>,
+                    exposures: <span className="tnum">{v.exposures}</span>,
+                    conversions: <span className="tnum">{v.conversions}</span>,
+                    conversionPercent: <span className="tnum">{v.conversionPercent !== null ? `${v.conversionPercent}%` : "—"}</span>,
+                  }))}
+                />
+              </div>
             ) : null}
           </div>
         ))}
-        {experiments.length === 0 ? <p className="text-sm text-slate-400">কোনো এক্সপেরিমেন্ট নেই।</p> : null}
+        {experiments.length === 0 ? <p className="text-sm text-text-subtle">কোনো এক্সপেরিমেন্ট নেই।</p> : null}
       </div>
-    </section>
+    </Card>
   );
 }
 
@@ -473,25 +471,25 @@ function BroadcastSection() {
   };
 
   return (
-    <section className="mt-6 rounded-2xl bg-white p-5 ring-1 ring-slate-200">
-      <h2 className="text-lg font-bold text-slate-900">WhatsApp ব্রডকাস্ট</h2>
-      <p className="mt-1 text-sm text-slate-500">
+    <Card className="mt-6">
+      <h2 className="text-lg font-bold text-text-main">WhatsApp ব্রডকাস্ট</h2>
+      <p className="mt-1 text-sm text-text-muted">
         অডিয়েন্স: নিউজলেটারে সাবস্ক্রাইব করা ইমেইলের সঙ্গে মিলে যাওয়া, ফোন-সহ অ্যাক্টিভ কাস্টমাররাই শুধু — আলাদা
         WhatsApp সম্মতির কোনো ফিল্ড সিস্টেমে নেই, তাই এর বাইরে কাউকে পাঠানো হয় না। বর্তমান অডিয়েন্স:{" "}
-        <strong className="text-slate-700">{data?.audienceCount ?? "…"}</strong> জন। একবারে সর্বোচ্চ ৫০ জনকে পাঠানো হয়
+        <strong className="text-text-main">{data?.audienceCount ?? "…"}</strong> জন। একবারে সর্বোচ্চ ৫০ জনকে পাঠানো হয়
         (ব্যাচ সীমা)। Meta-র নিয়মে ২৪ ঘণ্টার উইন্ডোর বাইরে ফ্রি-ফর্ম টেক্সট বাতিল হতে পারে — অনুমোদিত টেমপ্লেট ব্যবহারই
         নিরাপদ।
       </p>
       {data !== null && !data.channel.configured ? (
-        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
           WhatsApp চ্যানেল কনফিগার করা নেই — অনুপস্থিত Settings: {data.channel.missingSettings.join(", ") || "—"}।
           ক্যাম্পেইন পাঠালে NOT_SENT হিসেবে রেকর্ড হবে, পাঠানো হয়েছে বলে দেখানো হবে না।
         </p>
       ) : null}
-      {error !== null ? <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-      {notice !== null ? <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p> : null}
+      {error !== null ? <p className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p> : null}
+      {notice !== null ? <p className="mt-3 rounded-xl bg-success-soft px-3 py-2 text-sm text-success-solid">{notice}</p> : null}
 
-      <div className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4">
+      <div className="mt-4 grid gap-3 rounded-2xl border border-border/60 bg-surface-2/50 p-4">
         <label className={labelCls}>
           ক্যাম্পেইনের নাম
           <input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -501,7 +499,7 @@ function BroadcastSection() {
           <textarea className={inputCls} rows={3} value={messageText} onChange={(e) => setMessageText(e.target.value)} />
         </label>
         <div>
-          <button type="button" onClick={() => void create()} disabled={title.trim() === "" || messageText.trim() === ""} className="rounded-full bg-violet-600 px-5 py-2 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-50">
+          <button type="button" onClick={() => void create()} disabled={title.trim() === "" || messageText.trim() === ""} className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-brand-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-brand-700 disabled:opacity-50">
             ড্রাফট তৈরি করুন
           </button>
         </div>
@@ -509,29 +507,29 @@ function BroadcastSection() {
 
       <div className="mt-5 space-y-3">
         {data?.campaigns.map((campaign) => (
-          <div key={campaign.id} className="rounded-xl ring-1 ring-slate-200 p-4">
+          <div key={campaign.id} className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
             <div className="flex flex-wrap items-center gap-3">
-              <p className="font-bold text-slate-900">{campaign.title}</p>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">{campaign.status}</span>
-              <span className="text-xs text-slate-400">
+              <p className="font-bold text-text-main">{campaign.title}</p>
+              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs font-semibold text-text-muted">{campaign.status}</span>
+              <span className="tnum text-xs text-text-subtle">
                 অডিয়েন্স {campaign.audienceCount} · চেষ্টা {campaign.attemptedCount}
               </span>
               {campaign.status === "DRAFT" || campaign.status === "NOT_SENT" || campaign.status === "FAILED" ? (
                 <button
                   type="button"
                   disabled={sendingId !== null}
-                  className="ml-auto rounded-lg bg-emerald-600 px-3 py-1 text-xs font-bold text-white disabled:opacity-50"
+                  className="ml-auto rounded-xl bg-emerald-600 px-3 py-1 text-xs font-bold text-white disabled:opacity-50"
                   onClick={() => void send(campaign.id)}
                 >
                   {sendingId === campaign.id ? "পাঠানো হচ্ছে…" : "পাঠান"}
                 </button>
               ) : null}
             </div>
-            <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{campaign.message}</p>
-            {campaign.notSentReason !== undefined ? <p className="mt-1 text-sm text-red-600">{campaign.notSentReason}</p> : null}
+            <p className="mt-1 whitespace-pre-wrap text-sm text-text-muted">{campaign.message}</p>
+            {campaign.notSentReason !== undefined ? <p className="mt-1 text-sm text-danger">{campaign.notSentReason}</p> : null}
             {campaign.note !== undefined ? <p className="mt-1 text-sm text-amber-700">{campaign.note}</p> : null}
             {campaign.results.length > 0 ? (
-              <ul className="mt-2 max-h-40 space-y-0.5 overflow-auto text-xs text-slate-500">
+              <ul className="mt-2 max-h-40 space-y-0.5 overflow-auto text-xs text-text-muted">
                 {campaign.results.map((r, i) => (
                   <li key={i}>
                     {r.phoneMasked} — {r.status}
@@ -543,9 +541,9 @@ function BroadcastSection() {
             ) : null}
           </div>
         ))}
-        {data !== null && data.campaigns.length === 0 ? <p className="text-sm text-slate-400">কোনো ক্যাম্পেইন নেই।</p> : null}
+        {data !== null && data.campaigns.length === 0 ? <p className="text-sm text-text-subtle">কোনো ক্যাম্পেইন নেই।</p> : null}
       </div>
-    </section>
+    </Card>
   );
 }
 
@@ -555,9 +553,9 @@ function BroadcastSection() {
 
 function EmiSection() {
   return (
-    <section className="mt-6 rounded-2xl bg-white p-5 ring-1 ring-slate-200">
-      <h2 className="text-lg font-bold text-slate-900">EMI ডিসপ্লে</h2>
-      <p className="mt-1 text-sm text-slate-500">
+    <Card className="mt-6">
+      <h2 className="text-lg font-bold text-text-main">EMI ডিসপ্লে</h2>
+      <p className="mt-1 text-sm text-text-muted">
         EMI শুধু প্রদর্শনের জন্য — কোনো গেটওয়ে নেই, চার্জের পরিমাণ বদলায় না। কনফিগারেশন: Admin → Settings → Payment —
         কীগুলো: <code className="font-mono text-[13px]">payments.emi.enabled</code>,{" "}
         <code className="font-mono text-[13px]">payments.emi.months</code>,{" "}
@@ -565,7 +563,7 @@ function EmiSection() {
         <code className="font-mono text-[13px]">payments.emi.min_order_poisha</code>। BNPL-এর কোনো প্রোভাইডার সিস্টেমে নেই,
         তাই BNPL কোথাও দেখানো হয় না।
       </p>
-    </section>
+    </Card>
   );
 }
 

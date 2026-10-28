@@ -1,4 +1,4 @@
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { isServicesEnabled } from "@/services/flags";
 import { pick } from "@/i18n/locale";
 import { getRequestLocale } from "@/i18n/server";
@@ -32,7 +32,7 @@ export default async function BookingsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title={s.title} description={s.description} />
+      <PageHeader title={s.title} subtitle={s.description} />
       <BookingsBoard />
       <BookingsConfigCard />
     </div>

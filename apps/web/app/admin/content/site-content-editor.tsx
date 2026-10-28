@@ -23,8 +23,8 @@ import {
   type SiteMenuItem,
 } from "@/cms/site-content-types";
 
-const inputCls = "h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm outline-none focus:border-brand-500";
-const areaCls = "w-full rounded-[10px] border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand-500";
+const inputCls = "h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs outline-none transition focus:border-brand-500";
+const areaCls = "w-full rounded-xl border border-border bg-card px-3 py-2 text-sm shadow-xs outline-none transition focus:border-brand-500";
 
 function TextField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
@@ -71,7 +71,7 @@ function DefaultsNote({ configured, what }: { configured: boolean; what: string 
   const s = pick(locale, CONTENT_STRINGS);
   if (configured) return null;
   return (
-    <p className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
+    <p className="mb-3 rounded-xl bg-warning-soft p-3 text-sm text-warning-solid">
       {interpolate(s.defaultsNote, { what })}
     </p>
   );
@@ -144,18 +144,18 @@ export default function SiteContentEditor({
         </Button>
         <span className="text-xs text-text-muted">{s.saveNote}</span>
       </div>
-      {notice ? <p role="status" className="rounded-lg bg-surface-2 px-4 py-2 text-sm">{notice}</p> : null}
+      {notice ? <p role="status" className="rounded-xl bg-surface-2 px-4 py-3 text-sm">{notice}</p> : null}
 
       {/* ---------------- Header menu ---------------- */}
       <Card>
-        <h3 className="mb-1 font-semibold">{s.headerMenu}</h3>
+        <h3 className="mb-1 font-display text-base font-semibold text-text-main">{s.headerMenu}</h3>
         <p className="mb-3 text-sm text-text-muted">
           {s.headerMenuDesc}
         </p>
         <DefaultsNote configured={configured.headerMenu} what={s.headerMenuWhat} />
         <div className="space-y-3">
           {headerMenu.map((item, i) => (
-            <div key={item.id} className="rounded-lg border border-border p-3">
+            <div key={item.id} className="rounded-2xl border border-border/60 bg-surface-2/40 p-4">
               <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_1fr_auto_auto]">
                 <TextField label={s.labelBn} value={item.labelBn} onChange={(v) => patchHeader(i, { labelBn: v })} />
                 <TextField label={s.labelEn} value={item.labelEn} onChange={(v) => patchHeader(i, { labelEn: v })} />
@@ -201,14 +201,14 @@ export default function SiteContentEditor({
 
       {/* ---------------- Footer menu ---------------- */}
       <Card>
-        <h3 className="mb-1 font-semibold">{s.footerMenu}</h3>
+        <h3 className="mb-1 font-display text-base font-semibold text-text-main">{s.footerMenu}</h3>
         <p className="mb-3 text-sm text-text-muted">
           {s.footerMenuDesc}
         </p>
         <DefaultsNote configured={configured.footerMenu} what={s.footerMenuWhat} />
         <div className="space-y-3">
           {footerMenu.map((group, i) => (
-            <div key={group.id} className="rounded-lg border border-border p-3">
+            <div key={group.id} className="rounded-2xl border border-border/60 bg-surface-2/40 p-4">
               <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto_auto]">
                 <TextField label={s.groupHeadingBn} value={group.headingBn} onChange={(v) => patchFooterGroup(i, { headingBn: v })} />
                 <TextField label={s.groupHeadingEn} value={group.headingEn} onChange={(v) => patchFooterGroup(i, { headingEn: v })} />
@@ -253,14 +253,14 @@ export default function SiteContentEditor({
 
       {/* ---------------- Hero slides ---------------- */}
       <Card>
-        <h3 className="mb-1 font-semibold">{s.heroTitle}</h3>
+        <h3 className="mb-1 font-display text-base font-semibold text-text-main">{s.heroTitle}</h3>
         <p className="mb-3 text-sm text-text-muted">
           {s.heroDesc}
         </p>
         <DefaultsNote configured={configured.heroSlides} what={s.heroWhat} />
         <div className="space-y-3">
           {heroSlides.map((slide, i) => (
-            <div key={slide.id} className="rounded-lg border border-border p-3">
+            <div key={slide.id} className="rounded-2xl border border-border/60 bg-surface-2/40 p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm font-semibold">{interpolate(s.slideN, { n: i + 1 })}</span>
                 <span className="flex items-center gap-3">

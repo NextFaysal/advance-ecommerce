@@ -139,8 +139,8 @@ export function BookingsConfigCard() {
   }
 
   return (
-    <section aria-label={s.configAria} className="rounded-2xl border border-border bg-card p-5 shadow-card">
-      <h2 className="text-base font-bold text-text-main">{s.configTitle}</h2>
+    <section aria-label={s.configAria} className="rounded-2xl border border-border/60 bg-card p-5 shadow-xs">
+      <h2 className="font-display text-base font-semibold text-text-main">{s.configTitle}</h2>
       <p className="mt-1 text-sm text-text-muted">
         {s.configIntro}
         {data && (
@@ -247,12 +247,12 @@ export function BookingsConfigCard() {
         />
       </label>
       {error && (
-        <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
+        <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-4 py-3 text-sm font-medium text-danger">
           {error}
         </p>
       )}
       {notice && (
-        <p role="status" className="mt-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+        <p role="status" className="mt-3 rounded-xl bg-success-soft px-4 py-3 text-sm font-medium text-success-solid">
           {notice}
         </p>
       )}

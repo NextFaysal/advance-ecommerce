@@ -31,9 +31,9 @@ type ActionBody =
   | { action: "force-close"; taskId: string; reason: string };
 
 const inputCls =
-  "min-h-[44px] w-full rounded-md border border-border bg-card px-3 text-sm text-text-main outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-300/40 disabled:opacity-50 sm:min-h-[38px]";
+  "min-h-[44px] w-full rounded-xl border border-border bg-surface px-3 text-sm text-text-main shadow-xs outline-none transition focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15 disabled:opacity-50 sm:min-h-[38px]";
 const btnBase =
-  "inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-md px-3.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[38px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300";
+  "inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-3.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[38px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300";
 
 export function SupervisorControls({ tasks, agents }: Props) {
   const router = useRouter();
@@ -79,8 +79,8 @@ export function SupervisorControls({ tasks, agents }: Props) {
       {message ? (
         <p
           role="status"
-          className={`mb-4 rounded-md px-3.5 py-2.5 text-sm ${
-            message.ok ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
+          className={`mb-4 rounded-xl px-3.5 py-2.5 text-sm ${
+            message.ok ? "bg-success-soft text-success-solid" : "bg-danger-soft text-danger"
           }`}
         >
           {message.text}
@@ -92,11 +92,11 @@ export function SupervisorControls({ tasks, agents }: Props) {
           const chosenAgent = selectedAgent[t.id] ?? "";
           const reason = reasons[t.id] ?? "";
           return (
-            <li key={t.id} className="rounded-lg border border-border/70 bg-card p-4 shadow-card">
+            <li key={t.id} className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-text-main">{t.customerName || "—"}</p>
-                  <p className="mt-0.5 font-mono text-xs tabular-nums text-text-muted">{t.phoneMasked}</p>
+                  <p className="tnum mt-0.5 font-mono text-xs tabular-nums text-text-muted">{t.phoneMasked}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <SourceChip source={t.source} lang={locale} />
@@ -164,7 +164,7 @@ export function SupervisorControls({ tasks, agents }: Props) {
                     type="button"
                     disabled={busy || reason.trim() === ""}
                     onClick={() => run({ action: "force-close", taskId: t.id, reason: reason.trim() })}
-                    className={`${btnBase} flex-1 bg-rose-600 text-white hover:bg-rose-700 lg:flex-none`}
+                    className={`${btnBase} flex-1 bg-danger text-white hover:brightness-95 lg:flex-none`}
                   >
                     <Icon name="x" size={15} />
                     {s.forceCloseBtn}

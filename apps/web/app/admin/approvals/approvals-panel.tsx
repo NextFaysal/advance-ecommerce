@@ -85,7 +85,7 @@ function EntryCard({
   const [reason, setReason] = useState("");
   const pending = entry.status === "PENDING";
   return (
-    <Card className="p-4">
+    <Card>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -106,10 +106,10 @@ function EntryCard({
                 {entry.orderNo}
               </Link>
             )}
-            {entry.customerName && <span className="text-muted-foreground">{entry.customerName}</span>}
+            {entry.customerName && <span className="text-text-muted">{entry.customerName}</span>}
           </div>
           {entry.kind === "discount" ? (
-            <p className="text-sm">
+            <p className="tnum text-sm">
               {entry.discountPoisha !== null && entry.subtotalPoisha !== null
                 ? interpolate(t.discountLine, {
                     pct: pctLabel(entry.discountBps),
@@ -123,7 +123,7 @@ function EntryCard({
                   })}
             </p>
           ) : (
-            <p className="text-sm">
+            <p className="tnum text-sm">
               {interpolate(t.refundLine, {
                 amount: entry.amountPoisha !== null ? formatBdt(entry.amountPoisha) : "—",
                 threshold: entry.thresholdPoisha !== null ? formatBdt(entry.thresholdPoisha) : "—",
@@ -131,7 +131,7 @@ function EntryCard({
               {entry.refundStatus && <> {interpolate(t.refundStatusNow, { status: entry.refundStatus })}</>}
             </p>
           )}
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-text-muted">
             {t.requestedBy}: {entry.requestedByName ?? entry.requestedById ?? "—"} · {dateFmt.format(new Date(entry.requestedAt))}
             {entry.decidedAt && (
               <>
@@ -226,9 +226,9 @@ export function ApprovalsPanel() {
   const decided = entries.filter((e) => e.status !== "PENDING").slice(0, 50);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {config && (
-        <Card className="p-4 text-sm">
+        <Card className="text-sm">
           {config.enabled ? (
             <p>
               {t.configEnabledA}
@@ -247,16 +247,16 @@ export function ApprovalsPanel() {
           )}
         </Card>
       )}
-      {message && <Card className="p-3 text-sm">{message}</Card>}
-      {loadState === "loading" && <p className="text-sm text-muted-foreground">{t.loading}</p>}
-      {loadState === "error" && <p className="text-sm text-destructive">{t.loadError}</p>}
-      {loadState === "ready" && pending.length === 0 && <Card className="p-4 text-sm">{t.noPending}</Card>}
+      {message && <Card className="text-sm">{message}</Card>}
+      {loadState === "loading" && <p className="text-sm text-text-muted">{t.loading}</p>}
+      {loadState === "error" && <p className="text-sm text-danger">{t.loadError}</p>}
+      {loadState === "ready" && pending.length === 0 && <Card className="text-sm">{t.noPending}</Card>}
       {pending.map((entry) => (
         <EntryCard key={entry.id} entry={entry} busy={busyId === entry.id} onDecide={decide} t={t} dateFmt={dateFmt} />
       ))}
       {decided.length > 0 && (
         <>
-          <h2 className="pt-2 text-base font-semibold">{t.recentDecisions}</h2>
+          <h2 className="font-display text-lg font-semibold text-text-main">{t.recentDecisions}</h2>
           {decided.map((entry) => (
             <EntryCard key={entry.id} entry={entry} busy={false} onDecide={decide} t={t} dateFmt={dateFmt} />
           ))}

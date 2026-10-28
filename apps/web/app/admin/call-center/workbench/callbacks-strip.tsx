@@ -89,8 +89,8 @@ export function CallbacksStrip({
   return (
     <div className="space-y-3">
       {dueCallbacks.length > 0 ? (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3">
-          <h3 className="text-sm font-semibold text-amber-900">
+        <div className="rounded-2xl border border-warning-solid/40 bg-warning-soft p-3">
+          <h3 className="font-display text-sm font-semibold text-warning-solid">
             {interpolate(s.dueCallbacksTitle, { count: dueCallbacks.length })}
           </h3>
           <ul className="mt-2 flex snap-x gap-3 overflow-x-auto pb-1">
@@ -110,8 +110,8 @@ export function CallbacksStrip({
       ) : null}
 
       {myCallbacks.length > 0 ? (
-        <div className="rounded-xl border border-sky-300 bg-sky-50 p-3">
-          <h3 className="text-sm font-semibold text-sky-900">
+        <div className="rounded-2xl border border-info-solid/40 bg-info-soft p-3">
+          <h3 className="font-display text-sm font-semibold text-info-solid">
             {interpolate(s.myCallbacksTitle, { count: myCallbacks.length })}
           </h3>
           <ul className="mt-2 flex snap-x gap-3 overflow-x-auto pb-1">

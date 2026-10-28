@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
 import { BD_TOOLS_STRINGS } from "./strings";
@@ -136,15 +137,15 @@ export function SmsDevicesPanel() {
       </p>
 
       {freshToken ? (
-        <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4">
-          <p className="text-sm font-semibold text-amber-900">
+        <div role="alert" className="rounded-xl border border-border bg-warning-soft p-4">
+          <p className="font-display text-sm font-semibold text-text-main">
             {interpolate(s.devFreshTitle, { label: freshToken.label })}
           </p>
-          <p className="mt-1 text-sm text-amber-800">
+          <p className="mt-1 text-sm text-text-muted">
             {s.devFreshText}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <code className="break-all rounded-md bg-white px-3 py-2 font-mono text-sm text-amber-950 ring-1 ring-amber-200">
+            <code className="break-all rounded-md bg-card px-3 py-2 font-mono text-sm text-text-main ring-1 ring-border">
               {freshToken.token}
             </code>
             <Button
@@ -164,8 +165,8 @@ export function SmsDevicesPanel() {
         </div>
       ) : null}
 
-      <div className="rounded-lg border border-border bg-surface-2 p-4">
-        <h3 className="text-sm font-semibold">{s.devNewTitle}</h3>
+      <div className="rounded-xl border border-border bg-surface-2 p-4">
+        <h3 className="font-display text-sm font-semibold text-text-main">{s.devNewTitle}</h3>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="block min-w-52 flex-1">
             <span className="mb-1 block text-xs font-medium text-text-muted">{s.devNameLabel}</span>
@@ -191,22 +192,20 @@ export function SmsDevicesPanel() {
           </Button>
         </div>
         {createError ? (
-          <p role="alert" className="mt-2 text-sm text-rose-700">{createError}</p>
+          <p role="alert" className="mt-2 text-sm text-danger">{createError}</p>
         ) : null}
       </div>
 
       <div>
-        <h3 className="mb-2 text-sm font-semibold">{s.devListTitle}</h3>
+        <h3 className="mb-2 font-display text-sm font-semibold text-text-main">{s.devListTitle}</h3>
         {loadError ? (
-          <p role="alert" className="text-sm text-rose-700">{loadError}</p>
+          <p role="alert" className="text-sm text-danger">{loadError}</p>
         ) : devices === null ? (
           <p className="text-sm text-text-muted">{s.devLoading}</p>
         ) : devices.length === 0 ? (
-          <p className="text-sm text-text-muted">
-            {s.devEmpty}
-          </p>
+          <EmptyState title={s.devEmptyTitle} description={s.devEmptyDesc} />
         ) : (
-          <ul className="divide-y divide-border rounded-lg border border-border">
+          <ul className="divide-y divide-border rounded-2xl border border-border bg-card">
             {devices.map((device) => (
               <li key={device.id} className="space-y-2 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -261,7 +260,7 @@ export function SmsDevicesPanel() {
           </ul>
         )}
         {revokeError ? (
-          <p role="alert" className="mt-2 text-sm text-rose-700">{revokeError}</p>
+          <p role="alert" className="mt-2 text-sm text-danger">{revokeError}</p>
         ) : null}
       </div>
     </div>

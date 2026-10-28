@@ -19,6 +19,7 @@ import {
   KITCHEN_STATUS_LABELS_EN,
   type KitchenTicketStatus,
 } from "@/restaurant/selection";
+import { Badge } from "@/components/ui/badge";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { KITCHEN_STRINGS } from "./strings";
@@ -115,20 +116,20 @@ export function KitchenBoard() {
   }
 
   return (
-    <section aria-label={s.boardAria} className="space-y-3">
+    <section aria-label={s.boardAria} className="space-y-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-muted">
         <span>
           {s.servedTodayLabel}{" "}
-          <strong className="text-text-main">{interpolate(s.count, { count: board?.servedTodayCount ?? 0 })}</strong>
+          <strong className="tnum text-text-main">{interpolate(s.count, { count: board?.servedTodayCount ?? 0 })}</strong>
         </span>
         <span>
           {s.cancelledTodayLabel}{" "}
-          <strong className="text-text-main">{interpolate(s.count, { count: board?.cancelledTodayCount ?? 0 })}</strong>
+          <strong className="tnum text-text-main">{interpolate(s.count, { count: board?.cancelledTodayCount ?? 0 })}</strong>
         </span>
         <span>{s.pollNote}</span>
       </div>
       {error && (
-        <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
+        <p role="alert" className="rounded-xl bg-danger-soft px-4 py-3 text-sm font-medium text-danger">
           {error}
         </p>
       )}
@@ -137,9 +138,9 @@ export function KitchenBoard() {
           const tickets = (board?.tickets ?? []).filter((t) => t.status === col.status);
           return (
             <div key={col.status} className="rounded-2xl border border-border bg-surface-2/50 p-3">
-              <h3 className="mb-3 flex items-center justify-between px-1 text-sm font-bold text-text-main">
+              <h3 className="mb-3 flex items-center justify-between px-1 font-display text-sm font-semibold text-text-main">
                 {statusLabels[col.status]}
-                <span className="rounded-full bg-card px-2 py-0.5 text-xs font-semibold text-text-muted">
+                <span className="tnum rounded-full bg-card px-2 py-0.5 text-xs font-semibold text-text-muted">
                   {tickets.length}
                 </span>
               </h3>
@@ -159,13 +160,9 @@ export function KitchenBoard() {
                           {ticket.orderNo}
                         </Link>
                         {ticket.fulfilmentType === "DINE_IN" ? (
-                          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
-                            {interpolate(s.tableLabel, { label: ticket.tableLabel ?? "—" })}
-                          </span>
+                          <Badge tone="warning">{interpolate(s.tableLabel, { label: ticket.tableLabel ?? "—" })}</Badge>
                         ) : (
-                          <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-800">
-                            {s.takeaway}
-                          </span>
+                          <Badge tone="info">{s.takeaway}</Badge>
                         )}
                       </div>
                       <ul className="mt-2.5 space-y-1 text-sm text-text-main">
@@ -182,7 +179,7 @@ export function KitchenBoard() {
                       <div className="mt-3 flex items-center justify-between gap-2">
                         <span
                           className={`text-xs font-medium ${
-                            mins >= 20 ? "text-rose-600" : "text-text-muted"
+                            mins >= 20 ? "text-danger" : "text-text-muted"
                           }`}
                         >
                           {interpolate(s.waiting, { mins })}
@@ -191,7 +188,7 @@ export function KitchenBoard() {
                           type="button"
                           disabled={busyId === ticket.id}
                           onClick={() => void advance(ticket)}
-                          className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+                          className="min-h-11 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:opacity-50 md:min-h-0"
                         >
                           {col.advanceLabel}
                         </button>

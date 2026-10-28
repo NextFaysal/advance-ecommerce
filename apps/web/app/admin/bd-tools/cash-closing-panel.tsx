@@ -29,6 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Money } from "@/components/ui/money";
 import { DataTable } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { DailyCashClosing } from "@/bd/cash-closing";
 import type { DerivedDrawerCash } from "@/bd/cash-closing-derive";
 import { channelLabels, formatDate } from "./labels";
@@ -82,7 +83,7 @@ function pctOf(part: number, whole: number): number {
   return Math.min(100, Math.max(0, (part / whole) * 100));
 }
 
-const IN_SEGMENT_CLASSES = ["bg-emerald-500", "bg-teal-400", "bg-emerald-300"];
+const IN_SEGMENT_CLASSES = ["bg-success-solid", "bg-chart-5", "bg-success-solid/45"];
 
 function DrawerBreakdownVisual({
   derived,
@@ -109,7 +110,7 @@ function DrawerBreakdownVisual({
         <div>
           <p className="mb-1.5 text-xs font-medium text-text-muted">{s.cashDrawerInTitle}</p>
           <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-card" role="img" aria-label={s.cashDrawerInAria}>
-            <span className="bg-slate-400" style={{ width: `${pctOf(derived.openingCashPoisha, grossIn)}%` }} />
+            <span className="bg-text-subtle" style={{ width: `${pctOf(derived.openingCashPoisha, grossIn)}%` }} />
             {inLines.map((line, i) => (
               <span
                 key={line.key}
@@ -120,7 +121,7 @@ function DrawerBreakdownVisual({
           </div>
           <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-muted">
             <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden="true" className="h-2 w-2 rounded-full bg-slate-400" /> {s.cashOpeningShort} <Money poisha={derived.openingCashPoisha} />
+              <span aria-hidden="true" className="h-2 w-2 rounded-full bg-text-subtle" /> {s.cashOpeningShort} <Money poisha={derived.openingCashPoisha} />
             </span>
             {inLines.map((line, i) => (
               <span key={line.key} className="inline-flex items-center gap-1.5">
@@ -132,12 +133,12 @@ function DrawerBreakdownVisual({
           {outTotal > 0 ? (
             <div className="mt-2.5">
               <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-card" role="img" aria-label={s.cashDrawerOutAria}>
-                <span className="bg-rose-400" style={{ width: `${pctOf(outTotal, grossIn)}%` }} />
+                <span className="bg-danger" style={{ width: `${pctOf(outTotal, grossIn)}%` }} />
               </div>
               <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-muted">
                 {outLines.map((line) => (
                   <span key={line.key} className="inline-flex items-center gap-1.5">
-                    <span aria-hidden="true" className="h-2 w-2 rounded-full bg-rose-400" />
+                    <span aria-hidden="true" className="h-2 w-2 rounded-full bg-danger" />
                     {locale === "bn" ? line.labelBn : line.labelEn} −<Money poisha={line.amountPoisha} />
                   </span>
                 ))}
@@ -161,7 +162,7 @@ function DrawerBreakdownVisual({
             <span className="w-16 shrink-0 text-xs text-text-muted">{s.cashCountedShort}</span>
             <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-card">
               <div
-                className={`h-full ${variancePoisha === null || variancePoisha === 0 ? "bg-emerald-500" : variancePoisha < 0 ? "bg-rose-500" : "bg-sky-500"}`}
+                className={`h-full ${variancePoisha === null || variancePoisha === 0 ? "bg-success-solid" : variancePoisha < 0 ? "bg-danger" : "bg-info-solid"}`}
                 style={{ width: `${pctOf(countedPoisha ?? 0, scale)}%` }}
               />
             </div>
@@ -171,7 +172,7 @@ function DrawerBreakdownVisual({
           </div>
         </div>
         {variancePoisha !== null && variancePoisha !== 0 ? (
-          <p className={`mt-1.5 text-xs font-medium ${variancePoisha < 0 ? "text-rose-600" : "text-sky-600"}`}>
+          <p className={`mt-1.5 text-xs font-medium ${variancePoisha < 0 ? "text-danger" : "text-info-solid"}`}>
             {variancePoisha < 0 ? s.cashCountedLess : s.cashCountedMore}
             <Money poisha={Math.abs(variancePoisha)} />
           </p>
@@ -198,7 +199,7 @@ function TakaField({
         inputMode="decimal"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={inputClass}
+        className={`${inputClass} tnum`}
       />
     </label>
   );
@@ -360,8 +361,8 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialD
       </p>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border border-border bg-surface-2 p-4">
-          <h3 className="text-sm font-semibold">
+        <div className="rounded-2xl border border-border bg-surface-2 p-4">
+          <h3 className="font-display text-sm font-semibold text-text-main">
             {interpolate(s.cashSystemTitle, { date: formatDate(derived.date, locale) })}
             {derivedLoading ? <span className="ml-2 text-xs font-normal text-text-muted">{s.cashDeriving}</span> : null}
           </h3>
@@ -432,7 +433,7 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialD
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-text-muted">
               {s.cashNoteField}
-              {noteRequired ? <span className="text-rose-600">{s.cashNoteRequired}</span> : s.cashNoteOptional}
+              {noteRequired ? <span className="text-danger">{s.cashNoteRequired}</span> : s.cashNoteOptional}
             </span>
             <textarea
               value={note}
@@ -456,7 +457,7 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialD
       </div>
 
       {error ? (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>
+        <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
       ) : null}
       <Button type="button" onClick={() => void submit()} loading={submitting}>
         {s.cashSubmit}
@@ -465,7 +466,7 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialD
       {closing ? (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold">{interpolate(s.cashSavedTitle, { date: formatDate(closing.date, locale) })}</h3>
+            <h3 className="font-display text-sm font-semibold text-text-main">{interpolate(s.cashSavedTitle, { date: formatDate(closing.date, locale) })}</h3>
             {closing.hasMismatch ? (
               <Badge tone="danger">
                 {interpolate(s.cashMismatchChannels, {
@@ -487,15 +488,15 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialD
             rows={resultRows}
           />
           <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
-            <div className="rounded-lg border border-border bg-surface-2 p-3">
+            <div className="rounded-xl border border-border bg-surface-2 p-3">
               <p className="text-xs text-text-muted">{s.cashTotalExpected}</p>
               <p className="mt-1"><Money poisha={closing.totalExpectedPoisha} /></p>
             </div>
-            <div className="rounded-lg border border-border bg-surface-2 p-3">
+            <div className="rounded-xl border border-border bg-surface-2 p-3">
               <p className="text-xs text-text-muted">{s.cashTotalActual}</p>
               <p className="mt-1"><Money poisha={closing.totalActualPoisha} /></p>
             </div>
-            <div className="rounded-lg border border-border bg-surface-2 p-3">
+            <div className="rounded-xl border border-border bg-surface-2 p-3">
               <p className="text-xs text-text-muted">{s.cashTotalDifference}</p>
               <p className="mt-1"><Money poisha={closing.totalDifferencePoisha} /></p>
             </div>
@@ -509,7 +510,7 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialD
       ) : null}
 
       <div>
-        <h3 className="mb-2 text-sm font-semibold">{s.cashPrevTitle}</h3>
+        <h3 className="mb-2 font-display text-sm font-semibold text-text-main">{s.cashPrevTitle}</h3>
         {recentClosings.length > 0 ? (
           <DataTable
             columns={[
@@ -530,9 +531,7 @@ export function CashClosingPanel({ todayYmd, recentClosings, suggested, initialD
             }))}
           />
         ) : (
-          <p className="text-sm text-text-muted">
-            {s.cashPrevEmpty}
-          </p>
+          <EmptyState title={s.cashPrevEmptyTitle} description={s.cashPrevEmptyDesc} />
         )}
       </div>
     </div>

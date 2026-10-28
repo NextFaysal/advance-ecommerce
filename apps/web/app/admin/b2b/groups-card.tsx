@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { formatPoisha } from "@/components/ui/money";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { B2B_STRINGS } from "./strings";
@@ -67,7 +68,7 @@ interface GroupsResponse {
 
 const EMPTY_DOC: GroupsDoc = { groups: [], assignments: {}, overrides: {} };
 const inputCls =
-  "h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-text-main outline-none focus:border-brand-500";
+  "tnum h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text-main outline-none focus:border-brand-500";
 const selectCls = inputCls;
 
 function percentLabel(bps: number): string {
@@ -218,7 +219,7 @@ export function B2bGroupsCard() {
 
   return (
     <Card>
-      <h3 className="text-base font-semibold text-text-main">{s.groupsTitle}</h3>
+      <h3 className="font-display text-base font-semibold text-text-main">{s.groupsTitle}</h3>
       <p className="mt-1 text-sm leading-6 text-text-muted">
         {s.groupsDesc}
       </p>
@@ -229,19 +230,19 @@ export function B2bGroupsCard() {
         <div className="mt-4 space-y-6">
           <section>
             <div className="flex items-center justify-between gap-2">
-              <h4 className="text-sm font-semibold text-text-main">{s.groupsHeading}</h4>
+              <h4 className="font-display text-sm font-semibold text-text-main">{s.groupsHeading}</h4>
               <Button onClick={addGroup} disabled={busy}>
                 {s.addGroup}
               </Button>
             </div>
             {doc.groups.length === 0 ? (
-              <p className="mt-2 text-sm text-text-muted">{s.noGroups}</p>
+              <div className="mt-2"><EmptyState title={s.groupsEmptyTitle} description={s.groupsEmptyDesc} /></div>
             ) : (
               <ul className="mt-2 space-y-2">
                 {doc.groups.map((group) => (
                   <li
                     key={group.id}
-                    className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-[1fr_160px_auto] sm:items-end"
+                    className="grid gap-2 rounded-2xl border border-border/60 bg-surface-2 p-3 sm:grid-cols-[1fr_160px_auto] sm:items-end"
                   >
                     <label className="block">
                       <span className="mb-1 block text-xs font-medium text-text-muted">
@@ -284,15 +285,15 @@ export function B2bGroupsCard() {
           </section>
 
           <section>
-            <h4 className="text-sm font-semibold text-text-main">{s.assignmentsHeading}</h4>
+            <h4 className="font-display text-sm font-semibold text-text-main">{s.assignmentsHeading}</h4>
             {customers.length === 0 ? (
-              <p className="mt-2 text-sm text-text-muted">{s.noB2bCustomers}</p>
+              <div className="mt-2"><EmptyState title={s.assignEmptyTitle} description={s.assignEmptyDesc} /></div>
             ) : (
               <ul className="mt-2 max-h-64 space-y-2 overflow-auto pr-1">
                 {customers.map((customer) => (
                   <li
                     key={customer.id}
-                    className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-[1fr_220px] sm:items-center"
+                    className="grid gap-2 rounded-2xl border border-border/60 bg-surface-2 p-3 sm:grid-cols-[1fr_220px] sm:items-center"
                   >
                     <span className="text-sm text-text-main">
                       <span className="font-medium">{customer.businessName}</span>{" "}
@@ -321,7 +322,7 @@ export function B2bGroupsCard() {
           </section>
 
           <section>
-            <h4 className="text-sm font-semibold text-text-main">{s.overridesHeading}</h4>
+            <h4 className="font-display text-sm font-semibold text-text-main">{s.overridesHeading}</h4>
             <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1.4fr_150px_auto] sm:items-end">
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-text-muted">{s.groupLabel}</span>
@@ -380,11 +381,11 @@ export function B2bGroupsCard() {
             </div>
 
             {Object.keys(doc.overrides).length === 0 ? (
-              <p className="mt-2 text-sm text-text-muted">{s.noOverrides}</p>
+              <div className="mt-2"><EmptyState title={s.overridesEmptyTitle} description={s.overridesEmptyDesc} /></div>
             ) : (
               <ul className="mt-2 space-y-2">
                 {Object.entries(doc.overrides).map(([groupId, byVariant]) => (
-                  <li key={groupId} className="rounded-lg border border-border p-3">
+                  <li key={groupId} className="rounded-2xl border border-border/60 bg-surface-2 p-3">
                     <p className="text-sm font-semibold text-text-main">{groupName(groupId)}</p>
                     <ul className="mt-2 space-y-2">
                       {Object.entries(byVariant).map(([variantId, price]) => {
@@ -440,7 +441,7 @@ export function B2bGroupsCard() {
           />
 
           {error ? (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            <div className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
               <p>{error}</p>
               {errorDetails.length > 0 ? (
                 <ul className="mt-1 list-disc pl-5">
@@ -452,7 +453,7 @@ export function B2bGroupsCard() {
             </div>
           ) : null}
           {message ? (
-            <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+            <p className="rounded-xl border border-success-solid/30 bg-success-soft px-3 py-2 text-sm text-success-solid">
               {message}
             </p>
           ) : null}

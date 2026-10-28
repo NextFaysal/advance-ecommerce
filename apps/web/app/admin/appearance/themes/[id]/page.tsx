@@ -15,6 +15,8 @@ import type { ThemeOptionField, ThemeOptions } from "@/themes/registry";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, type Locale } from "@/i18n/locale";
 import { APPEARANCE_STRINGS, TOKEN_GROUP_LABELS, TOKEN_META_LABELS, type AppearanceStrings } from "../../strings";
+import { PageHeader } from "@/components/ui/page-header";
+import { SkeletonPage } from "@/components/ui/skeleton";
 
 /* ------------------------------------------------------------------ */
 /* Customizer-lite (wave S2) — the package options form.              */
@@ -213,7 +215,7 @@ function ThemeCustomizerSection({ themeId, t, locale }: { themeId: string; t: Ap
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+    <div className="rounded-3xl border border-border/60 bg-card p-5 shadow-card">
       <h2 className="text-sm font-bold text-text-main">{t.customizerTitle}</h2>
       {data && (
         <p className="mt-1 text-[11px] leading-4 text-text-muted">
@@ -441,30 +443,26 @@ export default function EditThemePage({ params }: Props) {
 
   if (loading) {
     return (
-      <main className="mx-auto w-full max-w-7xl px-4 py-8">
-        <p className="text-sm text-text-muted">{t.loadingThemes}</p>
+      <main className="min-w-0">
+        <SkeletonPage />
       </main>
     );
   }
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-8">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <Link href="/admin/appearance/themes" className="text-sm font-medium text-primary hover:underline">
-            {t.backToList}
-          </Link>
-          <h1 className="mt-1 font-display text-2xl font-bold text-text-main">
-            {interpolate(t.editTitle, { name: name || t.themeFallback })}
-          </h1>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
+    <main className="min-w-0">
+      <Link href="/admin/appearance/themes" className="mb-2 inline-block text-sm font-medium text-primary hover:underline">
+        {t.backToList}
+      </Link>
+      <PageHeader
+        title={interpolate(t.editTitle, { name: name || t.themeFallback })}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
           {/* Export JSON */}
           <button
             type="button"
             onClick={handleExportJson}
-            className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-text-main shadow-sm hover:bg-muted"
+            className="inline-flex min-h-[36px] items-center rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-semibold text-text-main shadow-xs transition duration-fast hover:bg-surface-2"
           >
             {t.exportJson}
           </button>
@@ -474,7 +472,7 @@ export default function EditThemePage({ params }: Props) {
             type="button"
             onClick={handleDuplicate}
             disabled={cloning}
-            className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-text-main shadow-sm hover:bg-muted disabled:opacity-50"
+            className="inline-flex min-h-[36px] items-center rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-semibold text-text-main shadow-xs transition duration-fast hover:bg-surface-2 disabled:opacity-50"
           >
             {cloning ? t.cloning : t.duplicate}
           </button>
@@ -484,12 +482,13 @@ export default function EditThemePage({ params }: Props) {
             type="button"
             onClick={handleDelete}
             disabled={deleting}
-            className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-50"
+            className="inline-flex min-h-[36px] items-center rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive transition duration-fast hover:bg-destructive/20 disabled:opacity-50"
           >
             {deleting ? t.deleting : t.deleteBtn}
           </button>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {error && (
         <div className="mb-6 rounded-xl border border-destructive/20 bg-destructive/10 px-5 py-4 text-sm text-destructive">
@@ -503,12 +502,12 @@ export default function EditThemePage({ params }: Props) {
         </div>
       )}
 
-      <div className="grid gap-8 lg:grid-cols-12">
+      <div className="grid gap-6 lg:grid-cols-12">
         {/* Left Form (7 cols) */}
         <div className="space-y-6 lg:col-span-7">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* General Info */}
-            <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <div className="rounded-3xl border border-border/60 bg-card p-5 shadow-card">
               <h2 className="mb-4 text-sm font-bold text-text-main">{t.generalInfo}</h2>
               <div className="space-y-4">
                 <div>
@@ -549,7 +548,7 @@ export default function EditThemePage({ params }: Props) {
             </div>
 
             {/* Smart 1-Click Palette Generator */}
-            <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 shadow-sm">
+            <div className="rounded-3xl border border-primary/20 bg-primary/5 p-5 shadow-card">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-bold text-primary">{t.regenTitle}</h3>
@@ -577,7 +576,7 @@ export default function EditThemePage({ params }: Props) {
             <div className="space-y-4">
               <h2 className="text-sm font-bold text-text-main">{t.tokensTitle}</h2>
               {THEME_TOKEN_GROUPS.map((group) => (
-                <div key={group.label} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+                <div key={group.label} className="rounded-3xl border border-border/60 bg-card p-5 shadow-card">
                   <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-text-muted">
                     {TOKEN_GROUP_LABELS[locale][group.label] ?? group.label}
                   </h3>

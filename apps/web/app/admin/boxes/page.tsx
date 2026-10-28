@@ -1,4 +1,4 @@
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { subscriptionBoxesEnabled } from "@/boxes/flags";
 import { subscriptionsEnabled } from "@/subscriptions/flags";
 import { BoxesList } from "./boxes-list";
@@ -38,7 +38,7 @@ export default async function BoxesPage() {
     <div className="space-y-6">
       <PageHeader
         title={s.title}
-        description={subscriptionsEnabled() ? s.descriptionEnabled : s.descriptionEngineOff}
+        subtitle={subscriptionsEnabled() ? s.descriptionEnabled : s.descriptionEngineOff}
       />
       <BoxesList />
       <BoxesContentsCard />

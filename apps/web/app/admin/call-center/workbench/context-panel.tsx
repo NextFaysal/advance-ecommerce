@@ -136,20 +136,20 @@ export function Customer360Panel({
       order.status === "PACKED");
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <h3 className="text-base font-semibold">{s.customer360Title}</h3>
+    <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
+      <h3 className="font-display text-base font-semibold text-text-main">{s.customer360Title}</h3>
 
       {loading ? (
         <p className="mt-2 text-sm text-text-muted">{s.ctxLoading}</p>
       ) : loadError ? (
         <div className="mt-2">
-          <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">
             {interpolate(s.ctxBannerFailed, { error: loadError })}
           </p>
           <button
             type="button"
             onClick={() => setReloadKey((k) => k + 1)}
-            className="mt-2 rounded-md bg-slate-700 px-3 py-1.5 text-sm text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+            className="brand-gradient mt-2 rounded-xl px-3 py-1.5 text-sm font-medium text-white shadow-glow hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             {s.tryAgain}
           </button>
@@ -191,14 +191,14 @@ export function Customer360Panel({
                 </div>
               </dl>
 
-              <h4 className="mt-3 text-sm font-semibold">{s.itemsTitle}</h4>
+              <h4 className="mt-3 font-display text-sm font-semibold text-text-main">{s.itemsTitle}</h4>
               <ul className="mt-1 space-y-1 text-sm">
                 {order.items.map((i, idx) => (
                   <li key={idx} className="flex flex-wrap justify-between gap-2">
                     <span>
                       {i.productName} <span className="text-text-muted">({i.sku})</span> × {i.quantity}
                     </span>
-                    <span>{formatBdt(lineTotalPoisha(i.unitPricePoisha, i.quantity))}</span>
+                    <span className="tnum">{formatBdt(lineTotalPoisha(i.unitPricePoisha, i.quantity))}</span>
                   </li>
                 ))}
               </ul>
@@ -225,20 +225,20 @@ export function Customer360Panel({
                 ) : null}
                 <div className="flex justify-between border-t border-border pt-1 font-semibold">
                   <dt>{s.total}</dt>
-                  <dd>{formatBdt(order.totalPoisha)}</dd>
+                  <dd className="tnum">{formatBdt(order.totalPoisha)}</dd>
                 </div>
               </dl>
 
               {/* One-click order actions (existing orders API) */}
-              <div className="mt-3 rounded-md bg-surface-2 p-3">
-                <h4 className="text-sm font-semibold">{s.orderActionsTitle}</h4>
+              <div className="mt-3 rounded-xl bg-surface-2 p-3">
+                <h4 className="font-display text-sm font-semibold text-text-main">{s.orderActionsTitle}</h4>
                 {orderMsg ? (
-                  <p role="status" className="mt-2 rounded-md bg-emerald-50 px-2.5 py-1.5 text-sm text-emerald-800">
+                  <p role="status" className="mt-2 rounded-xl bg-success-soft px-2.5 py-1.5 text-sm text-success-solid">
                     {orderMsg}
                   </p>
                 ) : null}
                 {orderErr ? (
-                  <p role="alert" className="mt-2 rounded-md bg-rose-50 px-2.5 py-1.5 text-sm text-rose-700">
+                  <p role="alert" className="mt-2 rounded-xl bg-danger-soft px-2.5 py-1.5 text-sm text-danger">
                     {orderErr}
                   </p>
                 ) : null}
@@ -250,7 +250,7 @@ export function Customer360Panel({
                       value={reason}
                       maxLength={500}
                       onChange={(e) => setReason(e.target.value)}
-                      className="mt-1 w-full rounded-md border border-rose-300 px-2.5 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                      className="mt-1 w-full rounded-xl border border-danger/50 bg-surface px-3 py-1.5 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                       placeholder={s.cancelReasonPlaceholder}
                     />
                   </label>
@@ -261,7 +261,7 @@ export function Customer360Panel({
                       type="button"
                       disabled={orderBusy}
                       onClick={() => void orderAction("CONFIRMED")}
-                      className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                      className="rounded-xl bg-success-solid px-3 py-1.5 text-sm font-medium text-white hover:brightness-95 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
                       {s.confirmOrderBtn}
                     </button>
@@ -271,7 +271,7 @@ export function Customer360Panel({
                       type="button"
                       disabled={orderBusy}
                       onClick={() => void orderAction("CANCELLED")}
-                      className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                      className="rounded-xl bg-danger px-3 py-1.5 text-sm font-medium text-white hover:brightness-95 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
                       {cancelArmed ? s.cancelConfirmBtn : s.cancelOrderBtn}
                     </button>
@@ -298,30 +298,30 @@ export function Customer360Panel({
 
           {ctx.recentOrders.length > 0 ? (
             <>
-              <h4 className="mt-4 text-sm font-semibold">
+              <h4 className="mt-4 font-display text-sm font-semibold text-text-main">
                 {interpolate(s.recentOrdersTitle, { count: ctx.recentOrders.length })}
               </h4>
               <div className="overflow-x-auto">
                 <table className="mt-1 w-full text-left text-sm">
                   <thead>
-                    <tr className="text-text-muted">
-                      <th className="py-1 pr-2 font-medium">{s.fieldOrder}</th>
-                      <th className="py-1 pr-2 font-medium">{s.colDate}</th>
-                      <th className="py-1 pr-2 font-medium">{s.total}</th>
-                      <th className="py-1 font-medium">{s.colStatus}</th>
+                    <tr className="text-xs font-semibold text-text-muted">
+                      <th className="py-1 pr-2">{s.fieldOrder}</th>
+                      <th className="py-1 pr-2">{s.colDate}</th>
+                      <th className="py-1 pr-2">{s.total}</th>
+                      <th className="py-1">{s.colStatus}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {ctx.recentOrders.map((o) => (
-                      <tr key={o.id} className="border-t border-border">
+                      <tr key={o.id} className="border-t border-border/60">
                         <td className="py-1 pr-2">
                           {o.orderNo}
                           {order && o.id === order.id ? (
-                            <span className="ml-1 text-xs text-indigo-600">{s.thisOrderTag}</span>
+                            <span className="ml-1 text-xs text-brand-700">{s.thisOrderTag}</span>
                           ) : null}
                         </td>
                         <td className="py-1 pr-2">{bnDateTime(o.createdAt, locale)}</td>
-                        <td className="py-1 pr-2">{formatBdt(o.totalPoisha)}</td>
+                        <td className="tnum py-1 pr-2">{formatBdt(o.totalPoisha)}</td>
                         <td className="py-1">{o.status}</td>
                       </tr>
                     ))}
@@ -331,13 +331,13 @@ export function Customer360Panel({
             </>
           ) : null}
 
-          <h4 className="mt-4 text-sm font-semibold">{s.pastCallsTitle}</h4>
+          <h4 className="mt-4 font-display text-sm font-semibold text-text-main">{s.pastCallsTitle}</h4>
           {ctx.pastCalls.filter((c) => !String(c.outcome).startsWith("AUTO_")).length > 0 ? (
             <ul className="mt-1 space-y-2 text-sm">
               {ctx.pastCalls
                 .filter((c) => !String(c.outcome).startsWith("AUTO_"))
                 .map((c) => (
-                  <li key={c.id} className="rounded-md bg-surface-2 px-3 py-2">
+                  <li key={c.id} className="rounded-lg bg-surface-2 px-3 py-2">
                     <span className="font-medium">{bnDateTime(c.calledAt, locale)}</span> ·{" "}
                     {SOURCE_LABEL[c.source][locale]} · {s.outcomeInline} {c.outcome}
                     {c.disposition ? (
@@ -369,12 +369,12 @@ export function Customer360Panel({
             (c) => c.taskId === taskId && String(c.outcome).startsWith("AUTO_"),
           ) ? (
             <>
-              <h4 className="mt-4 text-sm font-semibold">{s.automationTimelineTitle}</h4>
+              <h4 className="mt-4 font-display text-sm font-semibold text-text-main">{s.automationTimelineTitle}</h4>
               <ul className="mt-1 space-y-2 text-sm">
                 {ctx.pastCalls
                   .filter((c) => c.taskId === taskId && String(c.outcome).startsWith("AUTO_"))
                   .map((c) => (
-                    <li key={c.id} className="rounded-md bg-sky-50 px-3 py-2">
+                    <li key={c.id} className="rounded-lg bg-info-soft px-3 py-2">
                       <span className="font-medium">{bnDateTime(c.calledAt, locale)}</span> ·{" "}
                       {AUTO_OUTCOME_LABEL[c.outcome]?.[locale] ?? c.outcome}
                       {c.note ? (

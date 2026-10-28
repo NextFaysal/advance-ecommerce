@@ -100,9 +100,9 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
 
 function OutputBlock({ title, text, engine, requiresReview }: { title: string; text: string; engine: string; requiresReview: boolean }) {
   return (
-    <div className="rounded-lg border border-border bg-surface-2 p-3">
+    <div className="rounded-2xl border border-border/60 bg-surface-2/60 p-4 shadow-xs">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h4 className="text-sm font-semibold">{title}</h4>
+        <h4 className="font-display text-sm font-semibold text-text-main">{title}</h4>
         <div className="flex items-center gap-2">
           <TemplateStamp engine={engine} requiresReview={requiresReview} />
           <CopyButton text={text} />
@@ -192,8 +192,8 @@ function DescriptionTool({ samples }: { samples: SampleProductOption[] }) {
   }
 
   return (
-    <Card className="p-4">
-      <h3 className="text-base font-semibold">{s.descToolTitle}</h3>
+    <Card>
+      <h3 className="font-display text-base font-semibold text-text-main">{s.descToolTitle}</h3>
       <p className="mt-1 text-sm text-text-muted">
         {s.descToolText1}
         <code>src/ai</code>
@@ -206,7 +206,7 @@ function DescriptionTool({ samples }: { samples: SampleProductOption[] }) {
           <select
             value={selectedId}
             onChange={(e) => setSelectedId(e.target.value)}
-            className="h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm outline-none focus:border-brand-500"
+            className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs outline-none transition focus:border-brand-500"
           >
             {samples.map((s) => (
               <option key={s.id} value={s.id}>
@@ -234,14 +234,14 @@ function DescriptionTool({ samples }: { samples: SampleProductOption[] }) {
                 value={attributesRaw}
                 onChange={(e) => setAttributesRaw(e.target.value)}
                 rows={3}
-                className="w-full rounded-[10px] border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand-500"
+                className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm shadow-xs outline-none transition focus:border-brand-500"
               />
             </label>
           </div>
         ) : null}
 
         {error ? (
-          <p role="alert" className="text-sm text-rose-500">
+          <p role="alert" className="text-sm text-danger">
             ⚠ {error}
           </p>
         ) : null}
@@ -333,8 +333,8 @@ function ReviewTool() {
   const spam = result ? spamText(s)[result.spam] : null;
 
   return (
-    <Card className="p-4">
-      <h3 className="text-base font-semibold">{s.reviewToolTitle}</h3>
+    <Card>
+      <h3 className="font-display text-base font-semibold text-text-main">{s.reviewToolTitle}</h3>
       <p className="mt-1 text-sm text-text-muted">
         {s.reviewToolText1}
         <code>classifyText()</code>
@@ -356,7 +356,7 @@ function ReviewTool() {
             onChange={(e) => setText(e.target.value)}
             rows={4}
             placeholder={s.reviewPlaceholder}
-            className="w-full rounded-[10px] border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand-500"
+            className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm shadow-xs outline-none transition focus:border-brand-500"
           />
         </label>
         <Button type="button" variant="gradient" onClick={run} disabled={text.trim() === ""}>
@@ -380,7 +380,7 @@ function ReviewTool() {
           ) : (
             <p className="text-sm text-text-muted">{s.noKeywords}</p>
           )}
-          <p role="note" className="rounded-lg border border-border bg-surface-2 p-3 text-sm">
+          <p role="note" className="rounded-2xl border border-border/60 bg-surface-2/60 p-4 text-sm shadow-xs">
             ℹ️ <strong>{s.adviceStrong}</strong>
             {s.adviceText}
           </p>

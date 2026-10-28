@@ -3,6 +3,8 @@
 // while module.marketing_mechanics is OFF this renders the lock
 // panel (the resellers pattern); the manager mounts only when on.
 // Every API behind it re-checks marketing.campaign + the flag.
+import { PageHeader } from "@/components/ui/page-header";
+import { Card } from "@/components/ui/card";
 import { marketingMechanicsEnabled } from "@/marketing/docs";
 import { MechanicsManager } from "./mechanics-manager";
 import { CampaignsCard } from "./campaigns-card";
@@ -12,29 +14,29 @@ export const dynamic = "force-dynamic";
 export default function MarketingMechanicsPage() {
   const enabled = marketingMechanicsEnabled();
   return (
-    <div className="mx-auto max-w-6xl">
-      <h1 className="text-2xl font-extrabold text-slate-900">মার্কেটিং মেকানিক্স</h1>
-      <p className="mt-1 text-sm text-slate-500">
-        স্পিন হুইল, A/B এক্সপেরিমেন্ট, EMI ডিসপ্লে ও WhatsApp ব্রডকাস্ট — সব সেটিংস ডাটাবেসে থাকে, কোডে নয়।
-      </p>
+    <main>
+      <PageHeader
+        title="মার্কেটিং মেকানিক্স"
+        description="স্পিন হুইল, A/B এক্সপেরিমেন্ট, EMI ডিসপ্লে ও WhatsApp ব্রডকাস্ট — সব সেটিংস ডাটাবেসে থাকে, কোডে নয়।"
+      />
       {enabled ? (
         <>
           <MechanicsManager />
           <CampaignsCard />
         </>
       ) : (
-        <div className="mt-6 rounded-2xl bg-white p-8 text-center ring-1 ring-slate-200">
+        <Card className="mt-6 text-center">
           <p className="text-4xl" aria-hidden>
             🔒
           </p>
-          <h2 className="mt-3 text-lg font-bold text-slate-900">এই মডিউলটি লক করা আছে</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+          <h2 className="mt-3 text-lg font-bold text-text-main">এই মডিউলটি লক করা আছে</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
             মার্কেটিং মেকানিক্স একটি পেইড অ্যাড-অন (ADV-18)। চালু করতে Admin → Feature Flags থেকে{" "}
-            <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[13px]">module.marketing_mechanics</code>{" "}
+            <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[13px] text-text-main">module.marketing_mechanics</code>{" "}
             সক্রিয় করুন।
           </p>
-        </div>
+        </Card>
       )}
-    </div>
+    </main>
   );
 }

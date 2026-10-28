@@ -27,9 +27,9 @@ export default async function AdminLandingPage() {
   const published = pages.filter((p) => p.status === "PUBLISHED").length;
   const drafts = pages.filter((p) => p.status === "DRAFT").length;
   return (
-    <main>
+    <main className="space-y-6">
       <PageHeader title={s.title} description={s.description} breadcrumb={s.breadcrumb} />
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
         <StatCard label={s.statPages} value={String(pages.length)} delta={s.deltaDb} icon="🚀" />
         <StatCard label={s.statPublished} value={String(published)} delta={s.deltaPublished} icon="✅" />
         <StatCard label={s.statDrafts} value={String(drafts)} delta={s.deltaDrafts} icon="📝" />

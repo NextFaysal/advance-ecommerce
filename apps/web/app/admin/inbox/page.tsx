@@ -1,4 +1,5 @@
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
+import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { getRequestLocale } from "@/i18n/server";
 import { pick } from "@/i18n/locale";
@@ -42,10 +43,12 @@ export default async function AdminInboxPage() {
           title={s.pageTitle}
           description={s.lockedDesc}
         />
-        <p role="status">
-          {s.lockedTextA}
-          <code>module.f_commerce</code>{s.lockedTextB}
-        </p>
+        <Card>
+          <p role="status" className="text-sm leading-relaxed text-text-muted">
+            {s.lockedTextA}
+            <code className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-text-main">module.f_commerce</code>{s.lockedTextB}
+          </p>
+        </Card>
       </main>
     );
   }
@@ -75,7 +78,7 @@ export default async function AdminInboxPage() {
         description={s.pageDesc}
         breadcrumb={s.pageBreadcrumb}
       />
-      <p role="status">
+      <p role="status" className="mb-6 rounded-2xl border border-border/60 bg-card px-5 py-4 text-sm leading-relaxed text-text-muted shadow-xs">
         {s.channelStatusLabel}{" "}
         {(Object.keys(channelLabels) as InboxChannel[]).map((channel, i) => (
           <span key={channel}>

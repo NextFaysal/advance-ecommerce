@@ -75,7 +75,7 @@ export function SmsVerifyPanel() {
       </div>
 
       {result && !result.ok ? (
-        <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+        <div role="alert" className="rounded-xl border border-border bg-danger-soft p-4 text-sm text-danger">
           <p className="font-semibold">{s.smsRejectedTitle}</p>
           <p className="mt-1">{smsRejectReasonLabels(locale)[result.reason]}</p>
           <p className="mt-1 font-mono text-xs">reason: {result.reason}</p>
@@ -83,9 +83,9 @@ export function SmsVerifyPanel() {
       ) : null}
 
       {result?.ok ? (
-        <div className="rounded-lg border border-border bg-surface-2 p-4">
+        <div className="rounded-xl border border-border bg-surface-2 p-4">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold">{s.smsResult}</h3>
+            <h3 className="font-display text-sm font-semibold text-text-main">{s.smsResult}</h3>
             <Badge tone="success">{interpolate(s.smsPaymentBadge, { provider: result.sms.provider === "bkash" ? "bKash" : "Nagad" })}</Badge>
           </div>
           <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">

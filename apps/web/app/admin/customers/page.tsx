@@ -12,8 +12,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Customer } from "../../../src/orders/types";
 import { customerAovPoisha, customerSuccessRate, displayPhone } from "../../../src/orders/customer";
 import { formatBdt } from "../../../src/checkout/pricing";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { DataTableSkeleton } from "@/components/ui/table";
 import { CustomFieldsPanel } from "@/components/admin/custom-fields-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -61,7 +63,7 @@ function SortTh({
     <th
       scope="col"
       aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
-      className="px-4 py-3 text-caption font-semibold text-text-muted"
+      className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted"
     >
       <button
         type="button"
@@ -184,7 +186,7 @@ export default function AdminCustomersPage() {
     <main>
       <PageHeader
         title={s.title}
-        description={interpolate(s.description, { total })}
+        subtitle={interpolate(s.description, { total })}
         actions={
           <Button variant="outline" onClick={() => void load(search)}>
             {s.refresh}
@@ -192,7 +194,7 @@ export default function AdminCustomersPage() {
         }
       />
 
-      <Card className="mb-4 shadow-card">
+      <Card className="mb-4">
         <div className="relative max-w-md">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle">
             <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
@@ -202,10 +204,10 @@ export default function AdminCustomersPage() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder={s.searchPlaceholder}
             aria-label={s.searchAria}
-            className="h-11 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+            className="h-11 w-full rounded-xl border border-border/60 bg-card pl-9 pr-3 text-sm shadow-xs outline-none transition duration-fast ease-smooth focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
           />
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/60 pt-3">
           <SavedViewsBar<CustomerViewState>
             views={customerViews.views}
             ready={customerViews.ready}
@@ -227,25 +229,16 @@ export default function AdminCustomersPage() {
       </Card>
 
       {loadState === "loading" && (
-        <div role="status" aria-label={s.loadingAria} className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
-          <div className="border-b border-border bg-surface-2 px-4 py-3">
-            <div className="h-4 w-40 animate-pulse rounded bg-border" />
-          </div>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-4 border-b border-border px-4 py-3.5 last:border-0">
-              <div className="h-4 w-32 animate-pulse rounded bg-border" />
-              <div className="h-4 w-24 animate-pulse rounded bg-border" />
-              <div className="ml-auto h-4 w-16 animate-pulse rounded bg-border" />
-            </div>
-          ))}
-          <p className="px-4 py-3 text-small text-text-muted">{s.loadingText}</p>
+        <div role="status" aria-label={s.loadingAria}>
+          <DataTableSkeleton columns={6} rows={4} />
+          <p className="mt-3 text-small text-text-muted">{s.loadingText}</p>
         </div>
       )}
 
       {loadState === "error" && (
-        <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-5 shadow-card">
-          <p className="font-semibold text-rose-700">{s.loadFailedTitle}</p>
-          <p className="mt-1 text-small text-rose-600">{loadError}</p>
+        <div role="alert" className="rounded-2xl border border-danger/30 bg-danger-soft p-5 shadow-xs">
+          <p className="font-display font-semibold text-danger">{s.loadFailedTitle}</p>
+          <p className="mt-1 text-small text-danger">{loadError}</p>
           <Button variant="outline" className="mt-4 bg-card" onClick={() => void load(search)}>
             {s.tryAgain}
           </Button>
@@ -253,22 +246,14 @@ export default function AdminCustomersPage() {
       )}
 
       {loadState === "ready" && visible.length === 0 && (
-        <div role="status" className="rounded-lg border border-border bg-card px-6 py-14 text-center shadow-card">
-          <span aria-hidden="true" className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 text-brand-500">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7">
-              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-              <path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </svg>
-          </span>
-          <h2 className="mt-4 text-h3">{s.emptyTitle}</h2>
-          <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
-            {s.emptyText}
-          </p>
-          {search.trim() !== "" && (
-            <Button variant="outline" className="mt-5" onClick={() => setSearch("")}>
-              {s.clearSearch}
-            </Button>
-          )}
+        <div role="status">
+          <EmptyState title={s.emptyTitle} description={s.emptyText}>
+            {search.trim() !== "" && (
+              <Button variant="outline" className="mt-5" onClick={() => setSearch("")}>
+                {s.clearSearch}
+              </Button>
+            )}
+          </EmptyState>
         </div>
       )}
 
@@ -276,13 +261,13 @@ export default function AdminCustomersPage() {
         <>
         {/* Desktop table — hidden under md (card list below takes over,
          *  so a 360px screen never scrolls sideways). */}
-        <div className="hidden overflow-x-auto rounded-lg border border-border bg-card shadow-card md:block">
+        <div className="hidden overflow-x-auto rounded-2xl border border-border/60 bg-card shadow-xs md:block">
           <table className="w-full min-w-[760px] border-collapse text-left text-sm">
             <thead>
-              <tr className="bg-surface-2 text-left [&>th]:border-b [&>th]:border-border">
+              <tr className="bg-surface-2/80 text-left">
                 <SortTh label={t.name} sortKey="name" sort={sort} onSort={toggleSort} />
                 {customerCols.isVisible("phone") ? (
-                  <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">{s.colPhoneMasked}</th>
+                  <th scope="col" className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{s.colPhoneMasked}</th>
                 ) : null}
                 {customerCols.isVisible("orders") ? (
                   <SortTh label={s.colOrders} sortKey="orders" sort={sort} onSort={toggleSort} />
@@ -294,10 +279,10 @@ export default function AdminCustomersPage() {
                   <SortTh label={s.colLtv} sortKey="ltv" sort={sort} onSort={toggleSort} />
                 ) : null}
                 {customerCols.isVisible("aov") ? (
-                  <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">{s.colAov}</th>
+                  <th scope="col" className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{s.colAov}</th>
                 ) : null}
                 {customerCols.isVisible("tags") ? (
-                  <th scope="col" className="px-4 py-3 text-caption font-semibold text-text-muted">{s.colTags}</th>
+                  <th scope="col" className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{s.colTags}</th>
                 ) : null}
               </tr>
             </thead>
@@ -309,7 +294,7 @@ export default function AdminCustomersPage() {
                     key={c.id}
                     onClick={() => setSelectedId(c.id)}
                     aria-selected={isSelected}
-                    className={`cursor-pointer border-t border-border transition motion-fast first:border-t-0 hover:bg-surface-2/70 ${isSelected ? "bg-brand-50/70" : ""}`}
+                    className={`cursor-pointer border-t border-border/60 transition duration-fast ease-smooth first:border-t-0 hover:bg-brand-soft/60 ${isSelected ? "bg-brand-soft" : ""}`}
                   >
                     <td className="px-4 py-3">
                       <span className="font-medium leading-snug">{c.name}</span>
@@ -358,7 +343,7 @@ export default function AdminCustomersPage() {
                 key={c.id}
                 onClick={() => setSelectedId(c.id)}
                 aria-selected={isSelected}
-                className={`cursor-pointer rounded-lg border border-border bg-card p-4 shadow-card transition motion-fast ${isSelected ? "bg-brand-50/70 ring-1 ring-brand-300" : ""}`}
+                className={`cursor-pointer rounded-2xl border border-border/60 bg-card p-4 shadow-xs transition duration-fast ease-smooth ${isSelected ? "bg-brand-soft ring-1 ring-brand-300" : ""}`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <p className="min-w-0 truncate font-medium leading-snug">{c.name}</p>
@@ -370,7 +355,7 @@ export default function AdminCustomersPage() {
                   </span>
                 </div>
                 <p className="mt-1 font-mono text-small tabular-nums text-text-muted">{displayPhone(c.phone, false)}</p>
-                <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-3 text-center">
+                <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border/60 pt-3 text-center">
                   <span>
                     <span className="block text-caption text-text-subtle">{s.colOrders}</span>
                     <span className="font-mono font-semibold tabular-nums">{c.totalOrders}</span>
@@ -397,10 +382,10 @@ export default function AdminCustomersPage() {
       )}
 
       {loadState === "ready" && selected && (
-        <Card className="mt-5 shadow-card">
+        <Card className="mt-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-h3">{selected.name} — {s.profileWord}</h2>
+              <h2 className="font-display text-h3 font-semibold">{selected.name} — {s.profileWord}</h2>
               <p className="mt-1 text-small text-text-muted">
                 {t.phone}: <span className="font-mono tabular-nums">{displayPhone(selected.phone, false)}</span>{" "}
                 {s.phonePermissionNote}
@@ -416,24 +401,24 @@ export default function AdminCustomersPage() {
               { label: s.statReturned, value: String(selected.returnedOrders) },
               { label: s.statLastOrder, value: selected.lastOrderAt ?? "—" },
             ].map((s) => (
-              <div key={s.label} className="rounded-md bg-surface-2 px-3.5 py-3">
+              <div key={s.label} className="rounded-xl bg-surface-2 px-3.5 py-3">
                 <p className="text-caption font-medium text-text-muted">{s.label}</p>
                 <p className="mt-0.5 truncate font-mono text-h3 font-bold tabular-nums">{s.value}</p>
               </div>
             ))}
           </div>
 
-          <div className="mt-5 border-t border-border pt-4">
+          <div className="mt-5 border-t border-border/60 pt-4">
             <p className="flex flex-wrap items-center gap-1.5 text-small">
               <span className="mr-1 font-medium text-text-muted">{s.tabsLabel}</span>
               {profileTabs.map((t) => (
-                <span key={t} className="rounded-full border border-dashed border-border px-2.5 py-1 text-caption font-medium text-text-muted">{t}</span>
+                <span key={t} className="rounded-full border border-dashed border-border/60 px-2.5 py-1 text-caption font-medium text-text-muted">{t}</span>
               ))}
             </p>
             <p className="mt-2.5 flex flex-wrap items-center gap-1.5 text-small">
               <span className="mr-1 font-medium text-text-muted">{s.quickActionsLabel}</span>
               {quickActions.map((a) => (
-                <span key={a} className="rounded-full border border-dashed border-border px-2.5 py-1 text-caption font-medium text-text-muted">{a}</span>
+                <span key={a} className="rounded-full border border-dashed border-border/60 px-2.5 py-1 text-caption font-medium text-text-muted">{a}</span>
               ))}
             </p>
           </div>

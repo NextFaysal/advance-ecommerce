@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
-import { DataTable } from "@/components/ui/table";
+import { DataTable, DataTableSkeleton } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -176,7 +176,7 @@ async function apiJson<T>(url: string, init?: RequestInit): Promise<{ ok: boolea
   return { ok: res.ok, status: res.status, data: body?.data, error: body?.error };
 }
 
-const SELECT_CLASS = "h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm outline-none focus:border-brand-500";
+const SELECT_CLASS = "h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs outline-none transition focus:border-brand-500";
 
 interface RuleFormState {
   name: string;
@@ -449,10 +449,13 @@ export function AutomationClient() {
       <main>
         <PageHeader title={t.title} description={t.descShort} breadcrumb={t.breadcrumb} />
         {state === "loading" ? (
-          <p role="status" className="text-sm text-text-muted">{t.loading}</p>
+          <div className="space-y-3">
+            <p role="status" className="text-sm text-text-muted">{t.loading}</p>
+            <DataTableSkeleton columns={5} rows={5} />
+          </div>
         ) : (
           <div>
-            <p role="alert" className="text-sm text-rose-500">{interpolate(t.loadFailed, { message: errorMessage })}</p>
+            <p role="alert" className="text-sm text-danger">{interpolate(t.loadFailed, { message: errorMessage })}</p>
             <Button type="button" className="mt-3" onClick={() => void load()}>{t.retry}</Button>
           </div>
         )}
@@ -471,32 +474,33 @@ export function AutomationClient() {
       </Badge>
     ),
     order: run.orderId ? <span className="font-mono">{run.orderId}</span> : "—",
-    customer: run.customerPhoneMasked ? <span className="font-mono tabular-nums">{run.customerPhoneMasked}</span> : "—",
+    customer: run.customerPhoneMasked ? <span className="tnum font-mono tabular-nums">{run.customerPhoneMasked}</span> : "—",
     effects: run.effects.length > 0 ? run.effects.map((e) => e.description).join(" · ") : "—",
-    at: <span className="font-mono text-xs">{run.evaluatedAt}</span>,
+    at: <span className="tnum font-mono text-xs">{run.evaluatedAt}</span>,
   }));
 
   return (
-    <main>
+    <main className="space-y-6">
       <PageHeader title={t.title} description={t.descLong} breadcrumb={t.breadcrumb} />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label={t.statTotalRules} value={String(rules.length)} delta={t.statTotalRulesDelta} icon="⚙" />
         <StatCard label={t.statActive} value={String(rules.filter((r) => r.enabled).length)} delta={t.statActiveDelta} icon="✓" />
         <StatCard label={t.statRuns} value={String(runs.length)} delta={t.statRunsDelta} icon="↻" />
         <StatCard label={t.statMatched} value={String(matchedRuns.length)} delta={interpolate(t.statMatchedDelta, { count: runs.length })} icon="▸" />
       </div>
 
-      <h2 className="mb-3 text-lg font-semibold">{t.rulesTitle}</h2>
+      <section className="space-y-3">
+        <h2 className="font-display text-lg font-semibold text-text-main">{t.rulesTitle}</h2>
       {rules.length === 0 ? (
         <EmptyState title={t.noRulesTitle} description={t.noRulesDesc} />
       ) : (
         <div className="space-y-3">
           {rules.map((rule) => (
-            <article key={rule.id} className="rounded-lg border border-border bg-card p-4">
+            <article key={rule.id} className="rounded-2xl border border-border/60 bg-card p-5 shadow-xs">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h3 className="text-sm font-semibold">{rule.name}</h3>
+                  <h3 className="font-display text-sm font-semibold text-text-main">{rule.name}</h3>
                   {rule.description ? <p className="mt-0.5 text-sm text-text-muted">{rule.description}</p> : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -538,8 +542,11 @@ export function AutomationClient() {
         </div>
       )}
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{editingId ? t.formTitleEdit : t.formTitleNew}</h2>
-      <Card>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="font-display text-lg font-semibold text-text-main">{editingId ? t.formTitleEdit : t.formTitleNew}</h2>
+        <Card>
         {editingComplex ? <p className="mb-3 text-xs text-text-muted">{t.complexNote}</p> : null}
         <form onSubmit={(e) => void submitForm(e)} className="grid gap-3 sm:grid-cols-2">
           <Input label={t.fName} name="rule-name" required minLength={3} maxLength={120} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -600,10 +607,12 @@ export function AutomationClient() {
           </div>
         </form>
         {formStatus ? <p role="status" className="mt-3 text-sm">{formStatus}</p> : null}
-      </Card>
+        </Card>
+      </section>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{t.dryTitle}</h2>
-      <Card>
+      <section className="space-y-3">
+        <h2 className="font-display text-lg font-semibold text-text-main">{t.dryTitle}</h2>
+        <Card>
         <p className="mb-3 text-xs text-text-muted">{t.dryNote}</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
@@ -663,29 +672,32 @@ export function AutomationClient() {
             ) : null}
           </div>
         ) : null}
-      </Card>
+        </Card>
+      </section>
 
-      <h2 className="mb-3 mt-8 flex items-center gap-3 text-lg font-semibold">
-        {t.runsTitle}
-        <Button type="button" size="sm" variant="outline" onClick={() => void load()}>{t.refresh}</Button>
-      </h2>
-      {runs.length === 0 ? (
-        <EmptyState title={t.noRunsTitle} description={t.noRunsDesc} />
-      ) : (
-        <DataTable
-          caption={t.runsCaption}
-          columns={[
-            { key: "rule", header: t.colRule },
-            { key: "trigger", header: t.colTrigger },
-            { key: "status", header: t.colStatus },
-            { key: "order", header: t.colOrder },
-            { key: "customer", header: t.colCustomer },
-            { key: "effects", header: t.colEffects },
-            { key: "at", header: t.colAt },
-          ]}
-          rows={runRows}
-        />
-      )}
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-3 font-display text-lg font-semibold text-text-main">
+          {t.runsTitle}
+          <Button type="button" size="sm" variant="outline" onClick={() => void load()}>{t.refresh}</Button>
+        </h2>
+        {runs.length === 0 ? (
+          <EmptyState title={t.noRunsTitle} description={t.noRunsDesc} />
+        ) : (
+          <DataTable
+            caption={t.runsCaption}
+            columns={[
+              { key: "rule", header: t.colRule },
+              { key: "trigger", header: t.colTrigger },
+              { key: "status", header: t.colStatus },
+              { key: "order", header: t.colOrder },
+              { key: "customer", header: t.colCustomer },
+              { key: "effects", header: t.colEffects },
+              { key: "at", header: t.colAt },
+            ]}
+            rows={runRows}
+          />
+        )}
+      </section>
     </main>
   );
 }

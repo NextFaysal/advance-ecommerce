@@ -507,8 +507,8 @@ export function CallCenterWorkbench() {
 
   if (loadState === "loading") {
     return (
-      <section aria-busy="true" className="mb-6 rounded-lg border border-border bg-card p-4">
-        <h2 className="text-lg font-semibold">{s.wbTitle}</h2>
+      <section aria-busy="true" className="mb-6 rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
+        <h2 className="font-display text-lg font-semibold text-text-main">{s.wbTitle}</h2>
         <p className="mt-2 text-sm text-text-muted">{s.queueLoading}</p>
       </section>
     );
@@ -516,8 +516,8 @@ export function CallCenterWorkbench() {
 
   if (loadState === "locked") {
     return (
-      <section className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4">
-        <h2 className="text-lg font-semibold">{s.wbTitle}</h2>
+      <section className="mb-6 rounded-2xl border border-warning-solid/40 bg-warning-soft p-4 shadow-xs">
+        <h2 className="font-display text-lg font-semibold text-text-main">{s.wbTitle}</h2>
         <p role="status" className="mt-2 text-sm">
           {s.wbLockedA}<code>module.call_center</code>{s.wbLockedB}
         </p>
@@ -527,15 +527,15 @@ export function CallCenterWorkbench() {
 
   if (loadState === "error") {
     return (
-      <section className="mb-6 rounded-lg border border-rose-300 bg-rose-50 p-4">
-        <h2 className="text-lg font-semibold">{s.wbTitle}</h2>
-        <p role="alert" className="mt-2 text-sm text-rose-700">
+      <section className="mb-6 rounded-2xl border border-danger/40 bg-danger-soft p-4 shadow-xs">
+        <h2 className="font-display text-lg font-semibold text-text-main">{s.wbTitle}</h2>
+        <p role="alert" className="mt-2 text-sm text-danger">
           {interpolate(s.queueLoadFailed, { error: loadError })}
         </p>
         <button
           type="button"
           onClick={() => void load()}
-          className="mt-3 rounded-md bg-slate-700 px-3 py-1.5 text-sm text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+          className="brand-gradient mt-3 rounded-xl px-3 py-1.5 text-sm font-medium text-white shadow-glow hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
           {s.tryAgain}
         </button>
@@ -546,33 +546,33 @@ export function CallCenterWorkbench() {
   return (
     <section className={`mb-6 rounded-lg border border-border bg-card p-4 ${current ? "pb-24 xl:pb-4" : ""}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">{s.wbTitle}</h2>
+        <h2 className="font-display text-lg font-semibold text-text-main">{s.wbTitle}</h2>
         <button
           type="button"
           onClick={() => setQueueOpen(true)}
-          className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 xl:hidden"
+          className="brand-gradient rounded-xl px-3 py-1.5 text-sm font-medium text-white shadow-glow hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 xl:hidden"
         >
           {interpolate(s.queueButton, { count: unassignedCount })}
         </button>
       </div>
       <p className="mt-1 text-sm text-text-muted">
-        {s.unassignedLead} <strong>{unassignedCount}</strong>{s.unassignedTail}
+        {s.unassignedLead} <strong className="tnum">{unassignedCount}</strong>{s.unassignedTail}
       </p>
 
       {notice ? (
-        <p role="status" className="mt-3 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <p role="status" className="mt-3 rounded-xl bg-success-soft px-3 py-2 text-sm text-success-solid">
           {notice}
         </p>
       ) : null}
       {autoLines.length > 0 ? (
-        <div className="mt-2 rounded-md bg-sky-50 px-3 py-2 text-sm text-sky-900">
+        <div className="mt-2 rounded-xl bg-info-soft px-3 py-2 text-sm text-info-solid">
           {autoLines.map((line, i) => (
             <p key={i}>{line}</p>
           ))}
         </div>
       ) : null}
       {actionError ? (
-        <p role="alert" className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">
+        <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">
           {actionError}
         </p>
       ) : null}

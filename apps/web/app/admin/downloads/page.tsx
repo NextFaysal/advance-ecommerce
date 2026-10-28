@@ -207,14 +207,14 @@ export default function AdminDownloadsPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <PageHeader
         title={s.title}
         description={s.description}
       />
 
       {notice !== null ? (
-        <p role="status" className="rounded-md bg-success-50 px-3.5 py-2.5 text-small text-success-700">
+        <p role="status" className="rounded-md bg-success-soft px-3.5 py-2.5 text-small text-success-solid">
           {notice}
           {oneTimeLink !== null ? (
             <span className="mt-2 block">
@@ -225,13 +225,13 @@ export default function AdminDownloadsPage() {
         </p>
       ) : null}
       {actionError !== null ? (
-        <p role="alert" className="rounded-md bg-danger-50 px-3.5 py-2.5 text-small text-danger-700">{actionError}</p>
+        <p role="alert" className="rounded-md bg-danger-soft px-3.5 py-2.5 text-small text-danger">{actionError}</p>
       ) : null}
       {loadError !== null ? (
-        <p role="alert" className="rounded-md bg-danger-50 px-3.5 py-2.5 text-small text-danger-700">{loadError}</p>
+        <p role="alert" className="rounded-md bg-danger-soft px-3.5 py-2.5 text-small text-danger">{loadError}</p>
       ) : null}
 
-      <Card className="p-4">
+      <Card>
         <h2 className="text-sm font-bold text-text-main">{s.lookupTitle}</h2>
         <div className="mt-3 flex gap-2">
           <input
@@ -247,7 +247,7 @@ export default function AdminDownloadsPage() {
             {lookupBusy ? s.searching : s.search}
           </Button>
         </div>
-        {lookupError !== null ? <p className="mt-2 text-sm leading-6 text-danger-700">{lookupError}</p> : null}
+        {lookupError !== null ? <p className="mt-2 text-sm leading-6 text-danger">{lookupError}</p> : null}
         {lookupResult !== null ? (
           lookupResult.grants.length === 0 ? (
             <p className="mt-3 text-sm leading-6 text-text-muted">
@@ -258,7 +258,7 @@ export default function AdminDownloadsPage() {
               {lookupResult.grants.map((g) => (
                 <li
                   key={g.grantId}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2.5 text-sm"
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 bg-surface-2/40 px-3 py-2.5 text-sm"
                 >
                   <span className="min-w-0">
                     <span className="block truncate font-medium text-text-main">
@@ -309,7 +309,7 @@ export default function AdminDownloadsPage() {
             )}
           </button>
         ))}
-        <span className="ml-auto text-xs text-text-muted">{interpolate(s.totalLabel, { total })}</span>
+        <span className="tnum ml-auto text-xs text-text-muted">{interpolate(s.totalLabel, { total })}</span>
       </div>
 
       {rows === null ? (
@@ -327,7 +327,7 @@ export default function AdminDownloadsPage() {
         <ul className="space-y-3">
           {rows.map((row) => (
             <li key={row.id}>
-              <Card className="p-4">
+              <Card>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-text-main">

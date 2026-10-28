@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { CALL_CENTER_STRINGS } from "../strings";
@@ -64,37 +65,36 @@ export function ReportsExportButton({ from, to }: { from: string; to: string }) 
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder={s.exportReasonPlaceholder}
-            className="h-10 w-full rounded-md border border-border bg-surface px-3 text-sm sm:w-64 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+            className="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm shadow-xs sm:w-64 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             aria-label={s.exportReasonAria}
           />
-          <button
+          <Button
             type="button"
             onClick={run}
             disabled={busy}
-            className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             {busy ? s.downloadingText : s.downloadBtn}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="outline"
             onClick={() => setOpen(false)}
-            className="h-10 rounded-md border border-border px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             {s.cancelBtn}
-          </button>
+          </Button>
         </div>
       ) : (
-        <button
+        <Button
           type="button"
+          variant="outline"
           onClick={() => setOpen(true)}
-          className="h-10 rounded-md border border-border px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
           {s.csvExportBtn}
-        </button>
+        </Button>
       )}
-      {message ? <p className="text-xs text-emerald-600">{message}</p> : null}
+      {message ? <p className="text-xs text-success-solid">{message}</p> : null}
       {error ? (
-        <p role="alert" className="text-xs text-rose-600">
+        <p role="alert" className="text-xs text-danger">
           {error}
         </p>
       ) : null}

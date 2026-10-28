@@ -10,6 +10,7 @@
  * marker; the Subscription model has no kind field).
  */
 import { useCallback, useEffect, useState } from "react";
+import { Card } from "@/components/ui/card";
 import { formatBpsPercent } from "@/subscriptions/labels";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
@@ -109,8 +110,8 @@ export function BoxesConfigCard() {
   }
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
-      <h2 className="font-display text-base font-bold text-text-main">{s.configTitle}</h2>
+    <Card className="p-4 sm:p-5">
+      <h2 className="font-display text-base font-semibold text-text-main">{s.configTitle}</h2>
       <p className="mt-1 text-sm leading-6 text-text-muted">
         {s.configIntro}{" "}
         {data
@@ -123,12 +124,12 @@ export function BoxesConfigCard() {
       </p>
 
       {error ? (
-        <p role="alert" className="mt-3 text-sm font-medium text-red-700 dark:text-red-300">
+        <p role="alert" className="mt-3 text-sm font-medium text-danger">
           {error}
         </p>
       ) : null}
       {notice ? (
-        <p role="status" className="mt-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">
+        <p role="status" className="mt-3 text-sm font-medium text-success-solid">
           {notice}
         </p>
       ) : null}
@@ -201,12 +202,12 @@ export function BoxesConfigCard() {
             type="button"
             disabled={busy || reason.trim() === ""}
             onClick={save}
-            className="inline-flex items-center justify-center rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? s.saving : s.saveConfig}
           </button>
         </div>
       </div>
-    </section>
+    </Card>
   );
 }

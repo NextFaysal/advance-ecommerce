@@ -17,6 +17,7 @@
  * same helpers the generator uses (src/boxes/cycles.ts).
  */
 import { useCallback, useEffect, useState } from "react";
+import { Card } from "@/components/ui/card";
 import { dhakaYmdOf, shiftYmd } from "@/lib/dhaka-date";
 import { isoWeekKeyOfYmd } from "@/boxes/cycles";
 import type { BoxVariantOption, BoxVariantSummary } from "@/boxes/service";
@@ -38,9 +39,9 @@ interface ContentsResponse {
 }
 
 const INPUT_CLASS =
-  "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-text-main";
+  "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300";
 const SMALL_BUTTON =
-  "inline-flex items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-text-main transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex min-h-11 items-center rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-text-main transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0";
 
 function nextMonthKey(): string {
   const ymd = dhakaYmdOf(new Date());
@@ -225,17 +226,17 @@ export function BoxesContentsCard() {
   const selectedSummary = boxes?.find((b) => b.variantId === variantId) ?? null;
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
-      <h2 className="font-display text-base font-bold text-text-main">{s.contentsTitle}</h2>
+    <Card className="p-4 sm:p-5">
+      <h2 className="font-display text-base font-semibold text-text-main">{s.contentsTitle}</h2>
       <p className="mt-1 text-sm leading-6 text-text-muted">{s.contentsIntro}</p>
 
       {error ? (
-        <p role="alert" className="mt-3 text-sm font-medium text-red-700 dark:text-red-300">
+        <p role="alert" className="mt-3 text-sm font-medium text-danger">
           {error}
         </p>
       ) : null}
       {notice ? (
-        <p role="status" className="mt-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">
+        <p role="status" className="mt-3 text-sm font-medium text-success-solid">
           {notice}
         </p>
       ) : null}
@@ -298,7 +299,7 @@ export function BoxesContentsCard() {
                 </div>
                 <button
                   type="button"
-                  className={SMALL_BUTTON + " border-red-300 text-red-700 hover:bg-red-50 dark:border-red-400/30 dark:text-red-300 dark:hover:bg-red-500/10"}
+                  className={SMALL_BUTTON + " border-danger/40 text-danger hover:bg-danger-soft"}
                   onClick={() => setCycles((prev) => prev.filter((_, i) => i !== ci))}
                 >
                   {s.deleteCycle}
@@ -445,6 +446,6 @@ export function BoxesContentsCard() {
           </div>
         </div>
       )}
-    </section>
+    </Card>
   );
 }

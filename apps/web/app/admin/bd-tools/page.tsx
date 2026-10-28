@@ -32,7 +32,7 @@
  * Only the payment token-hash PREFIX ever reaches the browser.
  */
 import { prisma } from "@advance-ecommerce/db";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Money, formatPoisha } from "@/components/ui/money";
@@ -40,6 +40,7 @@ import { DataTable } from "@/components/ui/table";
 import { StatCard } from "@/components/ui/stat-card";
 import { Tabs } from "@/components/ui/tabs";
 import { Icon } from "@/components/ui/icon";
+import { EmptyState } from "@/components/ui/empty-state";
 import { paymentLinkStore, withEffectiveStatus } from "@/bd/payment-link";
 import { deriveDrawerCash } from "@/bd/cash-closing-derive";
 import { listDisputes, listInvoiceRuns, type CourierInvoiceRun } from "@/bd/courier-invoice";
@@ -130,11 +131,7 @@ function CourierReconciliationPanel({
   if (!run) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-text-muted">
-          {s.reconEmpty1}
-          <span className="font-mono text-xs">courier_invoice_runs</span>
-          {s.reconEmpty2}
-        </p>
+        <EmptyState title={s.reconEmptyTitle} description={s.reconEmptyDesc} />
       </div>
     );
   }
@@ -185,23 +182,23 @@ function CourierReconciliationPanel({
       </div>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label={s.statMatched} value={String(summary.matchedCount)} delta={s.statDeltaThisRun} icon={<Icon name="check" size={22} />} />
-        <StatCard label={s.statDisputed} value={String(summary.disputedCount)} delta={s.statDeltaThisRun} deltaTone="down" icon={<Icon name="alert" size={22} />} accent="bg-rose-50 text-rose-600" />
+        <StatCard label={s.statDisputed} value={String(summary.disputedCount)} delta={s.statDeltaThisRun} deltaTone="down" icon={<Icon name="alert" size={22} />} accent="bg-danger-soft text-danger" />
         <StatCard label={s.statMissingExtra} value={`${summary.missingCount} / ${summary.extraCount}`} delta={s.statDeltaThisRun} icon={<Icon name="package" size={22} />} />
         <StatCard label={s.statExpectedTotal} value={formatPoisha(summary.expectedTotalPoisha)} delta={s.statDeltaThisRun} icon={<Icon name="banknote" size={22} />} />
       </div>
       <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-          <p className="text-xs text-emerald-800">{s.matchedTotalLabel}</p>
-          <p className="mt-1 text-emerald-900"><Money poisha={summary.matchedTotalPoisha} /></p>
+        <div className="rounded-xl border border-border bg-success-soft p-3">
+          <p className="text-xs text-success-solid">{s.matchedTotalLabel}</p>
+          <p className="mt-1 text-text-main"><Money poisha={summary.matchedTotalPoisha} /></p>
         </div>
-        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
-          <p className="text-xs text-rose-800">{s.disputedTotalLabel}</p>
-          <p className="mt-1 text-rose-900"><Money poisha={summary.disputedTotalPoisha} /></p>
+        <div className="rounded-xl border border-border bg-danger-soft p-3">
+          <p className="text-xs text-danger">{s.disputedTotalLabel}</p>
+          <p className="mt-1 text-text-main"><Money poisha={summary.disputedTotalPoisha} /></p>
         </div>
       </div>
 
       <div>
-        <h3 className="mb-2 text-sm font-semibold">{s.disputedHeading}</h3>
+        <h3 className="mb-2 font-display text-sm font-semibold text-text-main">{s.disputedHeading}</h3>
         {disputedRows.length > 0 ? (
           <DataTable
             columns={[
@@ -223,7 +220,7 @@ function CourierReconciliationPanel({
 
       {matchedRows.length > 0 ? (
         <div>
-          <h3 className="mb-2 text-sm font-semibold">{s.matchedHeading}</h3>
+          <h3 className="mb-2 font-display text-sm font-semibold text-text-main">{s.matchedHeading}</h3>
           <DataTable
             columns={[
               { key: "shipment", header: s.colShipment },
@@ -262,11 +259,7 @@ export default async function BdToolsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={s.pageTitle}
-        description={s.pageDescription}
-        breadcrumb={s.pageBreadcrumb}
-      />
+      <PageHeader title={s.pageTitle} subtitle={s.pageDescription} />
       <Card>
         <Tabs
           tabs={[

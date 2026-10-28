@@ -35,7 +35,7 @@ export default function CampaignEstimate() {
 
   return (
     <Card>
-      <h3 className="mb-1 font-semibold">ক্যাম্পেইন খরচের হিসাব (শুধু আনুমানিক)</h3>
+      <h3 className="mb-1 font-semibold text-text-main">ক্যাম্পেইন খরচের হিসাব (শুধু আনুমানিক)</h3>
       <p className="mb-4 text-xs text-text-muted">
         এই প্যানেল শুধু সেগমেন্ট ও খরচের হিসাব দেখায় — <strong>কোনো SMS পাঠানো হয় না।</strong>{" "}
         বাংলা (Unicode) মেসেজে প্রতি সেগমেন্ট ৭০ অক্ষর, দীর্ঘ মেসেজে ৬৭ অক্ষর করে ভাগ হয়;
@@ -46,7 +46,7 @@ export default function CampaignEstimate() {
         <label className="text-sm">
           মেসেজের লেখা
           <textarea
-            className="mt-1 w-full rounded-[10px] border border-border bg-card px-3 py-2"
+            className="mt-1 w-full min-h-[44px] rounded-xl border border-border bg-card px-3 py-2 text-text-main"
             rows={3}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
@@ -56,7 +56,7 @@ export default function CampaignEstimate() {
           <label className="text-sm">
             প্রাপকের সংখ্যা
             <input
-              className="mt-1 w-full rounded-[10px] border border-border bg-card px-3 py-2"
+              className="mt-1 w-full min-h-[44px] rounded-xl border border-border bg-card px-3 py-2 text-text-main"
               type="number"
               min={0}
               value={recipients}
@@ -66,7 +66,7 @@ export default function CampaignEstimate() {
           <label className="text-sm">
             প্রতি সেগমেন্টের দাম (পয়সা, ডেমো রেট)
             <input
-              className="mt-1 w-full rounded-[10px] border border-border bg-card px-3 py-2"
+              className="mt-1 w-full min-h-[44px] rounded-xl border border-border bg-card px-3 py-2 text-text-main"
               type="number"
               min={0}
               value={pricePerSegment}
@@ -78,19 +78,19 @@ export default function CampaignEstimate() {
       <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
         <div>
           <dt className="text-text-muted">এনকোডিং</dt>
-          <dd className="font-semibold">{estimate.isUnicode ? "Unicode (বাংলা)" : "GSM (ইংরেজি)"}</dd>
+          <dd className="font-semibold text-text-main">{estimate.isUnicode ? "Unicode (বাংলা)" : "GSM (ইংরেজি)"}</dd>
         </div>
         <div>
           <dt className="text-text-muted">প্রতি মেসেজে সেগমেন্ট</dt>
-          <dd className="font-semibold">{estimate.segmentsPerMessage}</dd>
+          <dd className="tnum font-semibold text-text-main">{estimate.segmentsPerMessage}</dd>
         </div>
         <div>
           <dt className="text-text-muted">অক্ষর সংখ্যা</dt>
-          <dd className="font-semibold">{message.length}</dd>
+          <dd className="tnum font-semibold text-text-main">{message.length}</dd>
         </div>
         <div>
           <dt className="text-text-muted">আনুমানিক মোট খরচ</dt>
-          <dd className="font-semibold">
+          <dd className="font-semibold text-text-main">
             <Money poisha={estimate.costEstimatePoisha} />
           </dd>
         </div>

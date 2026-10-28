@@ -70,9 +70,9 @@ export function QueueRail({
           </button>
         </div>
 
-        <div className="rounded-xl border border-border bg-surface-2 p-3">
+        <div className="rounded-xl border border-border/60 bg-surface-2 p-3">
           <p className="text-sm text-text-muted">{s.unassignedLabel}</p>
-          <p className="mt-0.5 text-3xl font-bold tabular-nums">{unassignedCount}{s.countSuffix}</p>
+          <p className="tnum mt-0.5 font-display text-3xl font-bold tabular-nums text-text-main">{unassignedCount}{s.countSuffix}</p>
         </div>
 
         {!current ? (
@@ -81,7 +81,7 @@ export function QueueRail({
               type="button"
               disabled={busy}
               onClick={onClaimNext}
-              className="w-full rounded-md bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+              className="brand-gradient w-full rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-glow hover:brightness-105 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
               {s.claimNext}
             </button>
@@ -96,7 +96,7 @@ export function QueueRail({
                       type="button"
                       disabled={busy}
                       onClick={() => onClaimTask(upNext.id)}
-                      className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                      className="brand-gradient rounded-xl px-3 py-1.5 text-sm font-medium text-white shadow-glow hover:brightness-105 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
                       {s.claimThisCall}
                     </button>
@@ -111,7 +111,7 @@ export function QueueRail({
             )}
           </div>
         ) : (
-          <p className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
+          <p className="rounded-xl border border-brand-ink/25 bg-brand-soft p-3 text-sm text-brand-ink">
             {s.callInProgressNote}
           </p>
         )}

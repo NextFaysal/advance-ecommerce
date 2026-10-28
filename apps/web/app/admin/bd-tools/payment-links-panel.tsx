@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Money } from "@/components/ui/money";
 import { DataTable } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
 import { createBdPaymentLinkAction, type PaymentLinkListItemView } from "./actions";
 import { formatDateTime, paymentLinkPurpose, paymentLinkPurposes, paymentLinkStatusLabels } from "./labels";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -150,11 +151,11 @@ export function PaymentLinksPanel({ initialLinks }: { initialLinks: PaymentLinkL
         </label>
         <Input label={s.plExpiry} name="bd-link-expiry" value={expiryHours} onChange={(e) => setExpiryHours(e.target.value)} inputMode="numeric" required />
       </div>
-      {error ? <p role="alert" className="text-sm text-rose-600">⚠ {error}</p> : null}
+      {error ? <p role="alert" className="text-sm text-danger">⚠ {error}</p> : null}
       <Button type="button" onClick={submit} loading={submitting}>{s.plCreate}</Button>
 
       {once ? (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        <div className="rounded-xl border border-border bg-warning-soft p-4 text-sm text-text-main">
           <p className="font-semibold">{s.plOnceTitle}</p>
           <p className="mt-2 break-all font-mono text-xs">/pay/{once.plainToken}</p>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -171,7 +172,7 @@ export function PaymentLinksPanel({ initialLinks }: { initialLinks: PaymentLinkL
       ) : null}
 
       <div>
-        <h3 className="mb-2 text-sm font-semibold">
+        <h3 className="mb-2 font-display text-sm font-semibold text-text-main">
           {s.plRecentTitle}
           <span className="font-normal text-text-muted">{s.plRecentNote}</span>
         </h3>
@@ -189,7 +190,7 @@ export function PaymentLinksPanel({ initialLinks }: { initialLinks: PaymentLinkL
             rows={rows}
           />
         ) : (
-          <p className="text-sm text-text-muted">{s.plEmpty}</p>
+          <EmptyState title={s.plEmptyTitle} description={s.plEmptyDesc} />
         )}
       </div>
     </div>

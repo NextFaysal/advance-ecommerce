@@ -15,6 +15,9 @@
  * are audited server-side.
  */
 import { useCallback, useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { DataTableSkeleton } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { ERP_STRINGS } from "./strings";
@@ -89,7 +92,7 @@ function currentMonth(): string {
 }
 
 const inputCls =
-  "w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-text";
+  "tnum w-full rounded-xl border border-border bg-surface px-2 py-1.5 text-sm text-text";
 const labelCls = "block text-xs text-text-muted";
 
 export function PayrollPanel() {
@@ -269,8 +272,8 @@ export function PayrollPanel() {
   if (locked) {
     return (
       <section>
-        <h2 className="mb-3 mt-8 text-lg font-semibold">{s.prTitle}</h2>
-        <p className="rounded-md bg-surface-2 px-3 py-2 text-sm text-text-muted">
+        <h2 className="mb-3 font-display text-lg font-semibold">{s.prTitle}</h2>
+        <p className="rounded-xl bg-surface-2 px-3 py-2 text-sm text-text-muted">
           {s.prLockedNote}
         </p>
       </section>
@@ -279,16 +282,16 @@ export function PayrollPanel() {
 
   return (
     <section>
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.prTitle}</h2>
+      <h2 className="mb-3 font-display text-lg font-semibold">{s.prTitle}</h2>
       <p className="mb-3 max-w-3xl text-sm text-text-muted">
         {s.prIntro}
       </p>
 
       {error ? (
-        <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+        <p className="mb-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
       ) : null}
       {notice ? (
-        <p className="mb-3 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{notice}</p>
+        <p className="mb-3 rounded-xl bg-success-soft px-3 py-2 text-sm text-success-solid">{notice}</p>
       ) : null}
 
       <div className="mb-4 max-w-md">
@@ -302,11 +305,14 @@ export function PayrollPanel() {
         />
       </div>
 
-      <h3 className="mb-2 text-base font-semibold">{s.prConfigTitle}</h3>
+      <h3 className="mb-2 font-display text-base font-semibold">{s.prConfigTitle}</h3>
       {loading ? (
-        <p className="text-sm text-text-muted">{s.prLoading}</p>
+        <div className="space-y-3">
+          <p className="text-sm text-text-muted">{s.prLoading}</p>
+          <DataTableSkeleton columns={7} rows={5} />
+        </div>
       ) : staff.length === 0 ? (
-        <p className="text-sm text-text-muted">{s.prNoStaff}</p>
+        <EmptyState title={s.prStaffEmptyTitle} description={s.prStaffEmptyDesc} />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] border-collapse text-sm">
@@ -363,19 +369,19 @@ export function PayrollPanel() {
           </table>
         </div>
       )}
-      <button
+      <Button
         type="button"
         disabled={busy || loading}
         onClick={() => void saveSalaries()}
-        className="mt-3 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        className="mt-3"
       >
         {s.prSaveConfigBtn}
-      </button>
+      </Button>
       <p className="mt-1 text-xs text-text-muted">
         {s.prReplaceWarning}
       </p>
 
-      <h3 className="mb-2 mt-8 text-base font-semibold">{s.prRunsTitle}</h3>
+      <h3 className="mb-2 mt-8 font-display text-base font-semibold">{s.prRunsTitle}</h3>
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <div>
           <label className={labelCls} htmlFor="payroll-run-month">{s.prRunMonthLabel}</label>
@@ -387,53 +393,53 @@ export function PayrollPanel() {
             onChange={(e) => setRunMonth(e.target.value)}
           />
         </div>
-        <button
+        <Button
           type="button"
           disabled={busy}
           onClick={() => void createRun()}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           {s.prCreateRunBtn}
-        </button>
+        </Button>
         <span className="text-xs text-text-muted">{s.prOneRunNote}</span>
       </div>
 
       {runs.length === 0 ? (
-        <p className="text-sm text-text-muted">{s.prNoRuns}</p>
+        <EmptyState title={s.prRunsEmptyTitle} description={s.prRunsEmptyDesc} />
       ) : (
         <div className="space-y-3">
           {runs.map((run) => (
-            <div key={run.id} className="rounded-md border border-border p-3">
+            <div key={run.id} className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-sm">
-                  <span className="font-mono font-semibold">{run.month}</span>{" "}
+                  <span className="tnum font-mono font-semibold">{run.month}</span>{" "}
                   <span
-                    className={`rounded px-2 py-0.5 text-xs ${run.status === "FINALIZED" ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}
+                    className={`rounded px-2 py-0.5 text-xs ${run.status === "FINALIZED" ? "bg-success-soft text-success-solid" : "bg-warning-soft text-warning-solid"}`}
                   >
                     {run.status === "FINALIZED" ? s.prFinalized : s.prDraft}
                   </span>{" "}
-                  <span className="text-text-muted">
+                  <span className="tnum text-text-muted">
                     {interpolate(s.prRunMeta, { count: run.lines.length, total: formatPoisha(run.totalPoisha) })}
                     {run.journalEntryId ? interpolate(s.prJournalSuffix, { id: run.journalEntryId }) : ""}
                   </span>
                 </div>
                 <div className="flex gap-2">
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
+                    variant="outline"
                     onClick={() => setExpandedRunId(expandedRunId === run.id ? null : run.id)}
-                    className="rounded-md border border-border px-3 py-1.5 text-sm"
                   >
                     {expandedRunId === run.id ? s.prHideDetails : s.prShowDetails}
-                  </button>
+                  </Button>
                   {run.status === "DRAFT" ? (
-                    <button
+                    <Button
                       type="button"
+                      size="sm"
                       disabled={busy}
                       onClick={() => void finalizeRun(run)}
-                      className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
                     >
                       {s.prFinalizeBtn}
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               </div>
@@ -452,9 +458,9 @@ export function PayrollPanel() {
                     {run.lines.map((line) => (
                       <tr key={line.userId} className="border-b border-border">
                         <td className="py-1.5 pr-2">{line.name}</td>
-                        <td className="py-1.5 pr-2">{formatPoisha(line.grossPoisha)}</td>
-                        <td className="py-1.5 pr-2">{formatPoisha(line.deductionPoisha)}</td>
-                        <td className="py-1.5 pr-2 font-medium">{formatPoisha(line.netPoisha)}</td>
+                        <td className="tnum py-1.5 pr-2">{formatPoisha(line.grossPoisha)}</td>
+                        <td className="tnum py-1.5 pr-2">{formatPoisha(line.deductionPoisha)}</td>
+                        <td className="tnum py-1.5 pr-2 font-medium">{formatPoisha(line.netPoisha)}</td>
                         <td className="py-1.5">
                           <a
                             className="text-primary underline"

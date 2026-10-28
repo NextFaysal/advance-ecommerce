@@ -18,6 +18,7 @@
  * low — staff then fix it in the existing conversion panel instead.
  */
 import { useCallback, useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 
 interface BotDraftView {
   engine: string;
@@ -61,17 +62,8 @@ const MISSING_LABELS: Record<string, string> = {
 
 function confidenceBadge(confidence: number) {
   const pct = Math.round(confidence * 100);
-  const cls =
-    confidence >= 0.8
-      ? "bg-emerald-100 text-emerald-800"
-      : confidence >= 0.5
-        ? "bg-amber-100 text-amber-800"
-        : "bg-red-100 text-red-800";
-  return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
-      পার্সার আস্থা {pct}%
-    </span>
-  );
+  const tone = confidence >= 0.8 ? "success" : confidence >= 0.5 ? "warning" : "danger";
+  return <Badge tone={tone}>পার্সার আস্থা {pct}%</Badge>;
 }
 
 export default function BotDraftPanel({
@@ -154,7 +146,7 @@ export default function BotDraftPanel({
 
   if (state.kind === "loading") {
     return (
-      <div className="rounded-lg border px-3 py-2 text-sm text-text-muted">
+      <div className="rounded-2xl border border-border/60 bg-card px-4 py-3 text-sm text-text-muted shadow-xs">
         🤖 বট ড্রাফট লোড হচ্ছে…
       </div>
     );
@@ -162,7 +154,7 @@ export default function BotDraftPanel({
 
   if (state.kind === "disabled") {
     return (
-      <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-text-muted">
+      <div className="rounded-2xl border border-dashed border-border-strong bg-surface-2/40 px-4 py-3 text-sm text-text-muted">
         🤖 অর্ডার বট বন্ধ আছে — {state.message}
       </div>
     );
@@ -170,7 +162,7 @@ export default function BotDraftPanel({
 
   if (state.kind === "error") {
     return (
-      <div className="rounded-lg border border-dashed border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+      <div className="rounded-2xl border border-dashed border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger">
         🤖 বট ড্রাফট লোড করা যায়নি: {state.message}
         <button
           type="button"
@@ -186,7 +178,7 @@ export default function BotDraftPanel({
 
   if (state.kind === "ordered") {
     return (
-      <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+      <div className="rounded-2xl border border-success-solid/30 bg-success-soft px-4 py-3 text-sm text-text-main shadow-xs">
         ✅ বট ড্রাফট থেকে অর্ডার তৈরি হয়েছে — <strong>{state.orderNo}</strong>
         {state.totalPoisha !== null
           ? ` (মোট ৳${(state.totalPoisha / 100).toLocaleString("en-US")})`
@@ -197,7 +189,7 @@ export default function BotDraftPanel({
 
   if (state.kind === "dismissed") {
     return (
-      <div className="rounded-lg border px-3 py-2 text-sm">
+      <div className="rounded-2xl border border-border/60 bg-card px-4 py-3 text-sm shadow-xs">
         <span className="text-text-muted">
           🤖 বট ড্রাফট বাতিল করা হয়েছে। নতুন বার্তা এলে আবার তৈরি হবে।
         </span>
@@ -205,12 +197,12 @@ export default function BotDraftPanel({
           type="button"
           disabled={busy}
           onClick={() => void load(true)}
-          className="ml-2 rounded-md border px-2 py-1 text-xs"
+          className="ml-2 rounded-lg border border-border bg-card px-2 py-1 text-xs text-text-main hover:bg-surface-2"
         >
           আবার তৈরি করুন
         </button>
         {actionError ? (
-          <p className="mt-1 text-xs text-red-700">{actionError}</p>
+          <p className="mt-1 text-xs text-danger">{actionError}</p>
         ) : null}
       </div>
     );
@@ -224,7 +216,7 @@ export default function BotDraftPanel({
       : null;
 
   return (
-    <div className="rounded-lg border px-3 py-2 text-sm">
+    <div className="rounded-2xl border border-border/60 bg-card px-4 py-3 text-sm shadow-xs">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">🤖 বট ড্রাফট</span>
         {confidenceBadge(draft.addressConfidence)}
@@ -269,20 +261,17 @@ export default function BotDraftPanel({
 
       {draft.missingFields.length > 0 ? (
         <div className="mt-2 flex flex-wrap items-center gap-1">
-          <span className="text-xs font-medium text-amber-800">বাকি আছে:</span>
+          <span className="text-xs font-medium text-warning-solid">বাকি আছে:</span>
           {draft.missingFields.map((f) => (
-            <span
-              key={f}
-              className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800"
-            >
+            <Badge key={f} tone="warning">
               {MISSING_LABELS[f] ?? f}
-            </span>
+            </Badge>
           ))}
         </div>
       ) : null}
 
       {draft.errors.length > 0 ? (
-        <ul className="mt-1 list-inside list-disc text-xs text-red-700">
+        <ul className="mt-1 list-inside list-disc text-xs text-danger">
           {draft.errors.map((e) => (
             <li key={e}>{e}</li>
           ))}
@@ -295,7 +284,7 @@ export default function BotDraftPanel({
           disabled={busy || confirmBlockedReason !== null}
           title={confirmBlockedReason ?? undefined}
           onClick={() => void act("confirm", () => undefined)}
-          className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           এক ক্লিকে অর্ডার নিশ্চিত করুন
         </button>
@@ -305,7 +294,7 @@ export default function BotDraftPanel({
           onClick={() =>
             void act("dismiss", () => setState({ kind: "dismissed" }))
           }
-          className="rounded-md border px-3 py-1.5 text-sm"
+          className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm text-text-main hover:bg-surface-2"
         >
           বাতিল করুন
         </button>
@@ -313,16 +302,16 @@ export default function BotDraftPanel({
           type="button"
           disabled={busy}
           onClick={() => void load(true)}
-          className="rounded-md border px-3 py-1.5 text-sm"
+          className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm text-text-main hover:bg-surface-2"
         >
           আবার তৈরি করুন
         </button>
       </div>
       {confirmBlockedReason ? (
-        <p className="mt-1 text-xs text-amber-800">{confirmBlockedReason}</p>
+        <p className="mt-1 text-xs text-warning-solid">{confirmBlockedReason}</p>
       ) : null}
       {actionError ? (
-        <p className="mt-1 text-xs text-red-700">{actionError}</p>
+        <p className="mt-1 text-xs text-danger">{actionError}</p>
       ) : null}
     </div>
   );

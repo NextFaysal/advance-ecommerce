@@ -78,13 +78,13 @@ export function FlagList({ items }: { items: FlagListItem[] }) {
 
   return (
     <>
-      <ul className="divide-y divide-border">
+      <ul className="divide-y divide-border/60">
         {items.map((item) => {
           const on = overrides[item.key] ?? item.enabled;
           return (
-            <li key={item.key} className="flex flex-wrap items-center gap-3 py-4">
+            <li key={item.key} className="flex flex-wrap items-center gap-3 py-4 first:pt-0 last:pb-0">
               <div className="min-w-[240px] flex-1">
-                <p className="font-mono text-sm font-medium">{item.key}</p>
+                <p className="font-mono text-sm font-medium text-text-main">{item.key}</p>
                 <p className="mt-0.5 text-sm text-text-muted">{item.description}</p>
                 {item.linkPath ? (
                   <a href={item.linkPath} className="mt-1 inline-block text-sm font-medium text-brand-700 hover:underline">
@@ -105,10 +105,10 @@ export function FlagList({ items }: { items: FlagListItem[] }) {
                   setReason("");
                   setPending({ key: item.key, target: !on });
                 }}
-                className={`relative h-7 w-12 shrink-0 rounded-full transition ${on ? "bg-brand-600" : "bg-surface-2 border border-border"}`}
+                className={`relative h-7 w-12 shrink-0 rounded-full shadow-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${on ? "bg-brand-600" : "border border-border bg-surface-2"}`}
               >
                 <span
-                  className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${on ? "left-[22px]" : "left-0.5"}`}
+                  className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow-card transition-all ${on ? "left-[22px]" : "left-0.5"}`}
                 />
               </button>
             </li>
@@ -140,7 +140,7 @@ export function FlagList({ items }: { items: FlagListItem[] }) {
           className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
         />
         {error && (
-          <p role="alert" className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-small text-rose-700">
+          <p role="alert" className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-small text-danger">
             {error}
           </p>
         )}

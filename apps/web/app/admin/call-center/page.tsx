@@ -6,6 +6,7 @@ import { CONFIRMATION_SCRIPT } from "@/callcenter/types";
 import { formatBdt } from "@/checkout/pricing";
 import { pick } from "@/i18n/locale";
 import { getRequestLocale } from "@/i18n/server";
+import { DataTable } from "@/components/ui/table";
 import { CallCenterTabs } from "./tabs";
 import { CallCenterWorkbench } from "./workbench";
 import { CALL_CENTER_STRINGS } from "./strings";
@@ -28,9 +29,9 @@ export default async function AdminCallCenterPage() {
   await ensureDbFeatureFlags();
   if (!isCallCenterEnabled(demoCallCenterFlags)) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui" }}>
-        <h1>{s.queueTitle}</h1>
-        <p role="status">
+      <main className="p-6">
+        <h1 className="font-display text-page-title text-text-main">{s.queueTitle}</h1>
+        <p role="status" className="mt-2 text-sm text-text-muted">
           {s.lockedA} <code>module.call_center</code> {s.lockedB}
         </p>
       </main>
@@ -39,39 +40,39 @@ export default async function AdminCallCenterPage() {
   const tasks = await loadCallTasks();
   const views = tasks.map((t) => toQueueItemView(t, false));
   return (
-    <main style={{ padding: 24, fontFamily: "system-ui" }}>
-      <h1>{s.queueTitle}</h1>
+    <main className="p-6">
+      <h1 className="font-display text-page-title text-text-main">{s.queueTitle}</h1>
       <CallCenterTabs active="workbench" />
-      <p>{s.queueIntro}</p>
+      <p className="mb-4 max-w-2xl text-sm leading-relaxed text-text-muted">{s.queueIntro}</p>
       <CallCenterWorkbench />
-      <h2>{s.allTasksTitle}</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>{s.colCustomer}</th><th>{s.colPhone}</th><th>{s.colSource}</th><th>{s.colOrder}</th><th>{s.colTotal}</th><th>{s.colStatus}</th><th>{s.colAttempts}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {views.map((v) => (
-            <tr key={v.id}>
-              <td>{v.customerName}</td>
-              <td>{v.phoneMasked}</td>
-              <td>{SOURCE_LABEL[v.source][locale]}</td>
-              <td>{v.orderNo ?? "—"}</td>
-              <td>{v.orderTotalPoisha > 0 ? formatBdt(v.orderTotalPoisha) : "—"}</td>
-              <td>{v.status}</td>
-              <td>{v.attempts}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <h2>{s.confirmScriptTitle}</h2>
-      <ol>
+      <h2 className="mb-3 mt-8 font-display text-base font-semibold text-text-main">{s.allTasksTitle}</h2>
+      <DataTable
+        columns={[
+          { key: "customer", header: s.colCustomer },
+          { key: "phone", header: s.colPhone },
+          { key: "source", header: s.colSource },
+          { key: "order", header: s.colOrder },
+          { key: "total", header: s.colTotal },
+          { key: "status", header: s.colStatus },
+          { key: "attempts", header: s.colAttempts },
+        ]}
+        rows={views.map((v) => ({
+          customer: v.customerName,
+          phone: v.phoneMasked,
+          source: SOURCE_LABEL[v.source][locale],
+          order: v.orderNo ?? "—",
+          total: v.orderTotalPoisha > 0 ? formatBdt(v.orderTotalPoisha) : "—",
+          status: v.status,
+          attempts: v.attempts,
+        }))}
+      />
+      <h2 className="mb-3 mt-8 font-display text-base font-semibold text-text-main">{s.confirmScriptTitle}</h2>
+      <ol className="list-decimal space-y-1 pl-5 text-sm text-text-main">
         {CONFIRMATION_SCRIPT.map((step) => (
           <li key={step.key}><strong>{step.key}:</strong> {step.promptBn}</li>
         ))}
       </ol>
-      <p>{s.outcomesNote}</p>
+      <p className="mt-4 text-sm text-text-muted">{s.outcomesNote}</p>
     </main>
   );
 }

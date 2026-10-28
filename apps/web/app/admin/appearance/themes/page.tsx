@@ -16,6 +16,8 @@ import { NEEL_TOKENS } from "@/themes/neel/tokens";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate } from "@/i18n/locale";
 import { APPEARANCE_STRINGS } from "../strings";
+import { PageHeader } from "@/components/ui/page-header";
+import { SkeletonCard } from "@/components/ui/skeleton";
 
 /**
  * Packages that ship a ready-made starter instance (hand-authored
@@ -32,6 +34,37 @@ const PACKAGE_STARTER_TOKENS: Record<string, typeof BAZAAR_TOKENS> = {
   circuit: CIRCUIT_TOKENS,
   neel: NEEL_TOKENS,
 };
+
+
+const FALLBACK_PREVIEW = ["#6366f1", "#8b5cf6", "#ec4899"];
+
+/**
+ * PreviewBand — v4 gallery preview (doc 31 D6): a rounded band filled
+ * with the theme's own palette as a gradient, with abstract storefront
+ * chrome bars on top so cards read as mini storefronts. The colours
+ * are the theme instance's data, not UI tokens — inline style is the
+ * point here.
+ */
+function PreviewBand({ colors, tall = false }: { colors: string[]; tall?: boolean }) {
+  const palette = colors.length > 0 ? colors : FALLBACK_PREVIEW;
+  return (
+    <div
+      aria-hidden="true"
+      className={`relative overflow-hidden ${tall ? "h-32" : "h-24"}`}
+      style={{ background: `linear-gradient(120deg, ${palette.join(", ")})` }}
+    >
+      <div className="absolute inset-x-5 top-4 space-y-2">
+        <div className="h-2.5 w-1/3 rounded-full bg-white/85" />
+        <div className="h-2 w-2/3 rounded-full bg-white/50" />
+      </div>
+      <div className="absolute inset-x-5 bottom-4 grid grid-cols-3 gap-2">
+        <div className="h-8 rounded-lg bg-white/25" />
+        <div className="h-8 rounded-lg bg-white/45" />
+        <div className="h-8 rounded-lg bg-white/25" />
+      </div>
+    </div>
+  );
+}
 
 export default function AdminThemesPage() {
   const { locale } = useLocale();
@@ -238,33 +271,33 @@ export default function AdminThemesPage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-text-main">{t.listTitle}</h1>
-          <p className="mt-1 text-sm leading-6 text-text-muted">{t.listSubtitle}</p>
-          <p className="mt-1 text-xs leading-5 text-text-muted">
-            <strong className="text-text-main">{t.storeThemeWord}</strong>
-            {t.storeThemeExplA}
-            <strong className="text-text-main">{t.activeWord}</strong>
-            {t.storeThemeExplB}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Import JSON button */}
-          <label className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-semibold text-text-main shadow-sm hover:bg-muted">
-            {t.importTheme}
-            <input type="file" accept=".json" onChange={handleImport} className="hidden" />
-          </label>
+    <main className="min-w-0">
+      <PageHeader
+        title={t.listTitle}
+        description={t.listSubtitle}
+        actions={
+          <>
+            {/* Import JSON button */}
+            <label className="inline-flex min-h-[40px] cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-semibold text-text-main shadow-xs transition duration-fast hover:bg-surface-2">
+              {t.importTheme}
+              <input type="file" accept=".json" onChange={handleImport} className="hidden" />
+            </label>
 
-          <Link
-            href="/admin/appearance/themes/new"
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-90"
-          >
-            {t.newTheme}
-          </Link>
-        </div>
-      </div>
+            <Link
+              href="/admin/appearance/themes/new"
+              className="inline-flex min-h-[40px] items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-90"
+            >
+              {t.newTheme}
+            </Link>
+          </>
+        }
+      />
+      <p className="-mt-2 max-w-3xl text-xs leading-5 text-text-muted">
+        <strong className="text-text-main">{t.storeThemeWord}</strong>
+        {t.storeThemeExplA}
+        <strong className="text-text-main">{t.activeWord}</strong>
+        {t.storeThemeExplB}
+      </p>
 
       {error && (
         <div className="mt-6 rounded-xl border border-destructive/20 bg-destructive/10 px-5 py-4 text-sm text-destructive">
@@ -283,8 +316,10 @@ export default function AdminThemesPage() {
           {listThemePackages().map((pkg) => (
             <div
               key={pkg.id}
-              className="rounded-2xl border border-border bg-card p-5 shadow-sm"
+              className="overflow-hidden rounded-3xl border border-border/60 bg-card shadow-card transition duration-base ease-smooth hover:shadow-lift"
             >
+              <PreviewBand colors={pkg.preview} />
+              <div className="p-5">
               <div className="flex items-start justify-between gap-2">
                 <h3 className="font-display text-base font-bold text-text-main">
                   {pkg.name}
@@ -304,9 +339,9 @@ export default function AdminThemesPage() {
               </p>
               <p className="mt-2 text-xs leading-5 text-text-muted">{pkg.description}</p>
 
-              <div className="mt-4 flex items-center gap-2 rounded-xl border border-border/60 bg-muted/50 p-2.5">
+              <div className="mt-4 flex items-center gap-2">
                 <div className="flex gap-1.5">
-                  {(pkg.preview.length > 0 ? pkg.preview : ["#6366f1", "#8b5cf6", "#ec4899"]).map(
+                  {(pkg.preview.length > 0 ? pkg.preview : FALLBACK_PREVIEW).map(
                     (c, i) => (
                       <span
                         key={i}
@@ -355,11 +390,12 @@ export default function AdminThemesPage() {
                     type="button"
                     onClick={() => handleAddPackageInstance(pkg)}
                     disabled={addingPackageId === pkg.id || loading}
-                    className="mt-4 rounded-lg bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
+                    className="mt-4 rounded-xl bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
                   >
                     {addingPackageId === pkg.id ? t.adding : t.addAsTheme}
                   </button>
                 ))}
+              </div>
             </div>
           ))}
         </div>
@@ -372,11 +408,15 @@ export default function AdminThemesPage() {
       )}
 
       {loading && (
-        <div className="mt-10 text-center text-sm text-text-muted">{t.loadingThemes}</div>
+        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" aria-label={t.loadingThemes}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
       )}
 
       {!loading && themes.length === 0 && (
-        <div className="mt-10 rounded-2xl border border-border bg-card p-10 text-center">
+        <div className="mt-10 rounded-3xl border border-dashed border-border-strong bg-surface-2/40 p-10 text-center shadow-xs">
           <p className="text-sm text-text-muted">
             {t.noThemes}
             <Link href="/admin/appearance/themes/new" className="font-semibold text-primary hover:underline">
@@ -391,8 +431,16 @@ export default function AdminThemesPage() {
           {themes.map((theme) => (
             <div
               key={theme.id}
-              className="group relative flex flex-col justify-between rounded-2xl border border-border bg-card p-5 shadow-sm transition hover:shadow-md"
+              className={`group relative flex flex-col justify-between overflow-hidden rounded-3xl border bg-card shadow-card transition duration-base ease-smooth hover:shadow-lift ${
+                theme.isStoreDefault
+                  ? "border-warning-solid/50 ring-2 ring-warning-solid/40"
+                  : theme.isActive
+                    ? "border-brand-300 ring-1 ring-brand-300/60"
+                    : "border-border/60"
+              }`}
             >
+              <PreviewBand colors={theme.preview} tall />
+              <div className="flex flex-1 flex-col justify-between p-5">
               <div>
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="font-display text-base font-bold text-text-main">{theme.name}</h3>
@@ -413,10 +461,10 @@ export default function AdminThemesPage() {
                   <p className="mt-1 line-clamp-2 text-xs text-text-muted">{theme.description}</p>
                 )}
 
-                {/* Color Swatch Preview Pill */}
-                <div className="mt-4 flex items-center gap-2 rounded-xl border border-border/60 bg-muted/50 p-2.5">
+                {/* Colour swatches (the preview band above carries the visual) */}
+                <div className="mt-4 flex items-center gap-2">
                   <div className="flex gap-1.5">
-                    {(theme.preview.length > 0 ? theme.preview : ["#6366f1", "#8b5cf6", "#ec4899"]).map(
+                    {(theme.preview.length > 0 ? theme.preview : FALLBACK_PREVIEW).map(
                       (c, i) => (
                         <span
                           key={i}
@@ -528,6 +576,7 @@ export default function AdminThemesPage() {
                     </button>
                   )}
                 </div>
+              </div>
               </div>
             </div>
           ))}

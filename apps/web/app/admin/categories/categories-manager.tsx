@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/drawer";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -232,7 +233,7 @@ export function CategoriesManager({ initial }: { initial: AdminCategory[] }) {
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="flex items-center gap-2.5 text-sm text-text-muted">
-          <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
+          <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-soft text-brand-600">
             <Icon name="grid" size={17} />
           </span>
           {interpolate(s.totalLabel, { count: categories.length })}
@@ -243,14 +244,7 @@ export function CategoriesManager({ initial }: { initial: AdminCategory[] }) {
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-card px-6 py-14 text-center shadow-card">
-          <span aria-hidden="true" className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 text-brand-500">
-            <Icon name="grid" size={28} />
-          </span>
-          <p className="mt-4 text-sm leading-relaxed text-text-muted">
-            {s.empty}
-          </p>
-        </div>
+        <EmptyState title={s.pageTitle} description={s.empty} actionLabel={s.newCategory} onAction={openCreate} />
       ) : (
         <ul className="space-y-2.5">
           {rows.map(({ cat, depth }) => (
@@ -269,7 +263,7 @@ export function CategoriesManager({ initial }: { initial: AdminCategory[] }) {
                 </>
               ) : null}
               <div
-                className={`flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-border/70 bg-card px-4 py-3 shadow-card transition motion-fast hover:shadow-lift ${
+                className={`flex flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl border border-border/60 bg-card px-4 py-3 shadow-xs transition duration-fast ease-smooth hover:bg-brand-soft/60 ${
                   cat.isActive ? "" : "bg-surface-2/50"
                 }`}
               >
@@ -278,7 +272,7 @@ export function CategoriesManager({ initial }: { initial: AdminCategory[] }) {
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={cat.imageUrl} alt="" className="h-11 w-11 shrink-0 rounded-xl object-cover ring-1 ring-border" />
                   ) : (
-                    <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-500 ring-1 ring-brand-100">
+                    <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-500 ring-1 ring-brand-ink/10">
                       <Icon name="grid" size={19} />
                     </span>
                   )}
@@ -291,10 +285,10 @@ export function CategoriesManager({ initial }: { initial: AdminCategory[] }) {
                   <span className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 font-mono text-xs text-text-muted ring-1 ring-inset ring-black/5">
                     {cat.slug}
                   </span>
-                  <span className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 text-xs text-text-muted ring-1 ring-inset ring-black/5">
+                  <span className="tnum inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 text-xs text-text-muted ring-1 ring-inset ring-border/60">
                     {interpolate(s.productsCount, { count: cat.productCount })}
                   </span>
-                  <span className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 text-xs text-text-muted ring-1 ring-inset ring-black/5">
+                  <span className="tnum inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 text-xs text-text-muted ring-1 ring-inset ring-border/60">
                     {interpolate(s.sortOrderChip, { n: cat.sortOrder })}
                   </span>
                   {cat.isActive ? (
@@ -363,7 +357,7 @@ export function CategoriesManager({ initial }: { initial: AdminCategory[] }) {
                 <select
                   value={form.parentId}
                   onChange={(e) => setForm({ ...form, parentId: e.target.value })}
-                  className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm text-text-main transition motion-fast focus:border-brand-500 focus:outline-none focus:ring-[3px] focus:ring-brand-100"
+                  className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm text-text-main transition duration-fast ease-smooth focus:border-brand-500 focus:outline-none focus:ring-[3px] focus:ring-brand-100"
                 >
                   <option value="">{s.parentNone}</option>
                   {parentOptions.map((c) => (
@@ -388,7 +382,7 @@ export function CategoriesManager({ initial }: { initial: AdminCategory[] }) {
                   value={form.sortOrder}
                   onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
                 />
-                <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5 self-end rounded-md border border-border bg-card px-3 transition motion-fast hover:bg-surface-2">
+                <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5 self-end rounded-xl border border-border bg-card px-3 transition duration-fast ease-smooth hover:bg-surface-2">
                   <input
                     type="checkbox"
                     checked={form.isActive}
@@ -401,9 +395,9 @@ export function CategoriesManager({ initial }: { initial: AdminCategory[] }) {
             </div>
           </section>
 
-          <section className="rounded-lg border border-brand-100 bg-brand-50/40 p-4">
-            <p className="flex items-center gap-2 text-sm font-semibold text-text-main">
-              <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-brand-700">
+          <section className="rounded-2xl border border-border/60 bg-brand-soft/40 p-4">
+            <p className="flex items-center gap-2 font-display text-sm font-semibold text-text-main">
+              <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-soft text-brand-700">
                 <Icon name="search" size={14} />
               </span>
               {s.seoHeading}
@@ -458,7 +452,7 @@ export function CategoriesManager({ initial }: { initial: AdminCategory[] }) {
         onConfirm={confirmDelete}
       >
         <div className="flex gap-3">
-          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-600 ring-1 ring-inset ring-rose-100">
+          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-danger-soft text-danger ring-1 ring-inset ring-danger/20">
             <Icon name="alert" size={20} />
           </span>
           <p className="text-sm leading-relaxed text-text-muted">

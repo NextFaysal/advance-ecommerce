@@ -15,7 +15,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Money, formatPoisha } from "@/components/ui/money";
-import { DataTable } from "@/components/ui/table";
+import { DataTable, DataTableSkeleton } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
 import { shiftYmd, todayDhakaYmd } from "@/lib/dhaka-date";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
@@ -46,7 +47,7 @@ interface DeliveryCostsData {
 }
 
 const inputClass =
-  "rounded-[10px] border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand-500";
+  "tnum rounded-xl border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand-500";
 
 export function DeliveryCostsPanel() {
   const { locale } = useLocale();
@@ -79,6 +80,31 @@ export function DeliveryCostsPanel() {
     };
   }, [from, to]);
 
+  const costRows = data
+    ? data.rows.map((r) => ({
+        order: (
+          <Link href={`/admin/orders/${r.orderId}`} className="tnum font-mono text-xs text-brand-600 hover:underline">
+            {r.orderNo}
+          </Link>
+        ),
+        outcome: (
+          <span className="flex flex-wrap gap-1">
+            {r.reachedFailed ? <Badge tone="danger">{s.dcFailedBadge}</Badge> : null}
+            {r.reachedReturned ? <Badge tone="warning">{s.dcReturnedBadge}</Badge> : null}
+            {!r.reachedFailed && !r.reachedReturned ? <Badge tone="neutral">{r.status}</Badge> : null}
+          </span>
+        ),
+        outbound: <Money poisha={r.outboundChargePoisha} />,
+        returnLeg:
+          r.returnCostRecorded && r.returnChargePoisha !== null ? (
+            <Money poisha={r.returnChargePoisha} />
+          ) : (
+            <span className="text-xs text-text-muted">{s.dcNotRecorded}</span>
+          ),
+        total: <span className="tnum font-medium">{formatPoisha(r.totalKnownCostPoisha)}</span>,
+      }))
+    : [];
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-text-muted">
@@ -98,72 +124,81 @@ export function DeliveryCostsPanel() {
       </div>
 
       {failed ? (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">
+        <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">
           {s.dcLoadFailed}
         </p>
       ) : data ? (
         <>
           <div className="grid grid-cols-2 gap-3 text-sm lg:grid-cols-4">
-            <div className="rounded-lg border border-border bg-surface-2 p-3">
+            <div className="rounded-2xl border border-border/60 bg-surface-2 p-4">
               <p className="text-xs text-text-muted">{s.dcFailedCount}</p>
-              <p className="mt-1 text-base font-semibold">{interpolate(s.dcCountOnly, { count: data.summary.failedCount })}</p>
+              <p className="tnum mt-1 text-base font-semibold">{interpolate(s.dcCountOnly, { count: data.summary.failedCount })}</p>
             </div>
-            <div className="rounded-lg border border-border bg-surface-2 p-3">
+            <div className="rounded-2xl border border-border/60 bg-surface-2 p-4">
               <p className="text-xs text-text-muted">{s.dcReturnedCount}</p>
-              <p className="mt-1 text-base font-semibold">{interpolate(s.dcCountOnly, { count: data.summary.returnedCount })}</p>
+              <p className="tnum mt-1 text-base font-semibold">{interpolate(s.dcCountOnly, { count: data.summary.returnedCount })}</p>
             </div>
-            <div className="rounded-lg border border-border bg-surface-2 p-3">
+            <div className="rounded-2xl border border-border/60 bg-surface-2 p-4">
               <p className="text-xs text-text-muted">{s.dcKnownCost}</p>
               <p className="mt-1"><Money poisha={data.summary.knownCostPoisha} /></p>
             </div>
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <p className="text-xs text-amber-800">{s.dcUnknownReturn}</p>
-              <p className="mt-1 text-base font-semibold text-amber-900">
+            <div className="rounded-2xl border border-warning-solid/30 bg-warning-soft p-4">
+              <p className="text-xs text-warning-solid">{s.dcUnknownReturn}</p>
+              <p className="tnum mt-1 text-base font-semibold text-text-main">
                 {interpolate(s.dcCountOrders, { count: data.summary.ordersWithUnknownReturnCost })}
               </p>
             </div>
           </div>
 
           {data.rows.length > 0 ? (
-            <DataTable
-              caption={`${interpolate(s.dcCaption, { from: data.range.from, to: data.range.to })}${data.truncated ? s.dcCaptionTruncatedSuffix : ""}`}
-              columns={[
-                { key: "order", header: s.colOrder },
-                { key: "outcome", header: s.colOutcome },
-                { key: "outbound", header: s.colOutbound },
-                { key: "returnLeg", header: s.colReturnLeg },
-                { key: "total", header: s.colTotalKnown },
-              ]}
-              rows={data.rows.map((r) => ({
-                order: (
-                  <Link href={`/admin/orders/${r.orderId}`} className="font-mono text-xs text-brand-600 hover:underline">
-                    {r.orderNo}
-                  </Link>
-                ),
-                outcome: (
-                  <span className="flex flex-wrap gap-1">
-                    {r.reachedFailed ? <Badge tone="danger">{s.dcFailedBadge}</Badge> : null}
-                    {r.reachedReturned ? <Badge tone="warning">{s.dcReturnedBadge}</Badge> : null}
-                    {!r.reachedFailed && !r.reachedReturned ? <Badge tone="neutral">{r.status}</Badge> : null}
-                  </span>
-                ),
-                outbound: <Money poisha={r.outboundChargePoisha} />,
-                returnLeg: r.returnCostRecorded && r.returnChargePoisha !== null ? (
-                  <Money poisha={r.returnChargePoisha} />
-                ) : (
-                  <span className="text-xs text-text-muted">{s.dcNotRecorded}</span>
-                ),
-                total: <span className="font-medium">{formatPoisha(r.totalKnownCostPoisha)}</span>,
-              }))}
-            />
+            <>
+              <div className="space-y-3 md:hidden">
+                {costRows.map((r, i) => (
+                  <div key={i} className="space-y-2 rounded-2xl border border-border bg-card p-4 shadow-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      {r.order}
+                      {r.outcome}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 border-t border-border pt-2 text-sm">
+                      <span>
+                        <span className="block text-xs text-text-muted">{s.colOutbound}</span>
+                        {r.outbound}
+                      </span>
+                      <span>
+                        <span className="block text-xs text-text-muted">{s.colReturnLeg}</span>
+                        {r.returnLeg}
+                      </span>
+                      <span>
+                        <span className="block text-xs text-text-muted">{s.colTotalKnown}</span>
+                        {r.total}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="hidden md:block">
+                <DataTable
+                  caption={`${interpolate(s.dcCaption, { from: data.range.from, to: data.range.to })}${data.truncated ? s.dcCaptionTruncatedSuffix : ""}`}
+                  columns={[
+                    { key: "order", header: s.colOrder },
+                    { key: "outcome", header: s.colOutcome },
+                    { key: "outbound", header: s.colOutbound },
+                    { key: "returnLeg", header: s.colReturnLeg },
+                    { key: "total", header: s.colTotalKnown },
+                  ]}
+                  rows={costRows}
+                />
+              </div>
+            </>
           ) : (
-            <p className="text-sm text-text-muted">
-              {s.dcEmptyRange}
-            </p>
+            <EmptyState title={s.dcEmptyTitle} description={s.dcEmptyDesc} />
           )}
         </>
       ) : (
-        <p className="text-sm text-text-muted">{s.dcLoading}</p>
+        <div className="space-y-3">
+          <p className="text-sm text-text-muted">{s.dcLoading}</p>
+          <DataTableSkeleton columns={5} rows={5} />
+        </div>
       )}
     </div>
   );

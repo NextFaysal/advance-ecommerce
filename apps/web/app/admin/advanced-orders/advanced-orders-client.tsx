@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Money, formatPoisha } from "@/components/ui/money";
+import { DataTableSkeleton } from "@/components/ui/table";
 import { Phone } from "@/components/ui/phone";
 import {
   computeExchange, derivePaymentStatus, duePoisha, preOrderDuePoisha,
@@ -51,7 +52,7 @@ import { ADVANCED_ORDERS_STRINGS, type AdvancedOrdersStrings } from "./strings";
  */
 
 const selectClass =
-  "h-10 w-full rounded-[10px] border border-border bg-card px-3 text-sm outline-none focus:border-brand-500";
+  "h-10 w-full rounded-xl border border-border bg-card px-3 text-sm outline-none transition duration-fast ease-smooth focus:border-brand-500";
 
 type Tone = "brand" | "success" | "warning" | "danger" | "info" | "neutral";
 const PAYMENT_STATUS_KEY: Record<DerivedPaymentStatus, keyof AdvancedOrdersStrings> = {
@@ -128,8 +129,8 @@ function PanelMessage({ ok, text }: { ok: boolean; text: string }) {
   return (
     <p
       role="status"
-      className={`mt-3 rounded-md px-3 py-2 text-sm ${
-        ok ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"
+      className={`mt-3 rounded-xl px-3 py-2 text-sm ${
+        ok ? "bg-success-soft text-success-solid" : "bg-danger-soft text-danger"
       }`}
     >
       {text}
@@ -248,7 +249,7 @@ function SplitPlanner({ orders, inventory }: { orders: OrderRow[]; inventory: In
 
   return (
     <Card className="p-5">
-      <h2 className="text-lg font-semibold">{t.splitTitle}</h2>
+      <h2 className="font-display text-lg font-semibold text-text-main">{t.splitTitle}</h2>
       <p className="mt-1 text-sm text-text-muted">
         {t.splitDesc1}{" "}
         <code>allocateOrderItems()</code> {t.splitDesc2} <code>persisted: false</code> {t.splitDesc3}
@@ -261,7 +262,7 @@ function SplitPlanner({ orders, inventory }: { orders: OrderRow[]; inventory: In
           {detailError ? <PanelMessage ok={false} text={detailError} /> : null}
           {!detail && !detailError ? <p className="mt-3 text-sm text-text-muted">{t.orderLoading}</p> : null}
           {detail && warehouses.length === 0 ? (
-            <p className="mt-3 text-sm text-amber-800">{t.noWarehouseStock}</p>
+            <p className="mt-3 text-sm text-warning-solid">{t.noWarehouseStock}</p>
           ) : null}
           {planning ? <p className="mt-3 text-sm text-text-muted">{t.planning}</p> : null}
           {planError ? <PanelMessage ok={false} text={planError} /> : null}
@@ -269,7 +270,7 @@ function SplitPlanner({ orders, inventory }: { orders: OrderRow[]; inventory: In
             <>
               <div className="mt-4 space-y-4">
                 {result.shipments.map((s) => (
-                  <div key={s.shipmentKey} className="rounded-md border border-border p-3">
+                  <div key={s.shipmentKey} className="rounded-xl border border-border/60 bg-surface-2/40 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="font-medium">{s.shipmentKey} · {s.warehouseName}</p>
                       <span className="text-sm">{t.subtotal} <Money poisha={s.subtotalPoisha} /></span>
@@ -278,7 +279,7 @@ function SplitPlanner({ orders, inventory }: { orders: OrderRow[]; inventory: In
                       {s.lines.map((l) => (
                         <li key={l.variantId} className="flex justify-between gap-2">
                           <span>{l.productName} <span className="text-text-muted">({l.sku})</span></span>
-                          <span>{l.quantity}{t.qtySuffix} × <Money poisha={l.unitPricePoisha} /></span>
+                          <span className="tnum">{l.quantity}{t.qtySuffix} × <Money poisha={l.unitPricePoisha} /></span>
                         </li>
                       ))}
                     </ul>
@@ -286,21 +287,21 @@ function SplitPlanner({ orders, inventory }: { orders: OrderRow[]; inventory: In
                 ))}
               </div>
               {result.unallocated.length > 0 ? (
-                <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3">
-                  <p className="font-medium text-amber-900">
+                <div className="mt-4 rounded-xl border border-warning-solid/30 bg-warning-soft p-3">
+                  <p className="font-medium text-text-main">
                     {t.backorderTitle} ({result.unallocated.reduce((s, l) => s + l.quantity, 0)}{t.qtySuffix})
                   </p>
-                  <ul className="mt-2 space-y-1 text-sm text-amber-900">
+                  <ul className="mt-2 space-y-1 text-sm text-text-main">
                     {result.unallocated.map((l) => (
                       <li key={l.variantId} className="flex justify-between gap-2">
                         <span>{l.productName} <span>({l.sku})</span></span>
-                        <span>{t.shortage} {l.quantity}{t.qtySuffix}</span>
+                        <span className="tnum">{t.shortage} {l.quantity}{t.qtySuffix}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
               ) : (
-                <p className="mt-4 text-sm text-emerald-700">{t.allAllocated}</p>
+                <p className="mt-4 text-sm text-success-solid">{t.allAllocated}</p>
               )}
             </>
           ) : null}
@@ -353,7 +354,7 @@ function PaymentPanel({ orders }: { orders: OrderRow[] }) {
 
   return (
     <Card className="p-5">
-      <h2 className="text-lg font-semibold">{t.paymentTitle}</h2>
+      <h2 className="font-display text-lg font-semibold text-text-main">{t.paymentTitle}</h2>
       <p className="mt-1 text-sm text-text-muted">
         {t.paymentDesc1} <code>derivePaymentStatus()</code> {t.paymentDesc2}
       </p>
@@ -459,7 +460,7 @@ function ExchangePanel({ orders, products }: { orders: OrderRow[]; products: Pro
 
   return (
     <Card className="p-5">
-      <h2 className="text-lg font-semibold">{t.exchangeTitle}</h2>
+      <h2 className="font-display text-lg font-semibold text-text-main">{t.exchangeTitle}</h2>
       <p className="mt-1 text-sm text-text-muted">
         {t.exchangeDesc1} <code>computeExchange()</code> {t.exchangeDesc2}
       </p>
@@ -535,7 +536,7 @@ function MergeNote() {
   const t = useStrings();
   return (
     <Card className="p-5">
-      <h2 className="text-lg font-semibold">{t.mergeTitle}</h2>
+      <h2 className="font-display text-lg font-semibold text-text-main">{t.mergeTitle}</h2>
       <p className="mt-2 text-sm text-text-muted">
         <strong>{t.mergeBody1}</strong> {t.mergeBody2}{" "}
         <code>validateOrderMerge()</code> {t.mergeBody3}
@@ -601,7 +602,7 @@ function PreOrderPanel({ preOrders, onChanged }: { preOrders: PreOrder[]; onChan
 
   return (
     <Card className="p-5">
-      <h2 className="text-lg font-semibold">{t.preorderTitle}</h2>
+      <h2 className="font-display text-lg font-semibold text-text-main">{t.preorderTitle}</h2>
       <p className="mt-1 text-sm text-text-muted">
         {t.preorderDesc1}{" "}
         <code>preOrderDuePoisha()</code> {t.preorderDesc2}
@@ -609,20 +610,21 @@ function PreOrderPanel({ preOrders, onChanged }: { preOrders: PreOrder[]; onChan
       {preOrders.length === 0 ? (
         <p className="mt-4 text-sm text-text-muted">{t.noPreorders}</p>
       ) : (
-        <div className="mt-4 overflow-x-auto">
+        <>
+        <div className="mt-4 hidden overflow-x-auto rounded-2xl border border-border/60 bg-card shadow-xs md:block">
           <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-border text-text-muted">
-                <th className="py-2 pr-3 font-medium">{t.colSku}</th>
-                <th className="py-2 pr-3 font-medium">{t.colCustomer}</th>
-                <th className="py-2 pr-3 font-medium">{t.colQty}</th>
-                <th className="py-2 pr-3 font-medium">{t.colTotal}</th>
-                <th className="py-2 pr-3 font-medium">{t.colDeposit}</th>
-                <th className="py-2 pr-3 font-medium">{t.colDue}</th>
-                <th className="py-2 pr-3 font-medium">{t.colFulfilled}</th>
-                <th className="py-2 pr-3 font-medium">{t.colExpected}</th>
-                <th className="py-2 pr-3 font-medium">{t.colStatus}</th>
-                <th className="py-2 font-medium">{t.colAction}</th>
+            <thead className="bg-surface-2/80">
+              <tr>
+                <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{t.colSku}</th>
+                <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{t.colCustomer}</th>
+                <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{t.colQty}</th>
+                <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{t.colTotal}</th>
+                <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{t.colDeposit}</th>
+                <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{t.colDue}</th>
+                <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{t.colFulfilled}</th>
+                <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{t.colExpected}</th>
+                <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{t.colStatus}</th>
+                <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{t.colAction}</th>
               </tr>
             </thead>
             <tbody>
@@ -630,17 +632,17 @@ function PreOrderPanel({ preOrders, onChanged }: { preOrders: PreOrder[]; onChan
                 const total = pre.unitPricePoisha * pre.quantity;
                 const statusMeta = PREORDER_STATUS_META[pre.status];
                 return (
-                  <tr key={pre.id} className="border-b border-border/60">
-                    <td className="py-2 pr-3 font-mono">{pre.sku || pre.productVariantId}</td>
-                    <td className="py-2 pr-3"><Phone phone={pre.customerPhone} /></td>
-                    <td className="py-2 pr-3">{pre.quantity}{t.qtySuffix}</td>
-                    <td className="py-2 pr-3"><Money poisha={total} /></td>
-                    <td className="py-2 pr-3"><Money poisha={pre.depositPoisha} /></td>
-                    <td className="py-2 pr-3"><Money poisha={preOrderDuePoisha(pre)} /></td>
-                    <td className="py-2 pr-3">{pre.fulfilledQty}/{pre.quantity}</td>
-                    <td className="py-2 pr-3">{pre.expectedDate}</td>
-                    <td className="py-2 pr-3"><Badge tone={statusMeta.tone}>{t[statusMeta.labelKey]}</Badge></td>
-                    <td className="py-2">
+                  <tr key={pre.id} className="border-t border-border/60 transition duration-fast ease-smooth hover:bg-brand-soft/60">
+                    <td className="px-4 py-3 font-mono">{pre.sku || pre.productVariantId}</td>
+                    <td className="px-4 py-3"><Phone phone={pre.customerPhone} /></td>
+                    <td className="tnum px-4 py-3">{pre.quantity}{t.qtySuffix}</td>
+                    <td className="px-4 py-3"><Money poisha={total} /></td>
+                    <td className="px-4 py-3"><Money poisha={pre.depositPoisha} /></td>
+                    <td className="px-4 py-3"><Money poisha={preOrderDuePoisha(pre)} /></td>
+                    <td className="tnum px-4 py-3">{pre.fulfilledQty}/{pre.quantity}</td>
+                    <td className="px-4 py-3">{pre.expectedDate}</td>
+                    <td className="px-4 py-3"><Badge tone={statusMeta.tone}>{t[statusMeta.labelKey]}</Badge></td>
+                    <td className="px-4 py-3">
                       {pre.status !== "FULFILLED" && pre.status !== "CANCELLED" && pre.depositPoisha > 0 ? (
                         <Button
                           type="button"
@@ -660,6 +662,43 @@ function PreOrderPanel({ preOrders, onChanged }: { preOrders: PreOrder[]; onChan
             </tbody>
           </table>
         </div>
+        {/* Mobile card view (doc 31 D4) — same rows, same fulfil action. */}
+        <ul className="mt-4 space-y-3 md:hidden">
+          {preOrders.map((pre) => {
+            const total = pre.unitPricePoisha * pre.quantity;
+            const statusMeta = PREORDER_STATUS_META[pre.status];
+            return (
+              <li key={pre.id} className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-mono text-sm font-medium text-text-main">{pre.sku || pre.productVariantId}</span>
+                  <Badge tone={statusMeta.tone}>{t[statusMeta.labelKey]}</Badge>
+                </div>
+                <p className="mt-2 text-sm text-text-muted"><Phone phone={pre.customerPhone} /></p>
+                <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                  <div><dt className="text-xs text-text-muted">{t.colTotal}</dt><dd><Money poisha={total} /></dd></div>
+                  <div><dt className="text-xs text-text-muted">{t.colDeposit}</dt><dd><Money poisha={pre.depositPoisha} /></dd></div>
+                  <div><dt className="text-xs text-text-muted">{t.colDue}</dt><dd><Money poisha={preOrderDuePoisha(pre)} /></dd></div>
+                </dl>
+                <p className="tnum mt-2 text-xs text-text-muted">
+                  {t.colQty} {pre.quantity}{t.qtySuffix} · {t.colFulfilled} {pre.fulfilledQty}/{pre.quantity} · {pre.expectedDate}
+                </p>
+                {pre.status !== "FULFILLED" && pre.status !== "CANCELLED" && pre.depositPoisha > 0 ? (
+                  <div className="mt-3">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={fulfillingId === pre.id}
+                      onClick={() => fulfilToOrder(pre)}
+                    >
+                      {fulfillingId === pre.id ? t.creating : t.createRealOrder}
+                    </Button>
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+        </>
       )}
       {message ? <PanelMessage ok={message.ok} text={message.text} /> : null}
     </Card>
@@ -672,42 +711,64 @@ function TransfersCard({ transfers }: { transfers: StockTransfer[] }) {
   const t = useStrings();
   return (
     <Card className="p-5">
-      <h2 className="text-lg font-semibold">{t.transfersTitle}</h2>
+      <h2 className="font-display text-lg font-semibold text-text-main">{t.transfersTitle}</h2>
       <p className="mt-1 text-sm text-text-muted">{t.transfersDesc}</p>
       {transfers.length === 0 ? (
         <p className="mt-4 text-sm text-text-muted">{t.noTransfers}</p>
       ) : (
-        <div className="mt-4 overflow-x-auto">
+        <>
+        <div className="mt-4 hidden overflow-x-auto rounded-2xl border border-border/60 bg-card shadow-xs md:block">
           <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-border text-text-muted">
-                <th className="py-2 pr-3 font-medium">{t.colFromTo}</th>
-                <th className="py-2 pr-3 font-medium">{t.colLines}</th>
-                <th className="py-2 pr-3 font-medium">{t.colCreated}</th>
-                <th className="py-2 pr-3 font-medium">{t.colDispatched}</th>
-                <th className="py-2 pr-3 font-medium">{t.colReceived}</th>
-                <th className="py-2 font-medium">{t.colStatus}</th>
+            <thead className="bg-surface-2/80">
+              <tr>
+                <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{t.colFromTo}</th>
+                <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{t.colLines}</th>
+                <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{t.colCreated}</th>
+                <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{t.colDispatched}</th>
+                <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{t.colReceived}</th>
+                <th className="sticky top-0 z-10 bg-surface-2 px-4 py-3 text-xs font-semibold text-text-muted">{t.colStatus}</th>
               </tr>
             </thead>
             <tbody>
               {transfers.map((tr) => {
                 const meta = TRANSFER_STATUS_META[tr.status];
                 return (
-                  <tr key={tr.id} className="border-b border-border/60">
-                    <td className="py-2 pr-3 font-mono">{tr.fromWarehouseId} → {tr.toWarehouseId}</td>
-                    <td className="py-2 pr-3">
+                  <tr key={tr.id} className="border-t border-border/60 transition duration-fast ease-smooth hover:bg-brand-soft/60">
+                    <td className="px-4 py-3 font-mono">{tr.fromWarehouseId} → {tr.toWarehouseId}</td>
+                    <td className="px-4 py-3">
                       {tr.lines.map((l) => `${l.sku} × ${l.quantity}`).join(", ") || "—"}
                     </td>
-                    <td className="py-2 pr-3">{tr.createdAt.slice(0, 10)}</td>
-                    <td className="py-2 pr-3">{tr.dispatchedAt ? tr.dispatchedAt.slice(0, 10) : "—"}</td>
-                    <td className="py-2 pr-3">{tr.receivedAt ? tr.receivedAt.slice(0, 10) : "—"}</td>
-                    <td className="py-2"><Badge tone={meta.tone}>{t[meta.labelKey]}</Badge></td>
+                    <td className="tnum px-4 py-3">{tr.createdAt.slice(0, 10)}</td>
+                    <td className="tnum px-4 py-3">{tr.dispatchedAt ? tr.dispatchedAt.slice(0, 10) : "—"}</td>
+                    <td className="tnum px-4 py-3">{tr.receivedAt ? tr.receivedAt.slice(0, 10) : "—"}</td>
+                    <td className="px-4 py-3"><Badge tone={meta.tone}>{t[meta.labelKey]}</Badge></td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
+        {/* Mobile card view (doc 31 D4) — same rows, read-only like the table. */}
+        <ul className="mt-4 space-y-3 md:hidden">
+          {transfers.map((tr) => {
+            const meta = TRANSFER_STATUS_META[tr.status];
+            return (
+              <li key={tr.id} className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-mono text-sm font-medium text-text-main">{tr.fromWarehouseId} → {tr.toWarehouseId}</span>
+                  <Badge tone={meta.tone}>{t[meta.labelKey]}</Badge>
+                </div>
+                <p className="mt-2 text-sm text-text-muted">
+                  {tr.lines.map((l) => `${l.sku} × ${l.quantity}`).join(", ") || "—"}
+                </p>
+                <p className="tnum mt-2 text-xs text-text-muted">
+                  {t.colCreated} {tr.createdAt.slice(0, 10)} · {t.colDispatched} {tr.dispatchedAt ? tr.dispatchedAt.slice(0, 10) : "—"} · {t.colReceived} {tr.receivedAt ? tr.receivedAt.slice(0, 10) : "—"}
+                </p>
+              </li>
+            );
+          })}
+        </ul>
+        </>
       )}
     </Card>
   );
@@ -771,13 +832,18 @@ export function AdvancedOrdersClient() {
   }, [loadAll]);
 
   if (loading) {
-    return <p className="text-sm text-text-muted">{t.loadingReal}</p>;
+    return (
+      <div className="space-y-6">
+        <p className="sr-only">{t.loadingReal}</p>
+        <DataTableSkeleton columns={5} rows={6} />
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       {failedFeeds.length > 0 ? (
-        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="rounded-2xl border border-warning-solid/30 bg-warning-soft px-4 py-3 text-sm text-text-main">
           <strong>{t.feedsFailedPrefix}</strong> {failedFeeds.join(", ")}{t.feedsFailedSuffix}{" "}
           <button type="button" className="underline" onClick={() => void loadAll()}>
             {t.retry}
