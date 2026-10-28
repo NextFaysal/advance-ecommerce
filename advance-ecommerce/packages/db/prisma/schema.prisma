@@ -1,0 +1,2835 @@
+// Merged schema — Phase 1 Foundation + Catalog + Orders/Cart/CRM + Payment/Courier + Inventory + Marketing
+// Merged by Agent 6 from the three SCHEMA-ADDITIONS.md proposals (catalog, orders, integrations).
+// Resolution rule: ONE canonical model per concept. Duplicates resolved:
+//   payments/payment_attempts (orders + integrations) -> Payment / PaymentAttempt (one model each)
+//   shipments/shipment_events (orders + integrations) -> Shipment / ShipmentEvent (one model each)
+//   refunds (orders + integrations) -> Refund (one model, sum <= paidPoisha enforced in service)
+// Money: integer poisha (Int), never Float/Decimal for money. Phone: normalized +8801XXXXXXXXX.
+// Soft delete: deletedAt on business entities. StockMovement is append-only: never update/delete a row.
+// Secrets are NEVER stored here: provider credentials live in Setting (valueEncrypted) / CourierAccount.credentialRef.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  PACKED
+  SHIPPED
+  DELIVERED
+  FAILED
+  RETURN_REQUESTED
+  RETURNING
+  RETURNED
+  CANCELLED
+  REFUNDED
+  EXCHANGED
+}
+
+// Staff-set handling priority (wave 24, doc 17 batch O6). Written by
+// the order management service; NORMAL is the untouched default.
+enum OrderPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentMethod {
+  COD
+  BKASH
+  NAGAD
+  ROCKET
+  UPAY
+  SSLCOMMERZ
+  AAMARPAY
+  SHURJOPAY
+  STRIPE
+  PAYPAL
+  MANUAL_MOBILE_BANKING
+}
+
+enum ShipmentStatus {
+  CREATED
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+  RETURNING
+  RETURNED
+}
+
+enum StockMovementType {
+  PURCHASE_RECEIVE
+  SALE_RESERVE
+  SALE_COMMIT
+  SALE_RELEASE
+  SALE_RESTORE
+  ADJUSTMENT
+  TRANSFER_OUT
+  TRANSFER_IN
+  RETURN_RECEIVE
+  DAMAGE
+  // RMA receive-step restock (wave 25, doc 17 batch O7): written only
+  // by src/orders/returns.ts when a received return line is judged
+  // RESTOCKABLE. Distinct from the inventory module's generic
+  // RETURN_RECEIVE so RMA restocks stay attributable to a Return row
+  // (referenceType "RETURN", referenceId = return id).
+  RETURN_RESTOCK
+}
+
+enum CouponType {
+  PERCENT
+  FIXED
+  FREE_SHIPPING
+  FIRST_ORDER
+}
+
+enum ManualTrxStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ReturnType {
+  RETURN
+  EXCHANGE
+}
+
+enum ReturnStatus {
+  REQUESTED
+  RETURNING
+  RETURNED
+  REFUNDED
+  EXCHANGED
+  // RMA lifecycle (wave 25, doc 17 batch O7): the admin returns flow
+  // runs REQUESTED -> APPROVED -> RECEIVED -> COMPLETED, with REJECTED
+  // (from REQUESTED) and CLOSED (from RECEIVED, no refund) as terminal
+  // side-exits. The legacy values above (RETURNING / RETURNED /
+  // REFUNDED / EXCHANGED) predate the flow and are kept for compat.
+  APPROVED
+  REJECTED
+  RECEIVED
+  COMPLETED
+  CLOSED
+}
+
+// Per-line condition recorded at the RMA receive step (wave 25):
+// RESTOCKABLE lines go back on the shelf (and are the only lines a
+// completion refunds); DAMAGED lines are kept out of stock and are
+// never refunded.
+enum ReturnItemCondition {
+  RESTOCKABLE
+  DAMAGED
+}
+
+enum NotificationChannel {
+  SMS
+  EMAIL
+  IN_APP
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+enum CampaignChannel {
+  SMS
+  EMAIL
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  COMPLETED
+}
+
+// ---------------------------------------------------------------- Phase 1
+model User {
+  id                  String    @id @default(cuid())
+  email               String?   @unique
+  phone               String?   @unique
+  passwordHash        String
+  name                String?
+  roleId              String?
+  role                Role?     @relation(fields: [roleId], references: [id])
+  twoFactorEnabled    Boolean   @default(false)
+  twoFactorSecret     String?
+  // Two-factor secret must be stored encrypted by the auth layer, never plain in logs/API.
+  locale              String    @default("bn")
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  isActive            Boolean   @default(true)
+  deletedAt           DateTime?
+  // Staff invite lifecycle (additive): an invited user is created inactive
+  // with only the SHA-256 hash of a random invite token; the raw token is
+  // shown once to the inviter and never stored or logged. Accepting the
+  // invite sets a real password, activates the account and clears these.
+  inviteTokenHash     String?
+  inviteExpiresAt     DateTime?
+  invitedById         String?
+  invitedBy           User?     @relation("UserInvites", fields: [invitedById], references: [id])
+  invitesSent         User[]    @relation("UserInvites")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  sessions            Session[]
+  webAuthnCredentials StaffWebAuthnCredential[]
+  auditLogs           AuditLog[]
+  otpCodes            OtpCode[]
+  passwordResetTokens PasswordResetToken[]
+  assignedOrders      Order[]   @relation("OrderAssignee")
+  approvedPayments    Payment[] @relation("PaymentApprover")
+  remittanceBatches   RemittanceBatch[] @relation("RemittanceCreator")
+  draftOrders         DraftOrder[] @relation("DraftOrderCreator")
+  reviewedTrx         ManualTrxSubmission[] @relation("TrxReviewer")
+  statusChanges       OrderStatusHistory[] @relation("StatusChanger")
+  orderNotes          OrderNote[] @relation("NoteAuthor")
+  stockMovements      StockMovement[] @relation("MovementActor")
+  @@index([phone])
+  @@index([deletedAt])
+  @@index([inviteTokenHash])
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  description String?
+  permissions RolePermission[]
+  users       User[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  key         String           @unique
+  module      String
+  action      String
+  description String?
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  @@id([roleId, permissionId])
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  tokenHash  String    @unique
+  userAgent  String?
+  ip         String?
+  deviceName String?
+  lastUsedAt DateTime  @default(now())
+  revokedAt  DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// Staff passkeys (WebAuthn) — doc 23 wave 55, staff-first.
+// One row per registered authenticator. The credential id and COSE
+// public key are NOT secrets (a public key is safe to store plain);
+// the private key never leaves the authenticator. publicKey is stored
+// base64-encoded because SimpleWebAuthn hands it back as raw bytes.
+// counter is the authenticator's signature counter, advanced on every
+// successful assertion and compared by the verify call (clone
+// detection). Deleting the staff user cascades — a departed staff
+// member's passkeys must die with the account.
+model StaffWebAuthnCredential {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId String    @unique
+  publicKey    String
+  counter      Int       @default(0)
+  // JSON array of AuthenticatorTransport strings, e.g. ["internal","hybrid"].
+  transports   String?
+  deviceLabel  String
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([userId])
+}
+
+model OtpCode {
+  id         String    @id @default(cuid())
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id])
+  phone      String?
+  email      String?
+  codeHash   String
+  purpose    String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+  @@index([phone, purpose, expiresAt])
+  @@index([email, purpose, expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  @@index([userId, expiresAt])
+}
+
+model LoginHistory {
+  id        String   @id @default(cuid())
+  userId    String?
+  email     String?
+  phone     String?
+  ip        String?
+  userAgent String?
+  success   Boolean
+  reason    String?
+  createdAt DateTime @default(now())
+  @@index([userId, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String
+  entityType String
+  entityId   String?
+  beforeJson Json?
+  afterJson  Json?
+  reason     String?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model Setting {
+  key            String   @id
+  value          String
+  valueEncrypted Boolean  @default(false)
+  isPublic       Boolean  @default(false)
+  description    String?
+  category       String
+  updatedById    String?
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  @@index([category])
+}
+
+model FeatureFlag {
+  key         String   @id
+  enabled     Boolean  @default(false)
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+model Division {
+  id        String     @id @default(cuid())
+  nameEn    String
+  nameBn    String
+  code      String?
+  districts District[]
+}
+
+model District {
+  id         String    @id @default(cuid())
+  divisionId String
+  division   Division  @relation(fields: [divisionId], references: [id])
+  nameEn     String
+  nameBn     String
+  code       String?
+  upazilas   Upazila[]
+}
+
+model Upazila {
+  id         String   @id @default(cuid())
+  districtId String
+  district   District @relation(fields: [districtId], references: [id])
+  nameEn     String
+  nameBn     String
+  code       String?
+  unions     Union[]
+}
+
+model Union {
+  id        String  @id @default(cuid())
+  upazilaId String
+  upazila   Upazila @relation(fields: [upazilaId], references: [id])
+  nameEn    String
+  nameBn    String
+}
+
+// ---------------------------------------------------------------- Catalog
+model Category {
+  id        String     @id @default(cuid())
+  slug      String     @unique
+  nameBn    String
+  nameEn    String
+  seoTitleBn       String?
+  seoTitleEn       String?
+  seoDescriptionBn String?
+  seoDescriptionEn String?
+  parentId  String?
+  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryTree")
+  imageUrl  String?
+  sortOrder Int        @default(0)
+  isActive  Boolean    @default(true)
+  deletedAt DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  products  Product[]
+  @@index([parentId])
+}
+
+model Brand {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  slug      String    @unique
+  logoUrl   String?
+  description String?
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+}
+
+model Product {
+  id               String           @id @default(cuid())
+  slug             String           @unique
+  titleBn          String
+  titleEn          String
+  descriptionBn    String           @db.Text
+  descriptionEn    String           @db.Text
+  categoryId       String
+  category         Category         @relation(fields: [categoryId], references: [id])
+  brandId          String?
+  brand            Brand?           @relation(fields: [brandId], references: [id])
+  status           String           @default("DRAFT")
+  tags             String[]
+  ratingAverage    Float?
+  reviewCount      Int              @default(0)
+  seoTitleBn       String?
+  seoTitleEn       String?
+  seoDescriptionBn String?
+  seoDescriptionEn String?
+  ogImage          String?
+  // Wave 14 (doc 16 P5/P6): rich content + scheduling + merchandising.
+  videoUrl         String?
+  // { headers: string[], rows: string[][] } — validated in the catalog service.
+  sizeChart        Json?
+  // [{ q: string, a: string }] — validated in the catalog service.
+  faqItems         Json?
+  // Read-time scheduling gates (no worker): a future publishAt hides the
+  // product from PUBLIC reads only; sale windows drive the public
+  // `saleActive` derivation, never a price change by themselves.
+  publishAt        DateTime?
+  saleStartsAt     DateTime?
+  saleEndsAt       DateTime?
+  // Merchant-picked related product ids (max 20, service-validated).
+  relatedIds       String[]         @default([])
+  // Physicals for courier weight-based pricing (wave 14; the shipment
+  // payload wiring is a later orders-side pass).
+  weightGrams      Int?
+  lengthMm         Int?
+  widthMm          Int?
+  heightMm         Int?
+  // Per-product low-stock threshold override (null = global default).
+  lowStockThreshold Int?
+  // Price on request (schema wave 2, 2026-10-26): when true the
+  // storefront hides the price + add-to-cart on the PDP and product
+  // cards and shows "দামের জন্য যোগাযোগ করুন" with the contact/inbox
+  // path instead. Prices still exist on variants (staff quote from
+  // them); this is a display policy, not a data change.
+  priceOnRequest Boolean @default(false)
+  // Wave 15 (doc 16 P7): product types — SIMPLE | DIGITAL | BUNDLE |
+  // PREORDER, validated in the catalog service zod (house style: a
+  // free String column, not a DB enum). Everything below is inert for
+  // SIMPLE products and gated by the module.product_types flag.
+  type         String @default("SIMPLE")
+  // Pre-order terms live on the product (deposit %, expected date,
+  // total-unit cap). NOTE: the PreOrder model below is a per-CUSTOMER
+  // pre-order record owned by advanced-orders — it is NOT product
+  // config, so terms do not live there.
+  preorderDepositPercent Int?
+  preorderExpectedDate    DateTime?
+  preorderMaxUnits       Int?
+  deletedAt        DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  images           ProductImage[]
+  variants         ProductVariant[]
+  flashSaleItems   FlashSaleItem[]
+  vendorProducts   VendorProduct[]
+  reviews          Review[]
+  questions        ProductQuestion[]
+  digitalFiles     DigitalFile[]
+  licenseKeys      LicenseKey[]
+  bundleComponents BundleComponent[] @relation("ProductBundleComponents")
+  @@index([categoryId])
+  @@index([status])
+}
+
+model ProductVariant {
+  id              String   @id @default(cuid())
+  productId       String
+  product         Product  @relation(fields: [productId], references: [id])
+  attributes      Json
+  sku             String   @unique
+  barcode         String?  @unique
+  pricePoisha     Int
+  compareAtPoisha Int?
+  costPoisha      Int?
+  // Denormalized cache only; stock_movements ledger is the source of truth.
+  stock           Int      @default(0)
+  imageUrl        String?
+  isActive        Boolean  @default(true)
+  deletedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  cartItems       CartItem[]
+  orderItems      OrderItem[]
+  inventoryItems  InventoryItem[]
+  stockMovements  StockMovement[]
+  inventoryBatches InventoryBatch[]
+  serialUnits      SerialUnit[]
+  flashSaleItems  FlashSaleItem[]
+  purchaseOrderItems PurchaseOrderItem[]
+  vendorProducts  VendorProduct[]
+  bundleComponentOf BundleComponent[] @relation("BundleComponentVariant")
+  subscriptions   Subscription[]
+  @@index([productId])
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  url       String
+  altBn     String
+  altEn     String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  @@index([productId])
+}
+
+// ---------------------------------------------------------------------------
+// Product types (wave 15, doc 16 P7) — all gated by module.product_types.
+// ---------------------------------------------------------------------------
+
+// A downloadable file attached to a DIGITAL product. The bytes live in
+// R2/S3 under `storageKey` (digital/ prefix, minted by the presigned
+// upload-ticket endpoint); this row is metadata only. storageKey is
+// STAFF-ONLY — public shapes expose fileName/sizeBytes only.
+model DigitalFile {
+  id             String          @id @default(cuid())
+  productId      String
+  product        Product         @relation(fields: [productId], references: [id])
+  storageKey     String
+  fileName       String
+  sizeBytes      Int
+  createdAt      DateTime        @default(now())
+  downloadGrants DownloadGrant[]
+  @@index([productId])
+}
+
+// A license key in a DIGITAL product's pool. Assigned at fulfilment
+// (orderId + assignedAt set); the key itself is STAFF-ONLY — admin
+// lists mask it to the last 4 characters.
+model LicenseKey {
+  id         String    @id @default(cuid())
+  productId  String
+  product    Product   @relation(fields: [productId], references: [id])
+  key        String    @unique
+  orderId    String?
+  assignedAt DateTime?
+  createdAt  DateTime  @default(now())
+  @@index([productId, assignedAt])
+}
+
+// One buyer's right to download one digital file for one order item.
+// Only the SHA-256 hash of the bearer token is stored — the raw token
+// exists once, in the fulfilment result / buyer-facing link.
+model DownloadGrant {
+  id              String                   @id @default(cuid())
+  orderId         String
+  orderItemId     String
+  digitalFileId   String
+  digitalFile     DigitalFile              @relation(fields: [digitalFileId], references: [id])
+  tokenHash       String                   @unique
+  expiresAt       DateTime
+  maxDownloads    Int                      @default(5)
+  downloadsUsed   Int                      @default(0)
+  // Set when staff revoke this grant (doc 18 F3: a re-issue approval
+  // revokes the old grant). BOTH redemption paths (bearer token and
+  // the session-authorized account access) refuse revoked grants.
+  revokedAt       DateTime?
+  createdAt       DateTime                 @default(now())
+  reissueRequests DownloadReissueRequest[]
+  @@index([orderId])
+}
+
+enum DownloadReissueStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// A customer's request for a fresh download grant (doc 18 F3). Grant
+// tokens are hash-only and unrecoverable BY DESIGN, so a lost/expired/
+// exhausted link can only be replaced: the customer asks here, staff
+// approve in /admin/downloads, approval mints a NEW grant and revokes
+// the old one. At most one PENDING request per grant (enforced by a
+// partial unique index in the migration — Prisma cannot express it).
+model DownloadReissueRequest {
+  id           String                @id @default(cuid())
+  grantId      String
+  grant        DownloadGrant         @relation(fields: [grantId], references: [id])
+  customerId   String
+  customer     Customer              @relation(fields: [customerId], references: [id])
+  reason       String?
+  status       DownloadReissueStatus @default(PENDING)
+  decidedById  String?
+  decisionNote String?
+  newGrantId   String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  @@index([status, createdAt])
+  @@index([grantId])
+  @@index([customerId])
+}
+
+// One component line of a BUNDLE product: the bundle's own variants
+// are price/stock shells; selling one bundle unit consumes `quantity`
+// units of the component variant (enforced at order create).
+model BundleComponent {
+  id                 String         @id @default(cuid())
+  bundleProductId    String
+  bundleProduct      Product        @relation("ProductBundleComponents", fields: [bundleProductId], references: [id])
+  componentVariantId String
+  componentVariant   ProductVariant @relation("BundleComponentVariant", fields: [componentVariantId], references: [id])
+  quantity           Int            @default(1)
+  @@unique([bundleProductId, componentVariantId])
+  @@index([bundleProductId])
+}
+
+model ProductAttribute {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  labelBn   String
+  labelEn   String
+  values    String[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ------------------------------------------------------------- Reviews
+// Customer product reviews. A review is born PENDING and only becomes
+// public on admin APPROVAL (see /admin/reviews). `phone` is stored in
+// normalized +8801XXXXXXXXX form for verification (matching the
+// reviewer to a Customer / delivered Order) and is NEVER exposed on
+// public reads — public views carry the author's name only.
+// Product.ratingAverage / reviewCount are the denormalized aggregate
+// over APPROVED, non-deleted reviews, maintained by the reviews store.
+model Review {
+  id         String    @id @default(cuid())
+  productId  String
+  product    Product   @relation(fields: [productId], references: [id])
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  orderId    String?
+  authorName String
+  phone      String
+  rating     Int
+  title      String?
+  body       String
+  status     String    @default("PENDING")
+  images     String[]  @default([])
+  helpfulCount Int     @default(0)
+  helpfulVotes ReviewHelpfulVote[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+  @@index([productId, status])
+  @@index([status, createdAt])
+}
+
+// ------------------------------------------------------- Contact inbox
+// Storefront "contact us" form submissions (public /contact). Written
+// via POST /api/v1/public/contact; read/triaged in the admin inbox.
+// status: NEW | READ | RESOLVED (free String, set by the API layer).
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  subject   String?
+  message   String
+  status    String   @default("NEW")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------- Customer / Cart
+model Customer {
+  id                  String    @id @default(cuid())
+  name                String
+  phone               String    @unique
+  email               String?
+  // Google sign-in binding (schema wave 2, 2026-10-26): the Google
+  // subject id, stamped on the first verified-email match (one-time
+  // claim in src/customer-auth/google.ts) and looked up FIRST on
+  // later sign-ins, so a changed Google email still finds the row.
+  googleId            String?   @unique
+  // Facebook sign-in binding (ADV-15 remainder, 2026-10-26): the
+  // Facebook user id, with the SAME claim rules as googleId —
+  // stamped on the first verified-email match (one-time claim in
+  // src/customer-auth/facebook.ts) and looked up FIRST on later
+  // sign-ins. A row bound to a different facebookId is never re-bound.
+  facebookId          String?   @unique
+  // Date of birth (schema wave 2): date-only semantics — the TS
+  // layer stores UTC midnight and reads back the YYYY-MM-DD part.
+  // Feeds the birthday-offer job (src/marketing/birthday.ts).
+  birthDate           DateTime?
+  tags                String[]
+  blocked             Boolean   @default(false)
+  blacklistReason     String?
+  // Customer account auth (nullable: guest customers created by checkout
+  // have no password until they register with the same phone).
+  passwordHash        String?
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  addresses           Address[]
+  carts               Cart[]
+  orders              Order[]
+  couponUsages        CouponUsage[]
+  sessions            CustomerSession[]
+  apiTokens           CustomerApiToken[]
+  reviews             Review[]
+  supportTickets      SupportTicket[]
+  productQuestions    ProductQuestion[]
+  downloadReissueRequests DownloadReissueRequest[]
+  subscriptions       Subscription[]
+  @@index([phone])
+  @@index([deletedAt])
+}
+
+// Customer web sessions — mirrors the staff Session model, but keyed to
+// Customer and NEVER interchangeable with staff sessions (separate table,
+// separate cookie `customer_session`).
+model CustomerSession {
+  id         String    @id @default(cuid())
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  tokenHash  String    @unique
+  userAgent  String?
+  ip         String?
+  deviceName String?
+  lastUsedAt DateTime  @default(now())
+  revokedAt  DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  @@index([customerId])
+  @@index([expiresAt])
+}
+
+// Customer API tokens — the bearer-token auth seam for the public
+// account API (the prerequisite for any native customer app; see
+// apps/customer-app/README.md). A REAL table, not a Setting doc, by
+// the CustomerSession / partner-ApiKey precedent: tokens are
+// per-customer (unbounded across customers), multiple per customer,
+// individually revocable, and carry lastUsedAt bookkeeping. Only the
+// SHA-256 hash of the token is stored (same discipline as
+// CustomerSession.tokenHash and ApiKey.keyHash); the plaintext
+// `ae_cust_…` is shown exactly once, at creation. Tokens do NOT
+// expire on a schedule — revocation is the off-switch, mirroring the
+// partner API keys. Owned by src/customer-auth/api-tokens.ts.
+model CustomerApiToken {
+  id         String    @id @default(cuid())
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  label      String
+  tokenHash  String    @unique
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  @@index([customerId])
+}
+
+model Address {
+  id          String   @id @default(cuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id])
+  label       String?
+  division    String
+  district    String
+  upazila     String
+  union       String?
+  addressLine String
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([customerId])
+}
+
+model Cart {
+  id         String     @id @default(cuid())
+  customerId String?
+  customer   Customer?  @relation(fields: [customerId], references: [id])
+  guestKey   String?    @unique
+  couponCode String?
+  expiresAt  DateTime?
+  deletedAt  DateTime?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  items      CartItem[]
+  @@index([customerId])
+}
+
+model CartItem {
+  id              String         @id @default(cuid())
+  cartId          String
+  cart            Cart           @relation(fields: [cartId], references: [id])
+  variantId       String
+  variant         ProductVariant @relation(fields: [variantId], references: [id])
+  // Decimal since wave 59 (fractional quantities): weighted goods may
+  // be sold in fractions of a pack; app math is integer milli-units
+  // (apps/web/src/lib/quantity.ts).
+  quantity        Decimal        @db.Decimal(12, 3)
+  unitPricePoisha Int
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  @@unique([cartId, variantId])
+  @@index([variantId])
+}
+
+// ---------------------------------------------------------------- Order
+model Order {
+  id               String       @id @default(cuid())
+  orderNo          String       @unique
+  customerId       String
+  customer         Customer     @relation(fields: [customerId], references: [id])
+  customerName     String
+  customerPhone    String
+  division         String
+  district         String
+  upazila          String
+  union            String?
+  addressLine      String
+  status           OrderStatus  @default(PENDING)
+  paymentMethod    PaymentMethod
+  paymentStatus    PaymentStatus @default(UNPAID)
+  subtotalPoisha   Int
+  discountPoisha   Int          @default(0)
+  shippingPoisha   Int          @default(0)
+  codFeePoisha     Int          @default(0)
+  taxPoisha        Int          @default(0)
+  // Recorded VAT split (wave 7): written at order-create time ONLY when
+  // a VAT rate is configured in Settings (accounting.vat_rate_bps).
+  // totalPoisha is VAT-inclusive, so vatPoisha is the VAT portion of
+  // the total at vatRateBps. NULL on every order placed without a
+  // configured rate — the ERP sales-VAT report reads only rows where
+  // both are set, and never reconstructs a split after the fact.
+  vatPoisha        Int?
+  vatRateBps       Int?
+  // Advance payment engine (wave 21, doc 17 batch O3): the advance a
+  // customer must pay BEFORE the order may be CONFIRMED, computed at
+  // create time as the MAX of the shop rules threshold percent, the
+  // fraud band's require_advance percent, a prepaid method's full
+  // total, preorder-line deposits, or a staff-set amount (manual
+  // orders) — persisted here (advanceReason is the bilingual winning-
+  // rule label) instead of living only in the create response meta as
+  // it did in wave 20. advanceSatisfiedAt is stamped by
+  // markOrderPayment (the single money funnel) the first time
+  // cumulative paid money reaches the requirement. The OTP columns are
+  // written by the O3-2 OTP service (this batch only persists the
+  // create-time requiresOtp flag and reads the columns in the
+  // CONFIRMED gate); otpCodeHash stores a SHA-256 hash, never a code.
+  advanceRequiredPoisha Int      @default(0)
+  advanceReason         String?
+  advanceSatisfiedAt    DateTime?
+  requiresOtp           Boolean  @default(false)
+  otpCodeHash           String?
+  otpExpiresAt          DateTime?
+  otpAttempts           Int      @default(0)
+  otpVerifiedAt         DateTime?
+  // Pickup OTP (ADV-19 remainder): click & collect orders carrying a
+  // [pickup:<id>] note marker get a SEPARATE one-time code, issued at
+  // CONFIRMED by src/orders/pickup-otp.ts and required before the
+  // DELIVERED transition completes the handover. Kept apart from the
+  // otp* columns above (those gate CONFIRMED for fraud/advance) so the
+  // two lifecycles can never clobber each other. Hash-only storage,
+  // same discipline as otpCodeHash. NULL on every non-pickup order and
+  // on pickup orders confirmed before this feature existed (the
+  // DELIVERED gate fails open for those — see pickup-otp.ts).
+  pickupOtpCodeHash     String?
+  pickupOtpExpiresAt    DateTime?
+  pickupOtpAttempts     Int      @default(0)
+  pickupOtpVerifiedAt   DateTime?
+  totalPoisha      Int
+  courier          String?
+  trackingId       String?
+  riskScore        Int          @default(0)
+  assigneeId       String?
+  assignee         User?        @relation("OrderAssignee", fields: [assigneeId], references: [id])
+  // Management fields (wave 24, doc 17 batch O6): priority + a
+  // staff-set operational HOLD. The hold is UI-level only — the
+  // status funnel never consults it (deliberate non-goal, see the
+  // management route header); heldAt stamps when the hold was set
+  // and heldReason carries the mandatory reason.
+  priority         OrderPriority @default(NORMAL)
+  heldAt           DateTime?
+  heldReason       String?
+  // Delivery slot + gift options (wave 27, doc 17 batch O9-2): the
+  // Order model has no JSON meta column (API "meta" blocks are
+  // composed at read time), so these checkout choices are real
+  // columns. deliverySlot stores the slot ID from Settings
+  // orders.delivery_slots (labels resolve from the setting at display
+  // time); giftMessage stores the gift message verbatim — NULL = no
+  // gift, "" = gift requested with no message. No gift-wrap fee
+  // exists: there is no charge seam for one and none is implied.
+  deliverySlot     String?
+  giftMessage      String?
+  // Reseller attribution (nullable: set only when the order is recorded
+  // as a reseller sale; the delivered-order hook credits this reseller).
+  resellerId       String?
+  reseller         Reseller?    @relation(fields: [resellerId], references: [id])
+  source           String?
+  idempotencyKey   String       @unique
+  deletedAt        DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  items            OrderItem[]
+  history          OrderStatusHistory[]
+  notes            OrderNote[]
+  tags             OrderTag[]
+  payments         Payment[]
+  manualTrx        ManualTrxSubmission[]
+  shipments        Shipment[]
+  returns          Return[]
+  remittanceItems  RemittanceItem[]
+  supportTickets   SupportTicket[]
+  serialUnits      SerialUnit[]
+  couponUsages     CouponUsage[]
+  notificationLogs NotificationLog[]
+  paymentLinks     PaymentLink[]
+  vendorCommissionLines VendorCommissionLine[]
+  vendorRefunds    VendorRefund[]
+  kitchenTicket    KitchenTicket?
+  serviceBooking   ServiceBooking?
+  rentalBooking    RentalBooking?
+  @@index([customerId])
+  @@index([resellerId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+// Kitchen tickets (ADV-23 vertical 1, doc 23 wave 56): the restaurant
+// module's one row per restaurant order, created INSIDE the order-create
+// transaction (src/orders/repository.ts, the gift-card in-transaction
+// precedent) when the order carries a validated `restaurant` selection
+// and module.restaurant is ON. The KDS board (app/admin/kitchen) works
+// this queue: QUEUED -> PREPARING -> READY -> SERVED (forward-only,
+// readyAt stamped at READY); an order cancellation moves a live ticket
+// to CANCELLED from applyOrderTransition. Status/fulfilment are plain
+// strings (the Subscription precedent) — the allowed values are owned
+// by src/restaurant/selection.ts and enforced at every write seam.
+// tableLabel is the merchant-configured label from Setting doc
+// restaurant.config, frozen at order time (renaming a table later does
+// not rewrite open tickets). Money is NEVER touched by this module.
+model KitchenTicket {
+  id             String    @id @default(cuid())
+  orderId        String    @unique
+  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fulfilmentType String
+  tableLabel     String?
+  status         String    @default("QUEUED")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  readyAt        DateTime?
+
+  @@index([status, createdAt])
+}
+
+// Service bookings (ADV-23 vertical 2, doc 23 wave 56): the services
+// module's one row per booked order, created INSIDE the order-create
+// transaction (src/orders/repository.ts — the kitchen-ticket /
+// gift-card in-transaction precedent) when the order carries a
+// validated `booking` selection and module.services is ON. serviceDate
+// is the Asia/Dhaka calendar day stored as that day's Dhaka-midnight
+// instant (yyyy-mm-ddT00:00:00+06:00); slotStart/slotEnd are "HH:MM"
+// strings on the merchant's services.config slot grid, frozen at
+// order time. variantId is a plain string by design (no FK): the
+// booking is a historical record of what was booked and must survive
+// a variant being deleted later; which variants are bookable lives
+// in the services.config `serviceVariantIds` list. status is a plain
+// string (the Subscription/KitchenTicket precedent) — allowed values
+// are owned by src/services/selection.ts: BOOKED -> COMPLETED /
+// NO_SHOW from the admin board; CANCELLED only from the
+// order-cancellation seam. Capacity (services.config capacityPerSlot)
+// is counted against BOOKED rows inside the create transaction.
+model ServiceBooking {
+  id         String    @id @default(cuid())
+  orderId    String    @unique
+  order      Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId  String
+  serviceDate DateTime
+  slotStart  String
+  slotEnd    String
+  staffLabel String?
+  status     String    @default("BOOKED")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([serviceDate, variantId])
+}
+
+// Rental bookings (ADV-23 vertical 3, doc 23 wave 56): the rental
+// module's one row per rental order, created INSIDE the order-create
+// transaction (src/orders/repository.ts) when the order carries a
+// validated `rental` selection and module.rental is ON.
+// startDate/endDate are Asia/Dhaka calendar days stored as those
+// days' Dhaka-midnight instants (yyyy-mm-ddT00:00:00+06:00) — the
+// ServiceBooking convention; `days` is the INCLUSIVE day count
+// frozen at order time. depositPoisha is the security deposit that
+// was charged inside the order total (a rentalDepositPoisha line in
+// the checkout pricing pipeline), frozen here so later config edits
+// never rewrite what a live rental actually collected; the refund
+// on return is a MANUAL admin action in v1 (no auto-refund flow).
+// variantId is a plain string by design (no FK): the booking is a
+// historical record and must survive a variant being deleted later;
+// which variants are rentable lives in the rental.config
+// `rentalVariantIds` list. status is a plain string (the
+// Subscription/KitchenTicket precedent) — allowed values are owned
+// by src/rental/selection.ts: ACTIVE -> RETURNED / OVERDUE from
+// the admin rentals board (OVERDUE is also computed at read for an
+// ACTIVE row past endDate); CANCELLED only from the
+// order-cancellation seam. Availability: a variant's physical unit
+// count is its ProductVariant.stock; overlapping ACTIVE rows for
+// the variant are counted inside the create transaction and must
+// stay below stock. The rental line is EXCLUDED from the generic
+// SALE_RESERVE stock claim in the create transaction — the overlap
+// count is the rental line's stock control, and claiming the unit
+// through the sale ledger too would double-count it (and never
+// give it back: SALE_RESERVE is terminal at delivery).
+model RentalBooking {
+  id            String    @id @default(cuid())
+  orderId       String    @unique
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId     String
+  startDate     DateTime
+  endDate       DateTime
+  days          Int
+  depositPoisha Int       @default(0)
+  status        String    @default("ACTIVE")
+  returnedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([variantId, startDate, endDate])
+}
+
+// Per-day order-number sequence (wave 20, plan 17 batch O2). The human
+// order number ORD-YYYYMMDD-NNNN is minted inside the create
+// transaction (src/orders/repository.ts nextOrderNoTx) from this
+// counter: one row per Asia/Dhaka calendar day, incremented with an
+// atomic INSERT ... ON CONFLICT DO UPDATE so concurrent creates can
+// never draw the same sequence. Existing orders keep their historical
+// ORD-<epoch-ms> numbers — nothing renumbers history.
+model OrderSequence {
+  day     String @id // Asia/Dhaka day, YYYYMMDD
+  lastSeq Int    @default(0)
+}
+
+enum DraftOrderStatus {
+  OPEN
+  CONVERTED
+  DISCARDED
+}
+
+// Draft orders (wave 27, doc 17 batch O9-2): a parked, half-built
+// manual order. NOT an order — no order number, no stock reservation,
+// no report presence. payloadJson is a ManualCreateInput-shaped
+// document (it may be PARTIAL — a draft exists precisely because the
+// form was not finished); conversion re-runs it through
+// createManualOrder, which re-validates variants + prices at
+// conversion time exactly like a fresh manual create.
+// totalPreviewPoisha is a save-time estimate from catalog/staff
+// prices, refreshed on every save — never a priced commitment.
+model DraftOrder {
+  id                 String           @id @default(cuid())
+  payloadJson        Json
+  customerName       String?
+  customerPhone      String?
+  totalPreviewPoisha Int?
+  createdById        String
+  createdBy          User             @relation("DraftOrderCreator", fields: [createdById], references: [id])
+  status             DraftOrderStatus @default(OPEN)
+  convertedOrderId   String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  @@index([status, createdAt])
+}
+
+model OrderItem {
+  id              String         @id @default(cuid())
+  orderId         String
+  order           Order          @relation(fields: [orderId], references: [id])
+  variantId       String
+  variant         ProductVariant @relation(fields: [variantId], references: [id])
+  productName     String
+  sku             String
+  unitPricePoisha Int
+  // Decimal since wave 59 (fractional quantities) — see CartItem.
+  quantity        Decimal        @db.Decimal(12, 3)
+  createdAt       DateTime       @default(now())
+  returnItems     ReturnItem[]
+  @@index([orderId])
+  @@index([variantId])
+}
+
+model OrderStatusHistory {
+  id          String      @id @default(cuid())
+  orderId     String
+  order       Order       @relation(fields: [orderId], references: [id])
+  from        OrderStatus?
+  to          OrderStatus
+  changedById String?
+  changedBy   User?       @relation("StatusChanger", fields: [changedById], references: [id])
+  reason      String?
+  createdAt   DateTime    @default(now())
+  @@index([orderId, createdAt])
+}
+
+model OrderNote {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  authorId  String?
+  author    User?    @relation("NoteAuthor", fields: [authorId], references: [id])
+  text      String   @db.Text
+  createdAt DateTime @default(now())
+  @@index([orderId])
+}
+
+model OrderTag {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  tag       String
+  createdAt DateTime @default(now())
+  @@index([orderId])
+  @@index([tag])
+}
+
+model Return {
+  id              String       @id @default(cuid())
+  orderId         String
+  order           Order        @relation(fields: [orderId], references: [id])
+  type            ReturnType
+  reason          String
+  status          ReturnStatus @default(REQUESTED)
+  qcNote          String?
+  restockDecision String?
+  // RMA flow fields (wave 25, doc 17 batch O7) — the columns above
+  // predate any writer; these complete the model minimally:
+  //   source        — "admin" | "customer" (createReturn contract
+  //                   vocabulary, same convention as Order.source).
+  //   customerNote  — free text the requester attached at create.
+  //   decisionReason— staff reason for a REJECTED / CLOSED outcome.
+  //   actorLabel    — who created the return (admin user id, or
+  //                   "customer:<id>" from the self-service flow).
+  //   refundId      — the ONE PENDING Refund the completion created in
+  //                   the refund workbench (src/orders/refunds.ts);
+  //                   also the completion idempotency guard.
+  source          String       @default("admin")
+  customerNote    String?
+  decisionReason  String?
+  actorLabel      String?
+  refundId        String?
+  refund          Refund?      @relation(fields: [refundId], references: [id])
+  items           ReturnItem[]
+  deletedAt       DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  @@index([orderId])
+  @@index([status])
+}
+
+// One line of a Return (wave 25, doc 17 batch O7): the per-line detail
+// the original Return model had no place for. quantity is the amount
+// the customer sends back; condition is stamped at the receive step
+// (null until then) and drives both restock and refund eligibility.
+model ReturnItem {
+  id          String              @id @default(cuid())
+  returnId    String
+  return      Return              @relation(fields: [returnId], references: [id])
+  orderItemId String
+  orderItem   OrderItem           @relation(fields: [orderItemId], references: [id])
+  // Decimal since wave 59: a fractional line may be partially returned
+  // in fractions (to 3 decimals) — see CartItem.
+  quantity    Decimal             @db.Decimal(12, 3)
+  reason      String?
+  condition   ReturnItemCondition?
+  createdAt   DateTime            @default(now())
+  @@index([returnId])
+  @@index([orderItemId])
+}
+
+// ---------------------------------------------------------------- Payment (canonical)
+model Payment {
+  id                    String        @id @default(cuid())
+  orderId               String
+  order                 Order         @relation(fields: [orderId], references: [id])
+  method                PaymentMethod
+  amountPoisha          Int
+  paidPoisha            Int           @default(0)
+  status                PaymentStatus @default(UNPAID)
+  gatewayTransactionId  String?
+  senderNumber          String?
+  approvedById          String?
+  approvedBy            User?         @relation("PaymentApprover", fields: [approvedById], references: [id])
+  approvedAt            DateTime?
+  deletedAt             DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  attempts              PaymentAttempt[]
+  manualTrx             ManualTrxSubmission[]
+  refunds               Refund[]
+  remittanceItem        RemittanceItem?
+  @@unique([method, gatewayTransactionId])
+  @@index([orderId])
+  @@index([status])
+}
+
+model PaymentAttempt {
+  id                   String   @id @default(cuid())
+  paymentId            String
+  payment              Payment  @relation(fields: [paymentId], references: [id])
+  orderId              String
+  method               PaymentMethod
+  amountPoisha         Int
+  status               PaymentStatus
+  gatewayTransactionId String?
+  gatewayResponseRef   String?
+  idempotencyKey       String?  @unique
+  createdAt            DateTime @default(now())
+  @@index([paymentId])
+  @@index([orderId])
+}
+
+model ManualTrxSubmission {
+  id           String          @id @default(cuid())
+  orderId      String
+  order        Order           @relation(fields: [orderId], references: [id])
+  paymentId    String?
+  payment      Payment?        @relation(fields: [paymentId], references: [id])
+  method       PaymentMethod
+  trxId        String
+  senderPhone  String
+  amountPoisha Int
+  status       ManualTrxStatus @default(PENDING)
+  reviewedById String?
+  reviewedBy   User?           @relation("TrxReviewer", fields: [reviewedById], references: [id])
+  reviewNote   String?
+  submittedAt  DateTime        @default(now())
+  reviewedAt   DateTime?
+  @@unique([method, trxId])
+  @@index([orderId])
+  @@index([status])
+}
+
+model Refund {
+  id           String   @id @default(cuid())
+  // Nullable since the refund workbench (doc 17, O0): a refund recorded
+  // against money collected outside a single Payment row (COD cash,
+  // approved manual-TrxID with no linked Payment) anchors to the ORDER;
+  // gateway refunds still always set the Payment they reverse.
+  paymentId    String?
+  payment      Payment? @relation(fields: [paymentId], references: [id])
+  orderId      String
+  amountPoisha Int
+  reason       String
+  method       PaymentMethod
+  // Workbench payout channel vocabulary (bkash | nagad | bank | cash |
+  // gateway | other) — how staff actually sent the money back. Null for
+  // gateway-recorded refunds, where `method` already says it.
+  payoutMethod String?
+  // Payout transaction reference (e.g. the bKash TrxID money was sent
+  // with). Required before a workbench refund can be marked SENT.
+  reference    String?
+  createdById  String?
+  status       String   @default("PENDING")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  returns      Return[]
+  @@index([paymentId])
+  @@index([orderId])
+}
+
+// ------------------------------------------------- COD remittance (doc 17, O8)
+// A remittance batch settles COD cash a courier (or the own-rider
+// channel, provider "rider") collected on delivered orders and later
+// sent back to the shop. Items link the batch to the EXACT Payment
+// rows it covers (paymentId unique — a collection can sit in exactly
+// one batch), so "expected" is always Σ recorded collections, never a
+// guess from order totals. variancePoisha = expected − received − fee,
+// stored at receive time; a batch whose variance is non-zero can only
+// be CLOSED with a note — the discrepancy is written down, never
+// silently absorbed. See src/orders/remittance.ts.
+enum RemittanceStatus {
+  OPEN
+  RECEIVED
+  CLOSED
+}
+
+model RemittanceBatch {
+  id             String           @id @default(cuid())
+  provider       String
+  periodStart    DateTime
+  periodEnd      DateTime
+  expectedPoisha Int
+  receivedPoisha Int?
+  feePoisha      Int?
+  variancePoisha Int?
+  status         RemittanceStatus @default(OPEN)
+  receivedAt     DateTime?
+  note           String?
+  createdById    String?
+  createdBy      User?            @relation("RemittanceCreator", fields: [createdById], references: [id])
+  deletedAt      DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  items          RemittanceItem[]
+  @@index([provider, status])
+  @@index([status])
+}
+
+model RemittanceItem {
+  id             String          @id @default(cuid())
+  batchId        String
+  batch          RemittanceBatch @relation(fields: [batchId], references: [id])
+  orderId        String
+  order          Order           @relation(fields: [orderId], references: [id])
+  paymentId      String          @unique
+  payment        Payment         @relation(fields: [paymentId], references: [id])
+  expectedPoisha Int
+  createdAt      DateTime        @default(now())
+  @@index([batchId])
+  @@index([orderId])
+}
+
+// ---------------------------------------------------------------- Courier (canonical)
+model Shipment {
+  id               String         @id @default(cuid())
+  orderId          String
+  order            Order          @relation(fields: [orderId], references: [id])
+  provider         String
+  trackingId       String?        @unique
+  status           ShipmentStatus @default(CREATED)
+  codAmountPoisha  Int            @default(0)
+  chargePoisha     Int            @default(0)
+  // Split shipments (doc 17, O5): the order lines this booking carries,
+  // as [{ orderItemId, quantity }]. NULL = whole order (every booking
+  // created before split shipments, and any unsplit booking since).
+  lineItemsJson    Json?
+  weightGrams      Int?
+  labelUrl         String?
+  deletedAt        DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  events           ShipmentEvent[]
+  @@index([orderId])
+  @@index([status])
+}
+
+model ShipmentEvent {
+  id               String   @id @default(cuid())
+  shipmentId       String
+  shipment         Shipment @relation(fields: [shipmentId], references: [id])
+  status           ShipmentStatus
+  providerRawStatus String?
+  location         String?
+  idempotencyKey   String?  @unique
+  occurredAt       DateTime @default(now())
+  createdAt        DateTime @default(now())
+  @@index([shipmentId])
+}
+
+model CourierAccount {
+  id            String   @id @default(cuid())
+  provider      String
+  enabled       Boolean  @default(false)
+  mode          String   @default("sandbox")
+  credentialRef String?
+  deletedAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@unique([provider])
+}
+
+model ShippingZone {
+  id        String         @id @default(cuid())
+  name      String
+  district  String?
+  createdAt DateTime       @default(now())
+  rates     ShippingRate[]
+  @@index([district])
+}
+
+model ShippingRate {
+  id              String       @id @default(cuid())
+  zoneId          String
+  zone            ShippingZone @relation(fields: [zoneId], references: [id])
+  provider        String?
+  minWeightGrams  Int          @default(0)
+  maxWeightGrams  Int?
+  chargePoisha    Int
+  freeAbovePoisha Int?
+  createdAt       DateTime     @default(now())
+  @@index([zoneId])
+}
+
+// ---------------------------------------------------------------- Inventory
+model Warehouse {
+  id             String          @id @default(cuid())
+  name           String
+  addressRef     String?
+  isActive       Boolean         @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  inventoryItems InventoryItem[]
+  stockMovements StockMovement[]
+  purchaseOrders PurchaseOrder[]
+  inventoryBatches InventoryBatch[]
+  serialUnits      SerialUnit[]
+}
+
+model InventoryItem {
+  id               String         @id @default(cuid())
+  variantId        String
+  variant          ProductVariant @relation(fields: [variantId], references: [id])
+  warehouseId      String
+  warehouse        Warehouse      @relation(fields: [warehouseId], references: [id])
+  quantityOnHand   Int            @default(0)
+  quantityReserved Int            @default(0)
+  // Bin / rack location label (ADV-20, doc 22): free-text shelf code
+  // (e.g. "A-01") written by PO receives that carry a bin; the
+  // warehouse-ops wave (ADV-21) reads it for pick lists. Null = no
+  // location recorded — never guessed.
+  bin              String?
+  updatedAt        DateTime       @updatedAt
+  @@unique([variantId, warehouseId])
+  @@index([warehouseId])
+}
+
+model StockMovement {
+  id            String            @id @default(cuid())
+  variantId     String
+  variant       ProductVariant    @relation(fields: [variantId], references: [id])
+  warehouseId   String
+  warehouse     Warehouse         @relation(fields: [warehouseId], references: [id])
+  type          StockMovementType
+  quantityDelta Int
+  quantityBefore Int
+  quantityAfter  Int
+  referenceType String
+  referenceId   String
+  reason        String
+  actorId       String?
+  actor         User?             @relation("MovementActor", fields: [actorId], references: [id])
+  createdAt     DateTime          @default(now())
+  @@index([variantId, createdAt])
+  @@index([referenceType, referenceId])
+}
+
+// ---------------------------------------------------------------------------
+// Inventory depth (ADV-20, doc 22) — batch/lot + expiry, serial/IMEI units.
+// Gated by the module.inventory_depth flag: with the flag OFF nothing
+// writes these tables and every pre-ADV-20 behaviour is byte-identical.
+// ---------------------------------------------------------------------------
+
+// One received lot of a variant in one warehouse. quantityOnHand is the
+// batch sub-ledger: incremented by PO receives that name the batch,
+// decremented FEFO (earliest expiry first, then oldest received) when
+// a sale of the variant is delivered. Variants without batches are
+// not tracked here at all — their absence means "untracked", never 0.
+model InventoryBatch {
+  id              String         @id @default(cuid())
+  variantId       String
+  variant         ProductVariant @relation(fields: [variantId], references: [id])
+  warehouseId     String
+  warehouse       Warehouse      @relation(fields: [warehouseId], references: [id])
+  batchCode       String
+  expiryDate      DateTime?
+  quantityOnHand  Int            @default(0)
+  costPoisha      Int?
+  purchaseOrderId String?
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  bin             String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  serialUnits     SerialUnit[]
+  @@index([variantId, warehouseId])
+  @@index([expiryDate])
+}
+
+// One physical unit of a serial-tracked (IMEI) variant. status is an
+// app-level string (house style): IN_STOCK | SOLD | RETURNED.
+// RETURNED means the unit came back DAMAGED on a return — physically
+// present but kept out of sellable stock, mirroring the returns rule
+// that DAMAGED goods never restock. Restockable returns flip SOLD
+// units straight back to IN_STOCK. orderId keeps the last order the
+// unit was sold on (traceability), cleared when it restocks.
+model SerialUnit {
+  id          String         @id @default(cuid())
+  variantId   String
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+  warehouseId String
+  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id])
+  serial      String
+  status      String         @default("IN_STOCK")
+  orderId     String?
+  order       Order?         @relation(fields: [orderId], references: [id])
+  batchId     String?
+  batch       InventoryBatch? @relation(fields: [batchId], references: [id])
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  @@unique([variantId, serial])
+  @@index([variantId, status])
+  @@index([orderId])
+}
+
+// ---------------------------------------------------------------- Marketing / Notifications
+model Coupon {
+  id                String        @id @default(cuid())
+  code              String        @unique
+  type              CouponType
+  valuePoisha       Int?
+  valuePercent      Int?
+  minCartPoisha     Int?
+  maxDiscountPoisha Int?
+  usageLimit        Int?
+  perUserLimit      Int?
+  productIds        String[]
+  categoryIds       String[]
+  customerGroup     String?
+  stackable         Boolean       @default(false)
+  isActive          Boolean       @default(true)
+  startsAt          DateTime?
+  endsAt            DateTime?
+  deletedAt         DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  usages            CouponUsage[]
+}
+
+model CouponUsage {
+  id             String   @id @default(cuid())
+  couponId       String
+  coupon         Coupon   @relation(fields: [couponId], references: [id])
+  orderId        String
+  order          Order    @relation(fields: [orderId], references: [id])
+  customerId     String?
+  customer       Customer? @relation(fields: [customerId], references: [id])
+  discountPoisha Int
+  usedAt         DateTime @default(now())
+  @@unique([couponId, orderId])
+  @@index([couponId])
+}
+
+model FlashSale {
+  id        String          @id @default(cuid())
+  name      String
+  startsAt  DateTime
+  endsAt    DateTime
+  isActive  Boolean         @default(true)
+  deletedAt DateTime?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  items     FlashSaleItem[]
+}
+
+model FlashSaleItem {
+  id             String         @id @default(cuid())
+  flashSaleId    String
+  flashSale      FlashSale      @relation(fields: [flashSaleId], references: [id])
+  productId      String
+  product        Product        @relation(fields: [productId], references: [id])
+  variantId      String
+  variant        ProductVariant @relation(fields: [variantId], references: [id])
+  salePricePoisha Int
+  stockCap       Int
+  soldCount      Int            @default(0)
+  createdAt      DateTime       @default(now())
+  @@unique([flashSaleId, variantId])
+}
+
+model Campaign {
+  id                 String         @id @default(cuid())
+  channel            CampaignChannel
+  segmentRef         String?
+  templateKey        String?
+  scheduledAt        DateTime?
+  sentCount          Int            @default(0)
+  deliveredCount     Int            @default(0)
+  failedCount        Int            @default(0)
+  costEstimatePoisha Int?
+  status             CampaignStatus @default(DRAFT)
+  deletedAt          DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+}
+
+model NotificationLog {
+  id           String             @id @default(cuid())
+  channel      NotificationChannel
+  templateKey  String?
+  recipientRef String
+  orderId      String?
+  order        Order?             @relation(fields: [orderId], references: [id])
+  status       NotificationStatus @default(QUEUED)
+  provider     String?
+  // Durable SMS DLR (schema wave 2): the provider's message id for an
+  // accepted send, written by the send paths that create rows here
+  // (src/jobs/notification-failures.ts recordSmsSendAccepted). The DLR
+  // webhook (app/api/v1/public/sms/dlr) joins callbacks on it.
+  providerMessageId String?
+  segments     String?
+  errorRef     String?
+  createdAt    DateTime           @default(now())
+  @@index([orderId])
+  @@index([status, createdAt])
+  @@index([providerMessageId])
+}
+
+// ---- CMS + Supplier/PurchaseOrder (added by integration, gaps noted by Agent 6/10) ----
+enum CmsStatus {
+  DRAFT
+  PUBLISHED
+  SCHEDULED
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+model CmsPage {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  titleBn     String
+  titleEn     String?
+  bodyBn      String
+  bodyEn      String?
+  status      CmsStatus @default(DRAFT)
+  seoTitle    String?
+  seoDescription String?
+  publishedAt DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  @@index([status, publishedAt])
+}
+
+model CmsPost {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  titleBn     String
+  titleEn     String?
+  bodyBn      String
+  bodyEn      String?
+  category    String?
+  tags        String[]  @default([])
+  status      CmsStatus @default(DRAFT)
+  seoTitle    String?
+  seoDescription String?
+  publishedAt DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  @@index([status, publishedAt])
+  @@index([category])
+}
+
+model SeoRedirect {
+  id        String   @id @default(cuid())
+  fromPath  String   @unique
+  toPath    String
+  permanent Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Supplier {
+  id          String    @id @default(cuid())
+  name        String
+  phone       String?
+  email       String?
+  address     String?
+  note        String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  purchaseOrders PurchaseOrder[]
+}
+
+model PurchaseOrder {
+  id          String              @id @default(cuid())
+  supplierId  String
+  supplier    Supplier            @relation(fields: [supplierId], references: [id])
+  warehouseId String?
+  warehouse   Warehouse?          @relation(fields: [warehouseId], references: [id])
+  status      PurchaseOrderStatus @default(DRAFT)
+  totalPoisha Int                 @default(0)
+  note        String?
+  expectedAt  DateTime?
+  receivedAt  DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  items       PurchaseOrderItem[]
+  inventoryBatches InventoryBatch[]
+  @@index([supplierId])
+  @@index([status])
+}
+
+model PurchaseOrderItem {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  variantId       String
+  variant         ProductVariant @relation(fields: [variantId], references: [id])
+  quantityOrdered Int
+  quantityReceived Int          @default(0)
+  costPoisha      Int
+  @@unique([purchaseOrderId, variantId])
+}
+
+// ---- BD differentiators (added by integration, Agent 11 remaining wiring) ----
+enum PaymentLinkStatus {
+  ACTIVE
+  PAID
+  EXPIRED
+  CANCELLED
+}
+
+model PaymentLink {
+  id          String            @id @default(cuid())
+  tokenHash   String            @unique
+  orderId     String?
+  order       Order?            @relation(fields: [orderId], references: [id])
+  amountPoisha Int
+  status      PaymentLinkStatus @default(ACTIVE)
+  expiresAt   DateTime
+  paidAt      DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  @@index([orderId])
+  @@index([status, expiresAt])
+}
+
+model DailyCashClosing {
+  id                String    @id @default(cuid())
+  closingDate       DateTime  @unique @db.Date
+  openingCashPoisha Int       @default(0)
+  expectedCashPoisha Int
+  actualCashPoisha  Int
+  differencePoisha  Int
+  hasMismatch       Boolean   @default(false)
+  breakdownJson     Json?
+  note              String?
+  closedById        String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// ---- Automation + Fraud (added by integration, Agent 13 remaining wiring) ----
+enum AutomationTrigger {
+  ORDER_CREATED
+  ORDER_STATUS_CHANGED
+  PAYMENT_SUCCEEDED
+  STOCK_LOW
+  CHECKOUT_ABANDONED
+  // Schema wave 2: registerCustomer (src/customer-auth/auth.ts) fires
+  // this through emitAutomationEvent after a successful registration.
+  CUSTOMER_REGISTERED
+}
+
+model AutomationRule {
+  id           String            @id @default(cuid())
+  name         String
+  trigger      AutomationTrigger
+  conditionJson Json
+  actionJson   Json
+  delaySeconds Int               @default(0)
+  isEnabled    Boolean           @default(true)
+  deletedAt    DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  runs         AutomationRunLog[]
+  @@index([trigger, isEnabled])
+}
+
+model AutomationRunLog {
+  id           String         @id @default(cuid())
+  ruleId       String
+  rule         AutomationRule @relation(fields: [ruleId], references: [id])
+  eventRef     String
+  matched      Boolean
+  status       String
+  detailJson   Json?
+  executeAfter DateTime?
+  createdAt    DateTime       @default(now())
+  @@index([ruleId, createdAt])
+}
+
+model FraudListEntry {
+  id        String   @id @default(cuid())
+  listType  String
+  entryType String
+  value     String
+  district  String?
+  reason    String?
+  createdAt DateTime @default(now())
+  @@unique([listType, entryType, value])
+  @@index([value])
+}
+
+// ---- Advanced orders / B2B / Vendors (added by integration, Agent 16 remaining wiring) ----
+enum PreOrderStatus {
+  OPEN
+  DEPOSIT_PAID
+  READY
+  FULFILLED
+  CANCELLED
+}
+
+model PreOrder {
+  id            String         @id @default(cuid())
+  customerId    String
+  productId     String
+  variantId     String?
+  quantity      Int
+  depositPoisha Int            @default(0)
+  // Wave 15: the deposit PERCENT applied to this record (nullable —
+  // rows written by advanced-orders before this wave have none; the
+  // product-level terms of record live on Product.preorder* columns).
+  depositPercent Int?
+  totalPoisha   Int
+  expectedDate  DateTime?
+  status        PreOrderStatus @default(OPEN)
+  // Doc 17 O9-1: the real Order this pre-order became on fulfilment
+  // (migration 20261025211500). NULL until fulfilled.
+  convertedOrderId String?
+  deletedAt     DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  @@index([customerId, status])
+}
+
+model StockTransfer {
+  id              String    @id @default(cuid())
+  fromWarehouseId String
+  toWarehouseId   String
+  status          String    @default("DRAFT")
+  itemsJson       Json
+  shippedAt       DateTime?
+  receivedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  @@index([status])
+}
+
+model Vendor {
+  id               String    @id @default(cuid())
+  name             String
+  ownerName        String?
+  phone            String
+  email            String?
+  commissionBps    Int       @default(1000)
+  status           String    @default("PENDING")
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  products         VendorProduct[]
+  commissionLines  VendorCommissionLine[]
+  refunds          VendorRefund[]
+  payoutRequests   VendorPayoutRequest[]
+  documents        VendorDocument[]
+}
+
+model B2bCustomer {
+  id              String    @id @default(cuid())
+  companyName     String
+  contactName     String
+  phone           String    @unique
+  tradeLicenseNo  String?
+  creditLimitPoisha Int     @default(0)
+  duePoisha       Int       @default(0)
+  // Oldest unpaid invoice due date (date-only semantics; the TS layer
+  // reads it back as an ISO date string). NULL = no dated dues known —
+  // checkCredit's overdue-by-date rule only fires when this is set.
+  oldestDueDate   DateTime?
+  status          String    @default("PENDING_APPROVAL")
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Quotation {
+  id            String    @id @default(cuid())
+  b2bCustomerId String
+  itemsJson     Json
+  totalPoisha   Int
+  status        String    @default("DRAFT")
+  validUntil    DateTime?
+  convertedOrderId String?
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  @@index([b2bCustomerId, status])
+}
+
+// ---- Own riders (added by integration, Agent 18 remaining wiring) ----
+enum RiderStatus {
+  ACTIVE
+  INACTIVE
+  ON_DELIVERY
+  SUSPENDED
+}
+
+enum RiderDeliveryStatus {
+  ASSIGNED
+  PICKED_UP
+  DELIVERED
+  FAILED
+}
+
+model Rider {
+  id                 String      @id @default(cuid())
+  name               String
+  phone              String      @unique
+  vehicleType        String
+  zone               String
+  status             RiderStatus @default(ACTIVE)
+  payoutPerDeliveryPoisha Int    @default(0)
+  deletedAt          DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  deliveries         RiderDelivery[]
+  @@index([zone, status])
+}
+
+model RiderDelivery {
+  id               String              @id @default(cuid())
+  riderId          String
+  rider            Rider               @relation(fields: [riderId], references: [id])
+  orderId          String
+  status           RiderDeliveryStatus @default(ASSIGNED)
+  codExpectedPoisha Int                @default(0)
+  codCollectedPoisha Int               @default(0)
+  codHandedOverPoisha Int              @default(0)
+  proofType        String?
+  proofOtpHash     String?
+  proofRef         String?
+  failureReason    String?
+  assignedAt       DateTime            @default(now())
+  pickedUpAt       DateTime?
+  deliveredAt      DateTime?
+  @@index([riderId, status])
+  @@index([orderId])
+}
+
+// ---- Storefront UX (added by integration, Agent 19 remaining wiring) ----
+model BackInStockSignup {
+  id        String    @id @default(cuid())
+  productId String
+  variantId String?
+  phone     String
+  notifiedAt DateTime?
+  createdAt DateTime  @default(now())
+  @@unique([productId, variantId, phone])
+  @@index([productId])
+}
+
+// ---- ERP-lite + Extensibility (added by integration, Agents 17/20 remaining wiring) ----
+model ErpAccount {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  nameBn    String
+  nameEn    String
+  type      String
+  createdAt DateTime @default(now())
+  lines     ErpJournalLine[]
+}
+
+model ErpJournalEntry {
+  id          String    @id @default(cuid())
+  entryDate   DateTime  @db.Date
+  memo        String?
+  sourceKind  String?
+  sourceId    String?
+  status      String    @default("DRAFT")
+  periodCode  String
+  createdAt   DateTime  @default(now())
+  lines       ErpJournalLine[]
+  @@index([periodCode, status])
+  // Schema wave 2 (2026-10-26): DB-enforced exactly-once for
+  // auto-posting. Local audit before adding: 0 duplicate
+  // (sourceKind, sourceId) pairs (the table was empty locally).
+  // NULL pairs stay exempt (Postgres treats NULLs as distinct),
+  // which is what the DRAFT/manual entries rely on.
+  @@unique([sourceKind, sourceId])
+}
+
+model ErpJournalLine {
+  id            String          @id @default(cuid())
+  entryId       String
+  entry         ErpJournalEntry @relation(fields: [entryId], references: [id])
+  accountId     String
+  account       ErpAccount      @relation(fields: [accountId], references: [id])
+  debitPoisha   Int             @default(0)
+  creditPoisha  Int             @default(0)
+  @@index([entryId])
+  @@index([accountId])
+}
+
+model ErpPeriod {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  startsOn  DateTime  @db.Date
+  endsOn    DateTime  @db.Date
+  lockedAt  DateTime?
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  name       String
+  keyHash    String    @unique
+  scopesJson Json
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  // ADV-26 (doc 22): partner API keys productised on this same table.
+  // keyPrefix/scopes are first-class columns for the partner surface
+  // (the legacy extensibility store keeps reading the scopesJson bag
+  // { scopes, keyPrefix, pluginId }; createPartnerApiKey writes BOTH
+  // so the two readers never disagree). createdById = staff user id.
+  keyPrefix  String    @default("")
+  scopes     String[]  @default([])
+  createdById String?
+}
+
+model WebhookSubscription {
+  id          String   @id @default(cuid())
+  event       String
+  targetUrl   String
+  hasSecret   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  @@index([event, isActive])
+}
+
+// ---- Developer platform (ADV-26, doc 22): productised outbound -------
+// ---- webhooks + delivery log. The legacy WebhookSubscription above ---
+// ---- stays for the plugin/extensibility store; NEW admin-managed -----
+// ---- endpoints live here, with a durable per-delivery row. -----------
+
+model WebhookEndpoint {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  // Event names from the webhook catalogue (src/webhooks/events.ts):
+  // order.created, order.status_changed, payment.succeeded,
+  // checkout.abandoned, stock.low, customer.registered, webhook.test.
+  events    String[]
+  // Signing secret: ENCRYPTED at rest (AES-256-GCM via lib/settings
+  // encryptValue) because the worker must RECOVER it to sign each
+  // delivery — a hash alone cannot sign. The plaintext is shown ONCE
+  // at creation; only secretPrefix (e.g. "whsec_ab12…") is displayed
+  // afterwards. Never logged, never returned by list APIs.
+  secretEncrypted String
+  secretPrefix    String
+  enabled   Boolean  @default(true)
+  createdById String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deliveries WebhookDelivery[]
+
+  @@index([enabled])
+}
+
+model WebhookDelivery {
+  id            String   @id @default(cuid())
+  endpointId    String
+  endpoint      WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  event         String
+  entityId      String?
+  // The exact payload object POSTed (serialised once at attempt time;
+  // the signature covers the exact bytes sent).
+  payloadJson   Json
+  // PENDING (queued / awaiting retry) | SENT (real 2xx) |
+  // FAILED (last attempt failed, retry scheduled) | DEAD (exhausted).
+  status        String   @default("PENDING")
+  attempts      Int      @default(0)
+  responseCode  Int?
+  // First 200 chars of the response body — evidence, never headers or
+  // anything credential-shaped.
+  responseSnippet String?
+  lastError     String?
+  nextRetryAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([endpointId, status])
+  @@index([status, nextRetryAt])
+}
+
+// ---- Loyalty / Referral / Affiliate (added by integration, Agent 36 remaining wiring) ----
+model PointsLedgerEntry {
+  id          String   @id @default(cuid())
+  customerId  String
+  kind        String
+  points      Int
+  balanceAfter Int?
+  reason      String?
+  orderId     String?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  @@index([customerId, createdAt])
+}
+
+model Referral {
+  id            String   @id @default(cuid())
+  referrerId    String
+  refereeId     String   @unique
+  code          String
+  status        String   @default("PENDING")
+  rewardPoints  Int      @default(0)
+  createdAt     DateTime @default(now())
+  qualifiedAt   DateTime?
+  @@index([referrerId, status])
+}
+
+model AffiliatePartner {
+  id            String   @id @default(cuid())
+  name          String
+  phone         String   @unique
+  code          String   @unique
+  commissionBps Int      @default(500)
+  status        String   @default("ACTIVE")
+  createdAt     DateTime @default(now())
+  commissions   AffiliateCommission[]
+}
+
+model AffiliateCommission {
+  id          String           @id @default(cuid())
+  partnerId   String
+  partner     AffiliatePartner @relation(fields: [partnerId], references: [id])
+  orderId     String
+  amountPoisha Int
+  status      String           @default("PENDING")
+  createdAt   DateTime         @default(now())
+  payableAt   DateTime?
+  @@index([partnerId, status])
+  @@index([orderId])
+}
+
+// ---- POS (added by integration, Agent 38 remaining wiring) ----
+model PosRegister {
+  id        String     @id @default(cuid())
+  name      String
+  location  String?
+  status    String     @default("ACTIVE")
+  createdAt DateTime   @default(now())
+  shifts    PosShift[]
+}
+
+model PosShift {
+  id               String      @id @default(cuid())
+  registerId       String
+  register         PosRegister @relation(fields: [registerId], references: [id])
+  openedById       String?
+  openingFloatPoisha Int       @default(0)
+  expectedCashPoisha Int?
+  countedCashPoisha  Int?
+  variancePoisha     Int?
+  varianceNote       String?
+  status           String      @default("OPEN")
+  openedAt         DateTime    @default(now())
+  closedAt         DateTime?
+  sales            PosSale[]
+  @@index([registerId, status])
+}
+
+model PosSale {
+  id             String   @id @default(cuid())
+  shiftId        String
+  shift          PosShift @relation(fields: [shiftId], references: [id])
+  receiptNo      String   @unique
+  itemsJson      Json
+  totalPoisha    Int
+  discountPoisha Int      @default(0)
+  paymentMethod  String
+  tenderedPoisha Int?
+  idempotencyKey String   @unique
+  syncedOrderId  String?
+  createdAt      DateTime @default(now())
+  @@index([shiftId, createdAt])
+}
+
+// ---- SMS ingestion (added by integration, Agent 49 remaining wiring) ----
+model SmsIngestion {
+  id              String   @id @default(cuid())
+  provider        String
+  trxId           String
+  amountPoisha    Int
+  senderPhoneMasked String
+  rawTextHash     String
+  preview         String?
+  source          String
+  outcome         String
+  proposedOrderId String?
+  duplicateOfId   String?
+  createdAt       DateTime @default(now())
+  @@unique([provider, trxId])
+  @@index([outcome, createdAt])
+}
+
+// Verify-side TrxID claim registry (doc 21 G3-8, wave W0-D): a
+// (method, trxId) pair may be VERIFIED for exactly one order, ever.
+// Written by the sms-verify flow on a successful match (atomic claim:
+// an insert conflict IS the duplicate signal) and read by sms-ingest to
+// flag already-verified TrxIDs. Replaces the in-memory demoTrxRegistry,
+// whose claims reset on every process restart. Distinct from
+// SmsIngestion above, which dedupes ingestion RECORDS — a TrxID can be
+// ingested (record) without being verified (claim), never the reverse.
+model SmsTrxClaim {
+  id        String   @id @default(cuid())
+  method    String
+  trxId     String
+  orderId   String?
+  claimedAt DateTime @default(now())
+
+  @@unique([method, trxId])
+}
+
+// ---- Courier invoice reconciliation (added by integration, Agent 50 remaining wiring) ----
+model CourierInvoiceRun {
+  id            String   @id @default(cuid())
+  courierKey    String
+  sourceFileName String?
+  rowsTotal     Int
+  rowsValid     Int
+  matchedTotalPoisha Int @default(0)
+  disputedTotalPoisha Int @default(0)
+  createdAt     DateTime @default(now())
+  disputes      CourierDispute[]
+  @@index([courierKey, createdAt])
+}
+
+model CourierDispute {
+  id              String          @id @default(cuid())
+  runId           String
+  run             CourierInvoiceRun @relation(fields: [runId], references: [id])
+  trackingId      String
+  expectedPoisha  Int
+  invoicedPoisha  Int
+  reason          String
+  status          String          @default("OPEN")
+  evidenceRef     String?
+  createdAt       DateTime        @default(now())
+  adjustments     DisputeAdjustment[]
+  @@index([runId, status])
+}
+
+model DisputeAdjustment {
+  id          String         @id @default(cuid())
+  disputeId   String
+  dispute     CourierDispute @relation(fields: [disputeId], references: [id])
+  direction   String
+  amountPoisha Int
+  createdAt   DateTime       @default(now())
+}
+
+// ---- Reseller / Call Center / Inbox (added by integration, per docs/AGENT14-REVIEW.md proposals) ----
+model Reseller {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String   @unique
+  status    String   @default("PENDING_APPROVAL")
+  tier      String   @default("STANDARD")
+  // Public attribution code for ?ref=CODE share links (wave 6). Nullable:
+  // codes are generated in app code at create time and lazily backfilled
+  // on admin reads, so pre-existing rows start NULL. Unique when present
+  // (Postgres allows many NULLs under a unique constraint).
+  code      String?  @unique
+  createdAt DateTime @default(now())
+  priceEntries ResellerPriceEntry[]
+  walletEntries ResellerWalletEntry[]
+  withdrawals ResellerWithdrawal[]
+  payoutRequests ResellerPayoutRequest[]
+  orders Order[]
+}
+
+model ResellerPriceEntry {
+  id         String   @id @default(cuid())
+  resellerId String
+  reseller   Reseller @relation(fields: [resellerId], references: [id])
+  productId  String
+  variantId  String?
+  pricePoisha Int
+  createdAt  DateTime @default(now())
+  @@index([resellerId, productId])
+}
+
+model ResellerWalletEntry {
+  id         String   @id @default(cuid())
+  resellerId String
+  reseller   Reseller @relation(fields: [resellerId], references: [id])
+  kind       String
+  amountPoisha Int
+  balanceAfterPoisha Int?
+  refId      String?
+  createdAt  DateTime @default(now())
+  @@index([resellerId, createdAt])
+}
+
+model ResellerWithdrawal {
+  id               String   @id @default(cuid())
+  resellerId       String
+  reseller         Reseller @relation(fields: [resellerId], references: [id])
+  amountPoisha     Int
+  accountRefMasked String
+  status           String   @default("PENDING")
+  payoutRef        String?
+  createdAt        DateTime @default(now())
+  @@index([resellerId, status])
+}
+
+/// Portal payout request (ADV-12) — the reseller-facing payout flow.
+/// Distinct from ResellerWithdrawal (the older admin-initiated flow):
+/// availability is COMPUTED (wallet balance − PAID − PENDING/APPROVED
+/// requests), never hold-ledger entries, so the two flows cannot
+/// double-count. PAID means staff recorded an external payment —
+/// no money moves through this table automatically.
+model ResellerPayoutRequest {
+  id           String    @id @default(cuid())
+  resellerId   String
+  reseller     Reseller  @relation(fields: [resellerId], references: [id])
+  amountPoisha Int
+  /// BKASH | NAGAD | BANK
+  method       String
+  /// Where to pay, as written by the reseller (their own account note).
+  accountNote  String
+  /// PENDING | APPROVED | PAID | REJECTED
+  status       String    @default("PENDING")
+  decidedById  String?
+  decidedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  @@index([resellerId, status])
+}
+
+// Vendor payout requests (schema wave 2, 2026-10-26) — mirrors
+// ResellerPayoutRequest, plus paidAt + a decision note. Before this
+// model existed the vendor portal could only show a net payable and
+// state that payouts settle outside the system with no record; now
+// PAID is a first-class record — and it still means "a staff member
+// recorded an external payment", never an automatic transfer
+// (src/vendors/payout-store.ts).
+model VendorPayoutRequest {
+  id           String    @id @default(cuid())
+  vendorId     String
+  vendor       Vendor    @relation(fields: [vendorId], references: [id])
+  amountPoisha Int
+  /// BKASH | NAGAD | BANK
+  method       String
+  /// Where to pay, as written by the vendor (their own account note).
+  accountNote  String
+  /// PENDING | APPROVED | PAID | REJECTED
+  status       String    @default("PENDING")
+  decidedById  String?
+  decidedAt    DateTime?
+  /// When the PAID decision was recorded (external payment made).
+  paidAt       DateTime?
+  /// Staff decision note (shown to the vendor in the portal).
+  note         String?
+  createdAt    DateTime  @default(now())
+  @@index([vendorId, status])
+}
+
+// Vendor KYC documents (schema wave 2) — METADATA ONLY: kind +
+// fileName (+ storageKey once an upload path exists). No file bytes
+// ever land here, and the portal upload control stays disabled until
+// storage (R2/S3) is configured AND an upload endpoint is built;
+// staff record documents received out-of-band (in person / email)
+// and verify them here (src/vendors/documents.ts).
+model VendorDocument {
+  id         String   @id @default(cuid())
+  vendorId   String
+  vendor     Vendor   @relation(fields: [vendorId], references: [id])
+  /// TRADE_LICENSE | NID | TIN | OTHER
+  kind       String
+  fileName   String
+  storageKey String?
+  /// PENDING | VERIFIED | REJECTED
+  status     String   @default("PENDING")
+  note       String?
+  createdAt  DateTime @default(now())
+  @@index([vendorId, status])
+}
+
+model CallTask {
+  id         String   @id @default(cuid())
+  kind       String
+  priority   Int      @default(10)
+  status     String   @default("PENDING")
+  customerPhoneMasked String
+  // C1: full phone + name + note are stored ONLY for tasks with no
+  // linked order (MANUAL tasks) — an order-linked task's number is
+  // resolved from the Order at read time and never copied here.
+  customerPhone String?
+  customerName  String?
+  note          String?
+  orderId    String?
+  assignedToId String?
+  // When the current IN_CALL claim began (set at claim, cleared when
+  // the task leaves IN_CALL) — persists the workbench call timer.
+  assignedAt DateTime?
+  callbackAt DateTime?
+  // C4: no-answer retry backoff — written by the call-center
+  // automation layer after a NO_ANSWER outcome; the claim paths skip
+  // the task while this is in the future (see src/callcenter/store.ts).
+  nextAttemptAt DateTime?
+  attempts   Int      @default(0)
+  createdAt  DateTime @default(now())
+  logs       CallLogEntry[]
+  @@index([status, priority, createdAt])
+}
+
+model CallLogEntry {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      CallTask @relation(fields: [taskId], references: [id])
+  agentId   String?
+  outcome   String
+  note      String?
+  // C3: disposition sub-reason + script version stamped at outcome
+  // time; QA score/comment are written later by a supervisor.
+  disposition   String?
+  scriptVersion String?
+  qaScore       Int?
+  qaComment     String?
+  // C1/C5: talk time in whole seconds, sent by the workbench timer
+  // with the outcome; reporting (agentPerformance) sums it.
+  durationSeconds Int?
+  createdAt DateTime @default(now())
+  @@index([taskId, createdAt])
+}
+
+// Abandoned-checkout capture (wave 22, doc 17 batch O4): the storefront
+// posts a snapshot (phone + cart + partial address) when a shopper has
+// entered a valid BD phone and has items in the cart but has not ordered
+// yet — see src/checkout/abandoned.ts. One row per browser checkout
+// session (sessionKey is a client-generated UUID kept in sessionStorage);
+// a later capture from the same session refreshes the row while it is
+// OPEN. RECOVERED is stamped either by the public orders route when the
+// same session completes a real order, or by the admin convert action;
+// DISMISSED is a staff decision. Rows expire 7 days after capture
+// (expiresAt) and drop off the admin list — no sweeper flips the status
+// to EXPIRED in this build, the list filters on expiresAt instead.
+// itemsJson: [{ variantId, quantity, pricePoishaAtCapture }] — prices
+// are CATALOG snapshots taken server-side at capture time (the client's
+// numbers are never trusted); conversion re-prices from the live
+// catalog. addressJson: the partial BdAddress the shopper had typed
+// ({ division?, district?, upazila?, union?, addressLine? }), or null.
+model AbandonedCheckout {
+  id               String    @id @default(cuid())
+  sessionKey       String    @unique
+  customerPhone    String
+  customerName     String?
+  itemsJson        Json
+  addressJson      Json?
+  subtotalPoisha   Int
+  status           String    @default("OPEN")
+  recoveredOrderId String?
+  callTaskId       String?
+  expiresAt        DateTime
+  lastSeenAt       DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([status, expiresAt])
+  @@index([customerPhone])
+}
+
+model InboxConversation {
+  id               String   @id @default(cuid())
+  channel          String
+  externalThreadId String
+  customerName     String?
+  customerPhoneMasked String?
+  status           String   @default("OPEN")
+  assignedToId     String?
+  createdAt        DateTime @default(now())
+  // Staff read marker (doc 21 G3-10, wave W0-D schema; W0-E wires the
+  // store/UI): when a staff member last opened this conversation.
+  // unreadCount derives from messages newer than this stamp.
+  lastReadAt       DateTime?
+  messages         InboxMessage[]
+  @@unique([channel, externalThreadId])
+}
+
+model InboxMessage {
+  id                String           @id @default(cuid())
+  conversationId    String
+  conversation      InboxConversation @relation(fields: [conversationId], references: [id])
+  channel           String
+  externalMessageId String
+  direction         String
+  kind              String   @default("TEXT")
+  body              String?
+  // PRODUCT_CARD / ORDER_CARD target id (variant / order) — doc 22
+  // ADV-6, doc 21 G3-10 remainder. Nullable: TEXT/IMAGE/SYSTEM carry none.
+  refId             String?
+  createdAt         DateTime @default(now())
+  @@unique([channel, externalMessageId])
+  @@index([conversationId, createdAt])
+}
+
+// ---- Landing pages (added by integration, Agent 53 remaining wiring) ----
+model LandingPage {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  status    String   @default("DRAFT")
+  sectionsJson Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---- Advanced modules completion (vendors persistence, reseller
+// ---- attribution, web push subscriptions) ----
+// VendorProduct links a vendor to a catalog Product / ProductVariant
+// (nullable: a vendor listing may exist before its catalog rows do) and
+// carries the approval state machine from src/vendors/types.ts verbatim
+// (approval is a free String: PENDING_REVIEW / APPROVED / REJECTED /
+// CHANGES_REQUESTED).
+model VendorProduct {
+  id              String         @id @default(cuid())
+  vendorId        String
+  vendor          Vendor         @relation(fields: [vendorId], references: [id])
+  productId       String?
+  product         Product?       @relation(fields: [productId], references: [id])
+  variantId       String?
+  variant         ProductVariant? @relation(fields: [variantId], references: [id])
+  productName     String
+  sku             String
+  pricePoisha     Int
+  approval        String         @default("PENDING_REVIEW")
+  rejectionReason String?
+  deletedAt       DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  @@index([vendorId, approval])
+  @@index([variantId])
+}
+
+// One commission line per (order, vendor): the delivered-order hook
+// aggregates a vendor's items in an order into ONE line, and the unique
+// constraint is the exactly-once backstop for commission crediting.
+model VendorCommissionLine {
+  id                  String   @id @default(cuid())
+  orderId             String
+  order               Order    @relation(fields: [orderId], references: [id])
+  vendorId            String
+  vendor              Vendor   @relation(fields: [vendorId], references: [id])
+  grossPoisha         Int
+  commissionBps       Int
+  commissionPoisha    Int
+  vendorEarningPoisha Int
+  createdAt           DateTime @default(now())
+  @@unique([orderId, vendorId])
+  @@index([vendorId, createdAt])
+}
+
+// A refund charged back to a vendor; payout summaries subtract the SUM
+// of these rows for the vendor (never below zero — see vendors/service).
+model VendorRefund {
+  id           String   @id @default(cuid())
+  vendorId     String
+  vendor       Vendor   @relation(fields: [vendorId], references: [id])
+  orderId      String?
+  order        Order?   @relation(fields: [orderId], references: [id])
+  amountPoisha Int
+  reason       String
+  createdAt    DateTime @default(now())
+  @@index([vendorId, createdAt])
+  @@index([orderId])
+}
+
+// Browser Web Push subscriptions (RFC 8291). endpoint is the identity
+// (a browser re-subscribing rotates keys on the same endpoint, so
+// subscribe upserts by endpoint). customerId is set when the subscribe
+// call carried a valid customer_session; anonymous subscriptions keep
+// it null. p256dh/auth are the browser-issued subscription keys —
+// server-side only, never logged or returned to other clients.
+model PushSubscription {
+  id         String   @id @default(cuid())
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  customerId String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@index([customerId])
+}
+
+model NewsletterSubscriber {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  source         String    @default("homepage")
+  status         String    @default("subscribed")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  unsubscribedAt DateTime?
+}
+
+/// Storefront tracking events persisted for the analytics funnel
+/// (ADV-8 follow-through, wave 38). Append-only; ids + event name +
+/// order ref + timestamp ONLY — no PII is ever stored here.
+model TrackingEvent {
+  id         String   @id @default(cuid())
+  eventId    String   @unique
+  eventName  String
+  orderId    String?
+  occurredAt DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([eventName, occurredAt])
+}
+
+// ------------------------------------------------------- Support tickets (ADV-16)
+// Customer support tickets, deliberately separate from the contact
+// inbox and src/inbox (Meta channels). Status is an app-level string
+// (OPEN | PENDING | CLOSED), mirroring Review.status / ContactMessage.
+model SupportTicket {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  orderId    String?
+  order      Order?   @relation(fields: [orderId], references: [id])
+  subject    String
+  status     String   @default("OPEN")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  messages   SupportTicketMessage[]
+
+  @@index([customerId, createdAt])
+  @@index([status, updatedAt])
+}
+
+model SupportTicketMessage {
+  id         String        @id @default(cuid())
+  ticketId   String
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id])
+  authorType String
+  authorId   String
+  body       String
+  createdAt  DateTime      @default(now())
+
+  @@index([ticketId, createdAt])
+}
+
+// ------------------------------------------------------- Product Q&A (ADV-16)
+model ProductQuestion {
+  id           String    @id @default(cuid())
+  productId    String
+  product      Product   @relation(fields: [productId], references: [id])
+  customerId   String?
+  customer     Customer? @relation(fields: [customerId], references: [id])
+  authorName   String
+  question     String
+  answer       String?
+  answeredById String?
+  answeredAt   DateTime?
+  status       String    @default("PENDING")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  @@index([productId, status, createdAt])
+}
+
+// ------------------------------------------------------- Review helpful votes (ADV-16)
+model ReviewHelpfulVote {
+  id        String   @id @default(cuid())
+  reviewId  String
+  review    Review   @relation(fields: [reviewId], references: [id])
+  voterKey  String
+  createdAt DateTime @default(now())
+
+  @@unique([reviewId, voterKey])
+  @@index([reviewId])
+}
+
+// ------------------------------------------------------- Gift cards (ADV-18)
+// Bearer instruments: the plaintext code is shown ONCE at issue time
+// and never stored — only its SHA-256 hash (unique lookup) and the
+// last 4 characters (display) persist, the staff-invite-token pattern.
+// The balance is NEVER a stored column: it is the sum of
+// GiftCardTransaction.amountPoisha (the ISSUE row is the opening
+// entry), derived on every read, so the ledger and the balance can
+// never disagree. status is the
+// staff-controlled state (ACTIVE / DISABLED); DEPLETED and EXPIRED
+// are derived from the balance / expiresAt at read time.
+model GiftCard {
+  id            String   @id @default(cuid())
+  codeHash      String   @unique
+  codeLast4     String
+  initialPoisha Int
+  status        String   @default("ACTIVE")
+  expiresAt     DateTime?
+  createdById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  transactions  GiftCardTransaction[]
+
+  @@index([status, createdAt])
+}
+
+model GiftCardTransaction {
+  id           String   @id @default(cuid())
+  giftCardId   String
+  giftCard     GiftCard @relation(fields: [giftCardId], references: [id])
+  // Plain reference (no FK): the order row is the system of record for
+  // the order; this ledger only needs the id for restore/idempotency.
+  orderId      String?
+  // Signed poisha: ISSUE is +initialPoisha at creation; REDEEM is
+  // negative; REFUND_RESTORE is positive; ADJUST is staff-signed.
+  amountPoisha Int
+  kind         String
+  actorId      String?
+  createdAt    DateTime @default(now())
+
+  @@index([giftCardId, createdAt])
+  @@index([orderId])
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions / auto-replenish (ADV-18 remainder) — gated by the
+// module.subscriptions feature flag (OFF by default).
+// ---------------------------------------------------------------------------
+
+// A customer's standing repeat order: one variant, a quantity, an
+// interval, and a frozen delivery-address snapshot. The worker-side
+// generator (src/subscriptions/generate.ts) turns each due row into a
+// REAL order through the shared createManualOrder seam — this table
+// never fabricates orders itself. Address + name + phone are snapshots
+// (the Address row may later be edited or deleted; a subscription must
+// keep delivering to the address it was created with until the customer
+// changes it here). status / interval / paymentMethod are plain
+// strings (the GiftCard.status precedent): ACTIVE | PAUSED |
+// CANCELLED; WEEKLY | BIWEEKLY | MONTHLY; "cod" only in v1 — prepaid
+// methods would need a stored payment instrument, which does not exist.
+// lastError is the honest failure surface: a skipped/failed generation
+// cycle records WHY here and in the admin list instead of vanishing.
+model Subscription {
+  id              String         @id @default(cuid())
+  customerId      String
+  customer        Customer       @relation(fields: [customerId], references: [id])
+  customerName    String
+  customerPhone   String
+  variantId       String
+  variant         ProductVariant @relation(fields: [variantId], references: [id])
+  // Decimal since wave 59: a subscription on a weighted variant may
+  // carry a fractional quantity (validated like any order line).
+  quantity        Decimal        @default(1) @db.Decimal(12, 3)
+  interval        String         @default("MONTHLY")
+  status          String         @default("ACTIVE")
+  paymentMethod   String         @default("cod")
+  // Address snapshot (bdAddressSchema shape at create time).
+  division        String
+  district        String
+  upazila         String
+  union           String?
+  addressLine     String
+  nextRunAt       DateTime
+  lastRunAt       DateTime?
+  // Plain reference (no FK, the GiftCardTransaction.orderId precedent):
+  // the most recent order this subscription generated.
+  lastOrderId     String?
+  lastError       String?
+  runCount        Int            @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([customerId, status])
+  @@index([status, nextRunAt])
+  @@index([variantId])
+}
+
+// ---- Doc 34: CartFlows-style funnel layer (orchestration only) ----
+// A Funnel groups existing LandingPage rows into an ordered step
+// graph (landing -> order -> upsell/downsell -> thank_you). Steps
+// ARE landing pages — the funnel stores no content and moves no
+// money; it only routes. stepsJson envelope mirrors the LandingPage
+// sectionsJson pattern: { v: 1, steps: [...] } (a bare array still
+// reads back as steps). Public entry is /f/<slug> (L7 routes).
+model Funnel {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  status    String   @default("DRAFT")
+  stepsJson Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
