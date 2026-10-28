@@ -32,6 +32,12 @@ export async function generateMetadata(): Promise<Metadata> {
 
 // The shell itself never changes; a long revalidate keeps it a pure
 // edge-served static page (all live data arrives via the cached API).
+// Perf wave 2A: revalidate alone was NOT enough — the build still
+// classified /search ƒ (dynamic), the same silent-dynamic failure
+// the homepage had. force-static (the proven homepage fix) makes
+// the shell genuinely ISR; the query UI/fetching stays client-side,
+// so visitor behaviour is unchanged.
+export const dynamic = "force-static";
 export const revalidate = 300;
 
 export default function SearchPage() {
