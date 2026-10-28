@@ -39,7 +39,7 @@ import { VisitorIdBootstrap } from "@/marketing/components/VisitorIdBootstrap";
 import { ThemedProductCard } from "../themed-product-card";
 import { StoreImage } from "@/storefront-ux/components/StoreImage";
 import type { HomeSectionsProps } from "../slots";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { pick } from "@/i18n/locale";
 import { CIRCUIT_STRINGS, type CircuitStrings } from "./strings";
 import CircuitHomeHero from "./home-hero";
@@ -78,7 +78,8 @@ export default async function CircuitHomeSections({
   mechanicsOn,
   heroStats,
 }: HomeSectionsProps) {
-  const locale = await getRequestLocale();
+  // ISR: store default only; LocaleProvider applies the visitor override after mount.
+  const locale = await getStoreDefaultLocale();
   const s = pick(locale, CIRCUIT_STRINGS);
   // Per-category rails from the REAL categorySlug on each fetched
   // product; categories keep the catalog's own order, capped at 3.

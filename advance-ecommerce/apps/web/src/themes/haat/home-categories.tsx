@@ -14,7 +14,7 @@
  */
 import Link from "next/link";
 import { DigitText } from "@/components/ui/numerals";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { interpolate, pick } from "@/i18n/locale";
 import { HAAT_STRINGS } from "./strings";
 import type { Category } from "@/catalog/types";
@@ -37,7 +37,8 @@ export default async function HaatHomeCategories({
 }: {
   categories: Category[];
 }) {
-  const locale = await getRequestLocale();
+  // ISR: store default only; LocaleProvider applies the visitor override after mount.
+  const locale = await getStoreDefaultLocale();
   const s = pick(locale, HAAT_STRINGS);
   if (categories.length === 0) return null;
 

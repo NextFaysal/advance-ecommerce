@@ -35,7 +35,7 @@ import { VisitorIdBootstrap } from "@/marketing/components/VisitorIdBootstrap";
 import { ThemedProductCard } from "../themed-product-card";
 import { StoreImage } from "@/storefront-ux/components/StoreImage";
 import type { HomeSectionsProps } from "../slots";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { interpolate, pick } from "@/i18n/locale";
 import {
   BOIGHOR_FALLBACK_TILES,
@@ -97,7 +97,8 @@ export default async function BoighorHomeSections({
 
   // Full-width banner slot: a third CMS slide, when the merchant
   // has one, sits between the rails and the closing grid.
-  const locale = await getRequestLocale();
+  // ISR: store default only; LocaleProvider applies the visitor override after mount.
+  const locale = await getStoreDefaultLocale();
   const s = pick(locale, BOIGHOR_STRINGS);
   const bannerSlide = heroSlides.length >= 3 ? heroSlides[2]! : null;
 

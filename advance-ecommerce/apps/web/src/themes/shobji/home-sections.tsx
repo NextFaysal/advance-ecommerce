@@ -48,7 +48,7 @@ import ShobjiHomeCategories from "./home-categories";
 import ShobjiHomeTopSelling from "./home-top-selling";
 import ShobjiHomeBrands from "./home-brands";
 import ShobjiHomeTestimonials from "./home-testimonials";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { pick } from "@/i18n/locale";
 import { SHOBJI_STRINGS, type ShobjiStrings } from "./strings";
 import { StoreImage } from "@/storefront-ux/components/StoreImage";
@@ -89,7 +89,8 @@ export default async function ShobjiHomeSections({
   mechanicsOn,
   heroStats,
 }: HomeSectionsProps) {
-  const locale = await getRequestLocale();
+  // ISR: store default only; LocaleProvider applies the visitor override after mount.
+  const locale = await getStoreDefaultLocale();
   const s = pick(locale, SHOBJI_STRINGS);
   const USP_ITEMS = uspItems(s);
   // Per-category rails from the REAL categorySlug on each fetched

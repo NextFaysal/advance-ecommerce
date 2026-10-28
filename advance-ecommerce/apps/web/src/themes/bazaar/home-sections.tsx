@@ -42,7 +42,7 @@ import BazaarHomeCategories from "./home-categories";
 import BazaarHomeTopSelling from "./home-top-selling";
 import BazaarHomeBrands from "./home-brands";
 import BazaarHomeTestimonials from "./home-testimonials";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { pick } from "@/i18n/locale";
 import { BAZAAR_STRINGS } from "./strings";
 import { StoreImage } from "@/storefront-ux/components/StoreImage";
@@ -76,7 +76,8 @@ export default async function BazaarHomeSections({
   mechanicsOn,
   heroStats,
 }: HomeSectionsProps) {
-  const locale = await getRequestLocale();
+  // ISR: store default only; LocaleProvider applies the visitor override after mount.
+  const locale = await getStoreDefaultLocale();
   const s = pick(locale, BAZAAR_STRINGS);
   const TRUST_ITEMS = [
     { icon: "banknote", title: s.trustCodTitle, text: s.trustCodText },

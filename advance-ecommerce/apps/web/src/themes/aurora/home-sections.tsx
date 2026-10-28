@@ -29,7 +29,7 @@ import { VisitorIdBootstrap } from "@/marketing/components/VisitorIdBootstrap";
 import { Stars } from "@/reviews/components/Stars";
 import type { HomeSectionsProps } from "../slots";
 import { interpolate, pick, type Locale } from "@/i18n/locale";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { COMMON_STRINGS } from "@/i18n/dictionaries";
 import { AURORA_STRINGS, type AuroraStrings } from "./strings";
 import { StoreImage } from "@/storefront-ux/components/StoreImage";
@@ -227,7 +227,8 @@ async function AuroraHomeSectionsInner({
   experimentActive,
   heroStats,
 }: HomeSectionsProps) {
-  const locale = await getRequestLocale();
+  // ISR: store default only; LocaleProvider applies the visitor override after mount.
+  const locale = await getStoreDefaultLocale();
   const t = pick(locale, COMMON_STRINGS);
   const s = pick(locale, AURORA_STRINGS);
   const trustItems = buildTrustItems(s);

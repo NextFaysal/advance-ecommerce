@@ -38,7 +38,7 @@ import NeelHomeHero from "./home-hero";
 import NeelHomeCategories from "./home-categories";
 import NeelHomeTopSelling from "./home-top-selling";
 import NeelHomeTestimonials from "./home-testimonials";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { pick } from "@/i18n/locale";
 import { NEEL_STRINGS, type NeelStrings } from "./strings";
 
@@ -78,7 +78,8 @@ export default async function NeelHomeSections({
   mechanicsOn,
   heroStats,
 }: HomeSectionsProps) {
-  const locale = await getRequestLocale();
+  // ISR: store default only; LocaleProvider applies the visitor override after mount.
+  const locale = await getStoreDefaultLocale();
   const s = pick(locale, NEEL_STRINGS);
   const TRUST_ITEMS = trustItems(s);
   // Per-category rails from the REAL categorySlug on each fetched
