@@ -274,6 +274,40 @@ export class LandingStore {
     return { ok: true as const, page: rowToPage(row) };
   }
 
+  /**
+   * Duplicate a page as a fresh DRAFT (doc 34 L6) — the products
+   * duplicate precedent (POST .../[id]/duplicate) at page level:
+   * sections are deep-copied (the copy edits independently), the SEO
+   * block carries over (it is page identity), the slug is uniquified
+   * as "<slug>-copy", then "-copy-2", "-copy-3", …, and the status
+   * is NEVER copied — a copy of a published page starts as a draft.
+   * The schedule window deliberately does NOT carry over: it was the
+   * source campaign's run window, and a stale/expired window on a
+   * new draft would silently 404 the copy the moment it publishes.
+   */
+  async duplicate(id: string): Promise<LandingPage> {
+    const source = await this.get(id);
+    if (!source) throw new Error("landing_page_not_found");
+    const taken = new Set(await this.otherSlugs());
+    let slug: string | null = null;
+    for (let n = 1; n <= 100; n += 1) {
+      const candidate = n === 1 ? `${source.slug}-copy` : `${source.slug}-copy-${n}`;
+      if (!taken.has(candidate)) {
+        slug = candidate;
+        break;
+      }
+    }
+    if (slug === null) throw new Error("copy_limit");
+    return this.create({
+      slug,
+      titleBn: source.titleBn,
+      titleEn: source.titleEn,
+      status: "DRAFT",
+      sections: JSON.parse(JSON.stringify(source.sections)) as LandingSection[],
+      ...(source.seo ? { seo: { ...source.seo } } : {}),
+    });
+  }
+
   async delete(id: string): Promise<boolean> {
     try {
       await prisma.landingPage.delete({ where: { id } });

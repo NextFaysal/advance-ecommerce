@@ -65,42 +65,92 @@ export const landingSectionSchemaV1 = z.discriminatedUnion("type", [
 ]);
 
 /**
+ * Per-section design object (doc 34 §3.5, L4) — v2 pages only. The
+ * enum literals ARE the validation: an unknown bg/paddingY/hiddenOn
+ * value fails the API's safeParse and the write is rejected (the
+ * same write-gate pattern as the seo/schedule envelope fields).
+ * Optional on every v2 member; absent = today's rendering (§0.8).
+ */
+const landingSectionDesignSchema = z.object({
+  bg: z.enum(["none", "card", "surface", "brand", "dark"]).optional(),
+  paddingY: z.enum(["sm", "md", "lg"]).optional(),
+  hiddenOn: z.enum(["mobile", "desktop"]).optional(),
+  enabled: z.boolean().optional(),
+});
+
+/**
  * The v2 section union (§3.3): every v1 member plus the doc-34 block
  * libraries. This is the union the API input schema validates
  * against — writers write v2 envelopes only.
  */
 export const landingSectionSchema: z.ZodType<LandingSection> = z.discriminatedUnion("type", [
-  ...landingSectionSchemaV1.options,
+  // The original eight members, widened for v2 with the optional
+  // design object. They mirror landingSectionSchemaV1 field-for-field
+  // plus `design` — the frozen v1 union above is NOT touched and
+  // never admits design (§3.3 rule 1: v1 pages validate under the
+  // design-less union). (`.extend()` on the v1 members was tried and
+  // rejected by the discriminated union's option typing, hence the
+  // explicit mirrors.)
+  z.object({
+    id: z.string().min(1), type: z.literal("hero"),
+    titleBn: z.string(), titleEn: z.string(), subtitleBn: z.string(), subtitleEn: z.string(),
+    imageUrl: z.string().nullable(), ctaLabelBn: z.string(), ctaLabelEn: z.string(),
+    design: landingSectionDesignSchema.optional(),
+  }),
+  z.object({
+    id: z.string().min(1), type: z.literal("product_offer"),
+    productId: z.string(), variantId: z.string().nullable(),
+    discountNoteBn: z.string(), discountNoteEn: z.string(),
+    showCountdown: z.boolean(), countdownEndsAt: z.string().nullable(),
+    design: landingSectionDesignSchema.optional(),
+  }),
+  z.object({ id: z.string().min(1), type: z.literal("benefits"), headingBn: z.string(), headingEn: z.string(), items: z.array(benefitItemSchema), design: landingSectionDesignSchema.optional() }),
+  z.object({ id: z.string().min(1), type: z.literal("how_to_order"), headingBn: z.string(), headingEn: z.string(), steps: z.array(stepSchema), design: landingSectionDesignSchema.optional() }),
+  z.object({ id: z.string().min(1), type: z.literal("faq"), headingBn: z.string(), headingEn: z.string(), items: z.array(faqItemSchema), design: landingSectionDesignSchema.optional() }),
+  z.object({ id: z.string().min(1), type: z.literal("order_form_note"), textBn: z.string(), textEn: z.string(), design: landingSectionDesignSchema.optional() }),
+  z.object({
+    id: z.string().min(1), type: z.literal("quick_order"),
+    productId: z.string(), variantId: z.string().nullable(),
+    headingBn: z.string(), headingEn: z.string(),
+    design: landingSectionDesignSchema.optional(),
+  }),
+  z.object({ id: z.string().min(1), type: z.literal("footer_note"), textBn: z.string(), textEn: z.string(), design: landingSectionDesignSchema.optional() }),
   // Doc 34 L3 block library II (v2 union additions, §3.3).
   z.object({
     id: z.string().min(1), type: z.literal("reviews"),
+    design: landingSectionDesignSchema.optional(),
     productId: z.string(), usePrimaryOffer: z.boolean(),
     limit: z.number().int().min(1).max(20), minRating: z.number().int().min(1).max(5),
   }),
   z.object({
     id: z.string().min(1), type: z.literal("gallery"),
+    design: landingSectionDesignSchema.optional(),
     headingBn: z.string(), headingEn: z.string(),
     images: z.array(galleryImageSchema).max(24), layout: z.enum(["grid", "carousel"]),
   }),
   z.object({
     id: z.string().min(1), type: z.literal("image_banner"),
+    design: landingSectionDesignSchema.optional(),
     imageUrl: z.string(), altBn: z.string(), altEn: z.string(),
     linkUrl: z.string().nullable(), headingBn: z.string(), headingEn: z.string(),
   }),
   z.object({
     id: z.string().min(1), type: z.literal("video"),
+    design: landingSectionDesignSchema.optional(),
     provider: z.literal("youtube"), videoId: z.string(),
     headingBn: z.string(), headingEn: z.string(),
   }),
-  z.object({ id: z.string().min(1), type: z.literal("rich_text"), bodyBn: z.string(), bodyEn: z.string() }),
+  z.object({ id: z.string().min(1), type: z.literal("rich_text"), bodyBn: z.string(), bodyEn: z.string(), design: landingSectionDesignSchema.optional() }),
   z.object({
     id: z.string().min(1), type: z.literal("bundle_offer"),
+    design: landingSectionDesignSchema.optional(),
     productId: z.string(), variantId: z.string().nullable(),
     headingBn: z.string(), headingEn: z.string(), ctaToOrderForm: z.boolean(),
   }),
   // Doc 34 L2 block library I (v2 union additions, §3.3).
   z.object({
     id: z.string().min(1), type: z.literal("product_grid"),
+    design: landingSectionDesignSchema.optional(),
     source: landingProductSourceSchema,
     limit: z.number().int().min(4).max(24),
     headingBn: z.string(), headingEn: z.string(),
@@ -110,6 +160,7 @@ export const landingSectionSchema: z.ZodType<LandingSection> = z.discriminatedUn
   }),
   z.object({
     id: z.string().min(1), type: z.literal("product_carousel"),
+    design: landingSectionDesignSchema.optional(),
     source: landingProductSourceSchema,
     limit: z.number().int().min(4).max(24),
     headingBn: z.string(), headingEn: z.string(),
@@ -117,6 +168,7 @@ export const landingSectionSchema: z.ZodType<LandingSection> = z.discriminatedUn
   }),
   z.object({
     id: z.string().min(1), type: z.literal("countdown"),
+    design: landingSectionDesignSchema.optional(),
     target: z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("datetime"), endsAt: z.string() }),
       z.object({ kind: z.literal("flash_sale") }),
@@ -127,7 +179,14 @@ export const landingSectionSchema: z.ZodType<LandingSection> = z.discriminatedUn
   }),
   z.object({
     id: z.string().min(1), type: z.literal("trust_strip"),
+    design: landingSectionDesignSchema.optional(),
     items: z.array(trustStripItemSchema).max(12),
+  }),
+  z.object({
+    id: z.string().min(1), type: z.literal("sticky_bar"),
+    textBn: z.string(), textEn: z.string(),
+    target: z.enum(["primary_offer", "quick_order"]),
+    design: landingSectionDesignSchema.optional(),
   }),
 ]);
 
@@ -267,6 +326,14 @@ export function validateLandingPage(
   const offers = page.sections.filter((s) => s.type === "product_offer");
   if (heroes.length === 0) err("HERO_REQUIRED", "অন্তত একটি হিরো সেকশন আবশ্যক।", "At least one hero section is required.");
   if (offers.length === 0) err("PRODUCT_OFFER_REQUIRED", "অন্তত একটি পণ্যের অফার সেকশন আবশ্যক।", "At least one product offer section is required.");
+  // One sticky bar per page (doc 34 §3.2): two fixed bars would
+  // stack on the same bottom edge. The bar carries no refs of its
+  // own — it binds to the primary offer at render — so this count
+  // is its only page-level rule.
+  const stickyBars = page.sections.filter((s) => s.type === "sticky_bar");
+  if (stickyBars.length > 1) {
+    err("STICKY_BAR_DUPLICATE", "একটি পেজে একটির বেশি স্টিকি বার রাখা যায় না।", "A page can carry only one sticky bar.", stickyBars[1]?.id);
+  }
 
   const seenIds = new Set<string>();
   for (const section of page.sections) {
@@ -376,6 +443,11 @@ export function validateLandingPage(
         if (section.items.length === 0 || section.items.some((i) => !i.textBn.trim())) {
           err("TRUST_TEXT_REQUIRED", "প্রতিটি আস্থার আইটেমের বাংলা লেখা আবশ্যক।", "Every trust item needs Bangla text.", section.id);
         }
+        break;
+      case "sticky_bar":
+        // Nothing to resolve: no product ref, no stored price —
+        // the bar binds to the page's primary offer at render, and
+        // the one-bar-per-page rule is checked above.
         break;
       case "faq":
         if (section.items.some((i) => !i.questionBn.trim() || !i.answerBn.trim())) {

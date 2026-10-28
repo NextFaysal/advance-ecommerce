@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { landingStore as store } from "@/landing/store";
 import { landingPageInputSchema, validateLandingPage } from "@/landing/validate";
-import { landingCatalogQueries, referencedProductIds } from "@/landing/catalog";
+import { landingCatalogQueries, referencedProductIds, resolveLandingCollections } from "@/landing/catalog";
 import { tryCatalogRepository } from "@/catalog/server-read";
 import { guardError, requireAdmin } from "@/reports/guard";
 
@@ -48,7 +48,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
     // By-id resolution (doc 34 §3.4) — see the create route.
     const products = await landingCatalogQueries.byIds(referencedProductIds(parsedFull.data));
-    const validation = validateLandingPage(parsedFull.data, products, await store.otherSlugs(params.id));
+    // L2: dynamic sources validated against their live resolution.
+    const collections = await resolveLandingCollections(parsedFull.data, landingCatalogQueries);
+    const validation = validateLandingPage(parsedFull.data, products, await store.otherSlugs(params.id), collections);
     if (!validation.ok) {
       return NextResponse.json(
         { error: { code: "VALIDATION_FAILED", message: "Landing page validation failed.", details: validation.errors } },
@@ -84,7 +86,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   // Publish re-validation resolves the page's refs BY ID (doc 34
   // §3.4), so a valid page publishes at any catalog size.
   const products = await landingCatalogQueries.byIds(referencedProductIds(page));
-  const result = await store.setStatus(params.id, parsed.data.status, products);
+  // L2: dynamic sources validated against their live resolution.
+  const collections = await resolveLandingCollections(page, landingCatalogQueries);
+  const result = await store.setStatus(params.id, parsed.data.status, products, collections);
   if (!result.ok) {
     return NextResponse.json(
       {
@@ -101,4 +105,20 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     data: { page: result.page },
     meta: { persistence: "database" },
   });
+}
+
+// DELETE /api/v1/admin/landing/[id] — doc 34 L6. RBAC: content.page.
+// The store's delete() existed since Agent 53 but no route exposed
+// it (plan audit #15). Hard delete of the page row at ANY status —
+// the plan sets no status gate; the builder's confirm dialog is the
+// safeguard, mirroring DELETE /api/v1/admin/pages/[id]'s response
+// shape ({ data: { deleted } }, 200/404).
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const guard = await requireAdmin("content.page");
+  if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
+  const ok = await store.delete(params.id);
+  if (!ok) {
+    return NextResponse.json({ error: { code: "NOT_FOUND", message: "Landing page not found." } }, { status: 404 });
+  }
+  return NextResponse.json({ data: { deleted: true }, meta: { persistence: "database" } });
 }

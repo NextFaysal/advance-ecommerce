@@ -19,8 +19,9 @@ import { Badge } from "@/components/ui/badge";
 import type { Product } from "@/catalog/types";
 import {
   LANDING_SECTION_LABELS, LANDING_TRUST_PRESETS, createEmptySection,
-  type LandingPage, type LandingProductSource, type LandingSection, type LandingSectionType, type LandingStatus, type TrustPresetKey,
+  type LandingPage, type LandingProductSource, type LandingSchedule, type LandingSection, type LandingSectionDesign, type LandingSectionType, type LandingSeo, type LandingStatus, type TrustPresetKey,
 } from "@/landing/types";
+import { LANDING_TEMPLATES, buildTemplateSections, type LandingTemplateId } from "./templates";
 import { transitionLandingStatus, validateLandingPage } from "@/landing/validate";
 import { buildLandingViewModel, type LandingBlockExtras } from "@/landing/render";
 import { LandingView } from "@/landing/components/LandingView";
@@ -32,6 +33,34 @@ const SECTION_TYPES = Object.keys(LANDING_SECTION_LABELS) as LandingSectionType[
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+/** Schedule editors work in the browser's local time via
+ *  datetime-local inputs; the stored envelope carries ISO strings
+ *  (doc 34 §3.1). These two helpers are the only conversion points. */
+function isoToLocalInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function localInputToIso(value: string): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/** Derived schedule badge state (plan §3.1: the admin surfaces the
+ *  lazy window as derived state — scheduled / in-window / expired). */
+function scheduleStateOf(page: LandingPage): { kind: "scheduled" | "expired" | "in_window"; at: string } | null {
+  const sch = page.schedule;
+  if (!sch || (!sch.publishAt && !sch.expiresAt)) return null;
+  const now = Date.now();
+  if (sch.publishAt && Date.parse(sch.publishAt) > now) return { kind: "scheduled", at: sch.publishAt };
+  if (sch.expiresAt && Date.parse(sch.expiresAt) <= now) return { kind: "expired", at: sch.expiresAt };
+  return { kind: "in_window", at: sch.publishAt ?? sch.expiresAt ?? "" };
 }
 
 function statusBadge(status: LandingStatus, s: LandingStrings) {
@@ -206,6 +235,136 @@ function SourceEditor({
   );
 }
 
+/**
+ * Per-section design panel (doc 34 §3.5, L4) — the ONE place every
+ * section type gets its background / spacing / device-visibility /
+ * on-off controls: the same component at the foot of all nineteen
+ * section editors. Values are token preset names only (§0.6).
+ * Picking the default in any control REMOVES that field, and an
+ * all-default panel stores NO design object at all — absent design
+ * is what guarantees the section's exact pre-L4 rendering (§0.8).
+ * A switched-off section stays in the page data (its editor card
+ * renders dimmed) and renders nothing in preview or public.
+ */
+function SectionDesignPanel({
+  section, s, onChange,
+}: {
+  section: LandingSection;
+  s: LandingStrings;
+  onChange: (design: LandingSectionDesign | undefined) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const design = section.design ?? {};
+  const enabled = design.enabled !== false;
+  // A stored bg of "none" and an absent bg are the same rendering —
+  // the panel shows both as the Default choice.
+  const bgValue = design.bg && design.bg !== "none" ? design.bg : "";
+
+  function patch(next: Partial<LandingSectionDesign>) {
+    const merged = { ...design, ...next };
+    const cleaned: LandingSectionDesign = {};
+    if (merged.bg) cleaned.bg = merged.bg;
+    if (merged.paddingY) cleaned.paddingY = merged.paddingY;
+    if (merged.hiddenOn) cleaned.hiddenOn = merged.hiddenOn;
+    if (merged.enabled === false) cleaned.enabled = false;
+    onChange(Object.keys(cleaned).length > 0 ? cleaned : undefined);
+  }
+
+  const bgOptions: { value: string; label: string; chip: string }[] = [
+    { value: "", label: s.designBgDefault, chip: "bg-transparent" },
+    { value: "card", label: s.designBgCard, chip: "bg-card" },
+    { value: "surface", label: s.designBgSurface, chip: "bg-surface-2" },
+    { value: "brand", label: s.designBgBrand, chip: "brand-gradient" },
+    { value: "dark", label: s.designBgDark, chip: "bg-overlay" },
+  ];
+  const visOptions: { value: string; label: string }[] = [
+    { value: "", label: s.designVisBoth },
+    { value: "mobile", label: s.designVisHideMobile },
+    { value: "desktop", label: s.designVisHideDesktop },
+  ];
+  const visValue = design.hiddenOn ?? "";
+  const segClass = (active: boolean) =>
+    `flex min-h-[44px] items-center gap-2 rounded-xl border px-2.5 text-xs shadow-xs transition ${active ? "border-brand-500 bg-brand-soft" : "border-border bg-card hover:bg-surface-2"}`;
+
+  return (
+    <div className="mt-4 border-t border-border/60 pt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex min-h-[44px] w-full items-center justify-between gap-2 text-left text-sm font-semibold"
+      >
+        <span>
+          🎨 {s.designTitle}
+          {enabled ? null : <span className="ml-2 rounded-full bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger">{s.designOffBadge}</span>}
+        </span>
+        <span aria-hidden="true">{open ? "▾" : "▸"}</span>
+      </button>
+      {open ? (
+        <div className="space-y-3 pb-1">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => patch({ enabled: e.target.checked ? undefined : false })}
+            />
+            {s.designEnabled}
+          </label>
+          <div>
+            <span className="mb-1 block text-xs font-medium text-text-muted">{s.designBg}</span>
+            <div className="flex flex-wrap gap-1.5">
+              {bgOptions.map((opt) => (
+                <button
+                  key={opt.label}
+                  type="button"
+                  aria-pressed={bgValue === opt.value}
+                  onClick={() => patch({ bg: opt.value === "" ? undefined : (opt.value as NonNullable<LandingSectionDesign["bg"]>) })}
+                  className={segClass(bgValue === opt.value)}
+                >
+                  <span aria-hidden="true" className={`h-5 w-5 shrink-0 rounded-md border border-border/60 ${opt.chip}`} />
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-text-muted">{s.designPadding}</span>
+              <select
+                value={design.paddingY ?? ""}
+                onChange={(e) => patch({ paddingY: e.target.value === "" ? undefined : (e.target.value as NonNullable<LandingSectionDesign["paddingY"]>) })}
+                className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs"
+              >
+                <option value="">{s.designPadDefault}</option>
+                <option value="sm">{s.designPadSm}</option>
+                <option value="md">{s.designPadMd}</option>
+                <option value="lg">{s.designPadLg}</option>
+              </select>
+            </label>
+            <div>
+              <span className="mb-1 block text-xs font-medium text-text-muted">{s.designVisibility}</span>
+              <div className="flex flex-wrap gap-1.5">
+                {visOptions.map((opt) => (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    aria-pressed={visValue === opt.value}
+                    onClick={() => patch({ hiddenOn: opt.value === "" ? undefined : (opt.value as NonNullable<LandingSectionDesign["hiddenOn"]>) })}
+                    className={segClass(visValue === opt.value)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <p className="text-xs leading-5 text-text-muted">{s.designNote}</p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function LandingBuilder({
   catalogProducts,
   initialPages,
@@ -230,8 +389,12 @@ export default function LandingBuilder({
   const [notice, setNotice] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  // L6: create-flow preset + preview device frame.
+  const [templateId, setTemplateId] = useState<LandingTemplateId | "blank">("blank");
+  const [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">("desktop");
 
   const selected = pages.find((p) => p.id === selectedId) ?? null;
+  const selectedScheduleState = selected ? scheduleStateOf(selected) : null;
   const otherSlugs = useMemo(
     () => pages.filter((p) => p.id !== selectedId).map((p) => p.slug),
     [pages, selectedId],
@@ -264,6 +427,30 @@ export default function LandingBuilder({
     setPages((prev) => prev.map((p) => (p.id === selectedId ? { ...mutator(p), updatedAt: new Date().toISOString() } : p)));
   }
 
+  /** L6 Page Settings: SEO edits materialize the full v2 seo object
+   *  (defaults = empty), so clearing every field stores empties and
+   *  the public metadata falls back per field — see generateMetadata. */
+  function updateSeo(patch: Partial<LandingSeo>) {
+    updateSelected((p) => ({
+      ...p,
+      seo: {
+        metaTitleBn: p.seo?.metaTitleBn ?? "",
+        metaTitleEn: p.seo?.metaTitleEn ?? "",
+        metaDescriptionBn: p.seo?.metaDescriptionBn ?? "",
+        metaDescriptionEn: p.seo?.metaDescriptionEn ?? "",
+        ogImageUrl: p.seo?.ogImageUrl ?? null,
+        ...patch,
+      },
+    }));
+  }
+
+  function updateSchedule(patch: Partial<LandingSchedule>) {
+    updateSelected((p) => ({
+      ...p,
+      schedule: { publishAt: p.schedule?.publishAt ?? null, expiresAt: p.schedule?.expiresAt ?? null, ...patch },
+    }));
+  }
+
   async function apiErrorMessage(res: Response): Promise<string> {
     const json = (await res.json().catch(() => null)) as { error?: { message?: string; details?: unknown } } | null;
     const details = Array.isArray(json?.error?.details) ? interpolate(s.problemsSuffix, { count: json.error.details.length }) : "";
@@ -282,6 +469,13 @@ export default function LandingBuilder({
         titleEn: selected.titleEn,
         status: selected.status,
         sections: selected.sections,
+        // Envelope v2 (L6 Page Settings): send seo/schedule only when
+        // the page state carries them — an untouched page omits them
+        // and the store preserves whatever was saved before; once the
+        // owner edits (or clears) the fields, the object is sent and
+        // stored verbatim, which is also how clearing works.
+        ...(selected.seo ? { seo: selected.seo } : {}),
+        ...(selected.schedule ? { schedule: selected.schedule } : {}),
       };
       const isLocal = selected.id.startsWith("lp_local_");
       const res = isLocal
@@ -331,24 +525,111 @@ export default function LandingBuilder({
   }
 
   function createDraft() {
+    const template = LANDING_TEMPLATES.find((t) => t.id === templateId);
     const firstProduct = catalogProducts[0];
+    const stamp = Date.now().toString(36);
     const page: LandingPage = {
-      id: `lp_local_${Date.now().toString(36)}`,
+      id: `lp_local_${stamp}`,
       slug: `new-campaign-${pages.length + 1}`,
-      titleBn: "নতুন ক্যাম্পেইন",
-      titleEn: "New Campaign",
+      titleBn: template ? template.pageTitleBn : "নতুন ক্যাম্পেইন",
+      titleEn: template ? template.pageTitleEn : "New Campaign",
       status: "DRAFT",
-      sections: [
-        { id: `sec_local_hero_${Date.now().toString(36)}`, type: "hero", titleBn: "নতুন অফার", titleEn: "New Offer", subtitleBn: "", subtitleEn: "", imageUrl: null, ctaLabelBn: "এখনই অর্ডার করুন", ctaLabelEn: "Order Now" },
-        { id: `sec_local_offer_${Date.now().toString(36)}`, type: "product_offer", productId: firstProduct?.id ?? "", variantId: null, discountNoteBn: "", discountNoteEn: "", showCountdown: false, countdownEndsAt: null },
-      ],
+      // Templates (§3.7 presets) ship section skeletons with EMPTY
+      // product slots — validation keeps them unpublished until the
+      // owner fills real products in. "Blank" keeps the historical
+      // hero + first-product-offer skeleton.
+      sections: template
+        ? buildTemplateSections(template.id)
+        : [
+            { id: `sec_local_hero_${stamp}`, type: "hero", titleBn: "নতুন অফার", titleEn: "New Offer", subtitleBn: "", subtitleEn: "", imageUrl: null, ctaLabelBn: "এখনই অর্ডার করুন", ctaLabelEn: "Order Now" },
+            { id: `sec_local_offer_${stamp}`, type: "product_offer", productId: firstProduct?.id ?? "", variantId: null, discountNoteBn: "", discountNoteEn: "", showCountdown: false, countdownEndsAt: null },
+          ],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     setPages((prev) => [page, ...prev]);
     setSelectedId(page.id);
     setDirty(true);
-    setNotice(s.newDraftNotice);
+    setNotice(template ? s.templateNotice : s.newDraftNotice);
+  }
+
+  /** Duplicate a page (L6): saved pages go through the API (store
+   *  duplicate — always a DRAFT with a uniquified "-copy" slug);
+   *  a not-yet-saved local draft is cloned in state the same way. */
+  async function duplicatePage(page: LandingPage) {
+    if (saving) return;
+    if (page.id.startsWith("lp_local_")) {
+      const taken = new Set(pages.filter((p) => p.id !== page.id).map((p) => p.slug));
+      let slug = `${page.slug}-copy`;
+      for (let n = 2; taken.has(slug); n += 1) slug = `${page.slug}-copy-${n}`;
+      const copy: LandingPage = {
+        ...clone(page),
+        id: `lp_local_${Date.now().toString(36)}`,
+        slug,
+        status: "DRAFT",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      // Same rule as the store duplicate: the schedule window does
+      // not carry over to a copy.
+      delete copy.schedule;
+      setPages((prev) => [copy, ...prev]);
+      setSelectedId(copy.id);
+      setDirty(true);
+      setNotice(interpolate(s.duplicateMsg, { slug: copy.slug }));
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/v1/admin/landing/${page.id}/duplicate`, { method: "POST" });
+      if (!res.ok) {
+        setNotice(interpolate(s.duplicateFailed, { msg: await apiErrorMessage(res) }));
+        return;
+      }
+      const json = (await res.json()) as { data: { page: LandingPage } };
+      setPages((prev) => [json.data.page, ...prev]);
+      setSelectedId(json.data.page.id);
+      setNotice(interpolate(s.duplicateMsg, { slug: json.data.page.slug }));
+    } catch {
+      setNotice(s.duplicateFailedNetwork);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /** Delete a page (L6): window.confirm per admin convention, then
+   *  the DELETE route (any status — the confirm is the safeguard).
+   *  Local drafts never reached the DB, so they just leave state. */
+  async function deletePage(page: LandingPage) {
+    if (saving) return;
+    const title = locale === "bn" ? page.titleBn : page.titleEn;
+    if (!window.confirm(interpolate(s.confirmDeletePage, { title }))) return;
+    const dropFromState = () => {
+      setPages((prev) => {
+        const next = prev.filter((p) => p.id !== page.id);
+        if (selectedId === page.id) setSelectedId(next[0]?.id ?? "");
+        return next;
+      });
+      if (selectedId === page.id) setDirty(false);
+      setNotice(s.deletedMsg);
+    };
+    if (page.id.startsWith("lp_local_")) {
+      dropFromState();
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/v1/admin/landing/${page.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        setNotice(interpolate(s.deleteFailed, { msg: await apiErrorMessage(res) }));
+        return;
+      }
+      dropFromState();
+    } catch {
+      setNotice(s.deleteFailedNetwork);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function changeStatus(to: LandingStatus) {
@@ -387,7 +668,20 @@ export default function LandingBuilder({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-text-muted">{s.templateLabel}</span>
+          <select
+            value={templateId}
+            onChange={(e) => setTemplateId(e.target.value as LandingTemplateId | "blank")}
+            className="h-11 rounded-xl border border-border bg-card px-3 text-sm shadow-xs"
+          >
+            <option value="blank">{s.templateBlank}</option>
+            {LANDING_TEMPLATES.map((t) => (
+              <option key={t.id} value={t.id}>{locale === "en" ? t.labelEn : t.labelBn}</option>
+            ))}
+          </select>
+        </label>
         <Button type="button" onClick={createDraft}>{s.newPage}</Button>
         <Button type="button" variant="secondary" onClick={saveSelected} disabled={!selected || saving}>
           {saving ? s.saving : s.save}
@@ -402,11 +696,11 @@ export default function LandingBuilder({
             <h2 className="mb-3 font-display text-base font-semibold text-text-main">{s.pagesListTitle}</h2>
             <ul className="space-y-2">
               {pages.map((p) => (
-                <li key={p.id}>
+                <li key={p.id} className="flex items-stretch gap-1.5">
                   <button
                     type="button"
                     onClick={() => setSelectedId(p.id)}
-                    className={`flex min-h-[44px] w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-sm shadow-xs transition ${p.id === selectedId ? "border-brand-500 bg-brand-soft" : "border-border bg-card hover:bg-surface-2"}`}
+                    className={`flex min-h-[44px] flex-1 items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-sm shadow-xs transition ${p.id === selectedId ? "border-brand-500 bg-brand-soft" : "border-border bg-card hover:bg-surface-2"}`}
                   >
                     <span>
                       <span className="font-medium">{locale === "bn" ? p.titleBn : p.titleEn}</span>
@@ -416,6 +710,12 @@ export default function LandingBuilder({
                     </span>
                     {statusBadge(p.status, s)}
                   </button>
+                  <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => duplicatePage(p)} title={s.duplicateBtn}>
+                    ⧉ {s.duplicateBtn}
+                  </Button>
+                  <Button type="button" size="sm" variant="destructive" disabled={saving} onClick={() => deletePage(p)} title={s.deleteBtn}>
+                    ✕
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -445,6 +745,54 @@ export default function LandingBuilder({
                     ) : null}
                   </div>
                 </div>
+              </div>
+
+              <div className="mt-5 border-t border-border/60 pt-4">
+                <h3 className="mb-3 text-sm font-semibold text-text-main">{s.seoSettings}</h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <TextField label={s.metaTitleBn} value={selected.seo?.metaTitleBn ?? ""} onChange={(v) => updateSeo({ metaTitleBn: v })} />
+                  <TextField label={s.metaTitleEn} value={selected.seo?.metaTitleEn ?? ""} onChange={(v) => updateSeo({ metaTitleEn: v })} />
+                  <TextArea label={s.metaDescriptionBn} value={selected.seo?.metaDescriptionBn ?? ""} onChange={(v) => updateSeo({ metaDescriptionBn: v })} />
+                  <TextArea label={s.metaDescriptionEn} value={selected.seo?.metaDescriptionEn ?? ""} onChange={(v) => updateSeo({ metaDescriptionEn: v })} />
+                  <div className="sm:col-span-2">
+                    <TextField label={s.ogImageUrl} value={selected.seo?.ogImageUrl ?? ""} onChange={(v) => updateSeo({ ogImageUrl: v.trim() ? v.trim() : null })} placeholder="https://…" />
+                    <p className="mt-1 text-xs leading-5 text-text-muted">{s.ogImageHint}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 border-t border-border/60 pt-4">
+                <h3 className="mb-3 text-sm font-semibold text-text-main">{s.scheduleSettings}</h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-text-muted">{s.publishAtLabel}</span>
+                    <input
+                      type="datetime-local"
+                      value={isoToLocalInput(selected.schedule?.publishAt)}
+                      onChange={(e) => updateSchedule({ publishAt: localInputToIso(e.target.value) })}
+                      className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs outline-none transition focus:border-brand-500"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-text-muted">{s.expiresAtLabel}</span>
+                    <input
+                      type="datetime-local"
+                      value={isoToLocalInput(selected.schedule?.expiresAt)}
+                      onChange={(e) => updateSchedule({ expiresAt: localInputToIso(e.target.value) })}
+                      className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs outline-none transition focus:border-brand-500"
+                    />
+                  </label>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-text-muted">{s.scheduleHint}</p>
+                {selectedScheduleState ? (
+                  <p className={`mt-2 rounded-xl px-3 py-2 text-sm ${selectedScheduleState.kind === "expired" ? "bg-danger-soft text-danger" : selectedScheduleState.kind === "scheduled" ? "bg-warning-soft text-warning-solid" : "bg-success-soft text-success-solid"}`}>
+                    {selectedScheduleState.kind === "scheduled"
+                      ? interpolate(s.scheduleScheduled, { date: new Date(selectedScheduleState.at).toLocaleString(locale === "en" ? "en-GB" : "bn-BD") })
+                      : selectedScheduleState.kind === "expired"
+                        ? interpolate(s.scheduleExpired, { date: new Date(selectedScheduleState.at).toLocaleString(locale === "en" ? "en-GB" : "bn-BD") })
+                        : s.scheduleInWindow}
+                  </p>
+                ) : null}
               </div>
 
               {validation && !validation.ok ? (
@@ -485,7 +833,7 @@ export default function LandingBuilder({
 
               <div className="space-y-4">
                 {selected.sections.map((section, index) => (
-                  <div key={section.id} className="rounded-2xl border border-border/60 bg-surface-2/40 p-4">
+                  <div key={section.id} className={`rounded-2xl border border-border/60 bg-surface-2/40 p-4 ${section.design?.enabled === false ? "opacity-60" : ""}`}>
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                       <span className="text-sm font-semibold">{index + 1}. {LANDING_SECTION_LABELS[section.type][locale]}</span>
                       <span className="flex gap-1">
@@ -978,6 +1326,31 @@ export default function LandingBuilder({
                         <Button type="button" size="sm" variant="outline" onClick={() => updateSection(section.id, (sec) => (sec.type === "trust_strip" ? { ...sec, items: [...sec.items, { preset: "custom" as const, icon: "✅", textBn: "", textEn: "" }] } : sec))}>{s.addTrustItem}</Button>
                       </div>
                     ) : null}
+
+                    {section.type === "sticky_bar" ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <TextField label={s.textBn} value={section.textBn} onChange={(v) => updateSection(section.id, (sec) => (sec.type === "sticky_bar" ? { ...sec, textBn: v } : sec))} />
+                        <TextField label={s.textEn} value={section.textEn} onChange={(v) => updateSection(section.id, (sec) => (sec.type === "sticky_bar" ? { ...sec, textEn: v } : sec))} />
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-medium text-text-muted">{s.stickyTargetLabel}</span>
+                          <select
+                            value={section.target}
+                            onChange={(e) => updateSection(section.id, (sec) => (sec.type === "sticky_bar" ? { ...sec, target: e.target.value as "primary_offer" | "quick_order" } : sec))}
+                            className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs"
+                          >
+                            <option value="quick_order">{s.stickyTargetForm}</option>
+                            <option value="primary_offer">{s.stickyTargetOffer}</option>
+                          </select>
+                        </label>
+                        <p className="text-xs leading-5 text-text-muted sm:col-span-2">{s.stickyNote}</p>
+                      </div>
+                    ) : null}
+
+                    <SectionDesignPanel
+                      section={section}
+                      s={s}
+                      onChange={(design) => updateSection(section.id, (sec) => ({ ...sec, design }))}
+                    />
                   </div>
                 ))}
               </div>
@@ -987,15 +1360,32 @@ export default function LandingBuilder({
 
         <div>
           <Card className="sticky top-4">
-            <h2 className="mb-1 font-display text-base font-semibold text-text-main">{s.livePreview}</h2>
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-display text-base font-semibold text-text-main">{s.livePreview}</h2>
+              <span className="flex gap-1">
+                <Button type="button" size="sm" variant={previewDevice === "mobile" ? "primary" : "outline"} onClick={() => setPreviewDevice("mobile")}>{s.previewMobile}</Button>
+                <Button type="button" size="sm" variant={previewDevice === "desktop" ? "primary" : "outline"} onClick={() => setPreviewDevice("desktop")}>{s.previewDesktop}</Button>
+              </span>
+            </div>
             <p className="mb-3 text-xs text-text-muted">
               {s.previewNote}{" "}
               {selected ? <span className="font-mono">/lp/{selected.slug}</span> : null}
               {selected && selected.status !== "PUBLISHED" ? s.previewDraftSuffix : ""}
             </p>
-            <div className="overflow-hidden rounded-2xl border border-border/60 shadow-xs">
-              {view ? <LandingView view={view} locale={locale} /> : <p className="p-4 text-sm text-text-muted">{s.noPageSelected}</p>}
-            </div>
+            {/* The frame carries ONLY the shared LandingView — no
+                builder chrome inside it — so the mobile frame is a
+                truthful 390px read of the public page. */}
+            {previewDevice === "mobile" ? (
+              <div className="flex justify-center rounded-2xl bg-surface-2/50 py-3">
+                <div className="w-[390px] max-w-full overflow-hidden rounded-2xl border border-border/60 bg-card shadow-xs">
+                  {view ? <LandingView view={view} locale={locale} /> : <p className="p-4 text-sm text-text-muted">{s.noPageSelected}</p>}
+                </div>
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-2xl border border-border/60 shadow-xs">
+                {view ? <LandingView view={view} locale={locale} /> : <p className="p-4 text-sm text-text-muted">{s.noPageSelected}</p>}
+              </div>
+            )}
           </Card>
         </div>
       </div>

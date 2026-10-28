@@ -32,7 +32,11 @@ export type LandingSectionType =
   | "product_grid"
   | "product_carousel"
   | "countdown"
-  | "trust_strip";
+  | "trust_strip"
+  // Doc 34 L2a (§3.2) — the sticky order bar. Was in L2a's brief
+  // alongside the grid/carousel but never built; recovered as its
+  // own slice. Same additive rule: v2 union only.
+  | "sticky_bar";
 
 export interface HeroSection {
   id: string;
@@ -44,6 +48,8 @@ export interface HeroSection {
   imageUrl: string | null;
   ctaLabelBn: string;
   ctaLabelEn: string;
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 export interface ProductOfferSection {
@@ -58,6 +64,8 @@ export interface ProductOfferSection {
   showCountdown: boolean;
   /** ISO datetime the offer ends, or null (only used when showCountdown). */
   countdownEndsAt: string | null;
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 export interface BenefitItem {
@@ -73,6 +81,8 @@ export interface BenefitsSection {
   headingBn: string;
   headingEn: string;
   items: BenefitItem[];
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 export interface HowToOrderStep {
@@ -86,6 +96,8 @@ export interface HowToOrderSection {
   headingBn: string;
   headingEn: string;
   steps: HowToOrderStep[];
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 export interface FaqItem {
@@ -101,6 +113,8 @@ export interface FaqSection {
   headingBn: string;
   headingEn: string;
   items: FaqItem[];
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 export interface OrderFormNoteSection {
@@ -109,6 +123,8 @@ export interface OrderFormNoteSection {
   /** COD reassurance copy, e.g. "পণ্য হাতে পেয়ে টাকা দিন". */
   textBn: string;
   textEn: string;
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 /**
@@ -129,6 +145,8 @@ export interface QuickOrderSection {
   variantId: string | null;
   headingBn: string;
   headingEn: string;
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 export interface FooterNoteSection {
@@ -136,6 +154,8 @@ export interface FooterNoteSection {
   type: "footer_note";
   textBn: string;
   textEn: string;
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 /**
@@ -159,6 +179,8 @@ export interface ReviewsSection {
    *  average/count, unfiltered — the filter shapes the list, never
    *  the numbers. */
   minRating: number;
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 export interface GalleryImage {
@@ -175,6 +197,8 @@ export interface GallerySection {
   images: GalleryImage[];
   /** grid = responsive tile grid; carousel = doc-33 snap rail. */
   layout: "grid" | "carousel";
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 export interface ImageBannerSection {
@@ -187,6 +211,8 @@ export interface ImageBannerSection {
   linkUrl: string | null;
   headingBn: string;
   headingEn: string;
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 export interface VideoSection {
@@ -197,6 +223,8 @@ export interface VideoSection {
   videoId: string;
   headingBn: string;
   headingEn: string;
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 /**
@@ -211,6 +239,8 @@ export interface RichTextSection {
   type: "rich_text";
   bodyBn: string;
   bodyEn: string;
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 /**
@@ -232,6 +262,8 @@ export interface BundleOfferSection {
   headingEn: string;
   /** Also show a CTA that scrolls to the page's quick_order form. */
   ctaToOrderForm: boolean;
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 /**
@@ -272,6 +304,8 @@ export interface ProductGridSection {
   columnsDesktop: 2 | 3 | 4;
   showPrice: boolean;
   showAddButton: boolean;
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 /**
@@ -292,6 +326,8 @@ export interface ProductCarouselSection {
   autoplay: boolean;
   showPrice: boolean;
   showAddButton: boolean;
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 /**
@@ -317,6 +353,8 @@ export interface CountdownSection {
   expiredBehavior: "hide" | "show_text";
   expiredTextBn: string;
   expiredTextEn: string;
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 /** The five preset guarantees of the trust strip (§3.2). Presets
@@ -341,6 +379,35 @@ export interface TrustStripSection {
   id: string;
   type: "trust_strip";
   items: TrustStripItem[];
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
+}
+
+/**
+ * Sticky order bar (doc 34 §3.2, L2a — recovered slice). A fixed
+ * bottom bar on the public page (mobile-first: hidden at md+,
+ * safe-area padded) showing the page's PRIMARY OFFER's live price —
+ * resolved at render through the same resolveOffer path as
+ * product_offer; the section stores NO price and NO product ref of
+ * its own, so the bar can never drift from the offer card. It
+ * renders nothing at all when the page has no resolvable offer, and
+ * an out-of-stock offer turns the CTA into the stock state (no dead
+ * button). `textBn/En` are the owner's optional label line beside
+ * the price (empty = the product's title shows instead); the CTA
+ * label itself is dictionary chrome (defaultCta), as everywhere
+ * else in the renderer.
+ */
+export interface StickyBarSection {
+  id: string;
+  type: "sticky_bar";
+  /** Optional owner label line (may be empty). */
+  textBn: string;
+  textEn: string;
+  /** Where the CTA scrolls: the primary offer's section, or the
+   *  page's quick-order form (#landing-order-form). */
+  target: "primary_offer" | "quick_order";
+  /** Per-section design controls (doc 34 §3.5) — absent = today's rendering. */
+  design?: LandingSectionDesign;
 }
 
 export const LANDING_TRUST_PRESETS: Record<TrustPresetKey, { icon: string; textBn: string; textEn: string }> = {
@@ -350,6 +417,28 @@ export const LANDING_TRUST_PRESETS: Record<TrustPresetKey, { icon: string; textB
   authentic: { icon: "✅", textBn: "১০০% আসল পণ্যের নিশ্চয়তা", textEn: "100% genuine products, guaranteed" },
   support: { icon: "📞", textBn: "সকাল ৯টা — রাত ৯টা কাস্টমার সাপোর্ট", textEn: "Customer support, 9 AM – 9 PM" },
 };
+
+/**
+ * Per-section design controls (doc 34 §3.5, L4) — ONE optional
+ * object addable to every section type in v2 pages. Every field is
+ * optional and ABSENT means "exactly today's rendering": the
+ * renderer applies a design wrapper ONLY when a design object is
+ * present and changes something, so a design-less section renders
+ * byte-identically to before L4 (§0.8). Values are token preset
+ * NAMES, never raw colour/spacing values (§0.6): the renderer maps
+ * them through static class lookups.
+ *  - bg: the band painted behind the section.
+ *  - paddingY: extra vertical breathing room around the section.
+ *  - hiddenOn: suppress the section on one device class.
+ *  - enabled: false = the section stays in the page data (the
+ *    builder shows it dimmed) but renders nothing anywhere.
+ */
+export interface LandingSectionDesign {
+  bg?: "none" | "card" | "surface" | "brand" | "dark";
+  paddingY?: "sm" | "md" | "lg";
+  hiddenOn?: "mobile" | "desktop";
+  enabled?: boolean;
+}
 
 export type LandingSection =
   | HeroSection
@@ -369,7 +458,8 @@ export type LandingSection =
   | ProductGridSection
   | ProductCarouselSection
   | CountdownSection
-  | TrustStripSection;
+  | TrustStripSection
+  | StickyBarSection;
 
 /**
  * Page-level SEO overrides (doc 34 §3.1, envelope v2). All fields are
@@ -452,6 +542,7 @@ export const LANDING_SECTION_LABELS: Record<LandingSectionType, { bn: string; en
   product_carousel: { bn: "পণ্যের ক্যারোসেল", en: "Product Carousel" },
   countdown: { bn: "কাউন্টডাউন", en: "Countdown" },
   trust_strip: { bn: "আস্থার স্ট্রিপ", en: "Trust Strip" },
+  sticky_bar: { bn: "স্টিকি অর্ডার বার", en: "Sticky Order Bar" },
 };
 
 let sectionCounter = 0;
@@ -520,5 +611,7 @@ export function createEmptySection(type: LandingSectionType): LandingSection {
         id, type,
         items: (Object.keys(LANDING_TRUST_PRESETS) as TrustPresetKey[]).map((preset) => ({ preset, ...LANDING_TRUST_PRESETS[preset] })),
       };
+    case "sticky_bar":
+      return { id, type, textBn: "", textEn: "", target: "quick_order" };
   }
 }

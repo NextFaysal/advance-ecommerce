@@ -109,6 +109,8 @@ export const API_ROUTE_REGISTRY: readonly ApiRouteEntry[] = [
   r("GET", "/api/v1/admin/landing", "admin", "List campaign landing pages (database)"),
   r("POST", "/api/v1/admin/landing", "admin", "Create a campaign landing page (validated against the catalog; slug unique kebab)"),
   r("PATCH", "/api/v1/admin/landing/{id}", "admin", "Update a landing page: full page body (builder save, re-validated) or { status } transition (DRAFT/PUBLISHED/ARCHIVED; publishing re-validates)"),
+  r("POST", "/api/v1/admin/landing/{id}/duplicate", "admin", "Duplicate a landing page as a DRAFT (fresh uniquified slug, deep-copied sections + SEO)"),
+  r("DELETE", "/api/v1/admin/landing/{id}", "admin", "Delete a landing page (any status)"),
   r("GET", "/api/v1/admin/pages", "admin", "List CMS pages and posts"),
   r("POST", "/api/v1/admin/pages", "admin", "Create a CMS page or post"),
   r("GET", "/api/v1/admin/pages/{id}", "admin", "CMS page/post detail"),

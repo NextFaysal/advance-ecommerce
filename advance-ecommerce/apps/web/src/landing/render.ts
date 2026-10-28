@@ -3,7 +3,7 @@
 // display + cart-snapshot fields the renderer needs. Prices are the
 // catalog's integer poisha values, carried through unchanged (no recompute).
 import type {
-  BenefitItem, FaqItem, GalleryImage, HowToOrderStep, LandingCatalogProduct, LandingPage, LandingSection, TrustStripItem,
+  BenefitItem, FaqItem, GalleryImage, HowToOrderStep, LandingCatalogProduct, LandingPage, LandingSection, LandingSectionDesign, TrustStripItem,
 } from "./types";
 
 export interface ResolvedOffer {
@@ -146,24 +146,25 @@ export interface LandingBlockExtras {
 }
 
 export type LandingViewSection =
-  | { kind: "hero"; id: string; titleBn: string; titleEn: string; subtitleBn: string; subtitleEn: string; imageUrl: string | null; ctaLabelBn: string; ctaLabelEn: string }
-  | { kind: "product_offer"; id: string; offer: ResolvedOffer | null; discountNoteBn: string; discountNoteEn: string; showCountdown: boolean; countdownEndsAt: string | null }
-  | { kind: "benefits"; id: string; headingBn: string; headingEn: string; items: BenefitItem[] }
-  | { kind: "how_to_order"; id: string; headingBn: string; headingEn: string; steps: HowToOrderStep[] }
-  | { kind: "faq"; id: string; headingBn: string; headingEn: string; items: FaqItem[] }
-  | { kind: "order_form_note"; id: string; textBn: string; textEn: string }
-  | { kind: "quick_order"; id: string; headingBn: string; headingEn: string; product: ResolvedOrderProduct | null }
-  | { kind: "footer_note"; id: string; textBn: string; textEn: string }
-  | { kind: "reviews"; id: string; reviews: ResolvedReviews | null }
-  | { kind: "gallery"; id: string; headingBn: string; headingEn: string; images: GalleryImage[]; layout: "grid" | "carousel" }
-  | { kind: "image_banner"; id: string; imageUrl: string; altBn: string; altEn: string; linkUrl: string | null; headingBn: string; headingEn: string }
-  | { kind: "video"; id: string; videoId: string; headingBn: string; headingEn: string }
-  | { kind: "rich_text"; id: string; bodyBn: string; bodyEn: string }
-  | { kind: "bundle_offer"; id: string; headingBn: string; headingEn: string; ctaToOrderForm: boolean; bundle: ResolvedBundle | null }
-  | { kind: "product_grid"; id: string; headingBn: string; headingEn: string; cards: ResolvedOffer[]; columnsMobile: 1 | 2; columnsDesktop: 2 | 3 | 4; showPrice: boolean; showAddButton: boolean }
-  | { kind: "product_carousel"; id: string; headingBn: string; headingEn: string; cards: ResolvedOffer[]; autoplay: boolean; showPrice: boolean; showAddButton: boolean }
-  | { kind: "countdown"; id: string; headingBn: string; headingEn: string; endsAt: string | null; expiredBehavior: "hide" | "show_text"; expiredTextBn: string; expiredTextEn: string }
-  | { kind: "trust_strip"; id: string; items: TrustStripItem[] };
+  | { kind: "hero"; id: string; titleBn: string; titleEn: string; subtitleBn: string; subtitleEn: string; imageUrl: string | null; ctaLabelBn: string; ctaLabelEn: string; design?: LandingSectionDesign; }
+  | { kind: "product_offer"; id: string; offer: ResolvedOffer | null; discountNoteBn: string; discountNoteEn: string; showCountdown: boolean; countdownEndsAt: string | null; design?: LandingSectionDesign; }
+  | { kind: "benefits"; id: string; headingBn: string; headingEn: string; items: BenefitItem[]; design?: LandingSectionDesign; }
+  | { kind: "how_to_order"; id: string; headingBn: string; headingEn: string; steps: HowToOrderStep[]; design?: LandingSectionDesign; }
+  | { kind: "faq"; id: string; headingBn: string; headingEn: string; items: FaqItem[]; design?: LandingSectionDesign; }
+  | { kind: "order_form_note"; id: string; textBn: string; textEn: string; design?: LandingSectionDesign; }
+  | { kind: "quick_order"; id: string; headingBn: string; headingEn: string; product: ResolvedOrderProduct | null; design?: LandingSectionDesign; }
+  | { kind: "footer_note"; id: string; textBn: string; textEn: string; design?: LandingSectionDesign; }
+  | { kind: "reviews"; id: string; reviews: ResolvedReviews | null; design?: LandingSectionDesign; }
+  | { kind: "gallery"; id: string; headingBn: string; headingEn: string; images: GalleryImage[]; layout: "grid" | "carousel"; design?: LandingSectionDesign; }
+  | { kind: "image_banner"; id: string; imageUrl: string; altBn: string; altEn: string; linkUrl: string | null; headingBn: string; headingEn: string; design?: LandingSectionDesign; }
+  | { kind: "video"; id: string; videoId: string; headingBn: string; headingEn: string; design?: LandingSectionDesign; }
+  | { kind: "rich_text"; id: string; bodyBn: string; bodyEn: string; design?: LandingSectionDesign; }
+  | { kind: "bundle_offer"; id: string; headingBn: string; headingEn: string; ctaToOrderForm: boolean; bundle: ResolvedBundle | null; design?: LandingSectionDesign; }
+  | { kind: "product_grid"; id: string; headingBn: string; headingEn: string; cards: ResolvedOffer[]; columnsMobile: 1 | 2; columnsDesktop: 2 | 3 | 4; showPrice: boolean; showAddButton: boolean; design?: LandingSectionDesign; }
+  | { kind: "product_carousel"; id: string; headingBn: string; headingEn: string; cards: ResolvedOffer[]; autoplay: boolean; showPrice: boolean; showAddButton: boolean; design?: LandingSectionDesign; }
+  | { kind: "countdown"; id: string; headingBn: string; headingEn: string; endsAt: string | null; expiredBehavior: "hide" | "show_text"; expiredTextBn: string; expiredTextEn: string; design?: LandingSectionDesign; }
+  | { kind: "trust_strip"; id: string; items: TrustStripItem[]; design?: LandingSectionDesign; }
+  | { kind: "sticky_bar"; id: string; textBn: string; textEn: string; target: "primary_offer" | "quick_order"; offer: ResolvedOffer | null; design?: LandingSectionDesign; };
 
 export interface LandingViewModel {
   slug: string;
@@ -283,6 +284,16 @@ export function buildLandingViewModel(
   catalog: readonly LandingCatalogProduct[],
   extras?: LandingBlockExtras,
 ): LandingViewModel {
+  // The page's primary offer, resolved up front: the sticky_bar
+  // case below binds to it (the bar shows THIS offer's live price),
+  // and it is the view model's primaryOffer — the first product_offer
+  // section whose ref resolves, in page order (the same pick the
+  // post-map scan used to make over the view sections).
+  const primaryOffer: ResolvedOffer | null =
+    page.sections
+      .filter((s): s is Extract<LandingSection, { type: "product_offer" }> => s.type === "product_offer")
+      .map((s) => resolveOffer(s, catalog))
+      .find((o): o is ResolvedOffer => o !== null) ?? null;
   const sections: LandingViewSection[] = page.sections
     .map((section): LandingViewSection | null => {
       switch (section.type) {
@@ -367,6 +378,12 @@ export function buildLandingViewModel(
           };
         case "trust_strip":
           return { kind: "trust_strip", id: section.id, items: section.items };
+        case "sticky_bar":
+          // The bar carries no ref of its own: it binds to the
+          // page's primary offer (resolved above through the same
+          // resolveOffer path as product_offer — never a stored
+          // price). Null offer → the renderer shows nothing.
+          return { kind: "sticky_bar", id: section.id, textBn: section.textBn, textEn: section.textEn, target: section.target, offer: primaryOffer };
         default:
           // Forward-compat (doc 34 §3.3 rule 3): a section type this
           // deploy does not know — a newer page read by an older
@@ -376,7 +393,16 @@ export function buildLandingViewModel(
       }
     })
     .filter((s): s is LandingViewSection => s !== null);
-  const primaryOffer =
-    sections.find((s): s is Extract<LandingViewSection, { kind: "product_offer" }> => s.kind === "product_offer" && s.offer !== null)?.offer ?? null;
+  // Doc 34 L4 (§3.5): carry each section's optional design object
+  // into the view model, keyed by section id (the switch above
+  // builds a fresh object per kind). Absent design stays ABSENT —
+  // the field is only set when the stored section carries one —
+  // which is what lets LandingView promise design-less sections
+  // their exact pre-L4 rendering.
+  const designById = new Map(page.sections.map((sec) => [sec.id, sec.design] as const));
+  for (const sec of sections) {
+    const design = designById.get(sec.id);
+    if (design) sec.design = design;
+  }
   return { slug: page.slug, titleBn: page.titleBn, titleEn: page.titleEn, status: page.status, primaryOffer, sections };
 }

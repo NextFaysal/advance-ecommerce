@@ -25,7 +25,41 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const page = await landingStore.getPublishedBySlug(params.slug);
   if (!page) return { title: "পেজ পাওয়া যায়নি" };
-  return { title: page.titleBn, description: page.titleEn };
+  // Envelope v2 SEO (doc 34 §3.1, surfaced by L6): when the owner has
+  // saved an seo block, meta title/description are picked in the
+  // VISITOR's locale (doc 30), each field falling back to its other
+  // locale and then to the page titles. When no seo block exists
+  // (every v1 page), the fallback is EXACTLY the historical behaviour
+  // — title = titleBn, description = titleEn — so nothing already
+  // indexed changes until an owner opts in.
+  if (!page.seo) return { title: page.titleBn, description: page.titleEn };
+  const locale = await getRequestLocale();
+  const seo = page.seo;
+  const pickField = (bn: string, en: string): string =>
+    (locale === "en" ? en.trim() || bn.trim() : bn.trim() || en.trim());
+  const title = pickField(seo.metaTitleBn, seo.metaTitleEn) || (locale === "en" ? page.titleEn : page.titleBn);
+  const description = pickField(seo.metaDescriptionBn, seo.metaDescriptionEn);
+  const ogImageUrl = seo.ogImageUrl?.trim() ? seo.ogImageUrl : null;
+  return {
+    title,
+    ...(description ? { description } : {}),
+    openGraph: {
+      title,
+      ...(description ? { description } : {}),
+      type: "website",
+      ...(ogImageUrl ? { images: [{ url: ogImageUrl }] } : {}),
+    },
+    ...(ogImageUrl
+      ? {
+          twitter: {
+            card: "summary_large_image" as const,
+            title,
+            ...(description ? { description } : {}),
+            images: [ogImageUrl],
+          },
+        }
+      : {}),
+  };
 }
 
 export default async function LandingPublicPage({ params }: { params: { slug: string } }) {

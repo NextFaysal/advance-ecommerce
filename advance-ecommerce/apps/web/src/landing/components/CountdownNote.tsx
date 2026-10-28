@@ -31,7 +31,7 @@ export function CountdownNote({ endsAt, locale = "bn" }: { endsAt: string; local
   const label = remainingLabel(endsAt, nowMs, locale);
   if (!label) return null;
   return (
-    <p role="timer" className="mt-2 inline-block rounded-full bg-rose-50 px-3 py-1 text-sm font-medium text-rose-600">
+    <p role="timer" className="mt-2 inline-block rounded-full bg-danger-soft px-3 py-1 text-sm font-medium text-danger">
       ⏰ {label}
     </p>
   );
