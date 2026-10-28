@@ -37,8 +37,9 @@
 import Link from "next/link";
 import { VisitorIdBootstrap } from "@/marketing/components/VisitorIdBootstrap";
 import { ThemedProductCard } from "../themed-product-card";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
 import type { HomeSectionsProps } from "../slots";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { pick } from "@/i18n/locale";
 import { CIRCUIT_STRINGS, type CircuitStrings } from "./strings";
 import CircuitHomeHero from "./home-hero";
@@ -77,7 +78,8 @@ export default async function CircuitHomeSections({
   mechanicsOn,
   heroStats,
 }: HomeSectionsProps) {
-  const locale = await getRequestLocale();
+  // ISR: store default only; LocaleProvider applies the visitor override after mount.
+  const locale = await getStoreDefaultLocale();
   const s = pick(locale, CIRCUIT_STRINGS);
   // Per-category rails from the REAL categorySlug on each fetched
   // product; categories keep the catalog's own order, capped at 3.
@@ -98,7 +100,7 @@ export default async function CircuitHomeSections({
   const bannerSlide = heroSlides.length >= 4 ? heroSlides[3]! : null;
 
   return (
-    <main className="mx-auto min-w-0 max-w-[1440px] px-4 sm:px-6">
+    <main className="mx-auto min-w-0 max-w-[1440px] px-4 sm:px-6 lg:px-8">
       {/* Invisible mechanics bootstrap (renders nothing) — parity
           with Aurora's mount, same flag gate. */}
       {mechanicsOn ? <VisitorIdBootstrap /> : null}
@@ -118,7 +120,7 @@ export default async function CircuitHomeSections({
 
       {/* ---------- Category rails (real membership only) ---------- */}
       {rails.map(({ category, items }) => (
-        <section key={category.slug} className="mt-12" aria-label={category.name[locale] || category.name.bn}>
+        <section key={category.slug} className="mt-8 lg:mt-12" aria-label={category.name[locale] || category.name.bn}>
           <CenterHeading title={category.name[locale] || category.name.bn} href={`/shop?category=${category.slug}`} s={s} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {items.map((p) => (
@@ -130,19 +132,13 @@ export default async function CircuitHomeSections({
 
       {/* ---------- Full-width banner (fourth CMS slide, if any) ---------- */}
       {bannerSlide ? (
-        <section className="mt-12" aria-label={bannerSlide.headlineBn}>
+        <section className="mt-8 lg:mt-12" aria-label={bannerSlide.headlineBn}>
           <Link
             href={bannerSlide.ctaHref || "/shop"}
             className="relative block min-h-[160px] overflow-hidden rounded-2xl shadow-card sm:min-h-[200px]"
           >
             {bannerSlide.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={bannerSlide.imageUrl}
-                alt={bannerSlide.headlineBn}
-                loading="lazy"
-                className="absolute inset-0 h-full w-full object-cover"
-              />
+              <StoreImage src={bannerSlide.imageUrl} alt={bannerSlide.headlineBn} preset="hero" fillParent />
             ) : (
               <span aria-hidden="true" className="brand-soft-gradient absolute inset-0" />
             )}
@@ -166,7 +162,7 @@ export default async function CircuitHomeSections({
                 </span>
               ) : null}
               {bannerSlide.ctaLabelBn ? (
-                <span className="mt-3 inline-flex h-10 w-fit items-center rounded-lg bg-primary px-4 text-sm font-bold text-white shadow-md">
+                <span className="mt-3 inline-flex h-11 w-fit items-center rounded-lg bg-primary px-4 text-sm font-bold text-white shadow-md">
                   {bannerSlide.ctaLabelBn}
                 </span>
               ) : null}
@@ -177,7 +173,7 @@ export default async function CircuitHomeSections({
 
       {/* ---------- Closing grid: the full fetched list ---------- */}
       {products.length > 0 ? (
-        <section className="mt-12" aria-label={s.justForYouAria}>
+        <section className="mt-8 lg:mt-12" aria-label={s.justForYouAria}>
           <CenterHeading title={s.justForYouTitle} href="/shop" s={s} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {products.map((p) => (

@@ -8,14 +8,20 @@
  */
 import { NextResponse } from "next/server";
 import { getVapidConfig } from "@/platform/push-server";
+import { catalogCacheHeaders } from "@/lib/http-cache";
 
 export async function GET() {
   const config = getVapidConfig();
-  return NextResponse.json({
-    data: {
-      configured: config !== null,
-      publicKey: config?.publicKey ?? null,
+  return NextResponse.json(
+    {
+      data: {
+        configured: config !== null,
+        publicKey: config?.publicKey ?? null,
+      },
+      meta: { source: "env:WEB_PUSH_VAPID_*" },
     },
-    meta: { source: "env:WEB_PUSH_VAPID_*" },
-  });
+    // Env-derived and identical for every visitor; the VAPID keys
+    // only change with a redeploy (perf wave 2B: s-maxage=300 + SWR 600).
+    { headers: catalogCacheHeaders(300, 600) },
+  );
 }

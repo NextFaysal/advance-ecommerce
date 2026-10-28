@@ -33,8 +33,9 @@ import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { VisitorIdBootstrap } from "@/marketing/components/VisitorIdBootstrap";
 import { ThemedProductCard } from "../themed-product-card";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
 import type { HomeSectionsProps } from "../slots";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { interpolate, pick } from "@/i18n/locale";
 import {
   BOIGHOR_FALLBACK_TILES,
@@ -66,7 +67,7 @@ function RailHeading({ title, href, s }: { title: string; href: string; s: Boigh
         <h2 className="font-display text-xl font-extrabold text-text-main sm:text-2xl">{title}</h2>
         <span aria-hidden="true" className="mt-1.5 block h-[3px] w-10 rounded-full bg-primary" />
       </div>
-      <Link href={href} className="shrink-0 text-sm font-bold text-primary hover:underline">
+      <Link href={href} className="inline-flex min-h-[44px] shrink-0 items-center text-sm font-bold text-primary hover:underline">
         {s.viewAll}
       </Link>
     </div>
@@ -96,7 +97,8 @@ export default async function BoighorHomeSections({
 
   // Full-width banner slot: a third CMS slide, when the merchant
   // has one, sits between the rails and the closing grid.
-  const locale = await getRequestLocale();
+  // ISR: store default only; LocaleProvider applies the visitor override after mount.
+  const locale = await getStoreDefaultLocale();
   const s = pick(locale, BOIGHOR_STRINGS);
   const bannerSlide = heroSlides.length >= 3 ? heroSlides[2]! : null;
 
@@ -113,7 +115,7 @@ export default async function BoighorHomeSections({
       : pick(locale, FALLBACK_TILES).map((t) => ({ ...t }));
 
   return (
-    <main className="mx-auto min-w-0 max-w-[1440px] px-4 sm:px-6">
+    <main className="mx-auto min-w-0 max-w-[1440px] px-4 sm:px-6 lg:px-8">
       {/* Invisible mechanics bootstrap (renders nothing) — parity
           with the other packages' mount, same flag gate. */}
       {mechanicsOn ? <VisitorIdBootstrap /> : null}
@@ -126,7 +128,7 @@ export default async function BoighorHomeSections({
       <BoighorHomeCategories categories={categories} />
 
       {/* ---------- Three white shortcut tiles (real links) ---------- */}
-      <section className="mt-10 grid gap-3 sm:grid-cols-3" aria-label={s.shortcutsAria}>
+      <section className="mt-8 grid gap-3 sm:grid-cols-3 lg:mt-10" aria-label={s.shortcutsAria}>
         {shortcutTiles.map((tile) => (
           <Link
             key={tile.href + tile.title}
@@ -153,7 +155,7 @@ export default async function BoighorHomeSections({
 
       {/* ---------- Category rails (real membership only) ---------- */}
       {rails.map(({ category, items }) => (
-        <section key={category.slug} className="mt-12" aria-label={category.name[locale] || category.name.bn}>
+        <section key={category.slug} className="mt-8 lg:mt-12" aria-label={category.name[locale] || category.name.bn}>
           <RailHeading title={category.name[locale] || category.name.bn} href={`/shop?category=${category.slug}`} s={s} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {items.map((p) => (
@@ -165,19 +167,13 @@ export default async function BoighorHomeSections({
 
       {/* ---------- Full-width banner (third CMS slide, if any) ---------- */}
       {bannerSlide ? (
-        <section className="mt-12" aria-label={bannerSlide.headlineBn}>
+        <section className="mt-8 lg:mt-12" aria-label={bannerSlide.headlineBn}>
           <Link
             href={bannerSlide.ctaHref || "/shop"}
             className="relative block min-h-[160px] overflow-hidden rounded-2xl shadow-card sm:min-h-[200px]"
           >
             {bannerSlide.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={bannerSlide.imageUrl}
-                alt={bannerSlide.headlineBn}
-                loading="lazy"
-                className="absolute inset-0 h-full w-full object-cover"
-              />
+              <StoreImage src={bannerSlide.imageUrl} alt={bannerSlide.headlineBn} preset="hero" fillParent />
             ) : (
               <span aria-hidden="true" className="brand-soft-gradient absolute inset-0" />
             )}
@@ -201,7 +197,7 @@ export default async function BoighorHomeSections({
                 </span>
               ) : null}
               {bannerSlide.ctaLabelBn ? (
-                <span className="mt-3 inline-flex h-10 w-fit items-center rounded-lg bg-primary px-4 text-sm font-bold text-white shadow-md">
+                <span className="mt-3 inline-flex h-11 w-fit items-center rounded-lg bg-primary px-4 text-sm font-bold text-white shadow-md">
                   {bannerSlide.ctaLabelBn}
                 </span>
               ) : null}
@@ -212,7 +208,7 @@ export default async function BoighorHomeSections({
 
       {/* ---------- Just For You: the full fetched list ---------- */}
       {products.length > 0 ? (
-        <section className="mt-12" aria-label={s.justForYouAria}>
+        <section className="mt-8 lg:mt-12" aria-label={s.justForYouAria}>
           <RailHeading title={s.justForYouTitle} href="/shop" s={s} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {products.map((p) => (
@@ -234,7 +230,7 @@ export default async function BoighorHomeSections({
       <BoighorHomeTestimonials reviews={customerReviews} />
 
       {/* ---------- Trust strip (our own generic service points) ---------- */}
-      <section className="mt-12 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={s.benefitsAria}>
+      <section className="mt-8 grid grid-cols-2 gap-3 lg:mt-12 lg:grid-cols-4" aria-label={s.benefitsAria}>
         {pick(locale, TRUST_ITEMS).map((item) => (
           <div
             key={item.title}

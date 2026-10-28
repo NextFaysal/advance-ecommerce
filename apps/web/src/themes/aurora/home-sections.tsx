@@ -29,9 +29,10 @@ import { VisitorIdBootstrap } from "@/marketing/components/VisitorIdBootstrap";
 import { Stars } from "@/reviews/components/Stars";
 import type { HomeSectionsProps } from "../slots";
 import { interpolate, pick, type Locale } from "@/i18n/locale";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { COMMON_STRINGS } from "@/i18n/dictionaries";
 import { AURORA_STRINGS, type AuroraStrings } from "./strings";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
 
 /* ---------- small inline icons (Lucide-style, 1.6 stroke) ---------- */
 const iconProps = {
@@ -102,7 +103,7 @@ function SectionHeading({
 }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div>
+      <div className="min-w-0">
         <p className={`text-xs font-bold ${inverse ? "text-background/70" : "text-primary"}`}>
           {eyebrow}
         </p>
@@ -113,7 +114,7 @@ function SectionHeading({
       {href && linkLabel ? (
         <Link
           href={href}
-          className={`text-sm font-semibold hover:underline ${inverse ? "text-background" : "text-primary"}`}
+          className={`inline-flex min-h-[44px] items-center text-sm font-semibold hover:underline ${inverse ? "text-background" : "text-primary"}`}
         >
           {linkLabel} →
         </Link>
@@ -151,13 +152,14 @@ function CategoryTile({
       className={`group flex items-center gap-3.5 rounded-2xl p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${tint.bg}`}
     >
       {category.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={category.imageUrl}
-          alt={category.name[locale]}
-          loading="lazy"
-          className="h-12 w-12 shrink-0 rounded-xl object-cover"
-        />
+        <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl">
+          <StoreImage
+            src={category.imageUrl}
+            alt={category.name[locale]}
+            preset="thumb"
+            fillParent
+          />
+        </span>
       ) : (
         <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/80 text-lg font-extrabold text-text-main shadow-sm">
           {category.name[locale].charAt(0)}
@@ -225,7 +227,8 @@ async function AuroraHomeSectionsInner({
   experimentActive,
   heroStats,
 }: HomeSectionsProps) {
-  const locale = await getRequestLocale();
+  // ISR: store default only; LocaleProvider applies the visitor override after mount.
+  const locale = await getStoreDefaultLocale();
   const t = pick(locale, COMMON_STRINGS);
   const s = pick(locale, AURORA_STRINGS);
   const trustItems = buildTrustItems(s);

@@ -42,9 +42,10 @@ import BazaarHomeCategories from "./home-categories";
 import BazaarHomeTopSelling from "./home-top-selling";
 import BazaarHomeBrands from "./home-brands";
 import BazaarHomeTestimonials from "./home-testimonials";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { pick } from "@/i18n/locale";
 import { BAZAAR_STRINGS } from "./strings";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
 
 /* Our own generic service points (icon + line), drawn from the
    platform's real storefront promises — COD, nationwide delivery,
@@ -56,11 +57,11 @@ import { BAZAAR_STRINGS } from "./strings";
 function RailHeading({ title, href, viewAllLabel }: { title: string; href: string; viewAllLabel: string }) {
   return (
     <div className="flex items-end justify-between gap-3">
-      <div>
+      <div className="min-w-0">
         <h2 className="font-display text-xl font-extrabold text-text-main sm:text-2xl">{title}</h2>
         <span aria-hidden="true" className="mt-1.5 block h-[3px] w-10 rounded-full bg-primary" />
       </div>
-      <Link href={href} className="shrink-0 text-sm font-bold text-primary hover:underline">
+      <Link href={href} className="inline-flex min-h-[44px] shrink-0 items-center text-sm font-bold text-primary hover:underline">
         {viewAllLabel}
       </Link>
     </div>
@@ -75,7 +76,8 @@ export default async function BazaarHomeSections({
   mechanicsOn,
   heroStats,
 }: HomeSectionsProps) {
-  const locale = await getRequestLocale();
+  // ISR: store default only; LocaleProvider applies the visitor override after mount.
+  const locale = await getStoreDefaultLocale();
   const s = pick(locale, BAZAAR_STRINGS);
   const TRUST_ITEMS = [
     { icon: "banknote", title: s.trustCodTitle, text: s.trustCodText },
@@ -166,12 +168,11 @@ export default async function BazaarHomeSections({
             className="relative block min-h-[160px] overflow-hidden rounded-2xl shadow-card sm:min-h-[200px]"
           >
             {bannerSlide.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <StoreImage
                 src={bannerSlide.imageUrl}
                 alt={bannerSlide.headlineBn}
-                loading="lazy"
-                className="absolute inset-0 h-full w-full object-cover"
+                preset="hero"
+                fillParent
               />
             ) : (
               <span aria-hidden="true" className="brand-soft-gradient absolute inset-0" />
@@ -196,7 +197,7 @@ export default async function BazaarHomeSections({
                 </span>
               ) : null}
               {bannerSlide.ctaLabelBn ? (
-                <span className="mt-3 inline-flex h-10 w-fit items-center rounded-md bg-primary px-4 text-sm font-bold text-white shadow-md">
+                <span className="mt-3 inline-flex h-11 w-fit items-center rounded-md bg-primary px-4 text-sm font-bold text-white shadow-md">
                   {bannerSlide.ctaLabelBn}
                 </span>
               ) : null}

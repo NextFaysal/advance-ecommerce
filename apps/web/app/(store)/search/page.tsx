@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { SearchBrowser } from "./SearchBrowser";
+import { SearchPageSkeleton } from "./SearchSkeleton";
 import { pick } from "@/i18n/locale";
 import { getStoreDefaultLocale } from "@/i18n/server";
 import { STORE_STRINGS } from "../store-strings";
@@ -31,11 +32,25 @@ export async function generateMetadata(): Promise<Metadata> {
 
 // The shell itself never changes; a long revalidate keeps it a pure
 // edge-served static page (all live data arrives via the cached API).
+// Perf wave 2A: revalidate alone was NOT enough — the build still
+// classified /search ƒ (dynamic), the same silent-dynamic failure
+// the homepage had. force-static (the proven homepage fix) makes
+// the shell genuinely ISR; the query UI/fetching stays client-side,
+// so visitor behaviour is unchanged.
+export const dynamic = "force-static";
 export const revalidate = 300;
 
 export default function SearchPage() {
+  // Wave P5 (doc 32): the fallback is a designed skeleton in the
+  // page's own container, so first paint is never a blank shell.
   return (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <main className="mx-auto min-w-0 max-w-7xl px-4 py-6">
+          <SearchPageSkeleton />
+        </main>
+      }
+    >
       <SearchBrowser />
     </Suspense>
   );

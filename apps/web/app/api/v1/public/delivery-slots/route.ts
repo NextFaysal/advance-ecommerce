@@ -8,17 +8,24 @@
  * no secrets) — the slot choice never affects pricing, and the
  * orders routes re-resolve a submitted id server-side, so a forged
  * list here could not smuggle an unconfigured slot onto an order.
- * NOT cached: an admin edit should reach the next checkout page load.
+ * Edge-cached (perf wave 2B: s-maxage=300 + SWR 600): identical for
+ * every visitor; an admin edit can take up to ~5 minutes to reach
+ * every visitor, which is safe because orders re-resolve the slot
+ * server-side.
  */
 import { NextResponse } from "next/server";
 import { loadDeliverySlots } from "@/checkout/delivery-slots";
+import { catalogCacheHeaders } from "@/lib/http-cache";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const slots = await loadDeliverySlots();
-  return NextResponse.json({
-    data: { slots },
-    meta: { db: "PRISMA", source: "SETTINGS" },
-  });
+  return NextResponse.json(
+    {
+      data: { slots },
+      meta: { db: "PRISMA", source: "SETTINGS" },
+    },
+    { headers: catalogCacheHeaders(300, 600) },
+  );
 }

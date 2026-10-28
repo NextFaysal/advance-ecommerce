@@ -9,14 +9,20 @@ import {
 } from "@/reviews/policy";
 import { checkReviewRateLimit } from "@/reviews/rate-limit";
 import { createReview, getApprovedReviewAggregate, listApprovedReviews } from "@/reviews/store";
+import { catalogCacheHeaders } from "@/lib/http-cache";
 
-// Live data only: never prerender/cache these handlers at build time.
+// Live data only: never prerender these handlers at build time.
+// (The GET response itself is edge-cached briefly — see below.)
 export const dynamic = "force-dynamic";
 
 // GET /api/v1/public/products/[slug]/reviews — APPROVED reviews only,
 // plus the aggregate the PDP header shows. The public view carries
 // the author's NAME ONLY — Review.phone is verification data and is
-// never returned here (see src/reviews/store.ts).
+// never returned here (see src/reviews/store.ts). The payload is
+// identical for every visitor (approved-only, moderation-gated), so
+// it carries the wave-45 catalog cache headers (perf wave 2B:
+// s-maxage=60 + SWR 300) — a newly approved review can take up to
+// ~60s to appear, which moderation timing already dwarfs.
 export async function GET(_req: Request, { params }: { params: { slug: string } }) {
   try {
     const repo = await getCatalogRepository();
@@ -26,10 +32,13 @@ export async function GET(_req: Request, { params }: { params: { slug: string } 
       listApprovedReviews(product.id),
       getApprovedReviewAggregate(product.id),
     ]);
-    return NextResponse.json({
-      data: { productId: product.id, aggregate, reviews },
-      meta: { persistence: "database" },
-    });
+    return NextResponse.json(
+      {
+        data: { productId: product.id, aggregate, reviews },
+        meta: { persistence: "database" },
+      },
+      { headers: catalogCacheHeaders(60) },
+    );
   } catch (error) {
     return handleServiceError(error);
   }

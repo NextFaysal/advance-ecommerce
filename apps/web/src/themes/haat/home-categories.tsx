@@ -1,7 +1,10 @@
 /**
  * Haat category tiles (doc 27 theme T-A) — server-rendered grid.
  *
- * A dense tile grid (4 across on phones, up to 8 on desktop):
+ * A dense tile grid (3 across on phones, up to 8 on desktop;
+ * doc 33 §4: at 360px a 4-across tile would be ~75px wide —
+ * under the 80px floor — so the phone band runs 3 across at
+ * ~103px per tile):
  * each tile is the category's OWN image when the catalog has
  * one, otherwise a tinted initial tile of our own — a coloured
  * square with the category's first letter. No third-party
@@ -11,10 +14,11 @@
  */
 import Link from "next/link";
 import { DigitText } from "@/components/ui/numerals";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { interpolate, pick } from "@/i18n/locale";
 import { HAAT_STRINGS } from "./strings";
 import type { Category } from "@/catalog/types";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
 
 /* Tile tints for image-less categories (our own palette). */
 const TILE_TINTS: ReadonlyArray<string> = [
@@ -33,7 +37,8 @@ export default async function HaatHomeCategories({
 }: {
   categories: Category[];
 }) {
-  const locale = await getRequestLocale();
+  // ISR: store default only; LocaleProvider applies the visitor override after mount.
+  const locale = await getStoreDefaultLocale();
   const s = pick(locale, HAAT_STRINGS);
   if (categories.length === 0) return null;
 
@@ -45,37 +50,35 @@ export default async function HaatHomeCategories({
         </h2>
         <Link
           href="/shop"
-          className="shrink-0 text-sm font-bold text-primary hover:underline"
+          className="flex min-h-[44px] shrink-0 items-center text-sm font-bold text-primary hover:underline"
         >
           {s.allCategoriesLink}
         </Link>
       </div>
 
-      <div className="mt-5 grid grid-cols-4 gap-2.5 sm:grid-cols-6 lg:grid-cols-8">
+      <div className="mt-5 grid grid-cols-3 gap-2.5 sm:grid-cols-6 lg:grid-cols-8">
         {categories.map((c, i) => (
           <Link
             key={c.slug}
             href={`/shop?category=${c.slug}`}
             className="group rounded border border-border bg-card p-2 shadow-card transition duration-200 hover:shadow-lift"
           >
-            <span className="block aspect-square overflow-hidden rounded-sm">
-              {c.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={c.imageUrl}
-                  alt={c.name[locale] || c.name.bn}
-                  loading="lazy"
-                  className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.05]"
-                />
-              ) : (
-                <span
-                  aria-hidden="true"
-                  className={`flex h-full w-full items-center justify-center text-3xl font-extrabold ${TILE_TINTS[i % TILE_TINTS.length]}`}
-                >
-                  {(c.name[locale] || c.name.bn).charAt(0)}
-                </span>
-              )}
-            </span>
+            {c.imageUrl ? (
+              <StoreImage
+                src={c.imageUrl}
+                alt={c.name[locale] || c.name.bn}
+                preset="thumb"
+                className="rounded-sm"
+                imgClassName="transition duration-300 group-hover:scale-[1.05]"
+              />
+            ) : (
+              <span
+                aria-hidden="true"
+                className={`flex aspect-square items-center justify-center rounded-sm text-3xl font-extrabold ${TILE_TINTS[i % TILE_TINTS.length]}`}
+              >
+                {(c.name[locale] || c.name.bn).charAt(0)}
+              </span>
+            )}
             <span className="mt-2 block truncate text-center text-[13px] font-bold leading-snug text-text-main">
               {c.name[locale] || c.name.bn}
             </span>

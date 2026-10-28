@@ -38,7 +38,7 @@ import Link from "next/link";
 import { VisitorIdBootstrap } from "@/marketing/components/VisitorIdBootstrap";
 import { ThemedProductCard } from "../themed-product-card";
 import type { HomeSectionsProps } from "../slots";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { pick } from "@/i18n/locale";
 import { HAAT_STRINGS, type HaatStrings } from "./strings";
 import HaatHomeHero from "./home-hero";
@@ -50,10 +50,10 @@ import HaatHomeCategories from "./home-categories";
 function RailHeading({ title, href, s }: { title: string; href: string; s: HaatStrings }) {
   return (
     <div className="flex items-end justify-between gap-3">
-      <h2 className="border-l-4 border-primary pl-3 font-display text-xl font-extrabold text-text-main sm:text-2xl">
+      <h2 className="min-w-0 border-l-4 border-primary pl-3 font-display text-xl font-extrabold text-text-main sm:text-2xl">
         {title}
       </h2>
-      <Link href={href} className="shrink-0 text-sm font-bold text-primary hover:underline">
+      <Link href={href} className="inline-flex min-h-[44px] shrink-0 items-center text-sm font-bold text-primary hover:underline">
         {s.viewAllLink}
       </Link>
     </div>
@@ -67,7 +67,8 @@ export default async function HaatHomeSections({
   mechanicsOn,
   heroStats,
 }: HomeSectionsProps) {
-  const locale = await getRequestLocale();
+  // ISR: store default only; LocaleProvider applies the visitor override after mount.
+  const locale = await getStoreDefaultLocale();
   const s = pick(locale, HAAT_STRINGS);
   // Per-category rails from the REAL categorySlug on each fetched
   // product; categories keep the catalog's own order, capped at 3.

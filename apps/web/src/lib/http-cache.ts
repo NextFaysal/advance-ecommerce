@@ -13,8 +13,11 @@
  * NEVER use these headers on account, cart, checkout, payment, admin
  * or any per-user response.
  */
-export function catalogCacheHeaders(sMaxAgeSeconds = 60): Record<string, string> {
+export function catalogCacheHeaders(
+  sMaxAgeSeconds = 60,
+  staleWhileRevalidateSeconds = 300,
+): Record<string, string> {
   return {
-    "Cache-Control": `public, s-maxage=${sMaxAgeSeconds}, stale-while-revalidate=300`,
+    "Cache-Control": `public, s-maxage=${sMaxAgeSeconds}, stale-while-revalidate=${staleWhileRevalidateSeconds}`,
   };
 }

@@ -35,6 +35,7 @@ import { STORE_STRINGS } from "./(store)/store-strings";
 // store-global catalog data (no request APIs), so the ISR behaviour
 // above is unchanged.
 export const revalidate = 60;
+export const dynamic = "force-static";
 
 // Doc 30: metadata + the hero stat labels follow the STORE DEFAULT
 // locale. ISR-safe — getStoreDefaultLocale reads only the settings

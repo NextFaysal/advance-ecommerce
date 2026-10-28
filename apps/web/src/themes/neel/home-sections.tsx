@@ -32,12 +32,13 @@ import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { VisitorIdBootstrap } from "@/marketing/components/VisitorIdBootstrap";
 import { ThemedProductCard } from "../themed-product-card";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
 import type { HomeSectionsProps } from "../slots";
 import NeelHomeHero from "./home-hero";
 import NeelHomeCategories from "./home-categories";
 import NeelHomeTopSelling from "./home-top-selling";
 import NeelHomeTestimonials from "./home-testimonials";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { pick } from "@/i18n/locale";
 import { NEEL_STRINGS, type NeelStrings } from "./strings";
 
@@ -62,7 +63,7 @@ function RailHeading({ title, href, s }: { title: string; href: string; s: NeelS
         <h2 className="font-display text-xl font-extrabold text-text-main sm:text-2xl">{title}</h2>
         <span aria-hidden="true" className="mt-1.5 block h-[3px] w-10 rounded-full bg-primary" />
       </div>
-      <Link href={href} className="shrink-0 text-sm font-bold text-primary hover:underline">
+      <Link href={href} className="inline-flex min-h-[44px] shrink-0 items-center text-sm font-bold text-primary hover:underline">
         {s.viewAllLink}
       </Link>
     </div>
@@ -77,7 +78,8 @@ export default async function NeelHomeSections({
   mechanicsOn,
   heroStats,
 }: HomeSectionsProps) {
-  const locale = await getRequestLocale();
+  // ISR: store default only; LocaleProvider applies the visitor override after mount.
+  const locale = await getStoreDefaultLocale();
   const s = pick(locale, NEEL_STRINGS);
   const TRUST_ITEMS = trustItems(s);
   // Per-category rails from the REAL categorySlug on each fetched
@@ -98,7 +100,7 @@ export default async function NeelHomeSections({
   const bannerSlide = heroSlides.length >= 3 ? heroSlides[2]! : null;
 
   return (
-    <main className="mx-auto min-w-0 max-w-[1440px] px-4 sm:px-6">
+    <main className="mx-auto min-w-0 max-w-[1440px] px-4 sm:px-6 lg:px-8">
       {/* Invisible mechanics bootstrap (renders nothing) — parity
           with the other packages' mount, same flag gate. */}
       {mechanicsOn ? <VisitorIdBootstrap /> : null}
@@ -137,7 +139,7 @@ export default async function NeelHomeSections({
 
       {/* ---------- Category rails (real membership only) ---------- */}
       {rails.map(({ category, items }) => (
-        <section key={category.slug} className="mt-12" aria-label={category.name[locale] || category.name.bn}>
+        <section key={category.slug} className="mt-8 lg:mt-12" aria-label={category.name[locale] || category.name.bn}>
           <RailHeading s={s} title={category.name[locale] || category.name.bn} href={`/shop?category=${category.slug}`} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {items.map((p) => (
@@ -149,19 +151,13 @@ export default async function NeelHomeSections({
 
       {/* ---------- Full-width banner (third CMS slide, if any) ---------- */}
       {bannerSlide ? (
-        <section className="mt-12" aria-label={bannerSlide.headlineBn}>
+        <section className="mt-8 lg:mt-12" aria-label={bannerSlide.headlineBn}>
           <Link
             href={bannerSlide.ctaHref || "/shop"}
             className="relative block min-h-[160px] overflow-hidden rounded-2xl shadow-card sm:min-h-[200px]"
           >
             {bannerSlide.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={bannerSlide.imageUrl}
-                alt={bannerSlide.headlineBn}
-                loading="lazy"
-                className="absolute inset-0 h-full w-full object-cover"
-              />
+              <StoreImage src={bannerSlide.imageUrl} alt={bannerSlide.headlineBn} preset="hero" fillParent />
             ) : (
               <span aria-hidden="true" className="brand-soft-gradient absolute inset-0" />
             )}
@@ -185,7 +181,7 @@ export default async function NeelHomeSections({
                 </span>
               ) : null}
               {bannerSlide.ctaLabelBn ? (
-                <span className="mt-3 inline-flex h-10 w-fit items-center rounded-md bg-primary px-4 text-sm font-bold text-white shadow-md">
+                <span className="mt-3 inline-flex h-11 w-fit items-center rounded-md bg-primary px-4 text-sm font-bold text-white shadow-md">
                   {bannerSlide.ctaLabelBn}
                 </span>
               ) : null}
@@ -196,7 +192,7 @@ export default async function NeelHomeSections({
 
       {/* ---------- Product grid + LOAD MORE ---------- */}
       {products.length > 0 ? (
-        <section className="mt-12" aria-label={s.pickedForYou}>
+        <section className="mt-8 lg:mt-12" aria-label={s.pickedForYou}>
           <RailHeading title={s.pickedForYou} href="/shop" s={s} />
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {products.map((p) => (

@@ -12,40 +12,49 @@
  * rental against the same config server-side (and recomputes the
  * deposit from the SERVER price), so a forged response here could
  * not smuggle an unlisted variant, an over-long window or a
- * cheaper deposit onto an order. NOT cached: an admin edit should
- * reach the next checkout page load.
+ * cheaper deposit onto an order. Edge-cached (perf wave 2B:
+ * s-maxage=300 + SWR 600): identical for every visitor; an admin
+ * edit can take up to ~5 minutes to reach every visitor, which is
+ * safe because orders re-validate every rental server-side.
  */
 import { NextResponse } from "next/server";
 import { loadRentalConfig } from "@/rental/config";
 import { isRentalEnabled } from "@/rental/flags";
+import { catalogCacheHeaders } from "@/lib/http-cache";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const enabled = isRentalEnabled();
   if (!enabled) {
-    return NextResponse.json({
-      data: {
-        enabled: false,
-        rentalVariantIds: [],
-        maxRentalDays: 30,
-        depositMode: "none",
-        depositFixedPoisha: 0,
-        depositPercentBps: 0,
+    return NextResponse.json(
+      {
+        data: {
+          enabled: false,
+          rentalVariantIds: [],
+          maxRentalDays: 30,
+          depositMode: "none",
+          depositFixedPoisha: 0,
+          depositPercentBps: 0,
+        },
+        meta: { db: "PRISMA", source: "SETTINGS" },
       },
-      meta: { db: "PRISMA", source: "SETTINGS" },
-    });
+      { headers: catalogCacheHeaders(300, 600) },
+    );
   }
   const { effective } = await loadRentalConfig();
-  return NextResponse.json({
-    data: {
-      enabled: true,
-      rentalVariantIds: effective.rentalVariantIds,
-      maxRentalDays: effective.maxRentalDays,
-      depositMode: effective.depositMode,
-      depositFixedPoisha: effective.depositFixedPoisha,
-      depositPercentBps: effective.depositPercentBps,
+  return NextResponse.json(
+    {
+      data: {
+        enabled: true,
+        rentalVariantIds: effective.rentalVariantIds,
+        maxRentalDays: effective.maxRentalDays,
+        depositMode: effective.depositMode,
+        depositFixedPoisha: effective.depositFixedPoisha,
+        depositPercentBps: effective.depositPercentBps,
+      },
+      meta: { db: "PRISMA", source: "SETTINGS" },
     },
-    meta: { db: "PRISMA", source: "SETTINGS" },
-  });
+    { headers: catalogCacheHeaders(300, 600) },
+  );
 }

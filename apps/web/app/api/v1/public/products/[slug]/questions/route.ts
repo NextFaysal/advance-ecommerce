@@ -5,23 +5,32 @@ import { errorResponse, requireCustomer, unauthorized } from "@/customer-auth/ht
 import { checkRateLimit } from "@/lib/rate-limit";
 import { askQuestionSchema } from "@/qa/schema";
 import { askQuestion, listAnsweredQuestions } from "@/qa/store";
+import { catalogCacheHeaders } from "@/lib/http-cache";
 
-// Live data only: never prerender/cache these handlers at build time.
+// Live data only: never prerender these handlers at build time.
+// (The GET response itself is edge-cached briefly — see below.)
 export const dynamic = "force-dynamic";
 
 // GET /api/v1/public/products/[slug]/questions — ANSWERED questions
 // only (the store enforces the visibility contract: PENDING and
-// HIDDEN never leave the server on a public read).
+// HIDDEN never leave the server on a public read). The payload is
+// identical for every visitor (answered-only, moderation-gated), so
+// it carries the wave-45 catalog cache headers (perf wave 2B:
+// s-maxage=60 + SWR 300) — a newly answered question can take up to
+// ~60s to appear, which moderation timing already dwarfs.
 export async function GET(_req: Request, { params }: { params: { slug: string } }) {
   try {
     const repo = await getCatalogRepository();
     const product = await getPublicProductBySlug(repo, params.slug);
     if (!product) return apiError("NOT_FOUND", "Product not found.", 404);
     const questions = await listAnsweredQuestions(product.id);
-    return NextResponse.json({
-      data: { productId: product.id, questions },
-      meta: { persistence: "database" },
-    });
+    return NextResponse.json(
+      {
+        data: { productId: product.id, questions },
+        meta: { persistence: "database" },
+      },
+      { headers: catalogCacheHeaders(60) },
+    );
   } catch (error) {
     return handleServiceError(error);
   }
