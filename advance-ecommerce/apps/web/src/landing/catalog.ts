@@ -201,17 +201,81 @@ export const landingCatalogQueriesPublic: LandingCatalogQueries = new LandingCat
 
 /**
  * Every catalog product id a page's sections reference (product_offer
- * + quick_order today; the dynamic blocks of L2 add their manual
- * picks here as they land). Resolution inputs for byIds — the public
- * page, the builder's server parent and both API routes all collect
- * refs through this one function.
+ * + quick_order; the dynamic blocks add their picks here as they
+ * land — L3: reviews' explicit product + bundle_offer's product).
+ * Resolution inputs for byIds — the public page, the builder's
+ * server parent and both API routes all collect refs through this
+ * one function.
  */
 export function referencedProductIds(page: Pick<LandingPage, "sections">): string[] {
   const ids: string[] = [];
   for (const section of page.sections) {
     if (section.type === "product_offer" || section.type === "quick_order") {
       if (section.productId) ids.push(section.productId);
+    } else if (section.type === "reviews") {
+      // usePrimaryOffer reviews add no new ref — the offer section
+      // already contributes its product id above.
+      if (!section.usePrimaryOffer && section.productId) ids.push(section.productId);
+    } else if (section.type === "bundle_offer") {
+      if (section.productId) ids.push(section.productId);
+    } else if (
+      (section.type === "product_grid" || section.type === "product_carousel") &&
+      section.source.kind === "manual"
+    ) {
+      // L2: a manual source's picks are plain refs — they resolve by
+      // id like every other ref. Category/tag/best-sellers/
+      // new-arrivals sources carry no ids; they resolve through
+      // resolveLandingCollections below.
+      ids.push(...section.source.productIds);
     }
   }
   return ids;
+}
+
+/**
+ * Resolve every dynamic collection block (product_grid /
+ * product_carousel) on a page through the queries interface,
+ * returning the live products per section id as a plain record
+ * (matching LandingBlockExtras — serializable into the builder).
+ * This is THE resolution path for collection sources (§3.4): the
+ * public page passes the public instance, admin surfaces and
+ * publish validation pass the admin instance, and the same record
+ * feeds both the view model (render) and the source-existence
+ * publish check (validate). Inactive/vanished products are absent
+ * from the results — grids degrade silently, never with placeholder
+ * products.
+ */
+export async function resolveLandingCollections(
+  page: Pick<LandingPage, "sections">,
+  queries: LandingCatalogQueries,
+): Promise<Record<string, LandingCatalogProduct[]>> {
+  const out: Record<string, LandingCatalogProduct[]> = {};
+  await Promise.all(
+    page.sections.map(async (section) => {
+      if (section.type !== "product_grid" && section.type !== "product_carousel") return;
+      const { source, limit } = section;
+      switch (source.kind) {
+        case "manual": {
+          // byIds preserves the owner's pick order; the block's
+          // limit still caps what renders.
+          const products = await queries.byIds(source.productIds);
+          out[section.id] = products.slice(0, limit);
+          break;
+        }
+        case "category":
+          out[section.id] = await queries.byCategory(source.slug, limit);
+          break;
+        case "tag":
+          out[section.id] = await queries.byTag(source.tag, limit);
+          break;
+        case "best_sellers":
+          out[section.id] = await queries.topSold(limit);
+          break;
+        case "new_arrivals":
+          out[section.id] = await queries.newest(limit);
+          break;
+      }
+    }),
+  );
+  return out;
 }

@@ -257,10 +257,15 @@ export class LandingStore {
     }
   }
 
-  async setStatus(id: string, to: LandingPage["status"], catalog: readonly LandingCatalogProduct[]) {
+  async setStatus(
+    id: string,
+    to: LandingPage["status"],
+    catalog: readonly LandingCatalogProduct[],
+    collections?: Readonly<Record<string, readonly LandingCatalogProduct[] | null | undefined>>,
+  ) {
     const existing = await this.get(id);
     if (!existing) throw new Error("landing_page_not_found");
-    const result = transitionLandingStatus(existing, to, catalog, await this.otherSlugs(id));
+    const result = transitionLandingStatus(existing, to, catalog, await this.otherSlugs(id), collections);
     if (!result.ok) return result;
     const row = await prisma.landingPage.update({
       where: { id },

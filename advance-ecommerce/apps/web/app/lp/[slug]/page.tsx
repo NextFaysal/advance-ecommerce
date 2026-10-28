@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { landingStore } from "@/landing/store";
 import { buildLandingViewModel } from "@/landing/render";
+import { resolveLandingExtras } from "@/landing/resolve-extras";
 import { landingCatalogQueriesPublic, referencedProductIds } from "@/landing/catalog";
 import { LandingView } from "@/landing/components/LandingView";
 import { getRequestLocale } from "@/i18n/server";
@@ -36,7 +37,13 @@ export default async function LandingPublicPage({ params }: { params: { slug: st
   // layer's allowlist shape (LandingCatalogProduct — no cost fields
   // exist in it), so nothing cost-bearing exists on this page at all.
   const products = await landingCatalogQueriesPublic.byIds(referencedProductIds(page));
-  const view = buildLandingViewModel(page, products);
+  // L3 blocks (reviews, bundle contents) resolve from their own
+  // tables through the extras pass — approved-only / real-bundle
+  // honesty is enforced inside resolveLandingExtras. The L2
+  // collections + flash-sale end ride the same pass, resolved with
+  // the PUBLIC query instance so the live (visibility) gate applies.
+  const extras = await resolveLandingExtras(page, landingCatalogQueriesPublic);
+  const view = buildLandingViewModel(page, products, extras);
   return (
     <main className="min-w-0 pb-10">
       <LandingView view={view} locale={locale} />

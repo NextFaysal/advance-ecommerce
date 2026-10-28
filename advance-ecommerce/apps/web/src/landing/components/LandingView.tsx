@@ -22,16 +22,27 @@
 import { formatBdt } from "@advance-ecommerce/validators";
 import { AddToCartButton } from "@/cart/components/AddToCartButton";
 import { StoreImage } from "@/storefront-ux/components/StoreImage";
+import { RAIL_FADE_CLASS } from "@/storefront-ux/responsive";
 import { interpolate, pick, type Locale } from "@/i18n/locale";
 import { LANDING_STRINGS, type LandingStrings } from "../strings";
 import { CountdownNote } from "./CountdownNote";
 import { QuickOrderForm } from "./QuickOrderForm";
+import { RichText } from "./blocks/RichText";
+import { VideoFacade } from "./blocks/VideoFacade";
+import { LandingProductCard } from "./blocks/LandingProductCard";
+import { ProductCarousel } from "./blocks/ProductCarousel";
+import { CountdownBlock } from "./blocks/CountdownBlock";
 import type { LandingViewModel, ResolvedOffer } from "../render";
 
 /** The doc-30 pair pick: the locale's half, Bangla when it is empty. */
 function pair(locale: Locale, bn: string, en: string): string {
   return locale === "en" ? en || bn : bn;
 }
+
+/** product_grid column classes — static lookups so Tailwind's JIT
+ *  always sees the full class names (never string-built). */
+const GRID_COLS_MOBILE = { 1: "grid-cols-1", 2: "grid-cols-2" } as const;
+const GRID_COLS_DESKTOP = { 2: "md:grid-cols-2", 3: "md:grid-cols-3", 4: "md:grid-cols-4" } as const;
 
 function OfferBuy({
   offer,
@@ -69,10 +80,25 @@ function OfferBuy({
   );
 }
 
+/** Star row for a review rating (1–5): filled/empty glyphs, the
+ *  numeric value carried in the aria-label via the dictionary. */
+function Stars({ rating, s }: { rating: number; s: LandingStrings }) {
+  const clamped = Math.min(5, Math.max(0, Math.round(rating)));
+  return (
+    <span role="img" aria-label={interpolate(s.ratingOf, { rating })} className="text-sm tracking-wide text-amber-500">
+      {"★".repeat(clamped)}
+      <span className="text-text-subtle">{"★".repeat(5 - clamped)}</span>
+    </span>
+  );
+}
+
 export function LandingView({ view, locale = "bn" }: { view: LandingViewModel; locale?: Locale }) {
   const s = pick(locale, LANDING_STRINGS);
   const hero = view.sections.find((sec) => sec.kind === "hero");
   const heroCta = hero ? pair(locale, hero.ctaLabelBn, hero.ctaLabelEn) : undefined;
+  // The bundle block's scroll CTA targets the page's order form
+  // (rendered with id="landing-order-form" below) when one exists.
+  const hasQuickOrder = view.sections.some((sec) => sec.kind === "quick_order" && sec.product !== null);
   return (
     <div className="mx-auto max-w-3xl">
       {view.sections.map((section) => {
@@ -206,7 +232,7 @@ export function LandingView({ view, locale = "bn" }: { view: LandingViewModel; l
               );
             }
             return (
-              <section key={section.id} className="px-5 py-8">
+              <section key={section.id} id="landing-order-form" className="scroll-mt-4 px-5 py-8">
                 <h2 className="text-xl font-bold">{pair(locale, section.headingBn, section.headingEn)}</h2>
                 <p className="mt-1 text-sm leading-6 text-text-muted">
                   {s.quickOrderIntro}
@@ -222,6 +248,266 @@ export function LandingView({ view, locale = "bn" }: { view: LandingViewModel; l
                 {pair(locale, section.textBn, section.textEn)}
               </footer>
             );
+          case "reviews": {
+            // §0.7: unresolved (zero approved reviews, product gone)
+            // renders NOTHING — no placeholder praise, no empty shell.
+            if (!section.reviews) return null;
+            const r = section.reviews;
+            return (
+              <section key={section.id} className="px-5 py-6">
+                <h2 className="text-xl font-bold">{s.reviewsHeading}</h2>
+                <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-text-muted">
+                  {r.average !== null ? (
+                    <>
+                      <Stars rating={r.average} s={s} />
+                      <span>{interpolate(s.reviewsAverageLabel, { avg: r.average })}</span>
+                      <span aria-hidden="true">·</span>
+                    </>
+                  ) : null}
+                  <span>{interpolate(s.reviewsCountLabel, { count: r.count })}</span>
+                </p>
+                <div className="mt-4 space-y-3">
+                  {r.items.map((item, i) => (
+                    <article key={i} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="font-semibold">{item.authorName}</span>
+                        <Stars rating={item.rating} s={s} />
+                        {item.verifiedPurchase ? (
+                          <span className="rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-success-solid">{s.verifiedPurchase}</span>
+                        ) : null}
+                      </div>
+                      {item.title ? <p className="mt-1.5 font-medium leading-6">{item.title}</p> : null}
+                      <p className="mt-1 whitespace-pre-line leading-7 text-text-muted">{item.body}</p>
+                      {item.images.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {item.images.map((url, j) => (
+                            <StoreImage key={j} src={url} preset="thumb" alt={item.authorName} className="w-16 rounded-lg" />
+                          ))}
+                        </div>
+                      ) : null}
+                      <p className="mt-2 text-xs text-text-subtle">
+                        {new Date(item.createdAt).toLocaleDateString(locale === "en" ? "en-GB" : "bn-BD", { day: "numeric", month: "long", year: "numeric" })}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            );
+          }
+          case "gallery": {
+            const images = section.images.filter((img) => img.url.trim());
+            if (images.length === 0) return null;
+            const heading = pair(locale, section.headingBn, section.headingEn);
+            return (
+              <section key={section.id} className="px-5 py-6">
+                {heading ? <h2 className="text-xl font-bold">{heading}</h2> : null}
+                {section.layout === "carousel" ? (
+                  <div className={`mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 ${RAIL_FADE_CLASS}`}>
+                    {images.map((img, i) => (
+                      <div key={i} className="w-60 shrink-0 snap-start sm:w-72">
+                        <StoreImage image={img} preset="card" locale={locale} className="rounded-xl" />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <ul className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {images.map((img, i) => (
+                      <li key={i}>
+                        <StoreImage image={img} preset="square" locale={locale} className="rounded-xl" />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            );
+          }
+          case "image_banner": {
+            if (!section.imageUrl.trim()) return null;
+            const heading = pair(locale, section.headingBn, section.headingEn);
+            const banner = (
+              <StoreImage
+                src={section.imageUrl}
+                preset="hero"
+                alt={pair(locale, section.altBn, section.altEn)}
+                className="rounded-2xl"
+              />
+            );
+            const link = section.linkUrl?.trim() ?? "";
+            const linkable = link.startsWith("https://") || link.startsWith("http://") || link.startsWith("/");
+            return (
+              <section key={section.id} className="px-5 py-6">
+                {heading ? <h2 className="mb-3 text-xl font-bold">{heading}</h2> : null}
+                {linkable ? (
+                  <a href={link} className="block" {...(link.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+                    {banner}
+                  </a>
+                ) : (
+                  banner
+                )}
+              </section>
+            );
+          }
+          case "video": {
+            const heading = pair(locale, section.headingBn, section.headingEn);
+            return (
+              <section key={section.id} className="px-5 py-6">
+                {heading ? <h2 className="mb-3 text-xl font-bold">{heading}</h2> : null}
+                <VideoFacade videoId={section.videoId} title={heading} playLabel={s.videoPlayAria} />
+              </section>
+            );
+          }
+          case "rich_text": {
+            const body = pair(locale, section.bodyBn, section.bodyEn);
+            if (!body.trim()) return null;
+            return (
+              <section key={section.id} className="px-5 py-6">
+                <RichText body={body} />
+              </section>
+            );
+          }
+          case "bundle_offer": {
+            // Unavailable bundle (not a bundle product, module off,
+            // product gone) renders nothing — §3.4 honesty.
+            if (!section.bundle) return null;
+            const b = section.bundle;
+            const heading = pair(locale, section.headingBn, section.headingEn);
+            return (
+              <section key={section.id} className="px-5 py-8">
+                <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+                  {heading ? <h2 className="text-xl font-bold">{heading}</h2> : null}
+                  {b.offer.imageUrl ? (
+                    <StoreImage
+                      src={b.offer.imageUrl}
+                      preset="card"
+                      alt={pair(locale, b.offer.productTitleBn, b.offer.productTitleEn)}
+                      className="mb-4 mt-3 rounded-xl"
+                    />
+                  ) : null}
+                  <h3 className="mt-3 text-lg font-bold">{pair(locale, b.offer.productTitleBn, b.offer.productTitleEn)}</h3>
+                  <p className="text-sm text-text-muted">{b.offer.variantLabel || s.standardVariant}</p>
+                  <p className="mt-3 flex flex-wrap items-baseline gap-2">
+                    <span className="text-3xl font-bold text-brand-600">{formatBdt(b.offer.pricePoisha)}</span>
+                    {b.offer.compareAtPoisha && b.offer.compareAtPoisha > b.offer.pricePoisha ? (
+                      <span className="text-lg text-text-muted line-through">{formatBdt(b.offer.compareAtPoisha)}</span>
+                    ) : null}
+                    {b.savingsPoisha ? (
+                      <span className="rounded-full bg-success-soft px-2.5 py-1 text-sm font-semibold text-success-solid">
+                        {interpolate(s.bundleSavings, { amount: formatBdt(b.savingsPoisha) })}
+                      </span>
+                    ) : null}
+                  </p>
+                  <div className="mt-4 rounded-xl bg-surface-2 p-4">
+                    <p className="font-semibold">{s.bundleContentsHeading}</p>
+                    <p className="mt-0.5 text-sm text-text-muted">{s.bundleFixedNote}</p>
+                    <ul className="mt-3 space-y-2">
+                      {b.components.map((c, i) => (
+                        <li key={i} className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm leading-6">
+                          <span>
+                            {pair(locale, c.titleBn || s.bundleComponentFallback, c.titleEn || s.bundleComponentFallback)}
+                            {c.variantLabel ? <span className="text-text-muted"> — {c.variantLabel}</span> : null}
+                            <span className="font-medium"> × {c.quantity}</span>
+                          </span>
+                          {c.lineTotalPoisha !== null ? <span className="font-medium">{formatBdt(c.lineTotalPoisha)}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                    {b.componentsTotalPoisha !== null ? (
+                      <p className="mt-3 border-t border-border pt-3 text-sm">
+                        {s.bundleSeparateTotal}: <span className="font-bold">{formatBdt(b.componentsTotalPoisha)}</span>
+                      </p>
+                    ) : null}
+                  </div>
+                  <p className="mt-3 text-sm">
+                    {b.available ? interpolate(s.inStockCount, { count: b.offer.stock }) : s.outOfStock}
+                  </p>
+                  {b.available ? (
+                    <div className="mt-4 flex max-w-xs flex-col gap-2">
+                      <OfferBuy offer={b.offer} ctaLabel={heroCta} s={s} />
+                      {section.ctaToOrderForm && hasQuickOrder ? (
+                        <a href="#landing-order-form" className="text-center text-sm font-semibold text-brand-600 underline">
+                          {s.bundleOrderCta}
+                        </a>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+            );
+          }
+          case "product_grid": {
+            // Zero resolved products → nothing renders (§3.4): no
+            // empty shell, no placeholder cards.
+            if (section.cards.length === 0) return null;
+            const heading = pair(locale, section.headingBn, section.headingEn);
+            return (
+              <section key={section.id} className="px-5 py-6">
+                {heading ? <h2 className="text-xl font-bold">{heading}</h2> : null}
+                <div className={`mt-3 grid gap-3 ${GRID_COLS_MOBILE[section.columnsMobile]} ${GRID_COLS_DESKTOP[section.columnsDesktop]}`}>
+                  {section.cards.map((card) => (
+                    <LandingProductCard
+                      key={card.variantId}
+                      card={card}
+                      locale={locale}
+                      s={s}
+                      showPrice={section.showPrice}
+                      showAddButton={section.showAddButton}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          }
+          case "product_carousel": {
+            if (section.cards.length === 0) return null;
+            const heading = pair(locale, section.headingBn, section.headingEn);
+            return (
+              <section key={section.id} className="px-5 py-6">
+                {heading ? <h2 className="mb-3 text-xl font-bold">{heading}</h2> : null}
+                <ProductCarousel
+                  cards={section.cards}
+                  locale={locale}
+                  showPrice={section.showPrice}
+                  showAddButton={section.showAddButton}
+                  autoplay={section.autoplay}
+                />
+              </section>
+            );
+          }
+          case "countdown": {
+            // endsAt is null only for a flash-sale target with no
+            // sale live — no real end exists, so nothing renders
+            // (§0.7). The block owns its own <section> so the
+            // expired-hide behaviour leaves no empty shell behind.
+            if (!section.endsAt) return null;
+            return (
+              <CountdownBlock
+                key={section.id}
+                endsAt={section.endsAt}
+                heading={pair(locale, section.headingBn, section.headingEn)}
+                expiredText={pair(locale, section.expiredTextBn, section.expiredTextEn)}
+                expiredBehavior={section.expiredBehavior}
+                locale={locale}
+              />
+            );
+          }
+          case "trust_strip": {
+            if (section.items.length === 0) return null;
+            return (
+              <section key={section.id} className="px-5 py-4">
+                <ul className="flex flex-wrap items-stretch justify-center gap-2">
+                  {section.items.map((item, i) => (
+                    <li
+                      key={i}
+                      className="flex items-center gap-2 rounded-xl border border-border/60 bg-surface-2 px-3 py-2 text-sm leading-6 shadow-xs"
+                    >
+                      <span aria-hidden="true">{item.icon}</span>
+                      <span className="font-medium">{pair(locale, item.textBn, item.textEn)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            );
+          }
         }
       })}
     </div>

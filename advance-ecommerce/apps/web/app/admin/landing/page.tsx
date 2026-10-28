@@ -3,7 +3,9 @@ import { StatCard } from "@/components/ui/stat-card";
 import LandingBuilder from "./builder";
 import { landingStore } from "@/landing/store";
 import { referencedProductIds } from "@/landing/catalog";
-import { listActiveProducts, tryCatalogRepository } from "@/catalog/server-read";
+import { resolveLandingExtras } from "@/landing/resolve-extras";
+import type { LandingBlockExtras } from "@/landing/render";
+import { listActiveProducts, listCategories, tryCatalogRepository } from "@/catalog/server-read";
 import type { Product } from "@/catalog/types";
 import { getRequestLocale } from "@/i18n/server";
 import { pick } from "@/i18n/locale";
@@ -44,6 +46,17 @@ export default async function AdminLandingPage() {
     }
   }
   const catalogProducts = [...byId.values()];
+  // L2: the category-source picker lists the real catalog
+  // categories (slug + bilingual name).
+  const categories = await listCategories();
+  // L3 block extras (reviews + bundle contents) resolve server-side
+  // per page and ride into the builder as plain props, so the live
+  // preview renders those blocks with the same data the public page
+  // will use (sections whose product the owner changes mid-edit
+  // resolve after the next save + reload, like out-of-catalog refs).
+  const initialExtras: Record<string, LandingBlockExtras> = Object.fromEntries(
+    await Promise.all(pages.map(async (p) => [p.id, await resolveLandingExtras(p)] as const)),
+  );
   const published = pages.filter((p) => p.status === "PUBLISHED").length;
   const drafts = pages.filter((p) => p.status === "DRAFT").length;
   return (
@@ -54,7 +67,7 @@ export default async function AdminLandingPage() {
         <StatCard label={s.statPublished} value={String(published)} delta={s.deltaPublished} icon="✅" />
         <StatCard label={s.statDrafts} value={String(drafts)} delta={s.deltaDrafts} icon="📝" />
       </div>
-      <LandingBuilder catalogProducts={catalogProducts} initialPages={pages} />
+      <LandingBuilder catalogProducts={catalogProducts} initialPages={pages} initialExtras={initialExtras} categories={categories} />
     </main>
   );
 }
