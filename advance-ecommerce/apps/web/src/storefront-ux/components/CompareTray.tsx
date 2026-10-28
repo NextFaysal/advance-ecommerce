@@ -124,7 +124,7 @@ export function CompareTray() {
   const labelFor = (id: string) => titles.get(id) ?? id;
 
   return (
-    <div className="fixed inset-x-0 bottom-16 z-40 px-4 md:bottom-4">
+    <div className="fixed inset-x-0 bottom-16 z-40 px-4 md:bottom-[max(1rem,env(safe-area-inset-bottom))]">
       <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-2 rounded-xl border bg-card px-3 py-2 shadow-lg">
         <span className="text-sm font-semibold">{interpolate(s.compareTrayLabel, { count: ids.length, max: MAX_COMPARE_PRODUCTS })}</span>
         {ids.map((id) => (
