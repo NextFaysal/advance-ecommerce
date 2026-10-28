@@ -6,6 +6,7 @@ export * from "./CartPrimitives";
 export * from "./PriceBlock";
 export * from "./StorefrontSkeletons";
 export * from "./PageKit";
+export * from "./MobileMenuDrawer";
 export * from "./CompareTray";
 export * from "./SizeGuideModal";
 export * from "./RecordRecentlyViewed";

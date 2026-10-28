@@ -1,0 +1,914 @@
+"use client";
+
+// SiteHeader — shared storefront header (Agent 31, Storefront Shell).
+//
+// Client component: wishlist/cart counts live in localStorage, so they are
+// read after mount (SSR renders no badges, avoiding hydration mismatch) and
+// refreshed on window `storage` events + focus.
+// - Wishlist count: getWishlistIds() from "@/catalog/wishlist".
+// - Cart count: a readable helper EXISTS — loadGuestCart() +
+//   cartItemCount() from "@/cart". The optional `cartCount` prop overrides
+//   the localStorage value (e.g. once a server cart is wired); omit it to
+//   use the guest-cart value. Badge hides itself when the count is 0.
+//   The cart button links to /cart (page added by Agent 33).
+// Brand name is a prop (default "Advance Ecommerce") because each client
+// install is white-labelled via settings. Design tokens only.
+// Design refresh (Direction A): gradient announcement bar (scrolls away),
+// sticky polished header, icon-in-field search, and a mobile bottom nav
+// (hidden on /product/* where the PDP sticky buy bar owns the bottom).
+//
+// Design v3 (A+ Aurora Premium):
+// - The sticky header turns `.glass` once the page is scrolled (>8px);
+//   at the very top it stays a solid card surface.
+// - ThemeToggle (dark mode) sits with the account/wishlist/cart icons.
+// - The cart badge pops (`.animate-badge-pop`, re-keyed by count).
+// - Mega menu: the shell passes `categories` (public categories API);
+//   desktop gets a "সব ক্যাটাগরি" panel of tinted tiles, mobile gets a
+//   category section inside the menu. The desktop row renders ALWAYS
+//   (v3 QA fix): while the fetch is in flight (`categories` undefined)
+//   the panel shows a loading shimmer instead of the row popping in
+//   late and shifting the layout.
+// - Search: desktop dropdown panel + mobile full-screen overlay with
+//   trending terms and live suggestions from the EXISTING public
+//   products API (GET /api/v1/public/products?q=). Submitting still
+//   goes to /search?q= exactly as before.
+
+import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { formatBdt } from "@advance-ecommerce/validators";
+import { WISHLIST_CHANGE_EVENT, getWishlistIds } from "@/catalog/wishlist";
+import { GUEST_CART_KEY, loadGuestCart } from "@/cart/persistence";
+import { cartItemCount } from "@/cart/types";
+import { CART_UPDATED_EVENT } from "@/cart/components/AddToCartButton";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { NumeralsToggle, useDigitText } from "@/components/ui/numerals";
+import type { PublicProduct } from "@/catalog/types";
+import type { PublicCategoryNode } from "@/catalog/category-tree";
+import { minVariantPricePoisha } from "@/catalog/types";
+import { DEFAULT_HEADER_MENU, type SiteMenuItem } from "@/cms/site-content-types";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
+import { interpolate, pick } from "@/i18n/locale";
+import { SHELL_STRINGS, TRENDING_TERMS } from "./strings";
+
+export interface SiteHeaderProps {
+  brandName?: string;
+  /** Overrides the guest-cart localStorage count when provided. */
+  cartCount?: number;
+  /** Public category TREE for the mega menu (Wave 13-2: roots with
+      nested `children`); `undefined` while the shell's fetch is still
+      in flight (the row renders, the panel shows a loading state).
+      An empty array means no categories exist. */
+  categories?: ReadonlyArray<PublicCategoryNode>;
+  /** Owner-configured header menu (Admin → Content, CMS site content),
+   *  already visible-filtered by the public API. Omit / pass undefined
+   *  to render the built-in default menu (DEFAULT_HEADER_MENU) —
+   *  identical links, so the header never waits on the CMS fetch. */
+  headerMenu?: ReadonlyArray<SiteMenuItem>;
+}
+
+// Sensible BD storefront trending terms live in ./strings as
+// TRENDING_TERMS (per-locale lists — static copy, not fake data;
+// they are just search shortcuts into the real /search route).
+
+function CountBadge({ count, pop = false }: { count: number; pop?: boolean }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      // Re-keying by the count remounts the span, replaying the pop.
+      key={pop ? count : undefined}
+      className={`absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold text-white ${
+        pop ? "animate-badge-pop" : ""
+      }`}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+const iconProps = {
+  width: 22,
+  height: 22,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.8,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  "aria-hidden": true,
+} as const;
+
+function HeartIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M19.5 12.6 12 20l-7.5-7.4A5 5 0 1 1 12 6.1a5 5 0 1 1 7.5 6.5Z" />
+    </svg>
+  );
+}
+
+function CartIcon() {
+  return (
+    <svg {...iconProps}>
+      <circle cx="9" cy="20" r="1.4" />
+      <circle cx="17" cy="20" r="1.4" />
+      <path d="M2 3h3l2.6 12.4a1.5 1.5 0 0 0 1.5 1.1h7.9a1.5 1.5 0 0 0 1.5-1.2L20.5 7H6" />
+    </svg>
+  );
+}
+
+function UserIcon() {
+  return (
+    <svg {...iconProps}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c1.5-3.6 4.5-5 8-5s6.5 1.4 8 5" />
+    </svg>
+  );
+}
+
+function HomeIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M3.5 10.8 12 3.5l8.5 7.3" />
+      <path d="M5.5 9.5V20a1 1 0 0 0 1 1H10v-6h4v6h3.5a1 1 0 0 0 1-1V9.5" />
+    </svg>
+  );
+}
+
+function ShopIcon() {
+  return (
+    <svg {...iconProps}>
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+    </svg>
+  );
+}
+
+function PackageIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M12 3 4 6.8v10.4L12 21l8-3.8V6.8L12 3z" />
+      <path d="M4 6.8 12 10.6 20 6.8" />
+      <path d="M12 10.6V21" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-3.8-3.8" />
+    </svg>
+  );
+}
+
+function MenuIcon({ open }: { open: boolean }) {
+  return (
+    <svg {...iconProps}>
+      {open ? <path d="M5 5l14 14M19 5L5 19" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+    </svg>
+  );
+}
+
+function GridIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M5 5l14 14M19 5L5 19" />
+    </svg>
+  );
+}
+
+/** Shared body of the desktop search panel + mobile search overlay. */
+function SearchPanelContent({
+  query,
+  searching,
+  suggestions,
+  onNavigate,
+}: {
+  query: string;
+  searching: boolean;
+  suggestions: ReadonlyArray<PublicProduct>;
+  onNavigate: () => void;
+}): ReactNode {
+  const digits = useDigitText();
+  const { locale } = useLocale();
+  const s = pick(locale, SHELL_STRINGS);
+  const q = query.trim();
+  if (q.length < 2) {
+    return (
+      <div>
+        <p className="px-2 text-xs font-bold text-text-subtle">{s.popularSearches}</p>
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          {pick(locale, TRENDING_TERMS).map((term) => (
+            <Link
+              key={term}
+              href={`/search?q=${encodeURIComponent(term)}`}
+              onClick={onNavigate}
+              className="inline-flex min-h-[44px] items-center rounded-full border border-border bg-surface-2 px-4 text-sm font-medium text-text-main transition hover:border-input hover:bg-secondary hover:text-primary"
+            >
+              {term}
+            </Link>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {searching && suggestions.length === 0 ? (
+        <p className="px-2 py-3 text-sm text-text-muted">{s.searching}</p>
+      ) : suggestions.length > 0 ? (
+        <ul>
+          {suggestions.map((p) => {
+            const thumb = p.images[0]?.url ?? p.variants.find((v) => v.imageUrl)?.imageUrl ?? null;
+            return (
+              <li key={p.id}>
+                <Link
+                  href={`/product/${p.slug}`}
+                  onClick={onNavigate}
+                  className="flex min-h-[44px] items-center gap-3 rounded-xl px-2 py-2 transition hover:bg-surface-2"
+                >
+                  {thumb ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={thumb} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" />
+                  ) : (
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-primary/40">
+                      <ShopIcon />
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-text-main">{p.title[locale] || p.title.bn}</span>
+                    {p.brandName ? (
+                      <span className="block truncate text-xs text-text-subtle">{p.brandName}</span>
+                    ) : null}
+                  </span>
+                  <span className="shrink-0 text-sm font-bold tabular-nums text-primary">
+                    {digits(formatBdt(minVariantPricePoisha(p)))}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="break-words px-2 py-3 text-sm text-text-muted [overflow-wrap:anywhere]">
+          {interpolate(s.noProductsForQuery, { query: q })}
+        </p>
+      )}
+      <Link
+        href={`/search?q=${encodeURIComponent(q)}`}
+        onClick={onNavigate}
+        className="mt-1 flex min-h-[44px] items-center rounded-xl px-2 text-sm font-semibold text-primary transition hover:bg-secondary"
+      >
+        {s.viewAllResults}
+      </Link>
+    </div>
+  );
+}
+
+export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount, categories, headerMenu }: SiteHeaderProps) {
+  const { locale, t } = useLocale();
+  const s = pick(locale, SHELL_STRINGS);
+  // CMS menu labels are owner content with their own {bn, en} fields:
+  // pick the active locale's label, falling back to Bangla when the
+  // owner left the English label blank.
+  const menuLabel = (item: { labelBn: string; labelEn: string }) =>
+    locale === "en" && item.labelEn ? item.labelEn : item.labelBn;
+  // CMS menu when the owner configured one; the built-in defaults
+  // otherwise (same items the public API returns as its fallback).
+  const navItems: ReadonlyArray<SiteMenuItem> =
+    headerMenu && headerMenu.length > 0 ? headerMenu : DEFAULT_HEADER_MENU;
+  const pathname = usePathname();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [wishlistCount, setWishlistCount] = useState(0);
+  const [localCartCount, setLocalCartCount] = useState(0);
+  const [scrolled, setScrolled] = useState(false);
+  const [megaOpen, setMegaOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<ReadonlyArray<PublicProduct>>([]);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    const refresh = () => {
+      setWishlistCount(getWishlistIds().length);
+      const guest = loadGuestCart();
+      setLocalCartCount(guest ? cartItemCount(guest) : 0);
+    };
+    refresh();
+    // Same-tab writes do not fire `storage`; focus covers the common case
+    // (add on a page, come back) without a custom event bus.
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === GUEST_CART_KEY) refresh();
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", refresh);
+    // Same-tab add-to-cart writes dispatch this event (storage does not
+    // fire in the tab that wrote), so the count updates instantly.
+    window.addEventListener(CART_UPDATED_EVENT, refresh);
+    // Same story for wishlist toggles (card / PDP / wishlist page).
+    window.addEventListener(WISHLIST_CHANGE_EVENT, refresh);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener(CART_UPDATED_EVENT, refresh);
+      window.removeEventListener(WISHLIST_CHANGE_EVENT, refresh);
+    };
+  }, []);
+
+  // Glass header once scrolled past a few pixels; solid at the top.
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Panels/menus never survive a navigation.
+  useEffect(() => {
+    setMenuOpen(false);
+    setMegaOpen(false);
+    setSearchOpen(false);
+    setMobileSearchOpen(false);
+  }, [pathname]);
+
+  // Live search suggestions — debounced, aborted on change; the public
+  // products API is the same search the /search page is built on.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setSuggestions([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => {
+      fetch(`/api/v1/public/products?q=${encodeURIComponent(q)}&pageSize=6`, { signal: ctrl.signal })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json: { data?: unknown } | null) => {
+          setSuggestions(json && Array.isArray(json.data) ? (json.data as PublicProduct[]) : []);
+        })
+        .catch(() => {
+          if (!ctrl.signal.aborted) setSuggestions([]);
+        })
+        .finally(() => {
+          if (!ctrl.signal.aborted) setSearching(false);
+        });
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [query]);
+
+  const effectiveCartCount = cartCount ?? localCartCount;
+  const hasCategories = Boolean(categories && categories.length > 0);
+  const isActive = (href: string) =>
+    href === "/" ? pathname === "/" : (pathname?.startsWith(href) ?? false);
+  // On product pages the PDP's own sticky buy bar owns the bottom edge —
+  // the mobile bottom nav steps aside there.
+  const showBottomNav = !(pathname?.startsWith("/product/") ?? false);
+
+  const bottomNavItems = [
+    { href: "/", label: t.home, icon: <HomeIcon />, badge: 0 },
+    { href: "/shop", label: s.bottomShop, icon: <ShopIcon />, badge: 0 },
+    { href: "/cart", label: t.cart, icon: <CartIcon />, badge: effectiveCartCount },
+    { href: "/track", label: s.bottomTrack, icon: <PackageIcon />, badge: 0 },
+    { href: "/account", label: t.account, icon: <UserIcon />, badge: 0 },
+  ] as const;
+
+  return (
+    <>
+      {/* Announcement bar — brand gradient, scrolls away (not sticky) */}
+      <div className="brand-gradient text-white">
+        <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-4 py-2 text-xs sm:px-6">
+          <p className="min-w-0 truncate font-medium">{s.announcement}</p>
+          <span className="hidden shrink-0 items-center gap-4 sm:flex">
+            <a href="/track" className="font-semibold hover:underline">
+              {t.trackOrder}
+            </a>
+            <a href="/faq" className="font-semibold hover:underline">
+              {s.help}
+            </a>
+          </span>
+        </div>
+      </div>
+
+      <header
+        className={`sticky top-0 z-40 transition-shadow duration-200 ${
+          scrolled ? "glass" : "border-b border-border bg-card shadow-sm"
+        }`}
+      >
+        <div className="mx-auto flex h-16 max-w-[1440px] items-center gap-3 px-4 sm:gap-4 sm:px-6">
+          {/* Brand */}
+          <a href="/" className="flex shrink-0 items-center gap-2" aria-label={brandName}>
+            <span className="brand-gradient flex h-9 w-9 items-center justify-center rounded-lg text-base font-bold text-white shadow-sm">
+              {brandName.charAt(0)}
+            </span>
+            <span className="hidden text-base font-bold text-text-main xs:block">
+              {brandName}
+            </span>
+          </a>
+
+          {/* Search — GET form to the existing /search route, upgraded
+              with a suggestions panel (desktop) / overlay (mobile) */}
+          <div
+            className="relative min-w-0 flex-1 sm:max-w-xl"
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSearchOpen(false);
+            }}
+          >
+            {/* Mobile trigger — opens the full-screen search overlay */}
+            <button
+              type="button"
+              onClick={() => setMobileSearchOpen(true)}
+              aria-label={s.searchProducts}
+              className="flex h-11 w-full items-center gap-2 rounded-full border border-border bg-surface-2 pl-4 pr-1.5 text-sm text-text-subtle sm:hidden"
+            >
+              <span className="min-w-0 flex-1 truncate text-left">{t.searchPlaceholder}</span>
+              <span className="brand-gradient flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white">
+                <SearchIcon />
+              </span>
+            </button>
+
+            {/* Desktop form + dropdown panel */}
+            <form
+              action="/search"
+              method="get"
+              role="search"
+              className="relative hidden sm:block"
+              onSubmit={() => setSearchOpen(false)}
+            >
+              <label className="sr-only" htmlFor="site-search">
+                {s.searchProducts}
+              </label>
+              <div className="relative">
+                <input
+                  id="site-search"
+                  name="q"
+                  type="search"
+                  autoComplete="off"
+                  placeholder={t.searchPlaceholder}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onFocus={() => setSearchOpen(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setSearchOpen(false);
+                  }}
+                  className="h-11 w-full rounded-full border border-border bg-surface-2 pl-4 pr-12 text-sm text-text-main outline-none transition focus:border-ring focus:bg-surface"
+                />
+                <button
+                  type="submit"
+                  aria-label={t.search}
+                  className="brand-gradient absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:opacity-90"
+                >
+                  <SearchIcon />
+                </button>
+              </div>
+
+              {searchOpen ? (
+                <div className="absolute inset-x-0 top-[calc(100%+10px)] z-40 max-h-[min(70vh,540px)] overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-pop">
+                  <SearchPanelContent
+                    query={query}
+                    searching={searching}
+                    suggestions={suggestions}
+                    onNavigate={() => setSearchOpen(false)}
+                  />
+                </div>
+              ) : null}
+            </form>
+          </div>
+
+          {/* Desktop nav — CMS header menu (Admin → Content) or the
+              built-in defaults; items with children get a hover/focus
+              dropdown with the child links. */}
+          <nav aria-label={s.mainNavigation} className="ml-2 hidden items-center gap-1 lg:flex">
+            {navItems.map((link) => {
+              const linkClass = `rounded-lg px-3 py-2 text-sm transition ${
+                isActive(link.href)
+                  ? "bg-secondary font-semibold text-secondary-foreground"
+                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+              }`;
+              if (link.children.length === 0) {
+                return (
+                  <a
+                    key={link.id}
+                    href={link.href}
+                    aria-current={isActive(link.href) ? "page" : undefined}
+                    className={linkClass}
+                  >
+                    {menuLabel(link)}
+                  </a>
+                );
+              }
+              return (
+                <span key={link.id} className="group relative">
+                  <a
+                    href={link.href}
+                    aria-current={isActive(link.href) ? "page" : undefined}
+                    className={`${linkClass} inline-flex items-center gap-1`}
+                  >
+                    {menuLabel(link)}
+                    <ChevronDownIcon />
+                  </a>
+                  <span className="invisible absolute left-0 top-full z-40 block min-w-52 pt-1 opacity-0 transition group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
+                    <span className="block overflow-hidden rounded-xl border border-border bg-card py-1.5 shadow-pop">
+                      {link.children.map((child) => (
+                        <a
+                          key={child.id}
+                          href={child.href}
+                          className="block px-4 py-2.5 text-sm text-text-main transition hover:bg-surface-2"
+                        >
+                          {menuLabel(child)}
+                        </a>
+                      ))}
+                    </span>
+                  </span>
+                </span>
+              );
+            })}
+          </nav>
+
+          <span className="ml-auto flex items-center gap-1 lg:ml-0">
+            {/* Doc 30: the visitor language switch — desktop actions row;
+                the mobile menu carries a second mount (see below). */}
+            <LanguageSwitcher className="mr-1 hidden md:inline-flex" />
+            <NumeralsToggle />
+            <ThemeToggle />
+            <a
+              href="/account"
+              aria-label={t.account}
+              className="hidden min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-main sm:flex"
+            >
+              <UserIcon />
+            </a>
+            <a
+              href="/wishlist"
+              aria-label={wishlistCount > 0 ? interpolate(s.wishlistWithCount, { count: wishlistCount }) : t.wishlist}
+              className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-main"
+            >
+              <HeartIcon />
+              <CountBadge count={wishlistCount} />
+            </a>
+            <a
+              href="/cart"
+              aria-label={effectiveCartCount > 0 ? interpolate(s.cartWithCount, { count: effectiveCartCount }) : t.cart}
+              className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-main"
+            >
+              <CartIcon />
+              <CountBadge count={effectiveCartCount} pop />
+            </a>
+            <button
+              type="button"
+              aria-label={menuOpen ? s.closeMenu : s.openMenu}
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((v) => !v)}
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 lg:hidden"
+            >
+              <MenuIcon open={menuOpen} />
+            </button>
+          </span>
+        </div>
+
+        {/* Mega menu row — desktop only. Rendered ALWAYS (v3 QA fix):
+            the categories fetch can take seconds on a cold start, and
+            gating the whole row on it made the row pop in late with a
+            layout shift. The panel below handles the loading state. */}
+        <div
+          className="relative mx-auto hidden max-w-[1440px] px-4 sm:px-6 lg:block"
+          onMouseLeave={() => setMegaOpen(false)}
+        >
+            <div className="flex items-center gap-2 border-t border-border/60 py-1.5">
+              <button
+                type="button"
+                aria-expanded={megaOpen}
+                aria-haspopup="true"
+                onMouseEnter={() => setMegaOpen(true)}
+                onClick={() => setMegaOpen((v) => !v)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setMegaOpen(false);
+                }}
+                className="brand-gradient flex min-h-[44px] items-center gap-2 rounded-lg px-4 text-sm font-bold text-white shadow-sm transition hover:opacity-90"
+              >
+                <GridIcon />
+                {s.allCategories}
+                <ChevronDownIcon />
+              </button>
+              <a href="/shop" className="rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition hover:text-primary">
+                {t.allProducts}
+              </a>
+              <a href="/track" className="rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition hover:text-primary">
+                {s.trackOrderShort}
+              </a>
+            </div>
+
+            {megaOpen ? (
+              <div className="absolute inset-x-4 top-full z-40 sm:inset-x-6" onMouseEnter={() => setMegaOpen(true)}>
+                {categories === undefined ? (
+                  /* Fetch still in flight — shimmer tiles in the same
+                     grid so the panel opens at its final size. */
+                  <div
+                    role="status"
+                    className="grid grid-cols-3 gap-3 rounded-2xl border border-border bg-card p-4 shadow-pop xl:grid-cols-4"
+                  >
+                    <span className="sr-only">{s.categoriesLoading}</span>
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <div key={i} aria-hidden="true" className="flex items-center gap-3 rounded-xl bg-surface-2 p-3">
+                        <span className="skeleton-shimmer h-11 w-11 shrink-0 rounded-lg" />
+                        <span className="min-w-0 flex-1">
+                          <span className="skeleton-shimmer block h-3.5 w-3/4 rounded" />
+                          <span className="skeleton-shimmer mt-2 block h-3 w-1/2 rounded" />
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : categories.length > 0 ? (
+                <div className="grid grid-cols-3 gap-3 rounded-2xl border border-border bg-card p-4 shadow-pop xl:grid-cols-4">
+                  {categories.map((c, i) => (
+                    /* Wave 13-2: each root is a GROUP — the tinted tile
+                       stays exactly as before, and its sub-categories
+                       (children from the tree API) list underneath,
+                       depth 2 only. With no children the cell is just
+                       the tile, identical to the old flat menu. */
+                    <div key={c.slug} className="min-w-0">
+                      <a
+                        href={`/shop?category=${c.slug}`}
+                        onClick={() => setMegaOpen(false)}
+                        className={`cat-tint-${(i % 8) + 1} flex items-center gap-3 rounded-xl p-3 transition duration-200 hover:-translate-y-0.5 hover:shadow-md`}
+                      >
+                        {c.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={c.imageUrl} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" />
+                        ) : (
+                          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface/80 text-base font-extrabold text-text-main shadow-sm">
+                            {(c.name[locale] || c.name.bn).charAt(0)}
+                          </span>
+                        )}
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-bold">{c.name[locale] || c.name.bn}</span>
+                          <span className="block text-xs opacity-75">{interpolate(s.productsCount, { count: c.productCount })}</span>
+                        </span>
+                      </a>
+                      {c.children.length > 0 ? (
+                        <ul className="mt-1 space-y-0.5 px-1.5">
+                          {c.children.map((child) => (
+                            <li key={child.slug}>
+                              <a
+                                href={`/shop?category=${child.slug}`}
+                                onClick={() => setMegaOpen(false)}
+                                className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-[13px] text-text-muted transition hover:bg-surface-2 hover:text-primary"
+                              >
+                                <span className="min-w-0 truncate">
+                                  <span aria-hidden="true" className="mr-1 text-text-subtle">↳</span>
+                                  {child.name[locale] || child.name.bn}
+                                </span>
+                                <span className="shrink-0 text-[11px] text-text-subtle">{interpolate(s.itemsCountShort, { count: child.productCount })}</span>
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+                ) : (
+                  /* Fetch resolved with no categories — the panel still
+                     opens (the row is always present) with a quiet note
+                     instead of a blank box. */
+                  <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-pop">
+                    <p className="text-sm text-text-muted">{s.noCategoriesYet}</p>
+                    <a
+                      href="/shop"
+                      onClick={() => setMegaOpen(false)}
+                      className="mt-2 inline-block text-sm font-semibold text-primary hover:underline"
+                    >
+                      {s.viewAllProducts}
+                    </a>
+                  </div>
+                )}
+              </div>
+            ) : null}
+        </div>
+
+        {/* Mobile menu — simple disclosure (+ category section, v3) */}
+        {menuOpen ? (
+          <nav aria-label={s.mobileNavigation} className="border-t border-border bg-card px-4 py-2 lg:hidden">
+            {navItems.map((link) => (
+              <span key={link.id} className="block">
+                <a
+                  href={link.href}
+                  aria-current={isActive(link.href) ? "page" : undefined}
+                  className={`block rounded-lg px-3 py-2.5 text-sm ${
+                    isActive(link.href)
+                      ? "bg-secondary font-semibold text-secondary-foreground"
+                      : "text-text-main hover:bg-surface-2"
+                  }`}
+                >
+                  {menuLabel(link)}
+                </a>
+                {link.children.map((child) => (
+                  <a
+                    key={child.id}
+                    href={child.href}
+                    className="block rounded-lg py-2.5 pl-8 pr-3 text-sm text-text-muted hover:bg-surface-2"
+                  >
+                    {menuLabel(child)}
+                  </a>
+                ))}
+              </span>
+            ))}
+            <a href="/account" className="block rounded-lg px-3 py-2.5 text-sm text-text-main hover:bg-surface-2">
+              {t.account}
+            </a>
+            <a href="/wishlist" className="block rounded-lg px-3 py-2.5 text-sm text-text-main hover:bg-surface-2">
+              {t.wishlist}
+            </a>
+            <div className="px-3 py-2.5 md:hidden">
+              <LanguageSwitcher />
+            </div>
+            {categories === undefined ? (
+              <div className="mt-1 border-t border-border pt-1">
+                <p className="px-3 pb-1 pt-2.5 text-xs font-bold text-text-subtle">{t.categories}</p>
+                <p role="status" className="px-3 py-2.5 text-sm text-text-muted">
+                  {t.loading}
+                </p>
+              </div>
+            ) : hasCategories ? (
+              <div className="mt-1 border-t border-border pt-1">
+                <p className="px-3 pb-1 pt-2.5 text-xs font-bold text-text-subtle">{t.categories}</p>
+                {categories.map((c) => (
+                  <span key={c.slug} className="block">
+                    <a
+                      href={`/shop?category=${c.slug}`}
+                      className="flex min-h-[44px] items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm text-text-main hover:bg-surface-2"
+                    >
+                      <span className="min-w-0 truncate">{c.name[locale] || c.name.bn}</span>
+                      <span className="shrink-0 text-xs text-text-subtle">{interpolate(s.productsCount, { count: c.productCount })}</span>
+                    </a>
+                    {/* Wave 13-2: sub-categories indented under their
+                        parent (depth 2, same as the desktop menu). */}
+                    {c.children.map((child) => (
+                      <a
+                        key={child.slug}
+                        href={`/shop?category=${child.slug}`}
+                        className="flex min-h-[44px] items-center justify-between gap-3 rounded-lg py-2.5 pl-9 pr-3 text-sm text-text-muted hover:bg-surface-2"
+                      >
+                        <span className="min-w-0 truncate">
+                          <span aria-hidden="true" className="mr-1 text-text-subtle">↳</span>
+                          {child.name[locale] || child.name.bn}
+                        </span>
+                        <span className="shrink-0 text-xs text-text-subtle">{interpolate(s.productsCount, { count: child.productCount })}</span>
+                      </a>
+                    ))}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </nav>
+        ) : null}
+      </header>
+
+      {/* Mobile search overlay — full-screen, same GET /search contract */}
+      {mobileSearchOpen ? (
+        <div role="dialog" aria-modal="true" aria-label={s.searchProducts} className="fixed inset-0 z-50 flex flex-col bg-card sm:hidden">
+          <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+            <form
+              action="/search"
+              method="get"
+              role="search"
+              className="min-w-0 flex-1"
+              onSubmit={() => setMobileSearchOpen(false)}
+            >
+              <label className="sr-only" htmlFor="site-search-mobile">
+                {s.searchProducts}
+              </label>
+              <div className="relative">
+                <input
+                  id="site-search-mobile"
+                  name="q"
+                  type="search"
+                  autoComplete="off"
+                  autoFocus
+                  placeholder={t.searchPlaceholder}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setMobileSearchOpen(false);
+                  }}
+                  className="h-11 w-full rounded-full border border-border bg-surface-2 pl-4 pr-12 text-sm text-text-main outline-none transition focus:border-ring focus:bg-surface"
+                />
+                <button
+                  type="submit"
+                  aria-label={t.search}
+                  className="brand-gradient absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:opacity-90"
+                >
+                  <SearchIcon />
+                </button>
+              </div>
+            </form>
+            <button
+              type="button"
+              aria-label={t.close}
+              onClick={() => setMobileSearchOpen(false)}
+              className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-text-muted transition hover:bg-surface-2 hover:text-text-main"
+            >
+              <CloseIcon />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <SearchPanelContent
+              query={query}
+              searching={searching}
+              suggestions={suggestions}
+              onNavigate={() => setMobileSearchOpen(false)}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {/* Mobile bottom nav — hidden on product pages (PDP buy bar wins) */}
+      {showBottomNav ? (
+        <nav
+          aria-label={s.mobileQuickNavigation}
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 shadow-[0_-4px_16px_rgba(49,46,129,0.08)] backdrop-blur lg:hidden"
+        >
+          <div className="grid grid-cols-5">
+            {bottomNavItems.map((item) => {
+              const active = isActive(item.href);
+              return (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={`relative flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${
+                    active ? "text-primary" : "text-text-muted"
+                  }`}
+                >
+                  <span className="relative">
+                    {item.icon}
+                    <CountBadge count={item.badge} pop={item.href === "/cart"} />
+                  </span>
+                  {item.label}
+                </a>
+              );
+            })}
+          </div>
+        </nav>
+      ) : null}
+    </>
+  );
+}

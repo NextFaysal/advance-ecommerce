@@ -16,7 +16,13 @@
  * half-flipped surfaces (doc 32 §0.6).
  *
  * - PageShell: the page <main> — width variant + the px/py rhythm
- *   the platform pages already use.
+ *   the platform pages already use. The wide/full variants carry
+ *   doc 33's §3.2 page edge (1440px, px-4 → sm:px-6 → lg:px-8 — the
+ *   same values as PAGE_EDGE_CLASS in src/storefront-ux/responsive.ts).
+ *   The narrow/reading variants are CENTRED COLUMNS, not page-edge
+ *   containers: their px-4 is an internal gutter at every width, so
+ *   the contract's lg:px-8 step deliberately does not apply (it
+ *   would only eat the column's content width at desktop).
  * - SectionCard: the PDP/account section card (rounded-3xl, token
  *   border, card surface, shadow-card) with an optional header row.
  * - FormRow: label + control + hint/error — the account/settings
@@ -37,10 +43,14 @@ const PAGE_SHELL_WIDTHS = {
   narrow: "max-w-md px-4 py-8 sm:py-10",
   /** Account reading width (max-w-3xl). */
   reading: "max-w-3xl px-4 py-8 sm:py-10",
-  /** Grid pages — wishlist/search (max-w-7xl). */
-  wide: "max-w-7xl px-4 py-6 sm:px-6",
-  /** The PDP/content shell (1440px). */
-  full: "max-w-[1440px] px-4 py-6 sm:px-6 lg:py-8",
+  /** Grid pages — wishlist/search. Doc 33 §3.2: aligned from
+   *  max-w-7xl to the ONE page edge (1440px) the theme chrome uses,
+   *  with the contract padding rhythm px-4 → sm:px-6 → lg:px-8, so
+   *  platform pages and theme chrome share an edge at desktop. */
+  wide: "max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8",
+  /** The PDP/content shell — already 1440px; doc 33 adds the
+   *  contract's lg:px-8 step so its padding rhythm matches too. */
+  full: "max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8",
 } as const;
 
 export type PageShellWidth = keyof typeof PAGE_SHELL_WIDTHS;

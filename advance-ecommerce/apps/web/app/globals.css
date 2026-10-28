@@ -1,0 +1,506 @@
+/* Brand @font-face faces are loaded via Google Fonts CDN in app/layout.tsx
+   (self-hosted files in public/fonts/ are not in the deployed repo yet). */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* D0 tokens — Part II wins on conflict. No component may use a hex/spacing/shadow outside these tokens. */
+:root {
+  --background: 230 60% 98%;
+  --foreground: 238 28% 16%;
+  --card: 0 0% 100%;
+  --card-foreground: 238 28% 16%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 238 28% 16%;
+  --primary: 243 75% 59%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 226 100% 97%;
+  --secondary-foreground: 243 75% 40%;
+  --muted: 232 45% 96%;
+  --muted-foreground: 233 14% 42%;
+  --accent: 258 90% 66%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 347 77% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 161 94% 30%;
+  --warning: 32 95% 44%;
+  --info: 201 98% 37%;
+  --border: 230 35% 93%;
+  --input: 230 35% 90%;
+  --ring: 239 84% 67%;
+  --radius: 0.75rem;
+  --brand-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 55%, #ec4899 100%);
+  --brand-soft-gradient: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%);
+  /* Elevation system v2 — soft, indigo-tinted shadows (see tailwind shadow-card/lift/pop). */
+  --shadow-card: 0 1px 2px rgba(49, 46, 129, 0.05), 0 8px 24px -12px rgba(79, 70, 229, 0.14);
+  --shadow-lift: 0 2px 4px rgba(49, 46, 129, 0.06), 0 16px 32px -12px rgba(79, 70, 229, 0.22);
+  --shadow-pop: 0 4px 12px rgba(49, 46, 129, 0.08), 0 24px 48px -12px rgba(49, 46, 129, 0.28);
+  --font-sans: "Plus Jakarta Sans", "Hind Siliguri", "Noto Sans Bengali", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Display stack as a token (theme catalogue --font-display); identical
+     to the stack the .font-display utility below has always used. */
+  --font-display: "Hind Siliguri", "Plus Jakarta Sans", "Noto Sans Bengali", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  /* RGB triplets for the static-hex colours in tailwind.config.js — the
+     config references them as rgb(var(--c-…) / <alpha-value>) so these
+     surfaces/text flip in `.dark` (values here = the original hex). */
+  --c-surface: 255 255 255;
+  --c-surface-2: 243 244 251;
+  --c-bg-app: 248 249 253;
+  --c-text-main: 31 32 55;
+  --c-text-muted: 91 95 122;
+  --c-text-subtle: 96 103 132;
+  /* Design tokens v4 (doc 31, D1 — Aurora Pro). Same RGB-triplet contract
+     as the six vars above: richer surface steps, brand + semantic ramps
+     (solid + soft pairs), a border step and the data-viz palette. Every
+     var here has a `.dark` pair below; tailwind.config.js maps them as
+     rgb(var(--c-…) / <alpha-value>) so opacity modifiers keep working. */
+  --c-surface-raised: 255 255 255;
+  --c-overlay: 15 16 35;
+  --c-border-strong: 214 218 238;
+  --c-brand: 79 70 229;
+  --c-brand-soft: 238 242 255;
+  --c-success: 4 120 87;
+  --c-success-soft: 236 253 245;
+  --c-warning: 180 83 9;
+  --c-warning-soft: 255 251 235;
+  --c-danger: 225 29 72;
+  --c-danger-soft: 255 241 242;
+  --c-info: 3 105 161;
+  --c-info-soft: 240 249 255;
+  --c-chart-1: 99 102 241;
+  --c-chart-2: 139 92 246;
+  --c-chart-3: 236 72 153;
+  --c-chart-4: 14 165 233;
+  --c-chart-5: 16 185 129;
+  /* Elevation v4 (doc 31, D1) — extends the v2 card/lift/pop vars:
+     xs for hairline-raised chips/inputs, xl for large modals, glow =
+     the brand-tinted halo for primary actions. */
+  --shadow-xs: 0 1px 2px rgba(49, 46, 129, 0.05);
+  --shadow-xl: 0 8px 16px rgba(49, 46, 129, 0.08), 0 32px 64px -16px rgba(49, 46, 129, 0.3);
+  --shadow-glow: 0 0 0 1px rgba(99, 102, 241, 0.22), 0 10px 28px -8px rgba(99, 102, 241, 0.5);
+}
+
+.dark {
+  --background: 236 37% 9%;
+  --foreground: 236 100% 96%;
+  --card: 238 33% 14%;
+  --card-foreground: 236 100% 96%;
+  --popover: 238 33% 14%;
+  --popover-foreground: 236 100% 96%;
+  --primary: 239 84% 67%;
+  --primary-foreground: 236 37% 9%;
+  --secondary: 238 30% 20%;
+  --secondary-foreground: 236 100% 90%;
+  --muted: 238 30% 18%;
+  --muted-foreground: 234 25% 70%;
+  --accent: 258 90% 70%;
+  --accent-foreground: 236 37% 9%;
+  --destructive: 349 90% 62%;
+  --border: 236 31% 24%;
+  --input: 236 31% 24%;
+  --ring: 239 84% 72%;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px -12px rgba(0, 0, 0, 0.45);
+  --shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.4), 0 16px 32px -12px rgba(0, 0, 0, 0.55);
+  --shadow-pop: 0 4px 12px rgba(0, 0, 0, 0.45), 0 24px 48px -12px rgba(0, 0, 0, 0.6);
+  /* Dark values for the tailwind.config.js hex colours (see :root note). */
+  --c-surface: 23 24 48;
+  --c-surface-2: 30 32 64;
+  --c-bg-app: 13 14 26;
+  --c-text-main: 237 237 247;
+  --c-text-muted: 166 169 196;
+  --c-text-subtle: 138 142 168;
+  /* Design tokens v4 (doc 31, D1) — dark pairs: raised sits one step
+     above surface-2; semantic solids brighten for dark contrast while
+     the soft pairs become deep tints of the same hue. */
+  --c-surface-raised: 34 36 72;
+  --c-overlay: 5 6 14;
+  --c-border-strong: 52 55 92;
+  --c-brand: 129 140 248;
+  --c-brand-soft: 40 38 88;
+  --c-success: 52 211 153;
+  --c-success-soft: 7 43 34;
+  --c-warning: 251 191 36;
+  --c-warning-soft: 62 42 8;
+  --c-danger: 251 113 133;
+  --c-danger-soft: 56 18 30;
+  --c-info: 56 189 248;
+  --c-info-soft: 9 42 63;
+  --c-chart-1: 129 140 248;
+  --c-chart-2: 167 139 250;
+  --c-chart-3: 244 114 182;
+  --c-chart-4: 56 189 248;
+  --c-chart-5: 52 211 153;
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-xl: 0 8px 16px rgba(0, 0, 0, 0.5), 0 32px 64px -16px rgba(0, 0, 0, 0.65);
+  --shadow-glow: 0 0 0 1px rgba(129, 140, 248, 0.3), 0 10px 28px -8px rgba(99, 102, 241, 0.55);
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-size: 14px;
+    line-height: 1.57;
+  }
+  /* Bangla tuning: line-height >= 1.6, letter-spacing 0, never uppercase. */
+  .bangla,
+  [lang="bn"] {
+    line-height: 1.6;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  * {
+    outline-color: hsl(var(--ring));
+  }
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+  /* Design tokens v4 (doc 31, D1) — brand-tinted selection and a thin
+     themed scrollbar. Both resolve through the mode-aware tokens, so
+     they flip with `.dark` without extra rules. */
+  ::selection {
+    background-color: hsl(var(--primary) / 0.28);
+    color: hsl(var(--foreground));
+  }
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--c-text-subtle) / 0.45) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--c-text-subtle) / 0.4);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(var(--c-text-subtle) / 0.65);
+  }
+}
+
+@layer utilities {
+  .brand-gradient {
+    background-image: var(--brand-gradient);
+  }
+  .brand-soft-gradient {
+    background-image: var(--brand-soft-gradient);
+  }
+  /* Tabular numerals (doc 31, D1) — money, stats and tables align digit
+     columns. Usage: className="tnum" alongside any text size. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+  /* Shared focus ring (doc 31, D1) — same geometry as the global
+     :focus-visible rule plus a soft halo, as a reusable class so
+     composite widgets (rows, cards, chips) get the identical treatment
+     as inputs/buttons. */
+  .focus-ring:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px hsl(var(--ring) / 0.15);
+  }
+  /* Motion tokens (Part II): transform/opacity only, max 400ms in workflows. */
+  .motion-fast { transition-duration: 150ms; }
+  .motion-base { transition-duration: 220ms; }
+  @media (prefers-reduced-motion: reduce) {
+    .motion-fast, .motion-base { transition-duration: 0ms; }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Design System v2 additions (11-design-refresh-plan.md §2)           */
+/* ------------------------------------------------------------------ */
+
+@layer utilities {
+  /* Display typeface for headlines — Hind Siliguri carries the Bengali
+     glyphs; Jakarta is the Latin fallback in the stack. */
+  .font-display {
+    font-family: "Hind Siliguri", "Plus Jakarta Sans", "Noto Sans Bengali", system-ui, sans-serif;
+  }
+
+  /* Editorial section heading system (§2.1): eyebrow + title + lead. */
+  .section-eyebrow {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: hsl(var(--primary));
+  }
+  .section-title {
+    font-family: "Hind Siliguri", "Plus Jakarta Sans", "Noto Sans Bengali", system-ui, sans-serif;
+    font-size: 1.5rem;
+    line-height: 2.1rem;
+    font-weight: 700;
+    color: hsl(var(--foreground));
+  }
+  .section-lead {
+    font-size: 0.9375rem;
+    line-height: 1.6rem;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* Category tint palette (§2.2) — soft bg + deep fg pairs for tiles/chips.
+     Usage: <div className="cat-tint-3">…</div> — assign by category index % 8. */
+  .cat-tint-1 { background-color: #eef2ff; color: #4338ca; }
+  .cat-tint-2 { background-color: #f5f3ff; color: #6d28d9; }
+  .cat-tint-3 { background-color: #fdf2f8; color: #be185d; }
+  .cat-tint-4 { background-color: #fffbeb; color: #b45309; }
+  .cat-tint-5 { background-color: #ecfdf5; color: #047857; }
+  .cat-tint-6 { background-color: #f0f9ff; color: #0369a1; }
+  .cat-tint-7 { background-color: #fff1f2; color: #be123c; }
+  .cat-tint-8 { background-color: #f0fdf9; color: #0f766e; }
+
+  /* Skeleton shimmer — gradient sweep, replaces the flat pulse. */
+  .skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+    background-color: hsl(var(--muted));
+  }
+  .skeleton-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    animation: ds-shimmer 1.6s infinite;
+  }
+
+  /* Entry animations for overlays (transform/opacity only, §2.5). */
+  .anim-fade-in { animation: ds-fade-in 180ms ease-out both; }
+  .anim-pop-in { animation: ds-pop-in 220ms cubic-bezier(0.21, 1.02, 0.73, 1) both; }
+  .anim-drawer-in { animation: ds-drawer-in 280ms cubic-bezier(0.32, 0.72, 0.24, 1) both; }
+  /* Left-edge twin of ds-drawer-in — the mobile menu drawer (doc 33)
+     enters from the left; the cart drawers keep the right-edge one. */
+  .anim-drawer-in-left { animation: ds-drawer-in-left 280ms cubic-bezier(0.32, 0.72, 0.24, 1) both; }
+  .anim-rise { animation: ds-rise 320ms ease-out both; }
+}
+
+.dark .cat-tint-1 { background-color: rgba(99, 102, 241, 0.16); color: #a5b4fc; }
+.dark .cat-tint-2 { background-color: rgba(139, 92, 246, 0.16); color: #c4b5fd; }
+.dark .cat-tint-3 { background-color: rgba(236, 72, 153, 0.14); color: #f9a8d4; }
+.dark .cat-tint-4 { background-color: rgba(245, 158, 11, 0.14); color: #fcd34d; }
+.dark .cat-tint-5 { background-color: rgba(16, 185, 129, 0.14); color: #6ee7b7; }
+.dark .cat-tint-6 { background-color: rgba(14, 165, 233, 0.14); color: #7dd3fc; }
+.dark .cat-tint-7 { background-color: rgba(244, 63, 94, 0.14); color: #fda4af; }
+.dark .cat-tint-8 { background-color: rgba(20, 184, 166, 0.14); color: #5eead4; }
+.dark .skeleton-shimmer::after {
+  background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+}
+
+@keyframes ds-shimmer {
+  100% { transform: translateX(100%); }
+}
+@keyframes ds-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ds-pop-in {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes ds-drawer-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes ds-drawer-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+@keyframes ds-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer::after,
+  .anim-fade-in,
+  .anim-pop-in,
+  .anim-drawer-in,
+  .anim-drawer-in-left,
+  .anim-rise {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Doc 33 — responsive contract utilities (33-theme-responsive plan §3) */
+/* The CSS half of the mobile-first contract; the class-string half   */
+/* lives in src/storefront-ux/responsive.ts. Safe-area is mandatory   */
+/* on fixed chrome (§3.4) — these utilities give it names so waves    */
+/* stop re-typing the arbitrary-value formula.                        */
+/* ------------------------------------------------------------------ */
+
+@layer utilities {
+  /* Padding that respects the device safe areas (notch / home bar). */
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+  /* The StickyBuyBar formula as a name: never less than 0.75rem of
+     breathing room, more when the device demands it. Fixed bottom
+     bars/footers use this instead of the raw arbitrary value. */
+  .pb-safe-floor { padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px)); }
+
+  /* Rail affordance (§3.5): a horizontal rail wearing this class
+     fades its right edge, so a phone user can SEE the row continues.
+     Mask (not a gradient overlay) so it works over any surface the
+     theme puts under the rail, in light and dark alike. Pair with
+     the usual `overflow-x-auto` + snap classes on the same element. */
+  .rail-fade-x {
+    -webkit-mask-image: linear-gradient(to right, black 0, black calc(100% - 1.75rem), transparent 100%);
+    mask-image: linear-gradient(to right, black 0, black calc(100% - 1.75rem), transparent 100%);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Design System v3 additions (12-design-v3-plan.md §2 — A+ Aurora)     */
+/* Motion + glass + dark-mode foundation (M0). Transform/opacity only. */
+/* ------------------------------------------------------------------ */
+
+@layer utilities {
+  /* Aurora hero background — the brand gradient base with two layers of
+     indigo/violet/pink radial blobs drifting slowly above it (pseudos sit
+     at z-index -1 inside an isolated stacking context: above the element's
+     own background, below its content). Content needs no positioning.
+     Usage: <section className="aurora text-white">…</section> */
+  .aurora {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background-color: #4f46e5;
+    background-image: var(--brand-gradient);
+  }
+  .aurora::before,
+  .aurora::after {
+    content: "";
+    position: absolute;
+    inset: -18%;
+    z-index: -1;
+    pointer-events: none;
+    will-change: transform, opacity;
+  }
+  .aurora::before {
+    background-image:
+      radial-gradient(42% 55% at 18% 22%, rgba(99, 102, 241, 0.85) 0%, transparent 70%),
+      radial-gradient(38% 48% at 82% 16%, rgba(236, 72, 153, 0.6) 0%, transparent 70%),
+      radial-gradient(55% 60% at 55% 90%, rgba(139, 92, 246, 0.7) 0%, transparent 72%);
+    animation: aurora-drift 10s ease-in-out infinite alternate;
+  }
+  .aurora::after {
+    background-image:
+      radial-gradient(30% 38% at 74% 66%, rgba(56, 189, 248, 0.4) 0%, transparent 70%),
+      radial-gradient(34% 42% at 24% 78%, rgba(236, 72, 153, 0.45) 0%, transparent 70%);
+    opacity: 0.85;
+    animation: aurora-drift 14s ease-in-out infinite alternate-reverse;
+  }
+
+  /* Glassmorphism — for the sticky header once scrolled, floating cards
+     over the aurora, and overlay panels. `.dark` variant below. */
+  .glass {
+    background-color: rgba(255, 255, 255, 0.7);
+    -webkit-backdrop-filter: blur(12px) saturate(1.6);
+    backdrop-filter: blur(12px) saturate(1.6);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: 0 8px 32px -12px rgba(49, 46, 129, 0.18);
+  }
+
+  /* Reveal-on-scroll (driven by ui/reveal.tsx). SAFETY PATTERN: `.reveal`
+     alone is fully visible — the hidden state applies ONLY under
+     `.reveal-init`, which the component adds on mount right before it
+     starts observing. If JS fails or never runs, content stays visible. */
+  .reveal {
+    transition:
+      opacity 600ms ease-out var(--reveal-delay, 0ms),
+      transform 600ms cubic-bezier(0.22, 1, 0.36, 1) var(--reveal-delay, 0ms);
+  }
+  .reveal.reveal-init {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  .reveal.reveal-init.is-revealed {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Cart badge pop — add `.animate-badge-pop` when the count changes
+     (re-mount or re-trigger by key change). */
+  .animate-badge-pop { animation: badge-pop 450ms cubic-bezier(0.21, 1.02, 0.73, 1) both; }
+
+  /* Marquee — the track must be a flex row (w-max) whose content is
+     duplicated exactly twice; the loop shifts by one copy (-50%).
+     Pauses on hover. */
+  .animate-marquee { animation: marquee 28s linear infinite; }
+  .animate-marquee:hover { animation-play-state: paused; }
+}
+
+.dark .glass {
+  background-color: rgba(19, 20, 43, 0.62);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px -12px rgba(0, 0, 0, 0.55);
+}
+
+/* The soft brand gradient is a near-white wash in light mode; in dark mode
+   it becomes a deep indigo panel (text on it flips light via the tokens). */
+.dark .brand-soft-gradient {
+  background-image: linear-gradient(135deg, #1b1c3a 0%, #241b45 100%);
+}
+
+@keyframes aurora-drift {
+  from { transform: translate3d(-5%, -3%, 0) scale(1); }
+  50% { transform: translate3d(3%, 4%, 0) scale(1.09); }
+  to { transform: translate3d(6%, -4%, 0) scale(1.15); }
+}
+@keyframes badge-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.35); }
+  65% { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora::before,
+  .aurora::after,
+  .animate-badge-pop,
+  .animate-marquee {
+    animation: none;
+  }
+  /* Reveal: no transition, and the pre-reveal state must never hide
+     content for reduced-motion users. */
+  .reveal {
+    transition: none;
+  }
+  .reveal.reveal-init {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Design tokens v4 (doc 31, D1) — the tailwind-generated utilities added
+   in this wave (animate-fade-slide-in / animate-shimmer run the existing
+   ds-rise / ds-shimmer keyframes; duration-fast/base/slow are the motion
+   tokens) honour reduced motion like the hand-written classes above. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-slide-in,
+  .animate-shimmer {
+    animation: none;
+  }
+  .duration-fast,
+  .duration-base,
+  .duration-slow {
+    transition-duration: 0.01ms;
+  }
+}
