@@ -56,20 +56,12 @@ export function createCouponRecord(input: CouponInput): CouponRecord {
 /** Shared in-memory coupon store for API routes (stub persistence, demo only). */
 export const couponStoreInMemory: CouponRecord[] = [];
 
-// Campaign cost estimate — Bangla Unicode segment note (Agent 5):
-// GSM-7: 160 chars / 153 concatenated. Unicode (Bangla, emoji): 70 / 67.
-// Segments are computed from the RENDERED message, never a fixed price.
-export function isUnicodeMessage(text: string): boolean {
-  // Bangla block U+0980-U+09FF, or any non-ASCII char, forces Unicode encoding.
-  return /[^\x00-\x7F]/.test(text);
-}
-export function smsSegments(text: string): number {
-  if (text.length === 0) return 0;
-  const unicode = isUnicodeMessage(text);
-  const single = unicode ? 70 : 160;
-  const concat = unicode ? 67 : 153;
-  return text.length <= single ? 1 : Math.ceil(text.length / concat);
-}
+// Campaign cost estimate helpers (isUnicodeMessage / smsSegments /
+// estimateCampaignCost) live in ./campaign-cost — a schema-free
+// module the admin campaign UI can import without pulling zod into
+// the browser bundle. Re-exported here so server callers of this
+// module (campaigns API route, SMS providers) are unchanged.
+export { estimateCampaignCost, isUnicodeMessage, smsSegments } from "./campaign-cost";
 export const createCampaignSchema = z.object({
   channel: z.enum(["sms", "email"]),
   segmentRef: z.string().min(1),
@@ -80,11 +72,8 @@ export const createCampaignSchema = z.object({
   scheduledAt: z.string().nullable().default(null),
 });
 export type CreateCampaignInput = z.infer<typeof createCampaignSchema>;
-export function estimateCampaignCost(input: CreateCampaignInput): { segmentsPerMessage: number; costEstimatePoisha: number; isUnicode: boolean } {
-  if (input.channel === "email") return { segmentsPerMessage: 0, costEstimatePoisha: 0, isUnicode: isUnicodeMessage(input.messageText) };
-  const segmentsPerMessage = smsSegments(input.messageText);
-  return { segmentsPerMessage, costEstimatePoisha: segmentsPerMessage * input.recipientCount * input.pricePerSegmentPoisha, isUnicode: isUnicodeMessage(input.messageText) };
-}
+// estimateCampaignCost is defined in ./campaign-cost and re-exported
+// above; its CampaignCostInput mirrors CreateCampaignInput's shape.
 
 // Abandoned-cart follow-up — stub state machine (no sends here).
 export type FollowUpStatus = "pending" | "sent" | "recovered" | "expired";

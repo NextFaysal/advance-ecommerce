@@ -4,11 +4,12 @@ import { Badge } from "./badge";
 import { Icon, type IconName } from "./icon";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
-import { ADMIN_STRINGS, type AdminStrings } from "@/admin/strings";
+import { UI_STRINGS, type UiStrings } from "./strings";
 
 /* Status is NEVER color-only: always color + icon + text. Icons are the
    v2 inline SVG set (icon.tsx), rendered at 12px inside the badge.
-   Labels are locale-resolved from the admin dictionary (doc 30). */
+   Labels are locale-resolved from the shared UI dictionary
+   (./strings, doc 30). */
 export type OrderStatus = "PENDING" | "CONFIRMED" | "PROCESSING" | "PACKED" | "SHIPPED" | "DELIVERED" | "CANCELLED" | "FAILED" | "RETURNED" | "REFUNDED";
 export type PaymentStatus = "UNPAID" | "PARTIAL" | "PAID" | "FAILED" | "REFUNDED";
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH";
@@ -42,7 +43,7 @@ const riskMeta: Record<RiskLevel, { tone: "success" | "warning" | "danger" }> = 
   HIGH: { tone: "danger" },
 };
 
-function orderLabel(s: AdminStrings, status: OrderStatus): string {
+function orderLabel(s: UiStrings, status: OrderStatus): string {
   const labels: Record<OrderStatus, string> = {
     PENDING: s.statusPending,
     CONFIRMED: s.statusConfirmed,
@@ -58,7 +59,7 @@ function orderLabel(s: AdminStrings, status: OrderStatus): string {
   return labels[status];
 }
 
-function paymentLabel(s: AdminStrings, status: PaymentStatus): string {
+function paymentLabel(s: UiStrings, status: PaymentStatus): string {
   const labels: Record<PaymentStatus, string> = {
     UNPAID: s.payUnpaid,
     PARTIAL: s.payPartial,
@@ -69,7 +70,7 @@ function paymentLabel(s: AdminStrings, status: PaymentStatus): string {
   return labels[status];
 }
 
-function riskLabel(s: AdminStrings, level: RiskLevel): string {
+function riskLabel(s: UiStrings, level: RiskLevel): string {
   const labels: Record<RiskLevel, string> = {
     LOW: s.riskLow,
     MEDIUM: s.riskMedium,
@@ -80,7 +81,7 @@ function riskLabel(s: AdminStrings, level: RiskLevel): string {
 
 export function StatusBadge({ status }: { status: OrderStatus }) {
   const { locale } = useLocale();
-  const s = pick(locale, ADMIN_STRINGS);
+  const s = pick(locale, UI_STRINGS);
   const meta = orderMeta[status];
   return (
     <Badge tone={meta.tone} icon={<Icon name={meta.icon} size={12} />}>
@@ -91,7 +92,7 @@ export function StatusBadge({ status }: { status: OrderStatus }) {
 
 export function PaymentBadge({ status }: { status: PaymentStatus }) {
   const { locale } = useLocale();
-  const s = pick(locale, ADMIN_STRINGS);
+  const s = pick(locale, UI_STRINGS);
   const meta = paymentMeta[status];
   return (
     <Badge tone={meta.tone} icon={<Icon name={meta.icon} size={12} />}>
@@ -102,7 +103,7 @@ export function PaymentBadge({ status }: { status: PaymentStatus }) {
 
 export function RiskBadge({ level }: { level: RiskLevel }) {
   const { locale } = useLocale();
-  const s = pick(locale, ADMIN_STRINGS);
+  const s = pick(locale, UI_STRINGS);
   const meta = riskMeta[level];
   return (
     <Badge tone={meta.tone} dot>

@@ -93,17 +93,51 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             '(function(){try{var css=localStorage.getItem("ae-theme-css");if(css){var s=document.createElement("style");s.setAttribute("data-theme-override","true");s.textContent=css;(document.head||document.documentElement).appendChild(s);}}catch(e){}})();',
         }}
       />
-      {/* Brand fonts via Google Fonts CDN. The self-hosted woff2 files
-          exist locally (public/fonts/) but are NOT in the deployed repo
-          (binary files could not be pushed), so production rendered in
-          system-ui. CDN link restores brand typography in deployed envs;
-          local dev still loads public/fonts/ if available. */}
+      {/* Brand fonts via Google Fonts CDN, loaded WITHOUT blocking first
+          paint (perf wave, 2026-10-28): the stylesheet is preloaded and
+          applied via the print-media swap below (+ an inline script that
+          flips it to "all" on load, and a <noscript> fallback), so text
+          paints immediately in the fallback stack and swaps when the
+          faces arrive (display=swap). Only the two families the design
+          tokens actually reach are loaded app-wide:
+          - Hind Siliguri 400–700 (display lead; carries Bengali glyphs)
+          - Plus Jakarta Sans 400–800 (sans lead for Latin)
+          Noto Sans Bengali is gone: it sat behind Hind Siliguri in every
+          stack and Hind covers Bengali, so it was unreachable (PDFs are
+          unaffected — src/pdf embeds Hind Siliguri from base64 data).
+          JetBrains Mono moved to the admin shell (app/admin/layout.tsx);
+          storefront font-mono falls through to ui-monospace.
+          Why not next/font/google? It renames families to hashed names,
+          but the theme packages' token stacks (src/themes/<theme>/tokens.ts)
+          reference the literal family names — next/font would leave
+          every themed page on system-ui. The self-hosted woff2 files in
+          public/fonts/ remain undeployable (binary push limit), so the
+          CDN stylesheet stays the delivery mechanism, now non-blocking. */}
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       <link
-        href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
-        rel="stylesheet"
+        rel="preload"
+        as="style"
+        href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       />
+      <link
+        data-brand-fonts
+        rel="stylesheet"
+        media="print"
+        href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      />
+      <script
+        dangerouslySetInnerHTML={{
+          __html:
+            '(function(){var l=document.querySelector("link[data-brand-fonts]");if(!l)return;var go=function(){l.media="all"};if(l.sheet){go()}else{l.addEventListener("load",go)}})();',
+        }}
+      />
+      <noscript>
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+        />
+      </noscript>
       <body className="min-h-screen bg-background font-sans text-foreground antialiased selection:bg-ring selection:text-white">
         <RegisterSW />
         <ThemeStyleSync />

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
-import { ADMIN_STRINGS } from "@/admin/strings";
+import { UI_STRINGS } from "./strings";
 
 /**
  * ThemeToggle (Design System v3, plan §4/§7) — dark-mode switch for the
@@ -74,7 +74,7 @@ function applyTheme(dark: boolean) {
 
 export function ThemeToggle({ className = "" }: { className?: string }) {
   const { locale } = useLocale();
-  const s = pick(locale, ADMIN_STRINGS);
+  const s = pick(locale, UI_STRINGS);
   // Lazy init from the DOM class (correct if a bootstrap ever sets it);
   // the mount effect below reconciles with storage / system preference.
   const [isDark, setIsDark] = useState<boolean>(

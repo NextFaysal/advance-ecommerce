@@ -21,7 +21,18 @@ import type {
 } from "@/cms/site-content-types";
 import InstallPrompt from "@/pwa/install-prompt";
 import ResellerRefCapture from "@/reseller/RefCapture";
-import { ExitIntentPopup } from "@/marketing/components/ExitIntentPopup";
+import dynamic from "next/dynamic";
+
+// Exit-intent popup, lazy-mounted (perf wave, audit item 2): it is
+// never visible at first paint — it self-gates on its public config
+// fetch and only fires on a desktop exit gesture or a 60s touch
+// dwell — so its code splits out of the shell's First Load chunk and
+// loads with hydration, long before either trigger can occur. All
+// trigger/suppression logic stays inside the component, untouched.
+const ExitIntentPopup = dynamic(
+  () => import("@/marketing/components/ExitIntentPopup").then((m) => m.ExitIntentPopup),
+  { ssr: false },
+);
 
 // Storefront shell mount (integration for Agent 31): header + footer on
 // storefront routes only — never on /admin or /offline. Later, brandName
@@ -179,7 +190,8 @@ export default function StorefrontShell({ children }: { children: ReactNode }) {
       <ResellerRefCapture />
       {/* Exit-intent popup (ADV-18 remainder): self-gating — renders
           nothing unless the public config endpoint returns an
-          enabled config; suppression + page exclusions live inside. */}
+          enabled config; suppression + page exclusions live inside.
+          Lazy-loaded via next/dynamic above (audit item 2). */}
       <ExitIntentPopup />
     </div>
   );

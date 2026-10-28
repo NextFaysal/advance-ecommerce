@@ -12,7 +12,7 @@
 import { marketingMechanicsEnabled } from "@/marketing/docs";
 import { getSpinDisplayConfig } from "@/marketing/spin";
 import { cached } from "@/lib/ttl-cache";
-import { SpinWheelWidget } from "./SpinWheelWidget";
+import { SpinWheelWidgetLazy } from "./SpinWheelWidgetLazy";
 
 export async function SpinWheelSection() {
   if (!marketingMechanicsEnabled()) return null;
@@ -22,8 +22,12 @@ export async function SpinWheelSection() {
   // live, so a stale drawable flag here is display-only.
   const display = await cached("spin-config", 30_000, () => getSpinDisplayConfig()).catch(() => null);
   if (display === null || !display.enabled || display.segments.length === 0) return null;
+  // Perf wave (audit item 2): the widget itself loads lazily via
+  // SpinWheelWidgetLazy (next/dynamic, ssr:false) so its JS leaves
+  // the homepage First Load; the flag/config gating above stays
+  // server-side, so a disabled wheel still costs zero client JS.
   return (
-    <SpinWheelWidget
+    <SpinWheelWidgetLazy
       segments={display.segments.map((s) => ({
         id: s.id,
         labelBn: s.labelBn,

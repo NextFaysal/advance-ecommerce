@@ -12,10 +12,11 @@
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { buildTrackingEvent, demoDedupStore, trackingEventInputSchema } from "@/tracking/events";
+import { buildTrackingEvent, demoDedupStore } from "@/tracking/events";
+import { trackingEventInputSchema } from "@/tracking/events-server";
 import { buildMetaCapiPayload, dispatchMetaCapi } from "@/tracking/capi";
 import { evaluateTrackingConsent, CONSENT_STATES, type TrackingConsentState } from "@/tracking/consent";
-import { utmParamsSchema } from "@/tracking/attribution";
+import { utmParamsSchema } from "@/tracking/attribution-server";
 import { resolveMetaCapi } from "@/tracking/resolve";
 import type { TrackingUserInput } from "@/tracking/types";
 

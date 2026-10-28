@@ -2,9 +2,18 @@
  * Fashion pack — Agent 17, Step 49 (Part C).
  * Size chart + size-guide rendering + size validation for apparel.
  * Pure config/logic; the chart is merchant data stored with the pack config.
+ *
+ * Schema-free (perf wave, zod diet): the zod config schema and the
+ * fashionPack registry object live in ./fashion-server (server only),
+ * so client components (the PDP size guide) can import the pure
+ * helpers + default config here without bundling zod. The
+ * FashionConfig type is the server schema's inferred type, imported
+ * type-only.
  */
-import { z } from "zod";
-import type { BusinessModulePack, PackValidation } from "./types";
+import type { PackValidation } from "./types";
+import type { FashionConfig } from "./fashion-server";
+
+export type { FashionConfig } from "./fashion-server";
 
 export interface SizeChartRow {
   size: string; // "M", "L", "38", "42" ...
@@ -15,74 +24,22 @@ export interface SizeChartRow {
   footCm?: number;
 }
 
-const sizeChartRowSchema = z.object({
-  size: z.string().min(1),
-  chestCm: z.number().positive().optional(),
-  waistCm: z.number().positive().optional(),
-  lengthCm: z.number().positive().optional(),
-  footCm: z.number().positive().optional(),
-});
-
-export const fashionConfigSchema = z.object({
-  /** Size labels offered on apparel products, in display order. */
-  sizes: z.array(z.string().min(1)).min(1).max(30),
-  sizeChart: z.array(sizeChartRowSchema),
-  /** Show the "how to measure" guide block on product pages. */
-  showMeasureGuide: z.boolean().default(true),
-  /** Allow a free-text fit note from the customer at checkout. */
-  allowFitNote: z.boolean().default(false),
-  /**
-   * ADV-22 wiring: category slugs this pack's size chart applies to
-   * (matching rule in packs.ts packCategoryMatches). A product's OWN
-   * sizeChart (Product.sizeChart) always wins on the PDP; the pack
-   * chart is the fallback for products in these categories.
-   */
-  categorySlugs: z.array(z.string().min(1)).max(20).default(["fashion"]),
-  /** Default fit note shown with the pack chart (e.g. "true to size"). */
-  fitNoteBn: z.string().max(200).optional(),
-  fitNoteEn: z.string().max(200).optional(),
-  /**
-   * Per-category chart overrides: a category entry replaces the
-   * default chart + fit note for products in that category.
-   */
-  categoryCharts: z
-    .array(
-      z.object({
-        categorySlug: z.string().min(1),
-        sizeChart: z.array(sizeChartRowSchema).min(1),
-        fitNoteBn: z.string().max(200).optional(),
-        fitNoteEn: z.string().max(200).optional(),
-      }),
-    )
-    .max(20)
-    .default([]),
-});
-
-export type FashionConfig = z.infer<typeof fashionConfigSchema>;
-
-export const fashionPack: BusinessModulePack<FashionConfig> = {
-  id: "fashion",
-  flagKey: "module.fashion",
-  nameEn: "Fashion",
-  nameBn: "ফ্যাশন",
-  description: "Size charts, size guide and fit notes for apparel stores.",
-  defaultConfig: {
-    sizes: ["S", "M", "L", "XL", "XXL"],
-    sizeChart: [
-      { size: "S", chestCm: 96, lengthCm: 66 },
-      { size: "M", chestCm: 101, lengthCm: 69 },
-      { size: "L", chestCm: 106, lengthCm: 71 },
-      { size: "XL", chestCm: 112, lengthCm: 74 },
-      { size: "XXL", chestCm: 117, lengthCm: 76 },
-    ],
-    showMeasureGuide: true,
-    allowFitNote: false,
-    categorySlugs: ["fashion"],
-    fitNoteBn: "সাইজ স্বাভাবিক — আপনার নিয়মিত সাইজটাই নিন।",
-    fitNoteEn: "True to size — order your usual size.",
-    categoryCharts: [],
-  },
-  configSchema: fashionConfigSchema,
+/** Built-in default pack config (merchant data, editable per store). */
+export const FASHION_DEFAULT_CONFIG: FashionConfig = {
+  sizes: ["S", "M", "L", "XL", "XXL"],
+  sizeChart: [
+    { size: "S", chestCm: 96, lengthCm: 66 },
+    { size: "M", chestCm: 101, lengthCm: 69 },
+    { size: "L", chestCm: 106, lengthCm: 71 },
+    { size: "XL", chestCm: 112, lengthCm: 74 },
+    { size: "XXL", chestCm: 117, lengthCm: 76 },
+  ],
+  showMeasureGuide: true,
+  allowFitNote: false,
+  categorySlugs: ["fashion"],
+  fitNoteBn: "সাইজ স্বাভাবিক — আপনার নিয়মিত সাইজটাই নিন।",
+  fitNoteEn: "True to size — order your usual size.",
+  categoryCharts: [],
 };
 
 /** A chosen size is valid only when it is one of the pack's sizes. */

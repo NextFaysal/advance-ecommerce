@@ -2,6 +2,7 @@
 export * from "./types";
 export * from "./packs";
 export * from "./fashion";
+export * from "./fashion-server";
 export * from "./electronics";
 export * from "./grocery";
 export * from "./pharmacy";

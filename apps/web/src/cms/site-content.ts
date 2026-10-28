@@ -25,9 +25,6 @@ import {
   DEFAULT_HEADER_MENU,
   DEFAULT_HERO_SLIDES,
   activeHeroSlides,
-  footerMenuGroupSchema,
-  heroSlideSchema,
-  siteMenuItemSchema,
   visibleFooterMenu,
   visibleHeaderMenu,
   type FooterMenuGroup,
@@ -36,6 +33,11 @@ import {
   type SiteContentConfigured,
   type SiteMenuItem,
 } from "./site-content-types";
+import {
+  footerMenuGroupSchema,
+  heroSlideSchema,
+  siteMenuItemSchema,
+} from "./site-content-schema";
 import { z } from "zod";
 
 export const SITE_CONTENT_KEYS = {

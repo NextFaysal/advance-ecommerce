@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Icon } from "./icon";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
-import { ADMIN_STRINGS } from "@/admin/strings";
+import { UI_STRINGS } from "./strings";
 
 export type SelectOption = { value: string; label: string };
 
@@ -27,7 +27,7 @@ export function Combobox({
   placeholder?: string;
 }) {
   const { locale } = useLocale();
-  const s = pick(locale, ADMIN_STRINGS);
+  const s = pick(locale, UI_STRINGS);
   const effectivePlaceholder = placeholder ?? s.comboboxPlaceholder;
   const [query, setQuery] = useState("");
   const filtered = useMemo(

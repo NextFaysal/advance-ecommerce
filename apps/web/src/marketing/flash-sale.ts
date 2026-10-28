@@ -17,7 +17,11 @@
 // Invariant (schema + service): soldCount must never exceed stockCap
 // for an item. This module only reads/carries the values; the order
 // path that increments soldCount must enforce the cap transactionally.
-import { z } from "zod";
+//
+// This module is intentionally SCHEMA-FREE (types + pure helpers
+// only): client components (the admin flash-sale manager) import it,
+// and the zod write-validation schemas live in ./flash-sale-server
+// so the zod runtime never enters a browser bundle through here.
 
 /** One FlashSaleItem row, exactly as persisted (no display data). */
 export interface FlashSaleItemRecord {
@@ -116,44 +120,7 @@ export function remainingFlashStock(item: Pick<FlashSaleItemRecord, "stockCap" |
 }
 
 /* ------------------------------------------------------------------ */
-/* Admin write validation (API routes)                                 */
+/* Admin write validation (API routes) lives in ./flash-sale-server   */
+/* (zod schemas + FlashSaleInput / FlashSaleItemInput types) so this  */
+/* module stays importable from client components.                    */
 /* ------------------------------------------------------------------ */
-
-const isoInstant = z
-  .string()
-  .min(1)
-  .refine((v) => !Number.isNaN(Date.parse(v)), { message: "Invalid datetime." });
-
-export const flashSaleItemInputSchema = z.object({
-  variantId: z.string().min(1),
-  /** Optional on input: the repository derives it from the variant
-   *  and rejects the write when a supplied value disagrees. */
-  productId: z.string().min(1).optional(),
-  salePricePoisha: z.number().int().min(0),
-  stockCap: z.number().int().min(1),
-});
-export type FlashSaleItemInput = z.infer<typeof flashSaleItemInputSchema>;
-
-export const flashSaleInputSchema = z
-  .object({
-    name: z.string().trim().min(1).max(200),
-    startsAt: isoInstant,
-    endsAt: isoInstant,
-    isActive: z.boolean().default(true),
-    items: z.array(flashSaleItemInputSchema).min(1),
-  })
-  .refine((v) => Date.parse(v.endsAt) > Date.parse(v.startsAt), {
-    message: "endsAt must be after startsAt.",
-    path: ["endsAt"],
-  })
-  .refine((v) => new Set(v.items.map((i) => i.variantId)).size === v.items.length, {
-    message: "Each variant may appear only once per flash sale.",
-    path: ["items"],
-  });
-export type FlashSaleInput = z.infer<typeof flashSaleInputSchema>;
-
-/** Full-replace update — same contract as create. */
-export const createFlashSaleSchema = flashSaleInputSchema;
-export const updateFlashSaleSchema = flashSaleInputSchema;
-
-export const flashSaleActiveSchema = z.object({ isActive: z.boolean() });

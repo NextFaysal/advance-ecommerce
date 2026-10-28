@@ -1,5 +1,11 @@
 /* Brand @font-face faces are loaded via Google Fonts CDN in app/layout.tsx
-   (self-hosted files in public/fonts/ are not in the deployed repo yet). */
+   (async, non-render-blocking since the perf wave of 2026-10-28; the
+   self-hosted files in public/fonts/ are not in the deployed repo yet).
+   Only Hind Siliguri + Plus Jakarta Sans load app-wide: Hind covers the
+   Bengali glyphs in every stack, so Noto Sans Bengali (formerly third in
+   these stacks) was unreachable and is no longer loaded or referenced.
+   JetBrains Mono loads scoped to the admin shell (app/admin/layout.tsx);
+   elsewhere the --font-mono stack falls through to ui-monospace. */
 
 @tailwind base;
 @tailwind components;
@@ -36,10 +42,10 @@
   --shadow-card: 0 1px 2px rgba(49, 46, 129, 0.05), 0 8px 24px -12px rgba(79, 70, 229, 0.14);
   --shadow-lift: 0 2px 4px rgba(49, 46, 129, 0.06), 0 16px 32px -12px rgba(79, 70, 229, 0.22);
   --shadow-pop: 0 4px 12px rgba(49, 46, 129, 0.08), 0 24px 48px -12px rgba(49, 46, 129, 0.28);
-  --font-sans: "Plus Jakarta Sans", "Hind Siliguri", "Noto Sans Bengali", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Plus Jakarta Sans", "Hind Siliguri", system-ui, -apple-system, "Segoe UI", sans-serif;
   /* Display stack as a token (theme catalogue --font-display); identical
      to the stack the .font-display utility below has always used. */
-  --font-display: "Hind Siliguri", "Plus Jakarta Sans", "Noto Sans Bengali", system-ui, sans-serif;
+  --font-display: "Hind Siliguri", "Plus Jakarta Sans", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   /* RGB triplets for the static-hex colours in tailwind.config.js — the
      config references them as rgb(var(--c-…) / <alpha-value>) so these
@@ -227,7 +233,7 @@
   /* Display typeface for headlines — Hind Siliguri carries the Bengali
      glyphs; Jakarta is the Latin fallback in the stack. */
   .font-display {
-    font-family: "Hind Siliguri", "Plus Jakarta Sans", "Noto Sans Bengali", system-ui, sans-serif;
+    font-family: "Hind Siliguri", "Plus Jakarta Sans", system-ui, sans-serif;
   }
 
   /* Editorial section heading system (§2.1): eyebrow + title + lead. */
@@ -239,7 +245,7 @@
     color: hsl(var(--primary));
   }
   .section-title {
-    font-family: "Hind Siliguri", "Plus Jakarta Sans", "Noto Sans Bengali", system-ui, sans-serif;
+    font-family: "Hind Siliguri", "Plus Jakarta Sans", system-ui, sans-serif;
     font-size: 1.5rem;
     line-height: 2.1rem;
     font-weight: 700;

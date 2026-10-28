@@ -15,7 +15,7 @@ import { Card } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/table";
 import { Money } from "@/components/ui/money";
 import type { Campaign, CampaignStatus } from "@/marketing/campaign";
-import { estimateCampaignCost } from "@/marketing/service";
+import { estimateCampaignCost } from "@/marketing/campaign-cost";
 
 const STATUS_META: Record<CampaignStatus, { label: string; tone: "success" | "info" | "warning" | "danger" | "neutral" }> = {
   draft: { label: "খসড়া", tone: "warning" },

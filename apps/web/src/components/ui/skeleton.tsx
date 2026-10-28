@@ -9,11 +9,11 @@
  */
 import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
-import { ADMIN_STRINGS } from "@/admin/strings";
+import { UI_STRINGS } from "./strings";
 
 export function Skeleton({ className = "h-4 w-full" }: { className?: string }) {
   const { locale } = useLocale();
-  const s = pick(locale, ADMIN_STRINGS);
+  const s = pick(locale, UI_STRINGS);
   return <div aria-hidden="true" aria-label={s.loading} className={`skeleton-shimmer rounded-md ${className}`} />;
 }
 

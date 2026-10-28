@@ -1,9 +1,9 @@
 /**
  * Size-guide modal data — Part B. Reuses the fashion pack's chart logic
- * (src/business-modules/fashion.ts: buildSizeGuide + fashionPack defaults)
+ * (src/business-modules/fashion.ts: buildSizeGuide + FASHION_DEFAULT_CONFIG)
  * and only adds the bilingual labels + guide copy the modal renders.
  */
-import { buildSizeGuide, fashionPack, type FashionConfig } from "@/business-modules/fashion";
+import { buildSizeGuide, FASHION_DEFAULT_CONFIG, type FashionConfig } from "@/business-modules/fashion";
 
 export interface SizeGuideModalData {
   titleBn: string;
@@ -40,7 +40,7 @@ const MEASURE_GUIDE_EN: string[] = [
   "If you're between two sizes, take the larger one.",
 ];
 
-export function buildSizeGuideModalData(config: FashionConfig = fashionPack.defaultConfig): SizeGuideModalData {
+export function buildSizeGuideModalData(config: FashionConfig = FASHION_DEFAULT_CONFIG): SizeGuideModalData {
   return {
     titleBn: "সাইজ গাইড",
     titleEn: "Size Guide",

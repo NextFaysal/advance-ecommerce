@@ -29,7 +29,7 @@
  * phone, so the panel is deliberately NOT mounted there.
  */
 import { useEffect, useState } from "react";
-import { maskPhone } from "@/checkout/validation";
+import { maskPhone } from "@/checkout/phone";
 import { useDigitText } from "@/components/ui/numerals";
 import { interpolate, pick, type Locale } from "@/i18n/locale";
 import { useLocale } from "@/i18n/LocaleProvider";

@@ -21,20 +21,12 @@ import { rentalSelectionSchema } from "../rental/selection";
 // seam.
 import { podSelectionSchema } from "../pod/selection";
 
-export const BD_PHONE_REGEX = /^(?:\+?88)?01[3-9]\d{8}$/;
-
-/** Normalize any accepted BD form to +8801XXXXXXXXX. Returns null if invalid. */
-export function normalizeBdPhone(input: string): string | null {
-  const cleaned = input.replace(/[\s-]/g, "");
-  if (!BD_PHONE_REGEX.test(cleaned)) return null;
-  const digits = cleaned.replace(/^\+?88/, "");
-  return `+880${digits.slice(-10)}`;
-}
-
-export function maskPhone(normalized: string): string {
-  if (normalized.length < 5) return normalized;
-  return `${normalized.slice(0, 5)}******${normalized.slice(-2)}`;
-}
+// The pure BD phone helpers live in ./phone (schema-free, so client
+// components can import maskPhone without bundling zod); they are
+// re-exported here so every existing import from this module keeps
+// working unchanged.
+import { BD_PHONE_REGEX, normalizeBdPhone } from "./phone";
+export { BD_PHONE_REGEX, maskPhone, normalizeBdPhone } from "./phone";
 
 // Address values are canonicalised by construction, not by hard
 // schema membership (doc 17 O2): the storefront checkout picks

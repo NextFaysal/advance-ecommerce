@@ -6,7 +6,7 @@ import { Button } from "./button";
 import { Icon } from "./icon";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
-import { ADMIN_STRINGS } from "@/admin/strings";
+import { UI_STRINGS } from "./strings";
 
 /**
  * Modal (Design System v4, doc 31 D3) — fade-slide-in panel on the
@@ -18,7 +18,7 @@ export function Modal({ open, onClose, title, children, onConfirm }: {
   open: boolean; onClose: () => void; title: string; children: ReactNode; onConfirm?: () => void;
 }) {
   const { locale } = useLocale();
-  const s = pick(locale, ADMIN_STRINGS);
+  const s = pick(locale, UI_STRINGS);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {

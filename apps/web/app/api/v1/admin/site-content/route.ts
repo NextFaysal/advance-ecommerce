@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { readSiteContent, saveSiteContent } from "@/cms/site-content";
-import { siteContentInputSchema } from "@/cms/site-content-types";
+import { siteContentInputSchema } from "@/cms/site-content-schema";
 import { guardError, requireAdmin } from "@/reports/guard";
 
 // Site content — header/footer menus + homepage hero slides.

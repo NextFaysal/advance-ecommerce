@@ -2,14 +2,14 @@
 
 // Campaign cost-estimate panel — Agent 25 (marketing page).
 // ESTIMATE ONLY. This panel calls the pure estimate functions from
-// src/marketing/service (smsSegments / estimateCampaignCost) in the
+// src/marketing/campaign-cost (smsSegments / estimateCampaignCost) in the
 // browser and shows the segment math. It NEVER sends a message: real
 // dispatch is a BullMQ job via the admin-configured SMS provider, and
 // no provider credential exists in this page.
 import { useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
-import { estimateCampaignCost } from "@/marketing/service";
+import { estimateCampaignCost } from "@/marketing/campaign-cost";
 
 const SAMPLE_MESSAGE =
   "অফার! আজ সব পণ্যে ১০% ছাড়। WELCOME10 কোড ব্যবহার করুন। অর্ডার: example.com";

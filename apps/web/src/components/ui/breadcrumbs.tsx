@@ -4,7 +4,7 @@ import { Fragment } from "react";
 import { Icon } from "./icon";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
-import { ADMIN_STRINGS } from "@/admin/strings";
+import { UI_STRINGS } from "./strings";
 
 export type BreadcrumbItem = {
   label: string;
@@ -26,7 +26,7 @@ export function Breadcrumbs({
   className?: string;
 }) {
   const { locale } = useLocale();
-  const s = pick(locale, ADMIN_STRINGS);
+  const s = pick(locale, UI_STRINGS);
   return (
     <nav aria-label={s.breadcrumb} className={className}>
       <ol className="flex flex-wrap items-center gap-1 text-sm">

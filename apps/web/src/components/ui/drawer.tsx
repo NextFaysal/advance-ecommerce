@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { Icon } from "./icon";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
-import { ADMIN_STRINGS } from "@/admin/strings";
+import { UI_STRINGS } from "./strings";
 
 /**
  * Drawer (Design System v4, doc 31 D3) — slides in from the right on
@@ -21,7 +21,7 @@ export function Drawer({ open, onClose, title, children, footer }: {
   footer?: ReactNode;
 }) {
   const { locale } = useLocale();
-  const s = pick(locale, ADMIN_STRINGS);
+  const s = pick(locale, UI_STRINGS);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {

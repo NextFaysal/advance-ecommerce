@@ -26,7 +26,7 @@ import {
 } from "@/lib/numerals";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
-import { ADMIN_STRINGS } from "@/admin/strings";
+import { UI_STRINGS } from "./strings";
 
 /** True when the visitor opted into Bengali digits (post-mount). */
 export function useBengaliNumerals(): boolean {
@@ -99,7 +99,7 @@ export function DigitText({
  */
 export function NumeralsToggle({ className = "" }: { className?: string }) {
   const { locale } = useLocale();
-  const s = pick(locale, ADMIN_STRINGS);
+  const s = pick(locale, UI_STRINGS);
   const bn = useBengaliNumerals();
 
   const toggle = () => setNumeralScript(bn ? "latn" : "bn");

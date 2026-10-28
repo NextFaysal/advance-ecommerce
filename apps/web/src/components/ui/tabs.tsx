@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
-import { ADMIN_STRINGS } from "@/admin/strings";
+import { UI_STRINGS } from "./strings";
 
 export type TabItem = { id: string; label: string; count?: number; content: ReactNode };
 
@@ -25,7 +25,7 @@ export function Tabs({
   variant?: "underline" | "pill";
 }) {
   const { locale } = useLocale();
-  const s = pick(locale, ADMIN_STRINGS);
+  const s = pick(locale, UI_STRINGS);
   const [active, setActive] = useState(defaultId ?? tabs[0]?.id ?? "");
   const current = tabs.find((t) => t.id === active) ?? tabs[0];
 

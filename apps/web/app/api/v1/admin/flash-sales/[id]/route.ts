@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { flashSaleActiveSchema, updateFlashSaleSchema } from "@/marketing/flash-sale";
+import { flashSaleActiveSchema, updateFlashSaleSchema } from "@/marketing/flash-sale-server";
 import {
   deleteFlashSaleDb,
   getFlashSaleDb,

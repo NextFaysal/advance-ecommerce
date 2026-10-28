@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createFlashSaleSchema } from "@/marketing/flash-sale";
+import { createFlashSaleSchema } from "@/marketing/flash-sale-server";
 import { createFlashSaleDb, listFlashSalesDb } from "@/marketing/repository";
 import { guardError, requireAdmin } from "@/reports/guard";
 

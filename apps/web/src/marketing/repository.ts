@@ -43,11 +43,11 @@ import { prisma } from "@advance-ecommerce/db";
 import type { Campaign } from "./campaign";
 import type { CouponInput } from "./coupon";
 import type {
-  FlashSaleInput,
   FlashSaleItemDisplay,
   FlashSaleWithItems,
   LiveFlashSale,
 } from "./flash-sale";
+import type { FlashSaleInput } from "./flash-sale-server";
 import type { CouponRecord, CreateCampaignInput } from "./service";
 
 /* ------------------------------------------------------------------ */

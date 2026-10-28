@@ -25,13 +25,32 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // navigation or topbar.
   const pathname = (await headers()).get("x-pathname") ?? "";
   if (pathname.startsWith("/admin/login") || pathname.startsWith("/admin/accept-invite")) {
-    return <div className="min-h-screen bg-bg-app text-text-main">{children}</div>;
+    return (
+      <>
+        {/* JetBrains Mono is scoped to the admin shell (perf wave,
+            2026-10-28): the root layout loads only Hind Siliguri +
+            Plus Jakarta Sans, and admin is where font-mono is actually
+            used (IDs, SKUs, data tables). Weights 400/600 are the ones
+            the design uses (see src/styles/fonts.css provenance). */}
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap"
+        />
+        <div className="min-h-screen bg-bg-app text-text-main">{children}</div>
+      </>
+    );
   }
 
   const locale = await getRequestLocale();
 
   return (
     <div className="min-h-screen bg-bg-app text-text-main">
+      {/* JetBrains Mono, scoped to the admin shell — see the auth-branch
+          return above for why this lives here and not in the root layout. */}
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap"
+      />
       <AdminCommandPalette />
       {/* Staff presence heartbeat for the current /admin path
           (renders nothing; auth screens returned above, so they

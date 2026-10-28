@@ -6,7 +6,7 @@
  */
 import type { BusinessModulePack, BusinessPackFlagKey, BusinessPackId, PackFlagStore, PackValidation } from "./types";
 import { demoPackFlags, PACK_FLAG_KEYS } from "./types";
-import { fashionPack, type FashionConfig } from "./fashion";
+import { fashionPack, type FashionConfig } from "./fashion-server";
 import { electronicsPack, type ElectronicsConfig } from "./electronics";
 import { groceryPack, type GroceryConfig } from "./grocery";
 import { pharmacyPack, type PharmacyConfig } from "./pharmacy";

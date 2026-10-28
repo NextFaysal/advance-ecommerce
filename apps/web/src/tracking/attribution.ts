@@ -5,8 +5,6 @@
 // visit). Order assignment: the order is attributed to LAST-touch (default
 // reporting model), with first-touch preserved on the record for
 // first-touch reporting. Money totals are integer poisha.
-import { z } from "zod";
-
 export interface UtmParams {
   utmSource: string | null;
   utmMedium: string | null;
@@ -22,16 +20,6 @@ export const EMPTY_UTM: UtmParams = {
   utmTerm: null,
   utmContent: null,
 };
-
-const utmField = z.string().trim().max(120).optional().nullable();
-
-export const utmParamsSchema = z.object({
-  utmSource: utmField,
-  utmMedium: utmField,
-  utmCampaign: utmField,
-  utmTerm: utmField,
-  utmContent: utmField,
-});
 
 function clean(value: string | null | undefined): string | null {
   const v = (value ?? "").trim();
