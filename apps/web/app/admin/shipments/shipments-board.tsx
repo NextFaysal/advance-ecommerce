@@ -24,6 +24,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { Money, formatPoisha } from "@/components/ui/money";
 import { StatCard } from "@/components/ui/stat-card";
@@ -125,9 +126,9 @@ const PIPELINE_STEPS = [
 ] as const satisfies readonly { status: string; labelKey: keyof ShipmentsStrings; icon: IconName }[];
 
 const OFF_PATH: Record<string, { labelKey: keyof ShipmentsStrings; icon: IconName; cls: string }> = {
-  FAILED: { labelKey: "offPathFailed", icon: "alert", cls: "border-rose-200 bg-rose-50 text-rose-700" },
-  RETURNING: { labelKey: "offPathReturning", icon: "rotate-ccw", cls: "border-amber-200 bg-amber-50 text-amber-800" },
-  RETURNED: { labelKey: "offPathReturned", icon: "rotate-ccw", cls: "border-border bg-slate-50 text-slate-600" },
+  FAILED: { labelKey: "offPathFailed", icon: "alert", cls: "border-danger/30 bg-danger-soft text-danger" },
+  RETURNING: { labelKey: "offPathReturning", icon: "rotate-ccw", cls: "border-warning-solid/30 bg-warning-soft text-warning-solid" },
+  RETURNED: { labelKey: "offPathReturned", icon: "rotate-ccw", cls: "border-border bg-surface-2 text-text-muted" },
 };
 
 function ParcelStepper({ status }: { status: string }) {
@@ -152,17 +153,17 @@ function ParcelStepper({ status }: { status: string }) {
         return (
           <li key={step.status} className={`flex items-start ${idx > 0 ? "flex-1" : ""}`}>
             {idx > 0 && (
-              <span aria-hidden="true" className={`mx-1 mt-[13px] h-0.5 flex-1 rounded ${idx <= activeIdx ? "bg-emerald-400" : "bg-border"}`} />
+              <span aria-hidden="true" className={`mx-1 mt-[13px] h-0.5 flex-1 rounded ${idx <= activeIdx ? "bg-success-solid" : "bg-border"}`} />
             )}
             <span className="flex w-14 flex-col items-center gap-1 text-center">
               <span
                 aria-hidden="true"
                 className={`flex h-[27px] w-[27px] items-center justify-center rounded-full ${
                   done
-                    ? "bg-emerald-500 text-white"
+                    ? "bg-success-solid text-white"
                     : active
                       ? "bg-brand-600 text-white ring-4 ring-brand-100"
-                      : "bg-slate-100 text-slate-400"
+                      : "bg-surface-2 text-text-subtle"
                 }`}
               >
                 <Icon name={done ? "check" : step.icon} size={14} />
@@ -218,24 +219,24 @@ export function ShipmentsBoard({
       <span className="inline-flex flex-wrap items-center gap-2">
         <Link
           href={`/admin/orders/${s.orderId}`}
-          className="font-mono tabular-nums text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+          className="tnum font-mono tabular-nums text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
           #{s.orderNo}
           {isProblemStatus(s.status) ? (
-            <span className="ml-1 text-rose-600" aria-hidden="true">⚠</span>
+            <span className="ml-1 text-danger" aria-hidden="true">⚠</span>
           ) : null}
         </Link>
         {s.packed ? (
-          <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
+          <span className="rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-semibold text-success-solid">
             {str.packedBadge}
           </span>
         ) : null}
       </span>
     ),
     courier: courierLabel(s.provider, str),
-    tracking: <span className="font-mono text-xs tabular-nums">{s.trackingId ?? "—"}</span>,
+    tracking: <span className="tnum font-mono text-xs tabular-nums">{s.trackingId ?? "—"}</span>,
     destination: <span>{s.district ?? "—"}</span>,
-    weight: <span className="tabular-nums">{formatWeight(s.weightGrams)}</span>,
+    weight: <span className="tnum tabular-nums">{formatWeight(s.weightGrams)}</span>,
     charge: <Money poisha={s.chargePoisha} />,
     cod:
       s.codAmountPoisha > 0 ? (
@@ -245,7 +246,7 @@ export function ShipmentsBoard({
       ),
     status: <ShipmentStatusBadge status={s.status} />,
     created: (
-      <span className="font-mono text-xs tabular-nums">{dhakaDateTime(s.createdAt, locale)}</span>
+      <span className="tnum font-mono text-xs tabular-nums">{dhakaDateTime(s.createdAt, locale)}</span>
     ),
     action: (
       <span className="flex items-center gap-2">
@@ -298,12 +299,12 @@ export function ShipmentsBoard({
       ) : null}
 
       {problemShipments.length > 0 ? (
-        <section className="space-y-2" aria-label={str.problemAria}>
-          <h2 className="text-lg font-semibold">
+        <section className="space-y-3" aria-label={str.problemAria}>
+          <h2 className="font-display text-base font-semibold text-text-main">
             <span aria-hidden="true">⚠</span> {interpolate(str.problemTitle, { count: problemShipments.length })}
           </h2>
           {problemShipments.map((s) => (
-            <p key={s.id} className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            <p key={s.id} className="rounded-md bg-danger-soft px-3 py-2 text-xs text-danger">
               <ShipmentStatusBadge status={s.status} />{" "}
               <span className="font-mono">{s.trackingId ?? "—"}</span>{" "}
               {str.orderWord}{" "}
@@ -320,19 +321,16 @@ export function ShipmentsBoard({
       ) : null}
 
       {rows.length === 0 ? (
-        <Card>
-          <h2 className="font-semibold">{str.emptyTitle}</h2>
-          <p className="mt-2 text-sm leading-6 text-text-muted">{str.emptyDesc}</p>
-        </Card>
+        <EmptyState title={str.emptyTitle} description={str.emptyDesc} />
       ) : (
-        <section className="space-y-3">
+        <section className="space-y-4">
           <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label={str.filterByStatusAria}>
             <button
               type="button"
               role="tab"
               aria-selected={statusFilter === "ALL"}
               onClick={() => setStatusFilter("ALL")}
-              className={`min-h-[44px] rounded-full px-3 text-sm font-medium ${statusFilter === "ALL" ? "bg-brand-600 text-white" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
+              className={`min-h-[44px] rounded-full px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${statusFilter === "ALL" ? "bg-brand-600 text-white" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
             >
               {interpolate(str.allWithCount, { count: rows.length })}
             </button>
@@ -347,7 +345,7 @@ export function ShipmentsBoard({
                   role="tab"
                   aria-selected={statusFilter === status}
                   onClick={() => setStatusFilter(status)}
-                  className={`min-h-[44px] rounded-full px-3 text-sm font-medium ${statusFilter === status ? "bg-brand-600 text-white" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
+                  className={`min-h-[44px] rounded-full px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${statusFilter === status ? "bg-brand-600 text-white" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
                 >
                   <span aria-hidden="true">{meta.icon}</span> {interpolate(str.tabWithCount, { label: statusLabel(status, str), count })}
                 </button>
@@ -360,7 +358,7 @@ export function ShipmentsBoard({
                 type="button"
                 onClick={() => setCourierFilter("all")}
                 aria-pressed={courierFilter === "all"}
-                className={`min-h-[44px] rounded-full px-3 text-sm font-medium ${courierFilter === "all" ? "bg-brand-100 text-brand-700" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
+                className={`min-h-[44px] rounded-full px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${courierFilter === "all" ? "bg-brand-100 text-brand-700" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
               >
                 {str.allCouriers}
               </button>
@@ -370,7 +368,7 @@ export function ShipmentsBoard({
                   type="button"
                   onClick={() => setCourierFilter(p)}
                   aria-pressed={courierFilter === p}
-                  className={`min-h-[44px] rounded-full px-3 text-sm font-medium ${courierFilter === p ? "bg-brand-100 text-brand-700" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
+                  className={`min-h-[44px] rounded-full px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${courierFilter === p ? "bg-brand-100 text-brand-700" : "bg-surface-2 text-text-muted hover:text-text-main"}`}
                 >
                   {courierLabel(p, str)}
                 </button>
@@ -378,35 +376,98 @@ export function ShipmentsBoard({
             </div>
           ) : null}
 
-          <DataTable
-            caption={str.tableCaption}
-            columns={[
-              { key: "order", header: str.colOrder },
-              { key: "courier", header: str.colCourier },
-              { key: "tracking", header: str.colTracking },
-              { key: "destination", header: str.colDestination },
-              { key: "weight", header: str.colWeight },
-              { key: "charge", header: str.colCharge },
-              { key: "cod", header: str.colCod },
-              { key: "status", header: str.colStatus },
-              { key: "created", header: str.colCreated },
-              { key: "action", header: "" },
-            ]}
-            rows={tableRows}
-          />
+          <div className="hidden md:block">
+            <DataTable
+              caption={str.tableCaption}
+              columns={[
+                { key: "order", header: str.colOrder },
+                { key: "courier", header: str.colCourier },
+                { key: "tracking", header: str.colTracking },
+                { key: "destination", header: str.colDestination },
+                { key: "weight", header: str.colWeight },
+                { key: "charge", header: str.colCharge },
+                { key: "cod", header: str.colCod },
+                { key: "status", header: str.colStatus },
+                { key: "created", header: str.colCreated },
+                { key: "action", header: "" },
+              ]}
+              rows={tableRows}
+            />
+          </div>
+          <div className="space-y-3 md:hidden">
+            {filtered.map((s) => (
+              <Card key={s.id} className="p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Link
+                    href={`/admin/orders/${s.orderId}`}
+                    className="tnum font-mono tabular-nums text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                  >
+                    #{s.orderNo}
+                  </Link>
+                  <ShipmentStatusBadge status={s.status} />
+                </div>
+                <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <dt className="text-xs text-text-muted">{str.colCourier}</dt>
+                    <dd>{courierLabel(s.provider, str)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted">{str.colDestination}</dt>
+                    <dd>{s.district ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted">{str.colTracking}</dt>
+                    <dd className="tnum font-mono text-xs tabular-nums">{s.trackingId ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted">{str.colWeight}</dt>
+                    <dd className="tnum tabular-nums">{formatWeight(s.weightGrams)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted">{str.colCharge}</dt>
+                    <dd><Money poisha={s.chargePoisha} /></dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted">{str.colCod}</dt>
+                    <dd>{s.codAmountPoisha > 0 ? <Money poisha={s.codAmountPoisha} /> : <span className="text-text-muted">{str.prepaid}</span>}</dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-xs text-text-muted">{str.colCreated}</dt>
+                    <dd className="tnum font-mono text-xs tabular-nums">{dhakaDateTime(s.createdAt, locale)}</dd>
+                  </div>
+                </dl>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={selected?.id === s.id ? "secondary" : "outline"}
+                    onClick={() => setSelectedId(s.id)}
+                    aria-pressed={selected?.id === s.id}
+                  >
+                    {str.details}
+                  </Button>
+                  <Link
+                    href={`/admin/orders/${s.orderId}`}
+                    className="whitespace-nowrap text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                  >
+                    {str.workspaceLink}
+                  </Link>
+                </div>
+              </Card>
+            ))}
+          </div>
           {filtered.length === 0 ? (
-            <p className="text-sm text-text-muted">{str.noFiltered}</p>
+            <EmptyState title={str.filteredEmptyTitle} description={str.filteredEmptyDesc} />
           ) : null}
         </section>
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
-          <h2 className="font-semibold">{str.timelineTitle}</h2>
+          <h2 className="font-display text-base font-semibold text-text-main">{str.timelineTitle}</h2>
           {selected ? (
             <div className="mt-3 space-y-4">
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="font-mono text-xs tabular-nums">{selected.trackingId ?? "—"}</span>
+                <span className="tnum font-mono text-xs tabular-nums">{selected.trackingId ?? "—"}</span>
                 <ShipmentStatusBadge status={selected.status} />
                 <span className="text-text-muted">
                   {str.orderWord}{" "}
@@ -416,7 +477,7 @@ export function ShipmentsBoard({
                   · {courierLabel(selected.provider, str)}
                 </span>
                 {selected.packed ? (
-                  <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
+                  <span className="rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-semibold text-success-solid">
                     {selected.packedPickListId
                       ? interpolate(str.packedWithList, { id: selected.packedPickListId.slice(0, 8) })
                       : str.packedBadge}
@@ -431,7 +492,7 @@ export function ShipmentsBoard({
                 </div>
                 <div>
                   <dt className="text-xs text-text-muted">{str.dtWeight}</dt>
-                  <dd className="tabular-nums">{formatWeight(selected.weightGrams)}</dd>
+                  <dd className="tnum tabular-nums">{formatWeight(selected.weightGrams)}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-text-muted">{str.dtCharge}</dt>
@@ -449,11 +510,11 @@ export function ShipmentsBoard({
                 </div>
                 <div>
                   <dt className="text-xs text-text-muted">{str.dtBookingTime}</dt>
-                  <dd className="font-mono text-xs tabular-nums">{dhakaDateTime(selected.createdAt, locale)}</dd>
+                  <dd className="tnum font-mono text-xs tabular-nums">{dhakaDateTime(selected.createdAt, locale)}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-text-muted">{str.dtLastUpdate}</dt>
-                  <dd className="font-mono text-xs tabular-nums">{dhakaDateTime(selected.updatedAt, locale)}</dd>
+                  <dd className="tnum font-mono text-xs tabular-nums">{dhakaDateTime(selected.updatedAt, locale)}</dd>
                 </div>
               </dl>
               {selected.events.length > 0 ? (
@@ -476,7 +537,7 @@ export function ShipmentsBoard({
                         </span>
                         <div>
                           <p className="text-sm font-medium">{statusLabel(event.status, str)}</p>
-                          <p className="font-mono text-xs tabular-nums text-text-muted">
+                          <p className="tnum font-mono text-xs tabular-nums text-text-muted">
                             {dhakaDateTime(event.at, locale)}
                           </p>
                         </div>
@@ -495,7 +556,7 @@ export function ShipmentsBoard({
         </Card>
 
         <Card>
-          <h2 className="font-semibold">{str.bookingTitle}</h2>
+          <h2 className="font-display text-base font-semibold text-text-main">{str.bookingTitle}</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
             {str.bookingDesc1Before}<strong>{str.bookingDesc1Strong}</strong>{str.bookingDesc1After}
           </p>

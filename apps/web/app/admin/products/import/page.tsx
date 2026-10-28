@@ -13,7 +13,8 @@
 // downloadable as an error-report CSV.
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
+import { ADMIN_STRINGS } from "@/admin/strings";
 import type { ImportMoneyUnits, ImportRow } from "@/catalog/import";
 import ExternalImports from "./external-imports";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -272,12 +273,13 @@ export default function ProductImportPage() {
     <main className="min-w-0">
       <PageHeader
         title={s.impTitle}
-        description={s.impDesc}
-        breadcrumb={s.impBreadcrumb}
+        subtitle={s.impDesc}
+        breadcrumbs={s.impBreadcrumb.split(" / ").map((label) => ({ label }))}
+        breadcrumbLabel={pick(locale, ADMIN_STRINGS).breadcrumb}
         actions={
           <Link
             href="/admin/products"
-            className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
+            className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-medium shadow-xs transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-soft"
           >
             {s.impBackLink}
           </Link>
@@ -295,7 +297,7 @@ export default function ProductImportPage() {
                 aria-hidden="true"
                 className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold shadow-sm ${
                   state === "done"
-                    ? "bg-emerald-600 text-white"
+                    ? "bg-success-solid text-white"
                     : state === "active"
                       ? "brand-gradient text-white shadow-md"
                       : "border border-border bg-card text-text-subtle"
@@ -316,11 +318,11 @@ export default function ProductImportPage() {
         })}
       </ol>
 
-      <section className="mt-4 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+      <section className="mt-4 rounded-2xl border border-border/60 bg-card p-4 shadow-xs sm:p-5">
         <div className="flex flex-wrap items-center gap-2.5">
           <h2 className="font-display text-base font-semibold">{s.impFormatTitle}</h2>
-          <span className="rounded-full bg-brand-50 px-2.5 py-1 font-mono text-[11px] font-bold text-brand-700 ring-1 ring-inset ring-brand-100">CSV</span>
-          <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-mono text-[11px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-100">Excel (.xlsx)</span>
+          <span className="rounded-full bg-brand-soft px-2.5 py-1 font-mono text-[11px] font-bold text-brand-ink ring-1 ring-inset ring-brand-ink/15">CSV</span>
+          <span className="rounded-full bg-success-soft px-2.5 py-1 font-mono text-[11px] font-bold text-success-solid ring-1 ring-inset ring-success-solid/20">Excel (.xlsx)</span>
         </div>
         <ul className="mt-3 list-inside list-disc space-y-1.5 text-sm leading-relaxed text-text-muted">
           <li>{s.impB1Pre} <span className="font-mono">slug</span>{s.impB1Post}</li>
@@ -337,7 +339,7 @@ export default function ProductImportPage() {
           <button
             type="button"
             onClick={() => downloadTextFile("product-import-template.csv", buildTemplateCsv())}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-border bg-card px-4 text-sm font-medium shadow-xs transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-soft"
           >
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
               <path d="M12 3v11" />
@@ -349,9 +351,9 @@ export default function ProductImportPage() {
         </div>
       </section>
 
-      <section className="mt-4 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+      <section className="mt-4 rounded-2xl border border-border/60 bg-card p-4 shadow-xs sm:p-5">
         <h2 className="font-display text-base font-semibold">{s.impChooseTitle}</h2>
-        <div className="mt-3 rounded-lg border-2 border-dashed border-brand-200 bg-brand-50/40 px-4 py-6 text-center">
+        <div className="mt-3 rounded-2xl border-2 border-dashed border-brand-200 bg-brand-50/40 px-4 py-6 text-center">
           <span aria-hidden="true" className="brand-soft-gradient mx-auto flex h-14 w-14 items-center justify-center rounded-full text-brand-600 shadow-sm">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7">
               <path d="M12 16V4" />
@@ -369,7 +371,7 @@ export default function ProductImportPage() {
                 const file = e.target.files?.[0];
                 if (file) void handleFile(file);
               }}
-              className="max-w-full text-sm text-transparent file:mr-3 file:min-h-[44px] file:cursor-pointer file:rounded-md file:border-0 file:bg-brand-600 file:px-4 file:py-2.5 file:text-sm file:font-semibold file:text-white file:shadow-md file:transition hover:file:brightness-105 disabled:opacity-50"
+              className="max-w-full text-sm text-transparent file:mr-3 file:min-h-[44px] file:cursor-pointer file:rounded-xl file:border-0 file:bg-brand-600 file:px-4 file:py-2.5 file:text-sm file:font-semibold file:text-white file:shadow-md file:transition hover:file:brightness-105 disabled:opacity-50"
             />
             {phase === "previewing" && <span className="text-sm font-medium text-text-muted">{s.impPreviewing}</span>}
           </div>
@@ -382,25 +384,25 @@ export default function ProductImportPage() {
           )}
         </div>
         {errorMessage && (
-          <p className="anim-fade-in mt-3 rounded-md border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm font-medium text-rose-700">{errorMessage}</p>
+          <p className="anim-fade-in mt-3 rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-sm font-medium text-danger">{errorMessage}</p>
         )}
       </section>
 
       {preview && phase !== "done" && (
-        <section className="anim-rise mt-4 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+        <section className="anim-rise mt-4 rounded-2xl border border-border/60 bg-card p-4 shadow-xs sm:p-5">
           <h2 className="font-display text-base font-semibold">{s.impPreviewTitle}</h2>
           <div className="mt-3.5 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-lg border border-brand-100 bg-brand-50/60 p-4">
+            <div className="rounded-2xl border border-brand-100 bg-brand-50/60 p-4">
               <div className="text-caption font-semibold text-brand-700">{s.impTotalRows}</div>
               <div className="mt-1 font-display text-h2 font-bold tabular-nums text-text-main">{preview.totalRows}</div>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/70 p-4">
-              <div className="text-caption font-semibold text-emerald-700">{s.impValidRows}</div>
-              <div className="mt-1 font-display text-h2 font-bold tabular-nums text-emerald-700">{preview.validCount}</div>
+            <div className="rounded-2xl border border-success-solid/20 bg-success-soft/70 p-4">
+              <div className="text-caption font-semibold text-success-solid">{s.impValidRows}</div>
+              <div className="tnum mt-1 font-display text-h2 font-bold text-success-solid">{preview.validCount}</div>
             </div>
-            <div className="rounded-lg border border-rose-100 bg-rose-50/70 p-4">
-              <div className="text-caption font-semibold text-rose-700">{s.impInvalidRows}</div>
-              <div className="mt-1 font-display text-h2 font-bold tabular-nums text-rose-600">{preview.invalidCount}</div>
+            <div className="rounded-2xl border border-danger/20 bg-danger-soft/70 p-4">
+              <div className="text-caption font-semibold text-danger">{s.impInvalidRows}</div>
+              <div className="tnum mt-1 font-display text-h2 font-bold text-danger">{preview.invalidCount}</div>
             </div>
           </div>
           <div className="mt-3.5 flex flex-wrap gap-2">
@@ -414,7 +416,7 @@ export default function ProductImportPage() {
           </div>
 
           {preview.validRows.length > 0 && (
-            <div className="mt-4 overflow-x-auto rounded-lg border border-border/70 shadow-sm">
+            <div className="mt-4 overflow-x-auto rounded-2xl border border-border/60 shadow-xs">
               <table className="w-full text-sm [&_tbody_tr]:transition [&_tbody_tr:hover]:bg-brand-50/40">
                 <thead>
                   <tr className="bg-brand-50/70 [&>th]:border-b [&>th]:border-border [&>th]:px-3 [&>th]:py-2.5 [&>th]:text-left [&>th]:text-caption [&>th]:font-semibold [&>th]:text-text-muted">
@@ -442,9 +444,9 @@ export default function ProductImportPage() {
           )}
 
           {preview.invalidRows.length > 0 && (
-            <div className="mt-5 rounded-lg border border-rose-200 bg-rose-50/50 p-3.5 sm:p-4">
-              <h3 className="flex items-center gap-2 font-display text-sm font-semibold text-rose-700">
-                <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+            <div className="mt-5 rounded-2xl border border-danger/25 bg-danger-soft/50 p-3.5 sm:p-4">
+              <h3 className="flex items-center gap-2 font-display text-sm font-semibold text-danger">
+                <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center rounded-full bg-danger-soft text-danger">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="h-4 w-4">
                     <path d="M12 8v5" />
                     <path d="M12 16.5h.01" />
@@ -452,10 +454,10 @@ export default function ProductImportPage() {
                 </span>
                 {s.impInvalidTitle}
               </h3>
-              <div className="mt-3 overflow-x-auto rounded-lg border border-rose-100 bg-card shadow-sm">
-                <table className="w-full text-sm [&_tbody_tr]:transition [&_tbody_tr:hover]:bg-rose-50/50">
+              <div className="mt-3 overflow-x-auto rounded-2xl border border-danger/20 bg-card shadow-xs">
+                <table className="w-full text-sm [&_tbody_tr]:transition [&_tbody_tr:hover]:bg-danger-soft/50">
                   <thead>
-                    <tr className="bg-rose-50/80 [&>th]:border-b [&>th]:border-rose-100 [&>th]:px-3 [&>th]:py-2.5 [&>th]:text-left [&>th]:text-caption [&>th]:font-semibold [&>th]:text-rose-700">
+                    <tr className="bg-danger-soft/80 [&>th]:border-b [&>th]:border-danger/15 [&>th]:px-3 [&>th]:py-2.5 [&>th]:text-left [&>th]:text-caption [&>th]:font-semibold [&>th]:text-danger">
                       <th>{s.impColRow}</th>
                       <th>SKU</th>
                       <th>{s.impColField}</th>
@@ -479,7 +481,7 @@ export default function ProductImportPage() {
               <button
                 type="button"
                 onClick={() => downloadTextFile("import-errors.csv", preview.errorReportCsv)}
-                className="mt-3 inline-flex min-h-[44px] items-center gap-2 rounded-md border border-rose-200 bg-card px-4 text-sm font-semibold text-rose-700 shadow-sm transition motion-fast hover:bg-rose-50"
+                className="mt-3 inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-danger/25 bg-card px-4 text-sm font-semibold text-danger shadow-xs transition duration-fast ease-smooth hover:bg-danger-soft"
               >
                 <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
                   <path d="M12 3v11" />
@@ -496,7 +498,7 @@ export default function ProductImportPage() {
               type="button"
               disabled={preview.validCount === 0 || phase === "confirming"}
               onClick={() => void handleConfirm()}
-              className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+              className="brand-gradient inline-flex min-h-[44px] items-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:shadow-lift hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {phase === "confirming" ? s.impConfirming : interpolate(s.impConfirmBtn, { count: preview.validCount })}
             </button>
@@ -504,21 +506,21 @@ export default function ProductImportPage() {
               type="button"
               disabled={phase === "confirming"}
               onClick={reset}
-              className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition motion-fast hover:border-brand-300"
+              className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-medium transition duration-fast ease-smooth hover:border-brand-300"
             >
               {s.cancelBtn}
             </button>
           </div>
           {preview.validCount === 0 && (
-            <p className="mt-2 text-sm text-rose-600">{s.impNoValid}</p>
+            <p className="mt-2 text-sm text-danger">{s.impNoValid}</p>
           )}
         </section>
       )}
 
       {phase === "done" && result && (
-        <section className="anim-rise mt-4 rounded-lg border border-emerald-200 bg-card p-4 shadow-card sm:p-5">
+        <section className="anim-rise mt-4 rounded-2xl border border-success-solid/25 bg-card p-4 shadow-xs sm:p-5">
           <div className="flex items-start gap-3.5">
-            <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-md">
+            <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-success-solid text-white shadow-md">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
                 <path d="M20 6 9 17l-5-5" />
               </svg>
@@ -526,7 +528,7 @@ export default function ProductImportPage() {
             <div className="min-w-0">
               <h2 className="font-display text-base font-semibold">{s.impDoneTitle}</h2>
               <p className="mt-1 text-sm leading-relaxed text-text-muted">
-                <strong className="text-emerald-600">{interpolate(s.impDoneProducts, { count: result.createdProductCount })}</strong> {interpolate(s.impDoneCreatedSuffix, { count: result.createdRowCount })}{" "}
+                <strong className="text-success-solid">{interpolate(s.impDoneProducts, { count: result.createdProductCount })}</strong> {interpolate(s.impDoneCreatedSuffix, { count: result.createdRowCount })}{" "}
                 <strong>{s.impDoneDraft}</strong> {interpolate(s.impDoneRest, { count: result.skippedRowCount })}
                 {result.failedRowCount > 0 && <>{interpolate(s.impDoneFailedSuffix, { count: result.failedRowCount })}</>}।
               </p>
@@ -538,7 +540,7 @@ export default function ProductImportPage() {
                 <li key={p.id}>
                   <Link
                     href={`/admin/products/${p.id}`}
-                    className="inline-flex min-h-[36px] items-center rounded-full border border-brand-100 bg-brand-50 px-3.5 font-mono text-xs font-medium text-brand-700 transition motion-fast hover:border-brand-300 hover:bg-brand-100"
+                    className="inline-flex min-h-[36px] items-center rounded-full border border-brand-100 bg-brand-soft px-3.5 font-mono text-xs font-medium text-brand-ink transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-100"
                   >
                     {p.slug}
                   </Link>
@@ -547,7 +549,7 @@ export default function ProductImportPage() {
             </ul>
           )}
           {result.outcomes.some((o) => o.status !== "created") && (
-            <div className="mt-4 overflow-x-auto rounded-lg border border-border/70 shadow-sm">
+            <div className="mt-4 overflow-x-auto rounded-2xl border border-border/60 shadow-xs">
               <table className="w-full text-sm [&_tbody_tr]:transition [&_tbody_tr:hover]:bg-brand-50/40">
                 <thead>
                   <tr className="bg-surface-2 [&>th]:border-b [&>th]:border-border [&>th]:px-3 [&>th]:py-2.5 [&>th]:text-left [&>th]:text-caption [&>th]:font-semibold [&>th]:text-text-muted">
@@ -575,7 +577,7 @@ export default function ProductImportPage() {
           <div className="mt-4 flex flex-wrap gap-2">
             <Link
               href="/admin/products"
-              className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105"
+              className="brand-gradient inline-flex min-h-[44px] items-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:shadow-lift hover:brightness-105"
             >
               {s.impGoList}
             </Link>
@@ -583,7 +585,7 @@ export default function ProductImportPage() {
               <button
                 type="button"
                 onClick={() => downloadTextFile("import-errors.csv", result.errorReportCsv)}
-                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition motion-fast hover:border-brand-300"
+                className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-medium transition duration-fast ease-smooth hover:border-brand-300"
               >
                 {s.impErrorReportBtn}
               </button>
@@ -591,7 +593,7 @@ export default function ProductImportPage() {
             <button
               type="button"
               onClick={reset}
-              className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition motion-fast hover:border-brand-300"
+              className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-medium transition duration-fast ease-smooth hover:border-brand-300"
             >
               {s.impAnotherFile}
             </button>

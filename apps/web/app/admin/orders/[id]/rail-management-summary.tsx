@@ -84,7 +84,7 @@ export function RailManagementSummary({ orderId }: { orderId: string }) {
   if (state === "hidden") return null;
 
   return (
-    <Card className="shadow-card">
+    <Card>
       <h2 className="mb-3 text-base font-semibold">{s.mgmtTitle}</h2>
       {state === "loading" || !view ? (
         <div className="space-y-2" role="status" aria-label={s.mgmtLoading}>

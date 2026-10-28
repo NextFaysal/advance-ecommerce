@@ -54,7 +54,9 @@ import { AgingPanel } from "./aging-panel";
 import { KpiPanel } from "./kpi-panel";
 import { PosSalesPanel } from "./pos-sales-panel";
 import { DraftsPanel } from "./drafts-panel";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
+import { DataTableSkeleton } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -155,7 +157,7 @@ function SortHeader({
         type="button"
         onClick={() => onSort(sortKey)}
         aria-label={interpolate(s.lpSortBy, { label })}
-        className={`flex items-center gap-1 transition motion-fast hover:text-brand-700 ${active ? "text-brand-700" : ""} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
+        className={`flex items-center gap-1 transition duration-fast ease-smooth hover:text-brand-700 ${active ? "text-brand-700" : ""} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
       >
         {label}
         <svg
@@ -420,7 +422,7 @@ export default function AdminOrdersPage() {
     <main>
       <PageHeader
         title={s.lpTitle}
-        description={s.lpDesc}
+        subtitle={s.lpDesc}
         actions={
           <Button variant="outline" onClick={() => void load()}>
             {s.lpRefresh}
@@ -437,26 +439,16 @@ export default function AdminOrdersPage() {
       <PosSalesPanel />
 
       {loadState === "loading" && (
-        <div role="status" aria-label={s.ordLoadingAria} className="overflow-hidden rounded-lg border border-border bg-card shadow-card">
-          <div className="border-b border-border bg-surface-2 px-4 py-3">
-            <div className="h-4 w-40 animate-pulse rounded bg-border" />
-          </div>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-4 border-b border-border px-4 py-3.5 last:border-0">
-              <div className="h-4 w-4 animate-pulse rounded bg-border" />
-              <div className="h-4 w-24 animate-pulse rounded bg-border" />
-              <div className="h-4 w-36 animate-pulse rounded bg-border" />
-              <div className="ml-auto h-4 w-16 animate-pulse rounded bg-border" />
-            </div>
-          ))}
-          <p className="px-4 py-3 text-small text-text-muted">{s.ordLoading}</p>
+        <div role="status" aria-label={s.ordLoadingAria}>
+          <DataTableSkeleton columns={6} rows={5} />
+          <p className="px-1 py-3 text-small text-text-muted">{s.ordLoading}</p>
         </div>
       )}
 
       {loadState === "error" && (
-        <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-5 shadow-card">
-          <p className="font-semibold text-rose-700">{s.ordLoadFailTitle}</p>
-          <p className="mt-1 text-small text-rose-600">{loadError}</p>
+        <div role="alert" className="rounded-2xl border border-danger/25 bg-danger-soft p-5 shadow-xs">
+          <p className="font-semibold text-danger">{s.ordLoadFailTitle}</p>
+          <p className="mt-1 text-small text-danger">{loadError}</p>
           <Button variant="outline" className="mt-4 bg-card" onClick={() => void load()}>
             {s.tryAgain}
           </Button>
@@ -469,7 +461,7 @@ export default function AdminOrdersPage() {
            *  (full-width, taller); view/density toggles move to their
            *  own control row with the page summary; the status chips
            *  below become the funnel strip. */}
-          <Card className="mb-4 shadow-card">
+          <Card className="mb-4">
             <div className="relative">
               <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-text-subtle">
                 <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
@@ -479,18 +471,18 @@ export default function AdminOrdersPage() {
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={s.lpSearchPlaceholder}
                 aria-label={s.lpSearchAria}
-                className="h-12 w-full rounded-md border border-border bg-card pl-11 pr-3 text-base shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                className="h-12 w-full rounded-xl border border-border bg-card pl-11 pr-3 text-base shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15"
               />
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <div className="flex rounded-md bg-surface-2 p-1" role="group" aria-label={s.lpViewAria}>
+              <div className="flex rounded-xl bg-surface-2 p-1" role="group" aria-label={s.lpViewAria}>
                 {(["table", "kanban"] as const).map((v) => (
                   <button
                     key={v}
                     type="button"
                     onClick={() => setView(v)}
                     aria-pressed={view === v}
-                    className={`min-h-[36px] rounded-[9px] px-3.5 text-small font-semibold transition motion-fast ${
+                    className={`min-h-[36px] rounded-lg px-3.5 text-small font-semibold transition duration-fast ease-smooth ${
                       view === v ? "bg-card text-brand-700 shadow-sm" : "text-text-muted hover:text-text-main"
                     } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
                   >
@@ -499,14 +491,14 @@ export default function AdminOrdersPage() {
                 ))}
               </div>
               {view === "table" ? (
-                <div className="flex rounded-md bg-surface-2 p-1" role="group" aria-label={s.lpDensityAria}>
+                <div className="flex rounded-xl bg-surface-2 p-1" role="group" aria-label={s.lpDensityAria}>
                   {(["comfortable", "compact"] as const).map((d) => (
                     <button
                       key={d}
                       type="button"
                       onClick={() => setDensity(d)}
                       aria-pressed={density === d}
-                      className={`min-h-[36px] rounded-[9px] px-3 text-small font-semibold transition motion-fast ${
+                      className={`min-h-[36px] rounded-lg px-3 text-small font-semibold transition duration-fast ease-smooth ${
                         density === d ? "bg-card text-brand-700 shadow-sm" : "text-text-muted hover:text-text-main"
                       } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
                     >
@@ -534,12 +526,12 @@ export default function AdminOrdersPage() {
                       type="button"
                       onClick={() => { setFilter("ALL"); setPage(1); }}
                       aria-pressed={active}
-                      className={`flex min-h-[32px] items-center gap-1.5 rounded-full px-3 text-caption font-semibold transition motion-fast ${
+                      className={`flex min-h-[32px] items-center gap-1.5 rounded-full px-3 text-caption font-semibold transition duration-fast ease-smooth ${
                         active ? "bg-brand-600 text-white shadow-sm" : "border border-border bg-card text-text-muted hover:border-brand-300 hover:text-brand-700"
                       } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
                     >
                       {s.lpAll}
-                      <span className={`font-mono tabular-nums ${active ? "text-white/85" : "text-text-subtle"}`}>{chip.count ?? "—"}</span>
+                      <span className={`tnum ${active ? "text-white/85" : "text-text-subtle"}`}>{chip.count ?? "—"}</span>
                     </button>
                   );
                 }
@@ -550,7 +542,7 @@ export default function AdminOrdersPage() {
                     type="button"
                     onClick={() => { setFilter(chip.status); setPage(1); }}
                     aria-pressed={active}
-                    className={`flex min-h-[32px] items-center gap-1.5 rounded-full px-3 text-caption font-semibold transition motion-fast ${
+                    className={`flex min-h-[32px] items-center gap-1.5 rounded-full px-3 text-caption font-semibold transition duration-fast ease-smooth ${
                       active
                         ? "bg-brand-600 text-white shadow-sm"
                         : `border border-border bg-card text-text-muted hover:border-brand-300 hover:text-brand-700 ${chip.dimmed ? "opacity-55 hover:opacity-100" : ""}`
@@ -558,7 +550,7 @@ export default function AdminOrdersPage() {
                   >
                     <Icon name={visual.icon} size={12} className={active ? "text-white" : "text-text-subtle"} />
                     {locale === "bn" ? visual.labelBn : visual.labelEn}
-                    <span className={`font-mono tabular-nums ${active ? "text-white/85" : "text-text-subtle"}`}>{chip.count ?? "—"}</span>
+                    <span className={`tnum ${active ? "text-white/85" : "text-text-subtle"}`}>{chip.count ?? "—"}</span>
                   </button>
                 );
               })}
@@ -577,7 +569,7 @@ export default function AdminOrdersPage() {
                   id="orders-stage-filter"
                   value={stageFilter}
                   onChange={(e) => { setStageFilter(e.target.value); setPage(1); }}
-                  className="min-h-[36px] rounded-[9px] border border-border bg-card px-2.5 text-small font-medium text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                  className="min-h-[36px] rounded-xl border border-border bg-card px-2.5 text-small font-medium text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                 >
                   <option value="">{s.lpAllStages}</option>
                   {stageDefs.map((sd) => (
@@ -626,7 +618,7 @@ export default function AdminOrdersPage() {
           {/* A failed REFETCH (rows already on screen) surfaces here
            *  instead of replacing the list with the error state. */}
           {loadError ? (
-            <div role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-small text-rose-700">
+            <div role="alert" className="mb-4 rounded-2xl border border-danger/25 bg-danger-soft px-4 py-3 text-small text-danger">
               {interpolate(s.lpRefreshFail, { error: loadError })}
               <button type="button" onClick={() => void load()} className="ml-3 font-semibold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                 {s.tryAgain}
@@ -646,7 +638,7 @@ export default function AdminOrdersPage() {
               onClick={(e) => {
                 if (selected.size === 0) e.preventDefault();
               }}
-              className={`rounded-md px-3.5 py-2 text-small font-semibold transition motion-fast ${
+              className={`rounded-xl px-3.5 py-2 text-small font-semibold transition duration-fast ease-smooth ${
                 selected.size > 0
                   ? "bg-brand-600 text-white shadow-sm hover:bg-brand-700"
                   : "cursor-not-allowed border border-border bg-card text-text-subtle"
@@ -684,34 +676,30 @@ export default function AdminOrdersPage() {
           </div>
 
           {orders.length === 0 ? (
-            <div className="rounded-lg border border-border bg-card px-6 py-14 text-center shadow-card">
-              <span aria-hidden="true" className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 text-brand-500">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7">
-                  <circle cx="8" cy="21" r="1" /><circle cx="19" cy="21" r="1" />
-                  <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
-                </svg>
-              </span>
-              <h2 className="mt-4 text-h3">{s.lpEmptyTitle}</h2>
-              <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
-                {filter !== "ALL" || search.trim() !== ""
+            <EmptyState
+              title={s.lpEmptyTitle}
+              description={
+                filter !== "ALL" || search.trim() !== ""
                   ? s.lpEmptyFiltered
-                  : s.lpEmptyNone}
-              </p>
+                  : s.lpEmptyNone
+              }
+            >
               {filter !== "ALL" || search.trim() !== "" ? (
-                <Button
-                  variant="outline"
-                  className="mt-5"
-                  onClick={() => { setFilter("ALL"); setSearch(""); setPage(1); }}
-                >
-                  {s.lpClearFiltersBtn}
-                </Button>
+                <div className="mt-5">
+                  <Button
+                    variant="outline"
+                    onClick={() => { setFilter("ALL"); setSearch(""); setPage(1); }}
+                  >
+                    {s.lpClearFiltersBtn}
+                  </Button>
+                </div>
               ) : null}
-            </div>
+            </EmptyState>
           ) : view === "table" ? (
             <>
             {/* Desktop table — hidden under md, where the card list below
              *  takes over so a 360px screen never scrolls sideways. */}
-            <div className="hidden overflow-auto rounded-lg border border-border bg-card shadow-card md:block" style={{ maxHeight: "72vh" }}>
+            <div className="hidden overflow-auto rounded-2xl border border-border/60 bg-card shadow-xs md:block" style={{ maxHeight: "72vh" }}>
               <table className="w-full min-w-[860px] border-collapse text-sm">
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-surface-2 text-left [&>th]:border-b [&>th]:border-border">
@@ -753,7 +741,8 @@ export default function AdminOrdersPage() {
                       <tr
                         key={o.id}
                         onClick={(e) => { if (isPlainRowClick(e)) setPreviewId(o.id); }}
-                        className={`cursor-pointer border-t border-border transition motion-fast hover:bg-surface-2/70 ${selected.has(o.id) ? "bg-brand-50/60" : ""}`}
+                        aria-selected={selected.has(o.id) || undefined}
+                        className={`cursor-pointer border-t border-border/60 transition duration-fast ease-smooth hover:bg-brand-soft/60 ${selected.has(o.id) ? "bg-brand-soft" : ""}`}
                       >
                         <td className={ORDER_DENSITY[density].cell}>
                           <input
@@ -786,7 +775,7 @@ export default function AdminOrdersPage() {
                           </td>
                         ) : null}
                         {orderCols.isVisible("total") ? (
-                          <td className={`${ORDER_DENSITY[density].cell} font-mono font-semibold tabular-nums`}>{formatBdt(o.totalPoisha)}</td>
+                          <td className={`${ORDER_DENSITY[density].cell} tnum font-semibold`}>{formatBdt(o.totalPoisha)}</td>
                         ) : null}
                         {orderCols.isVisible("payment") ? (
                           <td className={ORDER_DENSITY[density].cell}>
@@ -812,7 +801,7 @@ export default function AdminOrdersPage() {
                               <Badge tone={level === "High" ? "danger" : level === "Medium" ? "warning" : "success"}>
                                 {level === "High" ? s.riskHigh : level === "Medium" ? s.riskMedium : s.riskLow}
                               </Badge>
-                              <span className="font-mono text-caption tabular-nums text-text-muted">{o.riskScore}</span>
+                              <span className="tnum text-caption text-text-muted">{o.riskScore}</span>
                             </span>
                           </td>
                         ) : null}
@@ -836,7 +825,7 @@ export default function AdminOrdersPage() {
                   <article
                     key={o.id}
                     onClick={(e) => { if (isPlainRowClick(e)) setPreviewId(o.id); }}
-                    className={`cursor-pointer rounded-lg border border-border bg-card p-4 shadow-card ${selected.has(o.id) ? "ring-1 ring-brand-300" : ""}`}
+                    className={`cursor-pointer rounded-2xl border border-border/60 bg-card p-4 shadow-xs ${selected.has(o.id) ? "ring-1 ring-brand-300" : ""}`}
                   >
                     <div className="flex items-start gap-3">
                       <input
@@ -863,7 +852,7 @@ export default function AdminOrdersPage() {
                         </p>
                         <p className="mt-1 truncate text-small text-text-muted">{itemsSummaryLabel(o, locale)}</p>
                         <div className="mt-2.5 flex items-center gap-2 border-t border-border pt-2.5">
-                          <span className="font-mono text-small font-bold tabular-nums">{formatBdt(o.totalPoisha)}</span>
+                          <span className="tnum text-small font-bold">{formatBdt(o.totalPoisha)}</span>
                           <Badge tone="neutral">{paymentMethodLabel(o.paymentMethod, locale)}</Badge>
                           <Badge tone={level === "High" ? "danger" : level === "Medium" ? "warning" : "success"}>
                             {level === "High" ? s.riskHigh : level === "Medium" ? s.riskMedium : s.riskLow}
@@ -875,7 +864,7 @@ export default function AdminOrdersPage() {
                           <a
                             href={`/admin/orders/${o.id}`}
                             aria-label={interpolate(s.lpDetailsAria, { orderNo: o.orderNo })}
-                            className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-2 text-text-muted transition motion-fast hover:bg-brand-50 hover:text-brand-700"
+                            className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-2 text-text-muted transition duration-fast ease-smooth hover:bg-brand-soft hover:text-brand-ink"
                           >
                             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
                               <path d="m9 18 6-6-6-6" />
@@ -901,10 +890,10 @@ export default function AdminOrdersPage() {
               {STATUSES.filter((s) => s !== "ALL").map((status) => {
                 const column = pageOrders.filter((o) => o.status === status);
                 return (
-                  <section key={status} className="flex w-[264px] shrink-0 flex-col rounded-lg border border-border bg-surface-2/60 shadow-card">
+                  <section key={status} className="flex w-[264px] shrink-0 flex-col rounded-2xl border border-border/60 bg-surface-2/60 shadow-xs">
                     <header className="flex items-center gap-2 px-3.5 pb-1 pt-3.5">
                       <OrderStatusBadge status={status} lang={locale} />
-                      <span className="ml-auto rounded-full bg-card px-2 py-0.5 font-mono text-caption font-semibold tabular-nums text-text-muted">
+                      <span className="tnum ml-auto rounded-full bg-card px-2 py-0.5 text-caption font-semibold text-text-muted">
                         {column.length}
                       </span>
                     </header>
@@ -915,7 +904,7 @@ export default function AdminOrdersPage() {
                         <article
                           key={o.id}
                           onClick={(e) => { if (isPlainRowClick(e)) setPreviewId(o.id); }}
-                          className="cursor-grab rounded-md border border-border bg-card p-3 shadow-sm transition motion-fast hover:shadow-md active:cursor-grabbing"
+                          className="cursor-grab rounded-xl border border-border/60 bg-card p-3 shadow-xs transition duration-fast ease-smooth hover:shadow-card active:cursor-grabbing"
                         >
                           <a href={`/admin/orders/${o.id}`} className="font-mono text-small font-semibold text-brand-700 hover:underline">
                             {o.orderNo}
@@ -923,7 +912,7 @@ export default function AdminOrdersPage() {
                           <p className="mt-1 truncate text-small font-medium leading-snug">{o.customerName}</p>
                           <p className="text-caption text-text-muted">{displayPhone(o.customerPhone, false)}</p>
                           <p className="mt-2 flex items-center justify-between text-caption">
-                            <span className="font-mono font-semibold tabular-nums text-text-main">{formatBdt(o.totalPoisha)}</span>
+                            <span className="tnum font-semibold text-text-main">{formatBdt(o.totalPoisha)}</span>
                             <span className="text-text-muted">{paymentMethodLabel(o.paymentMethod, locale)}</span>
                           </p>
                           {(() => {
@@ -957,7 +946,7 @@ export default function AdminOrdersPage() {
                 id="orders-page-size"
                 value={pageSize}
                 onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-                className="rounded-md border border-border bg-card px-2 py-1.5 text-small outline-none focus:border-brand-500"
+                className="rounded-xl border border-border bg-card px-2 py-1.5 text-small outline-none focus:border-brand-ink"
               >
                 {[25, 50, 100].map((n) => (
                   <option key={n} value={n}>{n}</option>
@@ -984,7 +973,7 @@ export default function AdminOrdersPage() {
       <DraftsPanel onConverted={load} />
 
       {/* Manual order — posts to the admin create endpoint */}
-      <Card className="mt-8 shadow-card">
+      <Card className="mt-8">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-h3">{s.lpManualTitle}</h2>
@@ -997,7 +986,7 @@ export default function AdminOrdersPage() {
             </p>
           </div>
         </div>
-        <p className="mt-3 rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
+        <p className="mt-3 rounded-xl bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
           {s.lpManualNote}
         </p>
         <ManualOrderBuilder onCreated={load} />

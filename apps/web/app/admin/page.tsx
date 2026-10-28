@@ -15,9 +15,15 @@
 // Daily series (backlog #10): DashboardData.dailySeries now carries
 // REAL per-day revenue/orders bucketed from the same rows + status
 // filter as the totals, so the revenue panel renders a true area chart
-// (src/admin/revenue-chart.tsx) and the KPI cards carry true daily
-// sparklines — still no invented trend anywhere. The আজ/সপ্তাহ figures
-// live in the KPI period strips.
+// and the KPI cards carry true daily sparklines — still no invented
+// trend anywhere. The আজ/সপ্তাহ figures live in the KPI period strips.
+//
+// Doc 31 D4 (Aurora Pro): the charts now come from the v4 chart kit
+// (AreaChart + Sparkline over the same dailySeries), the KPI tiles use
+// the StatCard visual language, and accents ride soft/solid tokens.
+// The status donut stays bespoke: it needs per-status semantic colours
+// and StatusBadge legend rows, which the kit DonutChart (5-colour
+// cycle, string labels) cannot carry.
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/admin-shell/PageHeader";
@@ -28,9 +34,9 @@ import { CountUp } from "@/components/ui/count-up";
 import { Phone } from "@/components/ui/phone";
 import { StatusBadge, type OrderStatus as BadgeOrderStatus } from "@/components/ui/status-badge";
 import { ADMIN_NAV, isLockedAddOn, navItemLabel } from "@/admin-nav/config";
-import { RevenueChart, Sparkline } from "@/admin/revenue-chart";
+import { AreaChart, Sparkline } from "@/components/ui/chart-kit";
 import { getRequestLocale } from "@/i18n/server";
-import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
 import { ADMIN_STRINGS, type AdminStrings } from "@/admin/strings";
 import { getDashboardData } from "@/reports/dashboard";
 import { AttendanceCard } from "@/team/attendance-card";
@@ -136,21 +142,27 @@ const STATUS_COLORS: Partial<Record<OrderStatus, string>> = {
   REFUNDED: "#14B8A6",
 };
 
+/* KPI tile in the ui StatCard's v4 visual language (icon chip, text-kpi
+ * value, sparkline slot). The StatCard component itself is not used:
+ * its delta chip is a trend arrow, and this page has no previous-period
+ * series — a percentage there would fabricate a trend. The honest
+ * secondary figures live in the PeriodStrip below the value instead
+ * (same call the orders KPI panel and call-center reports made). */
 function KpiCard({
   label, value, icon, accent, children, sparkline,
 }: {
   label: string; value: ReactNode; icon: string; accent: string; children?: ReactNode; sparkline?: ReactNode;
 }) {
   return (
-    <Card className="shadow-card transition motion-base hover:shadow-lift">
-      <div className="flex items-start justify-between gap-2">
-        <span aria-hidden="true" className={`flex h-11 w-11 items-center justify-center rounded-md ${accent}`}>
+    <Card>
+      <div className="flex items-start justify-between gap-3">
+        <span aria-hidden="true" className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-xl shadow-xs ${accent}`}>
           <Icon name={icon} className="h-5 w-5" />
         </span>
-        {sparkline ? <span className="pt-1" aria-hidden="true">{sparkline}</span> : null}
+        {sparkline ? <span className="w-24 shrink-0 pt-1" aria-hidden="true">{sparkline}</span> : null}
       </div>
-      <p className="mt-3 text-caption font-medium text-text-muted">{label}</p>
-      <p className="font-mono text-2xl font-bold tabular-nums leading-8">{value}</p>
+      <p className="mt-4 text-xs font-medium text-text-muted">{label}</p>
+      <p className="tnum mt-0.5 text-kpi text-text-main">{value}</p>
       {children}
     </Card>
   );
@@ -162,7 +174,7 @@ function PeriodStrip({ items }: { items: { label: string; value: string }[] }) {
       {items.map((it) => (
         <span key={it.label} className="min-w-0 flex-1">
           <span className="block truncate text-caption text-text-subtle">{it.label}</span>
-          <span className="block truncate font-mono text-small font-semibold tabular-nums">{it.value}</span>
+          <span className="tnum block truncate text-small font-semibold">{it.value}</span>
         </span>
       ))}
     </div>
@@ -198,17 +210,26 @@ export default async function AdminHome() {
   const ordersSpark = data.dailySeries.map((d) => d.orders);
   const aovSpark = data.dailySeries.map((d) => (d.orders > 0 ? Math.round(d.revenuePoisha / d.orders) : 0));
 
+  /* ChartKit revenue panel — same dailySeries data the old bespoke
+   * chart consumed; sparse axis labels formatted in the page locale,
+   * dates anchored to Dhaka midnight like the old chart did. */
+  const revenueMax = Math.max(0, ...data.dailySeries.map((d) => d.revenuePoisha));
+  const dayLabelFmt = new Intl.DateTimeFormat(intlLocale(locale), { day: "numeric", month: "short" });
+  const revenueLabels = [0, 7, 14, 21, 29]
+    .filter((i) => i < data.dailySeries.length)
+    .map((i) => dayLabelFmt.format(new Date(`${data.dailySeries[i]!.date}T00:00:00+06:00`)));
+
   const pendingActions = [
-    { label: s.pendingOrdersLabel, count: data.pendingCount, href: "/admin/orders?status=PENDING", icon: "Clock", accent: "bg-amber-50 text-amber-600" },
-    { label: s.pendingTrxLabel, count: data.pendingTrxReviews, href: "/admin/payments", icon: "ClipboardCheck", accent: "bg-sky-50 text-sky-600" },
-    { label: s.lowStockItemsLabel, count: data.lowStock.length, href: "/admin/inventory", icon: "TriangleAlert", accent: "bg-rose-50 text-rose-600" },
+    { label: s.pendingOrdersLabel, count: data.pendingCount, href: "/admin/orders?status=PENDING", icon: "Clock", accent: "bg-warning-soft text-warning-solid" },
+    { label: s.pendingTrxLabel, count: data.pendingTrxReviews, href: "/admin/payments", icon: "ClipboardCheck", accent: "bg-info-soft text-info-solid" },
+    { label: s.lowStockItemsLabel, count: data.lowStock.length, href: "/admin/inventory", icon: "TriangleAlert", accent: "bg-danger-soft text-danger" },
   ];
   const pendingTotal = pendingActions.reduce((s, a) => s + a.count, 0);
 
   return (
     <main>
       {/* Hero — gradient is allowed on hero/CTA only (design spec). */}
-      <section className="brand-gradient relative mb-6 overflow-hidden rounded-lg p-6 text-white shadow-md sm:p-7">
+      <section className="brand-gradient relative mb-6 overflow-hidden rounded-3xl p-6 text-white shadow-lift sm:p-8">
         <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-white/10" />
         <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 right-40 h-56 w-56 rounded-full bg-white/10" />
         <div className="relative">
@@ -218,15 +239,15 @@ export default async function AdminHome() {
             {interpolate(s.heroTodaySales, { sales: formatPoisha(data.today.revenuePoisha), orders: data.today.orders })}
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
-            <Link href="/admin/orders" className="flex min-h-[44px] items-center gap-2 rounded-md bg-white px-4 text-sm font-semibold text-brand-700 shadow-sm transition motion-fast hover:bg-brand-50">
+            <Link href="/admin/orders" className="flex min-h-[44px] items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-brand-700 shadow-sm transition duration-fast ease-smooth hover:bg-brand-50">
               <Icon name="ShoppingCart" className="h-4 w-4" />
               {s.viewOrders}
             </Link>
-            <Link href="/admin/products/new" className="flex min-h-[44px] items-center gap-2 rounded-md bg-white/15 px-4 text-sm font-medium text-white ring-1 ring-white/40 transition motion-fast hover:bg-white/25">
+            <Link href="/admin/products/new" className="flex min-h-[44px] items-center gap-2 rounded-xl bg-white/15 px-4 text-sm font-medium text-white ring-1 ring-white/40 transition duration-fast ease-smooth hover:bg-white/25">
               <Icon name="Package" className="h-4 w-4" />
               {s.addProduct}
             </Link>
-            <Link href="/admin/riders" className="flex min-h-[44px] items-center gap-2 rounded-md bg-white/15 px-4 text-sm font-medium text-white ring-1 ring-white/40 transition motion-fast hover:bg-white/25">
+            <Link href="/admin/riders" className="flex min-h-[44px] items-center gap-2 rounded-xl bg-white/15 px-4 text-sm font-medium text-white ring-1 ring-white/40 transition duration-fast ease-smooth hover:bg-white/25">
               <Icon name="Bike" className="h-4 w-4" />
               {s.myRiders}
             </Link>
@@ -239,24 +260,24 @@ export default async function AdminHome() {
 
       {/* KPI row */}
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label={s.totalSales30} value={<CountUp value={totals.revenuePoisha} format="poisha" />} icon="Banknote" accent="bg-brand-50 text-brand-600" sparkline={<Sparkline values={revenueSpark} stroke="#6366F1" />}>
+        <KpiCard label={s.totalSales30} value={<CountUp value={totals.revenuePoisha} format="poisha" />} icon="Banknote" accent="bg-brand-soft text-brand-ink" sparkline={<Sparkline data={revenueSpark} color={1} />}>
           <PeriodStrip items={[
             { label: s.today, value: formatPoisha(data.today.revenuePoisha) },
             { label: s.week, value: formatPoisha(data.week.revenuePoisha) },
           ]} />
         </KpiCard>
-        <KpiCard label={s.orders30} value={<CountUp value={totals.orders} format="plain" />} icon="ShoppingCart" accent="bg-violet-500/10 text-violet-600" sparkline={<Sparkline values={ordersSpark} stroke="#8B5CF6" />}>
+        <KpiCard label={s.orders30} value={<CountUp value={totals.orders} format="plain" />} icon="ShoppingCart" accent="bg-info-soft text-info-solid" sparkline={<Sparkline data={ordersSpark} color={4} />}>
           <PeriodStrip items={[
             { label: s.today, value: interpolate(s.ordersCount, { count: data.today.orders }) },
             { label: s.week, value: interpolate(s.ordersCount, { count: data.week.orders }) },
           ]} />
         </KpiCard>
-        <KpiCard label={s.totalProfit30} value={<CountUp value={totals.grossProfitPoisha} format="poisha" />} icon="TrendingUp" accent="bg-emerald-50 text-emerald-600">
+        <KpiCard label={s.totalProfit30} value={<CountUp value={totals.grossProfitPoisha} format="poisha" />} icon="TrendingUp" accent="bg-success-soft text-success-solid">
           <p className="mt-3 border-t border-border pt-3 text-caption text-text-muted">
             {interpolate(s.netAndUnits, { net: formatPoisha(totals.netRevenuePoisha), units: totals.units })}
           </p>
         </KpiCard>
-        <KpiCard label={s.avgOrderValue} value={<CountUp value={aovPoisha} format="poisha" />} icon="Calculator" accent="bg-sky-50 text-sky-600" sparkline={<Sparkline values={aovSpark} stroke="#0EA5E9" />}>
+        <KpiCard label={s.avgOrderValue} value={<CountUp value={aovPoisha} format="poisha" />} icon="Calculator" accent="bg-warning-soft text-warning-solid" sparkline={<Sparkline data={aovSpark} color={2} />}>
           <p className="mt-3 border-t border-border pt-3 text-caption text-text-muted">
             {interpolate(s.refundAndShipping, { refund: formatPoisha(totals.refundPoisha), shipping: formatPoisha(totals.shippingPoisha) })}
           </p>
@@ -265,7 +286,7 @@ export default async function AdminHome() {
 
       {/* Bento row 1 — revenue + status donut */}
       <div className="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Card className="shadow-card xl:col-span-2">
+        <Card className="xl:col-span-2">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <h2 className="text-h3">{s.salesChart}</h2>
@@ -279,7 +300,13 @@ export default async function AdminHome() {
             </Link>
           </div>
           <div className="mt-4">
-            <RevenueChart data={data.dailySeries} />
+            <AreaChart
+              data={revenueSpark}
+              labels={revenueLabels}
+              color={1}
+              height={220}
+              ariaLabel={interpolate(s.chartAria, { max: revenueMax > 0 ? formatPoisha(revenueMax) : s.chartZero })}
+            />
           </div>
           <div className="mt-6 grid grid-cols-2 gap-3 border-t border-border pt-4 sm:grid-cols-4">
             {[
@@ -290,18 +317,18 @@ export default async function AdminHome() {
             ].map((m) => (
               <div key={m.label}>
                 <p className="text-caption text-text-subtle">{m.label}</p>
-                <p className="font-mono text-small font-bold tabular-nums">{m.value}</p>
+                <p className="tnum text-small font-bold">{m.value}</p>
               </div>
             ))}
           </div>
         </Card>
 
-        <Card className="shadow-card">
+        <Card>
           <h2 className="text-h3">{s.ordersByStatus}</h2>
           <p className="mt-0.5 text-caption text-text-muted">{s.ordersByStatusDesc}</p>
           {statusTotal === 0 ? (
             <div className="flex flex-col items-center px-2 py-10 text-center">
-              <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 text-brand-500">
+              <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-soft text-brand-ink">
                 <Icon name="ShoppingCart" className="h-6 w-6" />
               </span>
               <p className="mt-3 text-small font-medium">{s.noOrdersYet}</p>
@@ -327,7 +354,7 @@ export default async function AdminHome() {
                   ))}
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="font-mono text-2xl font-bold tabular-nums">{statusTotal}</span>
+                  <span className="tnum text-2xl font-bold text-text-main">{statusTotal}</span>
                   <span className="text-caption text-text-muted">{s.totalOrders}</span>
                 </div>
               </div>
@@ -336,8 +363,8 @@ export default async function AdminHome() {
                   <li key={seg.status} className="flex items-center gap-2 text-small">
                     <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: STATUS_COLORS[seg.status] ?? "#6366F1" }} />
                     <span className="min-w-0 flex-1">{statusCell(seg.status)}</span>
-                    <span className="font-mono font-semibold tabular-nums">{seg.n}</span>
-                    <span className="w-11 text-right text-caption tabular-nums text-text-subtle">
+                    <span className="tnum font-semibold">{seg.n}</span>
+                    <span className="tnum w-11 text-right text-caption text-text-subtle">
                       {Math.round(seg.frac * 100)}%
                     </span>
                   </li>
@@ -350,7 +377,7 @@ export default async function AdminHome() {
 
       {/* Bento row 2 — recent orders + side stack */}
       <div className="mb-8 grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Card className="shadow-card xl:col-span-2">
+        <Card className="xl:col-span-2">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <h2 className="text-h3">{s.recentOrders}</h2>
@@ -363,14 +390,14 @@ export default async function AdminHome() {
           </div>
           {data.recentOrders.length === 0 ? (
             <div className="flex flex-col items-center px-2 py-10 text-center">
-              <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 text-brand-500">
+              <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-soft text-brand-ink">
                 <Icon name="Inbox" className="h-6 w-6" />
               </span>
               <p className="mt-3 text-small font-medium">{s.noOrdersYetLong}</p>
               <p className="mt-1 max-w-sm text-caption text-text-muted">
                 {s.noOrdersYetLongDesc}
               </p>
-              <Link href="/admin/products/new" className="brand-gradient mt-4 flex min-h-[40px] items-center rounded-md px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:opacity-95">
+              <Link href="/admin/products/new" className="brand-gradient mt-4 flex min-h-[40px] items-center rounded-xl px-4 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:opacity-95">
                 {s.addProduct}
               </Link>
             </div>
@@ -378,8 +405,8 @@ export default async function AdminHome() {
             <ul className="mt-2 divide-y divide-border">
               {data.recentOrders.map((o) => (
                 <li key={o.id}>
-                  <Link href={`/admin/orders/${o.id}`} className="group flex items-center gap-3 py-3 transition motion-fast">
-                    <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-surface-2 text-text-muted transition group-hover:bg-brand-50 group-hover:text-brand-600">
+                  <Link href={`/admin/orders/${o.id}`} className="group flex items-center gap-3 py-3 transition duration-fast ease-smooth">
+                    <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-text-muted transition duration-fast ease-smooth group-hover:bg-brand-soft group-hover:text-brand-ink">
                       <Icon name="ShoppingCart" className="h-[18px] w-[18px]" />
                     </span>
                     <span className="min-w-0 flex-1">
@@ -401,7 +428,7 @@ export default async function AdminHome() {
 
         <div className="space-y-4">
           {/* Pending actions */}
-          <Card className="shadow-card">
+          <Card>
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-h3">{s.toDo}</h2>
               {pendingTotal > 0 ? <Badge tone="warning">{interpolate(s.pendingBadge, { count: pendingTotal })}</Badge> : <Badge tone="success">{s.allGood}</Badge>}
@@ -410,11 +437,11 @@ export default async function AdminHome() {
               {pendingActions.map((a) => (
                 <li key={a.label}>
                   <Link href={a.href} className="group flex items-center gap-3 py-3">
-                    <span aria-hidden="true" className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${a.accent}`}>
+                    <span aria-hidden="true" className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${a.accent}`}>
                       <Icon name={a.icon} className="h-[18px] w-[18px]" />
                     </span>
                     <span className="min-w-0 flex-1 text-small font-medium leading-snug">{a.label}</span>
-                    <span className="font-mono text-base font-bold tabular-nums">{a.count}</span>
+                    <span className="tnum text-base font-bold">{a.count}</span>
                     <span aria-hidden="true" className="text-text-subtle transition group-hover:text-brand-600">
                       <Icon name="ChevronRight" className="h-4 w-4" />
                     </span>
@@ -425,7 +452,7 @@ export default async function AdminHome() {
           </Card>
 
           {/* Low stock */}
-          <Card className="shadow-card">
+          <Card>
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-h3">{s.lowStock}</h2>
               <Link href="/admin/inventory" className="flex items-center gap-1 text-small font-semibold text-brand-700 hover:underline">
@@ -461,13 +488,13 @@ export default async function AdminHome() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
         {tiles.map((item) => (
           <Link key={item.id} href={item.path} className="group block">
-            <Card className="h-full shadow-card transition motion-base group-hover:-translate-y-0.5 group-hover:border-brand-300 group-hover:shadow-lift">
+            <Card elevation="lift" className="h-full group-hover:border-brand-300">
               <div className="flex items-start justify-between gap-2">
-                <span aria-hidden="true" className="flex h-11 w-11 items-center justify-center rounded-md bg-brand-50 text-brand-600 transition motion-fast group-hover:bg-brand-100">
+                <span aria-hidden="true" className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-soft text-brand-ink transition duration-fast ease-smooth group-hover:bg-brand-100">
                   <Icon name={item.icon} className="h-5 w-5" />
                 </span>
                 {isLockedAddOn(item) ? (
-                  <span className="flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-caption font-semibold text-amber-700">
+                  <span className="flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-caption font-semibold text-warning-solid">
                     <Icon name="Lock" className="h-3 w-3" />
                     {s.addOn}
                   </span>

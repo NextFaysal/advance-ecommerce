@@ -411,8 +411,8 @@ export default function PosRegisterClient({
   const saleRows = displaySales.map((sale) => {
     const method = PAYMENT_METHODS.find((m) => m.id === sale.paymentMethod);
     return {
-      time: dhakaTime(sale.createdAt, locale),
-      items: String(sale.lines.reduce((sum, l) => sum + l.quantity, 0)),
+      time: <span className="tnum">{dhakaTime(sale.createdAt, locale)}</span>,
+      items: <span className="tnum">{sale.lines.reduce((sum, l) => sum + l.quantity, 0)}</span>,
       method: method ? s[method.labelKey] : sale.paymentMethod,
       total: <Money poisha={sale.totalPoisha} />,
       status: (
@@ -426,10 +426,10 @@ export default function PosRegisterClient({
   return (
     <div>
       {message ? (
-        <p role="status" className="mb-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p>
+        <p role="status" className="mb-4 rounded-md bg-success-soft px-3 py-2 text-sm text-success-solid">{message}</p>
       ) : null}
       {error ? (
-        <p role="alert" className="mb-4 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>
+        <p role="alert" className="mb-4 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -451,13 +451,13 @@ export default function PosRegisterClient({
           <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3">
             {filteredCatalog.map((item) => (
               <button key={item.variantId} type="button" onClick={() => addItem(item)}
-                className="rounded-md border border-border p-3 text-left hover:bg-surface-2 disabled:opacity-50"
+                className="min-h-[44px] rounded-md border border-border bg-card p-3 text-left hover:bg-surface-2 disabled:opacity-50"
                 disabled={item.stock <= 0}>
                 <span className="block text-sm font-medium">{item.productName}</span>
                 <span className="mt-1 block font-mono text-xs text-text-muted">{item.sku}</span>
                 <span className="mt-1 flex items-center justify-between">
                   <Money poisha={item.pricePoisha} />
-                  <span className="text-xs text-text-muted">{item.stock > 0 ? interpolate(s.stockCount, { count: item.stock }) : s.outOfStock}</span>
+                  <span className="tnum text-xs text-text-muted">{item.stock > 0 ? interpolate(s.stockCount, { count: item.stock }) : s.outOfStock}</span>
                 </span>
               </button>
             ))}
@@ -472,14 +472,14 @@ export default function PosRegisterClient({
           ) : (
             <div className="mt-2 space-y-2">
               {lines.map((line) => (
-                <div key={line.variantId} className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2">
+                <div key={line.variantId} className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
                   <span className="min-w-40 flex-1">
                     <span className="block text-sm font-medium">{line.productName}</span>
                     <span className="font-mono text-xs text-text-muted">{line.sku}</span>
                   </span>
                   <span className="flex items-center gap-1">
                     <Button size="sm" variant="outline" onClick={() => setQuantity(line.variantId, line.quantity - 1)}>−</Button>
-                    <span className="w-8 text-center font-mono tabular-nums">{line.quantity}</span>
+                    <span className="tnum w-8 text-center font-mono tabular-nums">{line.quantity}</span>
                     <Button size="sm" variant="outline" onClick={() => setQuantity(line.variantId, line.quantity + 1)}>+</Button>
                   </span>
                   <Money poisha={line.unitPricePoisha * line.quantity} />
@@ -508,23 +508,23 @@ export default function PosRegisterClient({
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <Input label={s.tenderedLabel} placeholder={s.tenderedPlaceholder} value={tenderedTaka}
                 onChange={(e) => setTenderedTaka(e.target.value)} />
-              <p className="self-end text-sm">
-                {s.changeLabel} {change?.ok ? <Money poisha={change.changePoisha} /> : change ? <span className="text-rose-600">{change.error}</span> : "—"}
+              <p className="self-end text-sm font-semibold text-text-main">
+                {s.changeLabel} {change?.ok ? <Money poisha={change.changePoisha} /> : change ? <span className="text-danger">{change.error}</span> : "—"}
               </p>
             </div>
           ) : null}
 
-          <div className="mt-4 space-y-1 border-t border-border pt-3 text-sm">
+          <div className="mt-4 space-y-1 rounded-xl bg-surface-2 px-3 py-3 text-sm">
             <p className="flex justify-between"><span>{s.subtotal}</span><Money poisha={subtotalPoisha} /></p>
             <p className="flex justify-between"><span>{s.discountLine}</span><span>− <Money poisha={discountPoisha} /></span></p>
-            <p className="flex justify-between text-base font-bold"><span>{s.total}</span><Money poisha={totalPoisha} /></p>
-            {totals && !totals.ok ? <p className="text-rose-600">{totals.error}</p> : null}
+            <p className="flex justify-between border-t border-border pt-2 text-lg font-bold text-text-main"><span>{s.total}</span><Money poisha={totalPoisha} /></p>
+            {totals && !totals.ok ? <p className="text-danger">{totals.error}</p> : null}
           </div>
           <Button variant="gradient" className="mt-3 w-full" onClick={completeSale} disabled={!shift || lines.length === 0}>
             {s.completeSale} {!shift ? s.completeSaleNeedShift : ""}
           </Button>
           {lastChangePoisha !== null ? (
-            <p className="mt-2 text-sm">{s.lastChange} <Money poisha={lastChangePoisha} /></p>
+            <p className="mt-2 text-sm font-semibold text-text-main">{s.lastChange} <Money poisha={lastChangePoisha} /></p>
           ) : null}
         </Card>
 
@@ -535,10 +535,10 @@ export default function PosRegisterClient({
             {shift ? (
               <div className="mt-2 space-y-1 text-sm">
                 <p className="flex justify-between"><span>{s.statusLabel}</span><Badge tone="success">{s.shiftOpenBadge}</Badge></p>
-                <p className="flex justify-between"><span>{s.openedAtLabel}</span><span>{dhakaTime(shift.openedAt, locale)} {s.dhakaSuffix}</span></p>
+                <p className="flex justify-between"><span>{s.openedAtLabel}</span><span className="tnum">{dhakaTime(shift.openedAt, locale)} {s.dhakaSuffix}</span></p>
                 <p className="flex justify-between"><span>{s.openingFloat}</span><Money poisha={shift.openingFloatPoisha} /></p>
                 <p className="flex justify-between"><span>{s.cashSales}</span><Money poisha={cashSalesPoisha} /></p>
-                <p className="flex justify-between font-semibold"><span>{s.expectedCash}</span><Money poisha={expectedCash} /></p>
+                <p className="flex justify-between font-semibold text-text-main"><span>{s.expectedCash}</span><Money poisha={expectedCash} /></p>
                 <div className="pt-2">
                   <Input label={s.countedLabel} placeholder={s.countedPlaceholder} value={countedTaka}
                     onChange={(e) => setCountedTaka(e.target.value)} />
@@ -565,7 +565,7 @@ export default function PosRegisterClient({
                 <p className="flex justify-between">
                   <span>{s.varianceLabel}</span>
                   {(lastClosedShift.variancePoisha ?? 0) !== 0 ? (
-                    <span className="font-semibold text-rose-600"><Money poisha={lastClosedShift.variancePoisha ?? 0} /> {s.flaggedSuffix}</span>
+                    <span className="font-semibold text-danger"><Money poisha={lastClosedShift.variancePoisha ?? 0} /> {s.flaggedSuffix}</span>
                   ) : (
                     <Money poisha={0} />
                   )}
@@ -599,13 +599,13 @@ export default function PosRegisterClient({
               <Badge tone={online ? "success" : "danger"}>{online ? s.online : s.offline}</Badge>
             </div>
             {pendingSales.length > 0 ? (
-              <p className="mt-2 text-sm text-amber-700">
+              <p className="mt-2 text-sm text-warning-solid">
                 {interpolate(s.syncPending, { count: pendingSales.length })}
               </p>
             ) : (
-              <p className="mt-2 text-sm text-emerald-700">{s.allSynced}</p>
+              <p className="mt-2 text-sm text-success-solid">{s.allSynced}</p>
             )}
-            {syncError ? <p className="mt-1 text-sm text-rose-600">{interpolate(s.syncErrorPrefix, { error: syncError })}</p> : null}
+            {syncError ? <p className="mt-1 text-sm text-danger">{interpolate(s.syncErrorPrefix, { error: syncError })}</p> : null}
             <Button
               variant="secondary"
               className="mt-3 w-full"

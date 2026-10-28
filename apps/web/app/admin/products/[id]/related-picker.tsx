@@ -140,9 +140,9 @@ export function RelatedPicker({
   const pickedIds = new Set(picks.map((p) => p.id));
 
   return (
-    <section className="mt-6 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+    <section className="mt-6 rounded-2xl border border-border/60 bg-card p-4 shadow-xs sm:p-5">
       <div className="flex items-start gap-3">
-        <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-brand-50 text-brand-600 shadow-sm ring-1 ring-inset ring-black/5">
+        <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-ink shadow-xs ring-1 ring-inset ring-black/5">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
@@ -175,12 +175,12 @@ export function RelatedPicker({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={s.relSearchPh}
-            className="h-12 w-full rounded-md border border-border bg-card pl-10 pr-3 text-sm text-text-main shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-200"
+            className="h-12 w-full rounded-xl border border-border bg-card pl-10 pr-3 text-sm text-text-main shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15 hover:border-brand-200"
           />
         </div>
         {searching ? <p className="mt-2 text-small text-text-muted">{s.relSearching}</p> : null}
         {hits.length > 0 ? (
-          <ul className="anim-fade-in mt-2.5 divide-y divide-border/70 rounded-lg border border-border/70 bg-card px-3 shadow-sm">
+          <ul className="anim-fade-in mt-2.5 divide-y divide-border/60 rounded-2xl border border-border/60 bg-card px-3 shadow-xs">
             {hits.map((hit) => (
               <li key={hit.id} className="flex items-center justify-between gap-3 py-2.5">
                 <span className="min-w-0">
@@ -193,7 +193,7 @@ export function RelatedPicker({
                   type="button"
                   disabled={pickedIds.has(hit.id) || picks.length >= MAX_PICKS}
                   onClick={() => add(hit)}
-                  className="inline-flex min-h-[44px] shrink-0 items-center rounded-md bg-brand-600 px-3.5 text-sm font-semibold text-white shadow-sm transition motion-fast hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="inline-flex min-h-[44px] shrink-0 items-center rounded-xl bg-brand-600 px-3.5 text-sm font-semibold text-white shadow-xs transition duration-fast ease-smooth hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {pickedIds.has(hit.id) ? s.relAdded : s.relAdd}
                 </button>
@@ -206,22 +206,22 @@ export function RelatedPicker({
       {/* Current picks */}
       <h3 className="mt-6 text-small font-semibold text-text-main">{interpolate(s.relSelected, { count: picks.length })}</h3>
       {picks.length === 0 ? (
-        <p className="mt-2 rounded-lg border border-dashed border-border px-4 py-5 text-center text-small text-text-muted">
+        <p className="mt-2 rounded-2xl border border-dashed border-border px-4 py-5 text-center text-small text-text-muted">
           {s.relEmpty}
         </p>
       ) : (
         <ol className="mt-2.5 space-y-2">
           {picks.map((pick, i) => {
             const chipCls = pick.missing
-              ? "bg-rose-50 text-rose-700 ring-rose-100"
+              ? "bg-danger-soft text-danger ring-danger/20"
               : pick.status === "ACTIVE"
-                ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+                ? "bg-success-soft text-success-solid ring-success-solid/20"
                 : pick.status === "DRAFT"
                   ? "bg-amber-50 text-amber-700 ring-amber-100"
                   : "bg-surface-2 text-text-muted ring-black/5";
             return (
-              <li key={pick.id} className="flex items-center gap-3 rounded-lg border border-border/70 bg-surface-2/40 px-3 py-2.5">
-                <span aria-hidden="true" className="brand-gradient flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold tabular-nums text-white shadow-sm">
+              <li key={pick.id} className="flex items-center gap-3 rounded-xl border border-border/60 bg-surface-2/40 px-3 py-2.5">
+                <span aria-hidden="true" className="brand-gradient flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold tnum text-white shadow-xs">
                   {i + 1}
                 </span>
                 <span className="min-w-0 flex-1">
@@ -242,7 +242,7 @@ export function RelatedPicker({
                     aria-label={s.relMoveUp}
                     disabled={i === 0}
                     onClick={() => move(i, -1)}
-                    className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-border bg-card text-text-muted shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
+                    className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-border bg-card text-text-muted shadow-xs transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-soft disabled:opacity-40"
                   >
                     ↑
                   </button>
@@ -251,14 +251,14 @@ export function RelatedPicker({
                     aria-label={s.relMoveDown}
                     disabled={i === picks.length - 1}
                     onClick={() => move(i, 1)}
-                    className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-border bg-card text-text-muted shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
+                    className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-border bg-card text-text-muted shadow-xs transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-soft disabled:opacity-40"
                   >
                     ↓
                   </button>
                   <button
                     type="button"
                     onClick={() => remove(pick.id)}
-                    className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-semibold text-rose-600 shadow-sm transition motion-fast hover:border-rose-200 hover:bg-rose-50"
+                    className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-3.5 text-sm font-semibold text-danger shadow-xs transition duration-fast ease-smooth hover:border-danger/30 hover:bg-danger-soft"
                   >
                     {s.relRemove}
                   </button>
@@ -274,7 +274,7 @@ export function RelatedPicker({
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
+          className="brand-gradient inline-flex min-h-[44px] items-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:brightness-105 disabled:opacity-50"
         >
           {saving ? s.saving : s.relSaveBtn}
         </button>

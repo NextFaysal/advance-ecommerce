@@ -18,7 +18,7 @@ import { interpolate, pick } from "@/i18n/locale";
 import { PRODUCTS_STRINGS } from "../strings";
 
 const inputCls =
-  "min-h-[44px] w-full rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-sm outline-none transition motion-fast focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100";
+  "min-h-[44px] w-full rounded-xl border border-border bg-card px-3 py-2 text-sm shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15";
 const labelCls = "mb-1.5 block text-xs font-semibold text-text-muted";
 
 interface VariantView {
@@ -170,7 +170,7 @@ export function LabelsPanel() {
             type="button"
             onClick={search}
             disabled={searching}
-            className="brand-gradient inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105 disabled:opacity-50"
+            className="brand-gradient inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:shadow-lift hover:brightness-105 disabled:opacity-50"
           >
             <Icon name="search" size={16} />
             {searching ? s.labelsSearching : s.labelsSearchBtn}
@@ -183,8 +183,8 @@ export function LabelsPanel() {
           </span>
         </p>
         {error ? (
-          <div role="alert" className="anim-pop-in flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3.5 text-sm text-rose-800">
-            <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
+          <div role="alert" className="anim-pop-in flex items-start gap-3 rounded-2xl border border-danger/25 bg-danger-soft px-4 py-3.5 text-sm text-danger">
+            <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-danger-soft text-danger">
               <Icon name="alert" size={16} />
             </span>
             <p className="leading-relaxed">{error}</p>
@@ -210,8 +210,8 @@ export function LabelsPanel() {
                     return (
                       <li
                         key={v.id}
-                        className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-2.5 text-sm transition motion-fast ${
-                          isPicked ? "bg-brand-50/70" : ""
+                        className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-2.5 text-sm transition duration-fast ease-smooth ${
+                          isPicked ? "bg-brand-soft/70" : ""
                         } ${hasBarcode ? "" : "opacity-75"}`}
                       >
                         <input
@@ -224,11 +224,11 @@ export function LabelsPanel() {
                         />
                         <span className="font-mono font-medium">{v.sku}</span>
                         {attrsText(v) ? <span className="text-text-muted">{attrsText(v)}</span> : null}
-                        <span className="font-mono tabular-nums">{formatPoisha(v.pricePoisha)}</span>
+                        <span className="tnum">{formatPoisha(v.pricePoisha)}</span>
                         {hasBarcode ? (
                           <span className="font-mono text-xs text-text-subtle">{interpolate(s.labelsBarcodeText, { code: v.barcode ?? "" })}</span>
                         ) : (
-                          <span className="inline-flex h-6 items-center rounded-full bg-amber-50 px-2.5 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-200">
+                          <span className="inline-flex h-6 items-center rounded-full bg-warning-soft px-2.5 text-xs font-medium text-warning-solid ring-1 ring-inset ring-warning-solid/25">
                             {s.labelsNoBarcode}
                           </span>
                         )}
@@ -241,7 +241,7 @@ export function LabelsPanel() {
                               max={500}
                               value={selected.get(v.id)?.copies ?? 1}
                               onChange={(e) => setCopies(v.id, Number(e.target.value))}
-                              className="min-h-[44px] w-24 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm shadow-sm outline-none transition motion-fast focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100"
+                              className="min-h-[44px] w-24 rounded-xl border border-border bg-card px-2.5 py-1.5 text-sm shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15"
                             />
                           </label>
                         ) : null}
@@ -257,17 +257,17 @@ export function LabelsPanel() {
 
       <Card className="space-y-4">
         <div className="flex items-center gap-3">
-          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 ring-1 ring-brand-100">
+          <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-ink ring-1 ring-brand-ink/15">
             <Icon name="settings" size={20} />
           </span>
           <h2 className="font-display text-base font-semibold text-text-main">{s.labelsSettingsTitle}</h2>
         </div>
         <div className="grid gap-2 text-sm">
-          <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-lg border border-border bg-card px-3.5 transition motion-fast hover:bg-surface-2">
+          <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 transition duration-fast ease-smooth hover:bg-surface-2">
             <input type="checkbox" checked={showPrice} onChange={(e) => setShowPrice(e.target.checked)} className="h-5 w-5 shrink-0 accent-brand-600" />
             {s.labelsShowPrice}
           </label>
-          <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-lg border border-border bg-card px-3.5 transition motion-fast hover:bg-surface-2">
+          <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 transition duration-fast ease-smooth hover:bg-surface-2">
             <input type="checkbox" checked={showShopName} onChange={(e) => setShowShopName(e.target.checked)} className="h-5 w-5 shrink-0 accent-brand-600" />
             {s.labelsShowShop}
           </label>
@@ -284,7 +284,7 @@ export function LabelsPanel() {
           <span className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 text-xs text-text-muted ring-1 ring-inset ring-black/5">
             {interpolate(s.labelsSelectedCount, { count: selections.length })}
           </span>
-          <span className="inline-flex h-6 items-center rounded-full bg-brand-50 px-2.5 text-xs font-semibold text-brand-700 ring-1 ring-inset ring-brand-100">
+          <span className="inline-flex h-6 items-center rounded-full bg-brand-soft px-2.5 text-xs font-semibold text-brand-ink ring-1 ring-inset ring-brand-ink/15">
             {interpolate(s.labelsTotalCount, { count: totalLabels })}
           </span>
         </div>
@@ -292,7 +292,7 @@ export function LabelsPanel() {
           type="button"
           onClick={() => window.print()}
           disabled={totalLabels === 0}
-          className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-base font-semibold text-white shadow-md transition motion-fast hover:bg-emerald-700 hover:shadow-lift disabled:opacity-50"
+          className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-success-solid px-5 py-2.5 text-base font-semibold text-white shadow-md transition duration-fast ease-smooth hover:brightness-105 hover:shadow-lift disabled:opacity-50"
         >
           <Icon name="check" size={18} />
           {interpolate(s.labelsPrintBtn, { count: totalLabels })}

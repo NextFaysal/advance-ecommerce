@@ -13,6 +13,8 @@ import { TRACKING_SETTING_KEYS } from "@/tracking/settings";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { SETTINGS_B_STRINGS, type SettingsBStrings } from "../strings-b";
+import { PageHeader } from "@/components/ui/page-header";
+import { Card } from "@/components/ui/card";
 
 type SKey = keyof SettingsBStrings;
 
@@ -80,10 +82,12 @@ function FieldRow({ settingKey, labelKey, secret, placeholder, placeholderKey, s
     if (result.ok && secret) setValue("");
   };
 
+  const fieldInputCls =
+    "mb-2 block w-full max-w-[440px] rounded-xl border border-input bg-background px-3 py-2 text-sm text-text-main shadow-xs focus:border-ring focus:outline-none";
   return (
-    <div style={{ border: "1px solid #E6E8F2", borderRadius: 6, padding: 16, marginBottom: 12, backgroundColor: "#FAFAFC" }}>
-      <h3 style={{ fontSize: 14, fontWeight: 600, margin: "0 0 4px 0" }}>{label}</h3>
-      <p style={{ fontSize: 12, color: "#666", margin: "0 0 10px 0" }}>
+    <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
+      <h3 className="text-sm font-semibold text-text-main">{label}</h3>
+      <p className="mb-2.5 mt-0.5 text-xs text-text-muted">
         {s.trackKeyLabel} <code>{settingKey}</code>
         {secret ? s.trackSecretNote : ""}
       </p>
@@ -93,23 +97,25 @@ function FieldRow({ settingKey, labelKey, secret, placeholder, placeholderKey, s
         onChange={(e) => setValue(e.target.value)}
         placeholder={ph}
         autoComplete="off"
-        style={{ display: "block", width: "100%", maxWidth: 440, marginBottom: 8, padding: 8, border: "1px solid #D1D5DB", borderRadius: 4 }}
+        className={fieldInputCls}
       />
       <input
         type="text"
         value={reason}
         onChange={(e) => setReason(e.target.value)}
         placeholder={s.trackReasonPlaceholder}
-        style={{ display: "block", width: "100%", maxWidth: 440, marginBottom: 8, padding: 8, border: "1px solid #D1D5DB", borderRadius: 4 }}
+        className={fieldInputCls}
       />
       <button
         type="button"
         onClick={save}
-        style={{ padding: "6px 14px", backgroundColor: "#111827", color: "#FFF", borderRadius: 4, cursor: "pointer", border: "none" }}
+        className="rounded-xl bg-primary px-3.5 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-90"
       >
         {s.save}
       </button>
-      {status && <span style={{ marginLeft: 12, fontSize: 13, color: status === s.trackSaved ? "#059669" : "#DC2626" }}>{status}</span>}
+      {status && (
+        <span className={`ml-3 text-[13px] ${status === s.trackSaved ? "text-success-solid" : "text-danger"}`}>{status}</span>
+      )}
     </div>
   );
 }
@@ -138,84 +144,83 @@ export default function TrackingSettingsPage() {
   const yn = (v: boolean | undefined) => (v === undefined ? "—" : v ? s.trackConfiguredOn : s.trackNotConfiguredOff);
 
   return (
-    <main style={{ maxWidth: 860, margin: "0 auto", padding: "24px 16px" }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>{s.trackTitle}</h1>
-      <p style={{ color: "#4B5563", marginBottom: 20 }}>{s.trackDesc}</p>
+    <main className="min-w-0">
+      <PageHeader title={s.trackTitle} description={s.trackDesc} />
 
-      <div
-        style={{ border: "1px solid #34D399", backgroundColor: "#ECFDF5", color: "#065F46", borderRadius: 8, padding: "12px 16px", marginBottom: 24, fontSize: 14, lineHeight: 1.7 }}
-      >
-        <strong>✅ {s.trackLiveA}</strong>
-        {s.trackLiveBody}
-        <code>seo.meta.pixel_id</code>
-        {s.trackLiveBody2}
-        <code>seo.meta.access_token</code>
-        {s.trackLiveBody3}
-        <code>NEXT_PUBLIC_META_PIXEL_ID</code>
-        {s.trackLiveBody4}
-        <code>META_ACCESS_TOKEN</code>
-        {s.trackLiveBody5}
+      <div className="space-y-6">
+        <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-sm leading-7 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+          <strong>✅ {s.trackLiveA}</strong>
+          {s.trackLiveBody}
+          <code>seo.meta.pixel_id</code>
+          {s.trackLiveBody2}
+          <code>seo.meta.access_token</code>
+          {s.trackLiveBody3}
+          <code>NEXT_PUBLIC_META_PIXEL_ID</code>
+          {s.trackLiveBody4}
+          <code>META_ACCESS_TOKEN</code>
+          {s.trackLiveBody5}
+        </div>
+
+        <Card>
+          <h2 className="font-display text-base font-semibold text-text-main">{s.trackStatusTitle}</h2>
+          {statusError && <p className="mt-2 text-[13px] text-danger">{statusError}</p>}
+          {status && (
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-7">
+              <li><strong>{s.trackPrimaryPixel}</strong> {yn(status.metaPixelConfigured)}</li>
+              <li><strong>{s.trackBackupPixel}</strong> {yn(status.metaBackupPixelConfigured)}</li>
+              <li><strong>{s.trackMetaCapi}</strong> {yn(status.metaCapiEnabled)} · {s.trackPrimaryToken} {yn(status.metaAccessTokenConfigured)} · {s.trackBackupToken} {yn(status.metaBackupAccessTokenConfigured)}</li>
+              <li><strong>{s.trackClarityStatus}</strong> {yn(status.clarityConfigured)} {s.trackClaritySuffix}</li>
+              <li><strong>GA4:</strong> {yn(status.ga4Configured)}</li>
+              <li><strong>TikTok:</strong> {yn(status.tiktokConfigured)}</li>
+            </ul>
+          )}
+          {!status && !statusError && <p className="mt-2 text-[13px] text-text-muted">{s.trackLoadingStatus}</p>}
+        </Card>
+
+        <section>
+          <h2 className="font-display text-lg font-semibold text-text-main">{s.trackMetaHeading}</h2>
+          <p className="mb-3 mt-1 text-[13px] text-text-muted">{s.trackMetaDesc}</p>
+          <div className="space-y-3">
+            {META_FIELDS.map((f) => (
+              <FieldRow key={f.key} settingKey={f.key} labelKey={f.labelKey} secret={f.secret} placeholder={f.placeholder} placeholderKey={f.placeholderKey} s={s} />
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg font-semibold text-text-main">{s.trackClarityHeading}</h2>
+          <p className="mb-3 mt-1 text-[13px] text-text-muted">
+            {s.trackClarityDesc}
+            <code>clarity.microsoft.com</code>
+            {s.trackClarityDesc2}
+          </p>
+          <div className="space-y-3">
+            {CLARITY_FIELDS.map((f) => (
+              <FieldRow key={f.key} settingKey={f.key} labelKey={f.labelKey} secret={f.secret} placeholder={f.placeholder} placeholderKey={f.placeholderKey} s={s} />
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg font-semibold text-text-main">{s.trackGoogleHeading}</h2>
+          <div className="mt-3 space-y-3">
+            {GOOGLE_FIELDS.map((f) => (
+              <FieldRow key={f.key} settingKey={f.key} labelKey={f.labelKey} secret={f.secret} placeholder={f.placeholder} placeholderKey={f.placeholderKey} s={s} />
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg font-semibold text-text-main">{s.trackTiktokHeading}</h2>
+          <div className="mt-3 space-y-3">
+            {TIKTOK_FIELDS.map((f) => (
+              <FieldRow key={f.key} settingKey={f.key} labelKey={f.labelKey} secret={f.secret} placeholder={f.placeholder} placeholderKey={f.placeholderKey} s={s} />
+            ))}
+          </div>
+        </section>
+
+        <p className="text-xs text-text-subtle">{s.trackFooterNote}</p>
       </div>
-
-      <section style={{ border: "1px solid #E5E7EB", borderRadius: 8, padding: 18, marginBottom: 24, backgroundColor: "#F9FAFB" }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 10px 0" }}>{s.trackStatusTitle}</h2>
-        {statusError && <p style={{ fontSize: 13, color: "#DC2626" }}>{statusError}</p>}
-        {status && (
-          <ul style={{ fontSize: 14, lineHeight: 2, margin: 0, paddingLeft: 20 }}>
-            <li><strong>{s.trackPrimaryPixel}</strong> {yn(status.metaPixelConfigured)}</li>
-            <li><strong>{s.trackBackupPixel}</strong> {yn(status.metaBackupPixelConfigured)}</li>
-            <li><strong>{s.trackMetaCapi}</strong> {yn(status.metaCapiEnabled)} · {s.trackPrimaryToken} {yn(status.metaAccessTokenConfigured)} · {s.trackBackupToken} {yn(status.metaBackupAccessTokenConfigured)}</li>
-            <li><strong>{s.trackClarityStatus}</strong> {yn(status.clarityConfigured)} {s.trackClaritySuffix}</li>
-            <li><strong>GA4:</strong> {yn(status.ga4Configured)}</li>
-            <li><strong>TikTok:</strong> {yn(status.tiktokConfigured)}</li>
-          </ul>
-        )}
-        {!status && !statusError && <p style={{ fontSize: 13, color: "#6B7280" }}>{s.trackLoadingStatus}</p>}
-      </section>
-
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, borderBottom: "1px solid #E5E7EB", paddingBottom: 6, marginBottom: 14 }}>
-          {s.trackMetaHeading}
-        </h2>
-        <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 12 }}>{s.trackMetaDesc}</p>
-        {META_FIELDS.map((f) => (
-          <FieldRow key={f.key} settingKey={f.key} labelKey={f.labelKey} secret={f.secret} placeholder={f.placeholder} placeholderKey={f.placeholderKey} s={s} />
-        ))}
-      </section>
-
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, borderBottom: "1px solid #E5E7EB", paddingBottom: 6, marginBottom: 14 }}>
-          {s.trackClarityHeading}
-        </h2>
-        <p style={{ fontSize: 13, color: "#6B7280", marginBottom: 12 }}>
-          {s.trackClarityDesc}
-          <code>clarity.microsoft.com</code>
-          {s.trackClarityDesc2}
-        </p>
-        {CLARITY_FIELDS.map((f) => (
-          <FieldRow key={f.key} settingKey={f.key} labelKey={f.labelKey} secret={f.secret} placeholder={f.placeholder} placeholderKey={f.placeholderKey} s={s} />
-        ))}
-      </section>
-
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, borderBottom: "1px solid #E5E7EB", paddingBottom: 6, marginBottom: 14 }}>
-          {s.trackGoogleHeading}
-        </h2>
-        {GOOGLE_FIELDS.map((f) => (
-          <FieldRow key={f.key} settingKey={f.key} labelKey={f.labelKey} secret={f.secret} placeholder={f.placeholder} placeholderKey={f.placeholderKey} s={s} />
-        ))}
-      </section>
-
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, borderBottom: "1px solid #E5E7EB", paddingBottom: 6, marginBottom: 14 }}>
-          {s.trackTiktokHeading}
-        </h2>
-        {TIKTOK_FIELDS.map((f) => (
-          <FieldRow key={f.key} settingKey={f.key} labelKey={f.labelKey} secret={f.secret} placeholder={f.placeholder} placeholderKey={f.placeholderKey} s={s} />
-        ))}
-      </section>
-
-      <p style={{ fontSize: 12, color: "#9CA3AF" }}>{s.trackFooterNote}</p>
     </main>
   );
 }

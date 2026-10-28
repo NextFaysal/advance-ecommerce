@@ -11,12 +11,21 @@ import { ShellIcon } from "./icons";
  * Sidebar via `group-data-[collapsed=true]/sidebar:` variants, so no
  * React state has to cross the server/client boundary.
  *
+ * Breakpoint contract (doc 31, D7): in the tablet band 768–1279px the
+ * sidebar is ALWAYS collapsed, whatever the stored preference says —
+ * the band rule wins over the attribute this island would otherwise
+ * apply. The manual preference is still recorded while in the band
+ * (the toggle stays usable) and takes effect again at ≥1280px, where
+ * the persisted toggle is the only input. Below 768px the sidebar is
+ * hidden entirely (MobileNav), so the band query starts at 768.
+ *
  * The sync effect runs after every render (no dep array) on purpose:
  * when a locale switch refreshes the route, the server re-renders the
- * sidebar expanded — the effect immediately re-applies the stored
- * preference, the same reconcile-on-mount pattern ThemeToggle uses.
+ * sidebar expanded — the effect immediately re-applies the effective
+ * state, the same reconcile-on-mount pattern ThemeToggle uses.
  */
 const STORAGE_KEY = "advance-ecommerce:admin-sidebar-collapsed";
+const BAND_QUERY = "(min-width: 768px) and (max-width: 1279px)";
 
 function readStored(): boolean {
   try {
@@ -39,18 +48,34 @@ export function SidebarToggle({
   collapseLabel: string;
   expandLabel: string;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  // `pref` is the user's persisted manual preference (honoured ≥1280);
+  // `band` is the 768–1279px tablet band, which forces mini mode.
+  const [pref, setPref] = useState(false);
+  const [band, setBand] = useState(false);
+  const collapsed = band || pref;
 
   useEffect(() => {
-    const stored = readStored();
-    applySidebar(stored);
-    setCollapsed(stored);
+    setPref(readStored());
+  });
+
+  useEffect(() => {
+    const mq = window.matchMedia(BAND_QUERY);
+    const sync = () => setBand(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    applySidebar(collapsed);
   });
 
   const toggle = () => {
-    const next = !collapsed;
-    setCollapsed(next);
-    applySidebar(next);
+    const next = !pref;
+    setPref(next);
+    // In the band the attribute stays collapsed (band rule); the new
+    // preference is persisted and applies once the viewport is ≥1280.
+    applySidebar(band || next);
     try {
       window.localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
     } catch {

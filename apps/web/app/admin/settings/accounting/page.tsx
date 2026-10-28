@@ -59,7 +59,7 @@ export default async function AccountingSettingsPage() {
         }
       />
 
-      <section className="mt-4 rounded-lg border border-border/70 bg-card p-5 shadow-card">
+      <section className="mt-6 rounded-2xl border border-border/60 bg-card p-5 shadow-card">
         <h2 className="flex items-center gap-2.5 font-display text-base font-semibold text-text-main">
           <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
             <Icon name="info" size={17} />
@@ -98,7 +98,7 @@ export default async function AccountingSettingsPage() {
         </ul>
       </section>
 
-      <div className="mt-4">
+      <div className="mt-6">
         <VatRateCard initialBps={initialBps} initialRaw={raw ?? ""} dbReady={dbReady} />
       </div>
 

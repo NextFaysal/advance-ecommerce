@@ -44,7 +44,7 @@ export function Button({
       aria-busy={loading || undefined}
       className={`inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl font-semibold transition duration-base ease-smooth focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 ${variants[variant]} ${sizes[size]} ${className}`}
     >
-      {loading ? <Icon name="spinner" size={16} className="animate-spin" /> : null}
+      {loading ? <Icon name="spinner" size={16} className="motion-safe:animate-spin" /> : null}
       {children}
     </button>
   );

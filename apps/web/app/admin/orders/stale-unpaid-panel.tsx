@@ -43,10 +43,10 @@ interface StaleResponse {
  * "{age} ধরে আটকে" phrasing, so a stuck order reads the same here as
  * on the aging board. */
 function ageChipClass(ageHours: number): string {
-  if (ageHours >= 7 * 24) return "bg-rose-100 text-rose-800";
-  if (ageHours >= 5 * 24) return "bg-orange-100 text-orange-800";
-  if (ageHours >= 48) return "bg-amber-100 text-amber-800";
-  return "bg-yellow-50 text-yellow-800";
+  if (ageHours >= 7 * 24) return "bg-danger-soft text-danger";
+  if (ageHours >= 5 * 24) return "bg-warning-soft text-warning-solid ring-1 ring-inset ring-warning-solid/25";
+  if (ageHours >= 48) return "bg-warning-soft text-warning-solid";
+  return "bg-surface-2 text-text-muted";
 }
 
 function ageLabel(ageHours: number, locale: Locale): string {
@@ -95,28 +95,28 @@ export function StaleUnpaidPanel() {
   const { data, meta } = state;
 
   return (
-    <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-card" aria-label={s.staleAria}>
+    <section className="mb-4 rounded-2xl border border-border/60 bg-warning-soft p-4 shadow-xs" aria-label={s.staleAria}>
       <div className="flex flex-wrap items-center gap-3">
         <Badge tone="warning" icon={<Icon name="clock" size={12} />}>
           {meta.total} {s.staleDue}
         </Badge>
-        <p className="text-body font-medium text-amber-900">
+        <p className="text-body font-medium text-text-main">
           {s.staleTitle1} {meta.hours} {s.staleTitle2}
         </p>
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="ml-auto rounded-md border border-amber-300 bg-surface px-3 py-1.5 text-small font-medium text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+          className="ml-auto rounded-xl border border-border bg-surface px-3 py-1.5 text-small font-medium text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           aria-expanded={expanded}
         >
           {expanded ? s.hide : s.staleShowList}
         </button>
       </div>
-      <p className="mt-2 text-small text-amber-800">
+      <p className="mt-2 text-small text-text-muted">
         {s.staleNote}
       </p>
       {expanded && (
-        <ul className="mt-3 divide-y divide-amber-200 rounded-md border border-amber-200 bg-surface">
+        <ul className="mt-3 divide-y divide-border rounded-xl border border-border bg-surface">
           {data.map((row) => (
             <li key={row.id} className="flex flex-col gap-1.5 px-3 py-2 text-small sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
               <Link href={`/admin/orders/${row.id}`} className="font-semibold text-brand-700 hover:underline">

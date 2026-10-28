@@ -83,7 +83,7 @@ export function PhoneReveal({
         <span className="text-caption text-text-subtle">{s.phoneNoPermission}</span>
       )}
       {state.kind === "error" && (
-        <span className="text-caption text-rose-600">{s.phoneLoadFailed}</span>
+        <span className="text-caption text-danger">{s.phoneLoadFailed}</span>
       )}
     </span>
   );

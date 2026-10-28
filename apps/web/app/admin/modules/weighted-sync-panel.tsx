@@ -58,31 +58,31 @@ export function WeightedSyncPanel() {
         type="button"
         onClick={() => void run()}
         disabled={busy}
-        className="mt-3 h-11 rounded-xl bg-indigo-600 px-5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+        className="mt-3 h-11 rounded-xl bg-brand-600 px-5 text-sm font-semibold text-white shadow-xs transition hover:bg-brand-700 disabled:opacity-60"
       >
         {busy ? s.syncing : s.syncBtn}
       </button>
       {error ? (
-        <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
+        <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-4 py-3 text-sm font-medium text-danger">
           {error}
         </p>
       ) : null}
       {report ? (
-        <div className="mt-3 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
+        <div className="mt-3 rounded-2xl border border-border/60 bg-surface-2 px-4 py-3 text-sm leading-6 text-text-muted">
           <p>
             {interpolate(s.syncReport, { checked: report.checked, unchanged: report.unchanged, updated: report.updated.length })}
           </p>
           {report.updated.length > 0 ? (
             <ul className="mt-1.5 space-y-1">
               {report.updated.map((u) => (
-                <li key={u.variantId} className="font-mono text-[13px]">
+                <li key={u.variantId} className="tnum font-mono text-[13px]">
                   {u.sku}: {bdt(u.fromPoisha, locale)} → {bdt(u.toPoisha, locale)}
                 </li>
               ))}
             </ul>
           ) : null}
           {report.missingVariantIds.length > 0 ? (
-            <p className="mt-1.5 text-amber-700">
+            <p className="mt-1.5 text-amber-700 dark:text-amber-300">
               {interpolate(s.syncMissing, { ids: report.missingVariantIds.join(", ") })}
             </p>
           ) : null}

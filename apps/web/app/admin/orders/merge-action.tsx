@@ -170,7 +170,7 @@ export function MergeAction({ selectedIds, knownOrders, onClear, onDone }: Merge
       >
         {done ? (
           <div className="space-y-3 text-sm leading-relaxed">
-            <p className="flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800">
+            <p className="flex items-start gap-2.5 rounded-2xl border border-success-solid/25 bg-success-soft px-4 py-3 text-success-solid">
               <span aria-hidden="true" className="mt-0.5 shrink-0"><Icon name="check" size={15} /></span>
               <span>
                 {s.mergeDone1} <strong>{done.sourceOrderNo}</strong>{s.mergeDone2}{" "}
@@ -216,23 +216,23 @@ export function MergeAction({ selectedIds, knownOrders, onClear, onDone }: Merge
                       <span
                         aria-hidden="true"
                         className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
-                          v.ok ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                          v.ok ? "bg-success-soft text-success-solid" : "bg-danger-soft text-danger"
                         }`}
                       >
                         <Icon name={v.ok ? "check" : "x"} size={12} />
                       </span>
-                      <span className={v.ok ? "text-text-main" : "text-rose-700"}>{v.message}</span>
+                      <span className={v.ok ? "text-text-main" : "text-danger"}>{v.message}</span>
                     </li>
                   ))}
                 </ul>
               ) : null}
               {!checking && preflight && !preflight.ok && (
-                <p className="mt-2 text-sm text-rose-600">{s.mergeBlocked}</p>
+                <p className="mt-2 text-sm text-danger">{s.mergeBlocked}</p>
               )}
             </div>
 
             {error && (
-              <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+              <p role="alert" className="rounded-2xl border border-danger/25 bg-danger-soft px-4 py-3 text-sm text-danger">
                 {error}
               </p>
             )}

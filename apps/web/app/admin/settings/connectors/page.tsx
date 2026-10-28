@@ -128,7 +128,7 @@ export default async function ConnectorsSettingsPage() {
         }
       />
 
-      <div className="mt-4">
+      <div className="mt-6">
         <ConnectorsCard initial={initial} dbReady={dbReady} />
       </div>
     </main>

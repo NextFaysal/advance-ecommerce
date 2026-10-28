@@ -11,7 +11,8 @@ import Link from "next/link";
 import { getProductForAdminEdit, listBrandNames, listCategories } from "@/catalog/server-read";
 import { listAttributeSetsAdmin, type AdminAttributeSet } from "@/catalog/attributes-admin";
 import { isFeatureEnabled } from "@/lib/feature-flags";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
+import { ADMIN_STRINGS } from "@/admin/strings";
 import { ProductEditor, type AttributeSetOption, type CategoryOption } from "../product-editor";
 import { RelatedPicker, type RelatedPick } from "./related-picker";
 import { CustomFieldsPanel } from "@/components/admin/custom-fields-panel";
@@ -36,10 +37,11 @@ export default async function EditProductPage({
       <main className="min-w-0">
         <PageHeader
           title={s.notFoundTitle}
-          description={s.notFoundDesc}
-          breadcrumb={s.notFoundBreadcrumb}
+          subtitle={s.notFoundDesc}
+          breadcrumbs={s.notFoundBreadcrumb.split(" / ").map((label) => ({ label }))}
+          breadcrumbLabel={pick(locale, ADMIN_STRINGS).breadcrumb}
         />
-        <div className="anim-rise flex flex-col items-center rounded-lg border border-dashed border-border bg-card px-6 py-10 text-center shadow-card">
+        <div className="anim-rise flex flex-col items-center rounded-2xl border border-dashed border-border bg-card px-6 py-10 text-center shadow-xs">
           <span aria-hidden="true" className="brand-soft-gradient flex h-[72px] w-[72px] items-center justify-center rounded-full text-brand-600 shadow-sm">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-9 w-9">
               <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
@@ -49,7 +51,7 @@ export default async function EditProductPage({
           </span>
           <Link
             href="/admin/products"
-            className="brand-gradient mt-5 inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105"
+            className="brand-gradient mt-5 inline-flex min-h-[44px] items-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:brightness-105"
           >
             {s.backToList}
           </Link>
@@ -95,11 +97,14 @@ export default async function EditProductPage({
     <main className="min-w-0">
       <PageHeader
         title={s.editTitle}
-        description={interpolate(s.editDesc, { title: product.title.bn })}
-        breadcrumb={interpolate(s.editBreadcrumb, { title: product.title.bn })}
+        subtitle={interpolate(s.editDesc, { title: product.title.bn })}
+        breadcrumbs={interpolate(s.editBreadcrumb, { title: product.title.bn })
+          .split(" / ")
+          .map((label) => ({ label }))}
+        breadcrumbLabel={pick(locale, ADMIN_STRINGS).breadcrumb}
       />
       {justCreated && (
-        <p role="status" className="anim-fade-in mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-card">
+        <p role="status" className="anim-fade-in mb-4 rounded-2xl border border-success-solid/25 bg-success-soft px-4 py-3 text-sm font-medium text-success-solid shadow-xs">
           {s.createdBanner}
           {ledgerPending && s.ledgerPendingSuffix}
         </p>

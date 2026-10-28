@@ -89,24 +89,24 @@ export default function VendorPayoutActions() {
   }
 
   return (
-    <section className="mt-6 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-6">
-      <h2 className="text-lg font-bold text-text-main">{s.payoutPanelTitle}</h2>
+    <section className="rounded-2xl border border-border/60 bg-card p-5 shadow-xs">
+      <h2 className="text-lg font-semibold text-text-main">{s.payoutPanelTitle}</h2>
       <p className="mt-1 text-xs leading-5 text-text-muted">
         {s.payoutPanelDesc}
       </p>
       {error ? (
-        <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+        <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
       ) : null}
       {loading ? (
         <p className="mt-3 text-sm text-text-muted">{s.loading}</p>
       ) : rows.length === 0 ? (
         <p className="mt-3 text-sm text-text-muted">{s.noPayouts}</p>
       ) : (
-        <ul className="mt-3 divide-y divide-border">
+        <ul className="mt-3 divide-y divide-border/60">
           {rows.map((r) => (
             <li key={r.id} className="py-3">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="text-sm font-semibold text-text-main">
+                <p className="tnum text-sm font-semibold text-text-main">
                   {r.vendorName} · {formatBdt(r.amountPoisha)} · {r.method}
                 </p>
                 <span className="text-xs font-medium text-text-main">{STATUS_LABEL[r.status]}</span>
@@ -122,14 +122,14 @@ export default function VendorPayoutActions() {
                     onChange={(e) => setNotes((prev) => ({ ...prev, [r.id]: e.target.value }))}
                     placeholder={s.notePlaceholderPayout}
                     maxLength={500}
-                    className="min-w-[220px] flex-1 rounded-xl border border-border bg-card px-3 py-2 text-sm text-text-main"
+                    className="min-w-[220px] flex-1 rounded-xl border border-border bg-card px-3 py-2 text-sm text-text-main shadow-xs"
                   />
                   {r.status === "PENDING" ? (
                     <button
                       type="button"
                       disabled={busyId === r.id}
                       onClick={() => void decide(r, "APPROVED")}
-                      className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                      className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-xs disabled:opacity-60"
                     >
                       {s.approve}
                     </button>
@@ -138,7 +138,7 @@ export default function VendorPayoutActions() {
                       type="button"
                       disabled={busyId === r.id}
                       onClick={() => void decide(r, "PAID")}
-                      className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                      className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-xs disabled:opacity-60"
                     >
                       {s.paidBtn}
                     </button>
@@ -147,7 +147,7 @@ export default function VendorPayoutActions() {
                     type="button"
                     disabled={busyId === r.id}
                     onClick={() => void decide(r, "REJECTED")}
-                    className="rounded-xl bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                    className="rounded-xl bg-danger px-3 py-2 text-xs font-semibold text-white shadow-xs disabled:opacity-60"
                   >
                     {s.rejectBtn}
                   </button>

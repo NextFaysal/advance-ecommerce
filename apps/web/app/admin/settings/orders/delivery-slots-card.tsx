@@ -117,7 +117,7 @@ export function DeliverySlotsCard({ initialSlots, storedCustomized, dbReady }: D
   }
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-card">
+    <section className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-card">
       <div className="brand-gradient h-1.5 w-full" aria-hidden="true" />
       <div className="p-5">
         <div className="flex items-center gap-3">

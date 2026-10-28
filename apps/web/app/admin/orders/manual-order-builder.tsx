@@ -792,7 +792,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
       {/* Draft state banner (OD3): a resumed draft is visibly a draft
           until it converts — the submit/save behaviour is unchanged. */}
       {draftId && (
-        <p role="status" className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-small font-medium text-amber-800">
+        <p role="status" className="flex items-center gap-2 rounded-xl border border-border/60 bg-warning-soft px-3.5 py-2.5 text-small font-medium text-warning-solid">
           <Icon name="info" size={16} className="shrink-0" />
           {s.mobDraftBanner}
         </p>
@@ -918,7 +918,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
         </div>
         {searching && <p role="status" className="mt-2 text-small text-text-muted">{s.mobSearching}</p>}
         {searchFailed && (
-          <p role="alert" className="mt-2 text-small text-rose-600">{s.mobSearchFail}</p>
+          <p role="alert" className="mt-2 text-small text-danger">{s.mobSearchFail}</p>
         )}
         {!searching && query.trim().length >= 2 && !searchFailed && hits.length === 0 && (
           <p role="status" className="mt-2 text-small text-text-muted">{s.mobNoProduct}</p>
@@ -980,14 +980,14 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                       <p className="truncate text-small font-semibold">{l.productTitleBn}{l.variantLabel ? ` — ${l.variantLabel}` : ""}</p>
                       <p className="text-caption text-text-muted">
                         <span className="font-mono">{l.sku}</span> · {interpolate(s.mobCatalogPrice, { price: formatBdt(l.catalogPricePoisha) })} · {l.stock >= 0 ? interpolate(s.mobStock, { n: l.stock }) : s.mobStockDraft}
-                        {overridden && <span className="ml-1 font-semibold text-amber-600">{s.mobStaffPrice}</span>}
+                        {overridden && <span className="ml-1 font-semibold text-warning-solid">{s.mobStaffPrice}</span>}
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => removeLine(l.variantId)}
                       aria-label={interpolate(s.mobRemoveAria, { name: l.productTitleBn })}
-                      className="min-h-[36px] rounded-md border border-border px-3 text-small font-semibold text-rose-600 transition motion-fast hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                      className="min-h-[36px] rounded-md border border-border px-3 text-small font-semibold text-danger transition duration-fast ease-smooth hover:bg-danger-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
                       {s.mobRemove}
                     </button>
@@ -1181,7 +1181,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
                         </span>
                         <span className="text-caption text-text-muted">
                           {unit === null ? (
-                            <span className="font-medium text-rose-600">{s.mobFixUnitPrice}</span>
+                            <span className="font-medium text-danger">{s.mobFixUnitPrice}</span>
                           ) : (
                             <>
                               {l.quantity} × {formatBdt(unit)}
@@ -1249,7 +1249,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
         <p
           role="status"
           className={`rounded-md px-3.5 py-2.5 text-small leading-relaxed ${
-            result.ok ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-700"
+            result.ok ? "bg-success-soft text-success-solid" : "bg-danger-soft text-danger"
           }`}
         >
           {result.text}

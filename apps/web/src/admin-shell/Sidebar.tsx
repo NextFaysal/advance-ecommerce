@@ -16,7 +16,9 @@ import { SidebarToggle } from "./SidebarToggle";
  * (`data-collapsed="false"`); SidebarToggle flips the attribute from
  * localStorage, and the `group-data-[collapsed=true]/sidebar:` variants
  * across this file + NavGroups collapse widths (272px → 76px), hide
- * labels and centre the remaining icons.
+ * labels and centre the remaining icons. Per the D7 breakpoint
+ * contract, SidebarToggle also forces the attribute on in the
+ * 768–1279px band regardless of the stored preference.
  */
 export function Sidebar({
   groups,
@@ -46,9 +48,9 @@ export function Sidebar({
           </span>
         </a>
         <div className="mt-4 flex items-center gap-2 rounded-md bg-surface-2 px-3 py-2 group-data-[collapsed=true]/sidebar:justify-center group-data-[collapsed=true]/sidebar:px-0">
-          <span aria-hidden="true" className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-emerald-500" />
+          <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-success-solid motion-safe:animate-pulse" />
           <span className="truncate text-small font-medium group-data-[collapsed=true]/sidebar:hidden">{s.myStore}</span>
-          <span className="ml-auto rounded-full bg-emerald-50 px-2 py-0.5 text-caption font-semibold text-emerald-700 group-data-[collapsed=true]/sidebar:hidden dark:bg-emerald-500/10 dark:text-emerald-300">
+          <span className="ml-auto rounded-full bg-success-soft px-2 py-0.5 text-caption font-semibold text-success-solid group-data-[collapsed=true]/sidebar:hidden">
             {s.live}
           </span>
         </div>

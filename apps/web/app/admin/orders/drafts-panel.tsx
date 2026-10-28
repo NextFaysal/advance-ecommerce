@@ -125,14 +125,14 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
   if (!drafts || drafts.length === 0) return null;
 
   return (
-    <section aria-label={s.draftsAria} className="mt-8 rounded-lg border border-amber-200 bg-amber-50/60 p-4 shadow-card">
+    <section aria-label={s.draftsAria} className="mt-8 rounded-2xl border border-border/60 bg-warning-soft p-4 shadow-xs">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-h3">
           {interpolate(s.draftsTitle, { n: drafts.length.toLocaleString(intlLocale(locale)) })}
         </h2>
         <p className="text-caption text-text-muted">{s.draftsNote}</p>
       </div>
-      <ul className="mt-3 divide-y divide-amber-200/70">
+      <ul className="mt-3 divide-y divide-border">
         {drafts.map((d) => (
           <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5 text-small">
             <span className="font-semibold">{d.customerName ?? s.draftNoName}</span>
@@ -140,7 +140,7 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
             <span className="text-text-muted">
               {interpolate(s.draftItems, { n: d.itemCount.toLocaleString(intlLocale(locale)) })}
             </span>
-            <span className="font-mono font-semibold tabular-nums">
+            <span className="tnum font-semibold">
               {d.totalPreviewPoisha !== null ? formatBdt(d.totalPreviewPoisha) : s.draftNoPrice}
             </span>
             <span className="text-caption text-text-subtle">{orderAgeLabel(d.updatedAt, Date.now(), locale)}</span>
@@ -149,7 +149,7 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
                 type="button"
                 disabled={busyId === d.id}
                 onClick={() => window.location.assign(`/admin/orders?draft=${d.id}`)}
-                className="min-h-[36px] rounded-md border border-border bg-card px-3 font-semibold transition motion-fast hover:bg-surface-2 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                className="min-h-[36px] rounded-xl border border-border bg-card px-3 font-semibold transition duration-fast ease-smooth hover:bg-surface-2 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 {s.draftResume}
               </button>
@@ -157,7 +157,7 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
                 type="button"
                 disabled={busyId === d.id}
                 onClick={() => void convert(d.id)}
-                className="min-h-[36px] rounded-md bg-brand-600 px-3 font-semibold text-white transition motion-fast hover:bg-brand-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                className="min-h-[36px] rounded-xl bg-brand-600 px-3 font-semibold text-white transition duration-fast ease-smooth hover:bg-brand-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 {busyId === d.id ? s.draftBusy : s.draftConvert}
               </button>
@@ -165,7 +165,7 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
                 type="button"
                 disabled={busyId === d.id}
                 onClick={() => void discard(d.id)}
-                className="min-h-[36px] rounded-md border border-border bg-card px-3 font-semibold text-rose-600 transition motion-fast hover:bg-rose-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                className="min-h-[36px] rounded-xl border border-border bg-card px-3 font-semibold text-danger transition duration-fast ease-smooth hover:bg-danger-soft disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 {t.cancel}
               </button>
@@ -176,8 +176,8 @@ export function DraftsPanel({ onConverted }: { onConverted?: () => void | Promis
       {msg && (
         <p
           role="status"
-          className={`mt-3 rounded-md px-3.5 py-2.5 text-small leading-relaxed ${
-            msg.ok ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-700"
+          className={`mt-3 rounded-xl px-3.5 py-2.5 text-small leading-relaxed ${
+            msg.ok ? "bg-success-soft text-success-solid" : "bg-danger-soft text-danger"
           }`}
         >
           {msg.text}

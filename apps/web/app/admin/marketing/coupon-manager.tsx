@@ -77,7 +77,7 @@ export default function CouponManager({
   if (!dbReady) {
     return (
       <Card>
-        <h3 className="font-semibold">কুপন তালিকা পাওয়া যাচ্ছে না</h3>
+        <h3 className="font-semibold text-text-main">কুপন তালিকা পাওয়া যাচ্ছে না</h3>
         <p className="mt-1 text-sm text-text-muted">
           ডাটাবেস থেকে কুপন পড়া যায়নি — কোনো নমুনা সারি দেখানো হচ্ছে না। ডাটাবেস চালু হলে
           আসল কুপনগুলো এখানে আসবে।
@@ -89,9 +89,9 @@ export default function CouponManager({
   const rows = coupons.map((c) => ({
     code: <span className="font-mono font-semibold">{c.code}</span>,
     type: TYPE_LABELS[c.type] ?? c.type,
-    discount: couponDiscountLabel(c),
+    discount: <span className="tnum">{couponDiscountLabel(c)}</span>,
     minCart: c.minCartPoisha !== null ? <Money poisha={c.minCartPoisha} /> : "শর্ত নেই",
-    used: c.usageLimit !== null ? `${c.usedCount} / ${c.usageLimit}` : `${c.usedCount}`,
+    used: <span className="tnum">{c.usageLimit !== null ? `${c.usedCount} / ${c.usageLimit}` : `${c.usedCount}`}</span>,
     status: c.isActive ? (
       <Badge tone="success">সক্রিয়</Badge>
     ) : (

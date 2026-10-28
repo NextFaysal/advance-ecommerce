@@ -8,7 +8,8 @@
 import { listBrandNames, listCategories } from "@/catalog/server-read";
 import { listAttributeSetsAdmin, type AdminAttributeSet } from "@/catalog/attributes-admin";
 import { isFeatureEnabled } from "@/lib/feature-flags";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
+import { ADMIN_STRINGS } from "@/admin/strings";
 import { ProductEditor, type AttributeSetOption, type CategoryOption } from "../product-editor";
 import { getRequestLocale } from "@/i18n/server";
 import { pick } from "@/i18n/locale";
@@ -45,8 +46,9 @@ export default async function NewProductPage() {
     <main className="min-w-0">
       <PageHeader
         title={s.newTitle}
-        description={s.newDesc}
-        breadcrumb={s.newBreadcrumb}
+        subtitle={s.newDesc}
+        breadcrumbs={s.newBreadcrumb.split(" / ").map((label) => ({ label }))}
+        breadcrumbLabel={pick(locale, ADMIN_STRINGS).breadcrumb}
       />
       <ProductEditor
         mode="create"

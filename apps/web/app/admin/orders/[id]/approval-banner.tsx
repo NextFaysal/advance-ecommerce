@@ -51,7 +51,7 @@ export function ApprovalBanner({ approval }: { approval?: OrderApprovalStateView
   const d = approval.discount;
   if (!d && pendingRefunds.length === 0) return null;
   return (
-    <Card className="shadow-card">
+    <Card>
       <h2 className="mb-3 text-base font-semibold">{s.apprTitle}</h2>
       <div className="space-y-3 text-sm">
         {d && (

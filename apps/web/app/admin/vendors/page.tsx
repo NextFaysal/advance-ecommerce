@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { DataTable } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Money, formatPoisha } from "@/components/ui/money";
 import { Phone } from "@/components/ui/phone";
 import { Icon } from "@/components/ui/icon";
@@ -58,9 +59,9 @@ export default async function AdminVendorsPage() {
   await ensureDbFeatureFlags().catch(() => {});
   if (!demoVendorFlags.isEnabled("module.multi_vendor")) {
     return (
-      <main>
+      <main className="space-y-6">
         <PageHeader title={s.title} description={s.lockedDesc} />
-        <p role="status">{s.locked}</p>
+        <p role="status" className="rounded-2xl border border-border/60 bg-card px-5 py-4 text-sm text-text-muted shadow-xs">{s.locked}</p>
       </main>
     );
   }
@@ -91,8 +92,8 @@ export default async function AdminVendorsPage() {
     shop: <span className="font-medium">{v.shopName}</span>,
     owner: v.ownerName !== "" ? v.ownerName : "—",
     phone: <Phone phone={v.phone} />,
-    commission: `${(v.commissionBps / 100).toFixed(1)}%`,
-    products: <span className="font-mono tabular-nums">{productCountOf(v.id)}</span>,
+    commission: <span className="tnum">{`${(v.commissionBps / 100).toFixed(1)}%`}</span>,
+    products: <span className="tnum font-mono tabular-nums">{productCountOf(v.id)}</span>,
     status: (
       <Badge tone={STATUS_TONE[v.status] ?? "neutral"}>{STATUS_LABEL[v.status] ?? v.status}</Badge>
     ),
@@ -111,7 +112,7 @@ export default async function AdminVendorsPage() {
 
   const payoutRows = payouts.map(({ vendorId, summary }) => ({
     shop: <span className="font-medium">{shopName(vendorId)}</span>,
-    orders: <span className="font-mono tabular-nums">{summary.orderCount}</span>,
+    orders: <span className="tnum font-mono tabular-nums">{summary.orderCount}</span>,
     gross: <Money poisha={summary.grossPoisha} />,
     commission: <Money poisha={summary.commissionPoisha} />,
     refunds: <Money poisha={summary.refundsPoisha} />,
@@ -123,9 +124,9 @@ export default async function AdminVendorsPage() {
   }));
 
   return (
-    <main>
+    <main className="space-y-6">
       <PageHeader title={s.title} description={s.description} breadcrumb={s.breadcrumb} />
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label={s.statTotalVendors}
           value={String(vendors.length)}
@@ -153,15 +154,11 @@ export default async function AdminVendorsPage() {
         />
       </div>
 
-      <h2 className="mb-3 text-lg font-semibold">{s.vendorListTitle}</h2>
-      {vendors.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card px-6 py-12 text-center shadow-card">
-          <h3 className="text-h3">{s.noVendorsTitle}</h3>
-          <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
-            {s.noVendorsText}
-          </p>
-        </div>
-      ) : (
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-text-main">{s.vendorListTitle}</h2>
+        {vendors.length === 0 ? (
+          <EmptyState title={s.noVendorsTitle} description={s.noVendorsText} />
+        ) : (
         <DataTable
           caption={s.vendorCaption}
           columns={[
@@ -174,14 +171,16 @@ export default async function AdminVendorsPage() {
           ]}
           rows={vendorRows}
         />
-      )}
+        )}
+      </section>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.kycTitle}</h2>
-      {vendors.length === 0 ? (
-        <p className="rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
-          {s.noKyc}
-        </p>
-      ) : (
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-text-main">{s.kycTitle}</h2>
+        {vendors.length === 0 ? (
+          <p className="rounded-xl border border-border/60 bg-surface-2/60 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
+            {s.noKyc}
+          </p>
+        ) : (
         <div className="space-y-3">
           {vendors.map((v) => {
             const record = kycDoc[v.id] ?? defaultVendorKyc(v.id);
@@ -193,24 +192,26 @@ export default async function AdminVendorsPage() {
                   initialStatus={record.status}
                   initialNote={record.note}
                 />
-                <div className="mt-2 rounded-lg border border-border bg-card px-4 py-3 shadow-card">
+                <div className="mt-2 rounded-2xl border border-border/60 bg-card px-4 py-3 shadow-xs">
                   <VendorDocumentsControl vendorId={v.id} />
                 </div>
               </div>
             );
           })}
-        </div>
-      )}
-      <p className="mt-2 text-small leading-relaxed text-text-muted">
-        {s.kycNote}
-      </p>
-
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.productApprovalTitle}</h2>
-      {products.length === 0 ? (
-        <p className="rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
-          {s.noProducts}
+          </div>
+        )}
+        <p className="text-small leading-relaxed text-text-muted">
+          {s.kycNote}
         </p>
-      ) : (
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-text-main">{s.productApprovalTitle}</h2>
+        {products.length === 0 ? (
+          <p className="rounded-xl border border-border/60 bg-surface-2/60 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
+            {s.noProducts}
+          </p>
+        ) : (
         <DataTable
           caption={s.productCaption}
           columns={[
@@ -223,14 +224,16 @@ export default async function AdminVendorsPage() {
           ]}
           rows={productRows}
         />
-      )}
+        )}
+      </section>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.payoutSummaryTitle}</h2>
-      {vendors.length === 0 ? (
-        <p className="rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
-          {s.noPayoutSummary}
-        </p>
-      ) : (
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-text-main">{s.payoutSummaryTitle}</h2>
+        {vendors.length === 0 ? (
+          <p className="rounded-xl border border-border/60 bg-surface-2/60 px-3.5 py-2.5 text-small leading-relaxed text-text-muted">
+            {s.noPayoutSummary}
+          </p>
+        ) : (
         <DataTable
           caption={s.payoutCaption}
           columns={[
@@ -243,7 +246,8 @@ export default async function AdminVendorsPage() {
           ]}
           rows={payoutRows}
         />
-      )}
+        )}
+      </section>
 
       <VendorPayoutActions />
 

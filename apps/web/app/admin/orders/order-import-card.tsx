@@ -83,7 +83,7 @@ export function OrderImportCard({ onImported }: { onImported?: () => void }) {
   };
 
   return (
-    <Card className="mt-6 shadow-card">
+    <Card className="mt-6">
       <h2 className="text-h3">{s.impTitle}</h2>
       <p className="mt-1 text-small leading-relaxed text-text-muted">{s.impFormat}</p>
       <p className="mt-1 text-caption text-text-subtle">{s.impLimits}</p>
@@ -113,7 +113,7 @@ export function OrderImportCard({ onImported }: { onImported?: () => void }) {
         spellCheck={false}
         placeholder={"phone,name,division,district,upazila,addressLine,sku,quantity\n01712345678,..."}
         aria-label={s.impTextAria}
-        className="mt-3 w-full rounded-md border border-border bg-card px-3 py-2 font-mono text-small shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+        className="mt-3 w-full rounded-xl border border-border bg-card px-3 py-2 font-mono text-small shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15"
       />
 
       <div className="mt-3">
@@ -123,7 +123,7 @@ export function OrderImportCard({ onImported }: { onImported?: () => void }) {
       </div>
 
       {requestError ? (
-        <div role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-4 text-small text-rose-900">
+        <div role="alert" className="mt-4 rounded-2xl border border-danger/25 bg-danger-soft p-4 text-small text-danger">
           <p className="font-semibold">{s.impFailedTitle}</p>
           <p className="mt-1">{requestError}</p>
         </div>
@@ -134,13 +134,13 @@ export function OrderImportCard({ onImported }: { onImported?: () => void }) {
           <p className="text-small font-medium">
             {interpolate(s.impResult, { created: summary.created, failed: summary.failed })}
           </p>
-          <ul className="mt-2 divide-y divide-border rounded-md border border-border">
+          <ul className="mt-2 divide-y divide-border rounded-xl border border-border">
             {results.map((r, i) => (
               <li key={`${r.phone}-${i}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-small">
                 <span className="font-mono tabular-nums">{r.phone}</span>
                 {r.ok ? (
                   <>
-                    <span className="text-emerald-700">{s.impCreated}</span>
+                    <span className="text-success-solid">{s.impCreated}</span>
                     {r.orderId && r.orderNo ? (
                       <Link href={`/admin/orders/${r.orderId}`} className="font-mono font-semibold text-brand-700 hover:underline">
                         {r.orderNo}
@@ -148,7 +148,7 @@ export function OrderImportCard({ onImported }: { onImported?: () => void }) {
                     ) : null}
                   </>
                 ) : (
-                  <span className="text-rose-700">✗ {r.error ?? s.impFailedWord}</span>
+                  <span className="text-danger">✗ {r.error ?? s.impFailedWord}</span>
                 )}
               </li>
             ))}

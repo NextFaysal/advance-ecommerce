@@ -64,8 +64,8 @@ export default function RevokeVendorSessions() {
   }
 
   return (
-    <section className="mt-8 rounded-lg border border-rose-200 bg-rose-50 px-4 py-4 shadow-card">
-      <h2 className="text-lg font-semibold text-rose-900">
+    <section className="rounded-2xl border border-rose-200 bg-rose-50 p-5 shadow-xs dark:border-rose-500/30 dark:bg-rose-500/10">
+      <h2 className="text-lg font-semibold text-rose-900 dark:text-rose-200">
         {s.dangerTitle}
       </h2>
       <p className="mt-1 text-small leading-relaxed text-text-muted">
@@ -75,7 +75,7 @@ export default function RevokeVendorSessions() {
         <label className="min-w-[280px] flex-1 text-small font-semibold">
           {s.reasonLabel}
           <input
-            className="mt-1 block w-full rounded-md border border-border bg-card px-3 py-2 text-sm font-normal"
+            className="mt-1 block w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-normal text-text-main shadow-xs"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder={s.reasonPlaceholder}
@@ -87,20 +87,20 @@ export default function RevokeVendorSessions() {
             type="button"
             disabled={reason.trim().length === 0}
             onClick={() => setConfirming(true)}
-            className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-xs transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {s.revokeBtn}
           </button>
         ) : (
           <>
-            <span className="text-small font-semibold text-rose-900">
+            <span className="text-small font-semibold text-rose-900 dark:text-rose-200">
               {s.confirmQ}
             </span>
             <button
               type="button"
               disabled={busy}
               onClick={onRevoke}
-              className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-wait disabled:opacity-50"
+              className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-xs transition hover:bg-rose-700 disabled:cursor-wait disabled:opacity-50"
             >
               {busy ? s.revoking : s.yesRevoke}
             </button>
@@ -108,7 +108,7 @@ export default function RevokeVendorSessions() {
               type="button"
               disabled={busy}
               onClick={() => setConfirming(false)}
-              className="rounded-md border border-border bg-card px-4 py-2 text-sm font-semibold transition hover:bg-surface-2"
+              className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-text-main shadow-xs transition hover:bg-surface-2"
             >
               {s.goBack}
             </button>

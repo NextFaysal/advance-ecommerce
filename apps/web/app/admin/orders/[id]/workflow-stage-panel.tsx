@@ -179,7 +179,7 @@ export function WorkflowStagePanel({
       )}
 
       {error ? (
-        <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-small text-rose-700">
+        <p role="alert" className="mt-3 rounded-xl border border-danger/25 bg-danger-soft px-3 py-2 text-small text-danger">
           {error}
         </p>
       ) : null}

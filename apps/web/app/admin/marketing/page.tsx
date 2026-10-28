@@ -114,26 +114,26 @@ export default async function AdminMarketingPage() {
         <StatCard label="পরিত্যক্ত কার্ট ফলো-আপ" value="—" delta="/admin/abandoned পেজে" deltaTone="up" icon="🛒" />
       </div>
 
-      <h2 className="mb-3 text-lg font-semibold">কুপনসমূহ</h2>
+      <h2 className="mb-3 text-lg font-semibold text-text-main">কুপনসমূহ</h2>
       <CouponManager initialCoupons={coupons} dbReady={couponsDbReady} />
 
       <div className="mt-6">
         <CouponForm />
       </div>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">ফ্ল্যাশ সেল</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold text-text-main">ফ্ল্যাশ সেল</h2>
       <FlashSaleManager initialSales={flashSales} dbReady={flashDbReady} products={pickerProducts} />
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">ক্যাম্পেইন</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold text-text-main">ক্যাম্পেইন</h2>
       <CampaignManager initialCampaigns={campaigns} dbReady={campaignsDbReady} />
 
       <div className="mt-6">
         <CampaignEstimate />
       </div>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">পরিত্যক্ত কার্ট ফলো-আপ</h2>
+      <h2 className="mb-3 mt-8 text-lg font-semibold text-text-main">পরিত্যক্ত কার্ট ফলো-আপ</h2>
       <Card>
-        <h3 className="font-semibold">পরিত্যক্ত চেকআউট এখন ধরা পড়ে</h3>
+        <h3 className="font-semibold text-text-main">পরিত্যক্ত চেকআউট এখন ধরা পড়ে</h3>
         <p className="mt-1 text-sm leading-relaxed text-text-muted">
           ক্রেতা চেকআউটে সঠিক ফোন নম্বর দিয়ে কার্ট ফেলে চলে গেলে সেই চেষ্টাটি সংরক্ষিত
           হয় (৭ দিন মেয়াদে)। ফলো-আপের তালিকা, কল টাস্ক তৈরি, সরাসরি অর্ডারে রূপান্তর ও

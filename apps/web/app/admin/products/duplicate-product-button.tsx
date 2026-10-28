@@ -62,7 +62,7 @@ export function DuplicateProductButton({
     return (
       <Link
         href={`/admin/products/${copy.id}`}
-        className="inline-flex min-h-[44px] items-center rounded-md px-3 text-small font-semibold text-emerald-700 transition motion-fast hover:bg-emerald-50"
+        className="inline-flex min-h-[44px] items-center rounded-xl px-3 text-small font-semibold text-success-solid transition duration-fast ease-smooth hover:bg-success-soft"
         title={interpolate(s.duplicateDoneTitle, { title: copy.title })}
       >
         {s.duplicateDoneLink}
@@ -75,12 +75,12 @@ export function DuplicateProductButton({
         type="button"
         onClick={() => void duplicate()}
         disabled={busy}
-        className="inline-flex min-h-[44px] items-center rounded-md px-3 text-small font-semibold text-brand-700 transition motion-fast hover:bg-brand-50 disabled:opacity-50"
+        className="inline-flex min-h-[44px] items-center rounded-xl px-3 text-small font-semibold text-brand-700 transition duration-fast ease-smooth hover:bg-brand-soft disabled:opacity-50"
       >
         {busy ? s.duplicating : s.duplicateBtn}
       </button>
       {error ? (
-        <span role="alert" className="max-w-[220px] text-right text-caption text-rose-600">
+        <span role="alert" className="max-w-[220px] text-right text-caption text-danger">
           {error}
         </span>
       ) : null}

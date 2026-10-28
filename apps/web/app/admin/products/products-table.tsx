@@ -32,6 +32,8 @@ import Link from "next/link";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { minVariantPricePoisha, type Product as CatalogProduct } from "../../../src/catalog/types";
 import { Card } from "@/components/ui/card";
+import { DataTableSkeleton } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -169,7 +171,7 @@ function SortTh({
         type="button"
         onClick={() => onSort(sortKey)}
         aria-label={interpolate(sortByTemplate, { label })}
-        className={`flex items-center gap-1 transition motion-fast hover:text-brand-700 ${active ? "text-brand-700" : ""}`}
+        className={`flex items-center gap-1 transition duration-fast ease-smooth hover:text-brand-700 ${active ? "text-brand-700" : ""}`}
       >
         {label}
         <svg
@@ -190,7 +192,7 @@ function SortTh({
 }
 
 const cellInputCls =
-  "h-10 w-28 rounded-md border border-brand-300 bg-card px-2 font-mono text-sm tabular-nums shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
+  "tnum h-10 w-28 rounded-xl border border-brand-300 bg-card px-2 text-sm shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15";
 
 export function ProductsTable({
   canDelete,
@@ -737,7 +739,7 @@ export function ProductsTable({
       );
     }
     if (!canEdit) {
-      return <span className="font-mono font-semibold tabular-nums">{formatBdt(row.pricePoisha)}</span>;
+      return <span className="tnum font-semibold">{formatBdt(row.pricePoisha)}</span>;
     }
     return (
       <span className="inline-flex flex-col">
@@ -745,7 +747,7 @@ export function ProductsTable({
           type="button"
           onClick={() => void startEdit(row, "price")}
           title={s.priceQuickTitle}
-          className="rounded px-1 py-0.5 text-left font-mono font-semibold tabular-nums transition motion-fast hover:bg-brand-50 hover:text-brand-700"
+          className="tnum rounded px-1 py-0.5 text-left font-semibold transition duration-fast ease-smooth hover:bg-brand-soft hover:text-brand-700"
         >
           {formatBdt(row.pricePoisha)}
         </button>
@@ -783,10 +785,10 @@ export function ProductsTable({
     }
     const stockLabel = (
       <>
-        <span className={`font-mono tabular-nums ${row.stock <= 0 ? "font-semibold text-rose-600" : ""}`}>
+        <span className={`tnum ${row.stock <= 0 ? "font-semibold text-danger" : ""}`}>
           {row.stock}
         </span>
-        {row.stock <= 0 ? <span className="ml-1.5 text-caption text-rose-500">{s.outOfStock}</span> : null}
+        {row.stock <= 0 ? <span className="ml-1.5 text-caption text-danger">{s.outOfStock}</span> : null}
       </>
     );
     if (!canEdit) return stockLabel;
@@ -795,7 +797,7 @@ export function ProductsTable({
         type="button"
         onClick={() => void startEdit(row, "stock")}
         title={s.stockQuickTitle}
-        className="rounded px-1 py-0.5 text-left transition motion-fast hover:bg-brand-50"
+        className="rounded px-1 py-0.5 text-left transition duration-fast ease-smooth hover:bg-brand-soft"
       >
         {stockLabel}
       </button>
@@ -811,7 +813,7 @@ export function ProductsTable({
         disabled={statusBusyId === row.id}
         onChange={(e) => void quickStatus(row, e.target.value)}
         aria-label={interpolate(s.statusAria, { title: row.title })}
-        className="h-10 rounded-md border border-border bg-card px-2 text-small font-semibold shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:opacity-50"
+        className="h-10 rounded-xl border border-border bg-card shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15 px-2 text-small font-semibold disabled:opacity-50"
       >
         {PRODUCT_STATUSES.map((s) => (
           <option key={s} value={s}>
@@ -825,7 +827,7 @@ export function ProductsTable({
   function renderReasonRow(row: ProductRow) {
     if (!(editing?.id === row.id && editing.field === "price")) return null;
     return (
-      <div className="rounded-lg border border-brand-200 bg-brand-50/60 p-3">
+      <div className="rounded-2xl border border-brand-200 bg-brand-50/60 p-3">
         <label className="block text-small font-medium">
           {s.reasonLabel}{" "}
           <span className="text-text-subtle">{s.reasonNote}</span>
@@ -836,10 +838,10 @@ export function ProductsTable({
           onChange={(e) => setEditReason(e.target.value)}
           rows={2}
           placeholder={s.reasonPhSupplier}
-          className="mt-1.5 w-full rounded-md border border-border bg-card px-3 py-2 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          className="mt-1.5 w-full rounded-xl border border-border bg-card shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15 px-3 py-2 text-sm"
         />
         {editError ? (
-          <p role="alert" className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-small text-rose-700">
+          <p role="alert" className="mt-2 rounded-xl bg-danger-soft px-3 py-2 text-small text-danger">
             {editError}
           </p>
         ) : null}
@@ -848,7 +850,7 @@ export function ProductsTable({
             type="button"
             onClick={() => void savePrice(row)}
             disabled={editBusy || editLoading}
-            className="inline-flex min-h-[44px] items-center rounded-md bg-brand-600 px-4 text-small font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
+            className="inline-flex min-h-[44px] items-center rounded-xl bg-brand-600 px-4 text-small font-semibold text-white shadow-md transition duration-fast ease-smooth hover:brightness-105 disabled:opacity-50"
           >
             {editBusy ? s.saving : s.savePrice}
           </button>
@@ -856,7 +858,7 @@ export function ProductsTable({
             type="button"
             onClick={cancelEdit}
             disabled={editBusy}
-            className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 disabled:opacity-50"
+            className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-small font-semibold shadow-xs transition duration-fast ease-smooth hover:border-brand-300 disabled:opacity-50"
           >
             {s.cancelBtn}
           </button>
@@ -887,7 +889,7 @@ export function ProductsTable({
 
   return (
     <>
-      <Card className="mb-4 shadow-card">
+      <Card className="mb-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative min-w-[220px] flex-1">
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-text-subtle">
@@ -898,14 +900,14 @@ export function ProductsTable({
               onChange={(e) => setSearch(e.target.value)}
               placeholder={s.searchPh}
               aria-label={s.searchAria}
-              className="h-12 w-full rounded-md border border-border bg-card pl-10 pr-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-200"
+              className="h-12 w-full rounded-xl border border-border bg-card pl-10 pr-3 text-sm shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15 hover:border-brand-200"
             />
           </div>
           <select
             value={category}
             onChange={(e) => changeCategory(e.target.value)}
             aria-label={s.catFilterAria}
-            className="h-12 max-w-[220px] rounded-md border border-border bg-card px-2.5 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-200"
+            className="h-12 max-w-[220px] rounded-xl border border-border bg-card px-2.5 text-sm shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15 hover:border-brand-200"
           >
             <option value="">{s.allCategories}</option>
             {categories.map((c) => (
@@ -941,7 +943,7 @@ export function ProductsTable({
                 type="button"
                 onClick={() => changeStatus(s)}
                 aria-pressed={active}
-                className={`flex min-h-[36px] items-center gap-1.5 rounded-full px-3.5 text-caption font-semibold transition motion-fast ${
+                className={`flex min-h-[36px] items-center gap-1.5 rounded-full px-3.5 text-caption font-semibold transition duration-fast ease-smooth ${
                   active ? "bg-brand-600 text-white shadow-md" : "border border-border bg-card text-text-muted hover:border-brand-300 hover:text-brand-700"
                 }`}
               >
@@ -949,13 +951,13 @@ export function ProductsTable({
                   <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${active ? "bg-white/80" : dotCls}`} />
                 ) : null}
                 {label}
-                <span className={`font-mono tabular-nums ${active ? "text-white/85" : "text-text-subtle"}`}>
+                <span className={`tnum ${active ? "text-white/85" : "text-text-subtle"}`}>
                   {counts[s] ?? "…"}
                 </span>
               </button>
             );
           })}
-          <span className="ml-auto rounded-full bg-brand-50 px-3 py-1.5 text-caption font-semibold text-brand-700">
+          <span className="ml-auto rounded-full bg-brand-soft px-3 py-1.5 text-caption font-semibold text-brand-ink">
             {loading ? s.loadingEllipsis : interpolate(s.totalLine, { total, page, pages: totalPages })}
           </span>
         </div>
@@ -973,7 +975,7 @@ export function ProductsTable({
       </Card>
 
       {selected.size > 0 ? (
-        <div className="anim-fade-in sticky top-2 z-20 mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-brand-200 bg-brand-50/90 px-4 py-3 shadow-lift backdrop-blur">
+        <div className="anim-fade-in sticky top-2 z-20 mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-brand-200 bg-brand-50/90 px-4 py-3 shadow-lift backdrop-blur">
           <span className="brand-gradient inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-small font-semibold text-white shadow-md">
             {interpolate(s.selectedCount, { count: selected.size })}
           </span>
@@ -983,7 +985,7 @@ export function ProductsTable({
                 type="button"
                 disabled={bulkBusy}
                 onClick={() => void callBulk({ ids: [...selected], action: "status", status: "ACTIVE" })}
-                className="inline-flex min-h-[44px] items-center rounded-md bg-emerald-600 px-3.5 text-small font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center rounded-xl bg-success-solid px-3.5 text-small font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
               >
                 {s.bulkActivate}
               </button>
@@ -991,7 +993,7 @@ export function ProductsTable({
                 type="button"
                 disabled={bulkBusy}
                 onClick={() => void callBulk({ ids: [...selected], action: "status", status: "DRAFT" })}
-                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-3.5 text-small font-semibold shadow-xs transition duration-fast ease-smooth hover:border-brand-300 disabled:opacity-50"
               >
                 {s.bulkDraft}
               </button>
@@ -999,7 +1001,7 @@ export function ProductsTable({
                 type="button"
                 disabled={bulkBusy}
                 onClick={() => void callBulk({ ids: [...selected], action: "status", status: "ARCHIVED" })}
-                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-3.5 text-small font-semibold shadow-xs transition duration-fast ease-smooth hover:border-brand-300 disabled:opacity-50"
               >
                 {s.bulkArchive}
               </button>
@@ -1010,7 +1012,7 @@ export function ProductsTable({
                   setBulkModalError("");
                   setPriceModal(true);
                 }}
-                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-3.5 text-small font-semibold shadow-xs transition duration-fast ease-smooth hover:border-brand-300 disabled:opacity-50"
               >
                 {s.bulkPriceAdjust}
               </button>
@@ -1024,7 +1026,7 @@ export function ProductsTable({
                 setBulkDeleteError("");
                 setDeleteModal(true);
               }}
-              className="inline-flex min-h-[44px] items-center rounded-md px-3.5 text-small font-semibold text-rose-600 transition motion-fast hover:bg-rose-50 disabled:opacity-50"
+              className="inline-flex min-h-[44px] items-center rounded-xl px-3.5 text-small font-semibold text-danger transition duration-fast ease-smooth hover:bg-danger-soft disabled:opacity-50"
             >
               {s.bulkDelete}
             </button>
@@ -1033,7 +1035,7 @@ export function ProductsTable({
             type="button"
             disabled={bulkBusy}
             onClick={() => setSelected(new Set())}
-            className="ml-auto inline-flex min-h-[44px] items-center rounded-md px-3.5 text-small font-semibold text-text-muted transition motion-fast hover:text-text-main disabled:opacity-50"
+            className="ml-auto inline-flex min-h-[44px] items-center rounded-xl px-3.5 text-small font-semibold text-text-muted transition duration-fast ease-smooth hover:text-text-main disabled:opacity-50"
           >
             {s.bulkClear}
           </button>
@@ -1044,10 +1046,10 @@ export function ProductsTable({
       {bulkSummary ? (
         <div
           role="status"
-          className={`mb-4 rounded-lg border px-4 py-3 shadow-card ${
+          className={`mb-4 rounded-2xl border px-4 py-3 shadow-xs ${
             bulkSummary.failures.length === 0
-              ? "border-emerald-200 bg-emerald-50"
-              : "border-amber-200 bg-amber-50"
+              ? "border-success-solid/25 bg-success-soft"
+              : "border-warning-solid/25 bg-warning-soft"
           }`}
         >
           <p className="text-small font-semibold">
@@ -1057,7 +1059,7 @@ export function ProductsTable({
             })}
           </p>
           {bulkSummary.failures.length > 0 ? (
-            <ul className="mt-1.5 list-inside list-disc space-y-0.5 text-small text-rose-700">
+            <ul className="mt-1.5 list-inside list-disc space-y-0.5 text-small text-danger">
               {bulkSummary.failures.map((f) => (
                 <li key={f.id}>
                   {f.title} — {f.message}
@@ -1078,20 +1080,20 @@ export function ProductsTable({
       {notice ? (
         <p
           role="alert"
-          className={`anim-fade-in mb-4 flex items-start gap-2 rounded-md border px-3.5 py-2.5 text-small font-medium shadow-sm ${
+          className={`anim-fade-in mb-4 flex items-start gap-2 rounded-xl border px-3.5 py-2.5 text-small font-medium shadow-xs ${
             notice.tone === "error"
-              ? "border-rose-200 bg-rose-50 text-rose-700"
-              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+              ? "border-danger/25 bg-danger-soft text-danger"
+              : "border-success-solid/25 bg-success-soft text-success-solid"
           }`}
         >
-          <span aria-hidden="true" className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${notice.tone === "error" ? "bg-rose-500" : "bg-emerald-500"}`} />
+          <span aria-hidden="true" className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${notice.tone === "error" ? "bg-danger" : "bg-success-solid"}`} />
           {notice.text}
         </p>
       ) : null}
 
       {loadError ? (
-        <div className="anim-rise rounded-lg border border-border/70 bg-card px-6 py-14 text-center shadow-card">
-          <span aria-hidden="true" className="mx-auto flex h-[72px] w-[72px] items-center justify-center rounded-full bg-rose-50 text-rose-500 shadow-sm">
+        <div className="anim-rise rounded-2xl border border-border/60 bg-card px-6 py-14 text-center shadow-xs">
+          <span aria-hidden="true" className="mx-auto flex h-[72px] w-[72px] items-center justify-center rounded-full bg-danger-soft text-danger shadow-xs">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-8 w-8">
               <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
               <path d="M12 9v4" />
@@ -1099,58 +1101,43 @@ export function ProductsTable({
             </svg>
           </span>
           <h2 className="mt-4 font-display text-h3">{s.loadErrorTitle}</h2>
-          <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-rose-600">{loadError}</p>
+          <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-danger">{loadError}</p>
           <Button variant="outline" className="mt-5" onClick={() => void load()}>
             {s.retry}
           </Button>
         </div>
       ) : catalogEmpty ? (
-        <div className="anim-rise rounded-lg border border-dashed border-border bg-card px-6 py-14 text-center shadow-card">
-          <span aria-hidden="true" className="brand-soft-gradient mx-auto flex h-[72px] w-[72px] items-center justify-center rounded-full text-brand-600 shadow-sm">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-8 w-8">
-              <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
-              <path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" />
-            </svg>
-          </span>
-          <h2 className="mt-4 font-display text-h3">{s.emptyTitle}</h2>
-          <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
-            {s.emptyDesc}
-          </p>
-          <Link
-            href="/admin/products/new"
-            className="brand-gradient mt-5 inline-flex min-h-[44px] items-center justify-center rounded-md px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105"
-          >
-            {s.emptyAdd}
-          </Link>
-        </div>
+        <EmptyState title={s.emptyTitle} description={s.emptyDesc}>
+          <div className="mt-5">
+            <Link
+              href="/admin/products/new"
+              className="brand-gradient inline-flex min-h-[44px] items-center justify-center rounded-xl px-4 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:shadow-lift hover:brightness-105"
+            >
+              {s.emptyAdd}
+            </Link>
+          </div>
+        </EmptyState>
       ) : !loading && rows.length === 0 ? (
-        <div className="anim-rise rounded-lg border border-dashed border-border bg-card px-6 py-14 text-center shadow-card">
-          <span aria-hidden="true" className="brand-soft-gradient mx-auto flex h-[72px] w-[72px] items-center justify-center rounded-full text-brand-600 shadow-sm">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" className="h-8 w-8">
-              <circle cx="11" cy="11" r="7" />
-              <path d="m21 21-4.3-4.3" />
-            </svg>
-          </span>
-          <h2 className="mt-4 font-display text-h3">{s.noResultsTitle}</h2>
-          <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
-            {s.noResultsDesc}
-          </p>
-          <Button
-            variant="outline"
-            className="mt-5"
-            onClick={() => {
-              changeStatus("ALL");
-              setSearch("");
-              changeCategory("");
-            }}
-          >
-            {s.clearFilters}
-          </Button>
-        </div>
+        <EmptyState title={s.noResultsTitle} description={s.noResultsDesc}>
+          <div className="mt-5">
+            <Button
+              variant="outline"
+              onClick={() => {
+                changeStatus("ALL");
+                setSearch("");
+                changeCategory("");
+              }}
+            >
+              {s.clearFilters}
+            </Button>
+          </div>
+        </EmptyState>
+      ) : loading && rows.length === 0 ? (
+        <DataTableSkeleton columns={5} rows={8} />
       ) : (
         <>
           {/* Desktop table — hidden under md (card list below takes over). */}
-          <div className="hidden overflow-x-auto rounded-lg border border-border/70 bg-card shadow-card md:block">
+          <div className="hidden overflow-x-auto rounded-2xl border border-border/60 bg-card shadow-xs md:block">
             <table className="w-full min-w-[640px] border-collapse text-left text-sm">
               <thead>
                 <tr className="bg-surface-2 text-left [&>th]:border-b [&>th]:border-border">
@@ -1161,7 +1148,7 @@ export function ProductsTable({
                       checked={allPageSelected}
                       onChange={(e) => togglePage(e.target.checked)}
                       aria-label={s.selectPageAria}
-                      className="h-5 w-5 rounded accent-[#4F46E5]"
+                      className="h-5 w-5 rounded accent-brand-600"
                     />
                   </th>
                   <SortTh label={s.colProduct} sortKey="title" sort={sort} onSort={toggleSort} sortByTemplate={s.sortByAria} />
@@ -1183,8 +1170,9 @@ export function ProductsTable({
                 {displayRows.map((p) => (
                   <Fragment key={p.id}>
                     <tr
-                      className={`border-t border-border transition motion-fast first:border-t-0 hover:bg-brand-50/40 ${
-                        selected.has(p.id) ? "bg-brand-50" : ""
+                      aria-selected={selected.has(p.id) || undefined}
+                      className={`border-t border-border/60 transition duration-fast ease-smooth first:border-t-0 hover:bg-brand-soft/60 ${
+                        selected.has(p.id) ? "bg-brand-soft" : ""
                       }`}
                     >
                       <td className="px-3 py-3 align-top">
@@ -1193,19 +1181,19 @@ export function ProductsTable({
                           checked={selected.has(p.id)}
                           onChange={(e) => toggleRow(p.id, e.target.checked)}
                           aria-label={interpolate(s.selectRowAria, { title: p.title })}
-                          className="h-5 w-5 rounded accent-[#4F46E5]"
+                          className="h-5 w-5 rounded accent-brand-600"
                         />
                       </td>
                       <td className="min-w-0 px-4 py-3 align-top">
                         <Link
                           href={`/admin/products/${p.id}`}
-                          className="block break-words font-medium leading-snug text-brand-700 underline-offset-2 transition motion-fast [overflow-wrap:anywhere] hover:underline"
+                          className="block break-words font-medium leading-snug text-brand-700 underline-offset-2 transition duration-fast ease-smooth [overflow-wrap:anywhere] hover:underline"
                         >
                           {p.title}
                         </Link>
                         <Link
                           href={`/admin/products/${p.id}`}
-                          className="font-mono text-caption text-text-subtle underline-offset-2 transition motion-fast hover:text-brand-700 hover:underline"
+                          className="font-mono text-caption text-text-subtle underline-offset-2 transition duration-fast ease-smooth hover:text-brand-700 hover:underline"
                         >
                           /{p.slug}
                         </Link>
@@ -1233,7 +1221,7 @@ export function ProductsTable({
                     {editing?.id === p.id && editing.field === "stock" && editError ? (
                       <tr className="border-t border-border bg-surface-2/50">
                         <td colSpan={colSpan} className="px-4 py-3">
-                          <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-small text-rose-700">
+                          <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-small text-danger">
                             {editError}
                           </p>
                         </td>
@@ -1251,8 +1239,8 @@ export function ProductsTable({
             {displayRows.map((p) => (
               <article
                 key={p.id}
-                className={`rounded-lg border bg-card p-4 shadow-card ${
-                  selected.has(p.id) ? "border-brand-300 ring-1 ring-brand-300" : "border-border"
+                className={`rounded-2xl border bg-card p-4 shadow-xs ${
+                  selected.has(p.id) ? "border-brand-300 ring-1 ring-brand-300" : "border-border/60"
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -1262,7 +1250,7 @@ export function ProductsTable({
                       checked={selected.has(p.id)}
                       onChange={(e) => toggleRow(p.id, e.target.checked)}
                       aria-label={interpolate(s.selectRowAria, { title: p.title })}
-                      className="mt-0.5 h-5 w-5 shrink-0 rounded accent-[#4F46E5]"
+                      className="mt-0.5 h-5 w-5 shrink-0 rounded accent-brand-600"
                     />
                     <div className="min-w-0">
                       <Link
@@ -1282,11 +1270,11 @@ export function ProductsTable({
                   {renderStatusCell(p)}
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2.5 text-small">
-                  <span className="rounded-md bg-surface-2 px-3 py-2.5">
+                  <span className="rounded-xl bg-surface-2 px-3 py-2.5">
                     <span className="mb-0.5 block text-caption font-medium text-text-subtle">{s.colPriceFrom}</span>
                     {renderPriceCell(p)}
                   </span>
-                  <span className="rounded-md bg-surface-2 px-3 py-2.5">
+                  <span className="rounded-xl bg-surface-2 px-3 py-2.5">
                     <span className="mb-0.5 block text-caption font-medium text-text-subtle">{s.colStock}</span>
                     {renderStockCell(p)}
                   </span>
@@ -1300,7 +1288,7 @@ export function ProductsTable({
                   <div className="mt-3">{renderReasonRow(p)}</div>
                 ) : null}
                 {editing?.id === p.id && editing.field === "stock" && editError ? (
-                  <p role="alert" className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-small text-rose-700">
+                  <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-small text-danger">
                     {editError}
                   </p>
                 ) : null}
@@ -1318,7 +1306,7 @@ export function ProductsTable({
                 type="button"
                 disabled={page <= 1 || loading}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-3.5 text-small font-semibold shadow-xs transition duration-fast ease-smooth hover:border-brand-300 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {s.prevPage}
               </button>
@@ -1334,10 +1322,10 @@ export function ProductsTable({
                     disabled={loading}
                     onClick={() => setPage(n)}
                     aria-current={n === page ? "page" : undefined}
-                    className={`inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md px-2 text-small font-semibold tabular-nums transition motion-fast disabled:opacity-50 ${
+                    className={`tnum inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl px-2 text-small font-semibold transition duration-fast ease-smooth disabled:opacity-50 ${
                       n === page
                         ? "bg-brand-600 text-white shadow-md"
-                        : "border border-border bg-card shadow-sm hover:border-brand-300 hover:text-brand-700"
+                        : "border border-border bg-card shadow-xs hover:border-brand-300 hover:text-brand-700"
                     }`}
                   >
                     {n}
@@ -1348,7 +1336,7 @@ export function ProductsTable({
                 type="button"
                 disabled={page >= totalPages || loading}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3.5 text-small font-semibold shadow-sm transition motion-fast hover:border-brand-300 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-3.5 text-small font-semibold shadow-xs transition duration-fast ease-smooth hover:border-brand-300 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {s.nextPage}
               </button>
@@ -1379,7 +1367,7 @@ export function ProductsTable({
           onChange={(e) => setBulkPercent(e.target.value)}
           inputMode="decimal"
           placeholder="10"
-          className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15"
         />
         <label className="mb-1.5 mt-4 block text-small font-medium" htmlFor="bulk-price-reason">
           {s.bulkReasonLabel} <span className="text-text-subtle">{s.bulkReasonNote}</span>
@@ -1389,10 +1377,10 @@ export function ProductsTable({
           value={bulkReason}
           onChange={(e) => setBulkReason(e.target.value)}
           placeholder={s.reasonPhSupplier}
-          className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15"
         />
         {bulkModalError ? (
-          <p role="alert" className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-small text-rose-700">
+          <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-small text-danger">
             {bulkModalError}
           </p>
         ) : null}
@@ -1418,10 +1406,10 @@ export function ProductsTable({
           value={bulkDeleteReason}
           onChange={(e) => setBulkDeleteReason(e.target.value)}
           placeholder={s.bulkDeleteReasonPh}
-          className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15"
         />
         {bulkDeleteError ? (
-          <p role="alert" className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-small text-rose-700">
+          <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-small text-danger">
             {bulkDeleteError}
           </p>
         ) : null}

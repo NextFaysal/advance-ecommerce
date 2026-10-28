@@ -1,4 +1,4 @@
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { getShipmentsBoard } from "@/shipments/board";
 import { getRequestLocale } from "@/i18n/server";
 import { pick } from "@/i18n/locale";
@@ -26,7 +26,7 @@ export default async function ShipmentsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title={s.pageTitle} description={s.pageDescription} />
+      <PageHeader title={s.pageTitle} subtitle={s.pageDescription} />
       <ShipmentsBoard rows={board.rows} summary={board.summary} />
     </div>
   );

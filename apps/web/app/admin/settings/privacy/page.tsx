@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/ui/page-header";
+import { DataTable } from "@/components/ui/table";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getMaintenanceConfig } from "@/privacy/maintenance";
@@ -112,40 +113,34 @@ export default async function AdminPrivacySettingsPage() {
         {consent.length === 0 ? (
           <p className="mt-3 text-sm text-text-muted">{s.privConsentEmpty}</p>
         ) : (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-border text-text-muted">
-                  <th className="py-2 pr-3 font-medium">{s.privColTime}</th>
-                  <th className="py-2 pr-3 font-medium">{s.privColDecision}</th>
-                  <th className="py-2 pr-3 font-medium">{s.privColSource}</th>
-                  <th className="py-2 pr-3 font-medium">{s.privColEmail}</th>
-                  <th className="py-2 pr-3 font-medium">{s.privColPhone}</th>
-                  <th className="py-2 font-medium">{s.privColCustomer}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {consent.map((entry, i) => (
-                  <tr key={`${entry.at}-${i}`} className="border-b border-border/50">
-                    <td className="py-2 pr-3 whitespace-nowrap">{formatAt(entry.at, locale)}</td>
-                    <td className="py-2 pr-3">
-                      <Badge tone={entry.action === "granted" ? "success" : "warning"}>
-                        {entry.action === "granted" ? s.privGranted : s.privWithdrawn}
-                      </Badge>
-                    </td>
-                    <td className="py-2 pr-3">{entry.source}</td>
-                    <td className="py-2 pr-3">{entry.email ?? "—"}</td>
-                    <td className="py-2 pr-3">{entry.phone ? maskPhone(entry.phone) : "—"}</td>
-                    <td className="py-2 font-mono text-xs">{shortId(entry.customerId)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mt-3">
+            <DataTable
+              columns={[
+                { key: "time", header: s.privColTime },
+                { key: "decision", header: s.privColDecision },
+                { key: "source", header: s.privColSource },
+                { key: "email", header: s.privColEmail },
+                { key: "phone", header: s.privColPhone },
+                { key: "customer", header: s.privColCustomer },
+              ]}
+              rows={consent.map((entry) => ({
+                time: <span className="tnum whitespace-nowrap">{formatAt(entry.at, locale)}</span>,
+                decision: (
+                  <Badge tone={entry.action === "granted" ? "success" : "warning"}>
+                    {entry.action === "granted" ? s.privGranted : s.privWithdrawn}
+                  </Badge>
+                ),
+                source: entry.source,
+                email: entry.email ?? "—",
+                phone: entry.phone ? maskPhone(entry.phone) : "—",
+                customer: <span className="font-mono text-xs">{shortId(entry.customerId)}</span>,
+              }))}
+            />
           </div>
         )}
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <h2 className="font-semibold">{s.privExportTitle}</h2>
           <p className="mt-1 text-sm text-text-muted">
@@ -158,7 +153,7 @@ export default async function AdminPrivacySettingsPage() {
           ) : (
             <ul className="mt-3 space-y-2 text-sm">
               {exportsLedger.map((entry, i) => (
-                <li key={`${entry.at}-${i}`} className="rounded-lg border border-border/60 px-3 py-2">
+                <li key={`${entry.at}-${i}`} className="rounded-xl border border-border/60 px-3 py-2">
                   <span className="font-medium">{formatAt(entry.at, locale)}</span>{" "}
                   <span className="font-mono text-xs text-text-muted">{shortId(entry.customerId)}</span>
                   <span className="block text-text-muted">
@@ -182,7 +177,7 @@ export default async function AdminPrivacySettingsPage() {
           ) : (
             <ul className="mt-3 space-y-2 text-sm">
               {deletions.map((entry, i) => (
-                <li key={`${entry.at}-${i}`} className="rounded-lg border border-border/60 px-3 py-2">
+                <li key={`${entry.at}-${i}`} className="rounded-xl border border-border/60 px-3 py-2">
                   <span className="font-medium">{formatAt(entry.at, locale)}</span>{" "}
                   <span className="font-mono text-xs text-text-muted">{shortId(entry.customerId)}</span>
                   <span className="block text-text-muted">

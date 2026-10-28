@@ -26,6 +26,8 @@ const bn = {
   statCodShortages: "COD ঘাটতি",
   shortageNeedsReview: "পর্যালোচনা দরকার",
   shortageNone: "কোনোটি চিহ্নিত নয়",
+  emptyTitle: "এখনো কোনো রাইডার নিবন্ধিত হয়নি",
+  emptyDesc: "রাইডার API দিয়ে রাইডার যোগ হলে তাদের ডেলিভারি ইতিহাসসহ এখানে দেখা যাবে।",
   emptyNote:
     "এখনো কোনো রাইডার নিবন্ধিত হয়নি — রাইডার API দিয়ে যোগ করা রাইডাররা তাদের ডেলিভারির ইতিহাসসহ এখানে দেখা যাবে। নিচের টেবিলগুলো খালি কারণ টেবিলগুলোই খালি, নমুনা ডেটা নয়।",
   ridersHeading: "রাইডার",
@@ -64,6 +66,8 @@ const en: RidersStrings = {
   statCodShortages: "COD shortages",
   shortageNeedsReview: "needs review",
   shortageNone: "none flagged",
+  emptyTitle: "No riders registered yet",
+  emptyDesc: "Riders added via the riders API will appear here with their delivery history.",
   emptyNote:
     "No riders are registered yet — riders added via the riders API will appear here with their delivery history. The tables below are empty because the tables are empty, not sample data.",
   ridersHeading: "Riders",

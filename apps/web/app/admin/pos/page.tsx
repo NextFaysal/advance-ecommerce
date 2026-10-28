@@ -1,5 +1,5 @@
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { listActiveProducts } from "@/catalog/server-read";
 import { demoPosFlags, isPosEnabled } from "@/pos/flags";
 import { openShiftForRegister } from "@/pos/register";
@@ -24,7 +24,7 @@ export default async function AdminPosPage() {
   if (!isPosEnabled(demoPosFlags)) {
     return (
       <main>
-        <PageHeader title={s.pageTitle} description={s.lockedDesc} />
+        <PageHeader title={s.pageTitle} subtitle={s.lockedDesc} />
         <p role="status">{interpolate(s.lockedText, { flag: "module.pos" })}</p>
       </main>
     );
@@ -57,7 +57,7 @@ export default async function AdminPosPage() {
 
   return (
     <main>
-      <PageHeader title={s.pageTitle} description={s.pageDescription} breadcrumb="Admin / Sales" />
+      <PageHeader title={s.pageTitle} subtitle={s.pageDescription} />
       <PosRegisterClient
         register={{ id: register.id, name: register.name }}
         catalog={catalog}

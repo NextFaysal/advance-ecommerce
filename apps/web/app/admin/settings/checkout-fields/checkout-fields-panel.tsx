@@ -147,7 +147,7 @@ function ConditionEditor({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card p-3">
+    <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
       <span className="mb-1.5 block text-xs font-medium text-text-muted">{title}</span>
       <select
         value={source}

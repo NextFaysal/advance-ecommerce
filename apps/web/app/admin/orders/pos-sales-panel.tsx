@@ -87,7 +87,7 @@ export function PosSalesPanel() {
   }, [rangeKey]);
 
   return (
-    <section aria-label={s.posAria} className="mt-4 rounded-lg border border-border bg-card p-4 shadow-card">
+    <section aria-label={s.posAria} className="mt-4 rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-h3">{s.posTitle}</h2>
@@ -106,7 +106,7 @@ export function PosSalesPanel() {
               type="button"
               onClick={() => setRangeKey(o.key)}
               aria-pressed={rangeKey === o.key}
-              className={`min-h-[36px] rounded-md px-3 text-small font-semibold transition motion-fast ${
+              className={`min-h-[36px] rounded-xl px-3 text-small font-semibold transition duration-fast ease-smooth ${
                 rangeKey === o.key
                   ? "bg-brand-600 text-white"
                   : "border border-border bg-card hover:bg-surface-2"
@@ -119,7 +119,7 @@ export function PosSalesPanel() {
       </div>
 
       {failed && (
-        <p role="alert" className="mt-3 text-small text-rose-600">
+        <p role="alert" className="mt-3 text-small text-danger">
           {s.posLoadFail}
         </p>
       )}
@@ -133,7 +133,7 @@ export function PosSalesPanel() {
           <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-small">
             <span>
               {s.posTotalSales}{" "}
-              <span className="font-mono font-bold tabular-nums">{formatBdt(report.totalPoisha)}</span>
+              <span className="tnum font-bold">{formatBdt(report.totalPoisha)}</span>
             </span>
             <span className="text-text-muted">
               {report.count.toLocaleString(intlLocale(locale))} {s.posReceipts}
@@ -167,7 +167,7 @@ export function PosSalesPanel() {
                       </td>
                       <td className="py-2 pr-3">{METHOD_LABEL[r.paymentMethod] ? pick(locale, METHOD_LABEL[r.paymentMethod]) : r.paymentMethod}</td>
                       <td className="py-2 pr-3 text-right tabular-nums">{r.itemsCount.toLocaleString(intlLocale(locale))}</td>
-                      <td className="py-2 text-right font-mono font-semibold tabular-nums">
+                      <td className="tnum py-2 text-right font-semibold">
                         {formatBdt(r.totalPoisha)}
                       </td>
                     </tr>

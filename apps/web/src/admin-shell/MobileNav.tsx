@@ -71,7 +71,7 @@ export function MobileNav({
               key={item.id}
               href={item.path}
               aria-current={active ? "page" : undefined}
-              className={`flex flex-1 flex-col items-center gap-0.5 rounded-md py-1.5 text-caption transition duration-fast ease-smooth ${
+              className={`focus-ring flex flex-1 flex-col items-center gap-0.5 rounded-md py-1.5 text-caption transition duration-fast ease-smooth ${
                 active ? "font-semibold text-brand-700" : "font-medium text-text-muted"
               }`}
             >
@@ -92,7 +92,7 @@ export function MobileNav({
           onClick={() => setDrawerOpen(true)}
           aria-haspopup="dialog"
           aria-expanded={drawerOpen}
-          className="flex flex-1 flex-col items-center gap-0.5 rounded-md py-1.5 text-caption font-medium text-text-muted transition duration-fast ease-smooth"
+          className="focus-ring flex flex-1 flex-col items-center gap-0.5 rounded-md py-1.5 text-caption font-medium text-text-muted transition duration-fast ease-smooth"
         >
           <span aria-hidden="true" className="flex h-7 w-12 items-center justify-center rounded-full">
             <ShellIcon name="Menu" className="h-5 w-5" />
@@ -121,7 +121,7 @@ export function MobileNav({
               type="button"
               onClick={() => setDrawerOpen(false)}
               aria-label={s.close}
-              className="focus-ring flex min-h-[40px] min-w-[40px] items-center justify-center rounded-md text-text-muted transition duration-fast hover:bg-surface-2 hover:text-text-main"
+              className="focus-ring flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-text-muted transition duration-fast hover:bg-surface-2 hover:text-text-main"
             >
               <ShellIcon name="X" className="h-5 w-5" />
             </button>

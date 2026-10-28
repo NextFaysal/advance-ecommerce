@@ -1,5 +1,6 @@
 import { getRequestLocale } from "@/i18n/server";
 import { pick } from "@/i18n/locale";
+import { PageHeader } from "@/components/ui/page-header";
 import { BuilderClient } from "./builder-client";
 import { REPORTS_STRINGS } from "../strings";
 
@@ -16,8 +17,7 @@ export default async function ReportBuilderPage() {
   const s = pick(locale, REPORTS_STRINGS);
   return (
     <main className="min-w-0">
-      <h1 className="text-xl font-bold">{s.builderTitle}</h1>
-      <p className="mt-2 text-sm text-slate-600">{s.builderDesc}</p>
+      <PageHeader title={s.builderTitle} description={s.builderDesc} />
       <BuilderClient />
     </main>
   );

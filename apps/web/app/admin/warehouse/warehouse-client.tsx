@@ -21,6 +21,8 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BarcodeScanner } from "@/components/admin/barcode-scanner";
+import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { formatBdt } from "@/checkout/pricing";
 import type { PickList } from "@/warehouse/pick-lists";
 import type { ConfirmedQueue } from "@/warehouse/queue";
@@ -54,9 +56,9 @@ const tabBtn =
 const tabActive = "border-primary bg-primary text-white";
 const tabIdle = "border-border bg-card text-text-main hover:border-primary";
 const bigBtn =
-  "inline-flex min-h-14 items-center justify-center rounded-xl bg-primary px-6 text-lg font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex min-h-14 items-center justify-center rounded-xl bg-primary px-6 text-lg font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:cursor-not-allowed disabled:opacity-50";
 const ghostBtn =
-  "inline-flex min-h-14 items-center justify-center rounded-xl border border-border bg-card px-5 text-base font-semibold text-text-main disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex min-h-14 items-center justify-center rounded-xl border border-border bg-card px-5 text-base font-semibold text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:cursor-not-allowed disabled:opacity-50";
 
 function Notice({ text, tone }: { text: string; tone: "error" | "ok" }) {
   return (
@@ -64,8 +66,8 @@ function Notice({ text, tone }: { text: string; tone: "error" | "ok" }) {
       role={tone === "error" ? "alert" : "status"}
       className={`rounded-xl border px-4 py-3 text-base ${
         tone === "error"
-          ? "border-red-300 bg-red-50 text-red-800"
-          : "border-emerald-300 bg-emerald-50 text-emerald-800"
+          ? "border-danger/30 bg-danger-soft text-danger"
+          : "border-success-solid/30 bg-success-soft text-success-solid"
       }`}
     >
       {text}
@@ -195,7 +197,7 @@ export function WarehouseClient({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="flex gap-2" role="tablist" aria-label={s.tabsAria}>
         <button type="button" role="tab" aria-selected={tab === "pick"} className={tabBtn + (tab === "pick" ? tabActive : tabIdle)} onClick={() => setTab("pick")}>
           {s.tabPick}
@@ -211,8 +213,8 @@ export function WarehouseClient({
       {notice ? <Notice text={notice.text} tone={notice.tone} /> : null}
 
       {tab === "pick" ? (
-        <section className="space-y-5">
-          <div className="rounded-2xl border border-border bg-card p-4">
+        <section className="space-y-6">
+          <Card className="p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl font-bold">{interpolate(s.queueTitle, { count: queue.rows.length })}</h2>
               <div className="flex flex-wrap gap-2">
@@ -227,7 +229,7 @@ export function WarehouseClient({
               </div>
             </div>
             {queue.rows.length === 0 ? (
-              <p className="text-text-muted">{s.noConfirmed}</p>
+              <EmptyState title={s.queueEmptyTitle} description={s.queueEmptyDesc} />
             ) : (
               <ul className="divide-y divide-border">
                 {queue.rows.map((row) => {
@@ -243,7 +245,7 @@ export function WarehouseClient({
                         aria-label={interpolate(s.selectAria, { orderNo: row.orderNo })}
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="font-mono text-lg font-bold">{row.orderNo}</p>
+                        <p className="tnum font-mono text-lg font-bold">{row.orderNo}</p>
                         <p className="text-sm text-text-muted">
                           {interpolate(s.rowMeta, {
                             customer: row.customerName,
@@ -255,24 +257,24 @@ export function WarehouseClient({
                         </p>
                       </div>
                       {row.packedPickListId ? (
-                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-800">{s.packedDoneBadge}</span>
+                        <span className="rounded-full bg-success-soft px-3 py-1 text-sm font-semibold text-success-solid">{s.packedDoneBadge}</span>
                       ) : blocked ? (
-                        <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-800">{s.inPickListBadge}</span>
+                        <span className="rounded-full bg-warning-soft px-3 py-1 text-sm font-semibold text-warning-solid">{s.inPickListBadge}</span>
                       ) : null}
                     </li>
                   );
                 })}
               </ul>
             )}
-          </div>
+          </Card>
 
           <div className="space-y-4">
             {lists.map((list) => (
-              <article key={list.id} className="rounded-2xl border border-border bg-card p-4">
+              <Card key={list.id} className="p-4">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <h3 className="text-lg font-bold">
                     {s.pickListWord} <span className="font-mono">{list.id.slice(0, 8)}</span>{" "}
-                    <span className={list.status === "OPEN" ? "text-amber-600" : "text-emerald-600"}>
+                    <span className={list.status === "OPEN" ? "text-warning-solid" : "text-success-solid"}>
                       {list.status === "OPEN" ? s.statusOpenSuffix : s.statusDoneSuffix}
                     </span>
                   </h3>
@@ -299,7 +301,25 @@ export function WarehouseClient({
                   <br />
                   {s.attestationNote}
                 </p>
-                <div className="overflow-x-auto">
+                <div className="space-y-3 md:hidden">
+                  {list.lines.map((line) => (
+                    <div key={line.variantId} className="rounded-xl border border-border bg-surface-2/40 p-3">
+                      <p className="text-base font-medium">{line.productName}</p>
+                      <p className="mt-1 font-mono text-sm text-text-muted">
+                        {line.sku} · {line.binLocation ?? "—"}
+                      </p>
+                      <p className="tnum mt-1 text-base font-bold">× {line.totalQuantity}</p>
+                      <span className="mt-2 flex flex-wrap gap-1.5">
+                        {line.perOrder.map((p) => (
+                          <span key={p.orderId} className="tnum rounded-full bg-surface-2 px-2.5 py-1 font-mono text-sm text-text-main">
+                            {p.orderNo}: {p.quantity}
+                          </span>
+                        ))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="hidden overflow-x-auto md:block">
                   <table className="w-full min-w-[560px] text-left text-base">
                     <thead>
                       <tr className="border-b border-border text-sm text-text-muted">
@@ -316,11 +336,11 @@ export function WarehouseClient({
                           <td className="py-2 pr-3 font-medium">{line.productName}</td>
                           <td className="py-2 pr-3 font-mono">{line.sku}</td>
                           <td className="py-2 pr-3 font-mono">{line.binLocation ?? "—"}</td>
-                          <td className="py-2 pr-3 font-bold">× {line.totalQuantity}</td>
+                          <td className="tnum py-2 pr-3 font-bold">× {line.totalQuantity}</td>
                           <td className="py-2">
                             <span className="flex flex-wrap gap-1.5">
                               {line.perOrder.map((p) => (
-                                <span key={p.orderId} className="rounded-full bg-slate-100 px-2.5 py-1 font-mono text-sm">
+                                <span key={p.orderId} className="tnum rounded-full bg-surface-2 px-2.5 py-1 font-mono text-sm text-text-main">
                                   {p.orderNo}: {p.quantity}
                                 </span>
                               ))}
@@ -331,15 +351,15 @@ export function WarehouseClient({
                     </tbody>
                   </table>
                 </div>
-              </article>
+              </Card>
             ))}
-            {lists.length === 0 ? <p className="text-text-muted">{s.noLists}</p> : null}
+            {lists.length === 0 ? <EmptyState title={s.listsEmptyTitle} description={s.listsEmptyDesc} /> : null}
           </div>
         </section>
       ) : null}
 
       {tab === "pack" ? (
-        <section className="space-y-5">
+        <section className="space-y-6">
           <div className="flex flex-wrap gap-2">
             {lists.filter((l) => l.status === "OPEN").map((l) => (
               <button key={l.id} type="button" onClick={() => setPackListId(l.id)}
@@ -348,16 +368,16 @@ export function WarehouseClient({
               </button>
             ))}
             {lists.every((l) => l.status !== "OPEN") ? (
-              <p className="text-text-muted">{s.noOpenList}</p>
+              <div className="w-full"><EmptyState title={s.openListEmptyTitle} description={s.openListEmptyDesc} /></div>
             ) : null}
           </div>
 
           {activePackList && activePackList.status === "OPEN" ? (
-            <div className="rounded-2xl border border-border bg-card p-4">
+            <Card className="p-4">
               <h3 className="mb-3 text-lg font-bold">{s.scanTickTitle}</h3>
               <BarcodeScanner onScan={scanTick} disabled={busy} />
               <p className="mt-2 text-sm text-text-muted">{s.scanTickDesc}</p>
-            </div>
+            </Card>
           ) : null}
 
           {activePackList && activePackList.status === "OPEN"
@@ -365,11 +385,11 @@ export function WarehouseClient({
                 const doneCount = order.items.filter((i) => i.packed).length;
                 const locked = order.packCompletedAt !== null;
                 return (
-                  <article key={order.orderId} className="rounded-2xl border border-border bg-card p-4">
+                  <Card key={order.orderId} className="p-4">
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="font-mono text-lg font-bold">{order.orderNo}</h3>
+                      <h3 className="tnum font-mono text-lg font-bold">{order.orderNo}</h3>
                       {locked ? (
-                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-800">
+                        <span className="rounded-full bg-success-soft px-3 py-1 text-sm font-semibold text-success-solid">
                           {s.packDoneNote}
                         </span>
                       ) : (
@@ -380,10 +400,10 @@ export function WarehouseClient({
                     <ul className="space-y-2">
                       {order.items.map((item) => (
                         <li key={item.orderItemId}>
-                          <label className={`flex min-h-14 cursor-pointer items-center gap-4 rounded-xl border px-4 py-2 ${item.packed ? "border-emerald-300 bg-emerald-50" : "border-border"}`}>
+                          <label className={`flex min-h-14 cursor-pointer items-center gap-4 rounded-xl border px-4 py-2 ${item.packed ? "border-success-solid/40 bg-success-soft" : "border-border"}`}>
                             <input
                               type="checkbox"
-                              className="h-8 w-8 shrink-0 accent-emerald-600"
+                              className="h-8 w-8 shrink-0 accent-success-solid"
                               checked={item.packed}
                               disabled={locked || busy}
                               onChange={(e) => tick(activePackList, order.orderId, item.orderItemId, e.target.checked)}
@@ -393,7 +413,7 @@ export function WarehouseClient({
                               {item.sku}
                               {item.barcode ? ` · ${item.barcode}` : ""}
                             </span>
-                            <span className="text-lg font-bold">× {item.quantity}</span>
+                            <span className="tnum text-lg font-bold">× {item.quantity}</span>
                           </label>
                         </li>
                       ))}
@@ -401,7 +421,7 @@ export function WarehouseClient({
                     {locked ? (
                       <p className="mt-2 text-sm text-text-muted">{s.tickLockedNote}</p>
                     ) : null}
-                  </article>
+                  </Card>
                 );
               })
             : null}
@@ -467,7 +487,7 @@ function ShipScan() {
   };
 
   return (
-    <section className="space-y-5">
+    <section className="space-y-6">
       <BarcodeScanner
         typedFallback={false}
         disabled={busy}
@@ -499,10 +519,10 @@ function ShipScan() {
       {notice ? <Notice text={notice.text} tone={notice.tone} /> : null}
 
       {result?.state === "found" ? (
-        <article className="rounded-2xl border border-border bg-card p-5">
+        <Card>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-mono text-xl font-bold">{result.shipment.trackingId ?? result.shipment.shipmentId}</h3>
-            <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold">{result.shipment.status}</span>
+            <h3 className="tnum font-mono text-xl font-bold">{result.shipment.trackingId ?? result.shipment.shipmentId}</h3>
+            <span className="rounded-full bg-surface-2 px-3 py-1 font-semibold text-text-main">{result.shipment.status}</span>
           </div>
           <dl className="grid gap-1 text-base sm:grid-cols-2">
             <div>{s.labelCourier} <strong>{result.shipment.provider}</strong></div>
@@ -514,14 +534,14 @@ function ShipScan() {
               ({result.order.orderStatus})
             </div>
             <div>{s.labelCustomer} {result.order.customerName} · {result.order.district}</div>
-            <div>COD: <strong>{formatBdt(result.shipment.codAmountPoisha)}</strong></div>
+            <div>COD: <strong className="tnum">{formatBdt(result.shipment.codAmountPoisha)}</strong></div>
           </dl>
           {result.shipment.packedPickListId ? (
-            <p className="mt-3 rounded-xl bg-emerald-50 px-4 py-2 font-semibold text-emerald-800">
+            <p className="mt-3 rounded-xl bg-success-soft px-4 py-2 font-semibold text-success-solid">
               {interpolate(s.packedRecord, { id: result.shipment.packedPickListId.slice(0, 8) })}
             </p>
           ) : (
-            <p className="mt-3 rounded-xl bg-amber-50 px-4 py-2 font-semibold text-amber-800">
+            <p className="mt-3 rounded-xl bg-warning-soft px-4 py-2 font-semibold text-warning-solid">
               {s.noPackedRecord}
             </p>
           )}
@@ -535,7 +555,7 @@ function ShipScan() {
                 <p className="mt-2 text-sm text-text-muted">{s.handoverNote}</p>
               </>
             ) : result.shipment.handoverAt ? (
-              <p className="font-semibold text-emerald-700">
+              <p className="font-semibold text-success-solid">
                 {interpolate(s.handoverRecordedAt, {
                   date: new Date(result.shipment.handoverAt).toLocaleString(intlLocale(locale)),
                 })}
@@ -546,12 +566,12 @@ function ShipScan() {
               </p>
             )}
           </div>
-        </article>
+        </Card>
       ) : null}
 
       {result?.state === "not_booked" ? (
-        <article className="rounded-2xl border border-amber-300 bg-amber-50 p-5">
-          <h3 className="mb-1 font-mono text-xl font-bold">{result.order.orderNo}</h3>
+        <article className="rounded-2xl border border-warning-solid/40 bg-warning-soft p-5">
+          <h3 className="tnum mb-1 font-mono text-xl font-bold">{result.order.orderNo}</h3>
           <p className="mb-4 text-base">
             {interpolate(s.notBookedDesc, { customer: result.order.customerName, district: result.order.district ?? "" })}
           </p>

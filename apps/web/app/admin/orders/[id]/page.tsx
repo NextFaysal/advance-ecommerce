@@ -64,6 +64,7 @@ import { PickupOtpPanel } from "./pickup-otp-panel";
 import { CustomFieldsPanel } from "@/components/admin/custom-fields-panel";
 import { PresenceHeartbeat } from "./presence-heartbeat";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -351,11 +352,11 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
   if (loadState === "loading") {
     return (
       <main>
-        <div role="status" aria-label={s.ordLoadingAria} className="rounded-lg border border-border bg-card p-6 shadow-card">
-          <div className="h-6 w-48 animate-pulse rounded bg-border" />
+        <div role="status" aria-label={s.ordLoadingAria} className="rounded-2xl border border-border/60 bg-card p-6 shadow-xs">
+          <div className="skeleton-shimmer h-6 w-48 rounded-md" />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="h-24 animate-pulse rounded-md bg-surface-2" />
-            <div className="h-24 animate-pulse rounded-md bg-surface-2" />
+            <div className="skeleton-shimmer h-24 rounded-xl" />
+            <div className="skeleton-shimmer h-24 rounded-xl" />
           </div>
           <p className="mt-4 text-small text-text-muted">{s.ordLoading}</p>
         </div>
@@ -365,32 +366,28 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
   if (loadState === "notfound") {
     return (
       <main>
-        <div className="rounded-lg border border-border bg-card px-6 py-14 text-center shadow-card">
-          <span aria-hidden="true" className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 text-brand-500">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" className="h-7 w-7">
-              <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
-            </svg>
-          </span>
-          <h1 className="mt-4 text-h2">{s.dtNotFoundTitle}</h1>
-          <p className="mx-auto mt-1 max-w-md text-small leading-relaxed text-text-muted">
-            {interpolate(s.dtNotFoundBody, { id: params.id })}
-          </p>
-          <a
-            href="/admin/orders"
-            className="mt-5 inline-flex min-h-[44px] items-center justify-center rounded-md border border-border bg-card px-4 text-sm font-semibold shadow-sm transition motion-fast hover:bg-surface-2"
-          >
-            {s.dtBackBtn}
-          </a>
-        </div>
+        <EmptyState
+          title={s.dtNotFoundTitle}
+          description={interpolate(s.dtNotFoundBody, { id: params.id })}
+        >
+          <div className="mt-5">
+            <a
+              href="/admin/orders"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-border bg-card px-4 text-sm font-semibold shadow-xs transition duration-fast ease-smooth hover:bg-surface-2"
+            >
+              {s.dtBackBtn}
+            </a>
+          </div>
+        </EmptyState>
       </main>
     );
   }
   if (loadState === "error" || !order) {
     return (
       <main>
-        <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-5 shadow-card">
-          <p className="font-semibold text-rose-700">{s.ordLoadFailTitle}</p>
-          <p className="mt-1 text-small text-rose-600">{loadError}</p>
+        <div role="alert" className="rounded-2xl border border-danger/25 bg-danger-soft p-5 shadow-xs">
+          <p className="font-semibold text-danger">{s.ordLoadFailTitle}</p>
+          <p className="mt-1 text-small text-danger">{loadError}</p>
           <Button variant="outline" className="mt-4 bg-card" onClick={() => void load()}>
             {s.tryAgain}
           </Button>
@@ -414,7 +411,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
 
   return (
     <main>
-      <a href="/admin/orders" className="mb-4 inline-flex items-center gap-1.5 text-small font-medium text-text-muted transition motion-fast hover:text-brand-700">
+      <a href="/admin/orders" className="mb-4 inline-flex items-center gap-1.5 text-small font-medium text-text-muted transition duration-fast ease-smooth hover:text-brand-700">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
           <path d="m15 18-6-6 6-6" />
         </svg>
@@ -425,7 +422,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
           the primary next-step affordance (the state machine's legal
           next transition; the full transition set + reason input live
           in the কাজ tab). */}
-      <Card className="mb-5 shadow-card">
+      <Card className="mb-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="truncate font-mono text-h2 font-bold">{order.orderNo}</h1>
@@ -466,7 +463,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
           </div>
           <div className="shrink-0 text-right">
             <p className="text-caption font-medium text-text-muted">{t.total}</p>
-            <p className="font-mono text-h1 font-bold tabular-nums">{formatBdt(order.totalPoisha)}</p>
+            <p className="tnum text-h1 font-bold">{formatBdt(order.totalPoisha)}</p>
             {nextLabel && nextTarget && (
               <Button
                 variant="gradient"
@@ -485,13 +482,13 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
                 aria-label={s.dtShortcutsAria}
                 aria-expanded={showShortcuts}
                 onClick={() => setShowShortcuts((v) => !v)}
-                className="inline-flex items-center gap-1.5 text-caption font-medium text-text-muted transition motion-fast hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                className="inline-flex items-center gap-1.5 text-caption font-medium text-text-muted transition duration-fast ease-smooth hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center rounded-full border border-border font-mono text-[11px] font-bold">?</span>
                 {s.dtShortcuts}
               </button>
               {showShortcuts ? (
-                <div className="absolute right-0 top-[calc(100%+8px)] z-30 w-72 rounded-lg border border-border bg-card p-3.5 text-left shadow-pop">
+                <div className="absolute right-0 top-[calc(100%+8px)] z-30 w-72 rounded-2xl border border-border/60 bg-card p-3.5 text-left shadow-pop">
                   <p className="text-small font-semibold">{s.dtShortcuts}</p>
                   <ul className="mt-2 space-y-1.5 text-small text-text-muted">
                     {[
@@ -526,7 +523,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
       {/* Transition result — shown under the header so it is visible
           from whichever tab (or the header button) triggered it. */}
       {message && (
-        <p role="status" className="mb-5 rounded-md bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed">
+        <p role="status" className="mb-5 rounded-xl bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed">
           {message}
         </p>
       )}
@@ -544,7 +541,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
           {/* Contact + address — the phone reveal lives with the
               customer block (audited reveal; the payload's phone
               stays masked until it is used). */}
-          <Card className="shadow-card">
+          <Card>
             <h2 className="mb-3 text-base font-semibold">{s.dtContactTitle}</h2>
             <dl className="space-y-2 text-sm">
               <div className="flex items-center justify-between gap-4">
@@ -576,7 +573,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
           {/* Money — OD0 MoneyBreakdown fed exactly as the OD1
               preview feeds it (subtotal from items, doc-18 split
               passthrough, paid from the advance read model). */}
-          <Card className="shadow-card">
+          <Card>
             <h2 className="mb-3 text-base font-semibold">{s.dtMoneyTitle}</h2>
             <MoneyBreakdown {...previewMoneyProps(order)} lang={locale} />
           </Card>
@@ -587,7 +584,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
               at order time on the order note. The printed state is
               the staff attestation from the print queue. */}
           {order.pod ? (
-            <Card className="shadow-card">
+            <Card>
               <h2 className="mb-3 text-base font-semibold">{s.dtPodTitle}</h2>
               <dl className="space-y-2 text-sm">
                 <div>
@@ -634,7 +631,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
 
           {/* Delivery — courier / tracking / slot + gift chips. */}
           {showDeliveryCard ? (
-            <Card className="shadow-card">
+            <Card>
               <h2 className="mb-3 text-base font-semibold">{s.dtDeliveryTitle}</h2>
               <dl className="space-y-2 text-sm">
                 {order.courier ? (
@@ -718,12 +715,12 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
                 content: (
                   <div className={stack}>
                     {/* Items */}
-                    <Card className="shadow-card">
+                    <Card>
                       <SectionTitle>{interpolate(s.dtItemsTitle, { n: order.items.length })}</SectionTitle>
                       <ul className="divide-y divide-border">
                         {order.items.map((i) => (
                           <li key={i.variantId} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                            <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-surface-2 text-brand-500">
+                            <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-brand-500">
                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
                                 <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
                                 <path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" />
@@ -733,20 +730,20 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
                               <p className="truncate font-medium leading-snug">{i.productName}</p>
                               <p className="font-mono text-caption text-text-muted">{i.sku} × {i.quantity}</p>
                             </div>
-                            <p className="font-mono font-semibold tabular-nums">{formatBdt(lineTotalPoisha(i.unitPricePoisha, i.quantity))}</p>
+                            <p className="tnum font-semibold">{formatBdt(lineTotalPoisha(i.unitPricePoisha, i.quantity))}</p>
                           </li>
                         ))}
                       </ul>
                       <div className="mt-4 flex items-center justify-between border-t border-border pt-3.5">
                         <span className="font-semibold">{s.totalWord}</span>
-                        <span className="font-mono text-h3 font-bold tabular-nums">{formatBdt(order.totalPoisha)}</span>
+                        <span className="tnum text-h3 font-bold">{formatBdt(order.totalPoisha)}</span>
                       </div>
                     </Card>
 
                     {/* Status actions — the full legal transition set
                         with the reason input (the primary next step
                         also sits in the header). */}
-                    <Card className="shadow-card">
+                    <Card>
                       <SectionTitle sub={s.dtStatusChangeSub}>
                         {s.dtStatusChangeTitle}
                       </SectionTitle>
@@ -758,7 +755,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
                         value={reason}
                         onChange={(e) => setReason(e.target.value)}
                         placeholder={s.dtReasonPlaceholder}
-                        className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                        className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15"
                       />
                       <div className="mt-4 flex flex-wrap gap-2">
                         {ORDER_TRANSITIONS[order.status].map((to) => (

@@ -173,9 +173,9 @@ export function OrderPreviewDrawer({
       {state === "loading" ? <PreviewSkeleton /> : null}
 
       {state === "error" ? (
-        <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4">
-          <p className="font-semibold text-rose-700">{s.prevLoadFail}</p>
-          <p className="mt-1 text-small text-rose-600">{error}</p>
+        <div role="alert" className="rounded-2xl border border-danger/25 bg-danger-soft p-4">
+          <p className="font-semibold text-danger">{s.prevLoadFail}</p>
+          <p className="mt-1 text-small text-danger">{error}</p>
           <button
             type="button"
             onClick={() => setNonce((n) => n + 1)}

@@ -2,10 +2,11 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Money, formatPoisha } from "@/components/ui/money";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { StatCard } from "@/components/ui/stat-card";
 import { DataTable } from "@/components/ui/table";
 import { Icon } from "@/components/ui/icon";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { PaymentStatus } from "@/integrations/payment";
 import { listAttempts } from "@/integrations/sandbox/db-store";
 import { listManualTrx } from "@/integrations/sandbox/manual-trx";
@@ -76,29 +77,29 @@ export default async function PaymentsPage() {
   const disputedRows = codRows.filter((r) => r.status === "disputed");
 
   const transactionRows = attempts.map((t) => ({
-    order: <span className="font-mono tabular-nums">#{t.orderId}</span>,
+    order: <span className="tnum font-mono tabular-nums">#{t.orderId}</span>,
     method: paymentMethodLabel(locale, t.method),
     amount: <Money poisha={t.amountPoisha} />,
     paid: <Money poisha={t.paidPoisha} />,
     status: <PaymentStatusBadge status={t.status} />,
     trx: t.gatewayTransactionId ? (
-      <span className="font-mono text-xs tabular-nums">{t.gatewayTransactionId}</span>
+      <span className="tnum font-mono text-xs tabular-nums">{t.gatewayTransactionId}</span>
     ) : (
       "—"
     ),
-    time: <span className="font-mono tabular-nums">{dhakaTime(t.createdAt)}</span>,
+    time: <span className="tnum font-mono tabular-nums">{dhakaTime(t.createdAt)}</span>,
   }));
 
   const codTableRows = codSummaries.map((s) => ({
     courier: COURIER_LABELS[locale][s.provider],
-    shipments: String(s.shipmentCount),
+    shipments: <span className="tnum">{s.shipmentCount}</span>,
     collected: <Money poisha={s.collectedPoisha} />,
     charge: <Money poisha={s.courierChargePoisha} />,
     outstanding: <Money poisha={s.outstandingPoisha} />,
     settled: <Money poisha={s.settledPoisha} />,
     disputed:
       s.disputedPoisha > 0 ? (
-        <span className="inline-flex items-center gap-1 font-medium text-rose-700">
+        <span className="inline-flex items-center gap-1 font-medium text-danger">
           <Icon name="alert" size={14} /> <Money poisha={s.disputedPoisha} />
         </span>
       ) : (
@@ -110,7 +111,7 @@ export default async function PaymentsPage() {
     <div className="space-y-6">
       <PageHeader
         title={t.title}
-        description={t.description}
+        subtitle={t.description}
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -143,49 +144,123 @@ export default async function PaymentsPage() {
       </div>
 
       {attempts.length > 0 ? (
-        <DataTable
-          caption={t.txCaption}
-          columns={[
-            { key: "order", header: t.colOrder },
-            { key: "method", header: t.colMethod },
-            { key: "amount", header: t.colAmount },
-            { key: "paid", header: t.colPaid },
-            { key: "status", header: t.colStatus },
-            { key: "trx", header: t.colGatewayTrx },
-            { key: "time", header: t.colTime },
-          ]}
-          rows={transactionRows}
-        />
+        <>
+          <div className="hidden md:block">
+            <DataTable
+              caption={t.txCaption}
+              columns={[
+                { key: "order", header: t.colOrder },
+                { key: "method", header: t.colMethod },
+                { key: "amount", header: t.colAmount },
+                { key: "paid", header: t.colPaid },
+                { key: "status", header: t.colStatus },
+                { key: "trx", header: t.colGatewayTrx },
+                { key: "time", header: t.colTime },
+              ]}
+              rows={transactionRows}
+            />
+          </div>
+          <div className="space-y-3 md:hidden">
+            {attempts.map((a, idx) => (
+              <Card key={`${a.orderId}-${a.createdAt}-${idx}`} className="p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-mono tabular-nums tnum">#{a.orderId}</span>
+                  <PaymentStatusBadge status={a.status} />
+                </div>
+                <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <dt className="text-xs text-text-muted">{t.colMethod}</dt>
+                    <dd>{paymentMethodLabel(locale, a.method)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted">{t.colTime}</dt>
+                    <dd className="font-mono tabular-nums tnum">{dhakaTime(a.createdAt)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted">{t.colAmount}</dt>
+                    <dd><Money poisha={a.amountPoisha} /></dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted">{t.colPaid}</dt>
+                    <dd><Money poisha={a.paidPoisha} /></dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-xs text-text-muted">{t.colGatewayTrx}</dt>
+                    <dd className="font-mono text-xs tabular-nums tnum">{a.gatewayTransactionId ?? "—"}</dd>
+                  </div>
+                </dl>
+              </Card>
+            ))}
+          </div>
+        </>
       ) : (
-        <Card className="shadow-card">
-          <p className="text-sm text-text-muted">
-            {t.noAttempts}
-          </p>
-        </Card>
+        <EmptyState title={t.txEmptyTitle} description={t.txEmptyDesc} />
       )}
 
-      <section className="space-y-3">
-        <h2 className="text-h3">{t.manualQueueTitle}</h2>
+      <section className="space-y-4">
+        <h2 className="font-display text-base font-semibold text-text-main">{t.manualQueueTitle}</h2>
         <ManualTrxReviewQueue submissions={manualSubmissions} />
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-h3">{t.codTitle}</h2>
-        <DataTable
-          caption={t.codCaption}
-          columns={[
-            { key: "courier", header: t.colCourier },
-            { key: "shipments", header: t.colShipments },
-            { key: "collected", header: t.colCollected },
-            { key: "charge", header: t.colCourierCharge },
-            { key: "outstanding", header: t.colOutstanding },
-            { key: "settled", header: t.colSettled },
-            { key: "disputed", header: t.colDisputed },
-          ]}
-          rows={codTableRows}
-        />
+      <section className="space-y-4">
+        <h2 className="font-display text-base font-semibold text-text-main">{t.codTitle}</h2>
+        <div className="hidden md:block">
+          <DataTable
+            caption={t.codCaption}
+            columns={[
+              { key: "courier", header: t.colCourier },
+              { key: "shipments", header: t.colShipments },
+              { key: "collected", header: t.colCollected },
+              { key: "charge", header: t.colCourierCharge },
+              { key: "outstanding", header: t.colOutstanding },
+              { key: "settled", header: t.colSettled },
+              { key: "disputed", header: t.colDisputed },
+            ]}
+            rows={codTableRows}
+          />
+        </div>
+        <div className="space-y-3 md:hidden">
+          {codSummaries.map((s, idx) => (
+            <Card key={`${s.provider}-${idx}`} className="p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-display text-base font-semibold text-text-main">{COURIER_LABELS[locale][s.provider]}</span>
+                <span className="tnum text-sm text-text-muted">{t.colShipments}: {s.shipmentCount}</span>
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                <div>
+                  <dt className="text-xs text-text-muted">{t.colCollected}</dt>
+                  <dd><Money poisha={s.collectedPoisha} /></dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-text-muted">{t.colCourierCharge}</dt>
+                  <dd><Money poisha={s.courierChargePoisha} /></dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-text-muted">{t.colOutstanding}</dt>
+                  <dd><Money poisha={s.outstandingPoisha} /></dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-text-muted">{t.colSettled}</dt>
+                  <dd><Money poisha={s.settledPoisha} /></dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-xs text-text-muted">{t.colDisputed}</dt>
+                  <dd>
+                    {s.disputedPoisha > 0 ? (
+                      <span className="inline-flex items-center gap-1 font-medium text-danger">
+                        <Icon name="alert" size={14} /> <Money poisha={s.disputedPoisha} />
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </dd>
+                </div>
+              </dl>
+            </Card>
+          ))}
+        </div>
         {disputedRows.map((r) => (
-          <p key={r.shipmentId} className="flex items-start gap-1.5 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          <p key={r.shipmentId} className="flex items-start gap-1.5 rounded-md bg-danger-soft px-3 py-2 text-xs text-danger">
             <span aria-hidden="true" className="mt-px shrink-0"><Icon name="alert" size={13} /></span>
             <span>{t.disputedPrefix} <span className="font-mono">{r.shipmentId}</span> ({t.disputedOrder} #{r.orderId},{" "}
             {COURIER_LABELS[locale][r.provider]}) — {t.disputedClaim} <Money poisha={r.collectedPoisha} />, {t.disputedPayable}{" "}
@@ -194,8 +269,8 @@ export default async function PaymentsPage() {
         ))}
       </section>
 
-      <Card className="shadow-card">
-        <h2 className="text-h3">{t.linksTitle}</h2>
+      <Card>
+        <h2 className="font-display text-base font-semibold text-text-main">{t.linksTitle}</h2>
         <p className="mt-1 text-sm text-text-muted">
           {t.linksBody}
         </p>

@@ -1,10 +1,12 @@
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
+import { Card } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { DataTable } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Money } from "@/components/ui/money";
 import { Phone } from "@/components/ui/phone";
 import { Icon } from "@/components/ui/icon";
+import { EmptyState } from "@/components/ui/empty-state";
 import { demoRiderFlags, isRiderEnabled } from "@/riders/flags";
 import { riderStore } from "@/riders/db-store";
 import { activeLoad } from "@/riders/assignment";
@@ -44,8 +46,8 @@ export default async function AdminRidersPage() {
   await ensureDbFeatureFlags();
   if (!isRiderEnabled(demoRiderFlags)) {
     return (
-      <main>
-        <PageHeader title={s.lockedTitle} description={s.lockedDesc} />
+      <main className="space-y-6">
+        <PageHeader title={s.lockedTitle} subtitle={s.lockedDesc} />
         <p role="status">{interpolate(s.lockedText, { flag: "module.rider" })}</p>
       </main>
     );
@@ -75,9 +77,9 @@ export default async function AdminRidersPage() {
           {riderStatusLabel(r.status)}
         </Badge>
       ),
-      load: activeLoad(deliveries, r.id),
-      delivered: perf.delivered,
-      success: `${(perf.successRateBps / 100).toFixed(0)}%`,
+      load: <span className="tnum">{activeLoad(deliveries, r.id)}</span>,
+      delivered: <span className="tnum">{perf.delivered}</span>,
+      success: <span className="tnum">{`${(perf.successRateBps / 100).toFixed(0)}%`}</span>,
       payout: <Money poisha={perf.payoutPoisha} />,
     };
   });
@@ -94,9 +96,9 @@ export default async function AdminRidersPage() {
   }));
 
   return (
-    <main>
-      <PageHeader title={s.title} description={s.description} breadcrumb="Admin / Delivery" />
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <main className="space-y-6">
+      <PageHeader title={s.title} subtitle={s.description} />
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label={s.statRiders} value={String(riders.length)} delta={interpolate(s.availableDelta, { count: riders.filter((r) => r.status === "ACTIVE" || r.status === "ON_DELIVERY").length })} icon={<Icon name="users" size={22} />} />
         <StatCard label={s.statInFlight} value={String(inFlight.length)} delta={s.statInFlightDelta} icon={<Icon name="package" size={22} />} />
         <StatCard label={s.statDelivered} value={String(deliveries.filter((d) => d.status === "DELIVERED").length)} delta={s.statDeliveredDelta} icon={<Icon name="check" size={22} />} />
@@ -104,29 +106,76 @@ export default async function AdminRidersPage() {
       </div>
 
       {riders.length === 0 ? (
-        <p className="mb-6 rounded-md bg-surface-2 px-3 py-2 text-sm text-text-muted">
-          {s.emptyNote}
-        </p>
+        <EmptyState title={s.emptyTitle} description={s.emptyDesc} />
       ) : null}
 
-      <h2 className="mb-3 text-lg font-semibold">{s.ridersHeading}</h2>
-      <DataTable
-        caption={s.tableCaption}
-        columns={[
-          { key: "rider", header: s.colRider },
-          { key: "phone", header: s.colPhone },
-          { key: "zone", header: s.colZone },
-          { key: "vehicle", header: s.colVehicle },
-          { key: "status", header: s.colStatus },
-          { key: "load", header: s.colLoad },
-          { key: "delivered", header: s.colDelivered },
-          { key: "success", header: s.colSuccess },
-          { key: "payout", header: s.colPayout },
-        ]}
-        rows={riderRows}
-      />
+      <section className="space-y-4">
+        <h2 className="font-display text-base font-semibold text-text-main">{s.ridersHeading}</h2>
+        <div className="hidden md:block">
+          <DataTable
+            caption={s.tableCaption}
+            columns={[
+              { key: "rider", header: s.colRider },
+              { key: "phone", header: s.colPhone },
+              { key: "zone", header: s.colZone },
+              { key: "vehicle", header: s.colVehicle },
+              { key: "status", header: s.colStatus },
+              { key: "load", header: s.colLoad },
+              { key: "delivered", header: s.colDelivered },
+              { key: "success", header: s.colSuccess },
+              { key: "payout", header: s.colPayout },
+            ]}
+            rows={riderRows}
+          />
+        </div>
+        <div className="space-y-3 md:hidden">
+          {riders.map((r) => {
+            const perf = computeRiderPerformance(r, deliveries);
+            return (
+              <Card key={r.id} className="p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-display text-base font-semibold text-text-main">{r.name}</span>
+                  <Badge tone={r.status === "ACTIVE" ? "success" : r.status === "ON_DELIVERY" ? "info" : "neutral"}>
+                    {riderStatusLabel(r.status)}
+                  </Badge>
+                </div>
+                <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <dt className="text-xs text-text-muted">{s.colPhone}</dt>
+                    <dd><Phone phone={r.phone} /></dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted">{s.colZone}</dt>
+                    <dd>{zoneName(r.zoneId)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted">{s.colVehicle}</dt>
+                    <dd>{r.vehicle}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted">{s.colPayout}</dt>
+                    <dd><Money poisha={perf.payoutPoisha} /></dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted">{s.colLoad}</dt>
+                    <dd className="tnum">{activeLoad(deliveries, r.id)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted">{s.colDelivered}</dt>
+                    <dd className="tnum">{perf.delivered}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-text-muted">{s.colSuccess}</dt>
+                    <dd className="tnum">{`${(perf.successRateBps / 100).toFixed(0)}%`}</dd>
+                  </div>
+                </dl>
+              </Card>
+            );
+          })}
+        </div>
+      </section>
 
-      <div className="mt-8">
+      <div>
         <RiderAssignmentBoard
           initialDeliveries={assignmentViews}
           riders={riders.map((r) => ({ id: r.id, name: r.name, status: r.status }))}

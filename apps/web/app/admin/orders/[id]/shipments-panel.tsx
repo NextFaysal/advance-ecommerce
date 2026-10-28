@@ -136,8 +136,8 @@ const PIPELINE_STEPS = [
 ] as const satisfies readonly { status: string; label: Record<Locale, string>; icon: IconName }[];
 
 const OFF_PATH: Record<string, { label: Record<Locale, string>; icon: IconName; cls: string }> = {
-  FAILED: { label: { bn: "ডেলিভারি ব্যর্থ হয়েছে", en: "Delivery failed" }, icon: "alert", cls: "border-rose-200 bg-rose-50 text-rose-700" },
-  RETURNING: { label: { bn: "পার্সেলটি ফেরত আসছে", en: "The parcel is returning" }, icon: "rotate-ccw", cls: "border-amber-200 bg-amber-50 text-amber-800" },
+  FAILED: { label: { bn: "ডেলিভারি ব্যর্থ হয়েছে", en: "Delivery failed" }, icon: "alert", cls: "border-danger/25 bg-danger-soft text-danger" },
+  RETURNING: { label: { bn: "পার্সেলটি ফেরত আসছে", en: "The parcel is returning" }, icon: "rotate-ccw", cls: "border-warning-solid/25 bg-warning-soft text-warning-solid" },
   RETURNED: { label: { bn: "পার্সেলটি ফেরত এসেছে", en: "The parcel has been returned" }, icon: "rotate-ccw", cls: "border-border bg-slate-50 text-slate-600" },
 };
 
@@ -406,7 +406,7 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
           </div>
         )}
         {partialDelivery && (
-          <p className="mt-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-small text-amber-800">
+          <p className="mt-3 flex items-start gap-2 rounded-xl border border-warning-solid/25 bg-warning-soft px-3 py-2 text-small text-warning-solid">
             <Icon name="alert" size={16} className="mt-0.5 shrink-0" />
             <span>{interpolate(s.shPartial, { n: deliveredLines })}</span>
           </p>
@@ -418,7 +418,7 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
       ) : (
         <ul className="space-y-3">
           {data.bookings.map((b) => (
-            <li key={b.id} className="rounded-lg border border-border bg-card px-4 py-3.5 shadow-sm">
+            <li key={b.id} className="rounded-xl border border-border/60 bg-card px-4 py-3.5 shadow-xs">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="flex items-center gap-1.5 font-mono text-small font-semibold">
                   <Icon name="truck" size={15} className="text-text-muted" />
@@ -508,7 +508,7 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
               </label>
             ))}
           </div>
-          <div className="mt-4 rounded-lg border border-border bg-slate-50/60 px-4 py-3">
+          <div className="mt-4 rounded-xl border border-border/60 bg-surface-2 px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
               <h4 className="text-small font-semibold">{s.shRecTitle}</h4>
               <Button variant="outline" disabled={recBusy || busy} onClick={() => void fetchRecommendation()}>
@@ -530,7 +530,7 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
               <p className="mt-1.5 text-caption text-text-muted">{s.shRecIntro}</p>
             )}
             {recommendation?.status === "insufficient_data" && (
-              <p className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-small text-amber-800">
+              <p className="mt-2 flex items-start gap-2 rounded-xl border border-warning-solid/25 bg-warning-soft px-3 py-2 text-small text-warning-solid">
                 <Icon name="alert" size={16} className="mt-0.5 shrink-0" />
                 <span>
                   {recommendation.noteBn} {s.shRecManualSuffix}
@@ -647,12 +647,12 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
       )}
 
       {message && (
-        <p role="status" className="mt-3 rounded-md bg-emerald-50 px-3 py-2 text-small text-emerald-700">
+        <p role="status" className="mt-3 rounded-xl bg-success-soft px-3 py-2 text-small text-success-solid">
           {message}
         </p>
       )}
       {error && (
-        <p role="alert" className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-small text-rose-700">
+        <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-small text-danger">
           {error}
         </p>
       )}

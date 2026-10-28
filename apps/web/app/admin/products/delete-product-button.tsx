@@ -71,7 +71,7 @@ export function DeleteProductButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex min-h-[44px] items-center rounded-md px-3 text-small font-semibold text-rose-600 transition motion-fast hover:bg-rose-50"
+        className="inline-flex min-h-[44px] items-center rounded-xl px-3 text-small font-semibold text-danger transition duration-fast ease-smooth hover:bg-danger-soft"
       >
         {s.deleteBtn}
       </button>
@@ -94,10 +94,10 @@ export function DeleteProductButton({
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           placeholder={s.deleteReasonPh}
-          className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          className="h-11 w-full rounded-xl border border-border bg-card px-3 text-sm shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15"
         />
         {error && (
-          <p role="alert" className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-small text-rose-700">
+          <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-small text-danger">
             {error}
           </p>
         )}

@@ -75,7 +75,7 @@ const STATUS_META: Record<string, { label: string; tone: "success" | "info" | "n
   inactive: { label: "বন্ধ", tone: "warning" },
 };
 
-const inputClass = "mt-1 w-full rounded-[10px] border border-border bg-card px-3 py-2";
+const inputClass = "mt-1 min-h-[44px] w-full rounded-xl border border-border bg-card px-3 py-2 text-text-main";
 
 export default function FlashSaleManager({
   initialSales,
@@ -249,7 +249,7 @@ export default function FlashSaleManager({
   if (!dbReady) {
     return (
       <Card>
-        <h3 className="font-semibold">ফ্ল্যাশ সেল</h3>
+        <h3 className="font-semibold text-text-main">ফ্ল্যাশ সেল</h3>
         <p className="mt-2 text-sm text-text-muted">
           ডাটাবেস পাওয়া যাচ্ছে না — ফ্ল্যাশ সেলের তালিকা লোড হয়নি। ডাটাবেস চালু হলে এই অংশে আসল
           তালিকা ও ফর্ম দেখা যাবে।
@@ -273,7 +273,7 @@ export default function FlashSaleManager({
 
       {formOpen ? (
         <Card className="mb-6">
-          <h3 className="mb-1 font-semibold">{editingId ? "ফ্ল্যাশ সেল সম্পাদনা" : "নতুন ফ্ল্যাশ সেল"}</h3>
+          <h3 className="mb-1 font-semibold text-text-main">{editingId ? "ফ্ল্যাশ সেল সম্পাদনা" : "নতুন ফ্ল্যাশ সেল"}</h3>
           <p className="mb-4 text-xs text-text-muted">
             সব সময় বাংলাদেশ সময় (Asia/Dhaka) অনুযায়ী। আইটেম বদলালে পুরো আইটেম তালিকা নতুন করে
             সংরক্ষিত হয়; বিক্রির হিসাব (soldCount) এখান থেকে বদলানো যায় না।
@@ -335,7 +335,7 @@ export default function FlashSaleManager({
                 {itemRows.map((row, i) => {
                   const product = productById.get(row.productId);
                   return (
-                    <div key={i} className="grid gap-3 rounded-[10px] border border-border p-3 sm:grid-cols-2">
+                    <div key={i} className="grid gap-3 rounded-2xl border border-border/60 bg-surface-2/50 p-4 sm:grid-cols-2">
                       <label className="text-sm">
                         পণ্য
                         <select
@@ -437,7 +437,7 @@ export default function FlashSaleManager({
               <Card key={sale.id}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="font-semibold">{sale.name}</h3>
+                    <h3 className="font-semibold text-text-main">{sale.name}</h3>
                     <p className="mt-1 text-sm text-text-muted">
                       {formatDhaka(sale.startsAt)} → {formatDhaka(sale.endsAt)} (বাংলাদেশ সময়)
                     </p>
@@ -450,9 +450,9 @@ export default function FlashSaleManager({
                     <li key={item.id} className="flex flex-wrap items-baseline gap-x-2">
                       <span className="font-medium">{item.productTitleBn}</span>
                       <span className="font-mono text-xs text-text-muted">{item.variantSku}</span>
-                      <span className="font-mono">{formatPoisha(item.salePricePoisha)}</span>
+                      <span className="tnum font-mono">{formatPoisha(item.salePricePoisha)}</span>
                       {item.regularPricePoisha > item.salePricePoisha ? (
-                        <span className="font-mono text-xs text-text-subtle line-through">
+                        <span className="tnum font-mono text-xs text-text-subtle line-through">
                           {formatPoisha(item.regularPricePoisha)}
                         </span>
                       ) : null}
@@ -466,7 +466,7 @@ export default function FlashSaleManager({
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2" aria-hidden="true">
                   <div className="h-full bg-brand-500" style={{ width: `${pct}%` }} />
                 </div>
-                <p className="mt-1 text-xs text-text-muted">
+                <p className="tnum mt-1 text-xs text-text-muted">
                   মোট বিক্রি {soldTotal} / {capTotal}
                 </p>
 

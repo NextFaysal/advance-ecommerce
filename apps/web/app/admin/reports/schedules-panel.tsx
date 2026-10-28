@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
+import { Card } from "@/components/ui/card";
 import { REPORTS_STRINGS } from "./strings";
 
 interface ScheduleView {
@@ -138,9 +139,9 @@ export function ReportSchedulesPanel() {
   }
 
   return (
-    <section className="mt-6 rounded-xl border p-4">
-      <h2 className="font-semibold">{str.schTitle}</h2>
-      <p className="mt-1 text-sm text-slate-500">{str.schDesc}</p>
+    <Card className="mt-6">
+      <h2 className="font-display text-base font-semibold text-text-main">{str.schTitle}</h2>
+      <p className="mt-1 text-sm leading-relaxed text-text-muted">{str.schDesc}</p>
 
       <ul className="mt-3 space-y-2 text-sm">
         {schedules.map((s) => (
@@ -153,68 +154,68 @@ export function ReportSchedulesPanel() {
               />
               <span>{s.name !== "" ? s.name : s.reportId}</span>
             </label>
-            <span className="text-slate-500">
+            <span className="tnum text-text-muted">
               {s.cadence === "weekly" ? str.schWeeklyOpt : str.schDailyOpt}{s.cadence === "weekly" ? ` (${WEEKDAYS[s.weekday ?? 0]})` : ""} · {s.time} · {s.recipients.join(", ")} ·
               {str.schLastSent} {s.lastSentAt ?? str.schNever}{s.lastPeriodKey ? ` (${s.lastPeriodKey})` : ""}
             </span>
             <button
               type="button"
-              className="rounded border px-2 py-0.5"
+              className="rounded-lg border border-border bg-card px-2 py-0.5 text-text-main hover:bg-surface-2"
               onClick={() => setSchedules((prev) => prev.filter((x) => x.id !== s.id))}
             >
               {str.schDelete}
             </button>
           </li>
         ))}
-        {schedules.length === 0 && <li className="text-slate-500">{str.schNoSchedulesList}</li>}
+        {schedules.length === 0 && <li className="text-text-muted">{str.schNoSchedulesList}</li>}
       </ul>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-        <select className="rounded border p-1.5" value={newReportId} onChange={(e) => setNewReportId(e.target.value)}>
+        <select className="rounded-lg border border-border bg-card p-1.5 text-text-main" value={newReportId} onChange={(e) => setNewReportId(e.target.value)}>
           <option value="">{str.schPickSavedReport}</option>
           {saved.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
         </select>
-        <select className="rounded border p-1.5" value={newCadence} onChange={(e) => setNewCadence(e.target.value as "daily" | "weekly")}>
+        <select className="rounded-lg border border-border bg-card p-1.5 text-text-main" value={newCadence} onChange={(e) => setNewCadence(e.target.value as "daily" | "weekly")}>
           <option value="daily">{str.schDailyOpt}</option>
           <option value="weekly">{str.schWeeklyOpt}</option>
         </select>
         {newCadence === "weekly" && (
-          <select className="rounded border p-1.5" value={newWeekday} onChange={(e) => setNewWeekday(Number(e.target.value))}>
+          <select className="rounded-lg border border-border bg-card p-1.5 text-text-main" value={newWeekday} onChange={(e) => setNewWeekday(Number(e.target.value))}>
             {WEEKDAYS.map((w, i) => <option key={w} value={i}>{w}</option>)}
           </select>
         )}
-        <input type="time" className="rounded border p-1.5" value={newTime} onChange={(e) => setNewTime(e.target.value)} />
+        <input type="time" className="rounded-lg border border-border bg-card p-1.5 text-text-main" value={newTime} onChange={(e) => setNewTime(e.target.value)} />
         <input
-          className="min-w-64 rounded border p-2"
+          className="min-w-64 rounded-lg border border-border bg-card p-2 text-text-main"
           value={newRecipients}
           onChange={(e) => setNewRecipients(e.target.value)}
           placeholder={str.schEmailPlaceholder}
         />
-        <button type="button" disabled={busy} onClick={addSchedule} className="rounded-md border px-4 py-2 font-medium disabled:opacity-50">
+        <button type="button" disabled={busy} onClick={addSchedule} className="rounded-lg border border-border bg-card px-4 py-2 font-medium text-text-main hover:bg-surface-2 disabled:opacity-50">
           {str.schAddSchedule}
         </button>
       </div>
       {saved.length === 0 && (
-        <p className="mt-2 text-xs text-slate-500">{str.schSaveFirstNote}</p>
+        <p className="mt-2 text-xs text-text-muted">{str.schSaveFirstNote}</p>
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
         <input
-          className="min-w-64 rounded border p-2"
+          className="min-w-64 rounded-lg border border-border bg-card p-2 text-text-main"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           placeholder={str.schReasonPlaceholder}
         />
-        <button type="button" disabled={busy} onClick={saveAll} className="rounded-md border px-4 py-2 font-medium disabled:opacity-50">
+        <button type="button" disabled={busy} onClick={saveAll} className="rounded-lg border border-border bg-card px-4 py-2 font-medium text-text-main hover:bg-surface-2 disabled:opacity-50">
           {str.schSaveAll}
         </button>
-        <button type="button" disabled={busy} onClick={runDue} className="rounded-md border px-4 py-2 font-medium disabled:opacity-50">
+        <button type="button" disabled={busy} onClick={runDue} className="rounded-lg border border-border bg-card px-4 py-2 font-medium text-text-main hover:bg-surface-2 disabled:opacity-50">
           {str.schRunDue}
         </button>
         {notice !== "" && <span>{notice}</span>}
         {runResult !== "" && <span>{runResult}</span>}
       </div>
-      {error !== "" && <p className="mt-2 text-sm text-red-600">{error}</p>}
-    </section>
+      {error !== "" && <p className="mt-2 text-sm text-danger">{error}</p>}
+    </Card>
   );
 }

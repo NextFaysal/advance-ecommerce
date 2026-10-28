@@ -82,18 +82,18 @@ function KpiCard({
       <div className="flex items-start justify-between gap-3">
         <span
           aria-hidden="true"
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] shadow-sm ${accent}`}
+          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-xs ${accent}`}
         >
           <Icon name={icon} size={20} />
         </span>
         {fraction ? (
-          <span className="inline-flex items-center rounded-full bg-surface-2 px-2 py-1 font-mono text-xs font-semibold leading-none tabular-nums text-text-muted ring-1 ring-inset ring-black/5">
+          <span className="tnum inline-flex items-center rounded-full bg-surface-2 px-2 py-1 text-xs font-semibold leading-none text-text-muted ring-1 ring-inset ring-black/5 dark:ring-white/10">
             {fraction}
           </span>
         ) : null}
       </div>
       <p className="mt-3 text-xs font-medium text-text-muted">{label}</p>
-      <p className="mt-0.5 font-mono text-[1.55rem] font-bold leading-8 tabular-nums text-text-main">{headline}</p>
+      <p className="tnum mt-0.5 text-kpi text-text-main">{headline}</p>
       <p className="mt-1 text-xs leading-relaxed text-text-muted">{detail}</p>
     </Card>
   );
@@ -130,7 +130,7 @@ export function KpiPanel() {
   }, [rangeKey]);
 
   return (
-    <section aria-label={s.kpiTitle} className={`mb-4 rounded-lg border border-border bg-surface-2 ${ORDER_DENSITY.comfortable.panel}`}>
+    <section aria-label={s.kpiTitle} className={`mb-4 rounded-2xl border border-border/60 bg-surface-2 ${ORDER_DENSITY.comfortable.panel}`}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">
           {s.kpiTitle}{" "}
@@ -149,7 +149,7 @@ export function KpiPanel() {
           <select
             value={rangeKey}
             onChange={(e) => setRangeKey(e.target.value as RangeKey)}
-            className="rounded-[8px] border border-border bg-card px-2 py-1.5 text-sm text-text-main outline-none focus:border-brand-500"
+            className="rounded-xl border border-border bg-card px-2 py-1.5 text-sm text-text-main outline-none focus:border-brand-ink"
           >
             {RANGE_OPTIONS.map((o) => (
               <option key={o.key} value={o.key}>
@@ -161,13 +161,13 @@ export function KpiPanel() {
       </div>
 
       {failed ? (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">
+        <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">
           {s.kpiLoadFail}
         </p>
       ) : !kpis ? (
         <div role="status" aria-label={s.kpiLoadingAria} className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="h-[132px] animate-pulse rounded-lg border border-border bg-card" />
+            <div key={i} className="h-[132px] animate-pulse rounded-2xl border border-border/60 bg-card" />
           ))}
         </div>
       ) : (
@@ -177,14 +177,14 @@ export function KpiPanel() {
             headline={`${kpis.ordersCreated} / ${kpis.ordersDelivered}`}
             detail={s.kpiNewOrdersDetail}
             icon="package"
-            accent="bg-brand-50 text-brand-600"
+            accent="bg-brand-soft text-brand-ink"
           />
           <KpiCard
             label={s.kpiConfirmRate}
             headline={rateHeadline(kpis.confirmationRate)}
             detail={interpolate(s.kpiConfirmDetail, { n: kpis.confirmationRate.numerator, d: kpis.confirmationRate.denominator })}
             icon="check"
-            accent="bg-sky-50 text-sky-600"
+            accent="bg-info-soft text-info-solid"
             fraction={`${kpis.confirmationRate.numerator}/${kpis.confirmationRate.denominator}`}
           />
           <KpiCard
@@ -192,7 +192,7 @@ export function KpiPanel() {
             headline={rateHeadline(kpis.deliverySuccessRate)}
             detail={interpolate(s.kpiDeliveryDetail, { n: kpis.deliverySuccessRate.numerator, d: kpis.deliverySuccessRate.denominator })}
             icon="truck"
-            accent="bg-emerald-50 text-emerald-600"
+            accent="bg-success-soft text-success-solid"
             fraction={`${kpis.deliverySuccessRate.numerator}/${kpis.deliverySuccessRate.denominator}`}
           />
           <KpiCard
@@ -200,14 +200,14 @@ export function KpiPanel() {
             headline={kpis.averageOrderValue.averagePoisha === null ? "—" : formatBdt(kpis.averageOrderValue.averagePoisha)}
             detail={interpolate(s.kpiAovDetail, { n: kpis.averageOrderValue.orders, total: formatBdt(kpis.averageOrderValue.totalPoisha) })}
             icon="chart"
-            accent="bg-violet-50 text-violet-600"
+            accent="bg-brand-soft text-brand-ink"
           />
           <KpiCard
             label={s.kpiReturnRate}
             headline={rateHeadline(kpis.returnRate)}
             detail={interpolate(s.kpiReturnDetail, { n: kpis.returnRate.numerator, d: kpis.returnRate.denominator })}
             icon="rotate-ccw"
-            accent="bg-amber-50 text-amber-600"
+            accent="bg-warning-soft text-warning-solid"
             fraction={`${kpis.returnRate.numerator}/${kpis.returnRate.denominator}`}
           />
           <KpiCard
@@ -215,7 +215,7 @@ export function KpiPanel() {
             headline={rateHeadline(kpis.advanceCollectionRate)}
             detail={interpolate(s.kpiAdvanceDetail, { n: kpis.advanceCollectionRate.numerator, d: kpis.advanceCollectionRate.denominator })}
             icon="credit-card"
-            accent="bg-teal-50 text-teal-600"
+            accent="bg-info-soft text-info-solid"
             fraction={`${kpis.advanceCollectionRate.numerator}/${kpis.advanceCollectionRate.denominator}`}
           />
           <KpiCard
@@ -223,14 +223,14 @@ export function KpiPanel() {
             headline={rateHeadline(kpis.codCollectionRate)}
             detail={interpolate(s.kpiCodDetail, { collected: formatBdt(kpis.codCollectionRate.collectedPoisha), due: formatBdt(kpis.codCollectionRate.duePoisha) })}
             icon="banknote"
-            accent="bg-emerald-50 text-emerald-600"
+            accent="bg-success-soft text-success-solid"
           />
           <KpiCard
             label={s.kpiCancelRate}
             headline={rateHeadline(kpis.cancelRate)}
             detail={interpolate(s.kpiCancelDetail, { n: kpis.cancelRate.numerator, d: kpis.cancelRate.denominator })}
             icon="x"
-            accent="bg-rose-50 text-rose-600"
+            accent="bg-danger-soft text-danger"
             fraction={`${kpis.cancelRate.numerator}/${kpis.cancelRate.denominator}`}
           />
         </div>

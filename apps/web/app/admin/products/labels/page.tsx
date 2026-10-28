@@ -1,4 +1,5 @@
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
+import { ADMIN_STRINGS } from "@/admin/strings";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { featureFlags } from "@/lib/feature-flags";
@@ -26,8 +27,9 @@ export default async function ProductLabelsPage() {
     <main>
       <PageHeader
         title={s.labelsTitle}
-        description={s.labelsDesc}
-        breadcrumb={s.labelsBreadcrumb}
+        subtitle={s.labelsDesc}
+        breadcrumbs={s.labelsBreadcrumb.split(" / ").map((label) => ({ label }))}
+        breadcrumbLabel={pick(locale, ADMIN_STRINGS).breadcrumb}
       />
       {!enabled ? (
         <Card className="overflow-hidden">

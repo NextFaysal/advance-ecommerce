@@ -264,7 +264,7 @@ export function RefundsPanel({ orderId }: { orderId: string }) {
       {summary && summary.refundDuePoisha > 0 && (
         <div
           role="alert"
-          className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-400/30 dark:bg-amber-500/10"
+          className="mt-4 rounded-xl border border-warning-solid/40 bg-warning-soft px-4 py-3"
         >
           <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
             {interpolate(s.rfDueTitle, { amount: formatPoisha(summary.refundDuePoisha) })}
@@ -403,7 +403,7 @@ export function RefundsPanel({ orderId }: { orderId: string }) {
           {s.rfCreateBtn}
         </Button>
         {error && (
-          <p role="alert" className="mt-3 rounded-md bg-rose-50 px-3.5 py-2.5 text-small leading-relaxed text-rose-800 dark:bg-rose-500/10 dark:text-rose-200">
+          <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-3.5 py-2.5 text-small leading-relaxed text-danger">
             {error}
           </p>
         )}

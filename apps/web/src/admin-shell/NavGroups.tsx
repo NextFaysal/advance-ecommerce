@@ -55,7 +55,7 @@ export function NavGroups({
                   aria-current={active ? "page" : undefined}
                   aria-label={label}
                   title={label}
-                  className={`group relative flex min-h-[40px] items-center gap-3 rounded-md py-2 pl-3 pr-2 text-sm transition duration-fast ease-smooth group-data-[collapsed=true]/sidebar:justify-center group-data-[collapsed=true]/sidebar:gap-0 group-data-[collapsed=true]/sidebar:px-0 ${
+                  className={`focus-ring group relative flex min-h-[40px] items-center gap-3 rounded-md py-2 pl-3 pr-2 text-sm transition duration-fast ease-smooth group-data-[collapsed=true]/sidebar:justify-center group-data-[collapsed=true]/sidebar:gap-0 group-data-[collapsed=true]/sidebar:px-0 ${
                     active
                       ? "bg-brand-soft font-semibold text-brand-ink shadow-xs"
                       : "font-medium text-text-muted hover:bg-surface-2 hover:text-text-main"
@@ -74,14 +74,14 @@ export function NavGroups({
                   >
                     <ShellIcon name={item.icon} className="h-[18px] w-[18px]" />
                     {locked ? (
-                      <span className="absolute -right-0.5 -top-0.5 hidden h-2 w-2 rounded-full bg-amber-500 ring-2 ring-card group-data-[collapsed=true]/sidebar:block" />
+                      <span className="absolute -right-0.5 -top-0.5 hidden h-2 w-2 rounded-full bg-warning-solid ring-2 ring-card group-data-[collapsed=true]/sidebar:block" />
                     ) : null}
                   </span>
                   <span className="min-w-0 flex-1 truncate group-data-[collapsed=true]/sidebar:hidden">
                     {label}
                   </span>
                   {locked ? (
-                    <span className="flex shrink-0 items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-caption font-semibold text-amber-700 group-data-[collapsed=true]/sidebar:hidden dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                    <span className="flex shrink-0 items-center gap-1 rounded-full border border-warning-solid/30 bg-warning-soft px-2 py-0.5 text-caption font-semibold text-warning-solid group-data-[collapsed=true]/sidebar:hidden">
                       <ShellIcon name="Lock" className="h-3 w-3" />
                       {s.addOn}
                     </span>

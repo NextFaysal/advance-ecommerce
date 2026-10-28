@@ -1,4 +1,4 @@
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { isWarehouseOpsEnabled } from "@/warehouse/flags";
 import { listPickLists, prismaKeyValueStore } from "@/warehouse/pick-lists";
 import { getConfirmedQueue } from "@/warehouse/queue";
@@ -36,7 +36,7 @@ export default async function WarehousePage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title={s.pageTitle} description={s.pageDescription} />
+      <PageHeader title={s.pageTitle} subtitle={s.pageDescription} />
       <WarehouseClient initialQueue={queue} initialLists={lists} />
     </div>
   );

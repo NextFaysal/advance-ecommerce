@@ -232,11 +232,11 @@ function attrRowsFromVariants(
 }
 
 const inputCls =
-  "mt-1.5 min-h-[44px] w-full rounded-md border border-border bg-card px-3.5 py-2.5 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-200";
+  "mt-1.5 min-h-[44px] w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15 hover:border-brand-200";
 const cellInputCls =
-  "min-h-[40px] w-full min-w-[84px] rounded-md border border-border bg-card px-2.5 py-2 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-200";
+  "min-h-[40px] w-full min-w-[84px] rounded-xl border border-border bg-card px-2.5 py-2 text-sm shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15 hover:border-brand-200";
 const toolbarBtnCls =
-  "inline-flex min-h-[36px] items-center rounded-full border border-border bg-card px-3 text-xs font-semibold transition motion-fast hover:border-brand-300 hover:bg-brand-50";
+  "inline-flex min-h-[36px] items-center rounded-full border border-border bg-card px-3 text-xs font-semibold transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-soft";
 const labelCls = "block text-sm font-medium text-text-main";
 const hintCls = "mt-1.5 block text-xs leading-relaxed text-text-subtle";
 
@@ -356,14 +356,14 @@ function SectionHeading({
 function AiDraftStatus({ error, note }: { error: string | null; note: string | null }) {
   if (error) {
     return (
-      <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm leading-relaxed text-rose-700">
+      <p role="alert" className="mt-3 rounded-lg border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-sm leading-relaxed text-danger">
         {error}
       </p>
     );
   }
   if (note) {
     return (
-      <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm leading-relaxed text-emerald-700">
+      <p role="status" className="mt-3 rounded-lg border border-success-solid/25 bg-success-soft px-3.5 py-2.5 text-sm leading-relaxed text-success-solid">
         {note}
       </p>
     );
@@ -1789,7 +1789,7 @@ export function ProductEditor({
               role="tab"
               aria-selected={tab === t}
               onClick={() => setTab(t)}
-              className={`relative flex min-h-[44px] shrink-0 items-center gap-2 px-3.5 text-sm font-medium transition motion-fast sm:px-4 ${
+              className={`relative flex min-h-[44px] shrink-0 items-center gap-2 px-3.5 text-sm font-medium transition duration-fast ease-smooth sm:px-4 ${
                 tab === t ? "text-brand-700" : "text-text-muted hover:text-text-main"
               }`}
             >
@@ -1813,7 +1813,7 @@ export function ProductEditor({
               ) : null}
               <span
                 aria-hidden="true"
-                className={`brand-gradient absolute inset-x-3 -bottom-px h-[2.5px] rounded-full transition motion-base ${
+                className={`brand-gradient absolute inset-x-3 -bottom-px h-[2.5px] rounded-full transition duration-base ease-smooth ${
                   tab === t ? "opacity-100" : "opacity-0"
                 }`}
               />
@@ -1825,7 +1825,7 @@ export function ProductEditor({
             href={`/product/${slug}`}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex min-h-[44px] shrink-0 items-center rounded-full border border-border bg-card px-4 text-sm font-medium text-brand-700 shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
+            className="inline-flex min-h-[44px] shrink-0 items-center rounded-full border border-border bg-card px-4 text-sm font-medium text-brand-700 shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50"
           >
             {s.viewStorefront}
           </Link>
@@ -1834,7 +1834,7 @@ export function ProductEditor({
 
       {tab === "basic" && (
         <div className="mt-5 space-y-4">
-          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+          <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs sm:p-5">
             <SectionHeading glyph="tag" title={s.basicInfo} />
             <div className="grid gap-4 md:grid-cols-2">
           <label className={labelCls}>
@@ -1860,7 +1860,7 @@ export function ProductEditor({
               <button
                 type="button"
                 onClick={regenerateSlug}
-                className="inline-flex min-h-[44px] shrink-0 items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
+                className="inline-flex min-h-[44px] shrink-0 items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50"
               >
                 {s.slugFromTitle}
               </button>
@@ -1906,7 +1906,7 @@ export function ProductEditor({
               ))}
             </select>
             {categoryOptions.length === 0 && (
-              <span className="mt-1 block text-xs text-rose-600">
+              <span className="mt-1 block text-xs text-danger">
                 {s.categoryEmptyWarn}
               </span>
             )}
@@ -1933,7 +1933,7 @@ export function ProductEditor({
           </label>
             </div>
           </section>
-          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+          <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs sm:p-5">
             <SectionHeading glyph="banknote" title={s.priceSection} />
             <div className="grid gap-4 md:grid-cols-2">
           <label className={labelCls}>
@@ -1992,7 +1992,7 @@ export function ProductEditor({
           </div>
             </div>
           </section>
-          <section className="brand-soft-gradient rounded-lg border border-brand-100 p-4 shadow-card sm:p-5">
+          <section className="brand-soft-gradient rounded-2xl border border-brand-100 p-4 shadow-xs sm:p-5">
             <SectionHeading glyph="clock" title={s.scheduleTitle} chipCls="bg-card text-brand-600" />
             <div className="grid gap-3 sm:grid-cols-3">
               <label className="block text-xs font-medium text-text-muted">
@@ -2019,19 +2019,19 @@ export function ProductEditor({
       )}
 
       {tab === "basic" && showTypeUi && productType === "DIGITAL" && (
-        <section className="mt-4 rounded-lg border border-violet-200 bg-card p-4 shadow-card sm:p-5">
+        <section className="mt-4 rounded-2xl border border-brand-ink/20 bg-card p-4 shadow-xs sm:p-5">
           <SectionHeading
             glyph="download"
-            chipCls="bg-violet-100 text-violet-600"
+            chipCls="bg-brand-soft text-brand-ink"
             title={s.digitalTitle}
             hint={s.digitalHint}
           />
-          <div className="rounded-lg border border-dashed border-violet-300 bg-violet-50/60 p-4">
+          <div className="rounded-lg border border-dashed border-brand-ink/30 bg-brand-soft/60 p-4">
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={() => digitalFileInputRef.current?.click()}
-                className="inline-flex min-h-[44px] items-center rounded-md bg-violet-600 px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105"
+                className="inline-flex min-h-[44px] items-center rounded-md bg-brand-600 px-4 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:brightness-105"
               >
                 {s.digitalUploadBtn}
               </button>
@@ -2050,7 +2050,7 @@ export function ProductEditor({
               />
             </div>
             {digitalUploadNotice && (
-              <p role="status" className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <p role="status" className="mt-3 rounded-md border border-warning-solid/40 bg-warning-soft px-3 py-2 text-sm text-warning-solid">
                 ⚠️ {digitalUploadNotice}{s.digitalNoticeSuffix}
               </p>
             )}
@@ -2062,9 +2062,9 @@ export function ProductEditor({
                       <span className="min-w-0 truncate text-text-main">{it.name}</span>
                       <span className="shrink-0 text-xs font-medium">
                         {it.status === "done" ? (
-                          <span className="text-emerald-700">{s.uploadDone}</span>
+                          <span className="text-success-solid">{s.uploadDone}</span>
                         ) : it.status === "error" ? (
-                          <span className="text-rose-600">{s.uploadFailed}</span>
+                          <span className="text-danger">{s.uploadFailed}</span>
                         ) : (
                           <span className="text-text-muted">{interpolate(s.uploadingPct, { pct: it.progress })}</span>
                         )}
@@ -2072,10 +2072,10 @@ export function ProductEditor({
                     </div>
                     {it.status === "uploading" && (
                       <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-card" role="progressbar" aria-valuenow={it.progress} aria-valuemin={0} aria-valuemax={100}>
-                        <div className="h-full rounded-full bg-violet-500 transition-all" style={{ width: `${it.progress}%` }} />
+                        <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${it.progress}%` }} />
                       </div>
                     )}
-                    {it.status === "error" && it.error && <p className="mt-1 text-xs text-rose-600">{it.error}</p>}
+                    {it.status === "error" && it.error && <p className="mt-1 text-xs text-danger">{it.error}</p>}
                   </li>
                 ))}
               </ul>
@@ -2084,7 +2084,7 @@ export function ProductEditor({
 
           <div className="mt-3 space-y-2.5">
             {digitalRows.length === 0 && (
-              <p className="rounded-lg border border-dashed border-violet-200 bg-violet-50/40 px-4 py-6 text-center text-sm text-text-subtle">
+              <p className="rounded-lg border border-dashed border-brand-ink/20 bg-brand-soft/40 px-4 py-6 text-center text-sm text-text-subtle">
                 {s.digitalEmpty}
               </p>
             )}
@@ -2129,7 +2129,7 @@ export function ProductEditor({
                 <button
                   type="button"
                   onClick={() => setDigitalRows((prev) => prev.filter((p) => p.key !== row.key))}
-                  className="inline-flex min-h-[40px] items-center justify-center rounded-md border border-border bg-card px-3 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
+                  className="inline-flex min-h-[40px] items-center justify-center rounded-md border border-border bg-card px-3 text-xs font-semibold text-danger transition duration-fast ease-smooth hover:border-danger/25 hover:bg-danger-soft"
                 >
                   {s.deleteBtn}
                 </button>
@@ -2141,14 +2141,14 @@ export function ProductEditor({
             onClick={() =>
               setDigitalRows((prev) => [...prev, { key: nextKey(), storageKey: "", fileName: "", sizeBytes: "" }])
             }
-            className="mt-3 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-violet-300 hover:bg-violet-50"
+            className="mt-3 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-ink/30 hover:bg-brand-soft"
           >
             {s.addFileManual}
           </button>
 
-          <div className="mt-6 rounded-lg border border-violet-100 bg-violet-50/40 p-4">
+          <div className="mt-6 rounded-lg border border-brand-ink/10 bg-brand-soft/40 p-4">
             <div className="flex items-center gap-2.5">
-              <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-violet-100 text-violet-600 shadow-sm ring-1 ring-inset ring-black/5">
+              <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-brand-soft text-brand-ink shadow-sm ring-1 ring-inset ring-black/5">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
                   {GLYPHS.key}
                 </svg>
@@ -2164,10 +2164,10 @@ export function ProductEditor({
                 {licenseCounts && (
                   <>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-card px-3 py-1.5 text-xs font-semibold text-text-main shadow-sm ring-1 ring-inset ring-violet-100">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-card px-3 py-1.5 text-xs font-semibold text-text-main shadow-sm ring-1 ring-inset ring-brand-ink/10">
                         {interpolate(s.licenseTotal, { count: licenseCounts.total })}
                       </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-100">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-3 py-1.5 text-xs font-semibold text-success-solid ring-1 ring-inset ring-success-solid/20">
                         {interpolate(s.licenseAvailable, { count: licenseCounts.available })}
                       </span>
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-xs font-semibold text-text-muted ring-1 ring-inset ring-black/5">
@@ -2175,7 +2175,7 @@ export function ProductEditor({
                       </span>
                     </div>
                     {licenseCounts.available === 0 && (
-                      <p className="mt-2 text-xs leading-relaxed text-amber-700">
+                      <p className="mt-2 text-xs leading-relaxed text-warning-solid">
                         {s.licenseEmptyWarn}
                       </p>
                     )}
@@ -2195,7 +2195,7 @@ export function ProductEditor({
                   type="button"
                   onClick={() => void handleAddLicenseKeys()}
                   disabled={licenseBusy}
-                  className="mt-2.5 inline-flex min-h-[44px] items-center rounded-md bg-violet-600 px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
+                  className="mt-2.5 inline-flex min-h-[44px] items-center rounded-md bg-brand-600 px-4 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:brightness-105 disabled:opacity-50"
                 >
                   {licenseBusy ? s.licenseAdding : s.licenseAddBtn}
                 </button>
@@ -2215,10 +2215,10 @@ export function ProductEditor({
                         <span className="min-w-0 truncate font-mono">{k.masked}</span>
                         <span
                           className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 font-semibold ring-1 ring-inset ring-black/5 ${
-                            k.assigned ? "bg-surface-2 text-text-subtle" : "bg-emerald-50 text-emerald-700"
+                            k.assigned ? "bg-surface-2 text-text-subtle" : "bg-success-soft text-success-solid"
                           }`}
                         >
-                          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${k.assigned ? "bg-slate-400" : "bg-emerald-500"}`} />
+                          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${k.assigned ? "bg-text-subtle" : "bg-success-soft0"}`} />
                           {k.assigned ? s.licenseAssignedChip : s.licenseAvailableChip}
                         </span>
                       </li>
@@ -2235,10 +2235,10 @@ export function ProductEditor({
       )}
 
       {tab === "basic" && showTypeUi && productType === "BUNDLE" && (
-        <section className="mt-4 rounded-lg border border-amber-200 bg-card p-4 shadow-card sm:p-5">
+        <section className="mt-4 rounded-2xl border border-warning-solid/25 bg-card p-4 shadow-xs sm:p-5">
           <SectionHeading
             glyph="layers"
-            chipCls="bg-amber-100 text-amber-700"
+            chipCls="bg-warning-soft text-warning-solid"
             title={s.bundleTitle}
             hint={s.bundleHint}
           />
@@ -2268,7 +2268,7 @@ export function ProductEditor({
                       type="button"
                       disabled={added}
                       onClick={() => addBundleComponent(hit)}
-                      className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold transition motion-fast hover:border-amber-300 hover:bg-amber-50 disabled:opacity-50"
+                      className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold transition duration-fast ease-smooth hover:border-warning-solid/40 hover:bg-warning-soft disabled:opacity-50"
                     >
                       {added ? s.bundleAdded : s.bundleAdd}
                     </button>
@@ -2279,7 +2279,7 @@ export function ProductEditor({
           )}
           <div className="mt-3 space-y-2.5">
             {bundleRows.length === 0 && (
-              <p className="rounded-lg border border-dashed border-amber-200 bg-amber-50/40 px-4 py-6 text-center text-sm text-text-subtle">
+              <p className="rounded-lg border border-dashed border-warning-solid/25 bg-warning-soft/40 px-4 py-6 text-center text-sm text-text-subtle">
                 {s.bundleEmpty}
               </p>
             )}
@@ -2312,7 +2312,7 @@ export function ProductEditor({
                 <button
                   type="button"
                   onClick={() => setBundleRows((prev) => prev.filter((p) => p.key !== r.key))}
-                  className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
+                  className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold text-danger transition duration-fast ease-smooth hover:border-danger/25 hover:bg-danger-soft"
                 >
                   {s.deleteBtn}
                 </button>
@@ -2325,14 +2325,14 @@ export function ProductEditor({
             {bundleKnownTotal > 0 && basePricePoisha > 0 && (
               <>
                 {"  "}{s.bundleDiffPart}{" "}
-                <strong className={bundleKnownTotal - basePricePoisha >= 0 ? "text-emerald-700" : "text-rose-600"}>
+                <strong className={bundleKnownTotal - basePricePoisha >= 0 ? "text-success-solid" : "text-danger"}>
                   {formatBdt(Math.abs(bundleKnownTotal - basePricePoisha))}{" "}
                   {bundleKnownTotal - basePricePoisha >= 0 ? s.bundleSavings : s.bundleExtra}
                 </strong>
               </>
             )}
             {bundleHasUnknownPrice && (
-              <span className="mt-1 block text-xs text-amber-700">
+              <span className="mt-1 block text-xs text-warning-solid">
                 {s.bundleUnknownNote}
               </span>
             )}
@@ -2341,10 +2341,10 @@ export function ProductEditor({
       )}
 
       {tab === "basic" && showTypeUi && productType === "PREORDER" && (
-        <section className="mt-4 rounded-lg border border-sky-200 bg-card p-4 shadow-card sm:p-5">
+        <section className="mt-4 rounded-2xl border border-info-solid/25 bg-card p-4 shadow-xs sm:p-5">
           <SectionHeading
             glyph="clock"
-            chipCls="bg-sky-100 text-sky-600"
+            chipCls="bg-info-soft text-info-solid"
             title={s.preorderTitle}
             hint={s.preorderHint}
           />
@@ -2383,7 +2383,7 @@ export function ProductEditor({
       )}
 
       {tab === "media" && (
-        <section className="mt-5 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+        <section className="mt-5 rounded-2xl border border-border/60 bg-card p-4 shadow-xs sm:p-5">
           <SectionHeading
             glyph="image"
             title={s.mediaTitle}
@@ -2394,7 +2394,7 @@ export function ProductEditor({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="inline-flex min-h-[44px] items-center rounded-md bg-brand-600 px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105"
+                className="inline-flex min-h-[44px] items-center rounded-md bg-brand-600 px-4 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:brightness-105"
               >
                 {s.mediaUploadBtn}
               </button>
@@ -2414,7 +2414,7 @@ export function ProductEditor({
               />
             </div>
             {uploadNotice && (
-              <p role="status" className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <p role="status" className="mt-3 rounded-md border border-warning-solid/40 bg-warning-soft px-3 py-2 text-sm text-warning-solid">
                 ⚠️ {uploadNotice}
               </p>
             )}
@@ -2426,9 +2426,9 @@ export function ProductEditor({
                       <span className="min-w-0 truncate text-text-main">{it.name}</span>
                       <span className="shrink-0 text-xs font-medium">
                         {it.status === "done" ? (
-                          <span className="text-emerald-700">{s.uploadDone}</span>
+                          <span className="text-success-solid">{s.uploadDone}</span>
                         ) : it.status === "error" ? (
-                          <span className="text-rose-600">{s.uploadFailed}</span>
+                          <span className="text-danger">{s.uploadFailed}</span>
                         ) : (
                           <span className="text-text-muted">{interpolate(s.uploadingPct, { pct: it.progress })}</span>
                         )}
@@ -2439,7 +2439,7 @@ export function ProductEditor({
                         <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${it.progress}%` }} />
                       </div>
                     )}
-                    {it.status === "error" && it.error && <p className="mt-1 text-xs text-rose-600">{it.error}</p>}
+                    {it.status === "error" && it.error && <p className="mt-1 text-xs text-danger">{it.error}</p>}
                   </li>
                 ))}
               </ul>
@@ -2452,7 +2452,7 @@ export function ProductEditor({
               </p>
             )}
             {imageRows.map((img, idx) => (
-              <div key={img.key} className="flex flex-col overflow-hidden rounded-lg border border-border/70 bg-card shadow-card">
+              <div key={img.key} className="flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-xs">
                 <div className="relative">
                   {img.url.trim() !== "" ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -2520,7 +2520,7 @@ export function ProductEditor({
                           return copy;
                         })
                       }
-                      className="inline-flex min-h-[40px] min-w-[44px] items-center justify-center rounded-md border border-border bg-card text-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
+                      className="inline-flex min-h-[40px] min-w-[44px] items-center justify-center rounded-md border border-border bg-card text-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
                     >
                       ↑
                     </button>
@@ -2535,14 +2535,14 @@ export function ProductEditor({
                           return copy;
                         })
                       }
-                      className="inline-flex min-h-[40px] min-w-[44px] items-center justify-center rounded-md border border-border bg-card text-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
+                      className="inline-flex min-h-[40px] min-w-[44px] items-center justify-center rounded-md border border-border bg-card text-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
                     >
                       ↓
                     </button>
                     <button
                       type="button"
                       onClick={() => setImageRows((prev) => prev.filter((p) => p.key !== img.key))}
-                      className="ml-auto inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
+                      className="ml-auto inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-semibold text-danger transition duration-fast ease-smooth hover:border-danger/25 hover:bg-danger-soft"
                     >
                       {s.deleteBtn}
                     </button>
@@ -2554,7 +2554,7 @@ export function ProductEditor({
           <button
             type="button"
             onClick={() => setImageRows((prev) => [...prev, { key: nextKey(), url: "", altBn: "", altEn: "" }])}
-            className="mt-4 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
+            className="mt-4 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50"
           >
             {s.addImageBtn}
           </button>
@@ -2563,7 +2563,7 @@ export function ProductEditor({
 
       {tab === "variants" && (
         <div className="mt-5 space-y-4">
-          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+          <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs sm:p-5">
             <SectionHeading
               glyph="layers"
               title={s.attrTitle}
@@ -2603,7 +2603,7 @@ export function ProductEditor({
                     <button
                       type="button"
                       onClick={() => setAttrRows((prev) => prev.filter((r) => r.rowId !== row.rowId))}
-                      className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3 text-sm font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
+                      className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-3 text-sm font-semibold text-danger transition duration-fast ease-smooth hover:border-danger/25 hover:bg-danger-soft"
                     >
                       {s.deleteBtn}
                     </button>
@@ -2630,7 +2630,7 @@ export function ProductEditor({
               onClick={() =>
                 setAttrRows((prev) => [...prev, { rowId: nextKey(), name: "", valuesText: "" }])
               }
-              className="mt-3 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
+              className="mt-3 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50"
             >
               {s.addAttrBtn}
             </button>
@@ -2647,14 +2647,14 @@ export function ProductEditor({
               <button
                 type="button"
                 onClick={handleGenerate}
-                className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105"
+                className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-4 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:brightness-105"
               >
                 {s.generateBtn}
               </button>
               <button
                 type="button"
                 onClick={handleAddManualRow}
-                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
+                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50"
               >
                 {s.addVariantManual}
               </button>
@@ -2664,7 +2664,7 @@ export function ProductEditor({
               {mode === "edit" && s.generateNoteEditSuffix}
             </p>
           </section>
-          <div className="hidden overflow-x-auto rounded-lg border border-border/70 bg-card shadow-card md:block">
+          <div className="hidden overflow-x-auto rounded-2xl border border-border/60 bg-card shadow-xs md:block">
             <table className="w-full min-w-[980px] text-left text-sm">
               <thead>
                 <tr className="bg-surface-2 [&>th]:border-b [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:text-caption [&>th]:font-semibold [&>th]:text-text-muted">
@@ -2682,11 +2682,11 @@ export function ProductEditor({
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.key} className="border-t border-border align-top transition motion-fast hover:bg-brand-50/40">
+                  <tr key={r.key} className="border-t border-border align-top transition duration-fast ease-smooth hover:bg-brand-50/40">
                     <td className="px-3 py-2">
                       <input value={r.sku} onChange={(e) => updateRow(r.key, { sku: e.target.value })} className={`${cellInputCls} font-mono text-xs`} />
                       {r.originalSku !== null && r.sku.trim() !== r.originalSku && (
-                        <span className="mt-1 block text-[11px] text-amber-600">{s.skuChangeNote}</span>
+                        <span className="mt-1 block text-[11px] text-warning-solid">{s.skuChangeNote}</span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-xs leading-relaxed text-text-muted">
@@ -2727,7 +2727,7 @@ export function ProductEditor({
                       <button
                         type="button"
                         onClick={() => setRows((prev) => prev.filter((p) => p.key !== r.key))}
-                        className="inline-flex min-h-[36px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
+                        className="inline-flex min-h-[36px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold text-danger transition duration-fast ease-smooth hover:border-danger/25 hover:bg-danger-soft"
                       >
                         {s.deleteBtn}
                       </button>
@@ -2749,12 +2749,12 @@ export function ProductEditor({
            *  table above is desktop-only) — identical fields/handlers. */}
           <div className="space-y-3 md:hidden">
             {rows.length === 0 && (
-              <p className="rounded-lg border border-dashed border-border bg-card px-4 py-8 text-center text-sm text-text-subtle shadow-card">
+              <p className="rounded-2xl border border-dashed border-border bg-card px-4 py-8 text-center text-sm text-text-subtle shadow-xs">
                 {s.variantsEmpty}
               </p>
             )}
             {rows.map((r) => (
-              <article key={r.key} className="rounded-lg border border-border/70 bg-card p-3.5 shadow-card">
+              <article key={r.key} className="rounded-2xl border border-border/60 bg-card p-3.5 shadow-xs">
                 <div className="flex items-start gap-3">
                   <label className="block min-w-0 flex-1 text-xs font-medium text-text-muted">
                     {s.colSku}
@@ -2772,7 +2772,7 @@ export function ProductEditor({
                   </label>
                 </div>
                 {r.originalSku !== null && r.sku.trim() !== r.originalSku && (
-                  <p className="mt-1.5 text-[11px] leading-relaxed text-amber-600">{s.skuChangeNote}</p>
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-warning-solid">{s.skuChangeNote}</p>
                 )}
                 <p className="mt-2 rounded-md bg-surface-2 px-2.5 py-1.5 text-xs leading-relaxed text-text-muted">
                   <span className="font-semibold text-text-main">{s.colAttr}:</span>{" "}
@@ -2812,7 +2812,7 @@ export function ProductEditor({
                   <button
                     type="button"
                     onClick={() => setRows((prev) => prev.filter((p) => p.key !== r.key))}
-                    className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
+                    className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-xs font-semibold text-danger transition duration-fast ease-smooth hover:border-danger/25 hover:bg-danger-soft"
                   >
                     {s.deleteBtn}
                   </button>
@@ -2825,20 +2825,20 @@ export function ProductEditor({
 
       {tab === "content" && (
         <div className="mt-5 grid gap-4">
-          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+          <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs sm:p-5">
             <label className={labelCls}>
               {s.videoUrlLabel}
               <input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} className={inputCls} placeholder="https://…" />
             </label>
           </section>
 
-          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+          <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs sm:p-5">
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 disabled={aiBusy !== null}
                 onClick={() => requestAiDraft("description")}
-                className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {aiBusy === "description" ? s.aiDescBusy : s.aiDescBtn}
               </button>
@@ -2849,7 +2849,7 @@ export function ProductEditor({
             <AiDraftStatus error={aiError} note={aiNote} />
           </section>
 
-          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+          <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs sm:p-5">
             <DescriptionField
               label={s.descBnLabel}
               value={descriptionBn}
@@ -2857,7 +2857,7 @@ export function ProductEditor({
               placeholder={s.descBnPh}
             />
           </section>
-          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+          <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs sm:p-5">
             <DescriptionField
               label={s.descEnLabel}
               value={descriptionEn}
@@ -2866,7 +2866,7 @@ export function ProductEditor({
             />
           </section>
 
-          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+          <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs sm:p-5">
             <SectionHeading
               glyph="file"
               title={s.sizeChartTitle}
@@ -2875,7 +2875,7 @@ export function ProductEditor({
                   <button
                     type="button"
                     onClick={() => setSizeChart({ headers: [s.sizeChartDefaultCol1, s.sizeChartDefaultCol2], rows: [["", ""]] })}
-                    className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
+                    className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50"
                   >
                     {s.sizeChartAdd}
                   </button>
@@ -2883,7 +2883,7 @@ export function ProductEditor({
                   <button
                     type="button"
                     onClick={() => setSizeChart({ headers: [], rows: [] })}
-                    className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
+                    className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-semibold text-danger transition duration-fast ease-smooth hover:border-danger/25 hover:bg-danger-soft"
                   >
                     {s.sizeChartRemove}
                   </button>
@@ -2920,7 +2920,7 @@ export function ProductEditor({
                                     rows: prev.rows.map((r) => r.filter((_, j) => j !== ci)),
                                   }))
                                 }
-                                className="inline-flex min-h-[40px] min-w-[40px] shrink-0 items-center justify-center rounded-md border border-border bg-card text-xs text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50 disabled:opacity-40"
+                                className="inline-flex min-h-[40px] min-w-[40px] shrink-0 items-center justify-center rounded-md border border-border bg-card text-xs text-danger transition duration-fast ease-smooth hover:border-danger/25 hover:bg-danger-soft disabled:opacity-40"
                                 aria-label={interpolate(s.sizeChartColDeleteAria, { n: ci + 1 })}
                               >
                                 ✕
@@ -2937,7 +2937,7 @@ export function ProductEditor({
                                 rows: prev.rows.map((r) => [...r, ""]),
                               }))
                             }
-                            className="inline-flex min-h-[40px] items-center whitespace-nowrap rounded-md border border-border bg-card px-3 text-xs font-semibold shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
+                            className="inline-flex min-h-[40px] items-center whitespace-nowrap rounded-md border border-border bg-card px-3 text-xs font-semibold shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50"
                           >
                             {s.addColumn}
                           </button>
@@ -2970,7 +2970,7 @@ export function ProductEditor({
                               onClick={() =>
                                 setSizeChart((prev) => ({ ...prev, rows: prev.rows.filter((_, i) => i !== ri) }))
                               }
-                              className="inline-flex min-h-[40px] items-center whitespace-nowrap rounded-md border border-border bg-card px-3 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
+                              className="inline-flex min-h-[40px] items-center whitespace-nowrap rounded-md border border-border bg-card px-3 text-xs font-semibold text-danger transition duration-fast ease-smooth hover:border-danger/25 hover:bg-danger-soft"
                             >
                               {s.rowDelete}
                             </button>
@@ -2985,7 +2985,7 @@ export function ProductEditor({
                   onClick={() =>
                     setSizeChart((prev) => ({ ...prev, rows: [...prev.rows, prev.headers.map(() => "")] }))
                   }
-                  className="mt-3 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
+                  className="mt-3 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50"
                 >
                   {s.addRow}
                 </button>
@@ -2993,7 +2993,7 @@ export function ProductEditor({
             )}
           </section>
 
-          <section className="rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+          <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-xs sm:p-5">
             <SectionHeading glyph="check" title={s.faqTitle} />
             <div className="space-y-3">
               {faqRows.length === 0 && (
@@ -3027,7 +3027,7 @@ export function ProductEditor({
                     <button
                       type="button"
                       onClick={() => setFaqRows((prev) => prev.filter((_, i) => i !== ri))}
-                      className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold text-rose-600 transition motion-fast hover:border-rose-200 hover:bg-rose-50"
+                      className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold text-danger transition duration-fast ease-smooth hover:border-danger/25 hover:bg-danger-soft"
                     >
                       {s.deleteBtn}
                     </button>
@@ -3038,7 +3038,7 @@ export function ProductEditor({
             <button
               type="button"
               onClick={() => setFaqRows((prev) => [...prev, { q: "", a: "" }])}
-              className="mt-3.5 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
+              className="mt-3.5 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50"
             >
               {s.addFaqBtn}
             </button>
@@ -3047,7 +3047,7 @@ export function ProductEditor({
       )}
 
       {tab === "seo" && (
-        <section className="mt-5 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+        <section className="mt-5 rounded-2xl border border-border/60 bg-card p-4 shadow-xs sm:p-5">
           <SectionHeading
             glyph="search"
             title={s.seoHeading}
@@ -3056,7 +3056,7 @@ export function ProductEditor({
                 type="button"
                 disabled={aiBusy !== null}
                 onClick={() => requestAiDraft("seo")}
-                className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {aiBusy === "seo" ? s.aiSeoBusy : s.aiSeoBtn}
               </button>
@@ -3097,7 +3097,7 @@ export function ProductEditor({
                   const first = imageRows.find((i) => i.url.trim() !== "");
                   if (first) setOgImage(first.url.trim());
                 }}
-                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
+                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
               >
                 {s.ogUseFirst}
               </button>
@@ -3126,7 +3126,7 @@ export function ProductEditor({
 
       {/* Sticky action bar — save/publish stay reachable however far
        *  the form is scrolled, on phone and desktop alike. */}
-      <div className="sticky bottom-3 z-20 mt-6 rounded-lg border border-border/70 bg-card/95 p-4 shadow-lift backdrop-blur">
+      <div className="sticky bottom-3 z-20 mt-6 rounded-2xl border border-border/60 bg-card/85 p-4 shadow-lift backdrop-blur">
         {priceChanged && (
           <label className="mb-3 block text-sm">
             {s.priceReasonBarLabel} <span className="text-text-subtle">{s.priceReasonBarNote}</span>
@@ -3154,7 +3154,7 @@ export function ProductEditor({
               type="button"
               onClick={() => void handleSave()}
               disabled={saveStatus === "saving"}
-              className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
+              className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:brightness-105 disabled:opacity-50"
             >
               {saveStatus === "saving" ? s.saving : mode === "create" ? s.editorCreateBtn : s.editorSaveBtn}
             </button>
@@ -3163,7 +3163,7 @@ export function ProductEditor({
                 type="button"
                 onClick={() => void handleSave("ACTIVE")}
                 disabled={saveStatus === "saving"}
-                className="inline-flex min-h-[44px] items-center rounded-md bg-emerald-600 px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center rounded-xl bg-success-solid px-5 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:brightness-105 disabled:opacity-50"
               >
                 {s.publishBtn}
               </button>
@@ -3175,15 +3175,15 @@ export function ProductEditor({
             role="status"
             className={`anim-fade-in mt-3 rounded-md border px-3.5 py-2.5 text-sm font-medium ${
               saveStatus === "error"
-                ? "border-rose-200 bg-rose-50 text-rose-700"
-                : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                ? "border-danger/25 bg-danger-soft text-danger"
+                : "border-success-solid/25 bg-success-soft text-success-solid"
             }`}
           >
             {saveMessage}
           </p>
         )}
         {saveErrors.length > 0 && (
-          <ul className="mt-2.5 list-inside list-disc rounded-md border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-700">
+          <ul className="mt-2.5 list-inside list-disc rounded-md border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-sm text-danger">
             {saveErrors.map((e, i) => (
               <li key={`${e}-${i}`}>{e}</li>
             ))}
@@ -3191,7 +3191,7 @@ export function ProductEditor({
         )}
       </div>
 
-      <div className="mt-4 rounded-lg border border-border/70 bg-card p-4 shadow-card sm:p-5">
+      <div className="mt-4 rounded-2xl border border-border/60 bg-card p-4 shadow-xs sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-display text-base font-semibold text-text-main">{s.qualityTitle}</h2>
           <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold tabular-nums text-brand-700">
@@ -3200,7 +3200,7 @@ export function ProductEditor({
         </div>
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuemin={0} aria-valuemax={QUALITY_CHECKLIST.length} aria-valuenow={QUALITY_CHECKLIST.filter((item) => qualityDone[item.key]).length}>
           <div
-            className="brand-gradient h-full rounded-full transition-all motion-base"
+            className="brand-gradient h-full rounded-full transition-all duration-base ease-smooth"
             style={{ width: `${(QUALITY_CHECKLIST.filter((item) => qualityDone[item.key]).length / QUALITY_CHECKLIST.length) * 100}%` }}
           />
         </div>
@@ -3211,11 +3211,11 @@ export function ProductEditor({
               <li
                 key={item.key}
                 className={`flex items-center gap-2.5 rounded-md border px-3 py-2.5 text-sm ${
-                  done ? "border-emerald-100 bg-emerald-50/60 text-text-main" : "border-border/60 bg-surface-2/40 text-text-muted"
+                  done ? "border-success-solid/20 bg-success-soft/60 text-text-main" : "border-border/60 bg-surface-2/40 text-text-muted"
                 }`}
               >
                 {done ? (
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-5 w-5 shrink-0 text-emerald-600">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-5 w-5 shrink-0 text-success-solid">
                     <circle cx="12" cy="12" r="9" fill="currentColor" stroke="none" opacity="0.15" />
                     {GLYPHS.check}
                   </svg>

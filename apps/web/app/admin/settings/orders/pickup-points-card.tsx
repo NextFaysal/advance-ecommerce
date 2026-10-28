@@ -129,7 +129,7 @@ export function PickupPointsCard({ settingKey, title, description, initialPoints
     "mt-1 block min-h-[40px] w-full rounded-lg border border-border bg-card px-3 text-sm shadow-sm outline-none transition motion-fast focus:border-brand-500 focus:ring-[3px] focus:ring-brand-100 disabled:bg-surface-2 disabled:text-text-muted";
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-card">
+    <section className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-card">
       <div className="brand-gradient h-1.5 w-full" aria-hidden="true" />
       <div className="p-5">
         <div className="flex items-center gap-3">

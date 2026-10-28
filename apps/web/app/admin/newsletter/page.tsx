@@ -42,7 +42,7 @@ export default async function AdminNewsletterPage() {
         breadcrumb="Admin / Marketing"
       />
       {list === null ? (
-        <p role="alert" className="rounded-md bg-rose-50 px-3.5 py-2.5 text-small leading-relaxed text-rose-700">
+        <p role="alert" className="rounded-2xl bg-danger-soft px-4 py-3 text-small leading-relaxed text-danger">
           ডাটাবেস থেকে সাবস্ক্রাইবার পড়া যায়নি — কোনো সংখ্যা দেখানো হচ্ছে না। (Could not
           read subscribers from the database; no numbers are shown.)
         </p>

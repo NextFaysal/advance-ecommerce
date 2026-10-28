@@ -68,21 +68,21 @@ export function ProductsExportButton({ status = "ALL" }: { status?: string }) {
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder={s.exportReasonPh}
-            className="h-11 w-64 max-w-[70vw] rounded-md border border-border bg-card px-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+            className="h-11 w-64 max-w-[70vw] rounded-xl border border-border bg-card px-3 text-sm shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15"
             aria-label={s.exportReasonAria}
           />
           <button
             type="button"
             onClick={run}
             disabled={busy}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-brand-600 px-4 text-sm font-semibold text-white shadow-md transition motion-fast hover:brightness-105 disabled:opacity-50"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:brightness-105 disabled:opacity-50"
           >
             {busy ? s.exportBusy : s.exportDownload}
           </button>
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-border bg-card px-3 text-sm font-medium shadow-sm transition motion-fast hover:border-brand-300 hover:bg-brand-50"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-border bg-card px-3 text-sm font-medium shadow-xs transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-soft"
           >
             {s.cancelBtn}
           </button>
@@ -91,7 +91,7 @@ export function ProductsExportButton({ status = "ALL" }: { status?: string }) {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-md border border-border bg-card px-4 text-sm font-semibold shadow-card transition motion-fast hover:shadow-lift"
+          className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-4 text-sm font-semibold shadow-xs transition duration-fast ease-smooth hover:shadow-lift"
         >
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -101,9 +101,9 @@ export function ProductsExportButton({ status = "ALL" }: { status?: string }) {
           {s.exportBtn}
         </button>
       )}
-      {message ? <p className="text-xs text-emerald-600">{message}</p> : null}
+      {message ? <p className="text-xs text-success-solid">{message}</p> : null}
       {error ? (
-        <p role="alert" className="text-xs text-rose-600">
+        <p role="alert" className="text-xs text-danger">
           {error}
         </p>
       ) : null}

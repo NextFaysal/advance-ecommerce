@@ -55,32 +55,32 @@ interface AgingResponse {
 const BUCKET_RAMP: Record<string, { icon: IconName; chip: string; header: string }> = {
   pending_old: {
     icon: "clock",
-    chip: "bg-amber-100 text-amber-900",
-    header: "border-amber-200",
+    chip: "bg-warning-soft text-warning-solid",
+    header: "border-border/60",
   },
   confirmed_unpacked: {
     icon: "package",
-    chip: "bg-amber-200 text-amber-900",
-    header: "border-amber-300",
+    chip: "bg-warning-soft text-warning-solid ring-1 ring-inset ring-warning-solid/30",
+    header: "border-border/60",
   },
   shipped_undelivered: {
     icon: "truck",
-    chip: "bg-orange-200 text-orange-900",
-    header: "border-orange-300",
+    chip: "bg-danger-soft text-danger",
+    header: "border-border/60",
   },
   returning_stuck: {
     icon: "rotate-ccw",
-    chip: "bg-rose-200 text-rose-900",
-    header: "border-rose-300",
+    chip: "bg-danger-soft text-danger ring-1 ring-inset ring-danger/30",
+    header: "border-border/60",
   },
 };
 
 /* Per-row age ramp: how long THIS order has been stuck. */
 function ageChipClass(ageHours: number): string {
-  if (ageHours >= 7 * 24) return "bg-rose-100 text-rose-800";
-  if (ageHours >= 5 * 24) return "bg-orange-100 text-orange-800";
-  if (ageHours >= 48) return "bg-amber-100 text-amber-800";
-  return "bg-yellow-50 text-yellow-800";
+  if (ageHours >= 7 * 24) return "bg-danger-soft text-danger";
+  if (ageHours >= 5 * 24) return "bg-warning-soft text-warning-solid ring-1 ring-inset ring-warning-solid/25";
+  if (ageHours >= 48) return "bg-warning-soft text-warning-solid";
+  return "bg-surface-2 text-text-muted";
 }
 
 function ageLabel(ageHours: number, locale: Locale): string {
@@ -117,16 +117,16 @@ export function AgingPanel() {
   const buckets = state.data.filter((b) => b.count > 0);
 
   return (
-    <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-card" aria-label={s.agingAria}>
+    <section className="mb-4 rounded-2xl border border-border/60 bg-warning-soft p-4 shadow-xs" aria-label={s.agingAria}>
       <div className="flex flex-wrap items-center gap-3">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500 px-2.5 py-0.5 text-small font-semibold text-white">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-warning-soft px-2.5 py-0.5 text-small font-semibold text-warning-solid ring-1 ring-inset ring-warning-solid/30">
           <Icon name="alert" size={14} />
           {state.meta.totalStuck}{s.agingBadgeSuffix}
         </span>
-        <p className="text-body font-medium text-amber-900">
+        <p className="text-body font-medium text-text-main">
           {s.agingTitle}
         </p>
-        <p className="text-caption text-amber-800">
+        <p className="text-caption text-text-muted">
           {s.agingHint}
         </p>
       </div>
@@ -135,30 +135,30 @@ export function AgingPanel() {
           const expanded = expandedKey === bucket.key;
           const ramp = BUCKET_RAMP[bucket.key] ?? BUCKET_RAMP.pending_old;
           return (
-            <div key={bucket.key} className={`overflow-hidden rounded-md border bg-surface ${ramp.header}`}>
+            <div key={bucket.key} className={`overflow-hidden rounded-xl border bg-surface ${ramp.header}`}>
               <button
                 type="button"
                 onClick={() => setExpandedKey(expanded ? null : bucket.key)}
                 aria-expanded={expanded}
                 className="flex w-full flex-wrap items-center gap-2 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
-                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-small font-semibold tabular-nums ${ramp.chip}`}>
+                <span className={`tnum inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-small font-semibold ${ramp.chip}`}>
                   <Icon name={ramp.icon} size={13} />
                   {bucket.count}
                 </span>
-                <span className="text-small font-medium text-amber-900">{locale === "bn" ? bucket.labelBn : bucket.labelEn}</span>
-                <span className="ml-auto inline-flex items-center gap-1 text-small font-medium text-amber-800">
+                <span className="text-small font-medium text-text-main">{locale === "bn" ? bucket.labelBn : bucket.labelEn}</span>
+                <span className="ml-auto inline-flex items-center gap-1 text-small font-medium text-text-muted">
                   {expanded ? s.hide : s.show}
                   <Icon name="chevron-down" size={14} className={expanded ? "rotate-180 transition" : "transition"} />
                 </span>
               </button>
               {expanded && (
-                <ul className="divide-y divide-amber-100 border-t border-amber-100">
+                <ul className="divide-y divide-border border-t border-border">
                   {bucket.orders.map((row) => (
                     <li key={row.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-small">
                       <Link
                         href={`/admin/orders/${row.id}`}
-                        className="inline-flex items-center gap-1 font-semibold text-indigo-700 hover:underline"
+                        className="inline-flex items-center gap-1 font-semibold text-brand-700 hover:underline"
                       >
                         {row.orderNo}
                         <Icon name="arrow-right" size={13} />

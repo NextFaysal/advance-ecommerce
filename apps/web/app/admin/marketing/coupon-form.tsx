@@ -67,7 +67,7 @@ export default function CouponForm() {
 
   return (
     <Card>
-      <h3 className="mb-1 font-semibold">নতুন কুপন তৈরি</h3>
+      <h3 className="mb-1 font-semibold text-text-main">নতুন কুপন তৈরি</h3>
       <p className="mb-4 text-xs text-text-muted">
         ফর্মটি Coupons API-তে পাঠায় — কুপনটি ডাটাবেসে (Coupon টেবিল) সংরক্ষিত হয় এবং
         চেকআউটে সঙ্গে সঙ্গে ব্যবহারযোগ্য। API-র উত্তরই এখানে দেখানো হয় — নিজে থেকে সফল বলা হয় না।
@@ -76,7 +76,7 @@ export default function CouponForm() {
         <label className="text-sm">
           কুপন কোড
           <input
-            className="mt-1 w-full rounded-[10px] border border-border bg-card px-3 py-2"
+            className="mt-1 w-full min-h-[44px] rounded-xl border border-border bg-card px-3 py-2 text-text-main"
             value={code}
             onChange={(e) => setCode(e.target.value)}
             placeholder="যেমন: NEWYEAR15"
@@ -86,7 +86,7 @@ export default function CouponForm() {
         <label className="text-sm">
           ধরন
           <select
-            className="mt-1 w-full rounded-[10px] border border-border bg-card px-3 py-2"
+            className="mt-1 w-full min-h-[44px] rounded-xl border border-border bg-card px-3 py-2 text-text-main"
             value={type}
             onChange={(e) => setType(e.target.value as CouponTypeChoice)}
           >
@@ -99,7 +99,7 @@ export default function CouponForm() {
         <label className="text-sm">
           {type === "percent" ? "ছাড় (%)" : "ছাড়ের পরিমাণ (টাকা)"}
           <input
-            className="mt-1 w-full rounded-[10px] border border-border bg-card px-3 py-2"
+            className="mt-1 w-full min-h-[44px] rounded-xl border border-border bg-card px-3 py-2 text-text-main"
             type="number"
             min={0}
             value={value}
@@ -109,7 +109,7 @@ export default function CouponForm() {
         <label className="text-sm">
           ন্যূনতম কার্ট (টাকা, ঐচ্ছিক)
           <input
-            className="mt-1 w-full rounded-[10px] border border-border bg-card px-3 py-2"
+            className="mt-1 w-full min-h-[44px] rounded-xl border border-border bg-card px-3 py-2 text-text-main"
             type="number"
             min={0}
             value={minCart}

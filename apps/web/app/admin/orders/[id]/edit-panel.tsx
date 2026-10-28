@@ -313,7 +313,7 @@ export function EditPanel({ orderId }: { orderId: string }) {
                 <Button
                   type="button"
                   variant="ghost"
-                  className="h-8 px-2 text-rose-600"
+                  className="h-8 px-2 text-danger"
                   disabled={busy}
                   onClick={() =>
                     setRemoved((s) => {
@@ -384,7 +384,7 @@ export function EditPanel({ orderId }: { orderId: string }) {
               <Button
                 type="button"
                 variant="ghost"
-                className="h-8 px-2 text-rose-600"
+                className="h-8 px-2 text-danger"
                 disabled={busy}
                 onClick={() => setAdds((s) => s.filter((x) => x.variantId !== a.variantId))}
               >
@@ -466,7 +466,7 @@ export function EditPanel({ orderId }: { orderId: string }) {
       </div>
 
       {error && (
-        <p role="alert" className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-small text-rose-800 dark:bg-rose-500/10 dark:text-rose-200">{error}</p>
+        <p role="alert" className="mt-2 rounded-xl bg-danger-soft px-3 py-2 text-small text-danger">{error}</p>
       )}
       {outcome && (
         <div role="status" className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-small text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-200">

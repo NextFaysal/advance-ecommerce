@@ -34,7 +34,7 @@ export function RailAdvanceSummary({
   if (!advance || (advance.requiredPoisha <= 0 && !advance.requiresOtp)) return null;
   const satisfied = advance.satisfiedAt !== null;
   return (
-    <Card className="shadow-card">
+    <Card>
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="text-base font-semibold">{s.advTitle}</h2>
         {advance.requiredPoisha > 0 ? (

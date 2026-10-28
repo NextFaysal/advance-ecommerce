@@ -4,8 +4,10 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
 import { Phone } from "@/components/ui/phone";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { ManualTrxSubmission } from "@/integrations/payment";
 import { normalizeTrxId } from "@/integrations/sandbox/store";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -103,14 +105,12 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
 
   if (submissions.length === 0) {
     return (
-      <p className="rounded-md bg-surface-2 px-3 py-2 text-xs text-text-muted">
-        {t.rqEmpty}
-      </p>
+      <EmptyState title={t.rqEmptyTitle} description={t.rqEmptyDesc} />
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <p className="rounded-md bg-surface-2 px-3 py-2 text-xs text-text-muted">
         {t.rqIntro}
       </p>
@@ -123,9 +123,9 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
         const reason = reasons[s.id] ?? "";
         const canDecide = status === "pending" && reason.trim().length >= 3 && !busy[s.id];
         return (
-          <div key={s.id} className="rounded-lg border border-border bg-card p-4">
+          <Card key={s.id} className="p-4">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold">{t.rqOrder} #{s.orderId}</span>
+              <span className="font-display text-base font-semibold text-text-main">{t.rqOrder} <span className="tnum">#{s.orderId}</span></span>
               <Badge tone="brand">{paymentMethodLabel(locale, s.method)}</Badge>
               <Badge tone={meta.tone}>
                 <span aria-hidden="true">{meta.icon}</span> {t[meta.labelKey]}
@@ -143,7 +143,7 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
             <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
               <div>
                 <dt className="text-xs text-text-muted">TrxID</dt>
-                <dd className="font-mono tabular-nums">{s.trxId}</dd>
+                <dd className="tnum font-mono tabular-nums">{s.trxId}</dd>
               </div>
               <div>
                 <dt className="text-xs text-text-muted">{t.rqSenderPhone}</dt>
@@ -151,16 +151,16 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
               </div>
               <div>
                 <dt className="text-xs text-text-muted">{t.rqClaimedOrder}</dt>
-                <dd className="font-mono tabular-nums">#{s.orderId}</dd>
+                <dd className="tnum font-mono tabular-nums">#{s.orderId}</dd>
               </div>
               <div>
                 <dt className="text-xs text-text-muted">{t.rqSubmittedAt}</dt>
-                <dd className="font-mono tabular-nums">{dhakaTime(s.submittedAt)}</dd>
+                <dd className="tnum font-mono tabular-nums">{dhakaTime(s.submittedAt)}</dd>
               </div>
             </dl>
 
             {isDuplicate ? (
-              <p className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              <p className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-xs text-danger">
                 ⚠️ {t.rqDupWarning1} ({normalizeTrxId(s.trxId)}) {t.rqDupWarning2}{" "}
                 {twins.length} {t.rqDupWarning3}
               </p>
@@ -169,7 +169,7 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
             {status === "pending" ? (
               <div className="mt-3 space-y-2">
                 {blockedBy.length > 0 ? (
-                  <p className="rounded-md bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+                  <p className="rounded-md bg-danger-soft px-3 py-2 text-xs font-medium text-danger">
                     🚫 {t.rqBlocked}
                   </p>
                 ) : null}
@@ -199,7 +199,7 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
                   </Button>
                 </div>
                 {errors[s.id] ? (
-                  <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">{errors[s.id]}</p>
+                  <p className="rounded-md bg-danger-soft px-3 py-2 text-xs text-danger">{errors[s.id]}</p>
                 ) : null}
               </div>
             ) : (
@@ -208,7 +208,7 @@ export function ManualTrxReviewQueue({ submissions }: { submissions: ManualTrxSu
                   (s.reviewNote ? interpolate(t.rqPrevNote, { note: s.reviewNote }) : t.rqNoReviewAgain)}
               </p>
             )}
-          </div>
+          </Card>
         );
       })}
     </div>

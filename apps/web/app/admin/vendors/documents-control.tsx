@@ -93,7 +93,7 @@ export default function VendorDocumentsControl({ vendorId }: { vendorId: string 
     }
   }
 
-  const inputCls = "rounded-xl border border-border bg-card px-3 py-2 text-sm text-text-main";
+  const inputCls = "rounded-xl border border-border bg-card px-3 py-2 text-sm text-text-main shadow-xs";
 
   return (
     <div>
@@ -102,14 +102,14 @@ export default function VendorDocumentsControl({ vendorId }: { vendorId: string 
         {s.docsDesc}
       </p>
       {error ? (
-        <p role="alert" className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+        <p role="alert" className="mt-2 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
       ) : null}
       {docs.length === 0 ? (
         <p className="mt-2 text-xs text-text-muted">{s.noDocs}</p>
       ) : (
         <ul className="mt-2 space-y-1.5 text-sm">
           {docs.map((doc) => (
-            <li key={doc.id} className="flex flex-wrap items-center justify-between gap-2">
+            <li key={doc.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/50 bg-surface-2/40 px-3 py-2">
               <span className="min-w-0 text-text-main">
                 {vendorDocumentKindLabel(doc.kind, locale)} — {doc.fileName}
                 <span className="block text-xs text-text-muted">
@@ -122,7 +122,7 @@ export default function VendorDocumentsControl({ vendorId }: { vendorId: string 
                   type="button"
                   disabled={busy || doc.status === "VERIFIED"}
                   onClick={() => void decide(doc, "VERIFIED")}
-                  className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                  className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-xs disabled:opacity-50"
                 >
                   {s.verify}
                 </button>
@@ -130,7 +130,7 @@ export default function VendorDocumentsControl({ vendorId }: { vendorId: string 
                   type="button"
                   disabled={busy || doc.status === "REJECTED"}
                   onClick={() => void decide(doc, "REJECTED")}
-                  className="rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                  className="rounded-lg bg-danger px-2.5 py-1.5 text-xs font-semibold text-white shadow-xs disabled:opacity-50"
                 >
                   {s.reject}
                 </button>
@@ -173,7 +173,7 @@ export default function VendorDocumentsControl({ vendorId }: { vendorId: string 
         <button
           type="submit"
           disabled={busy}
-          className="rounded-xl bg-brand-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
+          className="rounded-xl bg-brand-600 px-3 py-2 text-xs font-semibold text-white shadow-xs disabled:opacity-60"
         >
           {s.recordBtn}
         </button>

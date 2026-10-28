@@ -66,18 +66,19 @@ export default async function AdminModulesPage() {
   }));
 
   return (
-    <main>
+    <main className="space-y-6">
       <PageHeader title={s.title} description={s.description} breadcrumb={s.breadcrumb} />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label={s.statPacks} value={String(packs.length)} delta={s.statPacksDelta} icon={<Icon name="grid" size={22} />} />
         <StatCard label={s.statActivePacks} value={String(enabledCount)} delta={s.statActiveDelta} icon={<Icon name="check" size={22} />} />
         <StatCard label={s.statEvents} value={String(DOMAIN_EVENTS.length)} delta={s.statEventsDelta} icon={<Icon name="sparkles" size={22} />} />
         <StatCard label={s.statAdapters} value={String(adapters.length)} delta={s.statAdaptersDelta} icon={<Icon name="settings" size={22} />} />
       </div>
 
-      <h2 className="mb-3 text-lg font-semibold">{s.packsTitle}</h2>
-      <DataTable
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-text-main">{s.packsTitle}</h2>
+        <DataTable
         caption={s.packsCaption}
         columns={[
           { key: "pack", header: s.colPack },
@@ -85,96 +86,103 @@ export default async function AdminModulesPage() {
           { key: "flag", header: s.colFlag },
           { key: "status", header: s.colStatus },
         ]}
-        rows={packRows}
-      />
+          rows={packRows}
+        />
+      </section>
 
       {flags["module.grocery"] ? (
-        <>
-          <h2 className="mb-3 mt-8 text-lg font-semibold">{s.groceryTitle}</h2>
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold text-text-main">{s.groceryTitle}</h2>
           <Card>
             <WeightedSyncPanel />
           </Card>
-        </>
+        </section>
       ) : null}
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.erpTitle}</h2>
-      <Card>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h3 className="text-base font-semibold">{s.erpCardTitle}</h3>
-            <p className="mt-1 max-w-xl text-sm text-text-muted">
-              {s.erpDesc}
-            </p>
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-text-main">{s.erpTitle}</h2>
+        <Card>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h3 className="text-base font-semibold text-text-main">{s.erpCardTitle}</h3>
+              <p className="mt-1 max-w-xl text-sm text-text-muted">
+                {s.erpDesc}
+              </p>
+            </div>
+            {erpEnabled ? (
+              <Badge tone="success">{s.erpActive}</Badge>
+            ) : (
+              <Badge tone="neutral">{s.erpLocked}</Badge>
+            )}
           </div>
-          {erpEnabled ? (
-            <Badge tone="success">{s.erpActive}</Badge>
-          ) : (
-            <Badge tone="neutral">{s.erpLocked}</Badge>
-          )}
+          <div className="mt-4">
+            <Link href="/admin/erp" className="text-sm font-medium text-brand-700 hover:underline">
+              {s.erpOpen}
+            </Link>
+          </div>
+        </Card>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-text-main">{s.extensibilityTitle}</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Card>
+            <h3 className="text-base font-semibold text-text-main">{s.pluginsTitle}</h3>
+            <p className="mt-1 text-sm text-text-muted">
+              {s.pluginsDesc}
+            </p>
+          </Card>
+          <Card>
+            <h3 className="text-base font-semibold text-text-main">{s.webhooksTitle}</h3>
+            <p className="mt-1 text-sm text-text-muted">
+              {s.webhooksDesc}
+            </p>
+          </Card>
+          <Card>
+            <h3 className="text-base font-semibold text-text-main">{s.apiKeysTitle}</h3>
+            <p className="mt-1 text-sm text-text-muted">
+              {s.apiKeysDesc}
+            </p>
+          </Card>
+          <Card>
+            <h3 className="text-base font-semibold text-text-main">{s.customFieldsTitle}</h3>
+            <p className="mt-1 text-sm text-text-muted">
+              {s.customFieldsDesc}
+            </p>
+          </Card>
         </div>
-        <div className="mt-4">
-          <Link href="/admin/erp" className="text-sm font-medium text-brand-700 hover:underline">
-            {s.erpOpen}
-          </Link>
+
+        <h3 className="pt-2 text-base font-semibold text-text-main">{s.eventsTitle}</h3>
+        <div className="flex flex-wrap gap-2">
+          {DOMAIN_EVENTS.map((event) => (
+            <Badge key={event} tone="brand">
+              <span className="font-mono">{event}</span>
+            </Badge>
+          ))}
         </div>
-      </Card>
+      </section>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.extensibilityTitle}</h2>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <h3 className="text-base font-semibold">{s.pluginsTitle}</h3>
-          <p className="mt-1 text-sm text-text-muted">
-            {s.pluginsDesc}
-          </p>
-        </Card>
-        <Card>
-          <h3 className="text-base font-semibold">{s.webhooksTitle}</h3>
-          <p className="mt-1 text-sm text-text-muted">
-            {s.webhooksDesc}
-          </p>
-        </Card>
-        <Card>
-          <h3 className="text-base font-semibold">{s.apiKeysTitle}</h3>
-          <p className="mt-1 text-sm text-text-muted">
-            {s.apiKeysDesc}
-          </p>
-        </Card>
-        <Card>
-          <h3 className="text-base font-semibold">{s.customFieldsTitle}</h3>
-          <p className="mt-1 text-sm text-text-muted">
-            {s.customFieldsDesc}
-          </p>
-        </Card>
-      </div>
-
-      <h3 className="mb-3 mt-6 text-base font-semibold">{s.eventsTitle}</h3>
-      <div className="flex flex-wrap gap-2">
-        {DOMAIN_EVENTS.map((event) => (
-          <Badge key={event} tone="brand">
-            <span className="font-mono">{event}</span>
-          </Badge>
-        ))}
-      </div>
-
-      <h2 className="mb-3 mt-8 text-lg font-semibold">{s.adaptersTitle}</h2>
-      {adapters.length === 0 ? (
-        <EmptyState
-          title={s.noAdaptersTitle}
-          description={s.noAdaptersDesc}
-        />
-      ) : (
-        <DataTable
-          caption={s.adaptersCaption}
-          columns={[
-            { key: "kind", header: s.colKind },
-            { key: "provider", header: s.colProvider },
-            { key: "key", header: s.colKey },
-            { key: "source", header: s.colSource },
-            { key: "mode", header: s.colMode },
-          ]}
-          rows={adapterRows}
-        />
-      )}
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-text-main">{s.adaptersTitle}</h2>
+        {adapters.length === 0 ? (
+          <EmptyState
+            title={s.noAdaptersTitle}
+            description={s.noAdaptersDesc}
+          />
+        ) : (
+          <DataTable
+            caption={s.adaptersCaption}
+            columns={[
+              { key: "kind", header: s.colKind },
+              { key: "provider", header: s.colProvider },
+              { key: "key", header: s.colKey },
+              { key: "source", header: s.colSource },
+              { key: "mode", header: s.colMode },
+            ]}
+            rows={adapterRows}
+          />
+        )}
+      </section>
     </main>
   );
 }

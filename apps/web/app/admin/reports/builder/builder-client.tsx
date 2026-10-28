@@ -15,6 +15,7 @@ import {
 import { SALES_STATUSES } from "@/reports/types";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
+import { Card } from "@/components/ui/card";
 import { REPORTS_STRINGS } from "../strings";
 
 interface PreviewData {
@@ -209,21 +210,21 @@ export function BuilderClient() {
   const catalogue = reportColumnsFor(dataset, locale);
 
   return (
-    <div className="mt-4 space-y-6">
-      <section className="rounded-xl border p-4">
-        <h2 className="font-semibold">{str.bDatasetColumnsTitle}</h2>
+    <div className="space-y-6">
+      <Card>
+        <h2 className="font-display text-base font-semibold text-text-main">{str.bDatasetColumnsTitle}</h2>
         <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
           <label>{str.bDataset}
-            <select className="ml-2 rounded border p-1.5" value={dataset} onChange={(e) => changeDataset(e.target.value as ReportDataset)}>
+            <select className="ml-2 rounded-lg border border-border bg-card p-1.5 text-text-main" value={dataset} onChange={(e) => changeDataset(e.target.value as ReportDataset)}>
               {REPORT_DATASETS.map((d) => <option key={d} value={d}>{datasetLabel(d)}</option>)}
             </select>
           </label>
-          <label>{str.bFrom} <input type="date" className="ml-1 rounded border p-1.5" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
-          <label>{str.bTo} <input type="date" className="ml-1 rounded border p-1.5" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+          <label>{str.bFrom} <input type="date" className="ml-1 rounded-lg border border-border bg-card p-1.5 text-text-main" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+          <label>{str.bTo} <input type="date" className="ml-1 rounded-lg border border-border bg-card p-1.5 text-text-main" value={to} onChange={(e) => setTo(e.target.value)} /></label>
         </div>
         <div className="mt-3 flex flex-wrap gap-2 text-sm">
           {catalogue.map((c) => (
-            <label key={c.key} className="flex items-center gap-1.5 rounded border px-2 py-1">
+            <label key={c.key} className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-2/40 px-2.5 py-1.5 text-text-main">
               <input type="checkbox" checked={columns.includes(c.key)} onChange={() => toggleColumn(c.key)} />
               {c.label}
             </label>
@@ -231,97 +232,105 @@ export function BuilderClient() {
         </div>
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
           <label>{str.bStatus}
-            <select className="ml-2 rounded border p-1.5" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <select className="ml-2 rounded-lg border border-border bg-card p-1.5 text-text-main" value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">{str.bAll}</option>
               {SALES_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </label>
-          <label>{str.bDistrict} <input className="ml-1 rounded border p-1.5" value={district} onChange={(e) => setDistrict(e.target.value)} placeholder={str.bDistrictPlaceholder} /></label>
-          <label>{str.bCourier} <input className="ml-1 rounded border p-1.5" value={courier} onChange={(e) => setCourier(e.target.value)} placeholder={str.bCourierPlaceholder} /></label>
+          <label>{str.bDistrict} <input className="ml-1 rounded-lg border border-border bg-card p-1.5 text-text-main" value={district} onChange={(e) => setDistrict(e.target.value)} placeholder={str.bDistrictPlaceholder} /></label>
+          <label>{str.bCourier} <input className="ml-1 rounded-lg border border-border bg-card p-1.5 text-text-main" value={courier} onChange={(e) => setCourier(e.target.value)} placeholder={str.bCourierPlaceholder} /></label>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" disabled={busy || columns.length === 0} onClick={runPreview} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{str.bPreview}</button>
+          <button type="button" disabled={busy || columns.length === 0} onClick={runPreview} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">{str.bPreview}</button>
         </div>
-        {error !== "" && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {error !== "" && <p className="mt-3 text-sm text-danger">{error}</p>}
         {preview && (
-          <div className="mt-4 overflow-x-auto">
-            <p className="text-sm">{preview.previewCapped ? interpolate(str.bTotalRowsCapped, { total: preview.totalRows }) : interpolate(str.bTotalRows, { total: preview.totalRows })}</p>
-            <table className="mt-2 min-w-full text-left text-sm">
-              <thead><tr>{preview.columns.map((c) => <th key={c.key} className="border-b p-2">{c.label}</th>)}</tr></thead>
-              <tbody>
-                {preview.rows.map((row, i) => (
-                  <tr key={i}>{preview.columns.map((c) => <td key={c.key} className="border-b p-2">{String(row[c.key] ?? "")}</td>)}</tr>
-                ))}
-              </tbody>
-            </table>
-            {preview.rows.length === 0 && <p className="mt-2 text-sm text-slate-500">{str.bNoDataCondition}</p>}
+          <div className="mt-4">
+            <p className="tnum text-sm text-text-main">{preview.previewCapped ? interpolate(str.bTotalRowsCapped, { total: preview.totalRows }) : interpolate(str.bTotalRows, { total: preview.totalRows })}</p>
+            <div className="mt-3 overflow-x-auto rounded-2xl border border-border/60 bg-card shadow-xs">
+              <table className="min-w-full text-left text-sm">
+                <thead>
+                  <tr className="bg-surface-2/80">
+                    {preview.columns.map((c) => <th key={c.key} className="bg-surface-2/80 px-4 py-3 text-xs font-semibold text-text-muted">{c.label}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.rows.map((row, i) => (
+                    <tr key={i} className="border-t border-border/60">
+                      {preview.columns.map((c) => <td key={c.key} className="tnum px-4 py-3 text-text-main">{String(row[c.key] ?? "")}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {preview.rows.length === 0 && <p className="mt-2 text-sm text-text-muted">{str.bNoDataCondition}</p>}
           </div>
         )}
-      </section>
+      </Card>
 
-      <section className="rounded-xl border p-4">
-        <h2 className="font-semibold">{str.bExportTitle}</h2>
+      <Card>
+        <h2 className="font-display text-base font-semibold text-text-main">{str.bExportTitle}</h2>
         <div className="mt-3 flex flex-wrap gap-2 text-sm">
-          <input className="min-w-64 rounded border p-2" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={str.bExportReasonPlaceholder} />
-          <button type="button" disabled={busy || columns.length === 0} onClick={runExport} className="rounded-md border px-4 py-2 font-medium disabled:opacity-50">{str.bDownloadCsv}</button>
+          <input className="min-w-64 rounded-lg border border-border bg-card p-2 text-text-main" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={str.bExportReasonPlaceholder} />
+          <button type="button" disabled={busy || columns.length === 0} onClick={runExport} className="rounded-lg border border-border bg-card px-4 py-2 font-medium text-text-main hover:bg-surface-2 disabled:opacity-50">{str.bDownloadCsv}</button>
         </div>
-      </section>
+      </Card>
 
-      <section className="rounded-xl border p-4">
-        <h2 className="font-semibold">{str.bSavedTitle}</h2>
+      <Card>
+        <h2 className="font-display text-base font-semibold text-text-main">{str.bSavedTitle}</h2>
         <div className="mt-3 flex flex-wrap gap-2 text-sm">
-          <input className="min-w-64 rounded border p-2" value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder={str.bReportNamePlaceholder} />
-          <button type="button" disabled={busy} onClick={saveReport} className="rounded-md border px-4 py-2 font-medium disabled:opacity-50">{str.bSaveCurrent}</button>
+          <input className="min-w-64 rounded-lg border border-border bg-card p-2 text-text-main" value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder={str.bReportNamePlaceholder} />
+          <button type="button" disabled={busy} onClick={saveReport} className="rounded-lg border border-border bg-card px-4 py-2 font-medium text-text-main hover:bg-surface-2 disabled:opacity-50">{str.bSaveCurrent}</button>
         </div>
         <ul className="mt-3 space-y-1 text-sm">
           {saved.map((r) => (
             <li key={r.id} className="flex flex-wrap items-center gap-2">
               <span className="font-medium">{r.name}</span>
-              <span className="text-slate-500">({datasetLabel(r.definition.dataset)}, {r.definition.range.from} → {r.definition.range.to})</span>
-              <button type="button" className="rounded border px-2 py-0.5" onClick={() => loadReport(r)}>{str.bLoad}</button>
-              <button type="button" className="rounded border px-2 py-0.5" onClick={() => void deleteReport(r.id)}>{str.bDelete}</button>
+              <span className="text-text-muted">({datasetLabel(r.definition.dataset)}, {r.definition.range.from} → {r.definition.range.to})</span>
+              <button type="button" className="rounded-lg border border-border bg-card px-2 py-0.5 text-text-main hover:bg-surface-2" onClick={() => loadReport(r)}>{str.bLoad}</button>
+              <button type="button" className="rounded-lg border border-border bg-card px-2 py-0.5 text-text-main hover:bg-surface-2" onClick={() => void deleteReport(r.id)}>{str.bDelete}</button>
             </li>
           ))}
-          {saved.length === 0 && <li className="text-slate-500">{str.bNoSaved}</li>}
+          {saved.length === 0 && <li className="text-text-muted">{str.bNoSaved}</li>}
         </ul>
-      </section>
+      </Card>
 
-      <section className="rounded-xl border p-4">
-        <h2 className="font-semibold">{str.bScheduleTitle}</h2>
-        <p className="mt-1 text-sm text-slate-600">{str.bScheduleDesc}</p>
+      <Card>
+        <h2 className="font-display text-base font-semibold text-text-main">{str.bScheduleTitle}</h2>
+        <p className="mt-1 text-sm text-text-muted">{str.bScheduleDesc}</p>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-          <select className="rounded border p-1.5" value={schedFor} onChange={(e) => setSchedFor(e.target.value)}>
+          <select className="rounded-lg border border-border bg-card p-1.5 text-text-main" value={schedFor} onChange={(e) => setSchedFor(e.target.value)}>
             <option value="">{str.bPickReport}</option>
             {saved.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
-          <select className="rounded border p-1.5" value={cadence} onChange={(e) => setCadence(e.target.value as "daily" | "weekly")}>
+          <select className="rounded-lg border border-border bg-card p-1.5 text-text-main" value={cadence} onChange={(e) => setCadence(e.target.value as "daily" | "weekly")}>
             <option value="daily">{str.bDaily}</option>
             <option value="weekly">{str.bWeekly}</option>
           </select>
           {cadence === "weekly" && (
-            <select className="rounded border p-1.5" value={weekday} onChange={(e) => setWeekday(Number(e.target.value))}>
+            <select className="rounded-lg border border-border bg-card p-1.5 text-text-main" value={weekday} onChange={(e) => setWeekday(Number(e.target.value))}>
               {WEEKDAYS.map((w, i) => <option key={w} value={i}>{w}</option>)}
             </select>
           )}
-          <input type="time" className="rounded border p-1.5" value={time} onChange={(e) => setTime(e.target.value)} />
-          <input className="min-w-64 rounded border p-2" value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder={str.bEmailPlaceholder} />
-          <button type="button" disabled={busy} onClick={createSchedule} className="rounded-md border px-4 py-2 font-medium disabled:opacity-50">{str.bAddSchedule}</button>
+          <input type="time" className="rounded-lg border border-border bg-card p-1.5 text-text-main" value={time} onChange={(e) => setTime(e.target.value)} />
+          <input className="min-w-64 rounded-lg border border-border bg-card p-2 text-text-main" value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder={str.bEmailPlaceholder} />
+          <button type="button" disabled={busy} onClick={createSchedule} className="rounded-lg border border-border bg-card px-4 py-2 font-medium text-text-main hover:bg-surface-2 disabled:opacity-50">{str.bAddSchedule}</button>
         </div>
         <ul className="mt-3 space-y-1 text-sm">
           {schedules.map((s) => (
             <li key={s.id} className="flex flex-wrap items-center gap-2">
               <span>{saved.find((r) => r.id === s.reportId)?.name ?? s.reportId}</span>
-              <span className="text-slate-500">{s.cadence === "weekly" ? str.bWeekly : str.bDaily}{s.cadence === "weekly" ? ` (${WEEKDAYS[s.weekday ?? 0]})` : ""} · {s.time} · {s.recipients.join(", ")} · {str.bLastSent} {s.lastSentAt ?? str.bNever}</span>
-              <button type="button" className="rounded border px-2 py-0.5" onClick={() => void deleteSchedule(s.id)}>{str.bDelete}</button>
+              <span className="text-text-muted">{s.cadence === "weekly" ? str.bWeekly : str.bDaily}{s.cadence === "weekly" ? ` (${WEEKDAYS[s.weekday ?? 0]})` : ""} · {s.time} · {s.recipients.join(", ")} · {str.bLastSent} {s.lastSentAt ?? str.bNever}</span>
+              <button type="button" className="rounded-lg border border-border bg-card px-2 py-0.5 text-text-main hover:bg-surface-2" onClick={() => void deleteSchedule(s.id)}>{str.bDelete}</button>
             </li>
           ))}
-          {schedules.length === 0 && <li className="text-slate-500">{str.bNoSchedules}</li>}
+          {schedules.length === 0 && <li className="text-text-muted">{str.bNoSchedules}</li>}
         </ul>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-          <button type="button" disabled={busy} onClick={runDue} className="rounded-md border px-4 py-2 font-medium disabled:opacity-50">{str.bRunDue}</button>
+          <button type="button" disabled={busy} onClick={runDue} className="rounded-lg border border-border bg-card px-4 py-2 font-medium text-text-main hover:bg-surface-2 disabled:opacity-50">{str.bRunDue}</button>
           {runResult !== "" && <span>{runResult}</span>}
         </div>
-      </section>
+      </Card>
     </div>
   );
 }

@@ -66,10 +66,10 @@ export default function KycControl({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card px-4 py-3 shadow-card">
+    <div className="rounded-2xl border border-border/60 bg-card px-4 py-3 shadow-xs">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">{shopName}</span>
-        <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs">
+        <span className="font-medium text-text-main">{shopName}</span>
+        <span className="rounded-full border border-border/60 bg-surface-2 px-2 py-0.5 text-xs text-text-muted">
           {interpolate(s.kycCurrent, { status: vendorKycStatusLabel(status, locale) })}
         </span>
       </div>
@@ -79,7 +79,7 @@ export default function KycControl({
           <select
             value={target}
             onChange={(e) => setTarget(e.target.value)}
-            className="mt-0.5 block rounded-md border border-border bg-card px-2 py-1.5 text-sm"
+            className="mt-0.5 block rounded-lg border border-border bg-card px-2 py-1.5 text-sm text-text-main shadow-xs"
           >
             {STAFF_KYC_TARGETS.map((t) => (
               <option key={t} value={t}>
@@ -94,19 +94,19 @@ export default function KycControl({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder={s.notePlaceholder}
-            className="mt-0.5 block w-full rounded-md border border-border bg-card px-2 py-1.5 text-sm"
+            className="mt-0.5 block w-full rounded-lg border border-border bg-card px-2 py-1.5 text-sm text-text-main shadow-xs"
           />
         </label>
         <button
           type="button"
           onClick={onSave}
           disabled={busy}
-          className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
+          className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white shadow-xs transition hover:bg-brand-700 disabled:opacity-60"
         >
           {busy ? s.saving : s.save}
         </button>
       </div>
-      {error ? <p role="alert" className="mt-2 text-sm text-red-700">{error}</p> : null}
+      {error ? <p role="alert" className="mt-2 text-sm text-danger">{error}</p> : null}
       {saved ? <p role="status" className="mt-2 text-sm text-brand-700">{s.saved}</p> : null}
     </div>
   );
