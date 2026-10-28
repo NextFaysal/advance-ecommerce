@@ -39,6 +39,7 @@ import Link from "next/link";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { Drawer } from "@/components/ui/drawer";
 import { CartLineRow, QtyStepper } from "@/storefront-ux/components/CartPrimitives";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
 import { Icon } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -340,15 +341,14 @@ export default function CircuitCartDrawer({ open, onClose }: ThemeCartDrawerProp
                       <Link
                         href={`/product/${p.slug}`}
                         onClick={onClose}
-                        className="block aspect-square overflow-hidden rounded-lg bg-muted focus-ring"
+                        className="relative block aspect-square overflow-hidden rounded-lg bg-muted focus-ring"
                       >
                         {p.images[0]?.url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
+                          <StoreImage
                             src={p.images[0].url}
                             alt={p.title[locale] || p.title.bn}
-                            loading="lazy"
-                            className="h-full w-full object-cover"
+                            preset="thumb"
+                            fillParent
                           />
                         ) : (
                           <span className="flex h-full w-full items-center justify-center font-display text-xl font-extrabold text-primary/40">

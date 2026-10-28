@@ -225,7 +225,7 @@ export default async function AuroraPdpComposition({
               </>
             ) : null}
             <span aria-hidden="true" className="text-border">•</span>
-            <span className={`font-semibold ${displayInStock ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+            <span className={`font-semibold ${displayInStock ? "text-success-solid" : "text-danger"}`}>
               {displayInStock ? t.inStock : t.outOfStock}
             </span>
           </p>
@@ -655,7 +655,7 @@ export default async function AuroraPdpComposition({
                   ({s.savingsLabel}{" "}
                   <BdtAmount
                     poisha={bundleComponentsTotal - minPrice}
-                    className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400"
+                    className="font-semibold tabular-nums text-success-solid"
                   />
                   )
                 </>
@@ -663,7 +663,7 @@ export default async function AuroraPdpComposition({
             </p>
           ) : null}
           {bundleUnavailable ? (
-            <p className="mt-3 max-w-3xl text-sm font-medium text-rose-600 dark:text-rose-400">
+            <p className="mt-3 max-w-3xl text-sm font-medium text-danger">
               {s.bundleUnavailableNote}
             </p>
           ) : null}

@@ -63,7 +63,7 @@ export function PdpPriceBlock({
             poisha={showDiscount.compareAtPoisha}
             className="text-lg tabular-nums text-text-subtle line-through"
           />
-          <span className="rounded-full bg-rose-600 px-3 py-1 text-[13px] font-bold text-white shadow-sm">
+          <span className="rounded-full bg-danger px-3 py-1 text-[13px] font-bold text-white shadow-sm">
             <DigitText text={`${showDiscount.discountPct}%`} /> {showDiscount.discountOffText}
           </span>
         </>

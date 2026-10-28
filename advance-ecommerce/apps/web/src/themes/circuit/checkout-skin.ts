@@ -18,9 +18,9 @@ export const CIRCUIT_CHECKOUT_SKIN: CheckoutSkin = {
   INPUT_CLASS:
     "h-12 w-full rounded-lg border border-input bg-card px-3.5 text-[15px] text-text-main shadow-sm outline-none transition placeholder:text-text-subtle focus:border-primary focus:ring-2 focus:ring-ring/30 disabled:opacity-60",
   PAYMENT_TILE_CLASS:
-    "flex min-h-[52px] cursor-pointer items-start gap-2.5 rounded-lg border border-input bg-card px-3 py-2.5 shadow-sm transition duration-200 has-[:checked]:border-primary has-[:checked]:bg-[#E3F0FA] has-[:checked]:ring-2 has-[:checked]:ring-ring/40 hover:border-primary/50",
+    "flex min-h-[52px] cursor-pointer items-start gap-2.5 rounded-lg border border-input bg-card px-3 py-2.5 shadow-sm transition duration-200 has-[:checked]:border-primary has-[:checked]:bg-[#E3F0FA] dark:has-[:checked]:bg-card has-[:checked]:ring-2 has-[:checked]:ring-ring/40 hover:border-primary/50",
   SLOT_CARD_CLASS:
-    "flex min-h-[52px] cursor-pointer items-center justify-between gap-2 rounded-lg border border-input bg-card px-3 py-2.5 text-left shadow-sm transition duration-200 has-[:checked]:border-primary has-[:checked]:bg-[#E3F0FA] has-[:checked]:ring-2 has-[:checked]:ring-ring/40 hover:border-primary/50",
+    "flex min-h-[52px] cursor-pointer items-center justify-between gap-2 rounded-lg border border-input bg-card px-3 py-2.5 text-left shadow-sm transition duration-200 has-[:checked]:border-primary has-[:checked]:bg-[#E3F0FA] dark:has-[:checked]:bg-card has-[:checked]:ring-2 has-[:checked]:ring-ring/40 hover:border-primary/50",
   // P4 surfaces (doc 32): section cards step the tech-frame radius
   // up one notch (rounded-xl), same border/shadow language; the
   // summary panel wears the package's pale-blue tint (#E3F0FA, the

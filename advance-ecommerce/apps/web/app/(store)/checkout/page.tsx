@@ -1751,7 +1751,7 @@ export default function CheckoutPage() {
                       .then(() => setLinkCopied(true))
                       .catch(() => setLinkCopied(false));
                   }}
-                  className="inline-flex h-9 shrink-0 items-center rounded-lg border border-border bg-card px-3 text-sm font-medium text-text-main transition hover:bg-surface-2"
+                  className="inline-flex h-11 shrink-0 items-center rounded-lg border border-border bg-card px-3 text-sm font-medium text-text-main transition hover:bg-surface-2"
                 >
                   {linkCopied ? s.copied : s.copyLink}
                 </button>
@@ -1988,14 +1988,14 @@ export default function CheckoutPage() {
             <button
               type="button"
               onClick={applySuggestion}
-              className="inline-flex h-9 items-center rounded-lg bg-brand-600 px-3 text-sm font-semibold text-white transition hover:bg-brand-700"
+              className="inline-flex h-11 items-center rounded-lg bg-brand-600 px-3 text-sm font-semibold text-white transition hover:bg-brand-700"
             >
               {s.yesUseIt}
             </button>
             <button
               type="button"
               onClick={() => setSuggestion(null)}
-              className="inline-flex h-9 items-center rounded-lg border border-border bg-card px-3 text-sm font-medium text-text-main transition hover:bg-surface-2"
+              className="inline-flex h-11 items-center rounded-lg border border-border bg-card px-3 text-sm font-medium text-text-main transition hover:bg-surface-2"
             >
               {t.no}
             </button>
@@ -2163,7 +2163,7 @@ export default function CheckoutPage() {
                         type="button"
                         disabled={!slot.available}
                         onClick={() => setBookingSlotStart(slot.start)}
-                        className={`rounded-lg border px-2 py-2 text-sm font-semibold transition ${
+                        className={`min-h-[44px] rounded-lg border px-2 py-2 text-sm font-semibold transition ${
                           bookingSlotStart === slot.start
                             ? "border-brand-600 bg-brand-600 text-white"
                             : slot.available
@@ -2315,7 +2315,7 @@ export default function CheckoutPage() {
                   <button
                     type="button"
                     onClick={() => setPodColor("")}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                    className={`min-h-[44px] rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                       podColor === ""
                         ? "border-brand-600 bg-brand-50 text-brand-700"
                         : "border-border bg-card text-text-main hover:bg-surface-2"
@@ -2328,7 +2328,7 @@ export default function CheckoutPage() {
                       key={color}
                       type="button"
                       onClick={() => setPodColor(color)}
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                      className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                         podColor === color
                           ? "border-brand-600 bg-brand-50 text-brand-700"
                           : "border-border bg-card text-text-main hover:bg-surface-2"
