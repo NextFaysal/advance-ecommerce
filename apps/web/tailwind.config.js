@@ -68,6 +68,30 @@ module.exports = {
         /* v3 contrast fix: the light triplet 96 103 132 (#606784) is
            ~5.6:1 on white (and >5:1 on bg-app), passing WCAG AA 4.5:1. */
         "text-subtle": "rgb(var(--c-text-subtle) / <alpha-value>)",
+        /* Design tokens v4 (doc 31, D1 — Aurora Pro): raised/overlay
+           surface steps, a stronger border, brand + semantic solid/soft
+           pairs and the data-viz palette — all RGB-triplet vars with
+           light/dark pairs in globals.css, so opacity modifiers and
+           dark mode work exactly like the six entries above. The older
+           success/warning/info/destructive hsl mappings are unchanged. */
+        "surface-raised": "rgb(var(--c-surface-raised) / <alpha-value>)",
+        overlay: "rgb(var(--c-overlay) / <alpha-value>)",
+        "border-strong": "rgb(var(--c-border-strong) / <alpha-value>)",
+        "brand-ink": "rgb(var(--c-brand) / <alpha-value>)",
+        "brand-soft": "rgb(var(--c-brand-soft) / <alpha-value>)",
+        "success-solid": "rgb(var(--c-success) / <alpha-value>)",
+        "success-soft": "rgb(var(--c-success-soft) / <alpha-value>)",
+        "warning-solid": "rgb(var(--c-warning) / <alpha-value>)",
+        "warning-soft": "rgb(var(--c-warning-soft) / <alpha-value>)",
+        danger: "rgb(var(--c-danger) / <alpha-value>)",
+        "danger-soft": "rgb(var(--c-danger-soft) / <alpha-value>)",
+        "info-solid": "rgb(var(--c-info) / <alpha-value>)",
+        "info-soft": "rgb(var(--c-info-soft) / <alpha-value>)",
+        "chart-1": "rgb(var(--c-chart-1) / <alpha-value>)",
+        "chart-2": "rgb(var(--c-chart-2) / <alpha-value>)",
+        "chart-3": "rgb(var(--c-chart-3) / <alpha-value>)",
+        "chart-4": "rgb(var(--c-chart-4) / <alpha-value>)",
+        "chart-5": "rgb(var(--c-chart-5) / <alpha-value>)",
       },
       /* Radius scale derived from the --radius theme token (doc 25 §1.3.2).
          --radius defaults to 0.75rem = 12px in globals.css, so at the
@@ -80,6 +104,11 @@ module.exports = {
         md: "var(--radius)",
         lg: "calc(var(--radius) + 4px)",
         xl: "calc(var(--radius) + 8px)",
+        /* v4 (doc 31, D1): larger/softer steps for big cards and modals —
+           28px / 36px at the default --radius, shifting with themes just
+           like the steps above. */
+        "2xl": "calc(var(--radius) + 16px)",
+        "3xl": "calc(var(--radius) + 24px)",
       },
       boxShadow: {
         sm: "0 1px 2px rgba(79,70,229,0.06)",
@@ -90,6 +119,12 @@ module.exports = {
         card: "var(--shadow-card)",
         lift: "var(--shadow-lift)",
         pop: "var(--shadow-pop)",
+        /* Elevation v4 (doc 31, D1): xs (chips/inputs), xl (large
+           modals), glow (brand halo for primary actions) — same var
+           pattern, so both modes are covered by globals.css pairs. */
+        xs: "var(--shadow-xs)",
+        xl: "var(--shadow-xl)",
+        glow: "var(--shadow-glow)",
       },
       /* Type scale v2 (§2.1) — named sizes for headings/editorial use.
          Body text stays on Tailwind's default scale (text-sm/text-base). */
@@ -103,6 +138,32 @@ module.exports = {
         body: ["0.9375rem", { lineHeight: "1.5rem" }],
         small: ["0.8125rem", { lineHeight: "1.25rem" }],
         caption: ["0.75rem", { lineHeight: "1rem" }],
+        /* v4 (doc 31, D1): admin display steps — page titles and KPI
+           numerals (pair kpi with the .tnum utility for tabular digits).
+           h1/display above stay fluid for the storefront hero surfaces. */
+        "page-title": ["1.375rem", { lineHeight: "1.75rem", fontWeight: "700", letterSpacing: "-0.01em" }],
+        kpi: ["1.875rem", { lineHeight: "2.25rem", fontWeight: "700", letterSpacing: "-0.01em" }],
+        "kpi-lg": ["2.25rem", { lineHeight: "2.5rem", fontWeight: "700", letterSpacing: "-0.015em" }],
+      },
+      /* Motion tokens (doc 31, D1): duration-fast/base/slow utilities.
+         Distinct from the hand-written .motion-fast/.motion-base classes
+         in globals.css (150/220ms, kept for existing call sites). */
+      transitionDuration: {
+        fast: "120ms",
+        base: "180ms",
+        slow: "280ms",
+      },
+      transitionTimingFunction: {
+        smooth: "cubic-bezier(0.22, 1, 0.36, 1)",
+        spring: "cubic-bezier(0.21, 1.02, 0.73, 1)",
+      },
+      /* Animation tokens (doc 31, D1) — these reuse the existing global
+         keyframes from globals.css (ds-rise = fade + 8px slide-up,
+         ds-shimmer = skeleton sweep); no keyframes are duplicated here.
+         Reduced-motion handling for both lives in globals.css. */
+      animation: {
+        "fade-slide-in": "ds-rise 320ms ease-out both",
+        shimmer: "ds-shimmer 1.6s infinite",
       },
       fontFamily: {
         sans: ["var(--font-sans)"],
