@@ -44,19 +44,19 @@ export function RecentlyViewedRail({ excludeProductId }: { excludeProductId?: st
     <section className="mt-10">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">{s.rvTitle}</h2>
-        <Link href="/recently-viewed" className="text-sm font-medium text-[#4F46E5]">
+        <Link href="/recently-viewed" className="text-sm font-medium text-primary">
           {s.rvViewAll}
         </Link>
       </div>
       <div className="mt-3 flex gap-3 overflow-x-auto pb-2">
         {entries.map((e) => (
-          <article key={e.productId} className="w-40 shrink-0 rounded-xl border bg-white p-3 shadow-sm">
+          <article key={e.productId} className="w-40 shrink-0 rounded-xl border bg-card p-3 shadow-sm">
             <Link href={`/product/${e.slug}`} className="block">
-              <div className="flex h-24 items-center justify-center rounded-lg bg-[#F8F9FD] px-2 text-center text-xs text-slate-500">
+              <div className="flex h-24 items-center justify-center rounded-lg bg-surface-2 px-2 text-center text-xs text-text-muted">
                 {entryTitle(e)}
               </div>
               <h3 className="mt-2 truncate text-sm font-medium">{entryTitle(e)}</h3>
-              <p className="mt-1 text-sm font-bold text-[#4F46E5]">{interpolate(s.priceFromTemplate, { price: digits(formatBdt(e.pricePoisha)) })}</p>
+              <p className="mt-1 text-sm font-bold text-primary">{interpolate(s.priceFromTemplate, { price: digits(formatBdt(e.pricePoisha)) })}</p>
             </Link>
             <button
               type="button"

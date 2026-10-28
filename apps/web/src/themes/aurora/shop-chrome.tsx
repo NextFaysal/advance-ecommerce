@@ -105,7 +105,7 @@ function SidebarLink({
     <Link
       href={href}
       aria-current={active ? "true" : undefined}
-      className={`flex min-h-[40px] items-center justify-between rounded-xl px-3 py-2 text-sm transition duration-200 ${
+      className={`flex min-h-[44px] lg:min-h-[40px] items-center justify-between rounded-xl px-3 py-2 text-sm transition duration-200 ${
         active
           ? "bg-brand-500/10 font-semibold text-brand-700 dark:text-brand-200"
           : "text-text-muted hover:bg-surface-2 hover:text-text-main"
@@ -139,7 +139,7 @@ function AttrToggleLink({
     <Link
       href={href}
       aria-pressed={active}
-      className={`flex min-h-[40px] items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition duration-200 ${
+      className={`flex min-h-[44px] lg:min-h-[40px] items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition duration-200 ${
         active
           ? "bg-brand-500/5 font-semibold text-brand-700 dark:text-brand-200"
           : "text-text-muted hover:bg-surface-2 hover:text-text-main"
@@ -344,7 +344,7 @@ export default function AuroraShopChrome({
                     param via buildHref, so every other active filter
                     rides along exactly as the hidden inputs did. */}
                 <div className="flex flex-wrap items-center gap-2">
-                  <label htmlFor="shop-sort" className="hidden text-sm text-text-muted min-[420px]:block">
+                  <label htmlFor="shop-sort" className="hidden text-sm text-text-muted xs:block">
                     {s.sortByLabel}
                   </label>
                   <select
@@ -372,7 +372,7 @@ export default function AuroraShopChrome({
                   key={chip.key}
                   href={chip.href}
                   aria-label={interpolate(s.removeFilterAria, { label: chip.label })}
-                  className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-brand-600/15 bg-brand-500/10 py-1.5 pl-3.5 pr-2 text-[13px] font-medium text-brand-700 transition duration-200 hover:bg-brand-500/20 active:scale-[0.97] dark:text-brand-200"
+                  className="inline-flex min-h-[44px] lg:min-h-[36px] items-center gap-1.5 rounded-full border border-brand-600/15 bg-brand-500/10 py-1.5 pl-3.5 pr-2 text-[13px] font-medium text-brand-700 transition duration-200 hover:bg-brand-500/20 active:scale-[0.97] dark:text-brand-200"
                 >
                   {chip.label}
                   <span
@@ -383,7 +383,7 @@ export default function AuroraShopChrome({
                   </span>
                 </Link>
               ))}
-              <Link href="/shop" className="inline-flex min-h-[36px] items-center px-1 text-[13px] font-semibold text-text-muted underline-offset-2 transition hover:text-brand-700 hover:underline dark:hover:text-brand-300">
+              <Link href="/shop" className="inline-flex min-h-[44px] lg:min-h-[36px] items-center px-1 text-[13px] font-semibold text-text-muted underline-offset-2 transition hover:text-brand-700 hover:underline dark:hover:text-brand-300">
                 {s.clearAllFilters}
               </Link>
             </div>

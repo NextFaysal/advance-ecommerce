@@ -19,6 +19,8 @@ import { BOIGHOR_STRINGS } from "./strings";
 import { Icon } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
 import type { Category } from "@/catalog/types";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
+import { RAIL_FADE_CLASS } from "@/storefront-ux/responsive";
 
 /* Pale tints for image-less category circles (our own palette). */
 const CIRCLE_TINTS: ReadonlyArray<string> = [
@@ -49,7 +51,7 @@ export default function BoighorHomeCategories({
   };
 
   return (
-    <section className="mt-10" aria-label={s.categoriesAria}>
+    <section className="mt-8 lg:mt-10" aria-label={s.categoriesAria}>
       <div className="relative flex items-center justify-center">
         <h2 className="text-center font-display text-xl font-extrabold text-text-main sm:text-2xl">
           {s.categoriesHeading}
@@ -59,7 +61,7 @@ export default function BoighorHomeCategories({
             type="button"
             onClick={() => scrollBy(-1)}
             aria-label={s.prevCategories}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} className="rotate-180" />
           </button>
@@ -67,7 +69,7 @@ export default function BoighorHomeCategories({
             type="button"
             onClick={() => scrollBy(1)}
             aria-label={s.nextCategories}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} />
           </button>
@@ -76,7 +78,7 @@ export default function BoighorHomeCategories({
 
       <div
         ref={trackRef}
-        className="scrollbar-none -mx-4 mt-6 flex snap-x gap-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0"
+        className={`scrollbar-none -mx-4 mt-6 flex snap-x gap-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 ${RAIL_FADE_CLASS}`}
       >
         {categories.map((c, i) => (
           <Link
@@ -85,15 +87,15 @@ export default function BoighorHomeCategories({
             className="group w-[92px] shrink-0 snap-start text-center"
           >
             <span
-              className={`mx-auto block h-[76px] w-[76px] overflow-hidden rounded-full border-2 border-transparent shadow-card transition duration-200 group-hover:border-primary group-hover:shadow-lift ${c.imageUrl ? "" : CIRCLE_TINTS[i % CIRCLE_TINTS.length]}`}
+              className={`relative mx-auto block h-[76px] w-[76px] overflow-hidden rounded-full border-2 border-transparent shadow-card transition duration-200 group-hover:border-primary group-hover:shadow-lift ${c.imageUrl ? "" : CIRCLE_TINTS[i % CIRCLE_TINTS.length]}`}
             >
               {c.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
+                <StoreImage
                   src={c.imageUrl}
                   alt={c.name[locale] || c.name.bn}
-                  loading="lazy"
-                  className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.06]"
+                  preset="thumb"
+                  fillParent
+                  imgClassName="transition duration-300 group-hover:scale-[1.06]"
                 />
               ) : (
                 <span
@@ -107,7 +109,7 @@ export default function BoighorHomeCategories({
             <span className="mt-2 block truncate text-[13px] font-bold leading-snug text-text-main">
               {c.name[locale] || c.name.bn}
             </span>
-            <span className="block text-[11px] text-text-subtle">
+            <span className="block text-xs text-text-subtle">
               {digits(interpolate(s.productCount, { count: c.productCount }))}
             </span>
           </Link>

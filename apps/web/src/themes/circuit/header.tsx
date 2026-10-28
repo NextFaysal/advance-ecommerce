@@ -29,6 +29,19 @@
  * storage/focus and on the cart's CART_UPDATED_EVENT. SSR renders
  * no badge (values load after mount), avoiding hydration mismatch
  * — same discipline as SiteHeader and the Bazaar header.
+ *
+ * Doc 33 R2 (mobile-first): tier 1 is THE sticky tier; the white
+ * category bar moved OUT of the sticky header so it scrolls away
+ * beneath tier 1 on phone (at rest the layout is unchanged; the
+ * header's shadow now falls under the navy tier instead of the
+ * bar). Tier 1 carries the shared MobileMenuDrawer — a white
+ * trigger on the navy tier; the panel is token-surfaced (bg-card /
+ * border-border / text-text-*), so it dresses correctly in
+ * Circuit's DARK mode too, following the active token set, and
+ * the language switcher rides in its footer. Phone heights are
+ * tightened to the 112px sticky budget (py-2 + 44px brand/actions
+ * row + 44px search row; search submit 36px → 44px on phone);
+ * lg restores today's geometry exactly.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -44,6 +57,7 @@ import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { CIRCUIT_STRINGS } from "./strings";
+import { MobileMenuDrawer } from "@/storefront-ux/components/MobileMenuDrawer";
 import type { ThemeHeaderProps } from "../slots";
 
 function CountBadge({ count }: { count: number }) {
@@ -98,7 +112,14 @@ export default function CircuitHeader({
       <header className="sticky top-0 z-40 shadow-card">
         {/* Tier 1 — dark navy: brand, white search, offers/account/CTA */}
         <div style={{ backgroundColor: CIRCUIT_COLORS.navy }}>
-          <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:px-6 lg:flex-nowrap">
+          <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 sm:px-6 lg:flex-nowrap lg:py-3">
+            <MobileMenuDrawer
+              brandName={brandName}
+              headerMenu={headerMenu}
+              categories={categories}
+              triggerClassName="shrink-0 text-white hover:bg-white/10"
+              footer={<LanguageSwitcher />}
+            />
             <Link
               href="/"
               className="flex shrink-0 items-center gap-2"
@@ -107,7 +128,7 @@ export default function CircuitHeader({
               <span className="brand-gradient flex h-10 w-10 items-center justify-center rounded-lg text-lg font-bold text-white shadow-sm">
                 {brandName.charAt(0)}
               </span>
-              <span className="max-w-[10rem] truncate text-lg font-bold leading-tight text-white sm:max-w-none">
+              <span className="hidden max-w-[10rem] truncate text-lg font-bold leading-tight text-white xs:block sm:max-w-none">
                 {brandName}
               </span>
             </Link>
@@ -129,7 +150,7 @@ export default function CircuitHeader({
                 <button
                   type="submit"
                   aria-label={s.searchButtonAria}
-                  className="absolute right-1 top-1 flex h-9 w-10 items-center justify-center rounded-md bg-primary text-white transition hover:opacity-90"
+                  className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-md bg-primary text-white transition hover:opacity-90 lg:right-1 lg:top-1 lg:h-9 lg:w-10"
                 >
                   <Icon name="search" size={18} />
                 </button>
@@ -144,14 +165,14 @@ export default function CircuitHeader({
               <LanguageSwitcher className="mr-1" />
               <Link
                 href="/shop"
-                className="flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-white/85 transition hover:text-white"
+                className="flex min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-white/85 transition hover:text-white"
               >
                 <Icon name="tag" size={22} />
                 <span className="text-[11px] font-medium leading-none">{s.offersLabel}</span>
               </Link>
               <Link
                 href="/account"
-                className="flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-white/85 transition hover:text-white"
+                className="flex min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-white/85 transition hover:text-white"
               >
                 <Icon name="user" size={22} />
                 <span className="text-[11px] font-medium leading-none">{s.accountLabel}</span>
@@ -166,46 +187,48 @@ export default function CircuitHeader({
             </div>
           </div>
         </div>
-
-        {/* Tier 2 — white single-row category bar */}
-        <nav aria-label={s.navCategoriesAria} className="border-b border-border bg-card">
-          <div className="scrollbar-none mx-auto flex max-w-[1440px] items-center gap-1 overflow-x-auto px-4 sm:px-6">
-            <Link
-              href="/shop"
-              className="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-sm font-bold text-text-main transition hover:text-primary"
-            >
-              <Icon name="grid" size={16} />
-              {s.allCategories}
-            </Link>
-            {(categories ?? []).map((c) => (
-              <Link
-                key={c.slug}
-                href={`/shop?category=${c.slug}`}
-                className="shrink-0 whitespace-nowrap px-3 py-2.5 text-sm font-medium text-text-muted transition hover:text-primary"
-              >
-                {c.name[locale] || c.name.bn}
-              </Link>
-            ))}
-            <span aria-hidden="true" className="mx-1 hidden h-5 w-px shrink-0 bg-border md:block" />
-            {menu.map((item) => (
-              <Link
-                key={item.id}
-                href={item.href}
-                className="hidden shrink-0 whitespace-nowrap px-3 py-2.5 text-sm font-medium text-text-muted transition hover:text-primary md:block"
-              >
-                {locale === "bn" ? item.labelBn : item.labelEn || item.labelBn}
-              </Link>
-            ))}
-          </div>
-        </nav>
       </header>
+
+      {/* Tier 2 — white single-row category bar. OUTSIDE the sticky
+          header (doc 33 R2): it scrolls away beneath tier 1 on
+          phone; at rest the layout is unchanged. */}
+      <nav aria-label={s.navCategoriesAria} className="border-b border-border bg-card">
+        <div className="scrollbar-none mx-auto flex max-w-[1440px] items-center gap-1 overflow-x-auto px-4 sm:px-6">
+          <Link
+            href="/shop"
+            className="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-3 text-sm font-bold text-text-main transition hover:text-primary lg:py-2.5"
+          >
+            <Icon name="grid" size={16} />
+            {s.allCategories}
+          </Link>
+          {(categories ?? []).map((c) => (
+            <Link
+              key={c.slug}
+              href={`/shop?category=${c.slug}`}
+              className="shrink-0 whitespace-nowrap px-3 py-3 text-sm font-medium text-text-muted transition hover:text-primary lg:py-2.5"
+            >
+              {c.name[locale] || c.name.bn}
+            </Link>
+          ))}
+          <span aria-hidden="true" className="mx-1 hidden h-5 w-px shrink-0 bg-border md:block" />
+          {menu.map((item) => (
+            <Link
+              key={item.id}
+              href={item.href}
+              className="hidden shrink-0 whitespace-nowrap px-3 py-3 text-sm font-medium text-text-muted transition hover:text-primary md:block lg:py-2.5"
+            >
+              {locale === "bn" ? item.labelBn : item.labelEn || item.labelBn}
+            </Link>
+          ))}
+        </div>
+      </nav>
 
       {/* Floating edge actions — dark navy buttons on the right
           edge: cart (opens the drawer, real count badge) and
           compare (the platform's real /compare page). Gated by
           the package's showFloatingActions option. */}
       {showFloatingActions ? (
-        <div className="fixed right-0 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-2">
+        <div className="fixed right-[max(0px,env(safe-area-inset-right))] top-1/2 z-40 flex -translate-y-1/2 flex-col gap-2">
           <button
             type="button"
             onClick={openCartDrawer}

@@ -10,9 +10,19 @@
  * list, passed in as serialisable props by the server composition.
  * With no catalog imagery it renders our monitor-outline
  * placeholder — never a broken image.
+ *
+ * Doc 32 P2: the rail anatomy stays this package's own, but stage
+ * and thumbs now render through the shared StoreImage — the first
+ * stage image gets next/image priority (the PDP's LCP element),
+ * the square aspect is the preset contract (zero CLS), and alt
+ * text resolves from the catalog alt fields exactly as the
+ * hand-rolled <img> did. Images render through the token-driven
+ * StoreImage frame, so the stage follows the package's authored
+ * dark token delta like the rest of the composition.
  */
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { CIRCUIT_STRINGS } from "./strings";
@@ -85,14 +95,13 @@ export default function CircuitPdpGallery({
               aria-selected={i === selected}
               aria-label={interpolate(s.viewImageAria, { n: i + 1 })}
               onClick={() => setSelected(i)}
-              className={`h-[68px] w-[68px] shrink-0 overflow-hidden rounded-lg border-2 bg-card transition duration-200 ${
+              className={`relative h-[68px] w-[68px] shrink-0 overflow-hidden rounded-lg border-2 bg-card transition duration-200 ${
                 i === selected
                   ? "border-primary shadow-card"
                   : "border-border opacity-75 hover:border-primary/50 hover:opacity-100"
               }`}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={img.url} alt="" loading="lazy" className="h-full w-full object-cover" />
+              <StoreImage image={img} alt="" preset="thumb" fillParent />
             </button>
           ))}
         </div>
@@ -100,11 +109,13 @@ export default function CircuitPdpGallery({
 
       {/* Main stage */}
       <div className="relative min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-card">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={current.url}
-          alt={(locale === "en" ? current.altEn || current.altBn : current.altBn) || (locale === "en" ? titleEn || titleBn : titleBn)}
-          className="aspect-square h-full w-full object-cover"
+        <StoreImage
+          key={current.url}
+          image={current}
+          title={locale === "en" ? titleEn || titleBn : titleBn}
+          preset="gallery"
+          aspectClassName="aspect-square"
+          priority={selected === 0}
         />
         {images.length > 1 ? (
           <>

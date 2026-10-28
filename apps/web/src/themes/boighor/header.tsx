@@ -32,6 +32,20 @@
  * wishlist from @/catalog/wishlist, refreshed on storage/focus
  * and on the cart's CART_UPDATED_EVENT. SSR renders no badges
  * (values load after mount), avoiding hydration mismatch.
+ *
+ * Doc 33 R2 (mobile-first): only tier 2 sticks below lg. The root
+ * is now a fragment, so tier 1 scrolls away above the stuck tier
+ * and tiers 3/4 scroll away beneath it (the shell div is the
+ * sticky tier's containing block). Collapse order per doc 33 §4:
+ * tier 4 hides on phone entirely (its destinations live on in the
+ * menu drawer's menu/categories and the shop page's own sort
+ * controls) → tier 1 scrolls away → tier 3 unsticks → tier 2
+ * sticks. Tier 2 carries the shared MobileMenuDrawer (hamburger
+ * first in the row, switcher in the drawer's footer), and its
+ * phone padding/search heights are tightened so the stuck tier
+ * measures the 112px budget (py-2 + 44px brand/actions row + 44px
+ * search row). Desktop (lg+) geometry — py-3, the 48px search,
+ * the 40px submit — is unchanged.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -48,6 +62,7 @@ import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { BOIGHOR_STRINGS, pickLocalized } from "./strings";
+import { MobileMenuDrawer } from "@/storefront-ux/components/MobileMenuDrawer";
 import type { ThemeHeaderProps } from "../slots";
 
 function BlueBadge({ count }: { count: number }) {
@@ -102,9 +117,10 @@ export default function BoighorHeader({
   const facetCats = cats.slice(0, 5);
 
   return (
-    <header className="sticky top-0 z-40 shadow-card">
+    <>
       {/* Tier 1 — blue utility bar: generic line left (no public
-          phone prop exists — see header comment), real links right */}
+          phone prop exists — see header comment), real links
+          right. Scrolls away on phone (doc 33 R2). */}
       <div
         className="text-white"
         style={{ backgroundColor: BOIGHOR_COLORS.utilityBlue }}
@@ -132,9 +148,18 @@ export default function BoighorHeader({
         </div>
       </div>
 
-      {/* Tier 2 — white: brand, very wide rounded search, actions */}
-      <div className="bg-card">
-        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:px-6 lg:flex-nowrap">
+      {/* Tier 2 — white: brand, very wide rounded search, actions.
+          THE sticky tier (doc 33 §3.3) — the only tier carrying
+          `sticky` below lg. */}
+      <header className="sticky top-0 z-40 bg-card shadow-card">
+        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 sm:px-6 lg:flex-nowrap lg:py-3">
+          <MobileMenuDrawer
+            brandName={brandName}
+            headerMenu={headerMenu}
+            categories={categories}
+            triggerClassName="shrink-0 text-primary hover:bg-primary/10"
+            footer={<LanguageSwitcher />}
+          />
           <Link
             href="/"
             className="flex shrink-0 items-center gap-2"
@@ -143,7 +168,7 @@ export default function BoighorHeader({
             <span className="brand-gradient flex h-10 w-10 items-center justify-center rounded-lg text-lg font-bold text-white shadow-sm">
               {brandName.charAt(0)}
             </span>
-            <span className="max-w-[10rem] truncate text-lg font-bold leading-tight text-text-main sm:max-w-none">
+            <span className="hidden max-w-[10rem] truncate text-lg font-bold leading-tight text-text-main xs:block sm:max-w-none">
               {brandName}
             </span>
           </Link>
@@ -160,12 +185,12 @@ export default function BoighorHeader({
                 name="q"
                 placeholder={s.searchPlaceholder}
                 aria-label={s.searchAria}
-                className="h-12 w-full rounded-full border border-input bg-card pl-5 pr-14 text-sm text-text-main shadow-sm transition placeholder:text-text-subtle focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
+                className="h-11 w-full rounded-full border border-input bg-card pl-5 pr-14 text-sm text-text-main shadow-sm transition placeholder:text-text-subtle focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30 lg:h-12"
               />
               <button
                 type="submit"
                 aria-label={s.searchButtonAria}
-                className="absolute right-1 top-1 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white transition hover:opacity-90"
+                className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white transition hover:opacity-90 lg:right-1 lg:top-1 lg:h-10 lg:w-10"
               >
                 <Icon name="search" size={18} />
               </button>
@@ -208,14 +233,15 @@ export default function BoighorHeader({
             </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Tier 3 — category row (real categories + CMS menu) */}
+      {/* Tier 3 — category row (real categories + CMS menu).
+          Scrolls away beneath the stuck tier 2 on phone. */}
       <nav aria-label={s.categoriesAria} className="border-t border-border bg-card">
         <div className="scrollbar-none mx-auto flex max-w-[1440px] items-center gap-1 overflow-x-auto px-4 sm:px-6">
           <Link
             href="/shop"
-            className="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-sm font-bold text-primary transition hover:bg-muted"
+            className="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-3 text-sm font-bold text-primary transition hover:bg-muted lg:py-2.5"
           >
             <Icon name="grid" size={16} />
             {s.allCategories}
@@ -224,7 +250,7 @@ export default function BoighorHeader({
             <Link
               key={c.slug}
               href={`/shop?category=${c.slug}`}
-              className="shrink-0 whitespace-nowrap px-3 py-2.5 text-sm font-medium text-text-muted transition hover:bg-muted hover:text-primary"
+              className="shrink-0 whitespace-nowrap px-3 py-3 text-sm font-medium text-text-muted transition hover:bg-muted hover:text-primary lg:py-2.5"
             >
               {c.name[locale] || c.name.bn}
             </Link>
@@ -234,7 +260,7 @@ export default function BoighorHeader({
             <Link
               key={item.id}
               href={item.href}
-              className="hidden shrink-0 whitespace-nowrap px-3 py-2.5 text-sm font-medium text-text-muted transition hover:bg-muted hover:text-primary md:block"
+              className="hidden shrink-0 whitespace-nowrap px-3 py-3 text-sm font-medium text-text-muted transition hover:bg-muted hover:text-primary md:block lg:py-2.5"
             >
               {locale === "bn" ? item.labelBn : item.labelEn || item.labelBn}
             </Link>
@@ -245,11 +271,13 @@ export default function BoighorHeader({
       {/* Tier 4 — pale-blue facet row: PLAIN quick links only
           (real /shop hrefs; sort values are ShopBrowser's own URL
           contract). No dropdown chrome — every element here is a
-          working link. Gated by the showFacetRow option. */}
+          working link. Gated by the showFacetRow option, and
+          hidden below lg (doc 33 §4: it is the first tier to
+          collapse on phone). */}
       {showFacetRow ? (
         <nav
           aria-label={s.quickFiltersAria}
-          className="border-t border-border"
+          className="hidden border-t border-border lg:block"
           style={{ backgroundColor: BOIGHOR_COLORS.paleBlue }}
         >
           <div className="scrollbar-none mx-auto flex max-w-[1440px] items-center gap-1 overflow-x-auto px-4 py-1.5 sm:px-6">
@@ -295,6 +323,6 @@ export default function BoighorHeader({
           </div>
         </nav>
       ) : null}
-    </header>
+    </>
   );
 }

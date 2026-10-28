@@ -652,7 +652,7 @@ export default async function CircuitPdpComposition({
         {/* Related products */}
         {related.length > 0 ? (
           <Reveal>
-            <section className="mt-14" aria-label={s.relatedProducts}>
+            <section className="mt-12" aria-label={s.relatedProducts}>
               <div>
                 <h2 className="font-display text-xl font-extrabold text-text-main sm:text-2xl">
                   {s.relatedProducts}

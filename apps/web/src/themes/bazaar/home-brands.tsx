@@ -19,6 +19,7 @@ import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
 import { useThemeView } from "../theme-view";
 import { BAZAAR_STRINGS } from "./strings";
+import { RAIL_FADE_CLASS } from "@/storefront-ux/responsive";
 
 export default function BazaarHomeBrands({ brands }: { brands: string[] }) {
   const themeView = useThemeView();
@@ -38,17 +39,17 @@ export default function BazaarHomeBrands({ brands }: { brands: string[] }) {
         </div>
         <Link
           href="/shop"
-          className="shrink-0 text-sm font-bold text-primary hover:underline"
+          className="inline-flex min-h-[44px] shrink-0 items-center text-sm font-bold text-primary hover:underline"
         >
           {s.seeAll}
         </Link>
       </div>
-      <div className="scrollbar-none -mx-4 mt-5 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+      <div className={`scrollbar-none -mx-4 mt-5 flex snap-x gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 ${RAIL_FADE_CLASS}`}>
         {brands.map((name) => (
           <Link
             key={name}
             href={`/shop?brand=${encodeURIComponent(name)}`}
-            className="flex h-[72px] w-[160px] shrink-0 items-center justify-center rounded-lg border border-border bg-card px-3 text-center shadow-card transition duration-200 hover:shadow-lift"
+            className="flex h-[72px] w-[160px] shrink-0 snap-start items-center justify-center rounded-lg border border-border bg-card px-3 text-center shadow-card transition duration-200 hover:shadow-lift"
           >
             <span className="line-clamp-2 break-words text-[15px] font-extrabold leading-snug text-text-main [overflow-wrap:anywhere]">
               {name}

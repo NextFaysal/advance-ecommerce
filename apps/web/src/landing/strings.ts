@@ -1,0 +1,223 @@
+/**
+ * Landing renderer dictionary (doc 34 L1, doc-30 completion at the
+ * render layer).
+ *
+ * Every chrome string the PUBLIC landing components print — stock
+ * labels, "view details", the countdown, and the whole QuickOrderForm
+ * (labels, placeholders, totals, success panel, API error copy) —
+ * lives here as bn+en pairs. Section CONTENT copy stays in the
+ * section model itself (each section carries its own bn+en pair);
+ * this module is only for the fixed UI text around it, which before
+ * L1 was hardcoded Bangla literals inside LandingView /
+ * QuickOrderForm / CountdownNote (audit gap #10).
+ *
+ * Shape follows the doc-30 contract: a `bn` object typed once, `en`
+ * typed as the mapped LandingStrings — a missing/extra key in either
+ * locale fails compilation, so the two can never drift. The bn values
+ * are the pre-L1 literals VERBATIM (bn rendering is unchanged).
+ *
+ * Usage: `pick(locale, LANDING_STRINGS)` — server surfaces resolve
+ * the locale via getRequestLocale and pass it down; the admin
+ * builder passes its own useLocale() value to the preview.
+ */
+import type { Locale } from "@/i18n/locale";
+
+const bn = {
+  // LandingView chrome
+  viewDetails: "পণ্যের বিস্তারিত দেখুন",
+  offerUnavailable: "এই অফারের পণ্যটি এখন পাওয়া যাচ্ছে না।",
+  defaultCta: "এখনই অর্ডার করুন",
+  inStockCount: "স্টক আছে ({count}টি)",
+  outOfStock: "স্টক শেষ",
+  standardVariant: "স্ট্যান্ডার্ড",
+  quickOrderIntro: "ফর্মটি পূরণ করুন — কোনো অ্যাকাউন্ট বা অগ্রিম পেমেন্ট লাগবে না।",
+  // CountdownNote (product_offer countdown label)
+  countdownExpired: "অফারের সময় শেষ হয়ে গেছে",
+  countdownDays: "অফার শেষ হতে বাকি: {days} দিন {hours} ঘণ্টা",
+  countdownHours: "অফার শেষ হতে বাকি: {hours} ঘণ্টা {minutes} মিনিট",
+  countdownMinutes: "অফার শেষ হতে বাকি: {minutes} মিনিট",
+  // QuickOrderForm chrome
+  viewDetailsShort: "বিস্তারিত দেখুন",
+  variantLegend: "ভেরিয়েন্ট বেছে নিন",
+  quantityLabel: "পরিমাণ",
+  qtyDecreaseAria: "পরিমাণ কমান",
+  qtyIncreaseAria: "পরিমাণ বাড়ান",
+  nameLabel: "আপনার নাম *",
+  namePlaceholder: "যেমন: মোঃ রফিকুল ইসলাম",
+  phoneLabel: "মোবাইল নম্বর *",
+  emailLabel: "ইমেইল (ঐচ্ছিক)",
+  emailPlaceholder: "example@mail.com",
+  divisionLabel: "বিভাগ *",
+  divisionPlaceholder: "ঢাকা",
+  districtLabel: "জেলা *",
+  districtPlaceholder: "ঢাকা",
+  upazilaLabel: "উপজেলা / থানা *",
+  upazilaPlaceholder: "মিরপুর",
+  unionLabel: "ইউনিয়ন (যদি থাকে)",
+  unionPlaceholder: "ঐচ্ছিক",
+  addressLabel: "সম্পূর্ণ ঠিকানা *",
+  addressPlaceholder: "বাসা/হোল্ডিং, রোড, এলাকা — যেমন: বাসা ১২, রোড ৫, মিরপুর ১০",
+  // QuickOrderForm v2 (doc 34 L5) — geo cascade + delivery preview
+  chooseDivision: "বিভাগ বেছে নিন",
+  chooseDistrict: "জেলা বেছে নিন",
+  chooseUpazila: "উপজেলা বেছে নিন",
+  geoLoading: "ঠিকানার তালিকা লোড হচ্ছে…",
+  deliveryChargeLabel: "ডেলিভারি চার্জ (আনুমানিক)",
+  grandTotalLabel: "সর্বমোট (আনুমানিক)",
+  deliveryFree: "ফ্রি ডেলিভারি",
+  estimateNote: "ডেলিভারি চার্জটি আনুমানিক — অর্ডার নিশ্চিতের সময় ঠিকানা অনুযায়ী চূড়ান্ত চার্জ হিসাব হবে।",
+  errorFieldInvalid: "ঘরটি ঠিকমতো পূরণ করুন",
+  subtotalLabel: "পণ্যের মূল্য",
+  deliveryNote: "ডেলিভারি চার্জ ঠিকানা অনুযায়ী অর্ডারের মোটে যোগ হবে। পেমেন্ট: ক্যাশ অন ডেলিভারি — পণ্য হাতে পেয়ে টাকা দিন।",
+  submitBusy: "অর্ডার করা হচ্ছে…",
+  submitLabel: "অর্ডার করুন — ক্যাশ অন ডেলিভারি",
+  successTitle: "অর্ডার সম্পন্ন হয়েছে!",
+  successOrderNo: "অর্ডার নম্বর",
+  successTotalLabel: "মোট",
+  successTotalSuffix: "(ডেলিভারি চার্জসহ)",
+  successConfirmNote: "আমাদের টিম শীঘ্রই ফোন করে অর্ডারটি নিশ্চিত করবে। পণ্য হাতে পেয়ে যাচাই করে তারপর টাকা পরিশোধ করুন।",
+  trackOrderCta: "অর্ডার ট্র্যাক করুন",
+  // QuickOrderForm — order API failure copy (was ERROR_BN)
+  errorValidation: "কিছু তথ্য ঠিকমতো দেওয়া হয়নি — ঘরগুলো আবার দেখে চেষ্টা করুন।",
+  errorInsufficientStock: "দুঃখিত, এই মুহূর্তে পর্যাপ্ত স্টক নেই। সংখ্যা কমিয়ে আবার চেষ্টা করুন।",
+  errorVariantNotFound: "দুঃখিত, এই পণ্যটি এখন পাওয়া যাচ্ছে না।",
+  errorIdempotencyConflict: "এই অর্ডারটি ইতিমধ্যে গৃহীত হয়েছে। পেজটি রিফ্রেশ করে আবার চেষ্টা করুন।",
+  errorGeneric: "কিছু সমস্যা হয়েছে — আবার চেষ্টা করুন।",
+  errorNetwork: "নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।",
+  // L3 block library II — reviews block chrome
+  reviewsHeading: "ক্রেতারা যা বলছেন",
+  reviewsCountLabel: "{count}টি রিভিউ",
+  reviewsAverageLabel: "গড় রেটিং {avg}",
+  ratingOf: "৫-এর মধ্যে {rating}",
+  verifiedPurchase: "যাচাইকৃত কেনাকাটা",
+  // L3 — bundle block chrome (wording mirrors /bundle-builder)
+  bundleContentsHeading: "বান্ডলে যা যা আছে",
+  bundleFixedNote: "বান্ডলের কম্পোনেন্ট নির্ধারিত — নিচের তালিকাটাই পাবেন।",
+  bundleComponentFallback: "কম্পোনেন্ট পণ্য",
+  bundleSeparateTotal: "আলাদা কিনলে মোট",
+  bundleSavings: "সাশ্রয় {amount}",
+  bundleOrderCta: "অর্ডার ফর্মে যান",
+  bundleUnavailable: "এই বান্ডলটি এখন পাওয়া যাচ্ছে না।",
+  // L3 — video facade chrome
+  videoPlayAria: "ভিডিও চালান",
+  // L2 block library I — countdown digit-box units + carousel chrome
+  countdownUnitDays: "দিন",
+  countdownUnitHours: "ঘণ্টা",
+  countdownUnitMinutes: "মিনিট",
+  countdownUnitSeconds: "সেকেন্ড",
+  carouselPrevAria: "আগের পণ্যগুলো",
+  carouselNextAria: "পরের পণ্যগুলো",
+  // L8 — funnel offer steps (upsell/downsell) + thank-you chrome
+  funnelOfferHeading: "বিশেষ অফার — শুধু এই অর্ডারের জন্য",
+  funnelOfferEndsIn: "অফারটি শেষ হতে বাকি",
+  funnelAccept: "হ্যাঁ, যোগ করুন",
+  funnelDecline: "না, ধন্যবাদ",
+  funnelAdding: "যোগ করা হচ্ছে…",
+  funnelAddedTitle: "যোগ করা হয়েছে!",
+  funnelYouSave: "সাশ্রয় {amount}",
+  funnelOfferExpired: "এই অফারের সময় শেষ হয়ে গেছে। আপনার অর্ডারটি আগের মতোই নিরাপদ আছে।",
+  funnelLinkInactive: "এই লিংকটি আর সক্রিয় নেই। আপনার অর্ডারটি নিরাপদ আছে — নিচে থেকে অর্ডার ট্র্যাক করুন।",
+  funnelAlreadyAdded: "এই অফারটি আপনার অর্ডারে ইতিমধ্যে যোগ করা হয়েছে।",
+  funnelContinue: "চালিয়ে যান",
+  funnelAcceptFailed: "দুঃখিত, অফারটি এখন যোগ করা যাচ্ছে না।",
+  funnelSeparateOrderNote: "অফারটি একটি আলাদা অর্ডার হিসেবে যোগ হয়েছে ({orderNo}) — আমাদের টিম দুটি একসাথে পাঠানোর ব্যবস্থা করবে।",
+  funnelOrderSummaryHeading: "আপনার অর্ডারের সারসংক্ষেপ",
+  funnelHomeCta: "হোমপেজে যান",
+};
+
+export type LandingStrings = { [K in keyof typeof bn]: string };
+
+const en: LandingStrings = {
+  viewDetails: "View product details",
+  offerUnavailable: "This offer's product is not available right now.",
+  defaultCta: "Order Now",
+  inStockCount: "In stock ({count} available)",
+  outOfStock: "Out of stock",
+  standardVariant: "Standard",
+  quickOrderIntro: "Fill in the form — no account or advance payment needed.",
+  countdownExpired: "This offer has ended",
+  countdownDays: "Offer ends in: {days}d {hours}h",
+  countdownHours: "Offer ends in: {hours}h {minutes}m",
+  countdownMinutes: "Offer ends in: {minutes}m",
+  viewDetailsShort: "View details",
+  variantLegend: "Choose a variant",
+  quantityLabel: "Quantity",
+  qtyDecreaseAria: "Decrease quantity",
+  qtyIncreaseAria: "Increase quantity",
+  nameLabel: "Your name *",
+  namePlaceholder: "e.g. Md. Rafiqul Islam",
+  phoneLabel: "Mobile number *",
+  emailLabel: "Email (optional)",
+  emailPlaceholder: "example@mail.com",
+  divisionLabel: "Division *",
+  divisionPlaceholder: "Dhaka",
+  districtLabel: "District *",
+  districtPlaceholder: "Dhaka",
+  upazilaLabel: "Upazila / Thana *",
+  upazilaPlaceholder: "Mirpur",
+  unionLabel: "Union (if any)",
+  unionPlaceholder: "Optional",
+  addressLabel: "Full address *",
+  addressPlaceholder: "House/holding, road, area — e.g. House 12, Road 5, Mirpur 10",
+  chooseDivision: "Choose division",
+  chooseDistrict: "Choose district",
+  chooseUpazila: "Choose upazila",
+  geoLoading: "Loading address list…",
+  deliveryChargeLabel: "Delivery charge (estimate)",
+  grandTotalLabel: "Grand total (estimate)",
+  deliveryFree: "Free delivery",
+  estimateNote: "The delivery charge is an estimate — the final charge is calculated from your address when the order is confirmed.",
+  errorFieldInvalid: "Please fill in this field correctly",
+  subtotalLabel: "Product price",
+  deliveryNote: "The delivery charge is added to the order total based on your address. Payment: Cash on Delivery — pay when the product is in your hand.",
+  submitBusy: "Placing order…",
+  submitLabel: "Place Order — Cash on Delivery",
+  successTitle: "Order placed successfully!",
+  successOrderNo: "Order number",
+  successTotalLabel: "Total",
+  successTotalSuffix: "(including delivery charge)",
+  successConfirmNote: "Our team will call shortly to confirm your order. Check the product in hand, then pay.",
+  trackOrderCta: "Track your order",
+  errorValidation: "Some information was not entered correctly — please check the fields and try again.",
+  errorInsufficientStock: "Sorry, there is not enough stock right now. Please reduce the quantity and try again.",
+  errorVariantNotFound: "Sorry, this product is not available right now.",
+  errorIdempotencyConflict: "This order has already been received. Please refresh the page and try again.",
+  errorGeneric: "Something went wrong — please try again.",
+  errorNetwork: "Network problem — please try again.",
+  reviewsHeading: "What customers say",
+  reviewsCountLabel: "{count} reviews",
+  reviewsAverageLabel: "Average rating {avg}",
+  ratingOf: "{rating} out of 5",
+  verifiedPurchase: "Verified purchase",
+  bundleContentsHeading: "What's in the bundle",
+  bundleFixedNote: "Bundle contents are fixed — you'll receive exactly the list below.",
+  bundleComponentFallback: "Component product",
+  bundleSeparateTotal: "Total if bought separately",
+  bundleSavings: "You save {amount}",
+  bundleOrderCta: "Go to the order form",
+  bundleUnavailable: "This bundle is not available right now.",
+  videoPlayAria: "Play video",
+  countdownUnitDays: "Days",
+  countdownUnitHours: "Hours",
+  countdownUnitMinutes: "Minutes",
+  countdownUnitSeconds: "Seconds",
+  carouselPrevAria: "Previous products",
+  carouselNextAria: "Next products",
+  funnelOfferHeading: "Special offer — for this order only",
+  funnelOfferEndsIn: "This offer ends in",
+  funnelAccept: "Yes, add it",
+  funnelDecline: "No, thanks",
+  funnelAdding: "Adding…",
+  funnelAddedTitle: "Added!",
+  funnelYouSave: "You save {amount}",
+  funnelOfferExpired: "This offer has expired. Your order is safe, exactly as you placed it.",
+  funnelLinkInactive: "This link is no longer active. Your order is safe — track it below.",
+  funnelAlreadyAdded: "This offer has already been added to your order.",
+  funnelContinue: "Continue",
+  funnelAcceptFailed: "Sorry, the offer could not be added right now.",
+  funnelSeparateOrderNote: "The offer was added as a separate order ({orderNo}) — our team will arrange to send them together.",
+  funnelOrderSummaryHeading: "Your order summary",
+  funnelHomeCta: "Go to the homepage",
+};
+
+export const LANDING_STRINGS: Record<Locale, LandingStrings> = { bn, en };

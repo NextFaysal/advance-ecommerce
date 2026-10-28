@@ -66,14 +66,14 @@ export function BackInStockForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+    <form onSubmit={onSubmit} className="mt-6 rounded-xl border border-warning/30 bg-warning-soft p-4">
       <h2 className="font-semibold">{s.bisTitle}</h2>
-      <p className="mt-1 text-sm text-slate-600">{s.bisSubtitle}</p>
+      <p className="mt-1 text-sm text-text-muted">{s.bisSubtitle}</p>
       <div className="mt-3 flex flex-col gap-2 sm:flex-row">
         <select
           value={variantId}
           onChange={(e) => setVariantId(e.target.value)}
-          className="min-h-[44px] rounded-lg border bg-white px-3 text-sm"
+          className="min-h-[44px] rounded-lg border border-input bg-card px-3 text-sm"
           aria-label={s.bisVariantLabel}
         >
           {variants.map((v) => (
@@ -88,19 +88,19 @@ export function BackInStockForm({
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="01XXXXXXXXX"
-          className="min-h-[44px] flex-1 rounded-lg border bg-white px-3 text-sm"
+          className="min-h-[44px] flex-1 rounded-lg border border-input bg-card px-3 text-sm"
           aria-label={s.bisPhoneLabel}
         />
-        <button type="submit" disabled={submitting} className="min-h-[44px] rounded-lg bg-[#4F46E5] px-4 text-sm font-bold text-white disabled:opacity-60">
+        <button type="submit" disabled={submitting} className="min-h-[44px] rounded-lg bg-primary px-4 text-sm font-bold text-white disabled:opacity-60">
           {s.bisNotifyMe}
         </button>
       </div>
       {message ? (
-        <p className={`mt-2 text-sm ${message.ok ? "text-emerald-700" : "text-red-600"}`} role="status">
+        <p className={`mt-2 text-sm ${message.ok ? "text-success-solid" : "text-danger"}`} role="status">
           {message.text}
         </p>
       ) : null}
-      <p className="mt-2 text-xs text-slate-500">{s.bisFootnote}</p>
+      <p className="mt-2 text-xs text-text-muted">{s.bisFootnote}</p>
     </form>
   );
 }

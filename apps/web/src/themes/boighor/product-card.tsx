@@ -36,6 +36,11 @@
  *
  * Price-on-request products show the contact label and no
  * add-to-cart (same gate as Aurora's card).
+ *
+ * Doc 33 R6 (mobile-first floors): add button + "View Details" link
+ * 44px on phone (40px/32px restored at lg), compare-at ≥14px on
+ * phone. The review count stays 11px (a count); the discount disc
+ * keeps its 12px/8px badge micro-type (signature badge).
  */
 import { useState } from "react";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -184,7 +189,7 @@ function BoighorAddButton({
       onClick={handleAdd}
       disabled={!inStock}
       aria-live="polite"
-      className={`flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold text-white transition active:scale-[0.98] ${
+      className={`flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold text-white transition active:scale-[0.98] lg:min-h-[40px] ${
         inStock
           ? "bg-primary shadow-sm hover:opacity-90"
           : "cursor-not-allowed bg-muted text-text-subtle shadow-none"
@@ -282,7 +287,7 @@ export function BoighorProductCard({ product }: ThemeProductCardProps) {
                   {digits(formatBdt(data.price))}
                 </span>
                 {data.compareAt !== null && data.compareAt > data.price ? (
-                  <span className="text-[13px] tabular-nums text-text-subtle line-through">
+                  <span className="text-sm tabular-nums text-text-subtle line-through lg:text-[13px]">
                     {digits(formatBdt(data.compareAt))}
                   </span>
                 ) : null}
@@ -296,7 +301,7 @@ export function BoighorProductCard({ product }: ThemeProductCardProps) {
         <BoighorAddButton product={product} data={data} />
         <Link
           href={`/product/${product.slug}`}
-          className="mt-1.5 flex min-h-[32px] items-center justify-center text-[13px] font-semibold text-primary transition hover:underline"
+          className="mt-1.5 flex min-h-[44px] items-center justify-center text-[13px] font-semibold text-primary transition hover:underline lg:min-h-[32px]"
         >
           {s.viewDetails}
         </Link>

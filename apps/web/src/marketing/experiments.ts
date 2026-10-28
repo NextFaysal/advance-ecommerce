@@ -1,5 +1,15 @@
 /**
  * A/B testing — ADV-18B (doc 22). v1 target: the homepage hero.
+ * Doc 34 §3.8/L9 grows the target to funnel steps (CartFlows-style
+ * step testing): an experiment may instead target
+ * `{ kind: "funnel_step", funnelId, stepId }`, whose variants carry
+ * an alternate landing `pageId`. The hero machinery below is
+ * unchanged: assignment hashing, the AB: event encoding and both
+ * deterministic eventId functions are byte-identical to v1, so
+ * every running hero experiment keeps its exact assignments and
+ * dedupe behaviour. Funnel-step experiments reuse the same
+ * assignment + encoding, namespaced by their own experiment ids
+ * (ids are unique across the doc, so the namespaces never collide).
  *
  * Definitions live in the Setting doc `marketing.experiments`
  * (see docs.ts). Assignment is a deterministic hash of the visitor
@@ -47,13 +57,32 @@ export const experimentVariantSchema = z.object({
   weightBps: z.number().int().min(0).max(10000),
   /** Absent = control: the visitor sees the current hero as-is. */
   hero: heroCopySchema.optional(),
+  /** Funnel-step variants only (doc 34 §3.8): the alternate landing
+   *  page this variant serves for the targeted step. Absent =
+   *  control: the visitor sees the step's own page. Optional and
+   *  additive — hero variants never carry it, and stored v1
+   *  variants parse identically without it. */
+  pageId: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/).optional(),
 });
+
+/** Doc 34 §3.8: a funnel-step target. funnelId/stepId are the
+ *  funnel's slug/id + step key from the Funnel steps envelope —
+ *  charset covers slugs and cuids, never a ":". */
+export const funnelStepTargetSchema = z.object({
+  kind: z.literal("funnel_step"),
+  funnelId: z.string().regex(/^[A-Za-z0-9_-]{1,80}$/),
+  stepId: z.string().regex(/^[A-Za-z0-9_-]{1,60}$/),
+});
+
+/** "hero" stays the bare literal it has always been stored as, so
+ *  every saved v1 doc parses unchanged. */
+export const experimentTargetSchema = z.union([z.literal("hero"), funnelStepTargetSchema]);
 
 export const experimentSchema = z.object({
   id: z.string().regex(/^[a-z0-9-]{1,40}$/),
   name: z.string().min(1).max(120),
   status: z.enum(["draft", "running", "stopped"]),
-  target: z.literal("hero"),
+  target: experimentTargetSchema,
   createdAt: z.string(),
   variants: z.array(experimentVariantSchema).min(2).max(4),
 });
@@ -65,8 +94,14 @@ export const experimentsDocSchema = z.object({
 
 export type HeroCopy = z.infer<typeof heroCopySchema>;
 export type ExperimentVariant = z.infer<typeof experimentVariantSchema>;
+export type FunnelStepTarget = z.infer<typeof funnelStepTargetSchema>;
+export type ExperimentTarget = z.infer<typeof experimentTargetSchema>;
 export type Experiment = z.infer<typeof experimentSchema>;
 export type ExperimentsDoc = z.infer<typeof experimentsDocSchema>;
+
+export function isFunnelStepTarget(target: ExperimentTarget): target is FunnelStepTarget {
+  return typeof target === "object" && target.kind === "funnel_step";
+}
 
 export const EMPTY_EXPERIMENTS_DOC: ExperimentsDoc = { version: 1, experiments: [] };
 
@@ -87,7 +122,10 @@ export async function saveExperimentsDoc(
 /** Deterministic assignment: sha256("<expId>:<visitorId>") bucketed
  *  over the variant weights (weights need not sum to 10000 — the
  *  bucket space is the weight total). Pure; exported for the smoke
- *  (same visitor -> same variant, always). */
+ *  (same visitor -> same variant, always). Target-agnostic: it
+ *  reads only the experiment id + variant weights, so funnel-step
+ *  experiments (§3.8) reuse it verbatim and hero assignments are
+ *  bit-for-bit what they were before the target union existed. */
 export function assignVariant(experiment: Experiment, visitorId: string): ExperimentVariant | null {
   const total = experiment.variants.reduce((sum, v) => sum + v.weightBps, 0);
   if (total <= 0) return null;
@@ -199,6 +237,106 @@ export async function recordConversionForOrder(
 }
 
 /* ------------------------------------------------------------------ */
+/* Funnel-step experiments (doc 34 §3.8)                               */
+/* ------------------------------------------------------------------ */
+
+export async function getRunningFunnelStepExperiment(
+  funnelId: string,
+  stepId: string,
+  store: MarketingDocStore = prismaMarketingDocStore(),
+): Promise<Experiment | null> {
+  const doc = await loadExperimentsDoc(store);
+  return (
+    doc.experiments.find(
+      (e) =>
+        e.status === "running" &&
+        isFunnelStepTarget(e.target) &&
+        e.target.funnelId === funnelId &&
+        e.target.stepId === stepId,
+    ) ?? null
+  );
+}
+
+/** Every running experiment targeting ANY step of this funnel —
+ *  the conversion seam iterates these when a funnel order lands. */
+export async function getRunningFunnelExperiments(
+  funnelId: string,
+  store: MarketingDocStore = prismaMarketingDocStore(),
+): Promise<Experiment[]> {
+  const doc = await loadExperimentsDoc(store);
+  return doc.experiments.filter(
+    (e) => e.status === "running" && isFunnelStepTarget(e.target) && e.target.funnelId === funnelId,
+  );
+}
+
+export interface FunnelStepResolution {
+  experiment: Experiment;
+  variant: ExperimentVariant;
+  /** The variant's alternate page for the step; null for the
+   *  control variant — "render the step's own page". */
+  pageId: string | null;
+}
+
+/** Funnel seam (mirrors resolveHeroForVisitor): resolve the running
+ *  experiment for one funnel step for a visitor and record their
+ *  (deduped) exposure in the same AB: encoding. Returns null when
+ *  no experiment runs on that step or the visitor has no id yet. */
+export async function resolveFunnelStepForVisitor(
+  funnelId: string,
+  stepId: string,
+  visitorId: string | null,
+  store: MarketingDocStore = prismaMarketingDocStore(),
+  now: Date = new Date(),
+): Promise<FunnelStepResolution | null> {
+  if (visitorId === null || visitorId === "") return null;
+  const experiment = await getRunningFunnelStepExperiment(funnelId, stepId, store);
+  if (experiment === null) return null;
+  const variant = assignVariant(experiment, visitorId);
+  if (variant === null) return null;
+  await recordExposure(experiment.id, variant.key, visitorId, now);
+  return { experiment, variant, pageId: variant.pageId ?? null };
+}
+
+/** Record conversions for a REAL funnel order (mirrors
+ *  recordConversionForOrder): the order must exist, then every
+ *  running experiment on this funnel gets one conversion row for
+ *  the visitor's assigned variant — same AB: encoding, same
+ *  deterministic eventId, so a replayed call dedupes. Returns the
+ *  experiments recorded. */
+export async function recordFunnelConversionForOrder(
+  visitorId: string | null,
+  orderId: string,
+  funnelId: string,
+  store: MarketingDocStore = prismaMarketingDocStore(),
+  now: Date = new Date(),
+): Promise<Array<{ expId: string; variantKey: string }>> {
+  if (visitorId === null || visitorId === "" || orderId === "" || funnelId === "") return [];
+  const { prisma } = await import("@advance-ecommerce/db");
+  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { id: true } });
+  if (order === null) return [];
+  const experiments = await getRunningFunnelExperiments(funnelId, store);
+  const recorded: Array<{ expId: string; variantKey: string }> = [];
+  for (const experiment of experiments) {
+    const variant = assignVariant(experiment, visitorId);
+    if (variant === null) continue;
+    try {
+      await prisma.trackingEvent.create({
+        data: {
+          eventId: conversionEventId(experiment.id, orderId),
+          eventName: `AB:${experiment.id}:${variant.key}:conversion`,
+          orderId,
+          occurredAt: now,
+        },
+      });
+      recorded.push({ expId: experiment.id, variantKey: variant.key });
+    } catch {
+      // already recorded for this order — one conversion per order
+    }
+  }
+  return recorded;
+}
+
+/* ------------------------------------------------------------------ */
 /* Stats — raw counts only                                             */
 /* ------------------------------------------------------------------ */
 
@@ -243,6 +381,67 @@ export async function getExperimentStats(expId: string): Promise<ExperimentStats
       conversions: v.conversions,
       conversionPercent: v.exposures > 0 ? Math.round((v.conversions / v.exposures) * 10000) / 100 : null,
     })),
+    note: "raw_counts_only",
+  };
+}
+
+export interface VariantRevenueStats extends VariantStats {
+  /** Sum of the attributed orders' totalPoisha for this variant —
+   *  revenue read from the order rows, never re-derived. */
+  revenuePoisha: number;
+  /** revenuePoisha / exposures, rounded to whole poisha.
+   *  Descriptive only — NOT a significance statement. */
+  revenuePerVisitorPoisha: number | null;
+}
+
+export interface ExperimentRevenueStats {
+  expId: string;
+  variants: VariantRevenueStats[];
+  note: "raw_counts_only";
+}
+
+/** getExperimentStats + revenue (doc 34 §3.8: the funnel A/B winner
+ *  metric shown is conversion rate AND revenue per visitor — both
+ *  raw descriptive numbers). Conversion events carry their orderId;
+ *  revenue joins those ids to the orders' totals. Additive: the
+ *  counts above are computed by the original function, untouched. */
+export async function getExperimentStatsWithRevenue(expId: string): Promise<ExperimentRevenueStats> {
+  const base = await getExperimentStats(expId);
+  const { prisma } = await import("@advance-ecommerce/db");
+  const rows = await prisma.trackingEvent.findMany({
+    where: { eventName: { startsWith: `AB:${expId}:` }, orderId: { not: null } },
+    select: { eventName: true, orderId: true },
+  });
+  const orderIdsByVariant = new Map<string, string[]>();
+  for (const row of rows) {
+    const parts = row.eventName.split(":");
+    if (parts.length !== 4 || parts[3] !== "conversion" || row.orderId === null) continue;
+    const list = orderIdsByVariant.get(parts[2] as string) ?? [];
+    list.push(row.orderId);
+    orderIdsByVariant.set(parts[2] as string, list);
+  }
+  const allOrderIds = [...orderIdsByVariant.values()].flat();
+  const totals = new Map<string, number>();
+  if (allOrderIds.length > 0) {
+    const orders = await prisma.order.findMany({
+      where: { id: { in: allOrderIds } },
+      select: { id: true, totalPoisha: true },
+    });
+    for (const order of orders) totals.set(order.id, order.totalPoisha);
+  }
+  return {
+    expId,
+    variants: base.variants.map((v) => {
+      const revenuePoisha = (orderIdsByVariant.get(v.variantKey) ?? []).reduce(
+        (sum, id) => sum + (totals.get(id) ?? 0),
+        0,
+      );
+      return {
+        ...v,
+        revenuePoisha,
+        revenuePerVisitorPoisha: v.exposures > 0 ? Math.round(revenuePoisha / v.exposures) : null,
+      };
+    }),
     note: "raw_counts_only",
   };
 }

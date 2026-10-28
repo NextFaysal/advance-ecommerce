@@ -90,11 +90,11 @@ export function CompareToggleButton({ productId }: { productId: string }) {
         type="button"
         onClick={onToggle}
         aria-pressed={selected}
-        className={`rounded-lg border px-4 py-3 text-sm ${selected ? "border-[#4F46E5] bg-[#EEF2FF] font-semibold text-[#4F46E5]" : ""}`}
+        className={`rounded-lg border px-4 py-3 text-sm ${selected ? "border-primary bg-primary/10 font-semibold text-primary" : ""}`}
       >
         {selected ? s.compareAdded : s.compareAdd}
       </button>
-      {notice ? <span className="text-xs text-red-600">{notice}</span> : null}
+      {notice ? <span className="text-xs text-danger">{notice}</span> : null}
     </span>
   );
 }
@@ -124,11 +124,11 @@ export function CompareTray() {
   const labelFor = (id: string) => titles.get(id) ?? id;
 
   return (
-    <div className="fixed inset-x-0 bottom-16 z-40 px-4 md:bottom-4">
-      <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-2 rounded-xl border bg-white px-3 py-2 shadow-lg">
+    <div className="fixed inset-x-0 bottom-16 z-40 px-4 md:bottom-[max(1rem,env(safe-area-inset-bottom))]">
+      <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-2 rounded-xl border bg-card px-3 py-2 shadow-lg">
         <span className="text-sm font-semibold">{interpolate(s.compareTrayLabel, { count: ids.length, max: MAX_COMPARE_PRODUCTS })}</span>
         {ids.map((id) => (
-          <span key={id} className="inline-flex items-center gap-1 rounded-full bg-[#EEF2FF] px-2 py-1 text-xs">
+          <span key={id} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-xs">
             <span className="max-w-[120px] truncate">{labelFor(id)}</span>
             <button type="button" aria-label={s.compareRemove} onClick={() => setIds(removeFromCompare(ids, id))}>
               ✕
@@ -136,10 +136,10 @@ export function CompareTray() {
           </span>
         ))}
         <span className="ml-auto flex items-center gap-2">
-          <button type="button" className="text-xs text-slate-500 underline" onClick={() => setIds([])}>
+          <button type="button" className="text-xs text-text-muted underline" onClick={() => setIds([])}>
             {s.compareClearAll}
           </button>
-          <Link href="/compare" className="rounded-lg bg-[#4F46E5] px-3 py-2 text-xs font-semibold text-white">
+          <Link href="/compare" className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white">
             {s.compareView}
           </Link>
         </span>

@@ -20,6 +20,8 @@ import { interpolate, pick } from "@/i18n/locale";
 import { CIRCUIT_STRINGS } from "./strings";
 import type { Category } from "@/catalog/types";
 import { CIRCUIT_COLORS } from "./tokens";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
+import { RAIL_FADE_CLASS } from "@/storefront-ux/responsive";
 
 /* Cool tile tints for image-less categories (our own palette). */
 const TILE_TINTS: ReadonlyArray<string> = [
@@ -50,7 +52,7 @@ export default function CircuitHomeCategories({
   };
 
   return (
-    <section className="mt-12" aria-label={s.categoriesAria}>
+    <section className="mt-8 lg:mt-12" aria-label={s.categoriesAria}>
       <div className="relative flex items-center justify-center">
         <div className="text-center">
           <h2 className="font-display text-xl font-extrabold text-text-main sm:text-2xl">
@@ -63,7 +65,7 @@ export default function CircuitHomeCategories({
             type="button"
             onClick={() => scrollBy(-1)}
             aria-label={s.prevCategories}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-white shadow-card transition hover:opacity-90"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-white shadow-card transition hover:opacity-90"
             style={{ backgroundColor: CIRCUIT_COLORS.navy }}
           >
             <Icon name="chevron-right" size={18} className="rotate-180" />
@@ -72,7 +74,7 @@ export default function CircuitHomeCategories({
             type="button"
             onClick={() => scrollBy(1)}
             aria-label={s.nextCategories}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-white shadow-card transition hover:opacity-90"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-white shadow-card transition hover:opacity-90"
             style={{ backgroundColor: CIRCUIT_COLORS.navy }}
           >
             <Icon name="chevron-right" size={18} />
@@ -82,7 +84,7 @@ export default function CircuitHomeCategories({
 
       <div
         ref={trackRef}
-        className="scrollbar-none -mx-4 mt-5 flex snap-x gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0"
+        className={`scrollbar-none -mx-4 mt-5 flex snap-x gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 ${RAIL_FADE_CLASS}`}
       >
         {categories.map((c, i) => (
           <Link
@@ -90,14 +92,14 @@ export default function CircuitHomeCategories({
             href={`/shop?category=${c.slug}`}
             className="group w-[112px] shrink-0 snap-start rounded-lg border border-border bg-card p-2.5 shadow-card transition duration-200 hover:shadow-lift"
           >
-            <span className="block aspect-square overflow-hidden rounded-md">
+            <span className="relative block aspect-square overflow-hidden rounded-md">
               {c.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
+                <StoreImage
                   src={c.imageUrl}
                   alt={c.name[locale] || c.name.bn}
-                  loading="lazy"
-                  className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.05]"
+                  preset="thumb"
+                  fillParent
+                  imgClassName="transition duration-300 group-hover:scale-[1.05]"
                 />
               ) : (
                 <span
@@ -111,7 +113,7 @@ export default function CircuitHomeCategories({
             <span className="mt-2 block truncate text-center text-[13px] font-bold leading-snug text-text-main">
               {c.name[locale] || c.name.bn}
             </span>
-            <span className="block text-center text-[11px] text-text-subtle">
+            <span className="block text-center text-xs text-text-subtle">
               {digits(interpolate(s.productCount, { count: c.productCount }))}
             </span>
           </Link>

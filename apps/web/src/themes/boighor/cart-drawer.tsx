@@ -40,6 +40,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { Drawer } from "@/components/ui/drawer";
+import { CartLineRow, QtyStepper } from "@/storefront-ux/components/CartPrimitives";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
 import { Icon } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -84,7 +86,7 @@ function EmptyCartMark() {
 }
 
 export default function BoighorCartDrawer({ open, onClose }: ThemeCartDrawerProps) {
-  const { locale } = useLocale();
+  const { locale, t } = useLocale();
   const s = pick(locale, BOIGHOR_STRINGS);
   const digits = useDigitText();
   const [cart, setCart] = useState<Cart | null>(null);
@@ -226,14 +228,14 @@ export default function BoighorCartDrawer({ open, onClose }: ThemeCartDrawerProp
             <Link
               href="/checkout"
               onClick={onClose}
-              className="mt-3 flex h-12 items-center justify-center rounded-lg bg-primary text-sm font-bold uppercase tracking-wide text-white shadow-sm transition hover:opacity-90"
+              className="mt-3 flex h-12 items-center justify-center rounded-lg bg-primary text-sm font-bold uppercase tracking-wide text-white shadow-sm transition hover:opacity-90 focus-ring"
             >
               {s.checkout}
             </Link>
             <Link
               href="/cart"
               onClick={onClose}
-              className="mt-2 flex h-10 items-center justify-center text-sm font-semibold text-primary hover:underline"
+              className="mt-2 flex h-11 items-center justify-center rounded-md focus-ring text-sm font-semibold text-primary hover:underline"
             >
               {s.goToCartPage}
             </Link>
@@ -256,7 +258,7 @@ export default function BoighorCartDrawer({ open, onClose }: ThemeCartDrawerProp
           <Link
             href="/shop"
             onClick={onClose}
-            className="mt-5 inline-flex h-11 items-center rounded-lg bg-primary px-6 text-sm font-bold text-white shadow-sm transition hover:opacity-90"
+            className="mt-5 inline-flex h-11 items-center rounded-lg bg-primary px-6 text-sm font-bold text-white shadow-sm transition hover:opacity-90 focus-ring"
           >
             {s.startShopping}
           </Link>
@@ -269,76 +271,43 @@ export default function BoighorCartDrawer({ open, onClose }: ThemeCartDrawerProp
               const step = stepFor(item.quantity);
               const slug = slugByProductId.get(item.productId);
               return (
-                <li key={item.variantId} className="flex gap-3 py-3.5">
-                  <span className="h-[64px] w-[64px] shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
-                    {item.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={item.imageUrl}
-                        alt=""
-                        loading="lazy"
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span className="flex h-full w-full items-center justify-center font-display text-lg font-extrabold text-primary/40">
-                        {item.name.charAt(0)}
-                      </span>
-                    )}
-                  </span>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      {slug ? (
+                <li key={item.variantId} className="py-3.5">
+                  {/* Shared cart primitives (doc 32 P1/P3): line-row shell +
+                      compact stepper. Quantity/remove behaviour stays in this
+                      file's handlers — byte-identical cart writes. */}
+                  <CartLineRow
+                    imageUrl={item.imageUrl}
+                    name={
+                      slug ? (
                         <Link
                           href={`/product/${slug}`}
                           onClick={onClose}
-                          className="line-clamp-2 min-w-0 break-words text-sm font-semibold leading-snug text-text-main transition hover:text-primary [overflow-wrap:anywhere]"
+                          className="transition hover:text-primary"
                         >
                           {item.name}
                         </Link>
                       ) : (
-                        <span className="line-clamp-2 min-w-0 break-words text-sm font-semibold leading-snug text-text-main [overflow-wrap:anywhere]">
-                          {item.name}
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => removeLine(item.variantId)}
-                        aria-label={interpolate(s.removeItemAria, { name: item.name })}
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-subtle transition hover:bg-destructive/10 hover:text-destructive"
-                      >
-                        <Icon name="x" size={15} />
-                      </button>
-                    </div>
-                    <p className="mt-0.5 truncate text-xs text-text-subtle">
-                      SKU: {item.sku}
-                    </p>
-
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                      {/* Compact stepper — same quantity calls as /cart */}
-                      <div className="flex h-9 items-stretch overflow-hidden rounded-lg border border-input bg-card">
-                        <button
-                          type="button"
-                          onClick={() => changeQuantity(item.variantId, -1)}
-                          aria-label={s.decreaseQty}
-                          className="flex w-9 items-center justify-center text-text-main transition hover:bg-muted"
-                        >
-                          <Icon name="minus" size={14} />
-                        </button>
-                        <span className="flex min-w-[40px] items-center justify-center border-x border-input px-1.5 text-sm font-bold tabular-nums text-text-main">
-                          {digits(qtyToString(item.quantity))}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => changeQuantity(item.variantId, 1)}
-                          disabled={item.quantity >= Math.max(step, item.availableStock)}
-                          aria-label={s.increaseQty}
-                          className="flex w-9 items-center justify-center text-text-main transition hover:bg-muted disabled:opacity-40"
-                        >
-                          <Icon name="plus" size={14} />
-                        </button>
-                      </div>
-
+                        item.name
+                      )
+                    }
+                    meta={
+                      <p className="mt-0.5 truncate text-xs text-text-subtle">
+                        SKU: {item.sku}
+                      </p>
+                    }
+                    stepper={
+                      <QtyStepper
+                        density="compact"
+                        value={digits(qtyToString(item.quantity))}
+                        valueLabel={t.quantity}
+                        decreaseLabel={s.decreaseQty}
+                        increaseLabel={s.increaseQty}
+                        increaseDisabled={item.quantity >= Math.max(step, item.availableStock)}
+                        onDecrease={() => changeQuantity(item.variantId, -1)}
+                        onIncrease={() => changeQuantity(item.variantId, 1)}
+                      />
+                    }
+                    priceLine={
                       <p className="text-[13px] text-text-muted">
                         {digits(
                           `${formatBdt(item.unitPricePoisha)} × ${qtyToString(item.quantity)} = `,
@@ -347,8 +316,10 @@ export default function BoighorCartDrawer({ open, onClose }: ThemeCartDrawerProp
                           {digits(formatBdt(lineTotalPoisha(item.unitPricePoisha, item.quantity)))}
                         </span>
                       </p>
-                    </div>
-                  </div>
+                    }
+                    onRemove={() => removeLine(item.variantId)}
+                    removeLabel={interpolate(s.removeItemAria, { name: item.name })}
+                  />
                 </li>
               );
             })}
@@ -372,15 +343,14 @@ export default function BoighorCartDrawer({ open, onClose }: ThemeCartDrawerProp
                       <Link
                         href={`/product/${p.slug}`}
                         onClick={onClose}
-                        className="block aspect-square overflow-hidden rounded-lg bg-muted"
+                        className="relative block aspect-square overflow-hidden rounded-lg bg-muted focus-ring"
                       >
                         {p.images[0]?.url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
+                          <StoreImage
                             src={p.images[0].url}
                             alt={p.title[locale] || p.title.bn}
-                            loading="lazy"
-                            className="h-full w-full object-cover"
+                            preset="thumb"
+                            fillParent
                           />
                         ) : (
                           <span className="flex h-full w-full items-center justify-center font-display text-xl font-extrabold text-primary/40">
@@ -391,7 +361,7 @@ export default function BoighorCartDrawer({ open, onClose }: ThemeCartDrawerProp
                       <Link
                         href={`/product/${p.slug}`}
                         onClick={onClose}
-                        className="mt-2 line-clamp-1 block break-words text-xs font-semibold text-text-main transition hover:text-primary [overflow-wrap:anywhere]"
+                        className="mt-2 line-clamp-1 block break-words text-xs font-semibold text-text-main transition hover:text-primary [overflow-wrap:anywhere] focus-ring"
                       >
                         {p.title[locale] || p.title.bn}
                       </Link>
@@ -402,7 +372,7 @@ export default function BoighorCartDrawer({ open, onClose }: ThemeCartDrawerProp
                         type="button"
                         onClick={() => addSuggestion(p)}
                         disabled={!addable}
-                        className="mt-1.5 flex h-8 w-full items-center justify-center gap-1 rounded-full bg-primary text-xs font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="mt-1.5 flex h-9 w-full focus-ring items-center justify-center gap-1 rounded-full bg-primary text-xs font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Icon name="plus" size={13} />
                         {addable ? s.addShort : s.outOfStock}

@@ -171,7 +171,7 @@ export default function OrderOtpPanel({
     return (
       <div
         role="status"
-        className="mt-4 rounded-xl bg-emerald-50 px-4 py-3.5 text-left text-sm font-medium text-emerald-700"
+        className="mt-4 rounded-xl bg-success-soft px-4 py-3.5 text-left text-sm font-medium text-success-solid"
       >
         {s.otpVerified}
       </div>
@@ -192,7 +192,7 @@ export default function OrderOtpPanel({
   return (
     <section
       aria-label={s.otpAriaLabel}
-      className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-4 text-left"
+      className="mt-4 rounded-xl border border-warning/30 bg-warning-soft px-4 py-4 text-left"
     >
       <h2 className="text-sm font-bold text-text-main">{s.otpTitle}</h2>
       <p className="mt-1 text-sm leading-6 text-text-muted">
@@ -224,7 +224,7 @@ export default function OrderOtpPanel({
         </button>
       </div>
       {attemptsLeft !== null ? (
-        <p className="mt-2 text-xs font-medium text-amber-700">
+        <p className="mt-2 text-xs font-medium text-warning-solid">
           {interpolate(s.otpAttemptsLeft, { count: digits(String(attemptsLeft)) })}
         </p>
       ) : null}
@@ -234,7 +234,7 @@ export default function OrderOtpPanel({
         </p>
       ) : null}
       {notice ? (
-        <p role="status" className="mt-2 text-sm font-medium text-emerald-700">
+        <p role="status" className="mt-2 text-sm font-medium text-success-solid">
           {notice}
         </p>
       ) : null}

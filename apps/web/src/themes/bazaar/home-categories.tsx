@@ -19,6 +19,8 @@ import type { Category } from "@/catalog/types";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { BAZAAR_STRINGS } from "./strings";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
+import { RAIL_FADE_CLASS } from "@/storefront-ux/responsive";
 
 /* Warm tile tints for image-less categories (our own palette). */
 const TILE_TINTS: ReadonlyArray<string> = [
@@ -59,7 +61,7 @@ export default function BazaarHomeCategories({
             type="button"
             onClick={() => scrollBy(-1)}
             aria-label={s.prevCategoriesAria}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} className="rotate-180" />
           </button>
@@ -67,7 +69,7 @@ export default function BazaarHomeCategories({
             type="button"
             onClick={() => scrollBy(1)}
             aria-label={s.nextCategoriesAria}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} />
           </button>
@@ -76,7 +78,7 @@ export default function BazaarHomeCategories({
 
       <div
         ref={trackRef}
-        className="scrollbar-none -mx-4 mt-5 flex snap-x gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0"
+        className={`scrollbar-none -mx-4 mt-5 flex snap-x gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 ${RAIL_FADE_CLASS}`}
       >
         {categories.map((c, i) => (
           <Link
@@ -84,24 +86,22 @@ export default function BazaarHomeCategories({
             href={`/shop?category=${c.slug}`}
             className="group w-[104px] shrink-0 snap-start rounded-lg border border-border bg-card p-2.5 shadow-card transition duration-200 hover:shadow-lift"
           >
-            <span className="block aspect-square overflow-hidden rounded-md">
-              {c.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={c.imageUrl}
-                  alt={c.name[locale] || c.name.bn}
-                  loading="lazy"
-                  className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.05]"
-                />
-              ) : (
-                <span
-                  aria-hidden="true"
-                  className={`flex h-full w-full items-center justify-center text-3xl font-extrabold ${TILE_TINTS[i % TILE_TINTS.length]}`}
-                >
-                  {(c.name[locale] || c.name.bn).charAt(0)}
-                </span>
-              )}
-            </span>
+            {c.imageUrl ? (
+              <StoreImage
+                src={c.imageUrl}
+                alt={c.name[locale] || c.name.bn}
+                preset="thumb"
+                className="rounded-md"
+                imgClassName="transition duration-300 group-hover:scale-[1.05]"
+              />
+            ) : (
+              <span
+                aria-hidden="true"
+                className={`flex aspect-square items-center justify-center rounded-md text-3xl font-extrabold ${TILE_TINTS[i % TILE_TINTS.length]}`}
+              >
+                {(c.name[locale] || c.name.bn).charAt(0)}
+              </span>
+            )}
             <span className="mt-2 block truncate text-center text-[13px] font-bold leading-snug text-text-main">
               {c.name[locale] || c.name.bn}
             </span>

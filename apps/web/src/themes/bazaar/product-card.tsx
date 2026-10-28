@@ -38,6 +38,10 @@
  * add-to-cart anatomy). It is composition-internal to this package
  * (S4b's home sections import it directly) and deliberately NOT
  * part of the ProductCard slot contract.
+ *
+ * Doc 33 R6 (mobile-first floors): add button 44px on phone (the
+ * 40px desktop geometry returns at lg), brand meta 11→12px,
+ * compare-at price ≥14px on phone. Badges stay 11px by design.
  */
 import { useState } from "react";
 import Link from "next/link";
@@ -179,7 +183,7 @@ function BazaarAddButton({
       onClick={handleAdd}
       disabled={!inStock}
       aria-live="polite"
-      className={`flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-bold transition active:scale-[0.98] ${
+      className={`flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-bold transition active:scale-[0.98] lg:min-h-[40px] ${
         inStock
           ? "border-primary bg-card text-primary hover:bg-primary hover:text-white"
           : "cursor-not-allowed border-border bg-muted text-text-subtle"
@@ -205,7 +209,7 @@ function PriceRow({ data, digits }: { data: CardData; digits: (t: string) => str
         {digits(formatBdt(data.price))}
       </span>
       {data.compareAt !== null && data.compareAt > data.price ? (
-        <span className="text-[13px] tabular-nums text-text-subtle line-through">
+        <span className="text-sm tabular-nums text-text-subtle line-through lg:text-[13px]">
           {digits(formatBdt(data.compareAt))}
         </span>
       ) : null}
@@ -264,7 +268,7 @@ export function BazaarProductCard({ product }: ThemeProductCardProps) {
 
         <div className="px-3 pt-3">
           {product.brandName ? (
-            <p className="truncate text-[11px] font-semibold tracking-wide text-text-subtle">
+            <p className="truncate text-xs font-semibold tracking-wide text-text-subtle">
               {product.brandName}
             </p>
           ) : null}
@@ -335,7 +339,7 @@ export function BazaarProductCardHorizontal({
         </div>
         <Link href={`/product/${product.slug}`} className="mt-1.5 block min-w-0">
           {product.brandName ? (
-            <p className="truncate text-[11px] font-semibold tracking-wide text-text-subtle">
+            <p className="truncate text-xs font-semibold tracking-wide text-text-subtle">
               {product.brandName}
             </p>
           ) : null}

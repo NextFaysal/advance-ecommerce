@@ -78,6 +78,26 @@ const bn = {
   date: "তারিখ",
   all: "সব",
 
+  // Utility pages (404 / offline) — doc 32 P7: this copy used to be
+  // hardcoded Bangla in app/not-found.tsx and app/offline/*; the bn
+  // values below are those originals verbatim, en is the translation.
+  notFoundTitle: "পেজটি পাওয়া যায়নি",
+  notFoundBody:
+    "আপনি যে পেজটি খুঁজছেন তা সরে গেছে অথবা লিংকটি ভুল। দোকান থেকে আবার শুরু করুন — পছন্দের পণ্য অপেক্ষা করছে।",
+  notFoundShopCta: "দোকানে যান",
+  notFoundHomeCta: "হোমপেজ",
+  notFoundCategoriesLabel: "জনপ্রিয় ক্যাটাগরি",
+  notFoundShortcutsLabel: "দরকারি লিংক",
+  offlineMetaTitle: "অফলাইন — Advance Ecommerce",
+  offlineMetaDescription: "ইন্টারনেট সংযোগ নেই। সংযোগ ফিরে এলে আবার চেষ্টা করুন।",
+  offlineTitle: "ইন্টারনেট সংযোগ নেই",
+  offlineBody:
+    "আপনি এখন অফলাইনে আছেন। আগে দেখা পেজগুলো ক্যাশ থেকে খুলতে পারে, কিন্তু নতুন অর্ডার, পেমেন্ট বা স্টক আপডেটের জন্য ইন্টারনেট লাগবে। সংযোগ ফিরে এলে আবার চেষ্টা করুন।",
+  offlineRetry: "আবার চেষ্টা করুন",
+  offlineHomeCta: "হোমপেজে যান",
+  offlineFootnote:
+    "আপনার কার্টের পণ্য এই ডিভাইসেই সংরক্ষিত আছে — সংযোগ ফিরলে সেখান থেকেই কেনাকাটা চালিয়ে যেতে পারবেন।",
+
   // Footer
   aboutUs: "আমাদের সম্পর্কে",
   contactUs: "যোগাযোগ",
@@ -159,6 +179,23 @@ const en: CommonStrings = {
   address: "Address",
   date: "Date",
   all: "All",
+
+  notFoundTitle: "Page not found",
+  notFoundBody:
+    "The page you're looking for has moved or the link is wrong. Start again from the shop — your favourite products are waiting.",
+  notFoundShopCta: "Go to Shop",
+  notFoundHomeCta: "Homepage",
+  notFoundCategoriesLabel: "Popular categories",
+  notFoundShortcutsLabel: "Useful links",
+  offlineMetaTitle: "Offline — Advance Ecommerce",
+  offlineMetaDescription: "No internet connection. Please try again when you're back online.",
+  offlineTitle: "No internet connection",
+  offlineBody:
+    "You're offline right now. Pages you've already visited may open from cache, but new orders, payments and stock updates need an internet connection. Please try again when you're back online.",
+  offlineRetry: "Try again",
+  offlineHomeCta: "Go to homepage",
+  offlineFootnote:
+    "The items in your cart are saved on this device — when the connection returns, you can pick up shopping right where you left off.",
 
   aboutUs: "About Us",
   contactUs: "Contact",

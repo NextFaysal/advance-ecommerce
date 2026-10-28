@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Landing quick-order form — plan 17 batch O2.
+ * Landing quick-order form — plan 17 batch O2, v2 by doc 34 L5.
  *
  * The classic BD landing flow: the customer fills name + phone +
  * address right on the campaign page and the order is created in one
@@ -11,23 +11,118 @@
  * pricing are exactly the storefront's; the server never trusts the
  * prices shown here and recomputes everything.
  *
- * The ঢাকার ভিতরে/বাইরে toggle only supplies the shippingMethod hint —
- * the server's shipping engine derives the real zone from the address.
+ * Validation reuses the checkout module's own schema
+ * (checkoutFormSchema incl. bdAddressSchema + the BD phone rule) so
+ * the form can never drift from the contract the API enforces.
  * One idempotency UUID per attempt: after ANY server response the key
  * is rotated, because the orders route claims a key before its checks
  * run — retrying a failed attempt with the same key would 409.
  *
- * Validation reuses the checkout module's own schema
- * (checkoutFormSchema incl. bdAddressSchema + the BD phone rule) so
- * the form can never drift from the contract the API enforces.
+ * Locale (doc 34 L1): every label, placeholder, total and message —
+ * including the order API's failure copy — comes from the landing
+ * dictionary (src/landing/strings.ts) in the visitor's locale, passed
+ * down by LandingView. Before L1 this form was Bangla-only.
+ *
+ * ── Doc 34 L5 upgrades ─────────────────────────────────────────────
+ * GEO CASCADE: division/district/upazila are no longer free text.
+ * The form fetches the SAME tree the storefront checkout uses
+ * (GET /api/v1/public/geo → src/checkout/geo-tree lookups) and
+ * renders the same three-select cascade, so submitted values are
+ * canonical geo-dataset nameEn strings by construction. If the geo
+ * fetch fails, the form falls back to free-text inputs — the exact
+ * degradation the checkout itself implements. The old ঢাকার
+ * ভিতরে/বাইরে toggle is GONE: the shipping engine derives the zone
+ * from the district (shipping-core zone rule), so the submitted
+ * shippingMethod is now zoneForDistrict(district), exactly what the
+ * checkout submits; a customer pick can no longer contradict the
+ * address (the pre-O2 bug the engine replaced).
+ *
+ * DELIVERY PREVIEW: the totals block runs the shipping engine's own
+ * pure calculator — calculateShipping(DEFAULT_SHIPPING_RATES, …)
+ * from src/checkout/shipping-core — with the same inputs the
+ * checkout page previews with (district-derived zone, weight 0: the
+ * form carries no weight data, same as the cart). That is the very
+ * function the orders route runs at create time via
+ * computeOrderShipping() (src/checkout/shipping.ts) over the same
+ * inputs, except that the server swaps DEFAULT_SHIPPING_RATES for
+ * the merchant's live Settings rates — whose fallbacks ARE those
+ * defaults — and passes the order's true total weight where this
+ * preview (like the checkout page's) has none. So at default rates
+ * with no weight slabs in play the preview equals the charged
+ * delivery charge taka-for-taka; where a merchant has overridden
+ * rates or configured weight slabs the block is labelled an
+ * estimate (আনুমানিক) and the create-time totals stay
+ * authoritative, exactly as the checkout's own summary labels its
+ * preview. No new quote endpoint and no client-side price math of
+ * our own: this IS the checkout's preview mechanism, reused. The
+ * preview appears once a district is picked (the moment the zone
+ * resolves).
+ *
+ * FIELD CONFIG (docs 28/29, plan §3.6 — one merchant config, both
+ * forms): the form reads GET /api/v1/public/checkout-config through
+ * the same coercion the checkout page uses, starting from
+ * DEFAULT_CHECKOUT_FIELDS_CONFIG (= the original hardcoded checkout,
+ * so a pending/failed fetch renders labels and rules equivalent to
+ * the pre-L5 form). Where the config overlaps this form it governs:
+ * labels + placeholders (locale-picked from the def), visibility,
+ * doc-29 conditions (visibleWhen/requiredWhen) and answer
+ * validation for email / union / note and the merchant's extra
+ * fields; extras render at the end of the address group and their
+ * answers ride the create body as `fieldAnswers`, collected only
+ * when effectively visible — the checkout's own submit rule, and
+ * the same rules the orders route re-enforces server-side on this
+ * very route (a config-required field can no longer fail a landing
+ * order by being absent from this form). customerName / phone /
+ * the cascade / addressLine are locked visible+required by the
+ * config's own coercion, so they always render. Free text remains
+ * only where the checkout keeps it: union + the address line.
+ *
+ * ── Doc 34 L7 funnel mode (optional `funnel` prop) ─────────────
+ * On a funnel ORDER step the runtime passes a funnel context: a
+ * signed context claim (attribution + post-order continuation) and,
+ * when the step carries a bump that still resolves in stock, the
+ * bump card data + its signed §3.7 claim. The card is one checkbox;
+ * ticking it adds `bump: { token }` to the SAME orders POST (the
+ * server re-checks the rule and resolves the LIVE price — the
+ * prices shown here are display only, like everything else in this
+ * form). The context claim rides every funnel submit as
+ * `funnel: { token }`. On success, a funnel order whose response
+ * carries `data.funnel.nextStepUrl` redirects there (the offer
+ * chain entry, else the thank-you step — the URL carries the §3.7
+ * funnel token); without one, the normal success panel shows.
+ * Without the prop the form is byte-identical to the /lp form.
  */
-import { useId, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { checkoutFormSchema } from "@/checkout/validation";
 import { newIdempotencyKey } from "@/checkout/idempotency";
+import {
+  calculateShipping,
+  DEFAULT_SHIPPING_RATES,
+  zoneForDistrict,
+  type ShippingZone,
+} from "@/checkout/shipping-core";
+import {
+  districtsOf,
+  upazilasOf,
+  type GeoTree,
+} from "@/checkout/geo-tree";
+import {
+  coerceCheckoutFieldsConfig,
+  DEFAULT_CHECKOUT_FIELDS_CONFIG,
+  effectiveRequired,
+  effectiveVisible,
+  fieldByKey,
+  validateAnswer,
+  visibleFieldsForGroup,
+  type CheckoutConditionContext,
+  type CheckoutFieldDef,
+  type CheckoutFieldsConfig,
+} from "@/checkout/fields";
+import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
+import { LANDING_STRINGS, type LandingStrings } from "../strings";
 import type { ResolvedOrderProduct } from "../render";
-
-type Zone = "inside_dhaka" | "outside_dhaka";
 
 type Phase =
   | { kind: "editing" }
@@ -35,54 +130,301 @@ type Phase =
   | { kind: "success"; orderNo: string; totalPoisha: number }
   | { kind: "error"; message: string; details: string[] };
 
-/** Bangla-first copy for the order API's known failure codes. */
-const ERROR_BN: Record<string, string> = {
-  VALIDATION_ERROR: "কিছু তথ্য ঠিকমতো দেওয়া হয়নি — ঘরগুলো আবার দেখে চেষ্টা করুন।",
-  INSUFFICIENT_STOCK: "দুঃখিত, এই মুহূর্তে পর্যাপ্ত স্টক নেই। সংখ্যা কমিয়ে আবার চেষ্টা করুন।",
-  VARIANT_NOT_FOUND: "দুঃখিত, এই পণ্যটি এখন পাওয়া যাচ্ছে না।",
-  IDEMPOTENCY_CONFLICT: "এই অর্ডারটি ইতিমধ্যে গৃহীত হয়েছে। পেজটি রিফ্রেশ করে আবার চেষ্টা করুন।",
+/** Order API failure code → landing-dictionary key (per-locale copy).
+ *  The doc-29 CHECKOUT_FIELD_* codes are deliberately NOT mapped:
+ *  their server messages are already bilingual and name the field,
+ *  so they pass through like FRAUD_BLOCKED's message does. */
+const ERROR_KEYS: Record<string, keyof LandingStrings> = {
+  VALIDATION_ERROR: "errorValidation",
+  INSUFFICIENT_STOCK: "errorInsufficientStock",
+  VARIANT_NOT_FOUND: "errorVariantNotFound",
+  IDEMPOTENCY_CONFLICT: "errorIdempotencyConflict",
 };
 
 const inputCls =
   "min-h-12 w-full rounded-lg border border-border bg-card px-3 py-2 text-base text-text-main outline-none transition placeholder:text-text-muted/70 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30";
 const labelCls = "mb-1 block text-sm font-semibold text-text-main";
 
-export function QuickOrderForm({ product }: { product: ResolvedOrderProduct }) {
+/** Native validation attributes from a def's doc-29 rules — the
+ *  checkout's own helper (lengths on free-text inputs; the HTML
+ *  pattern only for the digits preset). */
+function validationAttrs(def: CheckoutFieldDef) {
+  return {
+    minLength: def.validation?.minLength,
+    maxLength: def.validation?.maxLength,
+    ...(def.validation?.pattern === "digits" ? { pattern: "[0-9]+" } : {}),
+  };
+}
+
+/** Doc 34 §3.7 order bump as the form receives it: the owner's
+ *  heading + the offer resolved server-side against the live
+ *  catalog (display prices only — the orders route recomputes from
+ *  the DB) + the render-issued signed claim the submit carries. */
+export interface QuickOrderFunnelBump {
+  headingBn: string;
+  headingEn: string;
+  productTitleBn: string;
+  productTitleEn: string;
+  /** Joined variant attributes; "" = standard variant. */
+  variantLabel: string;
+  imageUrl: string | null;
+  /** Live catalog unit price, integer poisha. */
+  livePricePoisha: number;
+  /** Live price after the step's discount rule, integer poisha. */
+  discountedPoisha: number;
+  /** Signed bump claim ({ funnelId, stepId, variantId, rule }). */
+  claim: string;
+}
+
+/** Doc 34 L7: the funnel runtime's context for an order step's
+ *  form. `claim` is the signed funnel context claim sent on every
+ *  funnel submit; `bump` is present only when the step's bump
+ *  resolved in-stock at render time. */
+export interface QuickOrderFunnelContext {
+  claim: string;
+  bump?: QuickOrderFunnelBump;
+}
+
+export function QuickOrderForm({
+  product,
+  locale = "bn",
+  funnel,
+}: {
+  product: ResolvedOrderProduct;
+  locale?: Locale;
+  funnel?: QuickOrderFunnelContext;
+}) {
+  const s = pick(locale, LANDING_STRINGS);
+  const isBn = locale === "bn";
   const uid = useId();
   const [variantId, setVariantId] = useState(product.defaultVariantId);
   const [quantity, setQuantity] = useState(1);
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [division, setDivision] = useState("");
   const [district, setDistrict] = useState("");
   const [upazila, setUpazila] = useState("");
   const [union, setUnion] = useState("");
   const [addressLine, setAddressLine] = useState("");
-  const [zone, setZone] = useState<Zone>("outside_dhaka");
+  const [note, setNote] = useState("");
+  const [extraAnswers, setExtraAnswers] = useState<Record<string, string>>({});
+  // Doc 34 L7: the bump checkbox (funnel order steps only).
+  const [bumpAccepted, setBumpAccepted] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState(() => newIdempotencyKey());
   const [phase, setPhase] = useState<Phase>({ kind: "editing" });
+
+  // Geo cascade tree — the checkout's fetch, verbatim pattern.
+  const [geoTree, setGeoTree] = useState<GeoTree | null>(null);
+  const [geoFailed, setGeoFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/public/geo")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("geo fetch failed"))))
+      .then((json: { data?: GeoTree }) => {
+        if (cancelled) return;
+        if (Array.isArray(json.data)) setGeoTree(json.data);
+        else setGeoFailed(true);
+      })
+      .catch(() => {
+        if (!cancelled) setGeoFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Checkout field config (docs 28/29) — the checkout page's fetch +
+  // coercion, verbatim pattern; defaults render the pre-L5 form.
+  const [fieldsConfig, setFieldsConfig] = useState<CheckoutFieldsConfig>(
+    DEFAULT_CHECKOUT_FIELDS_CONFIG,
+  );
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/public/checkout-config")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("checkout config fetch failed"))))
+      .then((json: { data?: unknown }) => {
+        if (cancelled) return;
+        if (json.data) setFieldsConfig(coerceCheckoutFieldsConfig(json.data));
+      })
+      .catch(() => {
+        // The default config stays — the form is the pre-L5 one.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const selected = product.variants.find((v) => v.variantId === variantId) ?? product.variants[0];
   const anyInStock = product.variants.some((v) => v.inStock);
   const maxQty = Math.max(1, selected?.stock ?? 1);
   const clampedQty = Math.min(Math.max(1, quantity), maxQty);
   const subtotalPoisha = (selected?.pricePoisha ?? 0) * clampedQty;
+  // Doc 34 L7: the DISPLAYED merchandise total includes the ticked
+  // bump (at its render-time discounted price — a preview, like the
+  // rest of this block; the server recomputes from live prices).
+  // The doc-29 condition context below deliberately keeps the
+  // items-only subtotal: that is exactly what the orders route's
+  // field gate recomputes, so client and server conditions agree.
+  const bumpPreviewPoisha = funnel?.bump && bumpAccepted ? funnel.bump.discountedPoisha : 0;
+  const previewSubtotalPoisha = subtotalPoisha + bumpPreviewPoisha;
+  const productTitle = locale === "en" ? product.productTitleEn || product.productTitleBn : product.productTitleBn;
+
+  // The zone the submit sends — derived from the district alone,
+  // exactly like the checkout (before any district is picked the
+  // Dhaka assumption applies; it only feeds condition contexts and
+  // the preview until then, and district is required at submit).
+  const submittedZone: ShippingZone = zoneForDistrict(district || "Dhaka");
+
+  // Doc-29 condition context — the checkout's composition, with the
+  // merchandise subtotal this form displays (the server recomputes
+  // from DB prices whenever a cart-total condition exists).
+  const conditionCtx: CheckoutConditionContext = useMemo(
+    () => ({
+      paymentMethod: "cod",
+      shippingMethod: submittedZone,
+      division: division || undefined,
+      cartTotalPoisha: subtotalPoisha,
+    }),
+    [submittedZone, division, subtotalPoisha],
+  );
+
+  const infoFieldDefs = visibleFieldsForGroup(fieldsConfig, "info").filter((def) =>
+    effectiveVisible(def, conditionCtx),
+  );
+  const addressFieldDefs = visibleFieldsForGroup(fieldsConfig, "address").filter((def) =>
+    effectiveVisible(def, conditionCtx),
+  );
+
+  /** Dictionary fallback label per built-in key (pre-L5 copy, used
+   *  only if a config def somehow carries no label at all). */
+  const FALLBACK_LABEL: Partial<Record<string, string>> = {
+    customerName: s.nameLabel,
+    phone: s.phoneLabel,
+    email: s.emailLabel,
+    division: s.divisionLabel,
+    district: s.districtLabel,
+    upazila: s.upazilaLabel,
+    union: s.unionLabel,
+    addressLine: s.addressLabel,
+  };
+  /** Display label — the checkout's rule: the merchant-configured
+   *  label in the visitor's locale (falling back to the other
+   *  locale, then to the landing dictionary), plus the " *" marker
+   *  for effectively-required fields that don't carry one. */
+  const fieldLabel = (def?: CheckoutFieldDef): string => {
+    if (!def) return "";
+    const label =
+      (isBn ? def.labelBn || def.labelEn : def.labelEn || def.labelBn) ||
+      FALLBACK_LABEL[def.key] ||
+      "";
+    const bare = label.replace(/\s*\*\s*$/, "");
+    return effectiveRequired(def, conditionCtx) && !label.includes("*") ? `${bare} *` : label;
+  };
+  const placeholderFor = (def: CheckoutFieldDef, fallback: string): string =>
+    def.placeholder || fallback;
+
+  // Delivery preview — the checkout page's own mechanism (see the
+  // header): the shipping engine's pure calculator at the built-in
+  // default rates, district-derived zone, no weight data. Shown
+  // once a district resolves the zone.
+  const shippingPreview = useMemo(
+    () =>
+      district.trim()
+        ? calculateShipping(DEFAULT_SHIPPING_RATES, {
+            district,
+            shippingMethod: submittedZone,
+            totalWeightGrams: 0,
+            subtotalPoisha: previewSubtotalPoisha,
+          })
+        : null,
+    [district, submittedZone, previewSubtotalPoisha],
+  );
+
+  function onDivisionChange(value: string) {
+    setDivision(value);
+    setDistrict("");
+    setUpazila("");
+  }
+  function onDistrictChange(value: string) {
+    setDistrict(value);
+    setUpazila("");
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!selected || phase.kind === "submitting") return;
 
+    // Submit-time condition context, read from the submitted values
+    // themselves — the same sources the server gate evaluates (the
+    // checkout's submitConditionCtx pattern).
+    const submitCtx: CheckoutConditionContext = {
+      paymentMethod: "cod",
+      shippingMethod: submittedZone,
+      division: division || undefined,
+      cartTotalPoisha: subtotalPoisha,
+    };
+    const visAtSubmit = (def: CheckoutFieldDef) => effectiveVisible(def, submitCtx);
+    const emailDef = fieldByKey(fieldsConfig, "email");
+    const unionDef = fieldByKey(fieldsConfig, "union");
+    const noteDef = fieldByKey(fieldsConfig, "note");
+    const addressLineDef = fieldByKey(fieldsConfig, "addressLine");
+    // A field that is not effectively visible at submit is treated
+    // as absent — the server gate's rule, applied client-side too,
+    // so a value typed before a condition flipped can never ride.
+    const emailValue = emailDef && visAtSubmit(emailDef) ? email.trim() : "";
+    const unionValue = unionDef && visAtSubmit(unionDef) ? union.trim() : "";
+    const noteValue = noteDef && visAtSubmit(noteDef) ? note.trim() : "";
+
+    // Client mirror of the orders route's field gate (docs 28/29):
+    // effectively-required toggleable fields + extras must be
+    // non-empty; present answers must satisfy the defs' validation
+    // rules. The server re-enforces all of it regardless — this only
+    // keeps the failure inside the form's own error panel.
+    const fieldProblems: string[] = [];
+    const checkField = (def: CheckoutFieldDef | undefined, value: string) => {
+      if (!def || !visAtSubmit(def)) return;
+      if (effectiveRequired(def, submitCtx) && value === "") {
+        fieldProblems.push(`${fieldLabel(def)}: ${s.errorFieldInvalid}`);
+        return;
+      }
+      if (value !== "" && validateAnswer(def, value)) {
+        fieldProblems.push(`${fieldLabel(def)}: ${s.errorFieldInvalid}`);
+      }
+    };
+    checkField(emailDef, emailValue);
+    checkField(unionDef, unionValue);
+    checkField(noteDef, noteValue);
+    if (addressLineDef && validateAnswer(addressLineDef, addressLine.trim())) {
+      fieldProblems.push(`${fieldLabel(addressLineDef)}: ${s.errorFieldInvalid}`);
+    }
+    // Extra fields: answers ride as fieldAnswers, collected ONLY
+    // when effectively visible — the checkout's submit rule verbatim.
+    const fieldAnswers: Record<string, string> = {};
+    for (const def of visibleFieldsForGroup(fieldsConfig, "address")) {
+      if (!def.extra || !visAtSubmit(def)) continue;
+      const value = (extraAnswers[def.key] ?? "").trim();
+      checkField(def, value);
+      if (value) fieldAnswers[def.key] = value;
+    }
+    if (fieldProblems.length > 0) {
+      setPhase({ kind: "error", message: s.errorValidation, details: fieldProblems });
+      return;
+    }
+
     const candidate = {
       customerName: customerName.trim(),
       phone: phone.trim(),
+      email: emailValue,
       address: {
         division: division.trim(),
         district: district.trim(),
         upazila: upazila.trim(),
-        ...(union.trim() ? { union: union.trim() } : {}),
+        ...(unionValue ? { union: unionValue } : {}),
         addressLine: addressLine.trim(),
       },
-      shippingMethod: zone,
+      ...(noteValue ? { note: noteValue } : {}),
+      shippingMethod: submittedZone,
       paymentMethod: "cod" as const,
       items: [{ variantId: selected.variantId, quantity: clampedQty }],
       idempotencyKey,
@@ -91,7 +433,7 @@ export function QuickOrderForm({ product }: { product: ResolvedOrderProduct }) {
     if (!parsed.success) {
       setPhase({
         kind: "error",
-        message: ERROR_BN.VALIDATION_ERROR,
+        message: s.errorValidation,
         details: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
       });
       return;
@@ -102,12 +444,24 @@ export function QuickOrderForm({ product }: { product: ResolvedOrderProduct }) {
       const res = await fetch("/api/v1/public/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(parsed.data),
+        // fieldAnswers rides alongside the schema body — the
+        // checkout page's exact construction (the form schema does
+        // not carry it; the orders route's own schema accepts it).
+        // Doc 34 L7: funnel mode adds the context claim on every
+        // submit and the §3.7 bump claim when the card is ticked —
+        // same additive pattern; the route's schema accepts both.
+        body: JSON.stringify({
+          ...parsed.data,
+          ...(Object.keys(fieldAnswers).length > 0 ? { fieldAnswers } : {}),
+          ...(funnel ? { funnel: { token: funnel.claim } } : {}),
+          ...(funnel?.bump && bumpAccepted ? { bump: { token: funnel.bump.claim } } : {}),
+        }),
       });
       const body = (await res.json().catch(() => null)) as {
         data?: {
           order?: { orderNo?: string; totalPoisha?: number };
           pricing?: { grandTotalPoisha?: number } | null;
+          funnel?: { nextStepUrl?: string | null } | null;
         };
         error?: { code?: string; message?: string; details?: unknown };
       } | null;
@@ -116,6 +470,16 @@ export function QuickOrderForm({ product }: { product: ResolvedOrderProduct }) {
       setIdempotencyKey(newIdempotencyKey());
 
       if (res.ok && body?.data?.order?.orderNo) {
+        // Doc 34 L7: a funnel order with a continuation URL leaves
+        // the form for the next funnel step (the offer chain entry,
+        // else the thank-you step) — the URL carries the §3.7
+        // funnel token. No URL (funnel flow ended here, or the
+        // server dropped the funnel context) → the success panel.
+        const nextStepUrl = funnel ? body.data.funnel?.nextStepUrl : undefined;
+        if (nextStepUrl) {
+          window.location.assign(nextStepUrl);
+          return;
+        }
         setPhase({
           kind: "success",
           orderNo: body.data.order.orderNo,
@@ -128,40 +492,44 @@ export function QuickOrderForm({ product }: { product: ResolvedOrderProduct }) {
       const details = Array.isArray(body?.error?.details)
         ? (body.error.details as unknown[]).map((d) => String(d))
         : [];
+      const errorKey = ERROR_KEYS[code];
       setPhase({
         kind: "error",
-        // FRAUD_BLOCKED already carries the server's own generic
-        // bilingual message; other codes get the Bangla-first copy.
+        // FRAUD_BLOCKED (and the doc-29 CHECKOUT_FIELD_* refusals)
+        // already carry the server's own generic bilingual message;
+        // other codes get the dictionary copy in the visitor's locale.
         message:
-          code === "FRAUD_BLOCKED" && serverMessage
+          (code === "FRAUD_BLOCKED" || code.startsWith("CHECKOUT_FIELD_")) && serverMessage
             ? serverMessage
-            : (ERROR_BN[code] ?? serverMessage ?? "কিছু সমস্যা হয়েছে — আবার চেষ্টা করুন।"),
+            : errorKey
+              ? s[errorKey]
+              : (serverMessage ?? s.errorGeneric),
         details: code === "VALIDATION_ERROR" ? details : [],
       });
     } catch {
       setIdempotencyKey(newIdempotencyKey());
-      setPhase({ kind: "error", message: "নেটওয়ার্ক সমস্যা — আবার চেষ্টা করুন।", details: [] });
+      setPhase({ kind: "error", message: s.errorNetwork, details: [] });
     }
   }
 
   if (phase.kind === "success") {
     return (
-      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center" role="status">
+      <div className="rounded-2xl border border-success-solid/30 bg-success-soft p-5 text-center" role="status">
         <p className="text-3xl" aria-hidden="true">✅</p>
-        <h3 className="mt-2 text-xl font-bold text-emerald-900">অর্ডার সম্পন্ন হয়েছে!</h3>
-        <p className="mt-2 leading-7 text-emerald-900">
-          অর্ডার নম্বর: <span className="font-bold">{phase.orderNo}</span>
+        <h3 className="mt-2 text-xl font-bold text-success-solid">{s.successTitle}</h3>
+        <p className="mt-2 leading-7 text-success-solid">
+          {s.successOrderNo}: <span className="font-bold">{phase.orderNo}</span>
           <br />
-          মোট: <span className="font-bold">{formatBdt(phase.totalPoisha)}</span> (ডেলিভারি চার্জসহ)
+          {s.successTotalLabel}: <span className="font-bold">{formatBdt(phase.totalPoisha)}</span> {s.successTotalSuffix}
         </p>
-        <p className="mt-2 text-sm leading-6 text-emerald-800">
-          আমাদের টিম শীঘ্রই ফোন করে অর্ডারটি নিশ্চিত করবে। পণ্য হাতে পেয়ে যাচাই করে তারপর টাকা পরিশোধ করুন।
+        <p className="mt-2 text-sm leading-6 text-success-solid">
+          {s.successConfirmNote}
         </p>
         <a
           href={`/track?orderNo=${encodeURIComponent(phase.orderNo)}`}
-          className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white transition hover:bg-emerald-700"
+          className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-success-solid px-4 py-2 font-semibold text-white transition hover:brightness-105"
         >
-          অর্ডার ট্র্যাক করুন
+          {s.trackOrderCta}
         </a>
       </div>
     );
@@ -169,18 +537,189 @@ export function QuickOrderForm({ product }: { product: ResolvedOrderProduct }) {
 
   const submitting = phase.kind === "submitting";
 
+  /** The address cascade as ONE block (the checkout's structure):
+   *  three selects from the fetched geo tree, free-text inputs when
+   *  the fetch failed, a disabled loading placeholder until then.
+   *  Labels + required come from the field defs. */
+  function renderCascade() {
+    const divisionDef = fieldByKey(fieldsConfig, "division");
+    const districtDef = fieldByKey(fieldsConfig, "district");
+    const upazilaDef = fieldByKey(fieldsConfig, "upazila");
+    const divisionLabel = fieldLabel(divisionDef) || s.divisionLabel;
+    const districtLabel = fieldLabel(districtDef) || s.districtLabel;
+    const upazilaLabel = fieldLabel(upazilaDef) || s.upazilaLabel;
+    if (geoTree) {
+      return (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <label className={labelCls} htmlFor={`${uid}-division`}>{divisionLabel}</label>
+            <select
+              id={`${uid}-division`}
+              className={inputCls}
+              value={division}
+              required={divisionDef?.required ?? true}
+              onChange={(e) => onDivisionChange(e.target.value)}
+            >
+              <option value="">{s.chooseDivision}</option>
+              {geoTree.map((d) => (
+                <option key={d.nameEn} value={d.nameEn}>
+                  {isBn ? d.nameBn : d.nameEn}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls} htmlFor={`${uid}-district`}>{districtLabel}</label>
+            <select
+              id={`${uid}-district`}
+              className={inputCls}
+              value={district}
+              required={districtDef?.required ?? true}
+              disabled={!division}
+              onChange={(e) => onDistrictChange(e.target.value)}
+            >
+              <option value="">{s.chooseDistrict}</option>
+              {districtsOf(geoTree, division).map((d) => (
+                <option key={d.nameEn} value={d.nameEn}>
+                  {isBn ? d.nameBn : d.nameEn}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls} htmlFor={`${uid}-upazila`}>{upazilaLabel}</label>
+            <select
+              id={`${uid}-upazila`}
+              className={inputCls}
+              value={upazila}
+              required={upazilaDef?.required ?? true}
+              disabled={!district}
+              onChange={(e) => setUpazila(e.target.value)}
+            >
+              <option value="">{s.chooseUpazila}</option>
+              {upazilasOf(geoTree, division, district).map((u) => (
+                <option key={u.nameEn} value={u.nameEn}>
+                  {isBn ? u.nameBn : u.nameEn}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      );
+    }
+    if (geoFailed) {
+      return (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <label className={labelCls} htmlFor={`${uid}-division`}>{divisionLabel}</label>
+            <input id={`${uid}-division`} className={inputCls} value={division} onChange={(e) => setDivision(e.target.value)} placeholder={s.divisionPlaceholder} autoComplete="address-level1" />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor={`${uid}-district`}>{districtLabel}</label>
+            <input id={`${uid}-district`} className={inputCls} value={district} onChange={(e) => setDistrict(e.target.value)} placeholder={s.districtPlaceholder} autoComplete="address-level2" />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor={`${uid}-upazila`}>{upazilaLabel}</label>
+            <input id={`${uid}-upazila`} className={inputCls} value={upazila} onChange={(e) => setUpazila(e.target.value)} placeholder={s.upazilaPlaceholder} />
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div>
+        <span className={labelCls}>
+          {divisionLabel} / {districtLabel} / {upazilaLabel}
+        </span>
+        <select disabled className={inputCls}>
+          <option>{s.geoLoading}</option>
+        </select>
+      </div>
+    );
+  }
+
+  function renderInfoField(def: CheckoutFieldDef) {
+    if (def.key === "customerName") {
+      return (
+        <div key={def.key}>
+          <label className={labelCls} htmlFor={`${uid}-name`}>{fieldLabel(def)}</label>
+          <input id={`${uid}-name`} className={inputCls} value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder={placeholderFor(def, s.namePlaceholder)} autoComplete="name" />
+        </div>
+      );
+    }
+    if (def.key === "phone") {
+      return (
+        <div key={def.key}>
+          <label className={labelCls} htmlFor={`${uid}-phone`}>{fieldLabel(def)}</label>
+          <input id={`${uid}-phone`} className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={placeholderFor(def, "01XXXXXXXXX")} inputMode="tel" autoComplete="tel" />
+        </div>
+      );
+    }
+    if (def.key === "email") {
+      return (
+        <div key={def.key}>
+          <label className={labelCls} htmlFor={`${uid}-email`}>{fieldLabel(def)}</label>
+          <input id={`${uid}-email`} type="email" inputMode="email" className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder={placeholderFor(def, s.emailPlaceholder)} autoComplete="email" {...validationAttrs(def)} />
+        </div>
+      );
+    }
+    return null;
+  }
+
+  function renderAddressField(def: CheckoutFieldDef) {
+    if (def.key === "union") {
+      return (
+        <div key={def.key}>
+          <label className={labelCls} htmlFor={`${uid}-union`}>{fieldLabel(def)}</label>
+          <input id={`${uid}-union`} className={inputCls} value={union} onChange={(e) => setUnion(e.target.value)} placeholder={placeholderFor(def, s.unionPlaceholder)} {...validationAttrs(def)} />
+        </div>
+      );
+    }
+    if (def.key === "addressLine") {
+      return (
+        <div key={def.key}>
+          <label className={labelCls} htmlFor={`${uid}-address`}>{fieldLabel(def)}</label>
+          <textarea id={`${uid}-address`} className={`${inputCls} min-h-20`} value={addressLine} onChange={(e) => setAddressLine(e.target.value)} placeholder={placeholderFor(def, s.addressPlaceholder)} autoComplete="street-address" {...validationAttrs(def)} />
+        </div>
+      );
+    }
+    if (def.key === "note") {
+      return (
+        <div key={def.key}>
+          <label className={labelCls} htmlFor={`${uid}-note`}>{fieldLabel(def)}</label>
+          <input id={`${uid}-note`} className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder={def.placeholder || undefined} {...validationAttrs(def)} />
+        </div>
+      );
+    }
+    if (def.extra) {
+      return (
+        <div key={def.key}>
+          <label className={labelCls} htmlFor={`${uid}-${def.key}`}>{fieldLabel(def)}</label>
+          <input
+            id={`${uid}-${def.key}`}
+            className={inputCls}
+            value={extraAnswers[def.key] ?? ""}
+            onChange={(e) => setExtraAnswers((prev) => ({ ...prev, [def.key]: e.target.value }))}
+            placeholder={def.placeholder || undefined}
+            {...validationAttrs(def)}
+          />
+        </div>
+      );
+    }
+    return null;
+  }
+
   return (
     <form onSubmit={handleSubmit} className="rounded-2xl border border-border bg-card p-5 shadow-sm" noValidate>
       <p className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="font-bold text-text-main">{product.productTitleBn}</span>
+        <span className="font-bold text-text-main">{productTitle}</span>
         <a href={`/product/${product.productSlug}`} className="text-sm text-brand-600 underline">
-          বিস্তারিত দেখুন
+          {s.viewDetailsShort}
         </a>
       </p>
 
       {product.variants.length > 1 ? (
         <fieldset className="mt-4">
-          <legend className={labelCls}>ভেরিয়েন্ট বেছে নিন</legend>
+          <legend className={labelCls}>{s.variantLegend}</legend>
           <div className="grid gap-2">
             {product.variants.map((v) => (
               <label
@@ -204,14 +743,14 @@ export function QuickOrderForm({ product }: { product: ResolvedOrderProduct }) {
                     }}
                     className="h-4 w-4 accent-brand-600"
                   />
-                  <span className="font-medium text-text-main">{v.variantLabel}</span>
+                  <span className="font-medium text-text-main">{v.variantLabel || s.standardVariant}</span>
                 </span>
                 <span className="text-right">
                   <span className="font-bold text-brand-600">{formatBdt(v.pricePoisha)}</span>
                   {v.compareAtPoisha && v.compareAtPoisha > v.pricePoisha ? (
                     <span className="ml-1.5 text-sm text-text-muted line-through">{formatBdt(v.compareAtPoisha)}</span>
                   ) : null}
-                  <span className="block text-xs text-text-muted">{v.inStock ? `স্টক আছে (${v.stock}টি)` : "স্টক শেষ"}</span>
+                  <span className="block text-xs text-text-muted">{v.inStock ? interpolate(s.inStockCount, { count: v.stock }) : s.outOfStock}</span>
                 </span>
               </label>
             ))}
@@ -223,16 +762,16 @@ export function QuickOrderForm({ product }: { product: ResolvedOrderProduct }) {
           {selected.compareAtPoisha && selected.compareAtPoisha > selected.pricePoisha ? (
             <span className="text-text-muted line-through">{formatBdt(selected.compareAtPoisha)}</span>
           ) : null}
-          <span className="text-sm text-text-muted">{selected.inStock ? `স্টক আছে (${selected.stock}টি)` : "স্টক শেষ"}</span>
+          <span className="text-sm text-text-muted">{selected.inStock ? interpolate(s.inStockCount, { count: selected.stock }) : s.outOfStock}</span>
         </p>
       ) : null}
 
       <div className="mt-4">
-        <label className={labelCls} htmlFor={`${uid}-qty`}>পরিমাণ</label>
+        <label className={labelCls} htmlFor={`${uid}-qty`}>{s.quantityLabel}</label>
         <div className="flex items-center gap-2">
           <button
             type="button"
-            aria-label="পরিমাণ কমান"
+            aria-label={s.qtyDecreaseAria}
             onClick={() => setQuantity((q) => Math.max(1, q - 1))}
             disabled={!selected?.inStock}
             className="min-h-12 w-12 rounded-lg border border-border text-xl font-bold text-text-main transition hover:border-brand-400 disabled:opacity-50"
@@ -251,7 +790,7 @@ export function QuickOrderForm({ product }: { product: ResolvedOrderProduct }) {
           />
           <button
             type="button"
-            aria-label="পরিমাণ বাড়ান"
+            aria-label={s.qtyIncreaseAria}
             onClick={() => setQuantity((q) => Math.min(maxQty, q + 1))}
             disabled={!selected?.inStock}
             className="min-h-12 w-12 rounded-lg border border-border text-xl font-bold text-text-main transition hover:border-brand-400 disabled:opacity-50"
@@ -261,63 +800,64 @@ export function QuickOrderForm({ product }: { product: ResolvedOrderProduct }) {
         </div>
       </div>
 
+      {funnel?.bump ? (
+        // Doc 34 §3.7 order bump: one checkbox-card under the form's
+        // product block. Heading is the owner's step copy; prices
+        // are the render-time live prices (display only — the
+        // server recomputes the line from the DB at submit).
+        <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border-2 border-dashed border-brand-400 bg-brand-50 p-3.5">
+          <input
+            type="checkbox"
+            checked={bumpAccepted}
+            onChange={(e) => setBumpAccepted(e.target.checked)}
+            className="mt-1 h-5 w-5 shrink-0 accent-brand-600"
+          />
+          {funnel.bump.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <StoreImage src={funnel.bump.imageUrl} alt="" preset="thumb" className="w-14 shrink-0 rounded-lg" />
+          ) : null}
+          <span className="min-w-0">
+            <span className="block font-bold text-text-main">
+              {locale === "en" ? funnel.bump.headingEn || funnel.bump.headingBn : funnel.bump.headingBn}
+            </span>
+            <span className="block text-sm text-text-main">
+              {locale === "en" ? funnel.bump.productTitleEn || funnel.bump.productTitleBn : funnel.bump.productTitleBn}
+              {funnel.bump.variantLabel ? ` — ${funnel.bump.variantLabel}` : ""}
+            </span>
+            <span className="mt-0.5 flex flex-wrap items-baseline gap-1.5">
+              <span className="font-bold text-brand-600">{formatBdt(funnel.bump.discountedPoisha)}</span>
+              {funnel.bump.discountedPoisha < funnel.bump.livePricePoisha ? (
+                <>
+                  <span className="text-sm text-text-muted line-through">{formatBdt(funnel.bump.livePricePoisha)}</span>
+                  <span className="rounded bg-success-soft px-1.5 py-0.5 text-xs font-semibold text-success-solid">
+                    {interpolate(s.funnelYouSave, { amount: formatBdt(funnel.bump.livePricePoisha - funnel.bump.discountedPoisha) })}
+                  </span>
+                </>
+              ) : null}
+            </span>
+          </span>
+        </label>
+      ) : null}
+
       <div className="mt-4 grid gap-3">
-        <div>
-          <label className={labelCls} htmlFor={`${uid}-name`}>আপনার নাম *</label>
-          <input id={`${uid}-name`} className={inputCls} value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="যেমন: মোঃ রফিকুল ইসলাম" autoComplete="name" />
-        </div>
-        <div>
-          <label className={labelCls} htmlFor={`${uid}-phone`}>মোবাইল নম্বর *</label>
-          <input id={`${uid}-phone`} className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="01XXXXXXXXX" inputMode="tel" autoComplete="tel" />
-        </div>
-        <div>
-          <span className={labelCls}>ডেলিভারি এলাকা *</span>
-          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="ডেলিভারি এলাকা">
-            {(
-              [
-                { value: "inside_dhaka", label: "ঢাকার ভিতরে" },
-                { value: "outside_dhaka", label: "ঢাকার বাইরে" },
-              ] as { value: Zone; label: string }[]
-            ).map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                role="radio"
-                aria-checked={zone === opt.value}
-                onClick={() => setZone(opt.value)}
-                className={`min-h-12 rounded-lg border px-3 py-2 font-semibold transition ${
-                  zone === opt.value
-                    ? "border-brand-600 bg-brand-50 text-brand-700 ring-1 ring-brand-600/40"
-                    : "border-border text-text-main hover:border-brand-400"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div>
-            <label className={labelCls} htmlFor={`${uid}-division`}>বিভাগ *</label>
-            <input id={`${uid}-division`} className={inputCls} value={division} onChange={(e) => setDivision(e.target.value)} placeholder="ঢাকা" autoComplete="address-level1" />
-          </div>
-          <div>
-            <label className={labelCls} htmlFor={`${uid}-district`}>জেলা *</label>
-            <input id={`${uid}-district`} className={inputCls} value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="ঢাকা" autoComplete="address-level2" />
-          </div>
-          <div>
-            <label className={labelCls} htmlFor={`${uid}-upazila`}>উপজেলা / থানা *</label>
-            <input id={`${uid}-upazila`} className={inputCls} value={upazila} onChange={(e) => setUpazila(e.target.value)} placeholder="মিরপুর" />
-          </div>
-        </div>
-        <div>
-          <label className={labelCls} htmlFor={`${uid}-union`}>ইউনিয়ন (যদি থাকে)</label>
-          <input id={`${uid}-union`} className={inputCls} value={union} onChange={(e) => setUnion(e.target.value)} placeholder="ঐচ্ছিক" />
-        </div>
-        <div>
-          <label className={labelCls} htmlFor={`${uid}-address`}>সম্পূর্ণ ঠিকানা *</label>
-          <textarea id={`${uid}-address`} className={`${inputCls} min-h-20`} value={addressLine} onChange={(e) => setAddressLine(e.target.value)} placeholder="বাসা/হোল্ডিং, রোড, এলাকা — যেমন: বাসা ১২, রোড ৫, মিরপুর ১০" autoComplete="street-address" />
-        </div>
+        {infoFieldDefs.map((def) => renderInfoField(def))}
+      </div>
+
+      <div className="mt-3 grid gap-3">
+        {(() => {
+          // The cascade renders once, as a unit, at the position of
+          // its first key in the address group's config order — the
+          // checkout's renderAddressFields pattern.
+          let cascadeRendered = false;
+          return addressFieldDefs.map((def) => {
+            if (def.key === "division" || def.key === "district" || def.key === "upazila") {
+              if (cascadeRendered) return null;
+              cascadeRendered = true;
+              return <Fragment key="address-cascade">{renderCascade()}</Fragment>;
+            }
+            return renderAddressField(def);
+          });
+        })()}
       </div>
 
       {phase.kind === "error" ? (
@@ -333,12 +873,30 @@ export function QuickOrderForm({ product }: { product: ResolvedOrderProduct }) {
         </div>
       ) : null}
 
-      <div className="mt-4 flex flex-wrap items-baseline justify-between gap-2 border-t border-border pt-4">
-        <span className="text-sm text-text-muted">পণ্যের মূল্য</span>
-        <span className="text-xl font-bold text-text-main">{formatBdt(subtotalPoisha)}</span>
+      <div className="mt-4 border-t border-border pt-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <span className="text-sm text-text-muted">{s.subtotalLabel}</span>
+          <span className="font-semibold text-text-main">{formatBdt(previewSubtotalPoisha)}</span>
+        </div>
+        {shippingPreview ? (
+          <>
+            <div className="mt-1.5 flex flex-wrap items-baseline justify-between gap-2">
+              <span className="text-sm text-text-muted">{s.deliveryChargeLabel}</span>
+              <span className="font-semibold text-text-main">
+                {shippingPreview.freeShippingApplied ? s.deliveryFree : formatBdt(shippingPreview.shippingPoisha)}
+              </span>
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-baseline justify-between gap-2">
+              <span className="text-sm font-semibold text-text-main">{s.grandTotalLabel}</span>
+              <span className="text-xl font-bold text-text-main">
+                {formatBdt(previewSubtotalPoisha + shippingPreview.shippingPoisha)}
+              </span>
+            </div>
+          </>
+        ) : null}
       </div>
       <p className="mt-1 text-xs leading-5 text-text-muted">
-        ডেলিভারি চার্জ ঠিকানা অনুযায়ী অর্ডারের মোটে যোগ হবে। পেমেন্ট: ক্যাশ অন ডেলিভারি — পণ্য হাতে পেয়ে টাকা দিন।
+        {shippingPreview ? `${s.estimateNote} ` : ""}{s.deliveryNote}
       </p>
 
       <button
@@ -346,7 +904,7 @@ export function QuickOrderForm({ product }: { product: ResolvedOrderProduct }) {
         disabled={submitting || !selected?.inStock}
         className="brand-gradient mt-4 min-h-12 w-full rounded-xl px-4 py-3.5 text-lg font-bold text-white shadow-lift transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {!anyInStock || !selected?.inStock ? "স্টক শেষ" : submitting ? "অর্ডার করা হচ্ছে…" : "অর্ডার করুন — ক্যাশ অন ডেলিভারি"}
+        {!anyInStock || !selected?.inStock ? s.outOfStock : submitting ? s.submitBusy : s.submitLabel}
       </button>
     </form>
   );

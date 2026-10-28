@@ -11,8 +11,16 @@
  *   Cart (count badge in the primary orange).
  * - Tier 2: a full-width deep-green bar with the category row
  *   (roots from the `categories` prop, each linking
- *   /shop?category=<slug>, plus the header menu links) — sticky
- *   with the header, horizontally scrollable on mobile.
+ *   /shop?category=<slug>, plus the header menu links) —
+ *   horizontally scrollable on mobile.
+ *
+ * Doc 33 R2 (mobile-first): below `lg` only tier 1 sticks (the
+ * §3.3 sticky budget) — tier 2 renders as the header's sibling so
+ * it scrolls away instead of being trapped in the sticky box; at
+ * `lg` it re-sticks directly under the 68px main tier and carries
+ * the pair's shadow again. The shared MobileMenuDrawer (hamburger
+ * in tier 1) carries the CMS menu + categories on phone; its
+ * footer slot holds the language switcher.
  *
  * Behaviour differences from Aurora are the package's point:
  * - The cart action OPENS the cart drawer (cart-drawer-events)
@@ -41,6 +49,7 @@
  * reason). No number is invented here.
  */
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { WISHLIST_CHANGE_EVENT, getWishlistIds } from "@/catalog/wishlist";
@@ -51,6 +60,7 @@ import { Icon } from "@/components/ui/icon";
 import { useDigitText } from "@/components/ui/numerals";
 import { DEFAULT_HEADER_MENU } from "@/cms/site-content-types";
 import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
+import { MobileMenuDrawer } from "@/storefront-ux/components/MobileMenuDrawer";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { useThemeView } from "../theme-view";
@@ -85,6 +95,11 @@ export default function BazaarHeader({
   const [cartTotalPoisha, setCartTotalPoisha] = useState(0);
   const [wishlistCount, setWishlistCount] = useState(0);
   const [scrolled, setScrolled] = useState(false);
+  // Doc 33 R3: on PDP + checkout the page's own sticky buy/checkout
+  // bar owns the bottom edge — the floating support column hides
+  // there instead of competing with it.
+  const pathname = usePathname();
+  const onBuySurface = pathname !== null && (pathname.startsWith("/product/") || pathname === "/checkout");
 
   // Guest-cart + wishlist counts — SiteHeader's exact data path.
   useEffect(() => {
@@ -134,17 +149,29 @@ export default function BazaarHeader({
 
   return (
     <>
-      <header className="sticky top-0 z-40 shadow-card">
-        {/* Tier 1 — white: brand, search, actions */}
+      <header className="sticky top-0 z-40 shadow-card lg:shadow-none">
+        {/* Tier 1 — white: brand, search, actions. The ONLY tier
+            that sticks below lg (doc 33 §3.3): phone stuck height =
+            py-2 (16) + 44px row + 8px gap + 44px search row = 112px,
+            exactly the budget. Tier 2 lives outside this header so
+            it can scroll away (see below). */}
         <div className="bg-card">
-          <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:px-6 lg:flex-nowrap">
+          <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 sm:gap-x-4 sm:px-6 lg:flex-nowrap lg:py-3">
+            <MobileMenuDrawer
+              brandName={brandName}
+              headerMenu={headerMenu}
+              categories={categories}
+              footer={<LanguageSwitcher />}
+              triggerClassName="rounded-full text-[#102E2A]"
+              panelClassName="border-r-4 border-primary"
+            />
             <Link
               href="/"
-              className="flex shrink-0 items-center gap-2"
+              className="flex min-w-0 items-center gap-2"
               aria-label={brandName}
             >
               <span
-                className="flex h-10 w-10 items-center justify-center rounded-md text-lg font-bold text-white"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-lg font-bold text-white"
                 style={{ backgroundColor: BAZAAR_COLORS.navGreen }}
               >
                 {brandName.charAt(0)}
@@ -171,7 +198,7 @@ export default function BazaarHeader({
                 <button
                   type="submit"
                   aria-label={s.searchButtonAria}
-                  className="absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white transition hover:opacity-90"
+                  className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white transition hover:opacity-90"
                 >
                   <Icon name="search" size={18} />
                 </button>
@@ -187,7 +214,7 @@ export default function BazaarHeader({
                 <Link
                   key={a.href}
                   href={a.href}
-                  className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary"
+                  className="relative flex min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary"
                 >
                   <span className="relative">
                     <Icon name={a.icon} size={23} />
@@ -200,7 +227,7 @@ export default function BazaarHeader({
                 type="button"
                 onClick={openCartDrawer}
                 aria-label={effectiveCartCount > 0 ? interpolate(s.cartDrawerAriaCount, { count: effectiveCartCount }) : s.cartDrawerAria}
-                className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary"
+                className="relative flex min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary"
               >
                 <span className="relative">
                   <Icon name="cart" size={23} />
@@ -211,13 +238,18 @@ export default function BazaarHeader({
             </div>
           </div>
         </div>
+      </header>
 
-        {/* Tier 2 — deep-green category bar */}
-        <nav
-          aria-label={s.categoriesAria}
-          className="text-white"
-          style={{ backgroundColor: BAZAAR_COLORS.navGreen }}
-        >
+      {/* Tier 2 — deep-green category bar. A sibling of the header
+          (doc 33 R2): in normal flow below lg, so it scrolls away
+          under the stuck tier 1; at lg it sticks under the 68px
+          main tier (py-3 24px + 44px row) and carries the shadow
+          the header used to cast below it. */}
+      <nav
+        aria-label={s.categoriesAria}
+        className="text-white lg:sticky lg:top-[68px] lg:z-30 lg:shadow-card"
+        style={{ backgroundColor: BAZAAR_COLORS.navGreen }}
+      >
           <div className="scrollbar-none mx-auto flex max-w-[1440px] items-center gap-1 overflow-x-auto px-4 sm:px-6">
             <Link
               href="/shop"
@@ -246,8 +278,7 @@ export default function BazaarHeader({
               </Link>
             ))}
           </div>
-        </nav>
-      </header>
+      </nav>
 
       {/* Floating cart tab — right edge, count + total; opens the
           drawer. Rendered only when the merchant option is on and
@@ -257,7 +288,7 @@ export default function BazaarHeader({
           type="button"
           onClick={openCartDrawer}
           aria-label={interpolate(s.floatingCartAria, { count: effectiveCartCount, total: formatBdt(cartTotalPoisha) })}
-          className="fixed right-0 top-1/3 z-40 flex flex-col items-center gap-0.5 rounded-l-lg bg-primary px-2.5 py-3 text-white shadow-pop transition hover:opacity-95"
+          className="fixed right-[max(0px,env(safe-area-inset-right))] top-1/3 z-40 flex flex-col items-center gap-0.5 rounded-l-lg bg-primary px-2.5 py-3 text-white shadow-pop transition hover:opacity-95"
         >
           <Icon name="cart" size={20} />
           <span className="text-[11px] font-bold leading-tight">
@@ -272,8 +303,8 @@ export default function BazaarHeader({
       {/* Floating support buttons — call/chat; both route to
           /contact (see header comment: no public phone/WhatsApp
           setting reaches the header). */}
-      {showSupportButtons ? (
-        <div className="fixed bottom-24 right-3 z-40 flex flex-col gap-2 lg:bottom-6">
+      {showSupportButtons && !onBuySurface ? (
+        <div className="fixed bottom-[max(6rem,calc(env(safe-area-inset-bottom)+5.5rem))] right-[max(0.75rem,env(safe-area-inset-right))] z-40 flex flex-col gap-2 lg:bottom-[max(1.5rem,env(safe-area-inset-bottom))]">
           <Link
             href="/contact"
             aria-label={s.chatContactAria}

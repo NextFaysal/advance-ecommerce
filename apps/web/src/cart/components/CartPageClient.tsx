@@ -33,6 +33,8 @@ import {
   loadGuestCart,
   saveGuestCart,
 } from "../persistence";
+import { QtyStepper } from "@/storefront-ux/components/CartPrimitives";
+import { CartListSkeleton } from "@/storefront-ux/components/StorefrontSkeletons";
 import { CART_STRINGS } from "../strings";
 import { cartSubtotalPoisha, type Cart } from "../types";
 import { addQty, DEFAULT_WEIGHTED_STEP, lineTotalPoisha, qtyNumber, qtyToString, subQty } from "@/lib/quantity";
@@ -196,7 +198,12 @@ export default function CartPageClient({
     return (
       <main className="mx-auto min-w-0 max-w-7xl px-4 py-6">
         <h1 className="text-xl font-bold">{s.yourCart}</h1>
-        <p className="mt-4 text-sm text-text-muted">{s.cartLoading}</p>
+        <p className="sr-only" role="status">{s.cartLoading}</p>
+        {/* Skeleton rows (doc 32 P1/P3) in the list's card frame —
+            same geometry the loaded list renders in. */}
+        <div className="mt-4 rounded-xl border border-border bg-card px-4 shadow-card">
+          <CartListSkeleton rows={3} />
+        </div>
       </main>
     );
   }
@@ -297,29 +304,19 @@ export default function CartPageClient({
                       const step = annotation ? (annotation.stepQuantity ?? DEFAULT_WEIGHTED_STEP) : 1;
                       const minQty = step;
                       return (
-                        <div className="inline-flex items-center rounded-md border border-border">
-                          <button
-                            type="button"
-                            aria-label={s.decreaseQuantity}
-                            disabled={line.item.quantity <= minQty}
-                            onClick={() => setQuantity(line.item.variantId, subQty(line.item.quantity, step))}
-                            className="flex h-11 w-11 items-center justify-center text-lg disabled:opacity-40"
-                          >
-                            −
-                          </button>
-                          <span className="w-10 text-center text-sm font-medium tabular-nums" aria-label={t.quantity}>
-                            {qtyToString(line.item.quantity)}
-                          </span>
-                          <button
-                            type="button"
-                            aria-label={s.increaseQuantity}
-                            disabled={line.outOfStock || line.item.quantity >= line.stockCap}
-                            onClick={() => setQuantity(line.item.variantId, addQty(line.item.quantity, step))}
-                            className="flex h-11 w-11 items-center justify-center text-lg disabled:opacity-40"
-                          >
-                            +
-                          </button>
-                        </div>
+                        /* Shared QtyStepper (doc 32 P1) — comfortable
+                           density reproduces this stepper's exact
+                           markup; stepping rules stay above. */
+                        <QtyStepper
+                          value={qtyToString(line.item.quantity)}
+                          valueLabel={t.quantity}
+                          decreaseLabel={s.decreaseQuantity}
+                          increaseLabel={s.increaseQuantity}
+                          decreaseDisabled={line.item.quantity <= minQty}
+                          increaseDisabled={line.outOfStock || line.item.quantity >= line.stockCap}
+                          onDecrease={() => setQuantity(line.item.variantId, subQty(line.item.quantity, step))}
+                          onIncrease={() => setQuantity(line.item.variantId, addQty(line.item.quantity, step))}
+                        />
                       );
                     })()}
                     {line.outOfStock ? (
@@ -355,8 +352,11 @@ export default function CartPageClient({
           </div>
         </div>
 
-        {/* Summary */}
-        <Card className="h-fit">
+        {/* Summary — sticky under the shell header on desktop
+            (same offset the shop chrome uses); on phone it stacks
+            below the lines and the sticky bottom bar carries the
+            total + checkout instead. */}
+        <Card className="h-fit lg:sticky lg:top-[9.5rem] lg:self-start">
           <h2 className="text-base font-semibold">{s.orderSummary}</h2>
 
           <div className="mt-3">

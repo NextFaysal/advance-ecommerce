@@ -25,6 +25,7 @@ import { CIRCUIT_STRINGS } from "./strings";
 import Link from "next/link";
 import type { Category } from "@/catalog/types";
 import type { HeroSlide } from "@/cms/site-content-types";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
 
 function SlidePanel({
   slide,
@@ -36,13 +37,7 @@ function SlidePanel({
   const inner = (
     <>
       {slide.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={slide.imageUrl}
-          alt={slide.headlineBn}
-          loading={priority ? undefined : "lazy"}
-          className="absolute inset-0 h-full w-full object-cover"
-        />
+        <StoreImage src={slide.imageUrl} alt={slide.headlineBn} preset="hero" fillParent priority={priority} />
       ) : (
         <span aria-hidden="true" className="brand-soft-gradient absolute inset-0" />
       )}
@@ -52,7 +47,7 @@ function SlidePanel({
       />
       <span className="absolute inset-x-0 bottom-0 block p-5 sm:p-7">
         <span
-          className={`block max-w-lg font-display text-xl font-extrabold leading-snug sm:text-3xl ${
+          className={`block max-w-lg font-display text-2xl font-extrabold leading-snug sm:text-3xl ${
             slide.imageUrl ? "text-white" : "text-text-main"
           }`}
         >
@@ -102,7 +97,7 @@ function StaticPanel() {
       <span aria-hidden="true" className="brand-gradient absolute -right-12 -top-12 h-48 w-48 rounded-full opacity-20" />
       <span aria-hidden="true" className="absolute -bottom-16 -left-10 h-56 w-56 rounded-full bg-primary/10" />
       <span className="absolute inset-x-0 bottom-0 block p-5 sm:p-7">
-        <span className="block max-w-lg font-display text-xl font-extrabold leading-snug text-text-main sm:text-3xl">
+        <span className="block max-w-lg font-display text-2xl font-extrabold leading-snug text-text-main sm:text-3xl">
           {str.staticHeadline}
         </span>
         <span className="mt-1.5 block max-w-md text-sm leading-6 text-text-muted">
@@ -129,13 +124,7 @@ function SlideTile({ slide }: { slide: HeroSlide }) {
         aria-label={slide.headlineBn}
       >
         {slide.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={slide.imageUrl}
-            alt={slide.headlineBn}
-            loading="lazy"
-            className="absolute inset-0 h-full w-full object-cover"
-          />
+          <StoreImage src={slide.imageUrl} alt={slide.headlineBn} preset="hero" fillParent />
         ) : (
           <span aria-hidden="true" className="brand-soft-gradient absolute inset-0" />
         )}
@@ -167,12 +156,12 @@ function CategoryTile({ category }: { category: Category }) {
       aria-label={category.name[locale] || category.name.bn}
     >
       {category.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <StoreImage
           src={category.imageUrl}
           alt={category.name[locale] || category.name.bn}
-          loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.04]"
+          preset="hero"
+          fillParent
+          imgClassName="transition duration-300 group-hover:scale-[1.04]"
         />
       ) : (
         <span aria-hidden="true" className="brand-soft-gradient absolute inset-0" />
@@ -278,7 +267,7 @@ export default function CircuitHomeHero({
                 aria-selected={i === index}
                 aria-label={interpolate(str.bannerN, { n: i + 1 })}
                 onClick={() => goTo(i)}
-                className="flex h-8 w-6 items-center justify-center"
+                className="flex h-11 w-7 items-center justify-center"
               >
                 <span
                   aria-hidden="true"

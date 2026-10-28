@@ -50,6 +50,7 @@ import { minVariantPricePoisha } from "@/catalog/types";
 import { DEFAULT_HEADER_MENU, type SiteMenuItem } from "@/cms/site-content-types";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
+import { MobileMenuDrawer } from "@/storefront-ux/components/MobileMenuDrawer";
 import { interpolate, pick } from "@/i18n/locale";
 import { SHELL_STRINGS, TRENDING_TERMS } from "./strings";
 
@@ -171,14 +172,6 @@ function SearchIcon() {
     >
       <circle cx="11" cy="11" r="7" />
       <path d="M20 20l-3.8-3.8" />
-    </svg>
-  );
-}
-
-function MenuIcon({ open }: { open: boolean }) {
-  return (
-    <svg {...iconProps}>
-      {open ? <path d="M5 5l14 14M19 5L5 19" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
     </svg>
   );
 }
@@ -331,7 +324,6 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
   const navItems: ReadonlyArray<SiteMenuItem> =
     headerMenu && headerMenu.length > 0 ? headerMenu : DEFAULT_HEADER_MENU;
   const pathname = usePathname();
-  const [menuOpen, setMenuOpen] = useState(false);
   const [wishlistCount, setWishlistCount] = useState(0);
   const [localCartCount, setLocalCartCount] = useState(0);
   const [scrolled, setScrolled] = useState(false);
@@ -379,7 +371,6 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
 
   // Panels/menus never survive a navigation.
   useEffect(() => {
-    setMenuOpen(false);
     setMegaOpen(false);
     setSearchOpen(false);
     setMobileSearchOpen(false);
@@ -416,7 +407,6 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
   }, [query]);
 
   const effectiveCartCount = cartCount ?? localCartCount;
-  const hasCategories = Boolean(categories && categories.length > 0);
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : (pathname?.startsWith(href) ?? false);
   // On product pages the PDP's own sticky buy bar owns the bottom edge —
@@ -448,18 +438,26 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
         </div>
       </div>
 
-      <header
-        className={`sticky top-0 z-40 transition-shadow duration-200 ${
-          scrolled ? "glass" : "border-b border-border bg-card shadow-sm"
-        }`}
-      >
-        <div className="mx-auto flex h-16 max-w-[1440px] items-center gap-3 px-4 sm:gap-4 sm:px-6">
+      <header className="sticky top-0 z-40">
+        {/* Surface layer (doc 33 R2): the glass/solid treatment lives
+            on this aria-hidden layer instead of the <header> itself —
+            .glass carries backdrop-filter, which would become the
+            containing block for the MobileMenuDrawer's fixed panel
+            and trap it inside the header box. Geometry is unchanged:
+            the layer covers the header exactly, shadow included. */}
+        <div
+          aria-hidden="true"
+          className={`absolute inset-0 -z-10 transition-shadow duration-200 ${
+            scrolled ? "glass" : "border-b border-border bg-card shadow-sm"
+          }`}
+        />
+        <div className="relative mx-auto flex h-16 max-w-[1440px] items-center gap-3 px-4 sm:gap-4 sm:px-6">
           {/* Brand */}
           <a href="/" className="flex shrink-0 items-center gap-2" aria-label={brandName}>
             <span className="brand-gradient flex h-9 w-9 items-center justify-center rounded-lg text-base font-bold text-white shadow-sm">
               {brandName.charAt(0)}
             </span>
-            <span className="hidden text-base font-bold text-text-main min-[420px]:block">
+            <span className="hidden text-base font-bold text-text-main xs:block">
               {brandName}
             </span>
           </a>
@@ -612,15 +610,16 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
               <CartIcon />
               <CountBadge count={effectiveCartCount} pop />
             </a>
-            <button
-              type="button"
-              aria-label={menuOpen ? s.closeMenu : s.openMenu}
-              aria-expanded={menuOpen}
-              onClick={() => setMenuOpen((v) => !v)}
-              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-text-muted hover:bg-surface-2 lg:hidden"
-            >
-              <MenuIcon open={menuOpen} />
-            </button>
+            {/* Doc 33 R2: the shared MobileMenuDrawer replaces the old
+                in-header disclosure menu (same headerMenu/categories
+                props, same links); the language switcher rides its
+                footer slot so it stays reachable at every width. */}
+            <MobileMenuDrawer
+              brandName={brandName}
+              headerMenu={headerMenu}
+              categories={categories}
+              footer={<LanguageSwitcher />}
+            />
           </span>
         </div>
 
@@ -744,82 +743,6 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
             ) : null}
         </div>
 
-        {/* Mobile menu — simple disclosure (+ category section, v3) */}
-        {menuOpen ? (
-          <nav aria-label={s.mobileNavigation} className="border-t border-border bg-card px-4 py-2 lg:hidden">
-            {navItems.map((link) => (
-              <span key={link.id} className="block">
-                <a
-                  href={link.href}
-                  aria-current={isActive(link.href) ? "page" : undefined}
-                  className={`block rounded-lg px-3 py-2.5 text-sm ${
-                    isActive(link.href)
-                      ? "bg-secondary font-semibold text-secondary-foreground"
-                      : "text-text-main hover:bg-surface-2"
-                  }`}
-                >
-                  {menuLabel(link)}
-                </a>
-                {link.children.map((child) => (
-                  <a
-                    key={child.id}
-                    href={child.href}
-                    className="block rounded-lg py-2.5 pl-8 pr-3 text-sm text-text-muted hover:bg-surface-2"
-                  >
-                    {menuLabel(child)}
-                  </a>
-                ))}
-              </span>
-            ))}
-            <a href="/account" className="block rounded-lg px-3 py-2.5 text-sm text-text-main hover:bg-surface-2">
-              {t.account}
-            </a>
-            <a href="/wishlist" className="block rounded-lg px-3 py-2.5 text-sm text-text-main hover:bg-surface-2">
-              {t.wishlist}
-            </a>
-            <div className="px-3 py-2.5 md:hidden">
-              <LanguageSwitcher />
-            </div>
-            {categories === undefined ? (
-              <div className="mt-1 border-t border-border pt-1">
-                <p className="px-3 pb-1 pt-2.5 text-xs font-bold text-text-subtle">{t.categories}</p>
-                <p role="status" className="px-3 py-2.5 text-sm text-text-muted">
-                  {t.loading}
-                </p>
-              </div>
-            ) : hasCategories ? (
-              <div className="mt-1 border-t border-border pt-1">
-                <p className="px-3 pb-1 pt-2.5 text-xs font-bold text-text-subtle">{t.categories}</p>
-                {categories.map((c) => (
-                  <span key={c.slug} className="block">
-                    <a
-                      href={`/shop?category=${c.slug}`}
-                      className="flex min-h-[44px] items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm text-text-main hover:bg-surface-2"
-                    >
-                      <span className="min-w-0 truncate">{c.name[locale] || c.name.bn}</span>
-                      <span className="shrink-0 text-xs text-text-subtle">{interpolate(s.productsCount, { count: c.productCount })}</span>
-                    </a>
-                    {/* Wave 13-2: sub-categories indented under their
-                        parent (depth 2, same as the desktop menu). */}
-                    {c.children.map((child) => (
-                      <a
-                        key={child.slug}
-                        href={`/shop?category=${child.slug}`}
-                        className="flex min-h-[44px] items-center justify-between gap-3 rounded-lg py-2.5 pl-9 pr-3 text-sm text-text-muted hover:bg-surface-2"
-                      >
-                        <span className="min-w-0 truncate">
-                          <span aria-hidden="true" className="mr-1 text-text-subtle">↳</span>
-                          {child.name[locale] || child.name.bn}
-                        </span>
-                        <span className="shrink-0 text-xs text-text-subtle">{interpolate(s.productsCount, { count: child.productCount })}</span>
-                      </a>
-                    ))}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-          </nav>
-        ) : null}
       </header>
 
       {/* Mobile search overlay — full-screen, same GET /search contract */}
@@ -854,7 +777,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
                 <button
                   type="submit"
                   aria-label={t.search}
-                  className="brand-gradient absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:opacity-90"
+                  className="brand-gradient absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-full text-white transition hover:opacity-90"
                 >
                   <SearchIcon />
                 </button>
@@ -884,7 +807,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
       {showBottomNav ? (
         <nav
           aria-label={s.mobileQuickNavigation}
-          className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 shadow-[0_-4px_16px_rgba(49,46,129,0.08)] backdrop-blur lg:hidden"
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(49,46,129,0.08)] backdrop-blur lg:hidden"
         >
           <div className="grid grid-cols-5">
             {bottomNavItems.map((item) => {

@@ -25,6 +25,7 @@ import { BOIGHOR_STRINGS } from "./strings";
 import Link from "next/link";
 import type { Category } from "@/catalog/types";
 import type { HeroSlide } from "@/cms/site-content-types";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
 
 function SlidePanel({
   slide,
@@ -36,13 +37,7 @@ function SlidePanel({
   const inner = (
     <>
       {slide.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={slide.imageUrl}
-          alt={slide.headlineBn}
-          loading={priority ? undefined : "lazy"}
-          className="absolute inset-0 h-full w-full object-cover"
-        />
+        <StoreImage src={slide.imageUrl} alt={slide.headlineBn} preset="hero" fillParent priority={priority} />
       ) : (
         <span aria-hidden="true" className="brand-soft-gradient absolute inset-0" />
       )}
@@ -52,7 +47,7 @@ function SlidePanel({
       />
       <span className="absolute inset-x-0 bottom-0 block p-5 sm:p-7">
         <span
-          className={`block max-w-lg font-display text-xl font-extrabold leading-snug sm:text-3xl ${
+          className={`block max-w-lg font-display text-2xl font-extrabold leading-snug sm:text-3xl ${
             slide.imageUrl ? "text-white" : "text-text-main"
           }`}
         >
@@ -115,7 +110,7 @@ function StaticPanel() {
       <span aria-hidden="true" className="absolute -right-10 -top-10 h-44 w-44 rounded-full bg-primary/10" />
       <span aria-hidden="true" className="absolute -bottom-14 -left-8 h-52 w-52 rounded-full bg-primary/5" />
       <span className="absolute inset-x-0 bottom-0 block p-5 sm:p-7">
-        <span className="block max-w-lg font-display text-xl font-extrabold leading-snug text-text-main sm:text-3xl">
+        <span className="block max-w-lg font-display text-2xl font-extrabold leading-snug text-text-main sm:text-3xl">
           {str.staticHeadline}
         </span>
         <span className="mt-1.5 block max-w-md text-sm leading-6 text-text-muted">
@@ -156,12 +151,12 @@ function SideSlot({
         aria-label={category.name[locale] || category.name.bn}
       >
         {category.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <StoreImage
             src={category.imageUrl}
             alt={category.name[locale] || category.name.bn}
-            loading="lazy"
-            className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.04]"
+            preset="hero"
+            fillParent
+            imgClassName="transition duration-300 group-hover:scale-[1.04]"
           />
         ) : (
           <span aria-hidden="true" className="brand-soft-gradient absolute inset-0" />
@@ -248,7 +243,7 @@ export default function BoighorHomeHero({
                 aria-selected={i === index}
                 aria-label={interpolate(str.bannerN, { n: i + 1 })}
                 onClick={() => goTo(i)}
-                className="flex h-8 w-6 items-center justify-center"
+                className="flex h-11 w-7 items-center justify-center"
               >
                 <span
                   aria-hidden="true"

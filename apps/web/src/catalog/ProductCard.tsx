@@ -6,6 +6,9 @@
 // Wave 17 (A+ Aurora polish): token elevation (shadow-card → lift),
 // stacked badge column (no offset hacks), glass wishlist chip at a full
 // 44px touch target, slower image zoom, equal-height cards (h-full).
+// Doc 33 R6: brand meta raised 11→12px; compare-at price ≥14px on
+// phone (13px restored at lg). Touch targets were already ≥44px
+// (wishlist h-11, kit Button min-h-[44px], quick-view min-h-[44px]).
 "use client";
 
 import Link from "next/link";
@@ -195,7 +198,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
 
         <div className="px-4 pt-3.5">
           {product.brandName ? (
-            <p className="truncate text-[11px] font-semibold tracking-wide text-text-subtle">
+            <p className="truncate text-xs font-semibold tracking-wide text-text-subtle">
               {product.brandName}
             </p>
           ) : null}
@@ -219,7 +222,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
           <p className="mt-2 flex flex-wrap items-baseline gap-x-2">
             <span className="text-base font-extrabold tabular-nums text-primary">{digits(formatBdt(price))}</span>
             {compareAt !== null && compareAt > price ? (
-              <span className="text-[13px] tabular-nums text-text-subtle line-through">{digits(formatBdt(compareAt))}</span>
+              <span className="text-sm tabular-nums text-text-subtle line-through lg:text-[13px]">{digits(formatBdt(compareAt))}</span>
             ) : null}
           </p>
           )}

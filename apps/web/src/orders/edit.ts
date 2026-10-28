@@ -146,7 +146,23 @@ export interface OrderEditActor {
 export interface OrderItemEdits {
   setQuantities?: { orderItemId: string; quantity: number }[];
   removeItemIds?: string[];
-  addItems?: { variantId: string; quantity: number }[];
+  addItems?: {
+    variantId: string;
+    quantity: number;
+    /**
+     * Server-trusted price override for the added line (doc 34 §3.7,
+     * funnel upsell runtime). Callers are SERVER code that derived
+     * the price from a stored discount rule + the live catalog —
+     * never client input. The service validates it against its own
+     * snapshot inside the transaction: it must be an integer >= 1
+     * and <= the catalog price (a caller may only discount, never
+     * mark up), and it aborts when the variant already has a kept
+     * line at a different price (merging would misprice one of the
+     * units). Absent = the catalog snapshot price, as always. Staff
+     * routes never send it.
+     */
+    unitPricePoisha?: number;
+  }[];
 }
 
 export interface OrderMoney {
@@ -410,6 +426,12 @@ export async function editOrderItems(
     if (!isValidQtyNumber(a.quantity) || a.quantity > 999) {
       return fail("INVALID_INPUT", "নতুন আইটেমের পরিমাণ ১–৯৯৯ হতে হবে / Added item quantity must be between 1 and 999.");
     }
+    if (
+      a.unitPricePoisha !== undefined &&
+      (!Number.isInteger(a.unitPricePoisha) || a.unitPricePoisha < 1)
+    ) {
+      return fail("INVALID_INPUT", "যোগ করা আইটেমের দাম অবশ্যই ধনাত্মক পূর্ণসংখ্যা (পয়সা) হতে হবে / An added item's price override must be a positive integer (poisha).");
+    }
   }
 
   let outcome: OrderEditOutcome | null = null;
@@ -517,8 +539,13 @@ export async function editOrderItems(
 
       // Adds: priced at the CURRENT catalog, snapshotted like create.
       // An add whose variant already has a kept line merges into it
-      // (create aggregates duplicate lines the same way).
+      // (create aggregates duplicate lines the same way). A priced
+      // add (unitPricePoisha set — the funnel runtime's discounted
+      // upsell line) is validated against the snapshot: discount
+      // only, never above catalog; a kept line at a DIFFERENT price
+      // refuses the merge, because one line cannot carry two prices.
       let addedCount = 0;
+      const pricedAdds: { sku: string; catalogPoisha: number; chargedPoisha: number }[] = [];
       for (const add of addItems) {
         const snap = snapshots.get(add.variantId);
         if (!snap) {
@@ -527,8 +554,20 @@ export async function editOrderItems(
             `পণ্যের ভ্যারিয়েন্ট পাওয়া যায়নি / Variant not found: ${add.variantId}`,
           );
         }
+        if (add.unitPricePoisha !== undefined && add.unitPricePoisha > snap.unitPricePoisha) {
+          throw new EditAbort(
+            "INVALID_INPUT",
+            `ছাড়ের দাম ক্যাটালগ দামের বেশি হতে পারে না / A priced add may not exceed the catalog price (${snap.sku}: ${add.unitPricePoisha} > ${snap.unitPricePoisha}).`,
+          );
+        }
         const existing = lines.find((l) => l.variantId === add.variantId);
         if (existing) {
+          if (add.unitPricePoisha !== undefined && add.unitPricePoisha !== existing.unitPricePoisha) {
+            throw new EditAbort(
+              "INVALID_INPUT",
+              `এই ভ্যারিয়েন্টটি অর্ডারে অন্য দামে আছে — ছাড়ের দামে মার্জ করা যাবে না / Variant ${snap.sku} is already on the order at a different price — a priced add cannot merge into it.`,
+            );
+          }
           existing.quantity = addQty(existing.quantity, add.quantity);
           quantityChanged += 1;
         } else {
@@ -537,9 +576,12 @@ export async function editOrderItems(
             variantId: snap.variantId,
             productName: snap.productName,
             sku: snap.sku,
-            unitPricePoisha: snap.unitPricePoisha,
+            unitPricePoisha: add.unitPricePoisha ?? snap.unitPricePoisha,
             quantity: add.quantity,
           });
+        }
+        if (add.unitPricePoisha !== undefined && add.unitPricePoisha < snap.unitPricePoisha) {
+          pricedAdds.push({ sku: snap.sku, catalogPoisha: snap.unitPricePoisha, chargedPoisha: add.unitPricePoisha });
         }
         addedCount += 1;
       }
@@ -731,6 +773,11 @@ export async function editOrderItems(
         `Order edited (${changeBits.join(", ")}): total ${before.totalPoisha} → ${totalPoisha} poisha ` +
         `(subtotal ${before.subtotalPoisha} → ${subtotalPoisha}, discount ${before.discountPoisha} → ${discountPoisha}, shipping ${before.shippingPoisha} → ${shippingPoisha}).`;
       if (couponNote) noteText += ` ${couponNote}`;
+      for (const p of pricedAdds) {
+        noteText +=
+          ` ছাড়ের দামে যোগ: ${p.sku} — ক্যাটালগ দাম ${p.catalogPoisha} পয়সা, নেওয়া হয়েছে ${p.chargedPoisha} পয়সা (ফানেল অফারের নিয়ম অনুযায়ী)। / ` +
+          `Priced add: ${p.sku} — catalog price ${p.catalogPoisha} poisha, charged ${p.chargedPoisha} poisha (funnel offer rule).`;
+      }
       if (row.advanceRequiredPoisha > 0 && totalPoisha !== before.totalPoisha) {
         noteText +=
           ` ⚠ অগ্রিম পেমেন্ট: এই অর্ডারে ${row.advanceRequiredPoisha} পয়সা অগ্রিম নির্ধারিত ছিল (আগের মোট ${before.totalPoisha}); সম্পাদনার পর মোট ${totalPoisha} — অগ্রিমের পরিমাণ বদলানো হয়নি, কর্মীদের মিলিয়ে দেখতে হবে। / ` +

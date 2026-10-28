@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./strings";
+export * from "./responsive";
 export * from "./recently-viewed";
 export * from "./quick-view";
 export * from "./sticky-bar";

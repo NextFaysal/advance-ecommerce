@@ -585,6 +585,23 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     badge: "locked-add-on",
   },
   {
+    // Funnel analytics (doc 34 §3.8, L9): per-step views / orders /
+    // revenue / accept rates for CartFlows-style funnels, computed
+    // server-side from TrackingEvent rows + funnel-attributed
+    // orders (raw counts only). Sits beside the funnel-step A/B
+    // experiments in this section; the page is a server report (no
+    // API), so the nav permission mirrors the experiments guard.
+    id: "funnel-analytics",
+    path: "/admin/marketing-mechanics/funnels",
+    labelBn: "ফানেল অ্যানালিটিক্স",
+    labelEn: "Funnel Analytics",
+    icon: "Filter",
+    section: "marketing",
+    permission: "marketing.campaign",
+    featureFlag: null,
+    badge: null,
+  },
+  {
     // Newsletter subscribers (wave 7): the admin list over the
     // NewsletterSubscriber table that the storefront form has filled
     // since wave 3a. Permission matches the page's API guard
@@ -608,6 +625,20 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     labelBn: "ল্যান্ডিং পেজ",
     labelEn: "Landing Pages",
     icon: "Rocket",
+    section: "marketing",
+    permission: "content.page",
+    featureFlag: null,
+    badge: null,
+  },
+  {
+    // Funnel Builder (doc 34 L7): CartFlows-style step funnels over
+    // landing pages. Same family + permission as Landing Pages —
+    // the funnels API guards on content.page too.
+    id: "funnels",
+    path: "/admin/funnels",
+    labelBn: "ফানেল",
+    labelEn: "Funnels",
+    icon: "Filter",
     section: "marketing",
     permission: "content.page",
     featureFlag: null,

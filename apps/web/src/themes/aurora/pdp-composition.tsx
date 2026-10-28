@@ -15,6 +15,13 @@
  * imported by relative path — they live beside the page and have no
  * src/ equivalents. The related-products rail renders the themed
  * ProductCard slot wrapper (S3b), like every other card consumer.
+ *
+ * Doc 32 refresh (P1/P2): the Gallery import is now a thin adapter
+ * over the shared GalleryCore (StoreImage frames, priority first
+ * image), the price cluster renders through the shared
+ * PdpPriceBlock, the route gained a PdpSkeleton loading state, and
+ * the below-fold sections share one Reveal rhythm. This file is
+ * the reference implementation the other compositions are held to.
  */
 import Link from "next/link";
 import { fromPoisha } from "@advance-ecommerce/validators";
@@ -29,6 +36,7 @@ import { StickyBuyBar } from "@/storefront-ux/components/StickyBuyBar";
 import { CompareToggleButton, CompareTray } from "@/storefront-ux/components/CompareTray";
 import { BackInStockForm } from "@/storefront-ux/components/BackInStockForm";
 import { BuyBoxActions } from "@/cart/components/BuyBoxActions";
+import { PdpPriceBlock } from "@/storefront-ux/components/PriceBlock";
 import { WishlistToggleButton } from "@/catalog/WishlistToggleButton";
 import { renderDescriptionHtml } from "@/catalog/description";
 import { formatFileSize } from "@/catalog/product-type-contract";
@@ -217,7 +225,7 @@ export default async function AuroraPdpComposition({
               </>
             ) : null}
             <span aria-hidden="true" className="text-border">•</span>
-            <span className={`font-semibold ${displayInStock ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+            <span className={`font-semibold ${displayInStock ? "text-success-solid" : "text-danger"}`}>
               {displayInStock ? t.inStock : t.outOfStock}
             </span>
           </p>
@@ -231,28 +239,17 @@ export default async function AuroraPdpComposition({
                 {s.contactForPrice}
               </p>
             ) : (
-            <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5 pt-1">
-              <span className="font-display text-4xl font-extrabold tabular-nums text-brand-700 dark:text-brand-300">
-                <BdtAmount poisha={minPrice} />
-                {hasPriceRange ? (
-                  <span className="text-[1.35rem]">
-                    {" "}
-                    – <BdtAmount poisha={maxPrice} />
-                  </span>
-                ) : null}
-              </span>
-              {showDiscount && bestDiscount ? (
-                <>
-                  <BdtAmount
-                    poisha={bestDiscount.compare}
-                    className="text-lg tabular-nums text-text-subtle line-through"
-                  />
-                  <span className="rounded-full bg-rose-600 px-3 py-1 text-[13px] font-bold text-white shadow-sm">
-                    <DigitText text={`${discountPct}%`} /> {s.discountOff}
-                  </span>
-                </>
-              ) : null}
-            </p>
+            /* Price cluster — the shared PdpPriceBlock (doc 32 P1);
+               same markup this composition used to inline. */
+            <PdpPriceBlock
+              minPoisha={minPrice}
+              maxPoisha={maxPrice}
+              hasRange={hasPriceRange}
+              compareAtPoisha={showDiscount && bestDiscount ? bestDiscount.compare : null}
+              discountPct={showDiscount && bestDiscount ? discountPct : null}
+              discountOffText={s.discountOff}
+              className="pt-1"
+            />
             )}
 
             {/* Variant list (info) — the buy box below owns selection.
@@ -532,7 +529,11 @@ export default async function AuroraPdpComposition({
       {/* Course outline (ADV-23 vertical 6) — titles only, public;
           lesson bodies live behind the account player + the
           order-derived access check. */}
-      {courseOutline ? <CourseOutlineSection outline={courseOutline} /> : null}
+      {courseOutline ? (
+        <Reveal>
+          <CourseOutlineSection outline={courseOutline} />
+        </Reveal>
+      ) : null}
 
       {/* Specification — union of variant attributes */}
       {specRows.length > 0 ? (
@@ -654,7 +655,7 @@ export default async function AuroraPdpComposition({
                   ({s.savingsLabel}{" "}
                   <BdtAmount
                     poisha={bundleComponentsTotal - minPrice}
-                    className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400"
+                    className="font-semibold tabular-nums text-success-solid"
                   />
                   )
                 </>
@@ -662,7 +663,7 @@ export default async function AuroraPdpComposition({
             </p>
           ) : null}
           {bundleUnavailable ? (
-            <p className="mt-3 max-w-3xl text-sm font-medium text-rose-600 dark:text-rose-400">
+            <p className="mt-3 max-w-3xl text-sm font-medium text-danger">
               {s.bundleUnavailableNote}
             </p>
           ) : null}
@@ -671,12 +672,18 @@ export default async function AuroraPdpComposition({
       ) : null}
 
       {/* Customer reviews — real APPROVED rows from the Review table
-          + the moderated submission form (src/reviews). */}
-      <ReviewSection productId={product.id} productSlug={product.slug} />
+          + the moderated submission form (src/reviews). Reveal
+          wrapper matches the section rhythm of the blocks above
+          (description / specs / FAQ / bundle — doc 32 P2). */}
+      <Reveal>
+        <ReviewSection productId={product.id} productSlug={product.slug} />
+      </Reveal>
 
       {/* Product Q&A — ANSWERED questions only + ask form for
           signed-in customers (src/qa). */}
-      <QuestionsSection productId={product.id} productSlug={product.slug} />
+      <Reveal>
+        <QuestionsSection productId={product.id} productSlug={product.slug} />
+      </Reveal>
 
       {/* Related products — manual picks first, same-category fill.
           Wave 17: on phones the rail is a snap-scroll carousel that

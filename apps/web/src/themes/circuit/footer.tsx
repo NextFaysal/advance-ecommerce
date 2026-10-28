@@ -108,11 +108,11 @@ export default function CircuitFooter({
 
   return (
     <footer className="text-white" style={{ backgroundColor: CIRCUIT_COLORS.navy }}>
-      <div className="mx-auto max-w-[1440px] px-4 py-12 sm:px-6">
-        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1fr_1fr]">
+      <div className="mx-auto max-w-[1440px] px-4 pb-[max(3rem,env(safe-area-inset-bottom))] pt-12 sm:px-6">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-10 lg:grid-cols-[1.3fr_1fr_1fr_1fr_1fr] lg:gap-10">
           {/* Brand column — our own intro copy; contact channels live
               on /contact (per-client settings), linked below. */}
-          <div className="min-w-0">
+          <div className="col-span-2 min-w-0 lg:col-span-1">
             <a href="/" className="flex items-center gap-2" aria-label={brandName}>
               <span className="brand-gradient flex h-10 w-10 items-center justify-center rounded-lg text-lg font-bold text-white shadow-sm">
                 {brandName.charAt(0)}
@@ -125,13 +125,13 @@ export default function CircuitFooter({
             <div className="mt-4 flex flex-wrap gap-2">
               <a
                 href="/track"
-                className="inline-block rounded-md bg-white/10 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
+                className="inline-flex min-h-[44px] items-center rounded-md bg-white/10 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-white/20 lg:min-h-0"
               >
                 {s.footerTrackOrder}
               </a>
               <a
                 href="/contact"
-                className="inline-block rounded-md border border-white/25 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
+                className="inline-flex min-h-[44px] items-center rounded-md border border-white/25 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-white/10 lg:min-h-0"
               >
                 {s.footerContact}
               </a>
@@ -139,7 +139,7 @@ export default function CircuitFooter({
           </div>
 
           {columns.map((col) => (
-            <nav key={col.headingEn} aria-label={locale === "bn" ? col.headingBn : col.headingEn}>
+            <nav key={col.headingEn} className="min-w-0" aria-label={locale === "bn" ? col.headingBn : col.headingEn}>
               <p className="text-sm font-bold text-white">{locale === "bn" ? col.headingBn : col.headingEn}</p>
               <span aria-hidden="true" className="mt-2 block h-0.5 w-8 rounded-full bg-primary" />
               <ul className="mt-3.5 space-y-2.5">
@@ -147,7 +147,7 @@ export default function CircuitFooter({
                   <li key={link.id}>
                     <a
                       href={link.href}
-                      className="text-sm text-white/65 transition hover:text-primary"
+                      className="flex min-h-[44px] items-center text-sm text-white/65 transition hover:text-primary lg:min-h-0"
                     >
                       {locale === "bn" ? link.labelBn : link.labelEn}
                     </a>
@@ -174,11 +174,11 @@ export default function CircuitFooter({
           </div>
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/10 pt-6 text-xs text-white/50">
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t border-white/10 pt-6 text-center text-xs text-white/50 sm:justify-start sm:text-left">
           <span>
             <DigitText text={interpolate(s.copyrightLine, { year, brand: brandName })} />
           </span>
-          <a href="/contact" className="hover:text-primary">
+          <a href="/contact" className="inline-flex min-h-[44px] items-center hover:text-primary lg:min-h-0">
             {s.footerContactHint}
           </a>
           {showPoweredBy ? (
