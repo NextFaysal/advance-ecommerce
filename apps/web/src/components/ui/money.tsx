@@ -28,7 +28,7 @@ export function Money({
 }) {
   const text = formatPoisha(poisha);
   return (
-    <span className={`font-mono tabular-nums ${className}`}>
+    <span className={`tnum font-mono ${className}`}>
       {bengaliDigits ? toBengaliDigits(text) : text}
     </span>
   );

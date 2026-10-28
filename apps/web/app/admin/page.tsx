@@ -20,7 +20,7 @@
 // live in the KPI period strips.
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader } from "@/admin-shell/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Money, formatPoisha } from "@/components/ui/money";
@@ -457,7 +457,7 @@ export default async function AdminHome() {
       </div>
 
       {/* All modules */}
-      <PageHeader title={s.allModules} description={s.allModulesDesc} />
+      <PageHeader title={s.allModules} subtitle={s.allModulesDesc} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
         {tiles.map((item) => (
           <Link key={item.id} href={item.path} className="group block">

@@ -2,10 +2,11 @@ import type { TextareaHTMLAttributes } from "react";
 import { Icon } from "./icon";
 
 /**
- * Textarea (Design System v2) — the multiline sibling of Input: same
- * label / helper / error treatment and focus ring, so admin forms can
- * mix both without a visual seam. Used for SEO descriptions, brand
- * descriptions and other free-text fields (Wave 13-2).
+ * Textarea (Design System v4, doc 31 D3) — the multiline sibling of
+ * Input: same label / helper / error treatment, rounded-xl shell and
+ * token focus halo, so admin forms can mix both without a visual seam.
+ * Used for SEO descriptions, brand descriptions and other free-text
+ * fields (Wave 13-2).
  */
 export function Textarea({
   label,
@@ -30,10 +31,10 @@ export function Textarea({
         </span>
       ) : null}
       <span
-        className={`flex rounded-md border bg-card px-3 py-2.5 transition motion-fast ${
+        className={`flex rounded-xl border bg-surface px-3 py-2.5 shadow-xs transition duration-base ease-smooth ${
           error
-            ? "border-rose-400 focus-within:border-rose-500 focus-within:ring-[3px] focus-within:ring-rose-100"
-            : "border-border focus-within:border-brand-500 focus-within:ring-[3px] focus-within:ring-brand-100"
+            ? "border-danger focus-within:border-danger focus-within:ring-[3px] focus-within:ring-danger/20"
+            : "border-border focus-within:border-brand-ink focus-within:ring-[3px] focus-within:ring-brand-ink/15"
         }`}
       >
         <textarea
@@ -46,7 +47,7 @@ export function Textarea({
         />
       </span>
       {error ? (
-        <span id={`${inputId}-error`} role="alert" className="mt-1.5 flex items-center gap-1 text-xs font-medium text-rose-600">
+        <span id={`${inputId}-error`} role="alert" className="mt-1.5 flex items-center gap-1 text-xs font-medium text-danger">
           <Icon name="alert" size={13} /> {error}
         </span>
       ) : null}

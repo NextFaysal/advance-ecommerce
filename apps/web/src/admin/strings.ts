@@ -33,6 +33,9 @@ const bn = {
   breadcrumb: "ব্রেডক্রাম্ব",
   mobileNav: "মোবাইল অ্যাডমিন নেভিগেশন",
   adminAvatar: "অ্যাডমিন অ্যাভাটার",
+  collapseSidebar: "সাইডবার গুটিয়ে নিন",
+  expandSidebar: "সাইডবার খুলুন",
+  moreNav: "আরও",
 
   // ---- Dashboard (app/admin/page.tsx) ----
   greetNight: "শুভ রাত্রি",
@@ -383,6 +386,9 @@ const en: AdminStrings = {
   breadcrumb: "Breadcrumb",
   mobileNav: "Mobile admin navigation",
   adminAvatar: "Admin avatar",
+  collapseSidebar: "Collapse sidebar",
+  expandSidebar: "Expand sidebar",
+  moreNav: "More",
 
   greetNight: "Good night",
   greetMorning: "Good morning",

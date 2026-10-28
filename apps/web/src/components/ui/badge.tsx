@@ -1,23 +1,26 @@
 import type { ReactNode } from "react";
 
+/* Design tokens v4 (doc 31, D3): semantic tones ride the solid/soft
+   token pairs, so every badge flips correctly in dark mode (the old
+   fixed emerald/amber/rose/sky -50 fills did not). */
 const tones: Record<string, string> = {
-  brand: "bg-brand-100 text-brand-700",
+  brand: "bg-brand-soft text-brand-ink",
   gradient: "brand-gradient text-white",
-  success: "bg-emerald-50 text-emerald-700",
-  warning: "bg-amber-50 text-amber-700",
-  danger: "bg-rose-50 text-rose-700",
-  info: "bg-sky-50 text-sky-700",
-  neutral: "bg-slate-100 text-slate-600",
+  success: "bg-success-soft text-success-solid",
+  warning: "bg-warning-soft text-warning-solid",
+  danger: "bg-danger-soft text-danger",
+  info: "bg-info-soft text-info-solid",
+  neutral: "bg-surface-2 text-text-muted",
 };
 
 const dots: Record<string, string> = {
-  brand: "bg-brand-500",
+  brand: "bg-brand-ink",
   gradient: "bg-white",
-  success: "bg-emerald-500",
-  warning: "bg-amber-500",
-  danger: "bg-rose-500",
-  info: "bg-sky-500",
-  neutral: "bg-slate-400",
+  success: "bg-success-solid",
+  warning: "bg-warning-solid",
+  danger: "bg-danger",
+  info: "bg-info-solid",
+  neutral: "bg-text-subtle",
 };
 
 export function Badge({
@@ -34,7 +37,7 @@ export function Badge({
   dot?: boolean;
 }) {
   return (
-    <span className={`inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium leading-none ring-1 ring-inset ring-black/5 ${tones[tone]}`}>
+    <span className={`inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium leading-none ring-1 ring-inset ring-black/5 dark:ring-white/10 ${tones[tone]}`}>
       {dot ? <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${dots[tone]}`} /> : null}
       {icon}
       {children}

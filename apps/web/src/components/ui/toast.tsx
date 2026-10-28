@@ -2,24 +2,26 @@ import type { ReactNode } from "react";
 import { Icon, type IconName } from "./icon";
 
 /**
- * Toast (Design System v2) — SVG status icon in a tinted medallion,
- * pop shadow. API unchanged from v1.
+ * Toast (Design System v4, doc 31 D3) — SVG status icon in a solid
+ * medallion on the semantic soft surface, fade-slide-in entry, lift
+ * shadow. Tones ride the v4 solid/soft token pairs (dark-safe).
+ * API unchanged from v1.
  */
 export function Toast({ tone = "success", children }: { tone?: "success" | "error" | "info"; children: ReactNode }) {
   const tones: Record<string, string> = {
-    success: "border-emerald-200 bg-emerald-50 text-emerald-800",
-    error: "border-rose-200 bg-rose-50 text-rose-800",
-    info: "border-sky-200 bg-sky-50 text-sky-800",
+    success: "border-success-solid/30 bg-success-soft",
+    error: "border-danger/30 bg-danger-soft",
+    info: "border-info-solid/30 bg-info-soft",
   };
   const medallions: Record<string, string> = {
-    success: "bg-emerald-100 text-emerald-700",
-    error: "bg-rose-100 text-rose-700",
-    info: "bg-sky-100 text-sky-700",
+    success: "bg-success-solid text-white",
+    error: "bg-danger text-white",
+    info: "bg-info-solid text-white",
   };
   const icons: Record<string, IconName> = { success: "check", error: "alert", info: "info" };
   return (
-    <div role="status" aria-live="polite" className={`anim-pop-in flex items-center gap-2.5 rounded-lg border px-3.5 py-3 text-sm font-medium shadow-pop ${tones[tone]}`}>
-      <span aria-hidden="true" className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${medallions[tone]}`}>
+    <div role="status" aria-live="polite" className={`animate-fade-slide-in flex items-center gap-2.5 rounded-2xl border px-3.5 py-3 text-sm font-medium text-text-main shadow-lift ${tones[tone]}`}>
+      <span aria-hidden="true" className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full shadow-xs ${medallions[tone]}`}>
         <Icon name={icons[tone]} size={15} />
       </span>
       <span>{children}</span>

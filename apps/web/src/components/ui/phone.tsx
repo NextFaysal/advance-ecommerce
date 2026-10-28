@@ -6,5 +6,5 @@ export function maskPhone(normalized: string): string {
 
 export function Phone({ phone, reveal = false }: { phone: string; reveal?: boolean }) {
   const shown = reveal ? phone : maskPhone(phone);
-  return <span className="font-mono tabular-nums">{shown}</span>;
+  return <span className="tnum font-mono">{shown}</span>;
 }
