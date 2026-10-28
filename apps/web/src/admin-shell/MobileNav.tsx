@@ -28,10 +28,15 @@ export function MobileNav({
   groups,
   mobileItems,
   pathname,
+  offFeatureFlags,
 }: {
   groups: readonly AdminNavGroup[];
   mobileItems: readonly AdminNavItem[];
   pathname: string;
+  /** Feature-flag keys currently OFF (live, from the admin layout);
+   *  forwarded to the drawer's NavGroups for the lock badges. The
+   *  bottom tab bar renders no badges, so it ignores this. */
+  offFeatureFlags: readonly string[];
 }) {
   const { locale } = useLocale();
   const s = pick(locale, ADMIN_STRINGS);
@@ -127,7 +132,7 @@ export function MobileNav({
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 pb-[env(safe-area-inset-bottom)]">
-            <NavGroups groups={groups} pathname={pathname} locale={locale} />
+            <NavGroups groups={groups} pathname={pathname} locale={locale} offFeatureFlags={offFeatureFlags} />
           </div>
         </div>
       ) : null}

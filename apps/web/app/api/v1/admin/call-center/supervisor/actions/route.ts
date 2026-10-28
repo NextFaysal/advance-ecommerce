@@ -58,7 +58,7 @@ function respond(result: SupervisorActionResult) {
 export async function POST(req: Request) {
   const guard = await requireAdmin("staff.manage");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  await ensureDbFeatureFlags();
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
 
   const parsed = actionSchema.safeParse(await req.json().catch(() => ({})));

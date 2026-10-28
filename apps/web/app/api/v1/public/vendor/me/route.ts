@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { NextResponse } from "next/server";
 import { isVendorPortalEnabled, VENDOR_SESSION_COOKIE, verifyVendorSessionToken } from "@/vendors/portal-auth";
 import { buildVendorPortalDashboard } from "@/vendors/portal";
@@ -10,6 +11,7 @@ import { buildVendorPortalDashboard } from "@/vendors/portal";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isVendorPortalEnabled()) {
     return NextResponse.json(
       { error: { code: "FEATURE_LOCKED", message: "Vendor portal is locked for this install (module.vendor_portal is OFF)." } },

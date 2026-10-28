@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { z } from "zod";
 import { requireAdmin, guardError } from "@/reports/guard";
 import { writeAudit } from "@/lib/audit";
@@ -36,6 +37,7 @@ const putSchema = z.object({
  *  the live validity of every configured coupon code (so the admin
  *  sees a code that has since expired, instead of trusting the doc). */
 export async function GET() {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("marketing.campaign");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!marketingMechanicsEnabled()) return locked();
@@ -73,6 +75,7 @@ export async function GET() {
  *  must name a real category. One bad entry rejects the whole write —
  *  nothing partial is ever stored. */
 export async function PUT(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("marketing.campaign");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!marketingMechanicsEnabled()) return locked();

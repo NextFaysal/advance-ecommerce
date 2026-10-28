@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { BOT_ENGINE, confirmBotDraft } from "@/inbox/bot";
 
@@ -14,6 +15,7 @@ import { BOT_ENGINE, confirmBotDraft } from "@/inbox/bot";
 // through untouched. Gating: 403 FEATURE_LOCKED (module OFF) /
 // BOT_DISABLED (bot setting OFF).
 export async function POST(req: Request, { params }: { params: { id: string } }) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("orders.create");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
 

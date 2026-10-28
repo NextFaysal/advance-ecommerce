@@ -33,7 +33,9 @@ import { Money, formatPoisha } from "@/components/ui/money";
 import { CountUp } from "@/components/ui/count-up";
 import { Phone } from "@/components/ui/phone";
 import { StatusBadge, type OrderStatus as BadgeOrderStatus } from "@/components/ui/status-badge";
-import { ADMIN_NAV, isLockedAddOn, navItemLabel } from "@/admin-nav/config";
+import { ADMIN_NAV, isLockedAddOnNow, navItemLabel } from "@/admin-nav/config";
+import { featureFlags } from "@/lib/feature-flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { AreaChart, Sparkline } from "@/components/ui/chart-kit";
 import { getRequestLocale } from "@/i18n/server";
 import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
@@ -189,6 +191,17 @@ export default async function AdminHome() {
   const data = await getDashboardData();
   const { totals } = data;
   const tiles = ADMIN_NAV.filter((item) => item.id !== "dashboard");
+
+  /* Live add-on lock state for the module tiles below — same
+   * resolution as the admin layout: a tile's lock chip shows only
+   * while its feature flag is actually OFF in the flag store. */
+  await ensureDbFeatureFlags();
+  const offFlags = new Set(
+    ADMIN_NAV.map((item) => item.featureFlag).filter(
+      (key): key is string =>
+        key !== null && !featureFlags.isFeatureEnabled(key),
+    ),
+  );
 
   /* Orders-by-status donut — all-time counts, real data only. */
   const statusEntries = (Object.entries(data.countsByStatus) as [OrderStatus, number][])
@@ -495,7 +508,7 @@ export default async function AdminHome() {
                 <span aria-hidden="true" className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-soft text-brand-ink transition duration-fast ease-smooth group-hover:bg-brand-100">
                   <Icon name={item.icon} className="h-5 w-5" />
                 </span>
-                {isLockedAddOn(item) ? (
+                {isLockedAddOnNow(item, offFlags) ? (
                   <span className="flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-caption font-semibold text-warning-solid">
                     <Icon name="Lock" className="h-3 w-3" />
                     {s.addOn}

@@ -18,6 +18,7 @@
  * at runtime.
  */
 import { cookies } from "next/headers";
+import { ensureDbFeatureFlags } from "../lib/feature-flags-db";
 import { demoFeatureFlags, type FeatureFlagKey } from "./flags";
 
 export type FeatureGuardResult =
@@ -28,6 +29,9 @@ export async function requireFeatureAdmin(
   flagKey: FeatureFlagKey,
   permission: string,
 ): Promise<FeatureGuardResult> {
+  // Refresh the flag cache first (TTL revalidation) so a flip made
+  // in another process is not served stale as FEATURE_LOCKED.
+  await ensureDbFeatureFlags().catch(() => {});
   if (!demoFeatureFlags.isEnabled(flagKey)) {
     return {
       ok: false,

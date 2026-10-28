@@ -1,5 +1,5 @@
 import {
-  isLockedAddOn,
+  isLockedAddOnNow,
   navItemLabel,
   navSectionLabel,
   type AdminNavGroup,
@@ -26,12 +26,19 @@ export function NavGroups({
   groups,
   pathname,
   locale,
+  offFeatureFlags,
 }: {
   groups: readonly AdminNavGroup[];
   pathname: string;
   locale: Locale;
+  /** Feature-flag keys currently OFF, resolved live by the admin
+   *  layout from the unified flag store. An add-on item shows its
+   *  lock badge (and mini-mode dot) only while its flag is in this
+   *  list — enabling the flag removes the badge on the next render. */
+  offFeatureFlags: readonly string[];
 }) {
   const s = pick(locale, ADMIN_STRINGS);
+  const offFlags = new Set(offFeatureFlags);
   return (
     <>
       {groups.map((group) => (
@@ -46,7 +53,7 @@ export function NavGroups({
           <nav aria-label={navSectionLabel(group.section, locale)} className="space-y-1">
             {group.items.map((item) => {
               const active = isActiveItem(pathname, item);
-              const locked = isLockedAddOn(item);
+              const locked = isLockedAddOnNow(item, offFlags);
               const label = navItemLabel(item, locale);
               return (
                 <a

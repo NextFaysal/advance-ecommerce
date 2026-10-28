@@ -29,6 +29,7 @@ import {
 } from "@/catalog/api";
 import { hasPermission } from "@/lib/rbac";
 import { isFeatureEnabled } from "@/lib/feature-flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { writeAudit } from "@/lib/audit";
 import {
   AI_CONTENT_FLAG,
@@ -64,6 +65,7 @@ export async function runAiContentRoute(
   if (!hasPermission(session.permissions, "products.edit")) {
     return apiError("FORBIDDEN", "Missing permission: products.edit", 403);
   }
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isFeatureEnabled(AI_CONTENT_FLAG)) {
     return apiError(
       "FEATURE_LOCKED",

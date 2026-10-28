@@ -1030,7 +1030,31 @@ export function filterNavByPermissions(
   );
 }
 
-/** True while the item's add-on flag is set (flags seed OFF per client). */
+/**
+ * Static catalogue check ONLY: the item is a flag-gated add-on (its
+ * `badge` marks it as one in this config). This says nothing about
+ * whether the flag is currently on or off — rendering code must use
+ * isLockedAddOnNow() with the live off-flag set instead.
+ */
 export function isLockedAddOn(item: AdminNavItem): boolean {
   return item.badge === "locked-add-on";
+}
+
+/**
+ * Live lock state for rendering: the item is a flag-gated add-on
+ * (isLockedAddOn catalogue) AND its feature flag is currently OFF.
+ * `offFeatureFlags` is the set of flag keys resolved server-side from
+ * the unified flag store (featureFlags.isFeatureEnabled — see
+ * app/admin/layout.tsx); when the owner enables the flag, the key
+ * leaves the set and the lock badge disappears on the next render.
+ */
+export function isLockedAddOnNow(
+  item: AdminNavItem,
+  offFeatureFlags: ReadonlySet<string>,
+): boolean {
+  return (
+    isLockedAddOn(item) &&
+    item.featureFlag !== null &&
+    offFeatureFlags.has(item.featureFlag)
+  );
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 
 // GET /api/v1/public/gift-cards/status (ADV-18) — the ONLY public
@@ -11,6 +12,7 @@ import { isFeatureEnabled } from "@/lib/feature-flags";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  await ensureDbFeatureFlags().catch(() => {});
   return NextResponse.json({
     data: { enabled: isFeatureEnabled("module.marketing_mechanics") },
   });

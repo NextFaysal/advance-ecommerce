@@ -58,7 +58,7 @@ function view(task: DbCallTask | (CallTask & { phoneResolved?: boolean }), canVi
 export async function GET() {
   const guard = await requireAdmin("orders.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  await ensureDbFeatureFlags();
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   try {
     const logs = await loadCallLogs(guard.userId);
@@ -81,7 +81,7 @@ const outcomeBodySchema = recordOutcomeSchema.extend({
 export async function POST(req: Request) {
   const guard = await requireAdmin("orders.update_status");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  await ensureDbFeatureFlags();
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   const body = (await req.json().catch(() => ({}))) as { taskId?: string };
   const parsed = outcomeBodySchema.safeParse(body);

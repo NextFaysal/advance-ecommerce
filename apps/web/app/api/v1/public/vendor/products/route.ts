@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { vendorStore } from "@/vendors/db-store";
@@ -20,6 +21,7 @@ const submitSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isVendorPortalEnabled()) {
     return NextResponse.json(
       { error: { code: "FEATURE_LOCKED", message: "Vendor portal is locked for this install (module.vendor_portal is OFF)." } },

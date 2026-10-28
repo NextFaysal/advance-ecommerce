@@ -11,6 +11,7 @@
  * B2B slice flagged for `b2b.view` / `b2b.manage`).
  */
 import { cookies } from "next/headers";
+import { ensureDbFeatureFlags } from "../lib/feature-flags-db";
 import { demoRiderFlags } from "./flags";
 
 export type RiderGuardResult =
@@ -18,6 +19,7 @@ export type RiderGuardResult =
   | { ok: false; status: number; code: string; message: string };
 
 export async function requireRiderAdmin(permission: string): Promise<RiderGuardResult> {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!demoRiderFlags.isEnabled("module.rider")) {
     return {
       ok: false, status: 403, code: "FEATURE_LOCKED",

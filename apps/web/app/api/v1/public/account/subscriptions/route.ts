@@ -15,6 +15,7 @@
  * customer id is ever accepted from the request.
  */
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { z } from "zod";
 import { errorResponse, requireCustomer, unauthorized } from "@/customer-auth/http";
 import { bdAddressSchema } from "@/checkout/validation";
@@ -41,6 +42,7 @@ function locked() {
 }
 
 export async function GET() {
+  await ensureDbFeatureFlags().catch(() => {});
   const customer = await requireCustomer();
   if (customer === null) return unauthorized();
   if (!subscriptionsEnabled()) return locked();
@@ -73,6 +75,7 @@ const createSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   const customer = await requireCustomer();
   if (customer === null) return unauthorized();
   if (!subscriptionsEnabled()) return locked();

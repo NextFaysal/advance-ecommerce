@@ -9,6 +9,7 @@
  */
 import { NextResponse } from "next/server";
 import { requireAdminPermission } from "@/integrations/sandbox/admin-auth";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { WarehouseError } from "./pick-lists";
 import { isWarehouseOpsEnabled } from "./flags";
 
@@ -22,6 +23,7 @@ type GuardOutcome =
   | { ok: false; response: NextResponse };
 
 export async function requireWarehouseAccess(): Promise<GuardOutcome> {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdminPermission("orders.view");
   if (!guard.ok) {
     return {

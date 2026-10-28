@@ -10,6 +10,7 @@
  * src/lib/rbac.ts and to the seed catalogue.
  */
 import { cookies } from "next/headers";
+import { ensureDbFeatureFlags } from "../lib/feature-flags-db";
 import { demoB2bFlags } from "./flags";
 
 export type B2bGuardResult =
@@ -17,6 +18,7 @@ export type B2bGuardResult =
   | { ok: false; status: number; code: string; message: string };
 
 export async function requireB2bAdmin(permission: string): Promise<B2bGuardResult> {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!demoB2bFlags.isEnabled("module.b2b")) {
     return {
       ok: false, status: 403, code: "FEATURE_LOCKED",

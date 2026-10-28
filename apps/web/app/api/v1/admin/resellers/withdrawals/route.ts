@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { z } from "zod";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { demoResellerFlags, isResellerEnabled } from "@/reseller/flags";
@@ -18,6 +19,7 @@ const reviewSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("resellers.manage");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!isResellerEnabled(demoResellerFlags)) {

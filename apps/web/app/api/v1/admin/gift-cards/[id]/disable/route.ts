@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { disableGiftCard } from "@/marketing/gift-cards";
@@ -13,6 +14,7 @@ export async function POST(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("marketing.campaign");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!isFeatureEnabled("module.marketing_mechanics")) {

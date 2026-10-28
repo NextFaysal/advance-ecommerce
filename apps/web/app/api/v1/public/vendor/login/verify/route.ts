@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { NextResponse } from "next/server";
 import { prisma } from "@advance-ecommerce/db";
 import { maskPhone, normalizeBdPhone } from "@/checkout/validation";
@@ -21,6 +22,7 @@ import { verifyVendorLoginOtp } from "@/vendors/portal-otp";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isVendorPortalEnabled()) {
     return NextResponse.json(
       { error: { code: "FEATURE_LOCKED", message: "Vendor portal is locked for this install (module.vendor_portal is OFF)." } },

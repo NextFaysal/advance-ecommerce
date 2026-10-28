@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { requireAdmin, guardError } from "@/reports/guard";
 import { marketingMechanicsEnabled, prismaMarketingDocStore } from "@/marketing/docs";
 import {
@@ -22,6 +23,7 @@ function locked() {
  *  actually face (odds over drawable segments), and the recent
  *  spin audit log (Redis, labelled ephemeral). */
 export async function GET() {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("marketing.campaign");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!marketingMechanicsEnabled()) return locked();
@@ -40,6 +42,7 @@ export async function GET() {
 /** PUT — replace the spin config. The schema refuses a config
  *  without a reachable no-prize segment. */
 export async function PUT(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("marketing.campaign");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!marketingMechanicsEnabled()) return locked();

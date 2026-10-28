@@ -22,6 +22,7 @@
  * post-commit reconcile clears a stage whose anchor stops matching.
  */
 import { cookies } from "next/headers";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { validateSessionToken } from "@/lib/auth";
@@ -58,6 +59,7 @@ async function requireAdmin(permission: PermissionKey) {
 }
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  await ensureDbFeatureFlags().catch(() => {});
   const auth = await requireAdmin("orders.view");
   if ("error" in auth) return auth.error;
   const order = await getOrderByIdOrNo(params.id);
@@ -88,6 +90,7 @@ const postSchema = z.object({
 });
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
+  await ensureDbFeatureFlags().catch(() => {});
   const auth = await requireAdmin("orders.edit");
   if ("error" in auth) return auth.error;
   if (!isWorkflowStagesEnabled()) {

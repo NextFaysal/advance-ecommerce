@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { isInventoryDepthEnabled } from "@/inventory/batches";
 import { runAutoReorder } from "@/inventory/reorder";
 import { writeAudit } from "@/lib/audit";
@@ -12,6 +13,7 @@ import { guardError, requireAdmin } from "@/reports/guard";
 // RBAC: inventory.purchase_order. Flag: module.inventory_depth.
 
 export async function POST() {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("inventory.purchase_order");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!isInventoryDepthEnabled()) {

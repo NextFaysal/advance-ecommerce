@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { requireAdmin, guardError } from "@/reports/guard";
 import { marketingMechanicsEnabled, prismaMarketingDocStore } from "@/marketing/docs";
 import {
@@ -25,6 +26,7 @@ function locked() {
  *  `statsRevenue`: the same counts joined to the attributed
  *  orders' totals (revenue + revenue per visitor, still raw). */
 export async function GET(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("marketing.campaign");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!marketingMechanicsEnabled()) return locked();
@@ -42,6 +44,7 @@ export async function GET(req: Request) {
 /** PUT — replace the whole experiments doc (the editor round-trips
  *  it). At most one hero experiment may be running. */
 export async function PUT(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("marketing.campaign");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!marketingMechanicsEnabled()) return locked();

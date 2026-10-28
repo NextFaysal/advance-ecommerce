@@ -12,6 +12,7 @@
  */
 import { NextResponse } from "next/server";
 import { requireAdminPermission } from "@/integrations/sandbox/admin-auth";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import type { PermissionKey } from "@/lib/rbac";
 import { isServicesEnabled } from "./flags";
 
@@ -25,6 +26,7 @@ type GuardOutcome =
   | { ok: false; response: NextResponse };
 
 export async function requireServicesAccess(permission: PermissionKey): Promise<GuardOutcome> {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdminPermission(permission);
   if (!guard.ok) {
     return {

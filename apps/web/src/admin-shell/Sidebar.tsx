@@ -24,10 +24,14 @@ export function Sidebar({
   groups,
   pathname,
   locale,
+  offFeatureFlags,
 }: {
   groups: readonly AdminNavGroup[];
   pathname: string;
   locale: Locale;
+  /** Feature-flag keys currently OFF (live, from the admin layout);
+   *  forwarded to NavGroups for the add-on lock badges. */
+  offFeatureFlags: readonly string[];
 }) {
   const s = pick(locale, ADMIN_STRINGS);
   return (
@@ -59,7 +63,7 @@ export function Sidebar({
       {/* Nav groups — the global thin themed scrollbar (globals.css)
           styles this scroll area in both modes. */}
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
-        <NavGroups groups={groups} pathname={pathname} locale={locale} />
+        <NavGroups groups={groups} pathname={pathname} locale={locale} offFeatureFlags={offFeatureFlags} />
       </div>
 
       {/* Sidebar footer — collapse toggle + session chip */}

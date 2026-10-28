@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import { bumpPortalTokenVersion } from "@/lib/portal-token-versions";
@@ -35,6 +36,7 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("resellers.manage");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!isResellerEnabled(demoResellerFlags)) return locked();

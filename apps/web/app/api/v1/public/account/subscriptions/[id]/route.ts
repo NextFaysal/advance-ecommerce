@@ -8,6 +8,7 @@
  * route adds only session + flag + input validation.
  */
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { z } from "zod";
 import { errorResponse, requireCustomer, unauthorized } from "@/customer-auth/http";
 import { subscriptionsEnabled } from "@/subscriptions/flags";
@@ -26,6 +27,7 @@ const patchSchema = z.object({
 });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  await ensureDbFeatureFlags().catch(() => {});
   const customer = await requireCustomer();
   if (customer === null) return unauthorized();
   if (!subscriptionsEnabled()) {

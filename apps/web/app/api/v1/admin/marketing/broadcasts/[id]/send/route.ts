@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { requireAdmin, guardError } from "@/reports/guard";
 import { marketingMechanicsEnabled, prismaMarketingDocStore } from "@/marketing/docs";
 import { sendCampaign } from "@/marketing/broadcast";
@@ -12,6 +13,7 @@ export const dynamic = "force-dynamic";
  * the missing Settings keys as the reason — never as sent.
  */
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("marketing.campaign");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!marketingMechanicsEnabled()) {

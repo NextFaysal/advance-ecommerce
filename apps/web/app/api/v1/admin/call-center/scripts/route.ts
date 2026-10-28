@@ -36,7 +36,7 @@ function dbNotReady() {
 export async function GET() {
   const guard = await requireAdmin("orders.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  await ensureDbFeatureFlags();
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   try {
     const scripts = await listEffectiveScripts();
@@ -57,7 +57,7 @@ const putBodySchema = z.object({
 export async function PUT(req: Request) {
   const guard = await requireAdmin("orders.update_status");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  await ensureDbFeatureFlags();
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   const parsed = putBodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {

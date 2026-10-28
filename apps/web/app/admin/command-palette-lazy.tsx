@@ -25,7 +25,9 @@
  * Once the palette signals ready, the shim's handlers stand down
  * permanently and the palette's own listeners own both triggers.
  *
- * The palette module itself is untouched.
+ * The shim also forwards the layout's live off-feature-flag list to
+ * the palette, so its page entries show the add-on chip only while
+ * the module's flag is actually OFF (same state as the sidebar).
  */
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -41,6 +43,8 @@ interface PaletteGateProps {
   startOpen: boolean;
   /** Fired once the real palette is mounted and its listeners live. */
   onReady: () => void;
+  /** Feature-flag keys currently OFF (live, from the admin layout). */
+  offFeatureFlags?: readonly string[];
 }
 
 /**
@@ -54,7 +58,7 @@ const LazyPaletteGate = dynamic<PaletteGateProps>(
   () =>
     import("@/admin/command-palette").then((m) => {
       const Palette = m.AdminCommandPalette;
-      return function PaletteGate({ startOpen, onReady }: PaletteGateProps) {
+      return function PaletteGate({ startOpen, onReady, offFeatureFlags }: PaletteGateProps) {
         const firedRef = useRef(false);
         useEffect(() => {
           if (firedRef.current) return;
@@ -64,13 +68,19 @@ const LazyPaletteGate = dynamic<PaletteGateProps>(
           }
           onReady();
         }, [startOpen, onReady]);
-        return <Palette />;
+        return <Palette offFeatureFlags={offFeatureFlags} />;
       };
     }),
   { ssr: false },
 );
 
-export function AdminCommandPaletteLazy() {
+export function AdminCommandPaletteLazy({
+  offFeatureFlags,
+}: {
+  /** Feature-flag keys currently OFF (live, from the admin layout);
+   *  forwarded to the palette once it mounts. */
+  offFeatureFlags?: readonly string[];
+}) {
   // null = palette not requested yet; otherwise the open intent
   // captured from the first trigger (⌘K while closed = open).
   const [mount, setMount] = useState<{ startOpen: boolean } | null>(null);
@@ -117,5 +127,11 @@ export function AdminCommandPaletteLazy() {
   }, []);
 
   if (!mount) return null;
-  return <LazyPaletteGate startOpen={mount.startOpen} onReady={handleReady} />;
+  return (
+    <LazyPaletteGate
+      startOpen={mount.startOpen}
+      onReady={handleReady}
+      offFeatureFlags={offFeatureFlags}
+    />
+  );
 }

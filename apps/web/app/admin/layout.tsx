@@ -1,5 +1,7 @@
 import { headers } from "next/headers";
 import { ADMIN_NAV, groupBySection } from "@/admin-nav/config";
+import { featureFlags } from "@/lib/feature-flags";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { AdminCommandPaletteLazy } from "./command-palette-lazy";
 import { getRequestLocale } from "@/i18n/server";
 import { Sidebar } from "@/admin-shell/Sidebar";
@@ -11,7 +13,9 @@ import { PresenceHeartbeatGlobal } from "./presence-heartbeat";
 // Navigation comes from src/admin-nav/config.ts (single source).
 // Showing an item here is UX only — every admin API route still enforces
 // its session + permission server-side, and flag-gated add-ons stay
-// listed with a lock badge (never hidden).
+// listed (never hidden), showing a lock badge only while their flag is
+// OFF — resolved live below from the unified flag store, so enabling a
+// flag in Admin → Feature Flags drops the badge on the next render.
 //
 // Shell composition (doc 31, D2): this layout stays a thin server
 // component — Sidebar / Topbar / MobileNav live in src/admin-shell/,
@@ -43,6 +47,21 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   const locale = await getRequestLocale();
 
+  // Live add-on lock state: hydrate the DB flag source (TTL-cached,
+  // cheap on repeat renders) and collect the nav flags that are
+  // currently OFF. Passed down as a plain serialisable list; the nav
+  // renderers show the lock badge only for items whose flag is in it
+  // (isLockedAddOnNow in src/admin-nav/config.ts).
+  await ensureDbFeatureFlags();
+  const offFeatureFlags = [
+    ...new Set(
+      ADMIN_NAV.map((item) => item.featureFlag).filter(
+        (key): key is string =>
+          key !== null && !featureFlags.isFeatureEnabled(key),
+      ),
+    ),
+  ];
+
   return (
     <div className="min-h-screen bg-bg-app text-text-main">
       {/* JetBrains Mono, scoped to the admin shell — see the auth-branch
@@ -55,13 +74,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           listener shim in command-palette-lazy.tsx mounts here; the
           palette chunk loads on the first ⌘K / topbar-trigger press,
           which still opens it on that first press. */}
-      <AdminCommandPaletteLazy />
+      <AdminCommandPaletteLazy offFeatureFlags={offFeatureFlags} />
       {/* Staff presence heartbeat for the current /admin path
           (renders nothing; auth screens returned above, so they
           never heartbeat). */}
       <PresenceHeartbeatGlobal />
       <div className="flex">
-        <Sidebar groups={navGroups} pathname={pathname} locale={locale} />
+        <Sidebar groups={navGroups} pathname={pathname} locale={locale} offFeatureFlags={offFeatureFlags} />
         {/* Content column */}
         <div className="flex min-w-0 flex-1 flex-col">
           <Topbar pathname={pathname} locale={locale} />
@@ -71,7 +90,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </div>
       </div>
 
-      <MobileNav groups={navGroups} mobileItems={MOBILE_NAV_ITEMS} pathname={pathname} />
+      <MobileNav groups={navGroups} mobileItems={MOBILE_NAV_ITEMS} pathname={pathname} offFeatureFlags={offFeatureFlags} />
     </div>
   );
 }

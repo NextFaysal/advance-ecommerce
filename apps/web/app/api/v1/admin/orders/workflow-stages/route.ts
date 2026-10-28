@@ -22,6 +22,7 @@
  * route.
  */
 import { cookies } from "next/headers";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { NextResponse } from "next/server";
 import { validateSessionToken } from "@/lib/auth";
 import { requirePermission, RbacError } from "@/lib/rbac";
@@ -56,6 +57,7 @@ async function requireAdmin(permission: "settings.view" | "settings.edit") {
 }
 
 export async function GET() {
+  await ensureDbFeatureFlags().catch(() => {});
   const auth = await requireAdmin("settings.view");
   if ("error" in auth) return auth.error;
 

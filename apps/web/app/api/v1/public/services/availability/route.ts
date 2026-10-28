@@ -16,12 +16,14 @@
  * a reservation.
  */
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { getServiceAvailability } from "@/services/bookings";
 import { isServicesEnabled } from "@/services/flags";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isServicesEnabled()) {
     return NextResponse.json(
       {

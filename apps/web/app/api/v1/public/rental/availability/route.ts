@@ -18,12 +18,14 @@
  * read is a picker aid, not a reservation.
  */
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { getRentalAvailability } from "@/rental/bookings";
 import { isRentalEnabled } from "@/rental/flags";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isRentalEnabled()) {
     return NextResponse.json(
       {

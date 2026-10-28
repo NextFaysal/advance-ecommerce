@@ -8,6 +8,7 @@
  */
 import { NextResponse } from "next/server";
 import { errorResponse, requireCustomer, unauthorized } from "@/customer-auth/http";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import type { PublicCustomer } from "@/customer-auth/auth";
 import type { B2bCustomer } from "@/b2b/types";
 import { getB2bProfileByPhone, isB2bPortalEnabled } from "@/b2b/portal";
@@ -17,6 +18,7 @@ export type B2bPortalGuard =
   | { ok: false; response: NextResponse };
 
 export async function requireB2bPortalCustomer(): Promise<B2bPortalGuard> {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isB2bPortalEnabled()) {
     return {
       ok: false,

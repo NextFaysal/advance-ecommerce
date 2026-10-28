@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { NextResponse } from "next/server";
 import { isVendorPortalEnabled, VENDOR_SESSION_COOKIE, verifyVendorSessionToken } from "@/vendors/portal-auth";
 import {
@@ -32,6 +33,7 @@ async function sessionVendorId(): Promise<string | null> {
 }
 
 export async function GET() {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isVendorPortalEnabled()) return locked();
   const vendorId = await sessionVendorId();
   if (!vendorId) {
@@ -45,6 +47,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isVendorPortalEnabled()) return locked();
   const vendorId = await sessionVendorId();
   if (!vendorId) {

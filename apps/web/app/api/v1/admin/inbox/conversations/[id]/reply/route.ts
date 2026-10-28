@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { z } from "zod";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { demoInboxFlags, isInboxEnabled } from "@/inbox/flags";
@@ -34,6 +35,7 @@ const replySchema = z.object({
 });
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("customers.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!isInboxEnabled(demoInboxFlags)) return locked();

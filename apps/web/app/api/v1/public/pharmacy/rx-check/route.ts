@@ -42,7 +42,7 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  await ensureDbFeatureFlags();
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isPackEnabled("pharmacy")) {
     return NextResponse.json({ data: { enabled: false, required: false, rxVariantIds: [] } });
   }

@@ -1,4 +1,5 @@
 import { addQty, isValidQtyNumber } from "@/lib/quantity";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@advance-ecommerce/db";
@@ -82,6 +83,7 @@ function groupError(group: ImportGroup, error: string): OrderImportGroupResult {
 }
 
 export async function POST(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("orders.create");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
 

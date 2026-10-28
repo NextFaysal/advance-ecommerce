@@ -39,6 +39,7 @@
  * results say so per order, nothing is faked.
  */
 import { cookies } from "next/headers";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { validateSessionToken, type SessionUser } from "@/lib/auth";
@@ -200,6 +201,7 @@ const bulkSchema = z
   });
 
 export async function POST(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   const s = await requireSession();
   if ("error" in s) return s.error;
   const body: unknown = await req.json().catch(() => null);

@@ -38,7 +38,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ADMIN_NAV, isLockedAddOn, navItemLabel, type AdminNavItem } from "@/admin-nav/config";
+import { ADMIN_NAV, isLockedAddOn, isLockedAddOnNow, navItemLabel, type AdminNavItem } from "@/admin-nav/config";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick, type Locale } from "@/i18n/locale";
 import { ADMIN_STRINGS, type AdminStrings } from "@/admin/strings";
@@ -122,7 +122,11 @@ interface RecordResults {
 
 const EMPTY_RECORDS: RecordResults = { orders: [], customers: [], products: [] };
 
-function pageEntries(query: string, locale: Locale): PaletteEntry[] {
+function pageEntries(
+  query: string,
+  locale: Locale,
+  offFlags: ReadonlySet<string> | null,
+): PaletteEntry[] {
   const needle = query.trim().toLowerCase();
   const items: AdminNavItem[] =
     needle.length === 0
@@ -141,7 +145,10 @@ function pageEntries(query: string, locale: Locale): PaletteEntry[] {
     subtitle: item.path,
     href: item.path,
     icon: "arrow-right" as IconName,
-    locked: isLockedAddOn(item),
+    // Live lock state when the layout supplied the off-flag set;
+    // the static catalogue check is only a fallback for a palette
+    // mounted without it.
+    locked: offFlags ? isLockedAddOnNow(item, offFlags) : isLockedAddOn(item),
   }));
 }
 
@@ -213,8 +220,16 @@ async function fetchJson<T>(url: string): Promise<T[]> {
   }
 }
 
-export function AdminCommandPalette() {
+export function AdminCommandPalette({
+  offFeatureFlags,
+}: {
+  /** Feature-flag keys currently OFF, resolved live by the admin
+   *  layout and forwarded through command-palette-lazy; page entries
+   *  show the add-on chip only while the module's flag is OFF. */
+  offFeatureFlags?: readonly string[];
+} = {}) {
   const { locale } = useLocale();
+  const offFlags = offFeatureFlags ? new Set(offFeatureFlags) : null;
   const s = pick(locale, ADMIN_STRINGS);
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -293,7 +308,7 @@ export function AdminCommandPalette() {
       ...(query.trim().length === 0
         ? [{ id: "recent" as const, label: s.paletteRecent, entries: recentEntries(recents) }]
         : []),
-      { id: "pages", label: s.palettePages, entries: pageEntries(query, locale) },
+      { id: "pages", label: s.palettePages, entries: pageEntries(query, locale, offFlags) },
       { id: "orders", label: s.paletteOrders, entries: orderEntries(records.orders) },
       { id: "products", label: s.paletteProducts, entries: productEntries(records.products, s, locale) },
       { id: "customers", label: s.paletteCustomers, entries: customerEntries(records.customers, s) },

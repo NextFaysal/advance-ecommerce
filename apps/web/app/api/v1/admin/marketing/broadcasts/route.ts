@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { z } from "zod";
 import { requireAdmin, guardError } from "@/reports/guard";
 import { marketingMechanicsEnabled, prismaMarketingDocStore } from "@/marketing/docs";
@@ -27,6 +28,7 @@ const createSchema = z.object({
 /** GET — campaigns + the live audience size + the WhatsApp channel
  *  configuration state (key names only, never values). */
 export async function GET() {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("marketing.campaign");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!marketingMechanicsEnabled()) return locked();
@@ -47,6 +49,7 @@ export async function GET() {
 
 /** POST — create a DRAFT campaign (nothing is sent here). */
 export async function POST(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("marketing.campaign");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!marketingMechanicsEnabled()) return locked();

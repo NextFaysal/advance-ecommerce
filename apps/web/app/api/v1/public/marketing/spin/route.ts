@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { z } from "zod";
 import { marketingMechanicsEnabled } from "@/marketing/docs";
 import { performSpin, type SpinIdentity } from "@/marketing/spin";
@@ -21,6 +22,7 @@ function errorResponse(code: string, message: string, status: number, meta?: Rec
  * (see src/marketing/spin.ts); the client only animates.
  */
 export async function POST(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!marketingMechanicsEnabled()) {
     return errorResponse("FEATURE_LOCKED", "এই সুবিধাটি এখন উপলব্ধ নয়।", 404);
   }

@@ -7,6 +7,7 @@
  * vendors.manage, both already in src/lib/rbac.ts PERMISSIONS).
  */
 import { cookies } from "next/headers";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { demoVendorFlags } from "@/vendors/flags";
 
 export type VendorGuardResult =
@@ -14,6 +15,7 @@ export type VendorGuardResult =
   | { ok: false; status: number; code: string; message: string };
 
 export async function requireVendorAdmin(permission: string): Promise<VendorGuardResult> {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!demoVendorFlags.isEnabled("module.multi_vendor")) {
     return {
       ok: false, status: 403, code: "FEATURE_LOCKED",

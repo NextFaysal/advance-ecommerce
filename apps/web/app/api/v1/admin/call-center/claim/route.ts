@@ -86,7 +86,7 @@ async function auditPhoneView(
 export async function POST(req: Request) {
   const guard = await requireAdmin("orders.update_status");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  await ensureDbFeatureFlags();
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   const canViewFullPhone = guard.permissions.includes("customers.view_full_phone");
   const body = (await req.json().catch(() => ({}))) as { taskId?: unknown };

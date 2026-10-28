@@ -27,7 +27,7 @@ export async function pharmacyGuard(permission: PermissionKey) {
     if (e instanceof RbacError) return { error: pharmacyErr("FORBIDDEN", e.message, 403) };
     throw e;
   }
-  await ensureDbFeatureFlags();
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isPackEnabled("pharmacy")) {
     return { error: pharmacyErr("FEATURE_LOCKED", "Pharmacy pack is not enabled for this store.", 403) };
   }

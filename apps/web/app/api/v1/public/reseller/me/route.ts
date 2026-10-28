@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { NextResponse } from "next/server";
 import { isResellerPortalEnabled } from "@/reseller/flags";
 import { RESELLER_SESSION_COOKIE, verifyResellerSessionToken } from "@/reseller/portal-auth";
@@ -10,6 +11,7 @@ import { buildPortalDashboard } from "@/reseller/portal";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isResellerPortalEnabled()) {
     return NextResponse.json(
       { error: { code: "FEATURE_LOCKED", message: "Reseller portal is locked for this install (module.reseller_portal is OFF)." } },

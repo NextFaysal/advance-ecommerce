@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { z } from "zod";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { writeAudit } from "@/lib/audit";
@@ -46,6 +47,7 @@ const putSchema = z.object({
 });
 
 export async function GET() {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("reports.accounting");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!isFeatureEnabled("module.erp_lite")) return locked();
@@ -61,6 +63,7 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("reports.accounting");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!isFeatureEnabled("module.erp_lite")) return locked();

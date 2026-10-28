@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { demoInboxFlags, isInboxEnabled } from "@/inbox/flags";
 import { dismissBotDraft } from "@/inbox/bot";
@@ -12,6 +13,7 @@ import { dismissBotDraft } from "@/inbox/bot";
 // message arrives, then it reappears — a dismissal never swallows a
 // customer's new information. meta.persistence says so honestly.
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("orders.create");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!isInboxEnabled(demoInboxFlags)) {

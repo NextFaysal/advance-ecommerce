@@ -27,7 +27,7 @@ function dbNotReady() {
 export async function GET(req: Request) {
   const guard = await requireAdmin("orders.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  await ensureDbFeatureFlags();
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
 
   const url = new URL(req.url);

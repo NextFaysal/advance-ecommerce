@@ -131,7 +131,7 @@ async function auditQueuePhoneViews(
 export async function GET() {
   const guard = await requireAdmin("orders.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  await ensureDbFeatureFlags();
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   const canViewFullPhone = guard.permissions.includes("customers.view_full_phone");
   const now = new Date().toISOString();
@@ -216,7 +216,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const guard = await requireAdmin("orders.create");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  await ensureDbFeatureFlags();
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   const parsed = manualTaskSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {

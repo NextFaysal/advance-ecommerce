@@ -32,7 +32,7 @@ function dbNotReady() {
 export async function GET() {
   const guard = await requireAdmin("staff.manage");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  await ensureDbFeatureFlags();
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   try {
     const board = await loadSupervisorBoard();

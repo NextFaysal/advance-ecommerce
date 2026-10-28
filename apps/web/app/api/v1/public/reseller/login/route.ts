@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { prisma } from "@advance-ecommerce/db";
 import { maskPhone, normalizeBdPhone } from "@/checkout/validation";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -28,6 +29,7 @@ function locked() {
 }
 
 export async function POST(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isResellerPortalEnabled()) return locked();
   if (!isPortalAuthConfigured()) {
     return NextResponse.json(

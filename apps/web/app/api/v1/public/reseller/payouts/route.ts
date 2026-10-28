@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { NextResponse } from "next/server";
 import { isResellerPortalEnabled } from "@/reseller/flags";
 import { createPayoutRequestDb, listPayoutRequests } from "@/reseller/payout-store";
@@ -26,6 +27,7 @@ async function sessionResellerId(): Promise<string | null> {
 }
 
 export async function GET() {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isResellerPortalEnabled()) return locked();
   const resellerId = await sessionResellerId();
   if (!resellerId) {
@@ -36,6 +38,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isResellerPortalEnabled()) return locked();
   const resellerId = await sessionResellerId();
   if (!resellerId) {

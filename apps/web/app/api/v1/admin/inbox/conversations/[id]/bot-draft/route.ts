@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { BOT_ENGINE, maybeCreateBotDraft } from "@/inbox/bot";
 
@@ -52,12 +53,14 @@ async function handle(id: string, force: boolean) {
 }
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("orders.create");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   return handle(params.id, false);
 }
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("orders.create");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   return handle(params.id, true);

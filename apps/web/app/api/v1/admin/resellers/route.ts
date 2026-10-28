@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { z } from "zod";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { BD_PHONE_REGEX, maskPhone, normalizeBdPhone } from "@/checkout/validation";
@@ -37,6 +38,7 @@ function dbNotReady() {
 }
 
 export async function GET() {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("resellers.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!isResellerEnabled(demoResellerFlags)) return locked();
@@ -136,6 +138,7 @@ async function createResellerPost(
 }
 
 export async function POST(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("resellers.manage");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!isResellerEnabled(demoResellerFlags)) return locked();

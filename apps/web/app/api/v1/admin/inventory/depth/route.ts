@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { getInventoryDepthReport } from "@/inventory/analytics";
 import { isInventoryDepthEnabled } from "@/inventory/batches";
 import { guardError, requireAdmin } from "@/reports/guard";
@@ -13,6 +14,7 @@ import { canSeeCostPrices, maskInventoryDepthReport } from "@/lib/cost-masking";
 // products.edit_cost_price; meta.costMasked says so.
 
 export async function GET(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("inventory.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!isInventoryDepthEnabled()) {

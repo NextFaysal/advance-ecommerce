@@ -154,6 +154,7 @@
  *   module owns the ledger wiring).
  */
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { checkoutFormSchema } from "@/checkout/validation";
@@ -569,6 +570,7 @@ const idempotencyStore = new InMemoryIdempotencyStore();
 const enrichmentByOrderId = new Map<string, EnrichedOrder>();
 
 export async function POST(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   const body = await req.json().catch(() => null);
   const parsed = createOrderBodySchema.safeParse(body);
   if (!parsed.success) {

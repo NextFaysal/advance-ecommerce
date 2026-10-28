@@ -19,6 +19,7 @@
  * listed — a partially-applied price book is never stored.
  */
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { z } from "zod";
 import { b2bGuardError, requireB2bAdmin } from "@/b2b/guard";
 import { b2bStore } from "@/b2b/db-store";
@@ -50,6 +51,7 @@ function portalLocked() {
 }
 
 export async function GET() {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireB2bAdmin("b2b.view");
   if (!guard.ok) return NextResponse.json(b2bGuardError(guard), { status: guard.status });
   if (!isFeatureEnabled("module.b2b_portal")) return portalLocked();
@@ -80,6 +82,7 @@ const putSchema = z.object({
 });
 
 export async function PUT(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireB2bAdmin("b2b.manage");
   if (!guard.ok) return NextResponse.json(b2bGuardError(guard), { status: guard.status });
   if (!isFeatureEnabled("module.b2b_portal")) return portalLocked();

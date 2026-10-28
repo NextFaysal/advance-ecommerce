@@ -74,7 +74,7 @@ async function auditPhoneView(
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const guard = await requireAdmin("orders.view");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
-  await ensureDbFeatureFlags();
+  await ensureDbFeatureFlags().catch(() => {});
   if (!isCallCenterEnabled(demoCallCenterFlags)) return locked();
   const canViewFullPhone = guard.permissions.includes("customers.view_full_phone");
   const isSupervisor = guard.permissions.includes("staff.manage");

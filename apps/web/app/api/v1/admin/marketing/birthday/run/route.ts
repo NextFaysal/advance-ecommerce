@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { guardError, requireAdmin } from "@/reports/guard";
 import { runBirthdayOffers } from "@/marketing/birthday";
 import { recordDemoAudit } from "../../../audit-log/store";
@@ -15,6 +16,7 @@ import { recordDemoAudit } from "../../../audit-log/store";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("marketing.campaign");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
 

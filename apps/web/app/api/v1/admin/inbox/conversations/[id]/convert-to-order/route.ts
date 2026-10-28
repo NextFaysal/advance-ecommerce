@@ -1,4 +1,5 @@
 import { isValidQtyNumber } from "@/lib/quantity";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { guardError, requireAdmin } from "@/reports/guard";
@@ -70,6 +71,7 @@ function errorJson(status: number, code: string, message: string, details?: unkn
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
+  await ensureDbFeatureFlags().catch(() => {});
   const guard = await requireAdmin("orders.create");
   if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   if (!isInboxEnabled(demoInboxFlags)) {

@@ -62,7 +62,7 @@ export async function POST(req: Request) {
   if (!hasPermission(session.permissions, "products.create")) {
     return apiError("FORBIDDEN", "Missing permission: products.create", 403);
   }
-  await ensureDbFeatureFlags();
+  await ensureDbFeatureFlags().catch(() => {});
   if (!featureFlags.isFeatureEnabled("module.sourcing")) {
     return apiError("FEATURE_LOCKED", "সোর্সিং মডিউল বন্ধ আছে (module.sourcing OFF) — Admin > Settings > Feature Flags থেকে চালু করুন।", 403);
   }

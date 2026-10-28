@@ -16,6 +16,7 @@
  * PERMISSIONS and the seed catalogue.
  */
 import { cookies } from "next/headers";
+import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { demoPosFlags } from "@/pos/flags";
 
 export type PosGuardResult =
@@ -23,6 +24,7 @@ export type PosGuardResult =
   | { ok: false; status: number; code: string; message: string };
 
 export async function requirePosAdmin(permission: string): Promise<PosGuardResult> {
+  await ensureDbFeatureFlags().catch(() => {});
   if (!demoPosFlags.isEnabled("module.pos")) {
     return {
       ok: false, status: 403, code: "FEATURE_LOCKED",
