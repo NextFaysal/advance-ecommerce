@@ -76,6 +76,21 @@
  * the cascade / addressLine are locked visible+required by the
  * config's own coercion, so they always render. Free text remains
  * only where the checkout keeps it: union + the address line.
+ *
+ * ── Doc 34 L7 funnel mode (optional `funnel` prop) ─────────────
+ * On a funnel ORDER step the runtime passes a funnel context: a
+ * signed context claim (attribution + post-order continuation) and,
+ * when the step carries a bump that still resolves in stock, the
+ * bump card data + its signed §3.7 claim. The card is one checkbox;
+ * ticking it adds `bump: { token }` to the SAME orders POST (the
+ * server re-checks the rule and resolves the LIVE price — the
+ * prices shown here are display only, like everything else in this
+ * form). The context claim rides every funnel submit as
+ * `funnel: { token }`. On success, a funnel order whose response
+ * carries `data.funnel.nextStepUrl` redirects there (the offer
+ * chain entry, else the thank-you step — the URL carries the §3.7
+ * funnel token); without one, the normal success panel shows.
+ * Without the prop the form is byte-identical to the /lp form.
  */
 import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import { formatBdt } from "@advance-ecommerce/validators";
@@ -140,7 +155,44 @@ function validationAttrs(def: CheckoutFieldDef) {
   };
 }
 
-export function QuickOrderForm({ product, locale = "bn" }: { product: ResolvedOrderProduct; locale?: Locale }) {
+/** Doc 34 §3.7 order bump as the form receives it: the owner's
+ *  heading + the offer resolved server-side against the live
+ *  catalog (display prices only — the orders route recomputes from
+ *  the DB) + the render-issued signed claim the submit carries. */
+export interface QuickOrderFunnelBump {
+  headingBn: string;
+  headingEn: string;
+  productTitleBn: string;
+  productTitleEn: string;
+  /** Joined variant attributes; "" = standard variant. */
+  variantLabel: string;
+  imageUrl: string | null;
+  /** Live catalog unit price, integer poisha. */
+  livePricePoisha: number;
+  /** Live price after the step's discount rule, integer poisha. */
+  discountedPoisha: number;
+  /** Signed bump claim ({ funnelId, stepId, variantId, rule }). */
+  claim: string;
+}
+
+/** Doc 34 L7: the funnel runtime's context for an order step's
+ *  form. `claim` is the signed funnel context claim sent on every
+ *  funnel submit; `bump` is present only when the step's bump
+ *  resolved in-stock at render time. */
+export interface QuickOrderFunnelContext {
+  claim: string;
+  bump?: QuickOrderFunnelBump;
+}
+
+export function QuickOrderForm({
+  product,
+  locale = "bn",
+  funnel,
+}: {
+  product: ResolvedOrderProduct;
+  locale?: Locale;
+  funnel?: QuickOrderFunnelContext;
+}) {
   const s = pick(locale, LANDING_STRINGS);
   const isBn = locale === "bn";
   const uid = useId();
@@ -156,6 +208,8 @@ export function QuickOrderForm({ product, locale = "bn" }: { product: ResolvedOr
   const [addressLine, setAddressLine] = useState("");
   const [note, setNote] = useState("");
   const [extraAnswers, setExtraAnswers] = useState<Record<string, string>>({});
+  // Doc 34 L7: the bump checkbox (funnel order steps only).
+  const [bumpAccepted, setBumpAccepted] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState(() => newIdempotencyKey());
   const [phase, setPhase] = useState<Phase>({ kind: "editing" });
 
@@ -205,6 +259,14 @@ export function QuickOrderForm({ product, locale = "bn" }: { product: ResolvedOr
   const maxQty = Math.max(1, selected?.stock ?? 1);
   const clampedQty = Math.min(Math.max(1, quantity), maxQty);
   const subtotalPoisha = (selected?.pricePoisha ?? 0) * clampedQty;
+  // Doc 34 L7: the DISPLAYED merchandise total includes the ticked
+  // bump (at its render-time discounted price — a preview, like the
+  // rest of this block; the server recomputes from live prices).
+  // The doc-29 condition context below deliberately keeps the
+  // items-only subtotal: that is exactly what the orders route's
+  // field gate recomputes, so client and server conditions agree.
+  const bumpPreviewPoisha = funnel?.bump && bumpAccepted ? funnel.bump.discountedPoisha : 0;
+  const previewSubtotalPoisha = subtotalPoisha + bumpPreviewPoisha;
   const productTitle = locale === "en" ? product.productTitleEn || product.productTitleBn : product.productTitleBn;
 
   // The zone the submit sends — derived from the district alone,
@@ -272,10 +334,10 @@ export function QuickOrderForm({ product, locale = "bn" }: { product: ResolvedOr
             district,
             shippingMethod: submittedZone,
             totalWeightGrams: 0,
-            subtotalPoisha,
+            subtotalPoisha: previewSubtotalPoisha,
           })
         : null,
-    [district, submittedZone, subtotalPoisha],
+    [district, submittedZone, previewSubtotalPoisha],
   );
 
   function onDivisionChange(value: string) {
@@ -384,16 +446,21 @@ export function QuickOrderForm({ product, locale = "bn" }: { product: ResolvedOr
         // fieldAnswers rides alongside the schema body — the
         // checkout page's exact construction (the form schema does
         // not carry it; the orders route's own schema accepts it).
-        body: JSON.stringify(
-          Object.keys(fieldAnswers).length > 0
-            ? { ...parsed.data, fieldAnswers }
-            : parsed.data,
-        ),
+        // Doc 34 L7: funnel mode adds the context claim on every
+        // submit and the §3.7 bump claim when the card is ticked —
+        // same additive pattern; the route's schema accepts both.
+        body: JSON.stringify({
+          ...parsed.data,
+          ...(Object.keys(fieldAnswers).length > 0 ? { fieldAnswers } : {}),
+          ...(funnel ? { funnel: { token: funnel.claim } } : {}),
+          ...(funnel?.bump && bumpAccepted ? { bump: { token: funnel.bump.claim } } : {}),
+        }),
       });
       const body = (await res.json().catch(() => null)) as {
         data?: {
           order?: { orderNo?: string; totalPoisha?: number };
           pricing?: { grandTotalPoisha?: number } | null;
+          funnel?: { nextStepUrl?: string | null } | null;
         };
         error?: { code?: string; message?: string; details?: unknown };
       } | null;
@@ -402,6 +469,16 @@ export function QuickOrderForm({ product, locale = "bn" }: { product: ResolvedOr
       setIdempotencyKey(newIdempotencyKey());
 
       if (res.ok && body?.data?.order?.orderNo) {
+        // Doc 34 L7: a funnel order with a continuation URL leaves
+        // the form for the next funnel step (the offer chain entry,
+        // else the thank-you step) — the URL carries the §3.7
+        // funnel token. No URL (funnel flow ended here, or the
+        // server dropped the funnel context) → the success panel.
+        const nextStepUrl = funnel ? body.data.funnel?.nextStepUrl : undefined;
+        if (nextStepUrl) {
+          window.location.assign(nextStepUrl);
+          return;
+        }
         setPhase({
           kind: "success",
           orderNo: body.data.order.orderNo,
@@ -722,6 +799,45 @@ export function QuickOrderForm({ product, locale = "bn" }: { product: ResolvedOr
         </div>
       </div>
 
+      {funnel?.bump ? (
+        // Doc 34 §3.7 order bump: one checkbox-card under the form's
+        // product block. Heading is the owner's step copy; prices
+        // are the render-time live prices (display only — the
+        // server recomputes the line from the DB at submit).
+        <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border-2 border-dashed border-brand-400 bg-brand-50 p-3.5">
+          <input
+            type="checkbox"
+            checked={bumpAccepted}
+            onChange={(e) => setBumpAccepted(e.target.checked)}
+            className="mt-1 h-5 w-5 shrink-0 accent-brand-600"
+          />
+          {funnel.bump.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={funnel.bump.imageUrl} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
+          ) : null}
+          <span className="min-w-0">
+            <span className="block font-bold text-text-main">
+              {locale === "en" ? funnel.bump.headingEn || funnel.bump.headingBn : funnel.bump.headingBn}
+            </span>
+            <span className="block text-sm text-text-main">
+              {locale === "en" ? funnel.bump.productTitleEn || funnel.bump.productTitleBn : funnel.bump.productTitleBn}
+              {funnel.bump.variantLabel ? ` — ${funnel.bump.variantLabel}` : ""}
+            </span>
+            <span className="mt-0.5 flex flex-wrap items-baseline gap-1.5">
+              <span className="font-bold text-brand-600">{formatBdt(funnel.bump.discountedPoisha)}</span>
+              {funnel.bump.discountedPoisha < funnel.bump.livePricePoisha ? (
+                <>
+                  <span className="text-sm text-text-muted line-through">{formatBdt(funnel.bump.livePricePoisha)}</span>
+                  <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-800">
+                    {interpolate(s.funnelYouSave, { amount: formatBdt(funnel.bump.livePricePoisha - funnel.bump.discountedPoisha) })}
+                  </span>
+                </>
+              ) : null}
+            </span>
+          </span>
+        </label>
+      ) : null}
+
       <div className="mt-4 grid gap-3">
         {infoFieldDefs.map((def) => renderInfoField(def))}
       </div>
@@ -759,7 +875,7 @@ export function QuickOrderForm({ product, locale = "bn" }: { product: ResolvedOr
       <div className="mt-4 border-t border-border pt-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <span className="text-sm text-text-muted">{s.subtotalLabel}</span>
-          <span className="font-semibold text-text-main">{formatBdt(subtotalPoisha)}</span>
+          <span className="font-semibold text-text-main">{formatBdt(previewSubtotalPoisha)}</span>
         </div>
         {shippingPreview ? (
           <>
@@ -772,7 +888,7 @@ export function QuickOrderForm({ product, locale = "bn" }: { product: ResolvedOr
             <div className="mt-1.5 flex flex-wrap items-baseline justify-between gap-2">
               <span className="text-sm font-semibold text-text-main">{s.grandTotalLabel}</span>
               <span className="text-xl font-bold text-text-main">
-                {formatBdt(subtotalPoisha + shippingPreview.shippingPoisha)}
+                {formatBdt(previewSubtotalPoisha + shippingPreview.shippingPoisha)}
               </span>
             </div>
           </>

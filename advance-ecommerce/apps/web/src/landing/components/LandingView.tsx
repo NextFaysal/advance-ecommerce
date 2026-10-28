@@ -33,7 +33,7 @@ import { RAIL_FADE_CLASS } from "@/storefront-ux/responsive";
 import { interpolate, pick, type Locale } from "@/i18n/locale";
 import { LANDING_STRINGS, type LandingStrings } from "../strings";
 import { CountdownNote } from "./CountdownNote";
-import { QuickOrderForm } from "./QuickOrderForm";
+import { QuickOrderForm, type QuickOrderFunnelContext } from "./QuickOrderForm";
 import { RichText } from "./blocks/RichText";
 import { VideoFacade } from "./blocks/VideoFacade";
 import { LandingProductCard } from "./blocks/LandingProductCard";
@@ -100,7 +100,17 @@ function Stars({ rating, s }: { rating: number; s: LandingStrings }) {
   );
 }
 
-export function LandingView({ view, locale = "bn" }: { view: LandingViewModel; locale?: Locale }) {
+export function LandingView({
+  view,
+  locale = "bn",
+  funnelForm,
+}: {
+  view: LandingViewModel;
+  locale?: Locale;
+  /** Doc 34 L7: the funnel runtime's order-step context — threaded
+   *  to the page's QuickOrderForm only; absent everywhere else. */
+  funnelForm?: QuickOrderFunnelContext;
+}) {
   const s = pick(locale, LANDING_STRINGS);
   const hero = view.sections.find((sec) => sec.kind === "hero");
   const heroCta = hero ? pair(locale, hero.ctaLabelBn, hero.ctaLabelEn) : undefined;
@@ -113,7 +123,7 @@ export function LandingView({ view, locale = "bn" }: { view: LandingViewModel; l
   // without such a bar render exactly as before.
   const primaryOfferSectionId = view.sections.find((sec) => sec.kind === "product_offer" && sec.offer !== null)?.id;
   const stickyTargetsOffer = view.sections.some((sec) => sec.kind === "sticky_bar" && sec.target === "primary_offer" && sec.offer !== null);
-  const ctx: SectionRenderContext = { s, locale, heroCta, primaryOffer: view.primaryOffer, hasQuickOrder, stickyTargetsOffer, primaryOfferSectionId };
+  const ctx: SectionRenderContext = { s, locale, heroCta, primaryOffer: view.primaryOffer, hasQuickOrder, stickyTargetsOffer, primaryOfferSectionId, funnelForm };
   return (
     <div className="mx-auto max-w-3xl">
       {view.sections.map((section) => {
@@ -141,6 +151,10 @@ interface SectionRenderContext {
   hasQuickOrder: boolean;
   stickyTargetsOffer: boolean;
   primaryOfferSectionId: string | undefined;
+  /** Doc 34 L7: funnel order-step context (claims + bump card),
+   *  set ONLY by the funnel runtime — /lp and the admin preview
+   *  never pass it, so their forms render exactly as before. */
+  funnelForm: QuickOrderFunnelContext | undefined;
 }
 
 /** Design preset → wrapper classes (doc 34 §3.5). Static lookups
@@ -333,7 +347,7 @@ function renderSection(section: LandingViewSection, ctx: SectionRenderContext): 
             {s.quickOrderIntro}
           </p>
           <div className="mt-4">
-            <QuickOrderForm product={section.product} locale={locale} />
+            <QuickOrderForm product={section.product} locale={locale} funnel={ctx.funnelForm} />
           </div>
         </section>
       );

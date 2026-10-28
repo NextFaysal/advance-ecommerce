@@ -107,6 +107,22 @@ const bn = {
   countdownUnitSeconds: "সেকেন্ড",
   carouselPrevAria: "আগের পণ্যগুলো",
   carouselNextAria: "পরের পণ্যগুলো",
+  // L8 — funnel offer steps (upsell/downsell) + thank-you chrome
+  funnelOfferHeading: "বিশেষ অফার — শুধু এই অর্ডারের জন্য",
+  funnelOfferEndsIn: "অফারটি শেষ হতে বাকি",
+  funnelAccept: "হ্যাঁ, যোগ করুন",
+  funnelDecline: "না, ধন্যবাদ",
+  funnelAdding: "যোগ করা হচ্ছে…",
+  funnelAddedTitle: "যোগ করা হয়েছে!",
+  funnelYouSave: "সাশ্রয় {amount}",
+  funnelOfferExpired: "এই অফারের সময় শেষ হয়ে গেছে। আপনার অর্ডারটি আগের মতোই নিরাপদ আছে।",
+  funnelLinkInactive: "এই লিংকটি আর সক্রিয় নেই। আপনার অর্ডারটি নিরাপদ আছে — নিচে থেকে অর্ডার ট্র্যাক করুন।",
+  funnelAlreadyAdded: "এই অফারটি আপনার অর্ডারে ইতিমধ্যে যোগ করা হয়েছে।",
+  funnelContinue: "চালিয়ে যান",
+  funnelAcceptFailed: "দুঃখিত, অফারটি এখন যোগ করা যাচ্ছে না।",
+  funnelSeparateOrderNote: "অফারটি একটি আলাদা অর্ডার হিসেবে যোগ হয়েছে ({orderNo}) — আমাদের টিম দুটি একসাথে পাঠানোর ব্যবস্থা করবে।",
+  funnelOrderSummaryHeading: "আপনার অর্ডারের সারসংক্ষেপ",
+  funnelHomeCta: "হোমপেজে যান",
 };
 
 export type LandingStrings = { [K in keyof typeof bn]: string };
@@ -187,6 +203,21 @@ const en: LandingStrings = {
   countdownUnitSeconds: "Seconds",
   carouselPrevAria: "Previous products",
   carouselNextAria: "Next products",
+  funnelOfferHeading: "Special offer — for this order only",
+  funnelOfferEndsIn: "This offer ends in",
+  funnelAccept: "Yes, add it",
+  funnelDecline: "No, thanks",
+  funnelAdding: "Adding…",
+  funnelAddedTitle: "Added!",
+  funnelYouSave: "You save {amount}",
+  funnelOfferExpired: "This offer has expired. Your order is safe, exactly as you placed it.",
+  funnelLinkInactive: "This link is no longer active. Your order is safe — track it below.",
+  funnelAlreadyAdded: "This offer has already been added to your order.",
+  funnelContinue: "Continue",
+  funnelAcceptFailed: "Sorry, the offer could not be added right now.",
+  funnelSeparateOrderNote: "The offer was added as a separate order ({orderNo}) — our team will arrange to send them together.",
+  funnelOrderSummaryHeading: "Your order summary",
+  funnelHomeCta: "Go to the homepage",
 };
 
 export const LANDING_STRINGS: Record<Locale, LandingStrings> = { bn, en };

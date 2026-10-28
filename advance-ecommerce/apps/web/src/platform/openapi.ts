@@ -214,6 +214,7 @@ export const API_ROUTE_REGISTRY: readonly ApiRouteEntry[] = [
   r("GET", "/api/v1/public/products/{slug}", "public", "Product detail by slug"),
   r("GET", "/api/v1/public/categories", "public", "List categories"),
   r("POST", "/api/v1/public/orders", "public", "Create an order (server re-validates price and stock; idempotency key required)"),
+  r("POST", "/api/v1/public/orders/{orderNo}/amend", "public", "Accept a funnel one-click offer (doc 34): funnel-token + phone bound; appends the offer line via the order-edit service, or a held companion order when it refuses"),
   r("POST", "/api/v1/public/orders/{orderNo}/otp/send", "public", "Send SMS OTP challenge for order phone verification"),
   r("POST", "/api/v1/public/orders/{orderNo}/otp/verify", "public", "Verify SMS OTP challenge for order phone verification"),
   r("GET", "/api/v1/public/pay/{token}", "public", "Resolve a payment link by its plain token (hash lookup; view never contains the hash)"),
