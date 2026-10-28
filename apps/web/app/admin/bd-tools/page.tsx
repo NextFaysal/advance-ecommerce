@@ -45,12 +45,45 @@ import { paymentLinkStore, withEffectiveStatus } from "@/bd/payment-link";
 import { deriveDrawerCash } from "@/bd/cash-closing-derive";
 import { listDisputes, listInvoiceRuns, type CourierInvoiceRun } from "@/bd/courier-invoice";
 import { listAttempts } from "@/integrations/sandbox/db-store";
+import nextDynamic from "next/dynamic";
 import { AddressParserPanel } from "./address-parser-panel";
-import { SmsVerifyPanel } from "./sms-verify-panel";
-import { SmsDevicesPanel } from "./sms-devices-panel";
-import { PaymentLinksPanel } from "./payment-links-panel";
-import { CashClosingPanel, type StoredClosingView } from "./cash-closing-panel";
-import { CourierAssignmentPanel } from "./courier-assignment-panel";
+import type { StoredClosingView } from "./cash-closing-panel";
+import { PanelSkeleton } from "./panel-skeleton";
+
+// Lazy tab panels (admin perf wave, audit B2): this route's page chunk
+// was the heaviest in the admin (109 kB) because all six client panels
+// shipped eagerly. Only the DEFAULT tab (address — Tabs falls back to
+// tabs[0], and this page passes no defaultId) stays a static import:
+// it is what renders on first paint, so it must not flash a loader.
+// The other five client panels load via next/dynamic; Tabs mounts
+// only the active panel, so each panel's chunk now downloads on first
+// switch to its tab, with PanelSkeleton in the panel area while it
+// loads. The courier-reconciliation tab stays an inline server
+// component (below) — it ships no panel JS of its own. No state is
+// shared between panels (each receives its own server-computed props
+// from this page and owns its internal state), so nothing else moves.
+// (Aliased import: this module already exports the route-segment
+// config `dynamic = "force-dynamic"`.)
+const SmsVerifyPanel = nextDynamic(
+  () => import("./sms-verify-panel").then((m) => m.SmsVerifyPanel),
+  { loading: () => <PanelSkeleton /> },
+);
+const SmsDevicesPanel = nextDynamic(
+  () => import("./sms-devices-panel").then((m) => m.SmsDevicesPanel),
+  { loading: () => <PanelSkeleton /> },
+);
+const PaymentLinksPanel = nextDynamic(
+  () => import("./payment-links-panel").then((m) => m.PaymentLinksPanel),
+  { loading: () => <PanelSkeleton /> },
+);
+const CashClosingPanel = nextDynamic(
+  () => import("./cash-closing-panel").then((m) => m.CashClosingPanel),
+  { loading: () => <PanelSkeleton /> },
+);
+const CourierAssignmentPanel = nextDynamic(
+  () => import("./courier-assignment-panel").then((m) => m.CourierAssignmentPanel),
+  { loading: () => <PanelSkeleton /> },
+);
 import { buildCourierStatsFromDb } from "@/bd/courier-stats-db";
 import type { PaymentLinkListItemView } from "./actions";
 import { reconciliationReason, reconciliationStatusLabels } from "./labels";

@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { ADMIN_NAV, groupBySection } from "@/admin-nav/config";
-import { AdminCommandPalette } from "@/admin/command-palette";
+import { AdminCommandPaletteLazy } from "./command-palette-lazy";
 import { getRequestLocale } from "@/i18n/server";
 import { Sidebar } from "@/admin-shell/Sidebar";
 import { Topbar } from "@/admin-shell/Topbar";
@@ -51,7 +51,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap"
       />
-      <AdminCommandPalette />
+      {/* ⌘K palette, lazy (admin perf wave B1): only the eager
+          listener shim in command-palette-lazy.tsx mounts here; the
+          palette chunk loads on the first ⌘K / topbar-trigger press,
+          which still opens it on that first press. */}
+      <AdminCommandPaletteLazy />
       {/* Staff presence heartbeat for the current /admin path
           (renders nothing; auth screens returned above, so they
           never heartbeat). */}

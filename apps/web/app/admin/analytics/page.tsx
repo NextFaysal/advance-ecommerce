@@ -1,13 +1,14 @@
 import { computeRfm, segmentCounts } from "@/analytics/rfm";
 import type { CustomerOrderSummary } from "@/analytics/rfm";
-import { rankCouriers, staffPerformance, type CourierStats, type StaffStats } from "@/analytics/performance";
+import { rankCouriers, staffPerformance, type CourierStats, type StaffScore, type StaffStats } from "@/analytics/performance";
 import { prisma } from "@advance-ecommerce/db";
 import { buildCohortTable, buildCustomerActivity } from "@/analytics/cohort";
 import { averageOrderValuePoisha, computeUnitEconomics } from "@/analytics/unit-economics";
-import { getFunnelData, resolveFunnelEventStore } from "@/analytics/funnel-events";
+import { getFunnelData, resolveFunnelEventStore, type FunnelData } from "@/analytics/funnel-events";
 import { buildDistrictHeatmap } from "@/analytics/district-heatmap";
 import { formatBdt } from "@advance-ecommerce/validators";
-import { daysAgoInDhaka, fetchSalesRows, todayInDhaka } from "@/reports/db-rows";
+import { daysAgoInDhaka, fetchOrderActivityRows, fetchSalesRows, todayInDhaka } from "@/reports/db-rows";
+import { getCachedValue, setCachedValue } from "@/lib/redis";
 import type { SalesRow } from "@/reports/types";
 import { getRequestLocale } from "@/i18n/server";
 import { interpolate, pick } from "@/i18n/locale";
@@ -50,49 +51,61 @@ function pct(bps: number): string {
   return `${(bps / 100).toFixed(1)}%`;
 }
 
-export default async function AdminAnalyticsPage() {
-  const locale = await getRequestLocale();
-  const t = pick(locale, ANALYTICS_STRINGS);
-  const range = { from: daysAgoInDhaka(364), to: todayInDhaka() };
-  const rows = await fetchSalesRows(range);
-  // Cohort retention is all-history by definition (second full scan —
-  // fine at this scale; both reads are the same indexed order query).
-  const historyRows = await fetchSalesRows({ from: "2000-01-01", to: range.to });
-  const rfm = computeRfm(summaries(rows));
-  const segments = segmentCounts(rfm);
-  const cohort = buildCohortTable(buildCustomerActivity(historyRows));
-  const funnel = await getFunnelData({ from: daysAgoInDhaka(29), to: range.to }, resolveFunnelEventStore());
-  const heatmap = buildDistrictHeatmap(rows);
+/* ------------------------------------------------------------------ */
+/* Data assembly + cache (perf wave A2)                                */
+/* ------------------------------------------------------------------ */
 
-  const courierMap = new Map<string, CourierStats>();
-  for (const r of rows) {
-    if (!r.courier) continue;
-    const s = courierMap.get(r.courier) ?? {
-      provider: r.courier, shipments: 0, delivered: 0, failed: 0, returned: 0,
-      avgDeliveryHours: null, codCollectedPoisha: 0, codExpectedPoisha: 0,
-    };
-    s.shipments += 1;
-    if (r.status === "DELIVERED") { s.delivered += 1; s.codExpectedPoisha += r.revenuePoisha; s.codCollectedPoisha += r.revenuePoisha; }
-    if (r.status === "RETURNED" || r.status === "REFUNDED") s.returned += 1;
-    courierMap.set(r.courier, s);
-  }
-  const couriers = rankCouriers(Array.from(courierMap.values()));
-  // Staff performance (v2-merge, PR #1): call-center outcomes per agent
-  // from real CallLogEntry rows, scored by the same pure functions the
-  // staff-performance API route uses. Read failure degrades to an
-  // empty section, never a page crash.
-  let staffScores: ReturnType<typeof staffPerformance> = [];
+// The assembled view model is cached for 5 minutes (TTL approved for
+// this wave) through the shared Redis helpers in src/lib/redis.ts —
+// the same getCachedValue/setCachedValue pattern the settings module
+// uses, including the graceful in-memory fallback when Redis is
+// absent. Given the same DB state every figure is identical to a
+// live computation, modulo this ≤5 min staleness window. The key
+// carries the locale (staff fallback names are baked into the staff
+// rows) and the Dhaka date (the trailing-365-day range rolls daily).
+// Degraded assemblies — the staff read failed, or the funnel store
+// read failed and produced the not-collecting state — are NEVER
+// cached, so a transient failure degrades only its own request,
+// exactly as it did before the cache existed.
+const ANALYTICS_CACHE_TTL_SECONDS = 300;
+
+interface AnalyticsViewModel {
+  rfmCount: number;
+  segments: ReturnType<typeof segmentCounts>;
+  cohort: ReturnType<typeof buildCohortTable>;
+  funnel: FunnelData;
+  heatmap: ReturnType<typeof buildDistrictHeatmap>;
+  couriers: ReturnType<typeof rankCouriers>;
+  staffScores: StaffScore[];
+  totalRevenue: number;
+  ordersCount: number;
+  customerCount: number;
+  ue: ReturnType<typeof computeUnitEconomics>;
+  aov: number;
+  maxCohortCells: number;
+}
+
+// Staff performance (v2-merge, PR #1): call-center outcomes per agent
+// from real CallLogEntry rows, scored by the same pure functions the
+// staff-performance API route uses. Read failure degrades to an
+// empty section, never a page crash (and flags the assembly as
+// uncacheable — see the cache note above).
+async function loadStaffScores(
+  fallbackName: string,
+): Promise<{ scores: StaffScore[]; failed: boolean }> {
   try {
-    const users = await prisma.user.findMany({ select: { id: true, name: true }, take: 20 });
-    const callLogs = await prisma.callLogEntry.findMany({
-      select: { agentId: true, outcome: true, durationSeconds: true },
-      take: 1000,
-    });
+    const [users, callLogs] = await Promise.all([
+      prisma.user.findMany({ select: { id: true, name: true }, take: 20 }),
+      prisma.callLogEntry.findMany({
+        select: { agentId: true, outcome: true, durationSeconds: true },
+        take: 1000,
+      }),
+    ]);
     const staffMap = new Map<string, StaffStats>();
     for (const u of users) {
       staffMap.set(u.id, {
         staffId: u.id,
-        name: u.name || t.staffFallbackName,
+        name: u.name || fallbackName,
         ordersProcessed: 0,
         ordersConfirmed: 0,
         callsHandled: 0,
@@ -111,10 +124,50 @@ export default async function AdminAnalyticsPage() {
         if (!log.durationSeconds || log.durationSeconds <= 600) staff.slaMet += 1;
       }
     }
-    staffScores = staffPerformance(Array.from(staffMap.values()));
+    return { scores: staffPerformance(Array.from(staffMap.values())), failed: false };
   } catch {
-    staffScores = [];
+    return { scores: [], failed: true };
   }
+}
+
+async function computeAnalyticsViewModel(
+  fallbackName: string,
+): Promise<{ vm: AnalyticsViewModel; cacheable: boolean }> {
+  const range = { from: daysAgoInDhaka(364), to: todayInDhaka() };
+  // Perf wave A2: the four independent reads (365-day sales rows,
+  // all-time cohort activity, 30-day funnel, staff) previously ran
+  // as sequential awaits; they now run concurrently.
+  const [rows, activityRows, funnel, staff] = await Promise.all([
+    fetchSalesRows(range),
+    // Cohort retention is all-history by definition. This used to be
+    // a second full fetchSalesRows scan (every order ITEM since
+    // 2000-01-01, with variant/shipment includes and the refunds
+    // query); it is now fetchOrderActivityRows — one scalar row per
+    // order — which buildCustomerActivity reduces to identical
+    // activity (proof in src/reports/db-rows.ts).
+    fetchOrderActivityRows({ from: "2000-01-01", to: range.to }),
+    getFunnelData({ from: daysAgoInDhaka(29), to: range.to }, resolveFunnelEventStore()),
+    loadStaffScores(fallbackName),
+  ]);
+  const rfm = computeRfm(summaries(rows));
+  const segments = segmentCounts(rfm);
+  const cohort = buildCohortTable(buildCustomerActivity(activityRows));
+  const heatmap = buildDistrictHeatmap(rows);
+
+  const courierMap = new Map<string, CourierStats>();
+  for (const r of rows) {
+    if (!r.courier) continue;
+    const s = courierMap.get(r.courier) ?? {
+      provider: r.courier, shipments: 0, delivered: 0, failed: 0, returned: 0,
+      avgDeliveryHours: null, codCollectedPoisha: 0, codExpectedPoisha: 0,
+    };
+    s.shipments += 1;
+    if (r.status === "DELIVERED") { s.delivered += 1; s.codExpectedPoisha += r.revenuePoisha; s.codCollectedPoisha += r.revenuePoisha; }
+    if (r.status === "RETURNED" || r.status === "REFUNDED") s.returned += 1;
+    courierMap.set(r.courier, s);
+  }
+  const couriers = rankCouriers(Array.from(courierMap.values()));
+  const staffScores = staff.scores;
   const totalRevenue = rows.reduce((sum, r) => sum + r.revenuePoisha - r.refundPoisha, 0);
   const orderIds = new Set(rows.filter((r) => r.status !== "CANCELLED").map((r) => r.orderId));
   const customerCount = new Set(rows.map((r) => r.customerId)).size;
@@ -126,6 +179,72 @@ export default async function AdminAnalyticsPage() {
   });
   const aov = averageOrderValuePoisha(totalRevenue, orderIds.size);
   const maxCohortCells = cohort.reduce((m, r) => Math.max(m, r.cells.length), 0);
+
+  return {
+    vm: {
+      rfmCount: rfm.length,
+      segments,
+      cohort,
+      funnel,
+      heatmap,
+      couriers,
+      staffScores,
+      totalRevenue,
+      ordersCount: orderIds.size,
+      customerCount,
+      ue,
+      aov,
+      maxCohortCells,
+    },
+    cacheable: !staff.failed && funnel.state !== "not_collecting",
+  };
+}
+
+async function getAnalyticsViewModel(
+  locale: string,
+  fallbackName: string,
+): Promise<AnalyticsViewModel> {
+  const cacheKey = `admin:analytics:v1:${locale}:${todayInDhaka()}`;
+  try {
+    const cached = await getCachedValue(cacheKey);
+    if (cached !== null) {
+      const parsed = JSON.parse(cached) as AnalyticsViewModel;
+      if (parsed && Array.isArray(parsed.cohort) && typeof parsed.totalRevenue === "number") {
+        return parsed;
+      }
+    }
+  } catch {
+    // An unreadable/corrupt cache entry must never break the page —
+    // fall through to the live computation.
+  }
+  const { vm, cacheable } = await computeAnalyticsViewModel(fallbackName);
+  if (cacheable) {
+    try {
+      await setCachedValue(cacheKey, JSON.stringify(vm), ANALYTICS_CACHE_TTL_SECONDS);
+    } catch {
+      // Best-effort (the helpers already swallow Redis errors).
+    }
+  }
+  return vm;
+}
+
+export default async function AdminAnalyticsPage() {
+  const locale = await getRequestLocale();
+  const t = pick(locale, ANALYTICS_STRINGS);
+  const vm = await getAnalyticsViewModel(locale, t.staffFallbackName);
+  const {
+    segments,
+    cohort,
+    funnel,
+    heatmap,
+    couriers,
+    staffScores,
+    totalRevenue,
+    customerCount,
+    ue,
+    aov,
+    maxCohortCells,
+  } = vm;
 
   return (
     <main className="min-w-0">
@@ -141,11 +260,11 @@ export default async function AdminAnalyticsPage() {
             </Card>
             <Card>
               <p className="text-xs font-medium text-text-muted">{t.orders}</p>
-              <p className="tnum mt-1 text-kpi text-text-main">{orderIds.size}</p>
+              <p className="tnum mt-1 text-kpi text-text-main">{vm.ordersCount}</p>
             </Card>
             <Card>
               <p className="text-xs font-medium text-text-muted">{t.customersInData}</p>
-              <p className="tnum mt-1 text-kpi text-text-main">{rfm.length}</p>
+              <p className="tnum mt-1 text-kpi text-text-main">{vm.rfmCount}</p>
             </Card>
             <Card>
               <p className="text-xs font-medium text-text-muted">{t.aov}</p>

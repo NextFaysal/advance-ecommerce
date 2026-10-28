@@ -1,5 +1,5 @@
 import { navItemLabel } from "@/admin-nav/config";
-import { CommandPaletteTrigger } from "@/admin/command-palette";
+import { CommandPaletteTrigger } from "@/admin/command-palette-trigger";
 import { pick, type Locale } from "@/i18n/locale";
 import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { ADMIN_STRINGS } from "@/admin/strings";

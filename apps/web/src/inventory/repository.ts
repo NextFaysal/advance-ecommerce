@@ -238,6 +238,48 @@ export async function getVariantStockCacheDb(variantIds: string[]): Promise<Map<
   return new Map(rows.map((r) => [r.id, r.stock]));
 }
 
+/**
+ * Low-stock read for the admin dashboard (perf wave A4): the
+ * InventoryItem rows of ONLY the variants at/below `threshold`, plus
+ * the variant stock cache for every variant that has inventory rows —
+ * the exact inputs the dashboard's low-stock assembly consumes,
+ * without loading the whole InventoryItem table into memory.
+ *
+ * Equivalence with the old listInventoryItemsDb() + assembly path:
+ * - The candidate set is decided by the SAME rule the dashboard
+ *   applies in memory: available = stock cache, falling back to
+ *   Σ(quantityOnHand − quantityReserved) when the variant row is
+ *   gone; low ⇔ available ≤ threshold. The groupBy below yields one
+ *   row per variant that HAS inventory rows (the same variant set a
+ *   full table load produces) with the sums the fallback needs.
+ * - The surviving variants' item rows are then loaded with the SAME
+ *   orderBy listInventoryItemsDb() uses, so the dashboard's
+ *   per-variant grouping, first row and sums are unchanged.
+ */
+export async function listLowStockDb(
+  threshold: number,
+): Promise<{ items: InventoryItem[]; stockCache: Map<string, number> }> {
+  const sums = await prisma.inventoryItem.groupBy({
+    by: ["variantId"],
+    _sum: { quantityOnHand: true, quantityReserved: true },
+  });
+  const stockCache = await getVariantStockCacheDb(sums.map((s) => s.variantId));
+  const candidateIds = sums
+    .filter((s) => {
+      const available =
+        stockCache.get(s.variantId) ??
+        (s._sum.quantityOnHand ?? 0) - (s._sum.quantityReserved ?? 0);
+      return available <= threshold;
+    })
+    .map((s) => s.variantId);
+  if (candidateIds.length === 0) return { items: [], stockCache };
+  const rows = await prisma.inventoryItem.findMany({
+    where: { variantId: { in: candidateIds } },
+    orderBy: [{ warehouseId: "asc" }, { variantId: "asc" }],
+  });
+  return { items: rows.map(rowToItem), stockCache };
+}
+
 /* ------------------------------------------------------------------ */
 /* Movements (the ledger write path)                                   */
 /* ------------------------------------------------------------------ */

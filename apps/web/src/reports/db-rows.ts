@@ -119,3 +119,38 @@ export async function fetchSalesRows(range: DateRange): Promise<SalesRow[]> {
   }
   return rows;
 }
+
+export interface OrderActivityRow {
+  customerId: string;
+  orderId: string;
+  /** YYYY-MM-DD on the Asia/Dhaka calendar — same derivation as SalesRow.date. */
+  date: string;
+  status: string;
+}
+
+/**
+ * Cohort-activity input (perf wave A2): one lightweight row per ORDER
+ * (id, customer, Dhaka date, status) instead of fetchSalesRows'
+ * item-level scan with items/variant/shipment includes plus the
+ * refunds query. Provably equivalent input for buildCustomerActivity
+ * (src/analytics/cohort.ts): that function skips CANCELLED orders and
+ * dedupes the remaining item rows by orderId, so per order it
+ * consumes exactly (customerId, orderId, dhakaDateOf(createdAt),
+ * status) — and only for orders that HAVE items, since
+ * fetchSalesRows emits no rows for item-less orders; the
+ * `items: { some: {} }` filter mirrors that exactly.
+ */
+export async function fetchOrderActivityRows(range: DateRange): Promise<OrderActivityRow[]> {
+  const { gte, lte } = dhakaRangeUtc(range);
+  const orders = await prisma.order.findMany({
+    where: { deletedAt: null, createdAt: { gte, lte }, items: { some: {} } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, customerId: true, createdAt: true, status: true },
+  });
+  return orders.map((o) => ({
+    customerId: o.customerId,
+    orderId: o.id,
+    date: dhakaDateOf(o.createdAt),
+    status: o.status,
+  }));
+}

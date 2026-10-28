@@ -8,7 +8,8 @@
 import { prisma } from "@advance-ecommerce/db";
 import { aggregateSales } from "./service";
 import { daysAgoInDhaka, fetchSalesRows, todayInDhaka } from "./db-rows";
-import { getVariantStockCacheDb, listInventoryItemsDb, listWarehousesDb, LOW_STOCK_THRESHOLD } from "../inventory/repository";
+import { listLowStockDb, listWarehousesDb, LOW_STOCK_THRESHOLD } from "../inventory/repository";
+import { getCachedValue, setCachedValue } from "../lib/redis";
 import type { LowStockRow } from "../inventory/service";
 import type { DateRange, Totals } from "./types";
 import type { OrderStatus } from "../orders/types";
@@ -52,10 +53,77 @@ export interface DashboardData {
   lowStockThreshold: number;
 }
 
+/* ------------------------------------------------------------------ */
+/* Cache (perf wave A1)                                                */
+/* ------------------------------------------------------------------ */
+
+// The assembled DashboardData is cached for 30 s (TTL approved for
+// this wave) through the shared Redis helpers in src/lib/redis.ts —
+// the same getCachedValue/setCachedValue pattern the settings module
+// uses, including the graceful in-memory fallback when Redis is
+// absent or unreachable. Given the same DB state the figures are
+// identical to a live computation, modulo this ≤30 s staleness
+// window. The key carries the Dhaka date so a post-midnight request
+// never serves the previous day's range.
+const DASHBOARD_CACHE_TTL_SECONDS = 30;
+
 export async function getDashboardData(): Promise<DashboardData> {
+  const cacheKey = `admin:dashboard:v1:${todayInDhaka()}`;
+  try {
+    const cached = await getCachedValue(cacheKey);
+    if (cached !== null) {
+      const parsed = JSON.parse(cached) as DashboardData;
+      if (parsed && Array.isArray(parsed.dailySeries) && Array.isArray(parsed.lowStock)) {
+        return parsed;
+      }
+    }
+  } catch {
+    // An unreadable/corrupt cache entry must never break the
+    // dashboard — fall through to the live computation.
+  }
+  const data = await computeDashboardData();
+  try {
+    await setCachedValue(cacheKey, JSON.stringify(data), DASHBOARD_CACHE_TTL_SECONDS);
+  } catch {
+    // Cache writes are best-effort (the helpers already swallow Redis
+    // errors; this only guards the serialization step).
+  }
+  return data;
+}
+
+async function computeDashboardData(): Promise<DashboardData> {
   const today = todayInDhaka();
   const range: DateRange = { from: daysAgoInDhaka(29), to: today };
-  const rows = await fetchSalesRows(range);
+  // Perf wave A1: the sales scan, the status groupBy and the
+  // independent lookups previously ran as sequential rounds; they do
+  // not depend on each other, so they now run concurrently.
+  // (fetchSalesRows keeps its internal orders -> refunds order — a
+  // true dependency.) Low stock comes from listLowStockDb (A4),
+  // which loads only the below-threshold variants' rows.
+  const [rows, grouped, [pendingTrxReviews, recent, lowStockRead, warehouses]] =
+    await Promise.all([
+      fetchSalesRows(range),
+      prisma.order.groupBy({
+        by: ["status"],
+        where: { deletedAt: null },
+        _count: { _all: true },
+      }),
+      Promise.all([
+        prisma.manualTrxSubmission.count({ where: { status: "PENDING" } }),
+        prisma.order.findMany({
+          where: { deletedAt: null },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+          select: {
+            id: true, orderNo: true, customerName: true, customerPhone: true,
+            status: true, totalPoisha: true,
+          },
+        }),
+        listLowStockDb(LOW_STOCK_THRESHOLD),
+        listWarehousesDb(),
+      ]),
+    ]);
+  const { items, stockCache } = lowStockRead;
   const totals = aggregateSales(rows, range, false).totals;
   const todayTotals = aggregateSales(rows, { from: today, to: today }, false).totals;
   const weekTotals = aggregateSales(rows, { from: daysAgoInDhaka(6), to: today }, false).totals;
@@ -78,28 +146,8 @@ export async function getDashboardData(): Promise<DashboardData> {
     dailySeries.push({ date, revenuePoisha: b?.revenuePoisha ?? 0, orders: b?.orderIds.size ?? 0 });
   }
 
-  const grouped = await prisma.order.groupBy({
-    by: ["status"],
-    where: { deletedAt: null },
-    _count: { _all: true },
-  });
   const countsByStatus: Partial<Record<OrderStatus, number>> = {};
   for (const g of grouped) countsByStatus[g.status as OrderStatus] = g._count._all;
-
-  const [pendingTrxReviews, recent, items, warehouses] = await Promise.all([
-    prisma.manualTrxSubmission.count({ where: { status: "PENDING" } }),
-    prisma.order.findMany({
-      where: { deletedAt: null },
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      select: {
-        id: true, orderNo: true, customerName: true, customerPhone: true,
-        status: true, totalPoisha: true,
-      },
-    }),
-    listInventoryItemsDb(),
-    listWarehousesDb(),
-  ]);
 
   const warehouseName = new Map(warehouses.map((w) => [w.id, w.name]));
   // Doc 18 F1 alignment: low stock is judged on the CANONICAL variant
@@ -108,8 +156,11 @@ export async function getDashboardData(): Promise<DashboardData> {
   // every reservation twice (the order seam mirrors the post-claim
   // cache into quantityOnHand AND increments quantityReserved). One row
   // per variant: available = cache (fallback Σ available when the
-  // variant row is gone), reserved = Σ across warehouses.
-  const stockCache = await getVariantStockCacheDb([...new Set(items.map((i) => i.variantId))]);
+  // variant row is gone), reserved = Σ across warehouses. `items` now
+  // holds only the below-threshold variants' rows and `stockCache`
+  // the cache for every variant with inventory rows (listLowStockDb),
+  // so this assembly — grouping, first row, sums, filter, sort — is
+  // byte-for-byte the computation the whole-table load fed.
   const byVariant = new Map<string, (typeof items)[number][]>();
   for (const i of items) {
     const rows = byVariant.get(i.variantId) ?? [];
