@@ -16,6 +16,13 @@
  * loadGuestCart + cartItemCount / cartSubtotalPoisha, refreshed on
  * storage/focus and CART_UPDATED_EVENT; SSR renders nothing
  * (values load after mount).
+ *
+ * Doc 33 R3 (§3.4 floating discipline): this tab is the package's
+ * ONLY fixed element — it owns the right-edge zone alone (no support
+ * stack, no back-to-top column), sits mid-edge so the bottom edge
+ * stays free for page bars (StickyBuyBar / checkout bar), and its
+ * right offset honours env(safe-area-inset-right) so a landscape
+ * notch never clips it.
  */
 import { useEffect, useState } from "react";
 import { formatBdt } from "@advance-ecommerce/validators";
@@ -67,7 +74,7 @@ export default function ShobjiFloatingCart() {
       type="button"
       onClick={openCartDrawer}
       aria-label={interpolate(s.floatingCartAria, { count, total: formatBdt(totalPoisha) })}
-      className="fixed right-0 top-1/3 z-40 flex flex-col items-center gap-0.5 rounded-l-xl bg-primary px-2.5 py-3 text-white shadow-pop transition hover:opacity-95"
+      className="fixed right-[max(0px,env(safe-area-inset-right))] top-1/3 z-40 flex flex-col items-center gap-0.5 rounded-l-xl bg-primary px-2.5 py-3 text-white shadow-pop transition hover:opacity-95"
     >
       <Icon name="cart" size={20} />
       <span className="text-[11px] font-bold leading-tight">

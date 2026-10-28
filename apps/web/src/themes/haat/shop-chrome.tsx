@@ -107,7 +107,7 @@ function CheckLink({
     <Link
       href={href}
       aria-current={active ? "true" : undefined}
-      className={`flex min-h-[40px] items-center gap-2.5 rounded px-2 py-1.5 text-sm transition duration-200 ${
+      className={`flex min-h-[44px] lg:min-h-[40px] items-center gap-2.5 rounded px-2 py-1.5 text-sm transition duration-200 ${
         active
           ? "font-semibold text-primary"
           : "text-text-muted hover:bg-muted hover:text-text-main"
@@ -145,7 +145,7 @@ function RadioLink({
     <Link
       href={href}
       aria-current={active ? "true" : undefined}
-      className={`flex min-h-[40px] items-center gap-2.5 rounded px-2 py-1.5 text-sm transition duration-200 ${
+      className={`flex min-h-[44px] lg:min-h-[40px] items-center gap-2.5 rounded px-2 py-1.5 text-sm transition duration-200 ${
         active
           ? "font-semibold text-primary"
           : "text-text-muted hover:bg-muted hover:text-text-main"
@@ -362,7 +362,7 @@ export default function HaatShopChrome({
                 ) : null}
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <label htmlFor="shop-sort" className="hidden text-sm text-text-muted min-[420px]:block">
+                  <label htmlFor="shop-sort" className="hidden text-sm text-text-muted xs:block">
                     {s.sortByLabel}
                   </label>
                   <select
@@ -389,7 +389,7 @@ export default function HaatShopChrome({
                     key={chip.key}
                     href={chip.href}
                     aria-label={interpolate(s.removeFilterAria, { label: chip.label })}
-                    className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 py-1.5 pl-3.5 pr-2 text-[13px] font-medium text-primary transition duration-200 hover:bg-primary/20 active:scale-[0.97]"
+                    className="inline-flex min-h-[44px] lg:min-h-[36px] items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 py-1.5 pl-3.5 pr-2 text-[13px] font-medium text-primary transition duration-200 hover:bg-primary/20 active:scale-[0.97]"
                   >
                     {chip.label}
                     <span
@@ -402,7 +402,7 @@ export default function HaatShopChrome({
                 ))}
                 <Link
                   href="/shop"
-                  className="inline-flex min-h-[36px] items-center px-1 text-[13px] font-semibold text-text-muted underline-offset-2 transition hover:text-primary hover:underline"
+                  className="inline-flex min-h-[44px] lg:min-h-[36px] items-center px-1 text-[13px] font-semibold text-text-muted underline-offset-2 transition hover:text-primary hover:underline"
                 >
                   {s.clearAllFilters}
                 </Link>

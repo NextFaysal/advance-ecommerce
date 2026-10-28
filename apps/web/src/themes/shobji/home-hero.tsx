@@ -27,6 +27,7 @@ import type { HeroSlide } from "@/cms/site-content-types";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { SHOBJI_STRINGS } from "./strings";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
 
 function BigSearch() {
   const { locale } = useLocale();
@@ -44,7 +45,7 @@ function BigSearch() {
         <button
           type="submit"
           aria-label={s.searchSubmitAria}
-          className="absolute right-1.5 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-white transition hover:opacity-90"
+          className="absolute right-1.5 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-white transition hover:opacity-90"
         >
           <Icon name="search" size={19} />
         </button>
@@ -58,26 +59,29 @@ function BigSearch() {
 function VisualSlot({
   slide,
   category,
+  priority = false,
 }: {
   slide: HeroSlide | null;
   category: Category | null;
+  priority?: boolean;
 }) {
   const { locale } = useLocale();
   const s = pick(locale, SHOBJI_STRINGS);
   if (slide?.imageUrl) {
     const img = (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
+      <StoreImage
         src={slide.imageUrl}
         alt={slide.headlineBn}
-        loading="lazy"
-        className="h-full w-full object-cover"
+        preset="hero"
+        fillParent
+        priority={priority}
+        sizes="(max-width: 1023px) 100vw, 40vw"
       />
     );
     return (
       <div className="relative min-h-[180px] overflow-hidden rounded-xl shadow-card lg:min-h-full">
         {slide.ctaHref ? (
-          <Link href={slide.ctaHref} aria-label={slide.headlineBn} className="block h-full">
+          <Link href={slide.ctaHref} aria-label={slide.headlineBn} className="relative block h-full">
             {img}
           </Link>
         ) : (
@@ -94,12 +98,13 @@ function VisualSlot({
         aria-label={category.name[locale] || category.name.bn}
       >
         {category.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <StoreImage
             src={category.imageUrl}
             alt={category.name[locale] || category.name.bn}
-            loading="lazy"
-            className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.04]"
+            preset="hero"
+            fillParent
+            sizes="(max-width: 1023px) 100vw, 40vw"
+            imgClassName="transition duration-300 group-hover:scale-[1.04]"
           />
         ) : (
           <span aria-hidden="true" className="brand-gradient absolute inset-0" />
@@ -210,7 +215,7 @@ export default function ShobjiHomeHero({
                   aria-selected={i === index}
                   aria-label={interpolate(str.bannerNumberAria, { n: i + 1 })}
                   onClick={() => goTo(i)}
-                  className="flex h-8 w-6 items-center justify-center"
+                  className="flex h-11 w-8 items-center justify-center"
                 >
                   <span
                     aria-hidden="true"
@@ -225,7 +230,7 @@ export default function ShobjiHomeHero({
         </div>
 
         {/* Right — slide image / category tile / panel */}
-        <VisualSlot slide={active} category={firstCategory} />
+        <VisualSlot slide={active} category={firstCategory} priority={index === 0} />
       </div>
     </section>
   );

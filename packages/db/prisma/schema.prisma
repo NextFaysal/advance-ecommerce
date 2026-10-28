@@ -2816,3 +2816,20 @@ model Subscription {
   @@index([status, nextRunAt])
   @@index([variantId])
 }
+
+// ---- Doc 34: CartFlows-style funnel layer (orchestration only) ----
+// A Funnel groups existing LandingPage rows into an ordered step
+// graph (landing -> order -> upsell/downsell -> thank_you). Steps
+// ARE landing pages — the funnel stores no content and moves no
+// money; it only routes. stepsJson envelope mirrors the LandingPage
+// sectionsJson pattern: { v: 1, steps: [...] } (a bare array still
+// reads back as steps). Public entry is /f/<slug> (L7 routes).
+model Funnel {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  status    String   @default("DRAFT")
+  stepsJson Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

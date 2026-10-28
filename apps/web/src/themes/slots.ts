@@ -320,18 +320,44 @@ export type ThemeCartDrawerSlot = ComponentType<ThemeCartDrawerProps>;
 /* ------------------------------------------------------------------ */
 
 /**
- * The checkout page funnels its field/tile styling through three
- * page-local class constants (app/(store)/checkout/page.tsx). The
- * skin is the record of those constants: a package re-skins checkout
- * by providing different strings for the SAME keys. Checkout logic,
- * fields, validation and the submit path are platform code and never
- * part of any skin.
+ * The checkout page funnels its field/tile styling through page-local
+ * class constants (app/(store)/checkout/page.tsx). The skin is the
+ * record of those constants: a package re-skins checkout by providing
+ * different strings for the SAME keys. Checkout logic, fields,
+ * validation and the submit path are platform code and never part of
+ * any skin.
+ *
+ * Doc 32 P4 deepened the record with real surface tokens so a theme
+ * can differentiate checkout's large surfaces, not just its fields:
+ * the step section cards, the order-summary panel, the primary CTA,
+ * and the sticky mobile summary bar (container + its CTA). The five
+ * P4 keys are OPTIONAL on a package skin — the skin registry resolves
+ * every key per key against Aurora's values (see skin-registry.ts),
+ * so a package that provides only the original three keys renders
+ * exactly as before. Layout/positioning classes (grid placement, the
+ * summary rail's sticky offsets) stay page-owned and are NOT part of
+ * the skin: the skin carries surface treatment only.
  */
 export interface CheckoutSkin {
   INPUT_CLASS: string;
   PAYMENT_TILE_CLASS: string;
   SLOT_CARD_CLASS: string;
+  /** Step section card surface (the four numbered checkout steps). */
+  SECTION_CARD_CLASS?: string;
+  /** Order-summary panel surface — surface only; the page appends
+   *  its own sticky-rail positioning classes. */
+  SUMMARY_PANEL_CLASS?: string;
+  /** Primary CTA emphasis — the in-form place-order button. */
+  PRIMARY_CTA_CLASS?: string;
+  /** Sticky mobile summary bar container surface. */
+  STICKY_BAR_CLASS?: string;
+  /** The sticky bar's form-associated submit button. */
+  STICKY_CTA_CLASS?: string;
 }
+
+/** A CheckoutSkin with every key resolved — the skin registry's
+ *  output (each P4 key filled from Aurora when a package omits it). */
+export type ResolvedCheckoutSkin = Required<CheckoutSkin>;
 
 /* ------------------------------------------------------------------ */
 /* Slot maps                                                          */

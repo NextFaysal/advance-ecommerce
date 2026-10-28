@@ -36,6 +36,10 @@
  * anatomy). It is composition-internal to this package (the home
  * sections import it directly) and deliberately NOT part of the
  * ProductCard slot contract.
+ *
+ * Doc 33 R6 (mobile-first floors): brand meta 11→12px in both
+ * variants. The add button was already min-h-[44px] and the
+ * compare-at already text-sm — no touch/type change needed.
  */
 import { useState } from "react";
 import Link from "next/link";
@@ -271,7 +275,7 @@ export function CircuitProductCard({ product }: ThemeProductCardProps) {
 
         <div className="px-4 pt-3.5">
           {product.brandName ? (
-            <p className="truncate text-[11px] font-semibold tracking-wide text-text-subtle">
+            <p className="truncate text-xs font-semibold tracking-wide text-text-subtle">
               {product.brandName}
             </p>
           ) : null}
@@ -342,7 +346,7 @@ export function CircuitProductCardHorizontal({
         </div>
         <Link href={`/product/${product.slug}`} className="mt-2 block min-w-0">
           {product.brandName ? (
-            <p className="truncate text-[11px] font-semibold tracking-wide text-text-subtle">
+            <p className="truncate text-xs font-semibold tracking-wide text-text-subtle">
               {product.brandName}
             </p>
           ) : null}

@@ -655,7 +655,7 @@ export default async function HaatPdpComposition({
         {/* Related products */}
         {related.length > 0 ? (
           <Reveal>
-            <section className="mt-14" aria-label={s.relatedAria}>
+            <section className="mt-12" aria-label={s.relatedAria}>
               <SectionHeading title={s.relatedTitle} />
               <div className="scrollbar-none -mx-4 mt-5 flex snap-x gap-2.5 overflow-x-auto px-4 pb-1 lg:mx-0 lg:grid lg:grid-cols-6 lg:overflow-visible lg:px-0">
                 {related.map((p) => (

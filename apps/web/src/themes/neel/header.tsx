@@ -30,6 +30,17 @@
  * mount), avoiding hydration mismatch — same discipline as
  * SiteHeader. No dark-mode toggle: the package is light-first
  * (supportsDark: false).
+ *
+ * Doc 33 R2 (mobile-first): the pale strip scrolls away and the
+ * gradient tier alone sticks — the root is now a fragment with
+ * the strip as a sibling above the sticky tier. The tier carries
+ * the shared MobileMenuDrawer (white trigger on the gradient,
+ * switcher in the drawer's footer), which is why this header now
+ * also consumes the `categories` + `headerMenu` props it
+ * previously ignored — same props, same shell data path. Phone
+ * heights are tightened to the 112px sticky budget (py-2 + 44px
+ * brand/actions row + 44px search row; search submit 36px → 44px
+ * on phone); lg restores today's geometry exactly.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -42,6 +53,7 @@ import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { NEEL_STRINGS } from "./strings";
+import { MobileMenuDrawer } from "@/storefront-ux/components/MobileMenuDrawer";
 import { openCartDrawer } from "../cart-drawer-events";
 import { NEEL_HEADER_GRADIENT } from "./tokens";
 import type { ThemeHeaderProps } from "../slots";
@@ -58,6 +70,8 @@ function WhiteBadge({ count }: { count: number }) {
 export default function NeelHeader({
   brandName = "Advance Ecommerce",
   cartCount,
+  categories,
+  headerMenu,
 }: ThemeHeaderProps) {
   const { locale } = useLocale();
   const s = pick(locale, NEEL_STRINGS);
@@ -97,8 +111,9 @@ export default function NeelHeader({
   const effectiveCartCount = cartCount ?? localCartCount;
 
   return (
-    <header className="sticky top-0 z-40 shadow-card">
-      {/* Slim pale top strip — real links only */}
+    <>
+      {/* Slim pale top strip — real links only. Scrolls away on
+          phone (doc 33 R2: only the gradient tier sticks). */}
       <div className="bg-surface-2 text-text-muted">
         <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4 px-4 py-1.5 text-xs sm:px-6">
           <span className="hidden truncate font-medium sm:block">
@@ -118,14 +133,24 @@ export default function NeelHeader({
         </div>
       </div>
 
-      {/* Main tier — blue gradient: brand, search, actions */}
-      <div style={{ backgroundImage: NEEL_HEADER_GRADIENT }}>
-        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3.5 sm:px-6 lg:flex-nowrap">
+      {/* Main tier — blue gradient: brand, search, actions. THE
+          sticky tier (doc 33 §3.3); the gradient rides on the
+          header element itself so the tier inside keeps its exact
+          structure. */}
+      <header className="sticky top-0 z-40 shadow-card" style={{ backgroundImage: NEEL_HEADER_GRADIENT }}>
+        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 sm:px-6 lg:flex-nowrap lg:py-3.5">
+          <MobileMenuDrawer
+            brandName={brandName}
+            headerMenu={headerMenu}
+            categories={categories}
+            triggerClassName="shrink-0 text-white hover:bg-white/10"
+            footer={<LanguageSwitcher />}
+          />
           <Link href="/" className="flex shrink-0 items-center gap-2" aria-label={brandName}>
             <span className="flex h-10 w-10 items-center justify-center rounded-md bg-white/15 text-lg font-bold text-white ring-1 ring-white/30">
               {brandName.charAt(0)}
             </span>
-            <span className="max-w-[10rem] truncate text-lg font-bold leading-tight text-white sm:max-w-none">
+            <span className="hidden max-w-[10rem] truncate text-lg font-bold leading-tight text-white xs:block sm:max-w-none">
               {brandName}
             </span>
           </Link>
@@ -147,7 +172,7 @@ export default function NeelHeader({
               <button
                 type="submit"
                 aria-label={s.searchSubmitAria}
-                className="absolute right-1 top-1 flex h-9 w-10 items-center justify-center rounded-sm bg-accent text-white transition hover:opacity-90"
+                className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-sm bg-accent text-white transition hover:opacity-90 lg:right-1 lg:top-1 lg:h-9 lg:w-10"
               >
                 <Icon name="search" size={18} />
               </button>
@@ -201,7 +226,7 @@ export default function NeelHeader({
             </button>
           </div>
         </div>
-      </div>
-    </header>
+      </header>
+    </>
   );
 }

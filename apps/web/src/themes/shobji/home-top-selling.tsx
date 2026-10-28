@@ -19,6 +19,7 @@ import { ShobjiProductCardHorizontal } from "./product-card";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
 import { SHOBJI_STRINGS } from "./strings";
+import { RAIL_FADE_CLASS } from "@/storefront-ux/responsive";
 
 export default function ShobjiHomeTopSelling({
   products,
@@ -51,7 +52,7 @@ export default function ShobjiHomeTopSelling({
             type="button"
             onClick={() => scrollBy(-1)}
             aria-label={s.prevProductsAria}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} className="rotate-180" />
           </button>
@@ -59,7 +60,7 @@ export default function ShobjiHomeTopSelling({
             type="button"
             onClick={() => scrollBy(1)}
             aria-label={s.nextProductsAria}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} />
           </button>
@@ -68,7 +69,7 @@ export default function ShobjiHomeTopSelling({
 
       <div
         ref={trackRef}
-        className="scrollbar-none -mx-4 mt-5 flex snap-x gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0"
+        className={`scrollbar-none -mx-4 mt-5 flex snap-x gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 ${RAIL_FADE_CLASS}`}
       >
         {products.map((p) => (
           <div key={p.id} className="w-[300px] shrink-0 snap-start sm:w-[360px]">

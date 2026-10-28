@@ -20,6 +20,7 @@ import { NEEL_STRINGS } from "./strings";
 import { Icon } from "@/components/ui/icon";
 import type { PublicProduct } from "@/catalog/types";
 import { NeelProductCardHorizontal } from "./product-card";
+import { RAIL_FADE_CLASS } from "@/storefront-ux/responsive";
 
 export default function NeelHomeTopSelling({
   products,
@@ -39,7 +40,7 @@ export default function NeelHomeTopSelling({
   };
 
   return (
-    <section className="mt-12" aria-label={s.featuredProducts}>
+    <section className="mt-8 lg:mt-12" aria-label={s.featuredProducts}>
       <div className="flex items-end justify-between gap-3">
         <div>
           <h2 className="font-display text-xl font-extrabold text-text-main sm:text-2xl">
@@ -52,7 +53,7 @@ export default function NeelHomeTopSelling({
             type="button"
             onClick={() => scrollBy(-1)}
             aria-label={s.prevProducts}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} className="rotate-180" />
           </button>
@@ -60,7 +61,7 @@ export default function NeelHomeTopSelling({
             type="button"
             onClick={() => scrollBy(1)}
             aria-label={s.nextProducts}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:opacity-90"
           >
             <Icon name="chevron-right" size={18} />
           </button>
@@ -69,7 +70,7 @@ export default function NeelHomeTopSelling({
 
       <div
         ref={trackRef}
-        className="scrollbar-none -mx-4 mt-5 flex snap-x gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0"
+        className={`scrollbar-none -mx-4 mt-5 flex snap-x gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 ${RAIL_FADE_CLASS}`}
       >
         {products.map((p) => (
           <div key={p.id} className="w-[300px] shrink-0 snap-start sm:w-[360px]">

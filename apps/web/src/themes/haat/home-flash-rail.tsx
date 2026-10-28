@@ -27,6 +27,7 @@ import { HaatProductCard } from "./product-card";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
 import { HAAT_STRINGS } from "./strings";
+import { RAIL_FADE_CLASS } from "@/storefront-ux/responsive";
 
 export default function HaatHomeFlashRail({
   products,
@@ -86,7 +87,7 @@ export default function HaatHomeFlashRail({
       <div className="rounded-b border border-t-0 border-border bg-card p-3 shadow-card">
         <div
           ref={trackRef}
-          className="scrollbar-none -mx-1 flex snap-x gap-2.5 overflow-x-auto px-1 pb-1"
+          className={`scrollbar-none -mx-1 flex snap-x gap-2.5 overflow-x-auto px-1 pb-1 ${RAIL_FADE_CLASS}`}
         >
           {products.map((p) => (
             <div

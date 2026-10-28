@@ -44,6 +44,7 @@ import { MobileFilterDrawer } from "../../../app/(store)/shop/MobileFilterDrawer
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { SHOBJI_STRINGS, type ShobjiStrings } from "./strings";
+import { RAIL_FADE_CLASS } from "@/storefront-ux/responsive";
 import ShobjiCategorySidebar from "./category-sidebar";
 
 /* Same preset ranges + sort options the other chromes offer —
@@ -114,7 +115,7 @@ function CheckLink({
     <Link
       href={href}
       aria-current={active ? "true" : undefined}
-      className={`flex min-h-[40px] items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition duration-200 ${
+      className={`flex min-h-[44px] lg:min-h-[40px] items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition duration-200 ${
         active
           ? "font-semibold text-primary"
           : "text-text-muted hover:bg-muted hover:text-text-main"
@@ -152,7 +153,7 @@ function RadioLink({
     <Link
       href={href}
       aria-current={active ? "true" : undefined}
-      className={`flex min-h-[40px] items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition duration-200 ${
+      className={`flex min-h-[44px] lg:min-h-[40px] items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition duration-200 ${
         active
           ? "font-semibold text-primary"
           : "text-text-muted hover:bg-muted hover:text-text-main"
@@ -362,6 +363,49 @@ export default function ShobjiShopChrome({
 
           {/* ---------- Results ---------- */}
           <section className="min-w-0 flex-1" aria-busy={busy}>
+            {/* Category chip rail — the sidebar's phone answer
+                inside ShopChrome (doc 33 §4 / R5): the header strip
+                scrolls away with the page, so /shop carries its own
+                rail — the same real category links as the desktop
+                sidebar (/shop and /shop?category=), 44px chips, the
+                browsed category filled from activeCategorySlug, the
+                shared rail fade where the row scrolls. Desktop
+                keeps the persistent sidebar; this is lg:hidden. */}
+            {showSidebar && categories.length > 0 ? (
+              <nav aria-label={s.categories} className="mb-4 lg:hidden">
+                <div className={`scrollbar-none flex items-center gap-1.5 overflow-x-auto py-1 ${RAIL_FADE_CLASS}`}>
+                  <Link
+                    href="/shop"
+                    aria-current={!category ? "true" : undefined}
+                    className={`flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-full px-3.5 text-sm transition duration-200 ${
+                      !category
+                        ? "bg-primary font-bold text-white"
+                        : "border border-border bg-card font-medium text-text-muted hover:text-text-main"
+                    }`}
+                  >
+                    {s.allProducts}
+                  </Link>
+                  {categories.map((c) => {
+                    const active = category === c.slug;
+                    return (
+                      <Link
+                        key={c.slug}
+                        href={`/shop?category=${c.slug}`}
+                        aria-current={active ? "true" : undefined}
+                        className={`flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-full px-3.5 text-sm transition duration-200 ${
+                          active
+                            ? "bg-primary font-bold text-white"
+                            : "border border-border bg-card font-medium text-text-muted hover:text-text-main"
+                        }`}
+                      >
+                        {c.name[locale] || c.name.bn}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </nav>
+            ) : null}
+
             {/* White sort bar */}
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5 rounded-xl border border-border bg-card px-4 py-3 shadow-card">
               <p className="text-sm text-text-muted" aria-live="polite">
@@ -390,7 +434,7 @@ export default function ShobjiShopChrome({
                 ) : null}
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <label htmlFor="shop-sort" className="hidden text-sm text-text-muted min-[420px]:block">
+                  <label htmlFor="shop-sort" className="hidden text-sm text-text-muted xs:block">
                     {s.sortBy}
                   </label>
                   <select
@@ -417,7 +461,7 @@ export default function ShobjiShopChrome({
                     key={chip.key}
                     href={chip.href}
                     aria-label={interpolate(s.removeFilterAria, { label: chip.label })}
-                    className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 py-1.5 pl-3.5 pr-2 text-[13px] font-medium text-primary transition duration-200 hover:bg-primary/20 active:scale-[0.97]"
+                    className="inline-flex min-h-[44px] lg:min-h-[36px] items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 py-1.5 pl-3.5 pr-2 text-[13px] font-medium text-primary transition duration-200 hover:bg-primary/20 active:scale-[0.97]"
                   >
                     {chip.label}
                     <span
@@ -430,7 +474,7 @@ export default function ShobjiShopChrome({
                 ))}
                 <Link
                   href="/shop"
-                  className="inline-flex min-h-[36px] items-center px-1 text-[13px] font-semibold text-text-muted underline-offset-2 transition hover:text-primary hover:underline"
+                  className="inline-flex min-h-[44px] lg:min-h-[36px] items-center px-1 text-[13px] font-semibold text-text-muted underline-offset-2 transition hover:text-primary hover:underline"
                 >
                   {s.clearAllFilters}
                 </Link>

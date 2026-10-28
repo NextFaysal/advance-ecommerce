@@ -43,6 +43,11 @@
  * left ~40%, details right, same anatomy). It is composition-
  * internal to this package (home sections import it directly) and
  * deliberately NOT part of the ProductCard slot contract.
+ *
+ * Doc 33 R6 (mobile-first floors): wishlist heart 36→44px on phone
+ * (36px restored at lg), Add/Buy-Now buttons 44px on phone (40px
+ * at lg), brand meta 11→12px, compare-at ≥14px on phone. The
+ * review count and the %-off/type badges stay 11px by design.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -177,7 +182,7 @@ function WishlistHeart({ productId, title }: { productId: string; title: { bn: s
         toggleWishlistId(productId);
         setWishlisted((w) => !w);
       }}
-      className={`flex h-9 w-9 items-center justify-center rounded-full shadow-card ring-1 transition active:scale-95 ${
+      className={`flex h-11 w-11 items-center justify-center rounded-full shadow-card ring-1 transition active:scale-95 lg:h-9 lg:w-9 ${
         wishlisted
           ? "bg-accent text-white ring-accent"
           : "bg-card text-text-muted ring-border hover:text-accent"
@@ -245,7 +250,7 @@ function ActionRow({
         onClick={addToCart}
         disabled={!data.inStock}
         aria-live="polite"
-        className={`flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-2 text-[13px] font-bold transition active:scale-[0.98] ${
+        className={`flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-2 text-[13px] font-bold transition active:scale-[0.98] lg:min-h-[40px] ${
           data.inStock
             ? "border-primary bg-card text-primary hover:bg-primary hover:text-white"
             : "cursor-not-allowed border-border bg-muted text-text-subtle"
@@ -258,7 +263,7 @@ function ActionRow({
         type="button"
         onClick={buyNow}
         disabled={!data.inStock}
-        className="flex min-h-[40px] flex-1 items-center justify-center rounded-md bg-accent px-2 py-2 text-[13px] font-bold text-white transition hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex min-h-[44px] flex-1 items-center justify-center rounded-md bg-accent px-2 py-2 text-[13px] font-bold text-white transition hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 lg:min-h-[40px]"
       >
         {s.buyNowLabel}
       </button>
@@ -294,7 +299,7 @@ function PriceRow({ data, digits }: { data: CardData; digits: (t: string) => str
         {digits(formatBdt(data.price))}
       </span>
       {data.compareAt !== null && data.compareAt > data.price ? (
-        <span className="text-[13px] tabular-nums text-text-subtle line-through">
+        <span className="text-sm tabular-nums text-text-subtle line-through lg:text-[13px]">
           {digits(formatBdt(data.compareAt))}
         </span>
       ) : null}
@@ -353,7 +358,7 @@ export function NeelProductCard({ product }: ThemeProductCardProps) {
       <div className="flex min-w-0 flex-1 flex-col px-3 pb-3 pt-3">
         <Link href={`/product/${product.slug}`} className="block min-w-0">
           {product.brandName ? (
-            <p className="truncate text-[11px] font-semibold tracking-wide text-text-subtle">
+            <p className="truncate text-xs font-semibold tracking-wide text-text-subtle">
               {product.brandName}
             </p>
           ) : null}
@@ -421,7 +426,7 @@ export function NeelProductCardHorizontal({ product }: ThemeProductCardProps) {
         </div>
         <Link href={`/product/${product.slug}`} className="mt-1.5 block min-w-0">
           {product.brandName ? (
-            <p className="truncate text-[11px] font-semibold tracking-wide text-text-subtle">
+            <p className="truncate text-xs font-semibold tracking-wide text-text-subtle">
               {product.brandName}
             </p>
           ) : null}

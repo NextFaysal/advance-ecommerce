@@ -141,10 +141,10 @@ export default function HaatFooter({
       </div>
 
       <div className="mx-auto max-w-[1440px] px-4 py-10 sm:px-6">
-        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1fr_1fr]">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-10 lg:grid-cols-[1.3fr_1fr_1fr_1fr_1fr] lg:gap-10">
           {/* Brand column — our own intro copy; contact channels live
               on /contact (per-client settings), linked below. */}
-          <div className="min-w-0">
+          <div className="col-span-2 min-w-0 lg:col-span-1">
             <a href="/" className="flex items-center gap-2" aria-label={brandName}>
               <span className="flex h-10 w-10 items-center justify-center rounded bg-primary text-lg font-extrabold text-white shadow-sm">
                 {brandName.charAt(0)}
@@ -157,13 +157,13 @@ export default function HaatFooter({
             <div className="mt-4 flex flex-wrap gap-2">
               <a
                 href="/track"
-                className="inline-block rounded bg-primary px-3.5 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+                className="inline-flex min-h-[44px] items-center rounded bg-primary px-3.5 py-2 text-sm font-semibold text-white transition hover:opacity-90 lg:min-h-0"
               >
                 {s.footerTrackOrder}
               </a>
               <a
                 href="/contact"
-                className="inline-block rounded border border-border px-3.5 py-2 text-sm font-semibold text-text-main transition hover:bg-muted"
+                className="inline-flex min-h-[44px] items-center rounded border border-border px-3.5 py-2 text-sm font-semibold text-text-main transition hover:bg-muted lg:min-h-0"
               >
                 {s.footerContact}
               </a>
@@ -171,7 +171,7 @@ export default function HaatFooter({
           </div>
 
           {columns.map((col) => (
-            <nav key={col.headingEn} aria-label={locale === "bn" ? col.headingBn : col.headingEn}>
+            <nav key={col.headingEn} className="min-w-0" aria-label={locale === "bn" ? col.headingBn : col.headingEn}>
               <p className="text-sm font-bold text-text-main">{locale === "bn" ? col.headingBn : col.headingEn}</p>
               <span aria-hidden="true" className="mt-2 block h-0.5 w-8 rounded-full bg-primary" />
               <ul className="mt-3.5 space-y-2.5">
@@ -179,7 +179,7 @@ export default function HaatFooter({
                   <li key={link.id}>
                     <a
                       href={link.href}
-                      className="text-sm text-text-muted transition hover:text-primary"
+                      className="flex min-h-[44px] items-center text-sm text-text-muted transition hover:text-primary lg:min-h-0"
                     >
                       {locale === "bn" ? link.labelBn : link.labelEn}
                     </a>
@@ -209,11 +209,11 @@ export default function HaatFooter({
 
       {/* Bottom band — charcoal, this package's footer signature */}
       <div className="text-white" style={{ backgroundColor: HAAT_COLORS.charcoal }}>
-        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4 text-xs text-white/75 sm:px-6">
+        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-center gap-x-4 gap-y-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 text-center text-xs text-white/75 sm:justify-start sm:px-6 sm:text-left">
           <span>
             {interpolate(s.copyrightLine, { year, brand: brandName })}
           </span>
-          <a href="/contact" className="hover:text-white hover:underline">
+          <a href="/contact" className="inline-flex min-h-[44px] items-center hover:text-white hover:underline lg:min-h-0">
             {s.contactHint}
           </a>
           {showPoweredBy ? (

@@ -4,6 +4,15 @@ module.exports = {
   darkMode: ["class"],
   theme: {
     extend: {
+      /* Doc 33 §3.1 — the ONE named exception to "Tailwind default
+         breakpoints only": `xs` = 420px, absorbing the ad-hoc
+         `min-[420px]:` arbitrary values the pre-contract code used
+         (SiteHeader's brand name; shop-chromes + Shobji header still
+         carry the arbitrary form for their waves to sweep). No other
+         custom screens — sm/md/lg/xl stay Tailwind defaults. */
+      screens: {
+        xs: "420px",
+      },
       colors: {
         brand: {
           50: "#EEF2FF", 100: "#E0E7FF", 200: "#C7D2FE", 300: "#A5B4FC",

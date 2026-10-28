@@ -105,12 +105,28 @@ export interface OrderAttribution {
   attributed: UtmParams;
   firstTouch: UtmParams;
   lastTouch: UtmParams;
+  /** Doc 34 §3.8 (additive, optional): the funnel + step an order
+   *  was created inside, populated from the funnel token at order
+   *  create by the funnel layer. Absent on every non-funnel order —
+   *  existing records and callers are unaffected. */
+  funnelId?: string | null;
+  stepId?: string | null;
 }
 
-export function assignOrderAttribution(touches: AttributionTouches): OrderAttribution {
+export function assignOrderAttribution(
+  touches: AttributionTouches,
+  funnel?: { funnelId: string; stepId: string } | null,
+): OrderAttribution {
   const last: UtmParams = touches.lastTouch ?? { ...EMPTY_UTM };
   const first: UtmParams = touches.firstTouch ?? { ...EMPTY_UTM };
-  return { model: "last_touch", attributed: last, firstTouch: first, lastTouch: last };
+  const base: OrderAttribution = { model: "last_touch", attributed: last, firstTouch: first, lastTouch: last };
+  // Keys are set only when a funnel context is actually passed, so
+  // the returned shape for existing callers is byte-identical.
+  if (funnel) {
+    base.funnelId = funnel.funnelId;
+    base.stepId = funnel.stepId;
+  }
+  return base;
 }
 
 /* ------------------------------------------------------------------ */

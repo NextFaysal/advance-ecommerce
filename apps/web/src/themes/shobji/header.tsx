@@ -27,6 +27,17 @@
  * CART_UPDATED_EVENT. SSR renders no badges (values load after
  * mount), avoiding hydration mismatch — same discipline as
  * SiteHeader.
+ *
+ * Doc 33 R2 — phone collapse (§4): only the white main tier
+ * carries `sticky` (sibling structure, so its containing block is
+ * the page); stuck height ≈ 112px (py-2 + actions row + search
+ * row). The sidebar's phone answer is the category CHIP RAIL
+ * under the tier — the pre-33 strip, formalised: 44px chips,
+ * 14px labels, rail-fade affordance; it scrolls away with the
+ * page (the /shop rail that stays in context is R5's). The
+ * desktop category sidebar (lg+) is untouched. A hamburger in
+ * the main tier opens the shared MobileMenuDrawer (§3.3), fed by
+ * the same `headerMenu` / `categories` props.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -40,6 +51,8 @@ import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, pick } from "@/i18n/locale";
 import { SHOBJI_STRINGS } from "./strings";
+import { MobileMenuDrawer } from "@/storefront-ux/components/MobileMenuDrawer";
+import { RAIL_FADE_CLASS } from "@/storefront-ux/responsive";
 import { openCartDrawer } from "../cart-drawer-events";
 import ShobjiFloatingCart from "./floating-cart";
 import { SHOBJI_COLORS } from "./tokens";
@@ -58,6 +71,7 @@ export default function ShobjiHeader({
   brandName = "Advance Ecommerce",
   cartCount,
   categories,
+  headerMenu,
 }: ThemeHeaderProps) {
   const { locale } = useLocale();
   const s = pick(locale, SHOBJI_STRINGS);
@@ -96,10 +110,21 @@ export default function ShobjiHeader({
   return (
     <>
     <header className="sticky top-0 z-40 border-b border-border bg-card shadow-card">
-      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:px-6 lg:flex-nowrap">
+      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 sm:px-6 lg:flex-nowrap lg:py-3">
+        {/* Mobile menu (doc 33 §3.3) — the shared drawer; the
+            switcher rides in its footer slot AND stays in the
+            actions row below (every-width rule). */}
+        <MobileMenuDrawer
+          brandName={brandName}
+          headerMenu={headerMenu}
+          categories={categories}
+          footer={<LanguageSwitcher />}
+          triggerClassName="-ml-1.5 shrink-0"
+        />
+
         <Link
           href="/"
-          className="flex shrink-0 items-center gap-2"
+          className="flex min-h-[44px] shrink-0 items-center gap-2"
           aria-label={brandName}
         >
           <span className="brand-gradient flex h-10 w-10 items-center justify-center rounded-md text-lg font-bold text-white">
@@ -127,7 +152,7 @@ export default function ShobjiHeader({
             <button
               type="submit"
               aria-label={s.searchSubmitAria}
-              className="absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white transition hover:opacity-90"
+              className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white transition hover:opacity-90"
             >
               <Icon name="search" size={18} />
             </button>
@@ -142,14 +167,14 @@ export default function ShobjiHeader({
           <LanguageSwitcher className="mr-1" />
           <Link
             href="/track"
-            className="relative hidden min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary min-[420px]:flex"
+            className="relative hidden min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary xs:flex"
           >
             <Icon name="package" size={23} />
             <span className="text-[11px] font-medium leading-none">{s.trackOrder}</span>
           </Link>
           <Link
             href="/wishlist"
-            className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary"
+            className="relative flex min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary"
           >
             <span className="relative">
               <Icon name="heart" size={23} />
@@ -159,7 +184,7 @@ export default function ShobjiHeader({
           </Link>
           <Link
             href="/account"
-            className="ml-1 flex h-10 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-sm transition hover:opacity-90"
+            className="ml-1 flex h-11 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-sm transition hover:opacity-90"
             style={{ backgroundColor: SHOBJI_COLORS.primary }}
           >
             <Icon name="user" size={17} />
@@ -169,7 +194,7 @@ export default function ShobjiHeader({
             type="button"
             onClick={openCartDrawer}
             aria-label={effectiveCartCount > 0 ? interpolate(s.cartDrawerAriaWithCount, { count: effectiveCartCount }) : s.cartDrawerAria}
-            className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary"
+            className="relative flex min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary"
           >
             <span className="relative">
               <Icon name="cart" size={23} />
@@ -179,32 +204,37 @@ export default function ShobjiHeader({
           </button>
         </div>
       </div>
-
-      {/* Mobile category strip — the sidebar's content on small
-          screens (CSS-only collapse of the same real links). The
-          desktop sidebar lives in HomeSections / ShopChrome. */}
-      {showSidebar && roots.length > 0 ? (
-        <nav aria-label={s.categories} className="border-t border-border lg:hidden">
-          <div className="scrollbar-none flex items-center gap-1 overflow-x-auto px-4 py-1.5 sm:px-6">
-            <Link
-              href="/shop"
-              className="shrink-0 whitespace-nowrap rounded-full bg-secondary px-3 py-1.5 text-[13px] font-bold text-secondary-foreground"
-            >
-              {s.allProducts}
-            </Link>
-            {roots.map((c) => (
-              <Link
-                key={c.slug}
-                href={`/shop?category=${c.slug}`}
-                className="shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] font-medium text-text-muted transition hover:bg-muted hover:text-text-main"
-              >
-                {c.name[locale] || c.name.bn}
-              </Link>
-            ))}
-          </div>
-        </nav>
-      ) : null}
     </header>
+
+    {/* Category chip rail — the sidebar's phone answer (doc 33
+        §4): the same real category links as the desktop rail,
+        formalised to the contract — 44px chips, 14px labels, the
+        shared rail fade where the row scrolls. It is a sibling
+        AFTER the sticky header, so it scrolls away with the page
+        (only the main tier sticks); the /shop-context rail is
+        R5's. The desktop sidebar lives in HomeSections /
+        ShopChrome and is untouched. */}
+    {showSidebar && roots.length > 0 ? (
+      <nav aria-label={s.categories} className="border-b border-border bg-card lg:hidden">
+        <div className={`scrollbar-none flex items-center gap-1.5 overflow-x-auto px-4 py-1 sm:px-6 ${RAIL_FADE_CLASS}`}>
+          <Link
+            href="/shop"
+            className="flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-full bg-secondary px-3.5 text-sm font-bold text-secondary-foreground"
+          >
+            {s.allProducts}
+          </Link>
+          {roots.map((c) => (
+            <Link
+              key={c.slug}
+              href={`/shop?category=${c.slug}`}
+              className="flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-full px-3.5 text-sm font-medium text-text-muted transition hover:bg-muted hover:text-text-main"
+            >
+              {c.name[locale] || c.name.bn}
+            </Link>
+          ))}
+        </div>
+      </nav>
+    ) : null}
 
     {/* Floating purple cart tab — right edge, real count +
         subtotal, opens the drawer (gated by showFloatingCart). */}
