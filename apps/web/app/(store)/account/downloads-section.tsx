@@ -41,10 +41,10 @@ interface DownloadView {
 }
 
 const STATUS_TONE: Record<GrantStatus, string> = {
-  active: "bg-emerald-50 text-emerald-700",
-  expired: "bg-amber-50 text-amber-700",
-  exhausted: "bg-amber-50 text-amber-700",
-  revoked: "bg-red-50 text-red-700",
+  active: "bg-success-soft text-success-solid",
+  expired: "bg-warning-soft text-warning-solid",
+  exhausted: "bg-warning-soft text-warning-solid",
+  revoked: "bg-danger-soft text-danger",
 };
 
 function formatDate(iso: string): string {
@@ -100,7 +100,7 @@ function ReissueForm({
         placeholder="কারণ (ঐচ্ছিক) / Reason (optional)"
         className="mt-2 w-full rounded-md border border-border bg-card px-2.5 py-1.5 text-sm text-text-main"
       />
-      {error !== null ? <p className="mt-2 text-sm leading-6 text-red-700">{error}</p> : null}
+      {error !== null ? <p className="mt-2 text-sm leading-6 text-danger">{error}</p> : null}
       <div className="mt-3">
         <button
           type="button"

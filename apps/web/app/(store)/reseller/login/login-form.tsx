@@ -51,7 +51,7 @@ export default function ResellerLoginForm() {
           inputMode="tel"
           autoComplete="tel"
           placeholder="01XXXXXXXXX"
-          className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-text-main"
+          className="mt-1.5 h-12 w-full rounded-xl border border-border bg-bg-app px-4 text-sm text-text-main outline-none transition placeholder:text-text-subtle focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
           required
         />
       </label>
@@ -62,19 +62,19 @@ export default function ResellerLoginForm() {
           onChange={(e) => setCode(e.target.value)}
           autoComplete="off"
           placeholder="যেমন: AB3K9XYZ"
-          className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm uppercase text-text-main"
+          className="mt-1.5 h-12 w-full rounded-xl border border-border bg-bg-app px-4 text-sm uppercase text-text-main outline-none transition placeholder:text-text-subtle focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
           required
         />
       </label>
       {error ? (
-        <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p role="alert" className="rounded-xl bg-danger-soft px-4 py-3 text-sm font-medium text-danger">
           {error}
         </p>
       ) : null}
       <button
         type="submit"
         disabled={busy}
-        className="w-full rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
+        className="brand-gradient h-12 w-full rounded-xl text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
       >
         {busy ? "লগইন হচ্ছে…" : "লগইন করুন"}
       </button>

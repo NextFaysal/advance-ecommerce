@@ -154,7 +154,7 @@ function ReturnApplyForm({
   };
 
   if (error !== null && feed === null) {
-    return <p className="mt-2 text-sm leading-6 text-red-700">{error}</p>;
+    return <p className="mt-2 text-sm leading-6 text-danger">{error}</p>;
   }
   if (feed === null) {
     return <p className="mt-2 text-sm text-text-muted">লোড হচ্ছে…</p>;
@@ -258,7 +258,7 @@ function ReturnApplyForm({
         onChange={(e) => setNote(e.target.value)}
         className="mt-2.5 w-full rounded-md border border-border bg-card px-2.5 py-1.5 text-sm text-text-main"
       />
-      {error !== null ? <p className="mt-2 text-sm leading-6 text-red-700">{error}</p> : null}
+      {error !== null ? <p className="mt-2 text-sm leading-6 text-danger">{error}</p> : null}
       <div className="mt-3 flex gap-2">
         <button
           type="button"

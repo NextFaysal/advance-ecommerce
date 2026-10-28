@@ -154,7 +154,7 @@ export default async function CoursePlayerPage({
       </h1>
 
       {!hasAccess ? (
-        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+        <div className="mt-4 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm leading-6 text-warning-solid">
           🔒 এই কোর্সের লেসনগুলো শুধু ক্রেতাদের জন্য। কোর্সটি কিনলে (পেমেন্ট সম্পন্ন হলে)
           সব লেসন এখানেই খুলে যাবে।
           <a

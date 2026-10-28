@@ -51,8 +51,8 @@ function fieldErrorsFromDetails(details: unknown): FieldErrors {
 }
 
 const inputClass =
-  "mt-1 h-11 w-full rounded-[10px] border border-slate-300 px-3 text-sm outline-none focus:border-[#4F46E5]";
-const errorText = "mt-1 text-xs text-red-600";
+  "mt-1 h-11 w-full rounded-xl border border-border bg-card px-3 text-sm text-text-main shadow-xs outline-none transition duration-200 placeholder:text-text-subtle focus:border-brand-400 focus:ring-2 focus:ring-brand-ink/15";
+const errorText = "mt-1 text-xs font-medium text-danger";
 
 export default function ContactForm() {
   // Doc 30: labels follow the ACTIVE locale (visitor override → store
@@ -118,14 +118,14 @@ export default function ContactForm() {
   return (
     <form className="mt-4 space-y-3" onSubmit={onSubmit} noValidate>
       {successId ? (
-        <p role="status" className="rounded-[10px] bg-emerald-50 p-3 text-sm text-emerald-800">
+        <p role="status" className="rounded-xl bg-success-soft p-3 text-sm text-success-solid">
           <span className="font-semibold">{labels.successTitle}</span>
           <br />
           {labels.successBody.replace("{id}", successId)}
         </p>
       ) : null}
       {formError ? (
-        <p role="alert" className="rounded-[10px] bg-red-50 p-3 text-sm text-red-700">
+        <p role="alert" className="rounded-xl bg-danger-soft p-3 text-sm text-danger">
           {formError}
         </p>
       ) : null}
@@ -177,7 +177,7 @@ export default function ContactForm() {
           aria-invalid={fieldErrors.email ? true : undefined}
           className={inputClass}
         />
-        <p className="mt-1 text-xs text-slate-400">{labels.emailOptionalNote}</p>
+        <p className="mt-1 text-xs text-text-subtle">{labels.emailOptionalNote}</p>
         {fieldErrors.email ? <p className={errorText}>{fieldErrors.email}</p> : null}
       </div>
       <div>
@@ -206,7 +206,7 @@ export default function ContactForm() {
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           aria-invalid={fieldErrors.message ? true : undefined}
-          className="mt-1 w-full rounded-[10px] border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#4F46E5]"
+          className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-text-main shadow-xs outline-none transition duration-200 placeholder:text-text-subtle focus:border-brand-400 focus:ring-2 focus:ring-brand-ink/15"
         />
         {fieldErrors.message ? <p className={errorText}>{fieldErrors.message}</p> : null}
       </div>
@@ -228,12 +228,12 @@ export default function ContactForm() {
       <button
         type="submit"
         disabled={submitting}
-        className="min-h-[44px] w-full rounded-[10px] bg-[#4F46E5] px-4 text-sm font-semibold text-white disabled:opacity-60"
+        className="brand-gradient focus-ring min-h-[44px] w-full rounded-xl px-4 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
       >
         {submitting ? labels.submittingLabel : content.submitLabel}
       </button>
-      <p className="text-xs text-slate-400">{labels.formNote}</p>
-      <p className="text-xs text-slate-400">{labels.storageNote}</p>
+      <p className="text-xs text-text-subtle">{labels.formNote}</p>
+      <p className="text-xs text-text-subtle">{labels.storageNote}</p>
     </form>
   );
 }

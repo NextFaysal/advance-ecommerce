@@ -11,6 +11,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentCustomer } from "@/customer-auth/auth";
 import { getTicketForCustomer } from "@/support/store";
 import { TICKET_STATUS_LABEL, TICKET_STATUS_TONE, formatTicketDate } from "@/support/labels";
+import AccountNav from "../../account-nav";
 import { TicketReplyForm } from "../ticket-reply-form";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ export default async function AccountTicketDetailPage({
   if (ticket === null) notFound();
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10">
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10 lg:max-w-5xl">
       <p className="text-sm">
         <a href="/account/tickets" className="font-semibold text-brand-700 hover:underline">
           ← সব টিকিট
@@ -59,6 +60,9 @@ export default async function AccountTicketDetailPage({
           : ""}
       </p>
 
+      <div className="lg:flex lg:items-start lg:gap-6">
+        <AccountNav />
+        <div className="min-w-0 flex-1">
       <section
         className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card"
         aria-label="বার্তাসমূহ"
@@ -68,7 +72,7 @@ export default async function AccountTicketDetailPage({
             <li key={m.id} className={m.authorType === "STAFF" ? "pl-0 sm:pl-10" : "pr-0 sm:pr-10"}>
               <div
                 className={`rounded-2xl px-4 py-3 ${
-                  m.authorType === "STAFF" ? "bg-brand-50" : "bg-surface-2"
+                  m.authorType === "STAFF" ? "bg-brand-soft" : "bg-surface-2"
                 }`}
               >
                 <p className="text-xs font-bold text-text-main">
@@ -89,6 +93,8 @@ export default async function AccountTicketDetailPage({
           <TicketReplyForm ticketId={ticket.id} />
         </div>
       </section>
+        </div>
+      </div>
     </main>
   );
 }

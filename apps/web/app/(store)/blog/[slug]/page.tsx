@@ -88,7 +88,10 @@ export default async function BlogPostPage({ params }: { params: { slug: string 
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-10">
-      <Link href="/blog" className="text-sm font-semibold text-brand-700 underline-offset-2 transition hover:underline">
+      <Link
+        href="/blog"
+        className="focus-ring inline-flex min-h-[44px] items-center rounded-lg text-sm font-semibold text-brand-700 underline-offset-2 transition hover:underline"
+      >
         ← সব লেখা
       </Link>
 
@@ -127,7 +130,10 @@ export default async function BlogPostPage({ params }: { params: { slug: string 
           <h2 className="font-display text-xl font-bold text-text-main">আরও পড়ুন</h2>
           <div className="mt-4 grid gap-5 sm:grid-cols-3">
             {related.map((rel) => (
-              <article key={rel.slug} className="flex flex-col rounded-3xl border border-border bg-card p-5 shadow-card">
+              <article
+                key={rel.slug}
+                className="flex flex-col rounded-3xl border border-border bg-card p-5 shadow-card transition duration-200 hover:border-brand-300 hover:shadow-lift"
+              >
                 {rel.category ? (
                   <span className="w-fit rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-semibold text-brand-700">
                     {rel.category}

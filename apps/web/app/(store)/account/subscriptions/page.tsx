@@ -13,6 +13,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@advance-ecommerce/db";
 import { getCurrentCustomer } from "@/customer-auth/auth";
 import { subscriptionsEnabled } from "@/subscriptions/flags";
+import AccountNav from "../account-nav";
 import { SubscriptionsManager, type PurchasableOption } from "./manager";
 
 export const dynamic = "force-dynamic";
@@ -29,16 +30,16 @@ export default async function AccountSubscriptionsPage() {
 
   if (!subscriptionsEnabled()) {
     return (
-      <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10">
-        <p className="text-sm">
-          <a href="/account" className="font-semibold text-brand-700 hover:underline">
-            ← আমার অ্যাকাউন্ট
-          </a>
-        </p>
-        <h1 className="mt-2 font-display text-2xl font-bold text-text-main">আমার সাবস্ক্রিপশন</h1>
-        <p className="mt-3 text-sm leading-6 text-text-muted">
-          সাবস্ক্রিপশন সুবিধাটি এই দোকানে এখনো চালু হয়নি।
-        </p>
+      <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10 lg:max-w-5xl">
+        <h1 className="font-display text-2xl font-bold text-text-main">আমার সাবস্ক্রিপশন</h1>
+        <div className="lg:flex lg:items-start lg:gap-6">
+          <AccountNav />
+          <div className="min-w-0 flex-1">
+            <p className="mt-6 rounded-2xl border border-border bg-card p-5 text-sm leading-6 text-text-muted shadow-card">
+              সাবস্ক্রিপশন সুবিধাটি এই দোকানে এখনো চালু হয়নি।
+            </p>
+          </div>
+        </div>
       </main>
     );
   }
@@ -66,19 +67,19 @@ export default async function AccountSubscriptionsPage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10">
-      <p className="text-sm">
-        <a href="/account" className="font-semibold text-brand-700 hover:underline">
-          ← আমার অ্যাকাউন্ট
-        </a>
-      </p>
-      <h1 className="mt-2 font-display text-2xl font-bold text-text-main">আমার সাবস্ক্রিপশন</h1>
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10 lg:max-w-5xl">
+      <h1 className="font-display text-2xl font-bold text-text-main">আমার সাবস্ক্রিপশন</h1>
       <p className="mt-1.5 text-sm leading-6 text-text-muted">
         সাবস্ক্রিপশন চালু থাকলে নির্ধারিত সময়ে অর্ডার তৈরি হয়ে ক্যাশ অন ডেলিভারিতে পৌঁছে যায়।
         যেকোনো সময় থামাতে, বিরতি বদলাতে বা বাতিল করতে পারবেন — বাতিল করা সাবস্ক্রিপশনের জন্য
         আর কোনো অর্ডার তৈরি হবে না।
       </p>
-      <SubscriptionsManager purchasable={purchasable} />
+      <div className="lg:flex lg:items-start lg:gap-6">
+        <AccountNav />
+        <div className="min-w-0 flex-1">
+          <SubscriptionsManager purchasable={purchasable} />
+        </div>
+      </div>
     </main>
   );
 }

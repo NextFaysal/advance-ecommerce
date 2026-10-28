@@ -25,6 +25,7 @@ import {
   listCustomerOrders,
   type AccountOrderSummary,
 } from "@/customer-auth/auth";
+import AccountNav from "./account-nav";
 import ReorderButton from "./reorder-button";
 import ReturnsSection from "./returns-section";
 import DownloadsSection from "./downloads-section";
@@ -197,11 +198,11 @@ function OrderCard({
       ) : null}
 
       {codDuePoisha !== null ? (
-        <div className="mt-3 flex items-baseline justify-between rounded-lg bg-amber-50 px-3 py-2 text-sm">
-          <span className="font-medium text-amber-800">
+        <div className="mt-3 flex items-baseline justify-between rounded-lg bg-warning-soft px-3 py-2 text-sm">
+          <span className="font-medium text-warning-solid">
             {s.codDue}
           </span>
-          <span className="font-semibold text-amber-700">
+          <span className="font-semibold text-warning-solid">
             <Money poisha={codDuePoisha} />
           </span>
         </div>
@@ -233,30 +234,41 @@ export default async function AccountPage({
       isFacebookLoginConfigured(),
     ]);
     return (
-      <main className="mx-auto w-full max-w-md px-4 py-8 sm:py-10">
-        <h1 className="font-display text-2xl font-bold text-text-main">{common.myAccount}</h1>
-        <p className="mt-1.5 text-sm leading-6 text-text-muted">
-          {s.loginIntro}
-        </p>
-        {searchParams.authError === "facebook_no_email" ? (
-          <p role="alert" className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
-            {s.facebookNoEmail}
+      <main className="mx-auto w-full max-w-md px-4 py-8 sm:py-12">
+        {/* OTP login surface (doc 32, P6): the AuthForms block sits in
+            the same card panel language as the rest of the account —
+            composition only; the forms and their flow are untouched. */}
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-card sm:p-7">
+          <span
+            aria-hidden="true"
+            className="brand-gradient flex h-11 w-11 items-center justify-center rounded-xl text-lg font-extrabold text-white shadow-md"
+          >
+            A
+          </span>
+          <h1 className="mt-4 font-display text-2xl font-bold text-text-main">{common.myAccount}</h1>
+          <p className="mt-1.5 text-sm leading-6 text-text-muted">
+            {s.loginIntro}
           </p>
-        ) : searchParams.authError ? (
-          <p role="alert" className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
-            {searchParams.authError === "facebook"
-              ? s.facebookFailed
-              : s.googleFailed}
+          {searchParams.authError === "facebook_no_email" ? (
+            <p role="alert" className="mt-4 rounded-xl bg-danger-soft px-4 py-3 text-sm font-medium text-danger">
+              {s.facebookNoEmail}
+            </p>
+          ) : searchParams.authError ? (
+            <p role="alert" className="mt-4 rounded-xl bg-danger-soft px-4 py-3 text-sm font-medium text-danger">
+              {searchParams.authError === "facebook"
+                ? s.facebookFailed
+                : s.googleFailed}
+            </p>
+          ) : null}
+          <div className="mt-5">
+            <AuthForms googleEnabled={googleEnabled} facebookEnabled={facebookEnabled} />
+          </div>
+          <p className="mt-5 border-t border-border pt-4 text-sm leading-6 text-text-muted">
+            {s.guestTrackBefore}{" "}
+            <a href="/track" className="font-semibold text-brand-700 hover:underline">{s.guestTrackLink}</a>{" "}
+            {s.guestTrackAfter}
           </p>
-        ) : null}
-        <div className="mt-5">
-          <AuthForms googleEnabled={googleEnabled} facebookEnabled={facebookEnabled} />
         </div>
-        <p className="mt-4 text-sm leading-6 text-text-muted">
-          {s.guestTrackBefore}{" "}
-          <a href="/track" className="font-semibold text-brand-700 hover:underline">{s.guestTrackLink}</a>{" "}
-          {s.guestTrackAfter}
-        </p>
       </main>
     );
   }
@@ -283,7 +295,7 @@ export default async function AccountPage({
   const myCourses = coursesEnabled() ? await listCustomerCourses(customer.id) : [];
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10">
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10 lg:max-w-5xl">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-bold text-text-main">{common.myAccount}</h1>
@@ -295,6 +307,9 @@ export default async function AccountPage({
         <LogoutButton />
       </div>
 
+      <div className="lg:flex lg:items-start lg:gap-6">
+        <AccountNav />
+        <div className="min-w-0 flex-1">
       <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card" aria-label={s.profile}>
         <h2 className="text-base font-bold text-text-main">{s.profile}</h2>
         <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
@@ -368,7 +383,7 @@ export default async function AccountPage({
         </section>
       ) : null}
 
-      <section className="mt-6 rounded-2xl border border-border bg-card shadow-card" aria-label={s.myOrders}>
+      <section id="orders" className="mt-6 scroll-mt-24 rounded-2xl border border-border bg-card shadow-card" aria-label={s.myOrders}>
         <div className="flex items-center justify-between px-5 pt-5">
           <h2 className="flex items-center gap-2.5 text-base font-bold text-text-main">
             <span
@@ -465,6 +480,8 @@ export default async function AccountPage({
       <section className="mt-6" aria-label={s.pushNotifications}>
         <PushSubscribeToggle />
       </section>
+        </div>
+      </div>
     </main>
   );
 }

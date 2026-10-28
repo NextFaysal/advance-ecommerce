@@ -152,7 +152,7 @@ export default function PrivacySection({ proofKind, phoneMasked, email }: Privac
       </div>
 
       <div className="mt-6 border-t border-border pt-5">
-        <h3 className="text-sm font-bold text-rose-700">অ্যাকাউন্ট মুছে ফেলুন</h3>
+        <h3 className="text-sm font-bold text-danger">অ্যাকাউন্ট মুছে ফেলুন</h3>
         <p className="mt-1 text-sm leading-6 text-text-muted">
           মুছে ফেললে আপনার নাম, ফোন, ইমেইল ও পাসওয়ার্ড বেনামে রূপান্তরিত হবে; সংরক্ষিত ঠিকানা,
           লগইন সেশন ও কার্ট মুছে যাবে এবং সব ডিভাইস থেকে লগআউট হয়ে যাবেন।{" "}
@@ -165,14 +165,14 @@ export default function PrivacySection({ proofKind, phoneMasked, email }: Privac
         </p>
 
         {stage === "done" ? (
-          <p role="status" className="mt-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+          <p role="status" className="mt-3 rounded-xl bg-success-soft px-4 py-3 text-sm font-medium text-success-solid">
             {message}
           </p>
         ) : stage === "idle" ? (
           <button
             type="button"
             onClick={() => setStage("confirm")}
-            className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
+            className="mt-3 rounded-xl border border-danger/30 bg-danger-soft px-4 py-2.5 text-sm font-semibold text-danger transition hover:bg-danger/20"
           >
             অ্যাকাউন্ট মুছে ফেলতে চাই
           </button>
@@ -252,7 +252,7 @@ export default function PrivacySection({ proofKind, phoneMasked, email }: Privac
                   type="button"
                   onClick={() => void handleDelete()}
                   disabled={busy || (proofKind === "otp" && stage !== "otp-sent")}
-                  className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-xl bg-danger px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {busy ? "মুছে ফেলা হচ্ছে…" : "চূড়ান্তভাবে মুছে ফেলুন"}
                 </button>
@@ -276,7 +276,7 @@ export default function PrivacySection({ proofKind, phoneMasked, email }: Privac
           <p
             role="status"
             className={`mt-3 rounded-xl px-4 py-3 text-sm font-medium ${
-              messageOk ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-700"
+              messageOk ? "bg-success-soft text-success-solid" : "bg-danger-soft text-danger"
             }`}
           >
             {message}

@@ -54,7 +54,10 @@ export default async function BlogIndexPage() {
           কেনাকাটার টিপস, পণ্যের গাইড, অফারের খবর আর আমাদের গল্প — সব এখানে।
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-text-muted">
-          <a href="/blog/feed.xml" className="font-medium text-brand-700 underline-offset-2 hover:underline">
+          <a
+            href="/blog/feed.xml"
+            className="focus-ring inline-flex min-h-[44px] items-center rounded-lg font-medium text-brand-700 underline-offset-2 hover:underline"
+          >
             RSS ফিড
           </a>
         </div>

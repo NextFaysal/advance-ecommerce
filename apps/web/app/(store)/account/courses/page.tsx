@@ -15,6 +15,7 @@ import { getCurrentCustomer } from "@/customer-auth/auth";
 import { coursesEnabled } from "@/courses/flags";
 import { listCustomerCourses } from "@/courses/service";
 import { Icon } from "@/components/ui/icon";
+import AccountNav from "../account-nav";
 
 export const dynamic = "force-dynamic";
 
@@ -34,16 +35,16 @@ export default async function AccountCoursesPage() {
 
   if (!coursesEnabled()) {
     return (
-      <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10">
-        <p className="text-sm">
-          <a href="/account" className="font-semibold text-brand-700 hover:underline">
-            ← আমার অ্যাকাউন্ট
-          </a>
-        </p>
-        <h1 className="mt-2 font-display text-2xl font-bold text-text-main">আমার কোর্স</h1>
-        <p className="mt-3 text-sm leading-6 text-text-muted">
-          কোর্স সুবিধাটি এই দোকানে এখনো চালু হয়নি।
-        </p>
+      <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10 lg:max-w-5xl">
+        <h1 className="font-display text-2xl font-bold text-text-main">আমার কোর্স</h1>
+        <div className="lg:flex lg:items-start lg:gap-6">
+          <AccountNav />
+          <div className="min-w-0 flex-1">
+            <p className="mt-6 rounded-2xl border border-border bg-card p-5 text-sm leading-6 text-text-muted shadow-card">
+              কোর্স সুবিধাটি এই দোকানে এখনো চালু হয়নি।
+            </p>
+          </div>
+        </div>
       </main>
     );
   }
@@ -51,18 +52,16 @@ export default async function AccountCoursesPage() {
   const courses = await listCustomerCourses(customer.id);
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10">
-      <p className="text-sm">
-        <a href="/account" className="font-semibold text-brand-700 hover:underline">
-          ← আমার অ্যাকাউন্ট
-        </a>
-      </p>
-      <h1 className="mt-2 font-display text-2xl font-bold text-text-main">আমার কোর্স</h1>
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10 lg:max-w-5xl">
+      <h1 className="font-display text-2xl font-bold text-text-main">আমার কোর্স</h1>
       <p className="mt-1.5 text-sm leading-6 text-text-muted">
         কেনা কোর্সগুলোর লেসন এখান থেকে দেখুন। অর্ডার রিফান্ড বা রিটার্ন হলে সেই কোর্সের
         অ্যাক্সেস সরে যায়।
       </p>
 
+      <div className="lg:flex lg:items-start lg:gap-6">
+        <AccountNav />
+        <div className="min-w-0 flex-1">
       {courses.length === 0 ? (
         <p className="mt-6 rounded-2xl border border-border bg-card p-5 text-sm leading-6 text-text-muted shadow-card">
           এখনো কোনো কোর্স কেনা হয়নি।{" "}
@@ -81,7 +80,7 @@ export default async function AccountCoursesPage() {
               <div className="flex items-start gap-3">
                 <span
                   aria-hidden="true"
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-700"
                 >
                   <span className="text-base" aria-hidden="true">▶</span>
                 </span>
@@ -97,7 +96,7 @@ export default async function AccountCoursesPage() {
               </div>
               <a
                 href={`/account/courses/${course.productId}`}
-                className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700"
+                className="brand-gradient mt-4 inline-flex min-h-11 items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-md transition"
               >
                 কোর্সে যান
                 <Icon name="arrow-right" size={16} />
@@ -106,6 +105,8 @@ export default async function AccountCoursesPage() {
           ))}
         </ul>
       )}
+        </div>
+      </div>
     </main>
   );
 }

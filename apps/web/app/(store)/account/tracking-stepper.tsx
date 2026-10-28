@@ -62,13 +62,15 @@ export function customerTrackingState(status: string): CustomerTrackingState {
 
 /** Banner classes per OD0 tone — mirrors the tone records in
  *  ui/badge.tsx / OD5's OFF_PATH cls values so the banner reads in the
- *  same colour language as the status badge beside it. */
+ *  same colour language as the status badge beside it. Doc 32 (P6):
+ *  values are the tokens-v4 semantic solid/soft pairs (they flip in
+ *  Aurora/Circuit dark; raw palette classes did not). */
 const TONE_BANNER_CLASS: Record<StatusTone, string> = {
-  brand: "border-brand-200 bg-brand-50 text-brand-700",
-  success: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  warning: "border-amber-200 bg-amber-50 text-amber-800",
-  danger: "border-rose-200 bg-rose-50 text-rose-700",
-  info: "border-sky-200 bg-sky-50 text-sky-700",
+  brand: "border-brand-500/30 bg-brand-soft text-brand-ink",
+  success: "border-success-solid/30 bg-success-soft text-success-solid",
+  warning: "border-warning-solid/30 bg-warning-soft text-warning-solid",
+  danger: "border-danger/30 bg-danger-soft text-danger",
+  info: "border-info-solid/30 bg-info-soft text-info-solid",
   neutral: "border-border bg-surface-2 text-text-muted",
 };
 
@@ -85,7 +87,7 @@ export default async function CustomerTrackingStepper({ status }: { status: stri
     const visual = ORDER_STATUS_VISUAL[state.status];
     return (
       <p
-        className={`mt-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${TONE_BANNER_CLASS[visual.tone]}`}
+        className={`mt-3 flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium ${TONE_BANNER_CLASS[visual.tone]}`}
       >
         <Icon name={visual.icon} size={16} />
         {labelOf(state.status)}
@@ -111,18 +113,18 @@ export default async function CustomerTrackingStepper({ status }: { status: stri
             {idx > 0 && (
               <span
                 aria-hidden="true"
-                className={`mx-1 mt-[13px] h-0.5 flex-1 rounded ${idx <= activeIdx ? "bg-emerald-400" : "bg-border"}`}
+                className={`mx-1 mt-[13px] h-0.5 flex-1 rounded ${idx <= activeIdx ? "bg-success-solid" : "bg-border"}`}
               />
             )}
             <span className="flex w-12 flex-col items-center gap-1 text-center sm:w-14">
               <span
                 aria-hidden="true"
-                className={`flex h-[27px] w-[27px] items-center justify-center rounded-full ${
+                className={`flex h-7 w-7 items-center justify-center rounded-full ${
                   done
-                    ? "bg-emerald-500 text-white"
+                    ? "bg-success-solid text-white"
                     : active
                       ? "bg-brand-600 text-white ring-4 ring-brand-100"
-                      : "bg-slate-100 text-slate-400"
+                      : "bg-surface-2 text-text-subtle"
                 }`}
               >
                 <Icon name={done ? "check" : visual.icon} size={14} />

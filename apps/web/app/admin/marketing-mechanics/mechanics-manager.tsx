@@ -8,6 +8,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/table";
+import { formatBdt } from "@advance-ecommerce/validators";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { interpolate, pick } from "@/i18n/locale";
+import { MECHANICS_STRINGS } from "./strings";
 
 /* ------------------------------------------------------------------ */
 /* Shared helpers                                                      */
@@ -200,32 +204,74 @@ function SpinSection() {
 /* Experiments                                                         */
 /* ------------------------------------------------------------------ */
 
+/** Mirrors src/marketing/experiments.ts: the target is the bare
+ *  "hero" literal or a funnel-step object (doc 34 §3.8); a variant
+ *  carries hero copy (hero target), a pageId (funnel-step target),
+ *  or neither (control). */
+type ExperimentTargetRow = "hero" | { kind: "funnel_step"; funnelId: string; stepId: string };
+
+interface ExperimentVariantRow {
+  key: string;
+  weightBps: number;
+  hero?: { headlineBn: string; subBn: string; ctaLabelBn: string; ctaHref: string };
+  pageId?: string;
+}
+
 interface ExperimentRow {
   id: string;
   name: string;
   status: "draft" | "running" | "stopped";
-  target: "hero";
+  target: ExperimentTargetRow;
   createdAt: string;
-  variants: Array<{
-    key: string;
-    weightBps: number;
-    hero?: { headlineBn: string; subBn: string; ctaLabelBn: string; ctaHref: string };
-  }>;
+  variants: ExperimentVariantRow[];
 }
 
 interface ExpStats {
   variants: Array<{ variantKey: string; exposures: number; conversions: number; conversionPercent: number | null }>;
 }
 
+/** Revenue stats (funnel-step experiments only, doc 34 §3.8):
+ *  exposures/conversions plus the attributed orders' totals. */
+interface ExpRevenueStats {
+  variants: Array<{ variantKey: string; revenuePoisha: number; revenuePerVisitorPoisha: number | null }>;
+}
+
+interface FunnelOption {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  steps: Array<{ id: string; kind: string; pageId: string }>;
+}
+
+interface LandingPageOption {
+  id: string;
+  titleBn: string;
+  titleEn: string;
+  status: string;
+}
+
 function ExperimentsSection() {
+  const { locale } = useLocale();
+  const s = pick(locale, MECHANICS_STRINGS);
   const [experiments, setExperiments] = useState<ExperimentRow[]>([]);
   const [stats, setStats] = useState<Record<string, ExpStats>>({});
+  const [revenueStats, setRevenueStats] = useState<Record<string, ExpRevenueStats>>({});
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [variantB, setVariantB] = useState({ headlineBn: "", subBn: "", ctaLabelBn: "", ctaHref: "/shop" });
   const [weightA, setWeightA] = useState(5000);
   const [weightB, setWeightB] = useState(5000);
+  // Funnel-step target (doc 34 §3.8): funnel → step → variant B page.
+  const [targetKind, setTargetKind] = useState<"hero" | "funnel_step">("hero");
+  const [funnels, setFunnels] = useState<FunnelOption[]>([]);
+  const [landingPages, setLandingPages] = useState<LandingPageOption[]>([]);
+  const [listsLoaded, setListsLoaded] = useState(false);
+  const [listsError, setListsError] = useState(false);
+  const [fxFunnelId, setFxFunnelId] = useState("");
+  const [fxStepId, setFxStepId] = useState("");
+  const [fxPageId, setFxPageId] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -240,6 +286,41 @@ function ExperimentsSection() {
     void load();
   }, [load]);
 
+  /** Funnel + landing-page lists for the funnel-step selects (the
+   *  APIs guard on content.page; a failure leaves the selects empty
+   *  with an honest hint instead of breaking the section). */
+  const loadLists = useCallback(async () => {
+    try {
+      const [f, p] = await Promise.all([
+        api<{ funnels: FunnelOption[] }>("/api/v1/admin/funnels"),
+        api<{ pages: LandingPageOption[] }>("/api/v1/admin/landing"),
+      ]);
+      setFunnels(f.funnels);
+      setLandingPages(p.pages);
+      setListsError(false);
+    } catch {
+      setListsError(true);
+    } finally {
+      setListsLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!listsLoaded && (targetKind === "funnel_step" || experiments.some((e) => e.target !== "hero"))) {
+      void loadLists();
+    }
+  }, [targetKind, listsLoaded, experiments, loadLists]);
+
+  const fxFunnel = funnels.find((f) => f.id === fxFunnelId) ?? null;
+  const fxSteps = (fxFunnel?.steps ?? []).filter((st) => st.kind === "landing" || st.kind === "order");
+  const fxStep = fxSteps.find((st) => st.id === fxStepId) ?? null;
+  const fxPageOptions = landingPages.filter((p) => p.status === "PUBLISHED" && (fxStep === null || p.id !== fxStep.pageId));
+  const pageTitle = (id: string): string => {
+    const p = landingPages.find((x) => x.id === id);
+    return p ? (locale === "en" ? p.titleEn || p.titleBn : p.titleBn) : id;
+  };
+  const funnelName = (id: string): string => funnels.find((f) => f.id === id)?.name ?? id;
+
   const putDoc = async (next: ExperimentRow[]) => {
     await api("/api/v1/admin/marketing/experiments", {
       method: "PUT",
@@ -251,25 +332,44 @@ function ExperimentsSection() {
   const create = async () => {
     setError(null);
     setMessage(null);
-    if (name.trim() === "" || variantB.headlineBn.trim() === "" || variantB.ctaLabelBn.trim() === "") {
-      setError("নাম, B ভ্যারিয়েন্টের হেডলাইন ও CTA লেবেল আবশ্যক।");
-      return;
-    }
     const id = `exp-${Date.now().toString(36)}`;
-    const experiment: ExperimentRow = {
-      id,
-      name: name.trim(),
-      status: "draft",
-      target: "hero",
-      createdAt: new Date().toISOString(),
-      variants: [
-        { key: "A", weightBps: weightA },
-        { key: "B", weightBps: weightB, hero: { ...variantB } },
-      ],
-    };
+    let experiment: ExperimentRow;
+    if (targetKind === "funnel_step") {
+      if (name.trim() === "" || fxFunnelId === "" || fxStepId === "" || fxPageId === "") {
+        setError(s.fxRequiredError);
+        return;
+      }
+      experiment = {
+        id,
+        name: name.trim(),
+        status: "draft",
+        target: { kind: "funnel_step", funnelId: fxFunnelId, stepId: fxStepId },
+        createdAt: new Date().toISOString(),
+        variants: [
+          { key: "A", weightBps: weightA },
+          { key: "B", weightBps: weightB, pageId: fxPageId },
+        ],
+      };
+    } else {
+      if (name.trim() === "" || variantB.headlineBn.trim() === "" || variantB.ctaLabelBn.trim() === "") {
+        setError(s.expRequiredError);
+        return;
+      }
+      experiment = {
+        id,
+        name: name.trim(),
+        status: "draft",
+        target: "hero",
+        createdAt: new Date().toISOString(),
+        variants: [
+          { key: "A", weightBps: weightA },
+          { key: "B", weightBps: weightB, hero: { ...variantB } },
+        ],
+      };
+    }
     try {
       await putDoc([...experiments, experiment]);
-      setMessage("এক্সপেরিমেন্ট তৈরি হয়েছে (ড্রাফট)। চালু করতে “শুরু করুন” চাপুন।");
+      setMessage(s.expCreated);
       setName("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "create failed");
@@ -287,57 +387,136 @@ function ExperimentsSection() {
 
   const loadStats = async (id: string) => {
     try {
-      const d = await api<{ stats: ExpStats | null }>(`/api/v1/admin/marketing/experiments?stats=${encodeURIComponent(id)}`);
+      const d = await api<{ stats: ExpStats | null; statsRevenue: ExpRevenueStats | null }>(
+        `/api/v1/admin/marketing/experiments?stats=${encodeURIComponent(id)}`,
+      );
       if (d.stats !== null) setStats((prev) => ({ ...prev, [id]: d.stats as ExpStats }));
+      if (d.statsRevenue !== null && d.statsRevenue !== undefined) {
+        setRevenueStats((prev) => ({ ...prev, [id]: d.statsRevenue as ExpRevenueStats }));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "stats failed");
     }
   };
 
+  const variantSummary = (v: ExperimentVariantRow): string => {
+    const base = interpolate(s.expVariantWeight, { key: v.key, weight: v.weightBps });
+    if (v.hero) return `${base} — “${v.hero.headlineBn}”`;
+    if (v.pageId) return `${base} — ${pageTitle(v.pageId)}`;
+    return `${base}${s.expControlSuffix}`;
+  };
+
   return (
     <Card className="mt-6">
-      <h2 className="text-lg font-bold text-text-main">A/B এক্সপেরিমেন্ট — হোমপেজ হিরো</h2>
-      <p className="mt-1 text-sm text-text-muted">
-        A = কন্ট্রোল (বর্তমান হিরো), B = নতুন হেডলাইন/CTA। ভিজিটর আইডির হ্যাশ দিয়ে নির্ধারিতভাবে ভ্যারিয়েন্ট দেওয়া হয় —
-        একই ভিজিটর সবসময় একই ভ্যারিয়েন্ট দেখে। সংখ্যাগুলো কাঁচা কাউন্ট মাত্র; কোনো সিগনিফিক্যান্স দাবি করা হয় না।
-      </p>
+      <h2 className="text-lg font-bold text-text-main">{s.expTitle}</h2>
+      <p className="mt-1 text-sm text-text-muted">{s.expIntro}</p>
       {error !== null ? <p className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p> : null}
       {message !== null ? <p className="mt-3 rounded-xl bg-success-soft px-3 py-2 text-sm text-success-solid">{message}</p> : null}
 
       <div className="mt-4 grid gap-3 rounded-2xl border border-border/60 bg-surface-2/50 p-4 sm:grid-cols-2">
         <label className={labelCls}>
-          এক্সপেরিমেন্টের নাম
-          <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="হিরো হেডলাইন টেস্ট" />
+          {s.expNameLabel}
+          <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder={s.expNamePlaceholder} />
+        </label>
+        <label className={labelCls}>
+          {s.fxTargetLabel}
+          <select
+            className={inputCls}
+            value={targetKind}
+            onChange={(e) => setTargetKind(e.target.value as "hero" | "funnel_step")}
+          >
+            <option value="hero">{s.fxTargetHero}</option>
+            <option value="funnel_step">{s.fxTargetFunnelStep}</option>
+          </select>
         </label>
         <div className="grid grid-cols-2 gap-3">
           <label className={labelCls}>
-            A ওজন (bps)
+            {s.expWeightALabel}
             <input type="number" className={inputCls} value={weightA} onChange={(e) => setWeightA(Number(e.target.value))} />
           </label>
           <label className={labelCls}>
-            B ওজন (bps)
+            {s.expWeightBLabel}
             <input type="number" className={inputCls} value={weightB} onChange={(e) => setWeightB(Number(e.target.value))} />
           </label>
         </div>
-        <label className={labelCls}>
-          B হেডলাইন
-          <input className={inputCls} value={variantB.headlineBn} onChange={(e) => setVariantB((v) => ({ ...v, headlineBn: e.target.value }))} />
-        </label>
-        <label className={labelCls}>
-          B সাব-টেক্সট
-          <input className={inputCls} value={variantB.subBn} onChange={(e) => setVariantB((v) => ({ ...v, subBn: e.target.value }))} />
-        </label>
-        <label className={labelCls}>
-          B CTA লেবেল
-          <input className={inputCls} value={variantB.ctaLabelBn} onChange={(e) => setVariantB((v) => ({ ...v, ctaLabelBn: e.target.value }))} />
-        </label>
-        <label className={labelCls}>
-          B CTA লিংক
-          <input className={inputCls} value={variantB.ctaHref} onChange={(e) => setVariantB((v) => ({ ...v, ctaHref: e.target.value }))} />
-        </label>
+        {targetKind === "hero" ? (
+          <>
+            <label className={labelCls}>
+              {s.expBHeadlineLabel}
+              <input className={inputCls} value={variantB.headlineBn} onChange={(e) => setVariantB((v) => ({ ...v, headlineBn: e.target.value }))} />
+            </label>
+            <label className={labelCls}>
+              {s.expBSubLabel}
+              <input className={inputCls} value={variantB.subBn} onChange={(e) => setVariantB((v) => ({ ...v, subBn: e.target.value }))} />
+            </label>
+            <label className={labelCls}>
+              {s.expBCtaLabel}
+              <input className={inputCls} value={variantB.ctaLabelBn} onChange={(e) => setVariantB((v) => ({ ...v, ctaLabelBn: e.target.value }))} />
+            </label>
+            <label className={labelCls}>
+              {s.expBCtaHrefLabel}
+              <input className={inputCls} value={variantB.ctaHref} onChange={(e) => setVariantB((v) => ({ ...v, ctaHref: e.target.value }))} />
+            </label>
+          </>
+        ) : (
+          <>
+            <label className={labelCls}>
+              {s.fxFunnelLabel}
+              <select
+                className={inputCls}
+                value={fxFunnelId}
+                onChange={(e) => {
+                  setFxFunnelId(e.target.value);
+                  setFxStepId("");
+                  setFxPageId("");
+                }}
+              >
+                <option value="">—</option>
+                {funnels.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name} ({f.status})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={labelCls}>
+              {s.fxStepLabel}
+              <select
+                className={inputCls}
+                value={fxStepId}
+                onChange={(e) => {
+                  setFxStepId(e.target.value);
+                  setFxPageId("");
+                }}
+              >
+                <option value="">—</option>
+                {fxSteps.map((st) => (
+                  <option key={st.id} value={st.id}>
+                    {st.kind} · {st.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={labelCls}>
+              {s.fxBPageLabel}
+              <select className={inputCls} value={fxPageId} onChange={(e) => setFxPageId(e.target.value)}>
+                <option value="">—</option>
+                {fxPageOptions.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {locale === "en" ? p.titleEn || p.titleBn : p.titleBn}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="text-xs text-text-muted sm:col-span-2">
+              {s.fxBPageHint}
+              {listsError ? <span className="mt-1 block text-danger">{s.fxListsLoadFailed}</span> : null}
+            </p>
+          </>
+        )}
         <div>
           <button type="button" onClick={() => void create()} className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-brand-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-brand-700">
-            ড্রাফট তৈরি করুন
+            {s.expCreateDraft}
           </button>
         </div>
       </div>
@@ -352,42 +531,73 @@ function ExperimentsSection() {
               <span className="ml-auto flex gap-2">
                 {experiment.status !== "running" ? (
                   <button type="button" className="rounded-xl bg-emerald-600 px-3 py-1 text-xs font-bold text-white" onClick={() => void setStatus(experiment.id, "running")}>
-                    শুরু করুন
+                    {s.expStart}
                   </button>
                 ) : (
                   <button type="button" className="rounded-xl bg-red-600 px-3 py-1 text-xs font-bold text-white" onClick={() => void setStatus(experiment.id, "stopped")}>
-                    বন্ধ করুন
+                    {s.expStop}
                   </button>
                 )}
                 <button type="button" className="rounded-xl bg-surface-2 px-3 py-1 text-xs font-bold text-text-main" onClick={() => void loadStats(experiment.id)}>
-                  ফলাফল দেখুন
+                  {s.expViewResults}
                 </button>
               </span>
             </div>
+            {experiment.target !== "hero" ? (
+              <p className="mt-1 text-xs font-semibold text-text-muted">
+                {interpolate(s.fxTargetSummary, { funnel: funnelName(experiment.target.funnelId), step: experiment.target.stepId })}
+              </p>
+            ) : null}
             <p className="tnum mt-1 text-xs text-text-muted">
-              {experiment.variants.map((v) => `${v.key}: ওজন ${v.weightBps}${v.hero ? ` — “${v.hero.headlineBn}”` : " (কন্ট্রোল)"}`).join(" · ")}
+              {experiment.variants.map((v) => variantSummary(v)).join(" · ")}
             </p>
             {stats[experiment.id] !== undefined ? (
               <div className="mt-3">
-                <DataTable
-                  columns={[
-                    { key: "variant", header: "ভ্যারিয়েন্ট" },
-                    { key: "exposures", header: "ইউনিক এক্সপোজার" },
-                    { key: "conversions", header: "অর্ডার (কনভার্সন)" },
-                    { key: "conversionPercent", header: "কনভার্সন % (বর্ণনামূলক)" },
-                  ]}
-                  rows={(stats[experiment.id]?.variants ?? []).map((v) => ({
-                    variant: <span className="font-mono">{v.variantKey}</span>,
-                    exposures: <span className="tnum">{v.exposures}</span>,
-                    conversions: <span className="tnum">{v.conversions}</span>,
-                    conversionPercent: <span className="tnum">{v.conversionPercent !== null ? `${v.conversionPercent}%` : "—"}</span>,
-                  }))}
-                />
+                {revenueStats[experiment.id] !== undefined ? (
+                  <DataTable
+                    columns={[
+                      { key: "variant", header: s.expThVariant },
+                      { key: "exposures", header: s.expThExposures },
+                      { key: "conversions", header: s.expThConversions },
+                      { key: "conversionPercent", header: s.expThConversionPct },
+                      { key: "revenue", header: s.fxThRevenue },
+                      { key: "revenuePerVisitor", header: s.fxThRevenuePerVisitor },
+                    ]}
+                    rows={(stats[experiment.id]?.variants ?? []).map((v) => {
+                      const rev = revenueStats[experiment.id]?.variants.find((r) => r.variantKey === v.variantKey);
+                      return {
+                        variant: <span className="font-mono">{v.variantKey}</span>,
+                        exposures: <span className="tnum">{v.exposures}</span>,
+                        conversions: <span className="tnum">{v.conversions}</span>,
+                        conversionPercent: <span className="tnum">{v.conversionPercent !== null ? `${v.conversionPercent}%` : "—"}</span>,
+                        revenue: <span className="tnum">{rev ? formatBdt(rev.revenuePoisha) : "—"}</span>,
+                        revenuePerVisitor: (
+                          <span className="tnum">{rev && rev.revenuePerVisitorPoisha !== null ? formatBdt(rev.revenuePerVisitorPoisha) : "—"}</span>
+                        ),
+                      };
+                    })}
+                  />
+                ) : (
+                  <DataTable
+                    columns={[
+                      { key: "variant", header: s.expThVariant },
+                      { key: "exposures", header: s.expThExposures },
+                      { key: "conversions", header: s.expThConversions },
+                      { key: "conversionPercent", header: s.expThConversionPct },
+                    ]}
+                    rows={(stats[experiment.id]?.variants ?? []).map((v) => ({
+                      variant: <span className="font-mono">{v.variantKey}</span>,
+                      exposures: <span className="tnum">{v.exposures}</span>,
+                      conversions: <span className="tnum">{v.conversions}</span>,
+                      conversionPercent: <span className="tnum">{v.conversionPercent !== null ? `${v.conversionPercent}%` : "—"}</span>,
+                    }))}
+                  />
+                )}
               </div>
             ) : null}
           </div>
         ))}
-        {experiments.length === 0 ? <p className="text-sm text-text-subtle">কোনো এক্সপেরিমেন্ট নেই।</p> : null}
+        {experiments.length === 0 ? <p className="text-sm text-text-subtle">{s.expNone}</p> : null}
       </div>
     </Card>
   );

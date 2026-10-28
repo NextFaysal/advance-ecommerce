@@ -13,6 +13,7 @@ import { redirect } from "next/navigation";
 import { getCurrentCustomer, listCustomerOrders } from "@/customer-auth/auth";
 import { listTicketsForCustomer } from "@/support/store";
 import { TICKET_STATUS_LABEL, TICKET_STATUS_TONE, formatTicketDate } from "@/support/labels";
+import AccountNav from "../account-nav";
 import { CreateTicketForm } from "./create-ticket-form";
 
 export const dynamic = "force-dynamic";
@@ -33,13 +34,8 @@ export default async function AccountTicketsPage() {
   ]);
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10">
-      <p className="text-sm">
-        <a href="/account" className="font-semibold text-brand-700 hover:underline">
-          ← আমার অ্যাকাউন্ট
-        </a>
-      </p>
-      <h1 className="mt-2 font-display text-2xl font-bold text-text-main">সাপোর্ট টিকিট</h1>
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10 lg:max-w-5xl">
+      <h1 className="font-display text-2xl font-bold text-text-main">সাপোর্ট টিকিট</h1>
       <p className="mt-1.5 text-sm leading-6 text-text-muted">
         অর্ডার বা কেনাকাটা নিয়ে কোনো সমস্যা থাকলে টিকিট খুলুন — আমাদের টিম এখানেই উত্তর দেবে।
         প্রতিটি টিকিটের সব বার্তা এক জায়গায় থাকে। টিকিট খোলার আগে{" "}
@@ -49,6 +45,9 @@ export default async function AccountTicketsPage() {
         -এ সাধারণ প্রশ্নের উত্তর খুঁজে দেখতে পারেন।
       </p>
 
+      <div className="lg:flex lg:items-start lg:gap-6">
+        <AccountNav />
+        <div className="min-w-0 flex-1">
       <section
         className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card"
         aria-label="আমার টিকিট"
@@ -108,6 +107,8 @@ export default async function AccountTicketsPage() {
           <CreateTicketForm orders={orders.map((o) => ({ id: o.id, orderNo: o.orderNo }))} />
         </div>
       </section>
+        </div>
+      </div>
     </main>
   );
 }

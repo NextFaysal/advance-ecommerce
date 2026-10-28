@@ -9,11 +9,11 @@
  * (language-preference.tsx) switches the root LocaleProvider, which
  * persists the choice (cookie + localStorage) store-wide.
  */
-import Link from "next/link";
 import { ThemeProvider, useTheme } from "@/components/ui/theme-provider";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
 import { ACCOUNT_STRINGS } from "../strings";
+import AccountNav from "../account-nav";
 import LanguagePreference from "./language-preference";
 
 function ThemeSelectorContent() {
@@ -22,20 +22,18 @@ function ThemeSelectorContent() {
   const s = pick(locale, ACCOUNT_STRINGS);
 
   return (
-    <main className="mx-auto w-full max-w-2xl px-4 py-8">
-      <div className="mb-2">
-        <Link href="/account" className="text-sm text-primary hover:underline">
-          {s.backToAccount}
-        </Link>
-      </div>
-      <h1 className="mt-2 font-display text-2xl font-bold text-text-main">{s.themePreference}</h1>
-      <p className="mt-1 text-sm leading-6 text-text-muted">
+    <main className="mx-auto w-full max-w-2xl px-4 py-8 sm:py-10 lg:max-w-5xl">
+      <h1 className="font-display text-2xl font-bold text-text-main">{s.themePreference}</h1>
+      <p className="mt-1.5 text-sm leading-6 text-text-muted">
         {s.themePreferenceDesc}
       </p>
 
+      <div className="lg:flex lg:items-start lg:gap-6">
+        <AccountNav />
+        <div className="min-w-0 flex-1">
       <LanguagePreference />
 
-      <div className="mt-8 rounded-2xl border border-border bg-card p-6">
+      <div className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card sm:p-6">
         {/* Default theme option */}
         <div className="mb-4">
           <button
@@ -43,8 +41,8 @@ function ThemeSelectorContent() {
             onClick={() => setTheme(null)}
             className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
               !themeId
-                ? "border-primary bg-primary/5 ring-1 ring-primary"
-                : "border-border hover:bg-muted"
+                ? "border-brand-500 bg-brand-soft ring-1 ring-brand-500"
+                : "border-border hover:bg-surface-2"
             }`}
           >
             <div className="flex items-center gap-3">
@@ -63,7 +61,7 @@ function ThemeSelectorContent() {
               </div>
             </div>
             {!themeId && (
-              <span className="text-xs font-semibold text-primary">{s.activeLabel}</span>
+              <span className="text-xs font-semibold text-brand-ink">{s.activeLabel}</span>
             )}
           </button>
         </div>
@@ -85,8 +83,8 @@ function ThemeSelectorContent() {
               onClick={() => setTheme(theme.id)}
               className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
                 themeId === theme.id
-                  ? "border-primary bg-primary/5 ring-1 ring-primary"
-                  : "border-border hover:bg-muted"
+                  ? "border-brand-500 bg-brand-soft ring-1 ring-brand-500"
+                  : "border-border hover:bg-surface-2"
               }`}
             >
               <div className="flex items-center gap-3">
@@ -110,11 +108,13 @@ function ThemeSelectorContent() {
                 </div>
               </div>
               {themeId === theme.id && (
-                <span className="text-xs font-semibold text-primary">{s.activeLabel}</span>
+                <span className="text-xs font-semibold text-brand-ink">{s.activeLabel}</span>
               )}
             </button>
           </div>
         ))}
+      </div>
+        </div>
       </div>
     </main>
   );

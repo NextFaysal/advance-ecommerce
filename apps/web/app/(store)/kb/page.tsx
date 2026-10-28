@@ -49,7 +49,7 @@ export default async function KbIndexPage() {
             <li key={a.id}>
               <Link
                 href={`/kb/${a.slug}`}
-                className="block rounded-2xl border border-border bg-card p-5 shadow-card transition hover:border-brand-300"
+                className="focus-ring block rounded-2xl border border-border bg-card p-5 shadow-card transition duration-200 hover:border-brand-300 hover:shadow-lift"
               >
                 <span className="text-base font-bold text-text-main">{a.titleBn}</span>
                 {a.titleEn ? (

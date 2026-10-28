@@ -104,8 +104,8 @@ export default function BirthDateField() {
         <p className="mt-1 text-xs leading-5 text-text-subtle">
           {s.birthDateHint}
         </p>
-        {message ? <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">{message}</p> : null}
-        {error ? <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{error}</p> : null}
+        {message ? <p className="mt-1 text-xs text-success-solid">{message}</p> : null}
+        {error ? <p className="mt-1 text-xs text-danger">{error}</p> : null}
       </dd>
     </div>
   );

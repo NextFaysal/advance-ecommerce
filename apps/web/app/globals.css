@@ -281,6 +281,9 @@
   .anim-fade-in { animation: ds-fade-in 180ms ease-out both; }
   .anim-pop-in { animation: ds-pop-in 220ms cubic-bezier(0.21, 1.02, 0.73, 1) both; }
   .anim-drawer-in { animation: ds-drawer-in 280ms cubic-bezier(0.32, 0.72, 0.24, 1) both; }
+  /* Left-edge twin of ds-drawer-in — the mobile menu drawer (doc 33)
+     enters from the left; the cart drawers keep the right-edge one. */
+  .anim-drawer-in-left { animation: ds-drawer-in-left 280ms cubic-bezier(0.32, 0.72, 0.24, 1) both; }
   .anim-rise { animation: ds-rise 320ms ease-out both; }
 }
 
@@ -311,6 +314,10 @@
   from { transform: translateX(100%); }
   to { transform: translateX(0); }
 }
+@keyframes ds-drawer-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
 @keyframes ds-rise {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -321,8 +328,37 @@
   .anim-fade-in,
   .anim-pop-in,
   .anim-drawer-in,
+  .anim-drawer-in-left,
   .anim-rise {
     animation: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Doc 33 — responsive contract utilities (33-theme-responsive plan §3) */
+/* The CSS half of the mobile-first contract; the class-string half   */
+/* lives in src/storefront-ux/responsive.ts. Safe-area is mandatory   */
+/* on fixed chrome (§3.4) — these utilities give it names so waves    */
+/* stop re-typing the arbitrary-value formula.                        */
+/* ------------------------------------------------------------------ */
+
+@layer utilities {
+  /* Padding that respects the device safe areas (notch / home bar). */
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+  /* The StickyBuyBar formula as a name: never less than 0.75rem of
+     breathing room, more when the device demands it. Fixed bottom
+     bars/footers use this instead of the raw arbitrary value. */
+  .pb-safe-floor { padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px)); }
+
+  /* Rail affordance (§3.5): a horizontal rail wearing this class
+     fades its right edge, so a phone user can SEE the row continues.
+     Mask (not a gradient overlay) so it works over any surface the
+     theme puts under the rail, in light and dark alike. Pair with
+     the usual `overflow-x-auto` + snap classes on the same element. */
+  .rail-fade-x {
+    -webkit-mask-image: linear-gradient(to right, black 0, black calc(100% - 1.75rem), transparent 100%);
+    mask-image: linear-gradient(to right, black 0, black calc(100% - 1.75rem), transparent 100%);
   }
 }
 

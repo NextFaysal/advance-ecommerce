@@ -193,7 +193,7 @@ export default function ReorderButton({ orderId, orderNo }: { orderId: string; o
         {phase.kind === "loading" ? s.reorderAdding : s.reorderButton}
       </button>
       {phase.kind === "error" ? (
-        <p className="mt-1.5 text-xs leading-5 text-red-600" role="alert">
+        <p className="mt-1.5 text-xs leading-5 text-danger" role="alert">
           {phase.message}
         </p>
       ) : null}

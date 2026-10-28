@@ -60,9 +60,9 @@ const PARCEL_PIPELINE_STEPS = [
 ] as const satisfies readonly { status: string; icon: IconName }[];
 
 const PARCEL_OFF_PATH: Record<string, { icon: IconName; cls: string }> = {
-  FAILED: { icon: "alert", cls: "border-rose-200 bg-rose-50 text-rose-700" },
-  RETURNING: { icon: "rotate-ccw", cls: "border-amber-200 bg-amber-50 text-amber-800" },
-  RETURNED: { icon: "rotate-ccw", cls: "border-border bg-slate-50 text-slate-600" },
+  FAILED: { icon: "alert", cls: "border-danger/30 bg-danger-soft text-danger" },
+  RETURNING: { icon: "rotate-ccw", cls: "border-warning-solid/30 bg-warning-soft text-warning-solid" },
+  RETURNED: { icon: "rotate-ccw", cls: "border-border bg-surface-2 text-text-muted" },
 };
 
 function stepLabel(locale: Locale, status: string): string {
@@ -77,7 +77,7 @@ function ParcelStepper({ status, locale }: { status: string; locale: Locale }) {
     const off = PARCEL_OFF_PATH[status];
     if (!off) return null;
     return (
-      <p className={`mt-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${off.cls}`}>
+      <p className={`mt-3 flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium ${off.cls}`}>
         <Icon name={off.icon} size={16} />
         {stepLabel(locale, status)}
       </p>
@@ -94,17 +94,17 @@ function ParcelStepper({ status, locale }: { status: string; locale: Locale }) {
         return (
           <li key={step.status} className={`flex items-start ${idx > 0 ? "flex-1" : ""}`}>
             {idx > 0 && (
-              <span aria-hidden="true" className={`mx-1 mt-[13px] h-0.5 flex-1 rounded ${idx <= activeIdx ? "bg-emerald-400" : "bg-border"}`} />
+              <span aria-hidden="true" className={`mx-1 mt-[13px] h-0.5 flex-1 rounded ${idx <= activeIdx ? "bg-success-solid" : "bg-border"}`} />
             )}
             <span className="flex w-12 flex-col items-center gap-1 text-center sm:w-14">
               <span
                 aria-hidden="true"
-                className={`flex h-[27px] w-[27px] items-center justify-center rounded-full ${
+                className={`flex h-7 w-7 items-center justify-center rounded-full ${
                   done
-                    ? "bg-emerald-500 text-white"
+                    ? "bg-success-solid text-white"
                     : active
                       ? "bg-brand-600 text-white ring-4 ring-brand-100"
-                      : "bg-slate-100 text-slate-400"
+                      : "bg-surface-2 text-text-subtle"
                 }`}
               >
                 <Icon name={done ? "check" : step.icon} size={14} />
@@ -149,7 +149,7 @@ function ParcelCard({
   t: TrackStrings;
 }) {
   return (
-    <div className="mt-4 rounded-xl border border-border bg-surface-2/60 px-4 py-4">
+    <div className="mt-4 rounded-2xl border border-border bg-surface-2/60 px-4 py-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-text-main">
           {total > 1 ? `${t.parcelPrefix} ${index + 1} — ` : ""}
@@ -190,7 +190,7 @@ function ParcelCard({
               <span
                 aria-hidden
                 className={`relative mt-1 h-[11px] w-[11px] shrink-0 rounded-full ${
-                  i === parcel.events.length - 1 ? "bg-brand-600 ring-4 ring-brand-100" : "bg-emerald-500"
+                  i === parcel.events.length - 1 ? "bg-brand-600 ring-4 ring-brand-100" : "bg-success-solid"
                 }`}
               />
               <span className="min-w-0">
@@ -287,7 +287,7 @@ export default function TrackForm() {
         </button>
         <p className="mt-2.5 text-xs leading-5 text-text-muted">{t.rateLimitNote}</p>
         {state.phase === "error" && (
-          <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
+          <p role="alert" className="mt-3 rounded-xl bg-danger-soft px-4 py-3 text-sm font-medium text-danger">
             {state.message}
           </p>
         )}
@@ -343,7 +343,7 @@ export default function TrackForm() {
                   aria-hidden
                   className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
                     step.state === "done"
-                      ? "bg-emerald-500 text-white"
+                      ? "bg-success-solid text-white"
                       : step.state === "current"
                         ? "bg-brand-600 text-white ring-4 ring-brand-100"
                         : "border-2 border-border bg-card"
@@ -392,7 +392,7 @@ export default function TrackForm() {
               )}
               {/* Honest fallback label (G3-20): no Shipment rows exist for
                   this order yet, so nothing above is live courier data. */}
-              <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-5 text-amber-800">
+              <p className="mt-3 flex items-start gap-2 rounded-xl border border-warning-solid/30 bg-warning-soft px-3.5 py-2.5 text-xs leading-5 text-warning-solid">
                 <Icon name="info" size={14} className="mt-0.5 shrink-0" />
                 {t.noLiveCourierNote}
               </p>

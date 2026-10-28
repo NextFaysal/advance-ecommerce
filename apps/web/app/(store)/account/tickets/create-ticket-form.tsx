@@ -115,7 +115,7 @@ export function CreateTicketForm({
       </div>
 
       {error ? (
-        <p role="alert" className="text-sm font-medium text-rose-600">
+        <p role="alert" className="text-sm font-medium text-danger">
           {error}
         </p>
       ) : null}

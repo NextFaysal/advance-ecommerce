@@ -34,7 +34,10 @@ export default async function KbArticlePage({ params }: { params: { slug: string
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10">
       <p className="text-sm">
-        <Link href="/kb" className="font-semibold text-brand-700 hover:underline">
+        <Link
+          href="/kb"
+          className="focus-ring inline-flex min-h-[44px] items-center rounded-lg font-semibold text-brand-700 hover:underline"
+        >
           ← সাহায্য কেন্দ্র
         </Link>
       </p>

@@ -98,6 +98,15 @@ import {
 // Only the SOURCE of the class strings changed; every usage below
 // is untouched, and checkout logic/fields/validation/submit are
 // exactly as before.
+//
+// Wave P4 (doc 32): the skin record deepened with five surface keys
+// (SECTION_CARD_CLASS / SUMMARY_PANEL_CLASS / PRIMARY_CTA_CLASS /
+// STICKY_BAR_CLASS / STICKY_CTA_CLASS) whose Aurora values are the
+// surface strings that were hardcoded below until this wave — the
+// same source-only move as S3b, so Aurora renders byte-identically
+// and other packages can finally differentiate checkout's section
+// cards, summary panel, CTA and sticky bar. Docs 28/29 surfaces
+// (field config, conditions, validation, submit) untouched.
 
 type PlacedOrder = {
   /** Order row id — the OTP endpoints are addressed by it. */
@@ -192,16 +201,23 @@ export default function CheckoutPage() {
           year: "numeric",
         });
   };
-  // CheckoutSkin (S3b): the field/tile class constants come from the
-  // active theme package's skin (plain data via the ThemeView
-  // context + the skin registry — no component crosses the RSC
-  // boundary). Local names match the old module constants, so every
-  // usage below is byte-identical to before.
+  // CheckoutSkin (S3b, deepened P4): the field/tile class constants
+  // AND the surface constants (section cards, summary panel, CTAs,
+  // sticky bar) come from the active theme package's skin (plain
+  // data via the ThemeView context + the skin registry — no
+  // component crosses the RSC boundary). The registry resolves every
+  // key (Aurora fallback per key), so each constant below is a real
+  // string under every package.
   const themeView = useThemeView();
   const skin = getCheckoutSkin(themeView.packageId);
   const INPUT_CLASS = skin.INPUT_CLASS;
   const PAYMENT_TILE_CLASS = skin.PAYMENT_TILE_CLASS;
   const SLOT_CARD_CLASS = skin.SLOT_CARD_CLASS;
+  const SECTION_CARD_CLASS = skin.SECTION_CARD_CLASS;
+  const SUMMARY_PANEL_CLASS = skin.SUMMARY_PANEL_CLASS;
+  const PRIMARY_CTA_CLASS = skin.PRIMARY_CTA_CLASS;
+  const STICKY_BAR_CLASS = skin.STICKY_BAR_CLASS;
+  const STICKY_CTA_CLASS = skin.STICKY_CTA_CLASS;
   const [cart, setCart] = useState<Cart | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
@@ -1735,7 +1751,7 @@ export default function CheckoutPage() {
                       .then(() => setLinkCopied(true))
                       .catch(() => setLinkCopied(false));
                   }}
-                  className="inline-flex h-9 shrink-0 items-center rounded-lg border border-border bg-card px-3 text-sm font-medium text-text-main transition hover:bg-surface-2"
+                  className="inline-flex h-11 shrink-0 items-center rounded-lg border border-border bg-card px-3 text-sm font-medium text-text-main transition hover:bg-surface-2"
                 >
                   {linkCopied ? s.copied : s.copyLink}
                 </button>
@@ -1873,7 +1889,7 @@ export default function CheckoutPage() {
           above the form; on desktop it becomes the sticky right rail.
           The figures are the page's existing preview computation. */}
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <section className="rounded-2xl border border-border bg-card p-5 shadow-card lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1" aria-label={s.yourCart}>
+      <section className={`${SUMMARY_PANEL_CLASS} lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1`} aria-label={s.yourCart}>
         <h2 className="text-base font-semibold text-text-main">{s.yourCart}</h2>
         <ul className="mt-3 divide-y divide-border">
           {items.map((item) => (
@@ -1932,7 +1948,7 @@ export default function CheckoutPage() {
 
       <form ref={formRef} id="checkout-form" onSubmit={onSubmit} onChange={(e) => { scheduleCapture(); trackPaymentMethod(e); }} className="grid gap-4 lg:col-start-1 lg:row-start-1">
         {/* Step ১ — তথ্য */}
-        <section aria-label={s.step1Aria} className="rounded-2xl border border-border bg-card p-5 shadow-card">
+        <section aria-label={s.step1Aria} className={SECTION_CARD_CLASS}>
           <h2 className="flex items-center gap-2 text-base font-semibold text-text-main">
             <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">১</span>
             {s.step1Title}
@@ -1942,7 +1958,7 @@ export default function CheckoutPage() {
           </div>
         </section>
         {/* Step ২ — ঠিকানা */}
-        <section aria-label={s.step2Aria} className="rounded-2xl border border-border bg-card p-5 shadow-card">
+        <section aria-label={s.step2Aria} className={SECTION_CARD_CLASS}>
           <h2 className="flex items-center gap-2 text-base font-semibold text-text-main">
             <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">২</span>
             {t.address}
@@ -1972,14 +1988,14 @@ export default function CheckoutPage() {
             <button
               type="button"
               onClick={applySuggestion}
-              className="inline-flex h-9 items-center rounded-lg bg-brand-600 px-3 text-sm font-semibold text-white transition hover:bg-brand-700"
+              className="inline-flex h-11 items-center rounded-lg bg-brand-600 px-3 text-sm font-semibold text-white transition hover:bg-brand-700"
             >
               {s.yesUseIt}
             </button>
             <button
               type="button"
               onClick={() => setSuggestion(null)}
-              className="inline-flex h-9 items-center rounded-lg border border-border bg-card px-3 text-sm font-medium text-text-main transition hover:bg-surface-2"
+              className="inline-flex h-11 items-center rounded-lg border border-border bg-card px-3 text-sm font-medium text-text-main transition hover:bg-surface-2"
             >
               {t.no}
             </button>
@@ -1989,7 +2005,7 @@ export default function CheckoutPage() {
           </div>
         </section>
         {/* Step ৩ — ডেলিভারি */}
-        <section aria-label={s.step3Aria} className="rounded-2xl border border-border bg-card p-5 shadow-card">
+        <section aria-label={s.step3Aria} className={SECTION_CARD_CLASS}>
           <h2 className="flex items-center gap-2 text-base font-semibold text-text-main">
             <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">৩</span>
             {s.stepDelivery}
@@ -2147,7 +2163,7 @@ export default function CheckoutPage() {
                         type="button"
                         disabled={!slot.available}
                         onClick={() => setBookingSlotStart(slot.start)}
-                        className={`rounded-lg border px-2 py-2 text-sm font-semibold transition ${
+                        className={`min-h-[44px] rounded-lg border px-2 py-2 text-sm font-semibold transition ${
                           bookingSlotStart === slot.start
                             ? "border-brand-600 bg-brand-600 text-white"
                             : slot.available
@@ -2299,7 +2315,7 @@ export default function CheckoutPage() {
                   <button
                     type="button"
                     onClick={() => setPodColor("")}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                    className={`min-h-[44px] rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                       podColor === ""
                         ? "border-brand-600 bg-brand-50 text-brand-700"
                         : "border-border bg-card text-text-main hover:bg-surface-2"
@@ -2312,7 +2328,7 @@ export default function CheckoutPage() {
                       key={color}
                       type="button"
                       onClick={() => setPodColor(color)}
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                      className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                         podColor === color
                           ? "border-brand-600 bg-brand-50 text-brand-700"
                           : "border-border bg-card text-text-main hover:bg-surface-2"
@@ -2414,7 +2430,7 @@ export default function CheckoutPage() {
           </div>
         </section>
         {/* Step ৪ — পেমেন্ট */}
-        <section aria-label={s.step4Aria} className="rounded-2xl border border-border bg-card p-5 shadow-card">
+        <section aria-label={s.step4Aria} className={SECTION_CARD_CLASS}>
           <h2 className="flex items-center gap-2 text-base font-semibold text-text-main">
             <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">৪</span>
             {s.stepPayment}
@@ -2531,7 +2547,7 @@ export default function CheckoutPage() {
           id="checkout-submit"
           type="submit"
           disabled={stockProblems.length > 0 || submitting}
-          className="brand-gradient h-12 w-full rounded-xl text-base font-semibold text-white shadow-md transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          className={PRIMARY_CTA_CLASS}
         >
           {submitting ? s.submitPlacing : s.submitConfirm}
         </button>
@@ -2554,7 +2570,7 @@ export default function CheckoutPage() {
           submit. The bar's button is a form-associated submit for
           #checkout-form (OD3) — the SAME single submit path as the
           in-form button, with the same disabled conditions. */}
-      <div className="fixed inset-x-0 bottom-16 z-40 border-t border-border bg-card/95 px-4 py-3 shadow-[0_-4px_16px_rgba(49,46,129,0.08)] backdrop-blur lg:hidden">
+      <div className={STICKY_BAR_CLASS}>
         <div className="mx-auto flex max-w-[720px] items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-xs text-text-muted">{interpolate(s.stickyItemsCount, { count: totalQuantity })}</p>
@@ -2566,7 +2582,7 @@ export default function CheckoutPage() {
             type="submit"
             form="checkout-form"
             disabled={stockProblems.length > 0 || submitting}
-            className="brand-gradient flex h-12 shrink-0 items-center gap-1.5 rounded-xl px-5 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className={STICKY_CTA_CLASS}
           >
             {submitting ? s.submitPlacing : s.submitPlaceOrder}
             <Icon name="arrow-right" size={16} strokeWidth={2} />

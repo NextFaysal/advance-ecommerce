@@ -19,7 +19,7 @@ export default function LanguagePreference() {
   const s = pick(locale, ACCOUNT_STRINGS);
 
   return (
-    <div className="mt-8 rounded-2xl border border-border bg-card p-6">
+    <div className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-card sm:p-6">
       <h2 className="text-base font-bold text-text-main">{s.languagePreference}</h2>
       <p className="mt-1 text-sm leading-6 text-text-muted">{s.languagePreferenceDesc}</p>
       <div
@@ -36,10 +36,10 @@ export default function LanguagePreference() {
               role="radio"
               aria-checked={selected}
               onClick={() => setLocale(option)}
-              className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${
+              className={`min-h-11 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${
                 selected
-                  ? "border-primary bg-primary/5 text-primary ring-1 ring-primary"
-                  : "border-border text-text-main hover:bg-muted"
+                  ? "border-brand-500 bg-brand-soft text-brand-ink ring-1 ring-brand-500"
+                  : "border-border text-text-main hover:bg-surface-2"
               }`}
             >
               {LOCALE_SELF_NAMES[option]}

@@ -155,17 +155,17 @@ export default function ApiTokensSection() {
         </p>
       ) : null}
       {error !== null ? (
-        <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3.5 py-2.5 text-sm leading-6 text-rose-600">
+        <p role="alert" className="mt-3 rounded-lg bg-danger-soft px-3.5 py-2.5 text-sm leading-6 text-danger">
           {error}
         </p>
       ) : null}
 
       {freshToken !== null ? (
-        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3.5">
-          <p className="text-sm font-semibold text-amber-800">
+        <div className="mt-4 rounded-xl border border-warning/40 bg-warning-soft px-4 py-3.5">
+          <p className="text-sm font-semibold text-warning-solid">
             আপনার নতুন টোকেন — এখনই সংরক্ষণ করুন
           </p>
-          <p className="mt-1 text-xs leading-5 text-amber-700">
+          <p className="mt-1 text-xs leading-5 text-warning-solid">
             এই টোকেনটি শুধু একবারই দেখানো হবে। পেজটি বন্ধ বা রিলোড করলে এটি আর দেখা যাবে না —
             হারিয়ে ফেললে বাতিল করে নতুন টোকেন তৈরি করুন।
           </p>
@@ -186,7 +186,7 @@ export default function ApiTokensSection() {
                 setFreshToken(null);
                 setCopied(false);
               }}
-              className="rounded-lg border border-amber-300 bg-white/60 px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+              className="rounded-lg border border-warning/40 bg-card/60 px-4 py-2 text-sm font-semibold text-warning-solid hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
               সংরক্ষণ করেছি
             </button>
@@ -246,8 +246,8 @@ export default function ApiTokensSection() {
                 <span
                   className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
                     t.status === "active"
-                      ? "bg-emerald-50 text-emerald-700"
-                      : "bg-red-50 text-red-700"
+                      ? "bg-success-soft text-success-solid"
+                      : "bg-danger-soft text-danger"
                   }`}
                 >
                   {t.status === "active" ? "সক্রিয়" : "বাতিল"}
@@ -264,7 +264,7 @@ export default function ApiTokensSection() {
                         type="button"
                         disabled={revokingId === t.id}
                         onClick={() => void revoke(t.id)}
-                        className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                        className="rounded-lg bg-danger px-3 py-1.5 text-sm font-semibold text-white hover:brightness-95 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/60"
                       >
                         {revokingId === t.id ? "বাতিল হচ্ছে…" : "হ্যাঁ, বাতিল করুন"}
                       </button>
@@ -281,7 +281,7 @@ export default function ApiTokensSection() {
                     <button
                       type="button"
                       onClick={() => setConfirmRevokeId(t.id)}
-                      className="rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                      className="rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-danger hover:bg-danger-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
                       টোকেন বাতিল করুন
                     </button>

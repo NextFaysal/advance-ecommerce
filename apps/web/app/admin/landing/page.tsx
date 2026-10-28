@@ -2,7 +2,11 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import LandingBuilder from "./builder";
 import { landingStore } from "@/landing/store";
-import { listActiveProducts } from "@/catalog/server-read";
+import { referencedProductIds } from "@/landing/catalog";
+import { resolveLandingExtras } from "@/landing/resolve-extras";
+import type { LandingBlockExtras } from "@/landing/render";
+import { listActiveProducts, listCategories, tryCatalogRepository } from "@/catalog/server-read";
+import type { Product } from "@/catalog/types";
 import { getRequestLocale } from "@/i18n/server";
 import { pick } from "@/i18n/locale";
 import { LANDING_STRINGS } from "./strings";
@@ -23,7 +27,36 @@ export default async function AdminLandingPage() {
   const locale = await getRequestLocale();
   const s = pick(locale, LANDING_STRINGS);
   const pages = await landingStore.list();
-  const catalogProducts = await listActiveProducts(100);
+  // The builder's catalog: the picker list (100 newest ACTIVE) UNION
+  // every product an existing page references, resolved BY ID
+  // (doc 34 §3.4). The union matters for correctness, not just the
+  // picker: the builder validates and previews against this list, and
+  // before L1 a saved page referencing product #101+ showed phantom
+  // "product not found" errors and an unresolved preview here.
+  const base = await listActiveProducts(100);
+  const byId = new Map<string, Product>(base.map((p) => [p.id, p]));
+  const missingIds = [...new Set(pages.flatMap((p) => referencedProductIds(p)))].filter((id) => !byId.has(id));
+  if (missingIds.length > 0) {
+    const repo = await tryCatalogRepository();
+    if (repo) {
+      const extra = await Promise.all(missingIds.map((id) => repo.getProductById(id)));
+      for (const p of extra) {
+        if (p && p.status === "ACTIVE") byId.set(p.id, p);
+      }
+    }
+  }
+  const catalogProducts = [...byId.values()];
+  // L2: the category-source picker lists the real catalog
+  // categories (slug + bilingual name).
+  const categories = await listCategories();
+  // L3 block extras (reviews + bundle contents) resolve server-side
+  // per page and ride into the builder as plain props, so the live
+  // preview renders those blocks with the same data the public page
+  // will use (sections whose product the owner changes mid-edit
+  // resolve after the next save + reload, like out-of-catalog refs).
+  const initialExtras: Record<string, LandingBlockExtras> = Object.fromEntries(
+    await Promise.all(pages.map(async (p) => [p.id, await resolveLandingExtras(p)] as const)),
+  );
   const published = pages.filter((p) => p.status === "PUBLISHED").length;
   const drafts = pages.filter((p) => p.status === "DRAFT").length;
   return (
@@ -34,7 +67,7 @@ export default async function AdminLandingPage() {
         <StatCard label={s.statPublished} value={String(published)} delta={s.deltaPublished} icon="✅" />
         <StatCard label={s.statDrafts} value={String(drafts)} delta={s.deltaDrafts} icon="📝" />
       </div>
-      <LandingBuilder catalogProducts={catalogProducts} initialPages={pages} />
+      <LandingBuilder catalogProducts={catalogProducts} initialPages={pages} initialExtras={initialExtras} categories={categories} />
     </main>
   );
 }

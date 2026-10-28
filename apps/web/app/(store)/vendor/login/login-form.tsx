@@ -78,7 +78,7 @@ export default function VendorLoginForm() {
   }
 
   const inputClass =
-    "mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-text-main";
+    "mt-1.5 h-12 w-full rounded-xl border border-border bg-bg-app px-4 text-sm text-text-main outline-none transition placeholder:text-text-subtle focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30";
 
   if (step === "phone") {
     return (
@@ -96,14 +96,14 @@ export default function VendorLoginForm() {
           />
         </label>
         {error ? (
-          <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p role="alert" className="rounded-xl bg-danger-soft px-4 py-3 text-sm font-medium text-danger">
             {error}
           </p>
         ) : null}
         <button
           type="submit"
           disabled={busy}
-          className="w-full rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
+          className="brand-gradient h-12 w-full rounded-xl text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
         >
           {busy ? "কোড পাঠানো হচ্ছে…" : "SMS কোড পাঠান"}
         </button>
@@ -118,7 +118,7 @@ export default function VendorLoginForm() {
   return (
     <form onSubmit={verify} className="mt-6 space-y-4">
       {notice ? (
-        <p role="status" className="rounded-xl bg-brand-50 px-3 py-2 text-sm text-brand-700">
+        <p role="status" className="rounded-xl bg-brand-50 px-4 py-3 text-sm text-brand-700">
           {notice}
         </p>
       ) : null}
@@ -135,14 +135,14 @@ export default function VendorLoginForm() {
         />
       </label>
       {error ? (
-        <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p role="alert" className="rounded-xl bg-danger-soft px-4 py-3 text-sm font-medium text-danger">
           {error}
         </p>
       ) : null}
       <button
         type="submit"
         disabled={busy}
-        className="w-full rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
+        className="brand-gradient h-12 w-full rounded-xl text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
       >
         {busy ? "যাচাই হচ্ছে…" : "লগইন করুন"}
       </button>
@@ -150,7 +150,7 @@ export default function VendorLoginForm() {
         type="button"
         disabled={busy}
         onClick={() => requestOtp()}
-        className="w-full rounded-xl border border-border px-4 py-2 text-sm font-medium text-text-main transition hover:bg-brand-50 disabled:opacity-60"
+        className="h-12 w-full rounded-xl border border-border bg-bg-app px-4 text-sm font-semibold text-text-main transition hover:border-brand-500 disabled:opacity-60"
       >
         আবার কোড পাঠান
       </button>

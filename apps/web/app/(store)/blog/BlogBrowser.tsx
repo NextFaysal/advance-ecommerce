@@ -92,7 +92,7 @@ export function BlogBrowser({
         <nav aria-label="ব্লগের বিষয়" className="mt-6 flex flex-wrap gap-2">
           <Link
             href="/blog"
-            className={`inline-flex min-h-[40px] items-center rounded-full px-4 text-sm font-semibold transition ${
+            className={`focus-ring inline-flex min-h-[44px] items-center rounded-full px-4 text-sm font-semibold transition ${
               category === null
                 ? "bg-brand-600 text-white shadow-sm"
                 : "border border-border bg-card text-text-muted hover:text-text-main"
@@ -104,7 +104,7 @@ export function BlogBrowser({
             <Link
               key={name}
               href={`/blog?category=${encodeURIComponent(name)}`}
-              className={`inline-flex min-h-[40px] items-center rounded-full px-4 text-sm font-semibold transition ${
+              className={`focus-ring inline-flex min-h-[44px] items-center rounded-full px-4 text-sm font-semibold transition ${
                 category === name
                   ? "bg-brand-600 text-white shadow-sm"
                   : "border border-border bg-card text-text-muted hover:text-text-main"

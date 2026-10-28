@@ -13,9 +13,17 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ThemedProductCard } from "@/themes/themed-product-card";
 import type { PublicProduct } from "@/catalog/types";
+import { EmptyState } from "@/components/ui/empty-state";
 import { interpolate, pick } from "@/i18n/locale";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { STORE_STRINGS } from "../store-strings";
+import { SEARCH_STRINGS } from "./strings";
+import { SearchResultsSkeleton } from "./SearchSkeleton";
+
+/** Primary CTA link style shared by the search state panels (kit
+ *  Button language: brand gradient, glow, 44px target, focus ring). */
+const STATE_CTA_CLASS =
+  "brand-gradient mt-5 inline-flex min-h-11 items-center rounded-xl px-5 text-sm font-semibold text-white shadow-glow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2";
 
 /** One Banglish mapping the server applied (wave 57B, meta.banglish). */
 interface BanglishMapped {
@@ -61,6 +69,7 @@ async function fetchSearchPage(
 export function SearchBrowser() {
   const { locale, t } = useLocale();
   const s = pick(locale, STORE_STRINGS);
+  const st = pick(locale, SEARCH_STRINGS);
   const searchParams = useSearchParams();
   const q = searchParams.get("q") ?? "";
   const [state, setState] = useState<SearchState>({ status: "idle" });
@@ -89,7 +98,7 @@ export function SearchBrowser() {
 
   return (
     <main className="mx-auto min-w-0 max-w-7xl px-4 py-6">
-      <h1 className="break-words text-xl font-bold [overflow-wrap:anywhere]">
+      <h1 className="break-words text-2xl font-bold tracking-tight [overflow-wrap:anywhere]">
         {q ? interpolate(s.searchResultsFor, { q }) : s.searchHeadingDefault}
       </h1>
 
@@ -100,34 +109,52 @@ export function SearchBrowser() {
           name="q"
           defaultValue={q}
           placeholder={s.searchPlaceholder}
-          className="min-w-0 flex-1 rounded-lg border border-[#E6E8F2] px-3 py-2 text-sm"
+          className="min-h-11 min-w-0 flex-1 rounded-xl border border-border bg-surface px-3.5 text-sm shadow-xs transition-shadow duration-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         />
-        <button type="submit" className="rounded-lg bg-[#4F46E5] px-4 py-2 text-sm font-semibold text-white">
+        <button
+          type="submit"
+          className="brand-gradient min-h-11 shrink-0 rounded-xl px-5 text-sm font-semibold text-white shadow-glow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2"
+        >
           {t.search}
         </button>
       </form>
 
       {mapped.length > 0 && (
-        <p className="mt-3 text-sm text-slate-500">
+        <p className="mt-3 text-sm text-text-muted">
           {s.searchMappedPrefix} {mapped.map((m) => interpolate(s.searchMappedItem, { to: m.to, from: m.from })).join(", ")}
         </p>
       )}
 
-      {!q && <p className="mt-6 text-sm text-slate-500">{s.searchIdleHint}</p>}
+      {!q && (
+        <div className="mt-6">
+          <EmptyState title={st.idleTitle} description={s.searchIdleHint} />
+        </div>
+      )}
 
       {q && state.status === "loading" && (
-        <p className="mt-6 text-sm text-slate-500">{s.searchLoading}</p>
+        <>
+          <p className="sr-only">{s.searchLoading}</p>
+          <SearchResultsSkeleton />
+        </>
       )}
 
       {q && state.status === "error" && (
-        <div className="mt-6 rounded-xl border p-6 text-center">
-          <p>{s.searchErrorPrefix} <Link href="/shop" className="font-semibold text-[#4F46E5]">{t.allProducts}</Link> {s.searchErrorSuffix}</p>
+        <div className="mt-6">
+          <EmptyState title={st.errorTitle} description={st.errorDescription}>
+            <Link href="/shop" className={STATE_CTA_CLASS}>
+              {t.allProducts}
+            </Link>
+          </EmptyState>
         </div>
       )}
 
       {q && state.status === "done" && products.length === 0 && (
-        <div className="mt-6 rounded-xl border p-6 text-center">
-          <p>{interpolate(s.searchNoResultsPrefix, { q })} <Link href="/shop" className="font-semibold text-[#4F46E5]">{t.allProducts}</Link> {s.searchNoResultsSuffix}</p>
+        <div className="mt-6">
+          <EmptyState title={st.noResultsTitle} description={interpolate(st.noResultsDescription, { q })}>
+            <Link href="/shop" className={STATE_CTA_CLASS}>
+              {t.allProducts}
+            </Link>
+          </EmptyState>
         </div>
       )}
 
@@ -138,7 +165,7 @@ export function SearchBrowser() {
           ))}
         </div>
       )}
-      <p className="mt-6 text-xs text-slate-500">
+      <p className="mt-6 text-xs text-text-subtle">
         {state.status === "done"
           ? state.engine === "meilisearch"
             ? s.engineMeilisearch

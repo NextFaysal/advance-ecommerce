@@ -329,12 +329,12 @@ export default function B2bRequestTools({ products }: { products: B2bRequestProd
       )}
 
       {error ? (
-        <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm leading-6 text-rose-700" role="alert">
+        <p className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm leading-6 text-danger" role="alert">
           {error}
         </p>
       ) : null}
       {success ? (
-        <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm leading-6 text-emerald-800" role="status">
+        <p className="mt-3 rounded-lg bg-success-soft px-3 py-2 text-sm leading-6 text-success-solid" role="status">
           {success}
         </p>
       ) : null}
@@ -360,23 +360,23 @@ export default function B2bRequestTools({ products }: { products: B2bRequestProd
                   <td className="py-1.5 pr-3 text-text-main">{row.quantity ?? "—"}</td>
                   <td className="py-1.5 pr-3">
                     {row.status === "valid" ? (
-                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                      <span className="rounded-full bg-success-soft px-2 py-0.5 text-xs font-semibold text-success-solid">
                         বৈধ{row.unitPricePoisha !== undefined ? ` · ${formatPoisha(row.unitPricePoisha)}/একক` : ""}
                       </span>
                     ) : (
-                      <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                      <span className="rounded-full bg-danger-soft px-2 py-0.5 text-xs font-semibold text-danger">
                         ত্রুটি
                       </span>
                     )}
                   </td>
                   <td className="py-1.5 text-xs leading-5 text-text-muted">
                     {row.errors.map((issue) => (
-                      <span key={`e-${issue.code}`} className="block text-rose-700">
+                      <span key={`e-${issue.code}`} className="block text-danger">
                         {issue.code}: {issue.message}
                       </span>
                     ))}
                     {row.warnings.map((issue) => (
-                      <span key={`w-${issue.code}`} className="block text-amber-700">
+                      <span key={`w-${issue.code}`} className="block text-warning-solid">
                         সতর্কতা {issue.code}: {issue.message}
                       </span>
                     ))}

@@ -43,7 +43,7 @@ export function BlogBody({
         </div>
       ) : null}
       <div
-        className="prose-sm max-w-none break-words text-[15px] leading-8 text-text-muted [overflow-wrap:anywhere] [&_a]:text-brand-700 [&_a]:underline [&_h2]:mb-2 [&_h2]:mt-6 [&_h2]:font-display [&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-text-main [&_h3]:mb-1.5 [&_h3]:mt-5 [&_h3]:font-display [&_h3]:text-base [&_h3]:font-bold [&_h3]:text-text-main [&_h4]:mb-1 [&_h4]:mt-4 [&_h4]:font-semibold [&_h4]:text-text-main [&_li]:ml-5 [&_ol]:list-decimal [&_p]:mb-3 [&_strong]:text-text-main [&_ul]:list-disc"
+        className="prose-sm max-w-none break-words text-[15px] leading-8 text-text-muted [overflow-wrap:anywhere] [&_a]:text-brand-700 [&_a]:underline [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-brand-300 [&_blockquote]:pl-4 [&_blockquote]:italic [&_h2]:mb-2 [&_h2]:mt-7 [&_h2]:font-display [&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-text-main [&_h3]:mb-1.5 [&_h3]:mt-6 [&_h3]:font-display [&_h3]:text-base [&_h3]:font-bold [&_h3]:text-text-main [&_h4]:mb-1 [&_h4]:mt-4 [&_h4]:font-semibold [&_h4]:text-text-main [&_hr]:my-6 [&_hr]:border-border [&_img]:my-4 [&_img]:rounded-2xl [&_li]:ml-5 [&_ol]:list-decimal [&_p]:mb-3.5 [&_strong]:text-text-main [&_ul]:list-disc"
         dangerouslySetInnerHTML={{ __html: html }}
       />
     </div>

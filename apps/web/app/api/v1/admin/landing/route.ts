@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { landingStore as store } from "@/landing/store";
 import { landingPageInputSchema, validateLandingPage } from "@/landing/validate";
+import { landingCatalogQueries, referencedProductIds, resolveLandingCollections } from "@/landing/catalog";
 import { tryCatalogRepository } from "@/catalog/server-read";
 import { guardError, requireAdmin } from "@/reports/guard";
 
@@ -36,8 +37,16 @@ export async function POST(req: Request) {
       { status: 503 },
     );
   }
-  const { products } = await repo.listProducts({ status: "ACTIVE", page: 1, pageSize: 100 });
-  const validation = validateLandingPage(parsed.data, products, await store.otherSlugs());
+  // Referenced products resolve BY ID (doc 34 §3.4): validation sees
+  // exactly the products this page references, however large the
+  // catalog is — the old pageSize-100 list made a page referencing
+  // product #101+ fail validation for catalog size alone.
+  const products = await landingCatalogQueries.byIds(referencedProductIds(parsed.data));
+  // L2 dynamic sources resolve LIVE for publish validation —
+  // category/tag emptiness can only be judged against the real
+  // catalogue, never against the section payload alone.
+  const collections = await resolveLandingCollections(parsed.data, landingCatalogQueries);
+  const validation = validateLandingPage(parsed.data, products, await store.otherSlugs(), collections);
   if (!validation.ok) {
     return NextResponse.json(
       { error: { code: "VALIDATION_FAILED", message: "Landing page validation failed.", details: validation.errors } },

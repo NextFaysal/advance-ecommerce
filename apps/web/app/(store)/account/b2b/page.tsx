@@ -289,13 +289,13 @@ export default async function B2bPortalPage() {
           </div>
         </dl>
         {company.overdue ? (
-          <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-800" role="alert">
+          <p className="mt-3 rounded-lg bg-warning-soft px-3 py-2 text-sm leading-6 text-warning-solid" role="alert">
             ⚠ আপনার মেয়াদোত্তীর্ণ বকেয়া আছে — বকেয়া পরিশোধ না হলে নতুন ক্রেডিট অর্ডার
             (কোটেশন গ্রহণ) করা যাবে না।
           </p>
         ) : null}
         {company.approvalStatus !== "APPROVED" ? (
-          <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-800" role="alert">
+          <p className="mt-3 rounded-lg bg-warning-soft px-3 py-2 text-sm leading-6 text-warning-solid" role="alert">
             আপনার B2B অ্যাকাউন্টের অবস্থা: {APPROVAL_BN[company.approvalStatus] ?? company.approvalStatus} —
             অনুমোদিত না হলে কোটেশন গ্রহণ করে ক্রেডিট অর্ডার করা যাবে না।
           </p>

@@ -154,6 +154,7 @@
  *   module owns the ledger wiring).
  */
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { z } from "zod";
 import { checkoutFormSchema } from "@/checkout/validation";
 import {
@@ -239,6 +240,23 @@ import { prepareRentalBooking, rentalOrderNoteText } from "@/rental/bookings";
 import { preparePodCustomisation } from "@/pod/customisation";
 import { podOrderNoteText } from "@/pod/selection";
 import { validateOrderLineQuantities } from "@/orders/quantity-rules";
+import { funnelStore } from "@/funnels/store";
+import {
+  verifyBumpClaim,
+  verifyFunnelContextClaim,
+  type BumpClaimPayload,
+} from "@/funnels/claims";
+import { createFunnelToken } from "@/funnels/token";
+import { offerDiscountPoisha, resolveStepOffer } from "@/funnels/offer";
+import {
+  funnelAttributionNoteText,
+  funnelOfferNoteText,
+  nextStepAfter,
+  offerDiscountsEqual,
+  type FunnelOfferLineRecord,
+} from "@/funnels/runtime";
+import { landingCatalogQueriesPublic } from "@/landing/catalog";
+import type { BumpOffer, Funnel } from "@/funnels/types";
 import { lineTotalPoisha, qtyToMilli, roundHalfUpDiv, QTY_MILLI } from "@/lib/quantity";
 
 function errorResponse(code: string, message: string, status: number, details?: unknown) {
@@ -255,8 +273,130 @@ function errorResponse(code: string, message: string, status: number, details?: 
 // rest.
 const createOrderBodySchema = checkoutFormSchema.extend({
   fieldAnswers: z.record(z.string(), z.string()).optional(),
+  // Doc 34 L7 (§3.7): funnel claims from a funnel order step's
+  // QuickOrderForm — additive like fieldAnswers, funnel-only.
+  // `funnel` is the signed context claim (attribution +
+  // continuation); `bump` is the §3.7 signed bump claim, present
+  // only when the customer ticked the bump card. Both are CLAIMS,
+  // never prices: resolveFunnelOrderContext below re-loads the
+  // funnel, re-checks the rule and resolves live prices, and every
+  // failure path drops the funnel piece — NEVER the order.
+  funnel: z.object({ token: z.string().min(1) }).optional(),
+  bump: z.object({ token: z.string().min(1) }).optional(),
 });
 type CreateOrderBody = z.infer<typeof createOrderBodySchema>;
+
+/** The funnel context a create resolved to (doc 34 §3.7/§3.8). */
+interface ResolvedFunnelOrderContext {
+  funnel: Funnel;
+  stepId: string;
+  /** The order step's CURRENT stored bump (rule source of truth). */
+  bumpOffer: BumpOffer | null;
+  /** The catalog variant the bump line will use, when the bump
+   *  claim verified end-to-end; null = no bump line. */
+  bumpVariantId: string | null;
+}
+
+/**
+ * Doc 34 L7: verify the funnel claims on a create and resolve the
+ * bump variant — DROP-NOT-FAIL on every path (a broken bump must
+ * never lose a sale, §3.7). Returns null when no claim verifies to
+ * a PUBLISHED funnel's order step; the create then proceeds as a
+ * plain order. Every drop is logged server-side.
+ *
+ * Verification order: the bump claim and the context claim are
+ * verified independently; when both are present they must AGREE on
+ * (funnelId, stepId) or the whole context is dropped. The funnel
+ * is re-loaded from the DB and must be PUBLISHED; the step must be
+ * its order step. For the bump: the claim's discount rule must
+ * deep-equal the step's CURRENT stored rule; the product comes
+ * from the stored bump (never the claim); the variant is the
+ * stored pinned variant (claim must match it) or the claim's
+ * variant when it still resolves active in the live catalog, else
+ * the live pick. Price is NOT resolved here — the caller prices
+ * the line from the repository snapshot like every other line.
+ */
+async function resolveFunnelOrderContext(
+  form: CreateOrderBody,
+): Promise<ResolvedFunnelOrderContext | null> {
+  if (!form.funnel?.token && !form.bump?.token) return null;
+  try {
+    let funnelId: string | null = null;
+    let stepId: string | null = null;
+    let bumpClaim: BumpClaimPayload | null = null;
+    if (form.bump?.token) {
+      bumpClaim = verifyBumpClaim(form.bump.token);
+      if (bumpClaim) {
+        funnelId = bumpClaim.funnelId;
+        stepId = bumpClaim.stepId;
+      } else {
+        console.error("[funnels] bump claim failed verification — bump dropped, order continues");
+      }
+    }
+    if (form.funnel?.token) {
+      const ctxClaim = verifyFunnelContextClaim(form.funnel.token);
+      if (ctxClaim) {
+        if (funnelId !== null && (ctxClaim.funnelId !== funnelId || ctxClaim.stepId !== stepId)) {
+          console.error("[funnels] funnel context and bump claims disagree — funnel context dropped, order continues");
+          return null;
+        }
+        funnelId = ctxClaim.funnelId;
+        stepId = ctxClaim.stepId;
+      } else {
+        console.error("[funnels] funnel context claim failed verification — attribution/continuation dropped, order continues");
+      }
+    }
+    if (!funnelId || !stepId) return null;
+    const funnel = await funnelStore.get(funnelId);
+    if (!funnel || funnel.status !== "PUBLISHED") {
+      console.error("[funnels] claimed funnel is not published — funnel context dropped, order continues");
+      return null;
+    }
+    const step = funnel.steps.find((s) => s.id === stepId);
+    if (!step || step.kind !== "order") {
+      console.error("[funnels] claimed step is not the funnel's order step — funnel context dropped, order continues");
+      return null;
+    }
+    let bumpVariantId: string | null = null;
+    if (bumpClaim) {
+      if (!step.bump) {
+        console.error("[funnels] bump claim for a step without a bump — bump dropped, order continues");
+      } else if (!offerDiscountsEqual(bumpClaim.discount, step.bump.discount)) {
+        console.error("[funnels] bump claim rule no longer matches the step's stored rule — bump dropped, order continues");
+      } else {
+        const bump = step.bump;
+        const products = await landingCatalogQueriesPublic.byIds([bump.productId]);
+        const product = products.find((p) => p.id === bump.productId);
+        if (!product) {
+          console.error("[funnels] bump product no longer resolves in the live catalog — bump dropped, order continues");
+        } else if (bump.variantId) {
+          if (
+            bumpClaim.variantId === bump.variantId &&
+            product.variants.some((v) => v.id === bump.variantId && v.isActive)
+          ) {
+            bumpVariantId = bump.variantId;
+          } else {
+            console.error("[funnels] bump claim variant does not match the pinned variant — bump dropped, order continues");
+          }
+        } else if (
+          bumpClaim.variantId &&
+          product.variants.some((v) => v.id === bumpClaim.variantId && v.isActive)
+        ) {
+          bumpVariantId = bumpClaim.variantId;
+        } else {
+          bumpVariantId = resolveStepOffer(bump, products)?.variantId ?? null;
+          if (!bumpVariantId) {
+            console.error("[funnels] bump variant no longer resolves — bump dropped, order continues");
+          }
+        }
+      }
+    }
+    return { funnel, stepId: step.id, bumpOffer: step.bump ?? null, bumpVariantId };
+  } catch (e) {
+    console.error("[funnels] funnel order context resolution failed — order continues without funnel context", e);
+    return null;
+  }
+}
 
 type CheckoutFieldsGate =
   | { ok: true; form: CreateOrderBody; noteText?: string }
@@ -504,6 +644,11 @@ async function processCreate(form: CreateOrderBody): Promise<NextResponse> {
   }
   form = fieldsGate.form;
   const checkoutFieldsNoteText = fieldsGate.noteText;
+  // Doc 34 L7: funnel claims (context + bump) verified up front —
+  // drop-not-fail inside the resolver; null = a plain order. The
+  // bump line itself is appended after the item snapshots below,
+  // priced from the same server snapshots as every other line.
+  const funnelCtx = await resolveFunnelOrderContext(form);
   // Wave 59: fractional quantities are sellable ONLY on grocery
   // weighted variants (and must land on the pack's weight step) —
   // gated here, before any pricing, with a clear 400.
@@ -577,6 +722,66 @@ async function processCreate(form: CreateOrderBody): Promise<NextResponse> {
     subtotalPoisha += lineTotalPoisha(server.unitPricePoisha, item.quantity);
     totalWeightGrams += roundHalfUpDiv(server.weightGrams * qtyToMilli(item.quantity), QTY_MILLI);
     categorySlugs.add(server.categorySlug);
+  }
+
+  // Doc 34 L7 (§3.7): the order bump joins HERE — after the item
+  // snapshots, before shipping/coupon/fraud — so it prices, ships
+  // and scores exactly like a normal line. The unit price is the
+  // LIVE snapshot price minus the step's stored discount rule
+  // (src/funnels/offer.ts math). DROP-NOT-FAIL: any problem (qty
+  // rules, missing snapshot, insufficient stock, a rule that would
+  // price the line at <= 0) logs and skips the line; the order
+  // itself proceeds untouched.
+  let funnelBumpRecord: FunnelOfferLineRecord | null = null;
+  if (funnelCtx?.bumpVariantId && funnelCtx.bumpOffer) {
+    const bumpOffer = funnelCtx.bumpOffer;
+    try {
+      const bumpQtyGate = await validateOrderLineQuantities([
+        { variantId: funnelCtx.bumpVariantId, quantity: 1 },
+      ]);
+      const bumpSnap = bumpQtyGate.ok
+        ? (await getVariantSnapshots([funnelCtx.bumpVariantId])).get(funnelCtx.bumpVariantId)
+        : undefined;
+      if (!bumpQtyGate.ok) {
+        console.error("[funnels] bump line failed the quantity rules — bump dropped, order continues", bumpQtyGate);
+      } else if (!bumpSnap) {
+        console.error("[funnels] bump variant snapshot missing — bump dropped, order continues");
+      } else {
+        const availableStock =
+          typesOn && bumpSnap.productType === "BUNDLE" && bumpSnap.bundleAvailability !== null
+            ? bumpSnap.bundleAvailability
+            : bumpSnap.stock;
+        const discountPoisha = offerDiscountPoisha(bumpOffer, bumpSnap.unitPricePoisha);
+        const chargedPoisha = bumpSnap.unitPricePoisha - discountPoisha;
+        if (availableStock < 1) {
+          console.error("[funnels] bump variant out of stock — bump dropped, order continues");
+        } else if (chargedPoisha < 1) {
+          console.error("[funnels] bump rule would price the line at <= 0 against the live price — bump dropped, order continues");
+        } else {
+          snapshotItems.push({
+            variantId: bumpSnap.variantId,
+            productName: bumpSnap.productName,
+            sku: bumpSnap.sku,
+            unitPricePoisha: chargedPoisha,
+            quantity: 1,
+          });
+          subtotalPoisha += lineTotalPoisha(chargedPoisha, 1);
+          totalWeightGrams += bumpSnap.weightGrams;
+          categorySlugs.add(bumpSnap.categorySlug);
+          funnelBumpRecord = {
+            funnelId: funnelCtx.funnel.id,
+            stepId: funnelCtx.stepId,
+            kind: "bump",
+            variantId: bumpSnap.variantId,
+            discount: bumpOffer.discount,
+            livePricePoisha: bumpSnap.unitPricePoisha,
+            chargedPoisha,
+          };
+        }
+      }
+    } catch (e) {
+      console.error("[funnels] bump append failed — bump dropped, order continues", e);
+    }
   }
 
   // Rental (ADV-23 vertical 3, wave 56): a payload carrying
@@ -934,6 +1139,24 @@ async function processCreate(form: CreateOrderBody): Promise<NextResponse> {
       // the customer answered at least one. Kept before the POD part
       // so the `[pod:]` machine line still ends the note.
       checkoutFieldsNoteText ?? null,
+      // Doc 34 L7/§3.8: the funnel attribution record rides the
+      // same create-time note seam (human line + the `[funnel]
+      // {json}` machine line L9's analytics source parses back —
+      // the Order model has no attribution columns). Present only
+      // on a verified funnel order.
+      funnelCtx
+        ? funnelAttributionNoteText({ funnelId: funnelCtx.funnel.id, stepId: funnelCtx.stepId })
+        : null,
+      // Doc 34 L7/§3.7: the bump line's record (rule + live/charged
+      // prices) rides the same seam — refunds/recon read exactly
+      // what was charged and why. Present only when the bump line
+      // actually joined the order.
+      funnelBumpRecord
+        ? funnelOfferNoteText(
+            funnelBumpRecord,
+            snapshotItems.find((i) => i.variantId === funnelBumpRecord.variantId)?.productName ?? "",
+          )
+        : null,
       // ADV-23 vertical 5 (wave 56): the custom print rides the
       // same create-time note seam — a human line the print shop
       // works from + the `[pod:{...}]` machine line the admin
@@ -1165,6 +1388,37 @@ async function processCreate(form: CreateOrderBody): Promise<NextResponse> {
     }
   }
 
+  // Doc 34 L7 (§3.7): funnel continuation. A verified funnel order
+  // gets the signed funnel token (L8's module — HMAC over
+  // { funnelId, orderId, exp }, 60-minute §5.4 window) and the
+  // next-step URL per the graph's sequential edge: the offer chain
+  // entry when the next step is an offer step, else the thank-you
+  // step. The QuickOrderForm redirects there; without a next step
+  // (order step last) or a mintable token (no signing secret) the
+  // URL is null and the form shows its normal success panel. The
+  // A/B conversion for the funnel's running experiments is recorded
+  // through the L9 seam — guarded like every post-commit seam: a
+  // failure never touches the committed create.
+  let funnelContinuation: { nextStepUrl: string | null } | undefined;
+  if (funnelCtx) {
+    const token = createFunnelToken({ funnelId: funnelCtx.funnel.id, orderId: created.orderId });
+    const next = nextStepAfter(funnelCtx.funnel, funnelCtx.stepId);
+    funnelContinuation = {
+      nextStepUrl:
+        token && next
+          ? `/f/${funnelCtx.funnel.slug}/${next.id}?t=${encodeURIComponent(token)}`
+          : null,
+    };
+    try {
+      const visitorId = cookies().get("ae_vid")?.value ?? null;
+      const experiments = await import("@/marketing/experiments");
+      await experiments.recordFunnelConversionForOrder(visitorId, created.orderId, funnelCtx.funnel.id);
+    } catch {
+      // The conversion simply is not recorded — analytics never
+      // break a committed create.
+    }
+  }
+
   // Pharmacy verification queue (ADV-22): an Rx order whose pack
   // config requires pharmacist review is stamped rx:pending — the
   // stamp is what the admin queue lists and what the CONFIRMED gate
@@ -1284,10 +1538,22 @@ async function processCreate(form: CreateOrderBody): Promise<NextResponse> {
 
   return NextResponse.json(
     {
-      data: { order, pricing },
+      data: { order, pricing, ...(funnelContinuation ? { funnel: funnelContinuation } : {}) },
       meta: {
         db: "PRISMA",
         source: "DATABASE",
+        // Doc 34 L7: present only on a verified funnel order —
+        // bumpApplied says whether the bump line actually joined
+        // (a dropped bump still attributes + continues).
+        ...(funnelCtx
+          ? {
+              funnelAttribution: {
+                funnelId: funnelCtx.funnel.id,
+                stepId: funnelCtx.stepId,
+                bumpApplied: funnelBumpRecord !== null,
+              },
+            }
+          : {}),
         couponApplied: coupon.status === "applied",
         couponStatus: coupon.status,
         resellerAttributed: attribution !== null,

@@ -62,7 +62,7 @@ function LocationCard({ point, pickup }: { point: PickupPoint; pickup: boolean }
         href={mapsUrl(point.address)}
         target="_blank"
         rel="noopener noreferrer"
-        className="mt-4 inline-flex min-h-[44px] w-fit items-center gap-1.5 rounded-md border border-border px-4 text-sm font-medium text-text-main transition motion-fast hover:border-brand-300"
+        className="focus-ring mt-4 inline-flex min-h-[44px] w-fit items-center gap-1.5 rounded-md border border-border px-4 text-sm font-medium text-text-main transition motion-fast hover:border-brand-300"
       >
         ম্যাপে দেখুন <Icon name="arrow-right" size={14} />
       </a>
@@ -97,7 +97,7 @@ export default async function StoresPage() {
           </p>
           <a
             href="/contact"
-            className="brand-gradient mt-5 inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition hover:opacity-90"
+            className="brand-gradient focus-ring mt-5 inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition hover:opacity-90"
           >
             যোগাযোগ করুন
           </a>

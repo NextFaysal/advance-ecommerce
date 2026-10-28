@@ -18,6 +18,8 @@ const bn = {
   // ---- shared ----
   backToAccount: "← আমার অ্যাকাউন্ট",
   backToAccountText: "আমার অ্যাকাউন্ট",
+  navAriaLabel: "অ্যাকাউন্ট মেনু",
+  navPreferences: "পছন্দ",
   loading: "লোড হচ্ছে…",
   orderLabel: "অর্ডার",
   reasonLabel: "কারণ",
@@ -482,6 +484,8 @@ const en: AccountStrings = {
   // ---- shared ----
   backToAccount: "← My Account",
   backToAccountText: "My Account",
+  navAriaLabel: "Account menu",
+  navPreferences: "Preferences",
   loading: "Loading…",
   orderLabel: "Order",
   reasonLabel: "Reason",

@@ -60,7 +60,7 @@ export function TicketReplyForm({ ticketId }: { ticketId: string }) {
         className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm leading-6 text-text-main shadow-sm outline-none focus:border-brand-500"
       />
       {error ? (
-        <p role="alert" className="text-sm font-medium text-rose-600">
+        <p role="alert" className="text-sm font-medium text-danger">
           {error}
         </p>
       ) : null}

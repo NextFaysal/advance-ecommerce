@@ -103,9 +103,9 @@ export default async function CampaignPage({ params }: { params: { slug: string 
           </div>
         </section>
       ) : (
-        <section className="mt-10 rounded-2xl bg-white p-8 text-center ring-1 ring-slate-200">
-          <h2 className="text-lg font-bold text-slate-900">এই কালেকশনে এখনো কোনো পণ্য যোগ হয়নি</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+        <section className="mt-10 rounded-3xl border border-dashed border-border bg-card p-8 text-center shadow-card">
+          <h2 className="font-display text-lg font-bold text-text-main">এই কালেকশনে এখনো কোনো পণ্য যোগ হয়নি</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-text-muted">
             কালেকশনের পণ্যগুলো শীঘ্রই আসছে। ততক্ষণে{" "}
             <a href="/shop" className="font-semibold text-brand-700 underline">
               সব পণ্য দেখুন

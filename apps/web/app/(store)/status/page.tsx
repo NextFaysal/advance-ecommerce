@@ -26,7 +26,7 @@ const STATE_PRESENTATION: Record<
 > = {
   operational: { dot: "bg-success", labelBn: "চালু আছে", labelEn: "Operational" },
   degraded: { dot: "bg-warning", labelBn: "সীমিত সেবা", labelEn: "Degraded" },
-  down: { dot: "bg-rose-500", labelBn: "বন্ধ আছে", labelEn: "Down" },
+  down: { dot: "bg-danger", labelBn: "বন্ধ আছে", labelEn: "Down" },
   not_configured: { dot: "bg-slate-400", labelBn: "কনফিগার করা হয়নি", labelEn: "Not configured" },
 };
 

@@ -79,7 +79,7 @@ export default function QuotationActions({ quotationId }: { quotationId: string 
         </button>
       </div>
       {error ? (
-        <p className="mt-2 text-sm leading-6 text-red-700" role="alert">
+        <p className="mt-2 text-sm leading-6 text-danger" role="alert">
           {error}
         </p>
       ) : null}

@@ -27,36 +27,38 @@ export default async function ContactPage() {
   const content = CONTACT_CONTENT[locale];
   const isBn = locale === "bn";
   return (
-    <main className="mx-auto w-full max-w-md px-4 py-8">
-      <h1 className="text-2xl font-bold leading-relaxed">{content.title}</h1>
-      <p className="mt-1 text-sm leading-[1.9] text-slate-500">{content.intro}</p>
+    <main className="mx-auto w-full max-w-md px-4 py-8 sm:py-12">
+      <h1 className="font-display text-3xl font-extrabold leading-snug text-text-main">
+        {content.title}
+      </h1>
+      <p className="mt-2 text-sm leading-[1.9] text-text-muted">{content.intro}</p>
 
-      <dl className="mt-5 space-y-3 rounded-[10px] border border-slate-200 p-4 text-sm">
+      <dl className="mt-6 space-y-3 rounded-2xl border border-border bg-card p-5 text-sm shadow-card">
         <div>
-          <dt className="font-medium text-slate-500">{content.phoneLabel}</dt>
-          <dd className="mt-0.5 font-semibold">{CONTACT_PLACEHOLDERS.phoneDisplay}</dd>
+          <dt className="font-medium text-text-subtle">{content.phoneLabel}</dt>
+          <dd className="mt-0.5 font-semibold text-text-main">{CONTACT_PLACEHOLDERS.phoneDisplay}</dd>
         </div>
         <div>
-          <dt className="font-medium text-slate-500">{content.emailLabel}</dt>
-          <dd className="mt-0.5 font-semibold">{CONTACT_PLACEHOLDERS.emailDisplay}</dd>
+          <dt className="font-medium text-text-subtle">{content.emailLabel}</dt>
+          <dd className="mt-0.5 font-semibold text-text-main">{CONTACT_PLACEHOLDERS.emailDisplay}</dd>
         </div>
         <div>
-          <dt className="font-medium text-slate-500">{content.addressLabel}</dt>
-          <dd className="mt-0.5">
+          <dt className="font-medium text-text-subtle">{content.addressLabel}</dt>
+          <dd className="mt-0.5 text-text-main">
             {isBn
               ? CONTACT_PLACEHOLDERS.addressDisplayBn
               : CONTACT_PLACEHOLDERS.addressDisplayEn}
           </dd>
         </div>
         <div>
-          <dt className="font-medium text-slate-500">{content.hoursLabel}</dt>
-          <dd className="mt-0.5">
+          <dt className="font-medium text-text-subtle">{content.hoursLabel}</dt>
+          <dd className="mt-0.5 text-text-main">
             {isBn ? CONTACT_PLACEHOLDERS.hoursBn : CONTACT_PLACEHOLDERS.hoursEn}
           </dd>
         </div>
       </dl>
 
-      <h2 className="mt-8 text-base font-semibold">{content.formTitle}</h2>
+      <h2 className="font-display mt-8 text-lg font-bold text-text-main">{content.formTitle}</h2>
       <ContactForm />
     </main>
   );
