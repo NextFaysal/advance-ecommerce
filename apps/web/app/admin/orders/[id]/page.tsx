@@ -373,7 +373,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
           <div className="mt-5">
             <a
               href="/admin/orders"
-              className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-border bg-card px-4 text-sm font-semibold shadow-xs transition duration-fast ease-smooth hover:bg-surface-2"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-border bg-card px-4 text-sm font-semibold shadow-xs transition duration-fast ease-smooth hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
               {s.dtBackBtn}
             </a>
@@ -411,7 +411,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
 
   return (
     <main>
-      <a href="/admin/orders" className="mb-4 inline-flex items-center gap-1.5 text-small font-medium text-text-muted transition duration-fast ease-smooth hover:text-brand-700">
+      <a href="/admin/orders" className="mb-4 inline-flex items-center gap-1.5 rounded text-small font-medium text-text-muted transition duration-fast ease-smooth hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
           <path d="m15 18-6-6 6-6" />
         </svg>
@@ -561,7 +561,7 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
               <p className="mt-3 text-caption leading-relaxed text-text-subtle">
                 <a
                   href={`/admin/customers?search=${encodeURIComponent(order.customerName)}`}
-                  className="font-medium text-brand-700 hover:underline"
+                  className="font-medium text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                 >
                   {s.dtProfileLink}
                 </a>

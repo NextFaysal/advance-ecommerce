@@ -217,7 +217,7 @@ export function RelatedPicker({
               : pick.status === "ACTIVE"
                 ? "bg-success-soft text-success-solid ring-success-solid/20"
                 : pick.status === "DRAFT"
-                  ? "bg-amber-50 text-amber-700 ring-amber-100"
+                  ? "bg-warning-soft text-warning-solid ring-warning-solid/20"
                   : "bg-surface-2 text-text-muted ring-black/5";
             return (
               <li key={pick.id} className="flex items-center gap-3 rounded-xl border border-border/60 bg-surface-2/40 px-3 py-2.5">
@@ -283,8 +283,8 @@ export function RelatedPicker({
             role="status"
             className={`anim-fade-in rounded-full px-3.5 py-2 text-small font-semibold ring-1 ring-inset ${
               notice.tone === "ok"
-                ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-                : "bg-rose-50 text-rose-700 ring-rose-200"
+                ? "bg-success-soft text-success-solid ring-success-solid/20"
+                : "bg-danger-soft text-danger ring-danger/20"
             }`}
           >
             {notice.text}

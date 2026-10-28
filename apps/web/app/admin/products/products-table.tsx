@@ -858,7 +858,7 @@ export function ProductsTable({
             type="button"
             onClick={cancelEdit}
             disabled={editBusy}
-            className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-small font-semibold shadow-xs transition duration-fast ease-smooth hover:border-brand-300 disabled:opacity-50"
+            className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-small font-semibold shadow-xs transition duration-fast ease-smooth hover:border-brand-300 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             {s.cancelBtn}
           </button>
@@ -1111,7 +1111,7 @@ export function ProductsTable({
           <div className="mt-5">
             <Link
               href="/admin/products/new"
-              className="brand-gradient inline-flex min-h-[44px] items-center justify-center rounded-xl px-4 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:shadow-lift hover:brightness-105"
+              className="brand-gradient inline-flex min-h-[44px] items-center justify-center rounded-xl px-4 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:shadow-lift hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
               {s.emptyAdd}
             </Link>
@@ -1187,13 +1187,13 @@ export function ProductsTable({
                       <td className="min-w-0 px-4 py-3 align-top">
                         <Link
                           href={`/admin/products/${p.id}`}
-                          className="block break-words font-medium leading-snug text-brand-700 underline-offset-2 transition duration-fast ease-smooth [overflow-wrap:anywhere] hover:underline"
+                          className="block break-words font-medium leading-snug text-brand-700 underline-offset-2 transition duration-fast ease-smooth [overflow-wrap:anywhere] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                         >
                           {p.title}
                         </Link>
                         <Link
                           href={`/admin/products/${p.id}`}
-                          className="font-mono text-caption text-text-subtle underline-offset-2 transition duration-fast ease-smooth hover:text-brand-700 hover:underline"
+                          className="font-mono text-caption text-text-subtle underline-offset-2 transition duration-fast ease-smooth hover:text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                         >
                           /{p.slug}
                         </Link>
@@ -1255,13 +1255,13 @@ export function ProductsTable({
                     <div className="min-w-0">
                       <Link
                         href={`/admin/products/${p.id}`}
-                        className="block break-words font-medium leading-snug text-brand-700 underline-offset-2 [overflow-wrap:anywhere] hover:underline"
+                        className="block break-words font-medium leading-snug text-brand-700 underline-offset-2 [overflow-wrap:anywhere] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                       >
                         {p.title}
                       </Link>
                       <Link
                         href={`/admin/products/${p.id}`}
-                        className="mt-0.5 block font-mono text-caption text-text-subtle underline-offset-2 hover:text-brand-700 hover:underline"
+                        className="mt-0.5 block font-mono text-caption text-text-subtle underline-offset-2 hover:text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                       >
                         /{p.slug}
                       </Link>

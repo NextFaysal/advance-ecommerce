@@ -158,7 +158,7 @@ export function AgingPanel() {
                     <li key={row.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-small">
                       <Link
                         href={`/admin/orders/${row.id}`}
-                        className="inline-flex items-center gap-1 font-semibold text-brand-700 hover:underline"
+                        className="inline-flex items-center gap-1 rounded font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                       >
                         {row.orderNo}
                         <Icon name="arrow-right" size={13} />

@@ -58,7 +58,7 @@ export function RailAdvanceSummary({
             </div>
             <div className="flex items-center justify-between gap-3">
               <dt className="text-text-muted">{s.advRemaining}</dt>
-              <dd className={satisfied ? "" : "font-semibold text-amber-600"}>
+              <dd className={satisfied ? "" : "font-semibold text-warning-solid"}>
                 {formatPoisha(advance.remainingPoisha)}
               </dd>
             </div>

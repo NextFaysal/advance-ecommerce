@@ -469,7 +469,7 @@ export function EditPanel({ orderId }: { orderId: string }) {
         <p role="alert" className="mt-2 rounded-xl bg-danger-soft px-3 py-2 text-small text-danger">{error}</p>
       )}
       {outcome && (
-        <div role="status" className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-small text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-200">
+        <div role="status" className="mt-2 rounded-md bg-success-soft px-3 py-2 text-small text-success-solid">
           <p>
             {interpolate(s.edSaved, {
               bTotal: formatPoisha(outcome.before.totalPoisha),

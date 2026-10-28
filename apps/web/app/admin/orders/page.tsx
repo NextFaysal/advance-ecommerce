@@ -754,7 +754,7 @@ export default function AdminOrdersPage() {
                           />
                         </td>
                         <td className={ORDER_DENSITY[density].cell}>
-                          <a href={`/admin/orders/${o.id}`} className="font-mono text-small font-semibold text-brand-700 hover:underline">
+                          <a href={`/admin/orders/${o.id}`} className="font-mono text-small font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                             {o.orderNo}
                           </a>
                           {/* ADV-19: pickup badge — the choice is recorded
@@ -837,7 +837,7 @@ export default function AdminOrdersPage() {
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <a href={`/admin/orders/${o.id}`} className="font-mono text-small font-semibold text-brand-700 hover:underline">
+                          <a href={`/admin/orders/${o.id}`} className="font-mono text-small font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                             {o.orderNo}
                           </a>
                           <span className="flex items-center gap-1.5">
@@ -864,7 +864,7 @@ export default function AdminOrdersPage() {
                           <a
                             href={`/admin/orders/${o.id}`}
                             aria-label={interpolate(s.lpDetailsAria, { orderNo: o.orderNo })}
-                            className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-2 text-text-muted transition duration-fast ease-smooth hover:bg-brand-soft hover:text-brand-ink"
+                            className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-2 text-text-muted transition duration-fast ease-smooth hover:bg-brand-soft hover:text-brand-ink md:h-8 md:w-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                           >
                             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
                               <path d="m9 18 6-6-6-6" />
@@ -906,7 +906,7 @@ export default function AdminOrdersPage() {
                           onClick={(e) => { if (isPlainRowClick(e)) setPreviewId(o.id); }}
                           className="cursor-grab rounded-xl border border-border/60 bg-card p-3 shadow-xs transition duration-fast ease-smooth hover:shadow-card active:cursor-grabbing"
                         >
-                          <a href={`/admin/orders/${o.id}`} className="font-mono text-small font-semibold text-brand-700 hover:underline">
+                          <a href={`/admin/orders/${o.id}`} className="font-mono text-small font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                             {o.orderNo}
                           </a>
                           <p className="mt-1 truncate text-small font-medium leading-snug">{o.customerName}</p>

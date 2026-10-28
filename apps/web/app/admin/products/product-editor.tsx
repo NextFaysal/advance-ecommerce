@@ -236,7 +236,7 @@ const inputCls =
 const cellInputCls =
   "min-h-[40px] w-full min-w-[84px] rounded-xl border border-border bg-card px-2.5 py-2 text-sm shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15 hover:border-brand-200";
 const toolbarBtnCls =
-  "inline-flex min-h-[36px] items-center rounded-full border border-border bg-card px-3 text-xs font-semibold transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-soft";
+  "inline-flex min-h-11 items-center rounded-full border border-border bg-card px-3 text-xs font-semibold transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-soft md:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300";
 const labelCls = "block text-sm font-medium text-text-main";
 const hintCls = "mt-1.5 block text-xs leading-relaxed text-text-subtle";
 
@@ -1825,7 +1825,7 @@ export function ProductEditor({
             href={`/product/${slug}`}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex min-h-[44px] shrink-0 items-center rounded-full border border-border bg-card px-4 text-sm font-medium text-brand-700 shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50"
+            className="inline-flex min-h-[44px] shrink-0 items-center rounded-full border border-border bg-card px-4 text-sm font-medium text-brand-700 shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             {s.viewStorefront}
           </Link>
@@ -1860,7 +1860,7 @@ export function ProductEditor({
               <button
                 type="button"
                 onClick={regenerateSlug}
-                className="inline-flex min-h-[44px] shrink-0 items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50"
+                className="inline-flex min-h-[44px] shrink-0 items-center rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 {s.slugFromTitle}
               </button>
@@ -2554,7 +2554,7 @@ export function ProductEditor({
           <button
             type="button"
             onClick={() => setImageRows((prev) => [...prev, { key: nextKey(), url: "", altBn: "", altEn: "" }])}
-            className="mt-4 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50"
+            className="mt-4 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             {s.addImageBtn}
           </button>
@@ -2630,14 +2630,14 @@ export function ProductEditor({
               onClick={() =>
                 setAttrRows((prev) => [...prev, { rowId: nextKey(), name: "", valuesText: "" }])
               }
-              className="mt-3 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50"
+              className="mt-3 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
               {s.addAttrBtn}
             </button>
             {attributeSets.length > 0 ? (
               <p className="mt-2 text-xs leading-relaxed text-text-subtle">
                 {s.attrLibraryPre}{" "}
-                <Link href="/admin/attributes" className="font-medium text-brand-700 hover:underline">
+                <Link href="/admin/attributes" className="font-medium text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                   {s.attrLibraryLink}
                 </Link>{" "}
                 {s.attrLibraryPost}
@@ -2647,14 +2647,14 @@ export function ProductEditor({
               <button
                 type="button"
                 onClick={handleGenerate}
-                className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-4 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:brightness-105"
+                className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-4 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 {s.generateBtn}
               </button>
               <button
                 type="button"
                 onClick={handleAddManualRow}
-                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50"
+                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 {s.addVariantManual}
               </button>
@@ -2985,7 +2985,7 @@ export function ProductEditor({
                   onClick={() =>
                     setSizeChart((prev) => ({ ...prev, rows: [...prev.rows, prev.headers.map(() => "")] }))
                   }
-                  className="mt-3 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50"
+                  className="mt-3 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                 >
                   {s.addRow}
                 </button>
@@ -3038,7 +3038,7 @@ export function ProductEditor({
             <button
               type="button"
               onClick={() => setFaqRows((prev) => [...prev, { q: "", a: "" }])}
-              className="mt-3.5 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50"
+              className="mt-3.5 inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
               {s.addFaqBtn}
             </button>
@@ -3097,7 +3097,7 @@ export function ProductEditor({
                   const first = imageRows.find((i) => i.url.trim() !== "");
                   if (first) setOgImage(first.url.trim());
                 }}
-                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
+                className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium shadow-sm transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:opacity-40"
               >
                 {s.ogUseFirst}
               </button>

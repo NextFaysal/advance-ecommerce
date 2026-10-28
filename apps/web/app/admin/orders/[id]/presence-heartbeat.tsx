@@ -71,7 +71,7 @@ export function PresenceHeartbeat({ orderId }: { orderId: string }) {
   return (
     <div
       role="status"
-      className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-small text-amber-900"
+      className="rounded-md border border-warning-solid/30 bg-warning-soft px-4 py-3 text-small text-warning-solid"
     >
       <p className="font-semibold">{names} {s.presenceViewing}</p>
       <p className="mt-1 leading-relaxed">

@@ -111,7 +111,7 @@ function RefundStepper({ status }: { status: string }) {
             <span
               aria-hidden="true"
               className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white ${
-                reached ? STATUS_TONE_DOT_CLASS[visual.tone] : "bg-slate-200 text-slate-400"
+                reached ? STATUS_TONE_DOT_CLASS[visual.tone] : "bg-surface-2 text-text-subtle"
               } ${isCurrent ? "ring-2 ring-offset-1 ring-border" : ""}`}
             >
               <Icon name={i < currentIdx ? "check" : visual.icon} size={11} />
@@ -120,7 +120,7 @@ function RefundStepper({ status }: { status: string }) {
               {locale === "bn" ? visual.labelBn : visual.labelEn}
             </span>
             {i < REFUND_STEPS.length - 1 ? (
-              <span aria-hidden="true" className={`h-px flex-1 ${i < currentIdx ? "bg-emerald-400" : "bg-border"}`} />
+              <span aria-hidden="true" className={`h-px flex-1 ${i < currentIdx ? "bg-success-solid" : "bg-border"}`} />
             ) : null}
           </li>
         );
@@ -266,10 +266,10 @@ export function RefundsPanel({ orderId }: { orderId: string }) {
           role="alert"
           className="mt-4 rounded-xl border border-warning-solid/40 bg-warning-soft px-4 py-3"
         >
-          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+          <p className="text-sm font-semibold text-warning-solid">
             {interpolate(s.rfDueTitle, { amount: formatPoisha(summary.refundDuePoisha) })}
           </p>
-          <p className="mt-0.5 text-small text-amber-800 dark:text-amber-300">{s.rfDueBody}</p>
+          <p className="mt-0.5 text-small text-warning-solid">{s.rfDueBody}</p>
         </div>
       )}
 

@@ -70,7 +70,7 @@ export function ApprovalBanner({ approval }: { approval?: OrderApprovalStateView
                 <>
                   {" "}
                   {s.apprCannotConfirm} —{" "}
-                  <Link href="/admin/approvals" className="font-medium text-brand-700 hover:underline">
+                  <Link href="/admin/approvals" className="font-medium text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                     {s.apprGoList}
                   </Link>
                   .
@@ -86,7 +86,7 @@ export function ApprovalBanner({ approval }: { approval?: OrderApprovalStateView
             <Badge tone="warning">{s.apprRefundPending}</Badge>
             <p className="leading-relaxed">
               {r.amountPoisha !== null ? formatBdt(r.amountPoisha) : "—"} {s.apprRefundCannotSend} —{" "}
-              <Link href="/admin/approvals" className="font-medium text-brand-700 hover:underline">
+              <Link href="/admin/approvals" className="font-medium text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                 {s.apprGoList}
               </Link>
               .

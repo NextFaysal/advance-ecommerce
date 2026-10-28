@@ -181,12 +181,12 @@ export function PickupOtpPanel({ orderId }: { orderId: string }) {
       )}
 
       {error ? (
-        <p role="alert" className="mt-3 text-sm font-medium text-red-700 dark:text-red-300">
+        <p role="alert" className="mt-3 text-sm font-medium text-danger">
           {error}
         </p>
       ) : null}
       {notice ? (
-        <p role="status" className="mt-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">
+        <p role="status" className="mt-3 text-sm font-medium text-success-solid">
           {notice}
         </p>
       ) : null}

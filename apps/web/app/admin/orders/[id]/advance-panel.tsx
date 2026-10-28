@@ -57,7 +57,7 @@ export function AdvancePanel({ advance }: { advance?: OrderAdvanceView }) {
           </div>
           <div className="flex items-center justify-between gap-3">
             <span className="text-text-muted">{s.advRemaining}</span>
-            <span className={satisfied ? "" : "font-semibold text-amber-600"}>
+            <span className={satisfied ? "" : "font-semibold text-warning-solid"}>
               {formatPoisha(advance.remainingPoisha)}
             </span>
           </div>

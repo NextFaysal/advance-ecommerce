@@ -188,7 +188,10 @@ export default function InventoryDepthPanel() {
           ))}
         </div>
         {report.abc.rows.length === 0 ? (
-          <p className="mt-2 text-small text-text-muted">{s.abcNoSales}</p>
+          <div className="mt-2 rounded-xl border border-dashed border-border-strong bg-surface-2/40 px-4 py-3">
+            <p className="text-small font-semibold text-text-main">{s.abcEmptyTitle}</p>
+            <p className="mt-0.5 text-small text-text-muted">{s.abcEmptyDesc}</p>
+          </div>
         ) : (
           <>
           <div className="mt-2 hidden max-h-96 overflow-auto rounded-2xl border border-border/60 bg-card shadow-xs md:block">
@@ -244,7 +247,10 @@ export default function InventoryDepthPanel() {
           {interpolate(s.expiringTitle, { days: report.expiring.warningDays })}
         </h3>
         {report.expiring.rows.length === 0 ? (
-          <p className="mt-1 text-small text-text-muted">{s.expiringNone}</p>
+          <div className="mt-1 rounded-xl border border-dashed border-border-strong bg-surface-2/40 px-4 py-3">
+            <p className="text-small font-semibold text-text-main">{s.expiringEmptyTitle}</p>
+            <p className="mt-0.5 text-small text-text-muted">{s.expiringEmptyDesc}</p>
+          </div>
         ) : (
           <ul className="mt-2 space-y-1.5">
             {report.expiring.rows.map((b) => (
@@ -276,7 +282,10 @@ export default function InventoryDepthPanel() {
           </p>
         )}
         {report.deadStock.rows.length === 0 ? (
-          <p className="mt-1 text-small text-text-muted">{s.deadNone}</p>
+          <div className="mt-1 rounded-xl border border-dashed border-border-strong bg-surface-2/40 px-4 py-3">
+            <p className="text-small font-semibold text-text-main">{s.deadEmptyTitle}</p>
+            <p className="mt-0.5 text-small text-text-muted">{s.deadEmptyDesc}</p>
+          </div>
         ) : (
           <>
           <div className="mt-2 hidden max-h-96 overflow-auto rounded-2xl border border-border/60 bg-card shadow-xs md:block">
@@ -335,9 +344,10 @@ export default function InventoryDepthPanel() {
       <section>
         <h3 className="font-display text-small font-semibold text-text-main">{s.batchTitle}</h3>
         {report.batches.length === 0 ? (
-          <p className="mt-1 text-small text-text-muted">
-            {s.batchNone}
-          </p>
+          <div className="mt-1 rounded-xl border border-dashed border-border-strong bg-surface-2/40 px-4 py-3">
+            <p className="text-small font-semibold text-text-main">{s.batchEmptyTitle}</p>
+            <p className="mt-0.5 text-small text-text-muted">{s.batchEmptyDesc}</p>
+          </div>
         ) : (
           <ul className="mt-2 space-y-1.5">
             {report.batches.map((b) => (

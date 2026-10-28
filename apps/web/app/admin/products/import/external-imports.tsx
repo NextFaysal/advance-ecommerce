@@ -346,14 +346,14 @@ function SourceCard({ def }: { def: SourceDef }) {
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="font-display text-base font-semibold">{sourceTitle(s, def.id)}</h3>
         {def.templateBased && (
-          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700 ring-1 ring-inset ring-amber-200">
+          <span className="rounded-full bg-warning-soft px-2.5 py-1 text-[11px] font-bold text-warning-solid ring-1 ring-inset ring-warning-solid/30">
             {s.extTemplateBadge}
           </span>
         )}
       </div>
       <p className="mt-1.5 text-sm leading-relaxed text-text-muted">{sourceBlurb(s, def.id)}</p>
       {def.templateBased && (
-        <p className="mt-1 text-sm leading-relaxed text-amber-700">
+        <p className="mt-1 text-sm leading-relaxed text-warning-solid">
           {s.extDarazNote}
         </p>
       )}
@@ -416,7 +416,7 @@ function SourceCard({ def }: { def: SourceDef }) {
         </p>
       )}
       {errorMessage && (
-        <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm font-medium text-rose-700">
+        <p className="mt-3 rounded-md border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-sm font-medium text-danger">
           {errorMessage}
         </p>
       )}
@@ -445,9 +445,9 @@ function SourceCard({ def }: { def: SourceDef }) {
           <NotesList notes={productReport.notes} />
           <UnmappedColumns columns={productReport.unmappedColumns} />
           {productReport.categoryWarnings.length > 0 && (
-            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3.5 py-2.5">
-              <p className="text-sm font-semibold text-amber-800">{s.extCategoryWarnings}</p>
-              <ul className="mt-1 list-inside list-disc space-y-1 text-sm text-amber-800">
+            <div className="mt-3 rounded-md border border-warning-solid/30 bg-warning-soft px-3.5 py-2.5">
+              <p className="text-sm font-semibold text-warning-solid">{s.extCategoryWarnings}</p>
+              <ul className="mt-1 list-inside list-disc space-y-1 text-sm text-warning-solid">
                 {productReport.categoryWarnings.map((w, i) => (
                   <li key={i}>{w.message}</li>
                 ))}
@@ -477,10 +477,10 @@ function SourceCard({ def }: { def: SourceDef }) {
             </div>
           )}
           {productReport.invalidRows.length > 0 && (
-            <div className="mt-3 overflow-x-auto rounded-lg border border-rose-100 bg-card">
+            <div className="mt-3 overflow-x-auto rounded-lg border border-danger/30 bg-card">
               <table className="w-full text-sm [&_tbody_tr]:border-t [&_tbody_tr]:border-border/70">
                 <thead>
-                  <tr className="bg-rose-50/80 [&>th]:px-3 [&>th]:py-2 [&>th]:text-left [&>th]:text-caption [&>th]:font-semibold [&>th]:text-rose-700">
+                  <tr className="bg-danger-soft/80 [&>th]:px-3 [&>th]:py-2 [&>th]:text-left [&>th]:text-caption [&>th]:font-semibold [&>th]:text-danger">
                     <th>{s.extColSourceRow}</th>
                     <th>{s.extColRef}</th>
                     <th>{s.impColField}</th>
@@ -542,7 +542,7 @@ function SourceCard({ def }: { def: SourceDef }) {
                     <td>{o.status === "ready" ? s.extReadyStatus : s.extSkippedStatus}</td>
                     <td className="text-xs">
                       {o.reasons.join(" ")}
-                      {o.warnings.length > 0 && <span className="text-amber-700"> {o.warnings.join(" ")}</span>}
+                      {o.warnings.length > 0 && <span className="text-warning-solid"> {o.warnings.join(" ")}</span>}
                     </td>
                   </tr>
                 ))}
@@ -566,7 +566,7 @@ function SourceCard({ def }: { def: SourceDef }) {
           <button
             type="button"
             onClick={downloadReport}
-            className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition hover:border-brand-300"
+            className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition hover:border-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             {s.extReportBtn}
           </button>
@@ -574,33 +574,33 @@ function SourceCard({ def }: { def: SourceDef }) {
             type="button"
             disabled={busy}
             onClick={reset}
-            className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition hover:border-brand-300"
+            className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium transition hover:border-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             {s.cancelBtn}
           </button>
         </div>
       )}
       {(productReport || orderReport) && !readyToConfirm && phase !== "done" && (
-        <p className="mt-2 text-sm text-rose-600">{s.extNothingReady}</p>
+        <p className="mt-2 text-sm text-danger">{s.extNothingReady}</p>
       )}
 
       {phase === "done" && productResult && (
-        <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/50 px-4 py-3.5">
+        <div className="mt-4 rounded-lg border border-success-solid/30 bg-success-soft/50 px-4 py-3.5">
           <p className="text-sm leading-relaxed">
-            <strong className="text-emerald-700">{interpolate(s.extProdDoneA, { count: productResult.createdProductCount })}</strong> {interpolate(s.extProdDoneB, { count: productResult.createdRowCount })} <strong>{s.extProdDoneDraft}</strong>{interpolate(s.extProdDoneC, { skipped: productResult.skippedRowCount, failed: productResult.failedRowCount })}
+            <strong className="text-success-solid">{interpolate(s.extProdDoneA, { count: productResult.createdProductCount })}</strong> {interpolate(s.extProdDoneB, { count: productResult.createdRowCount })} <strong>{s.extProdDoneDraft}</strong>{interpolate(s.extProdDoneC, { skipped: productResult.skippedRowCount, failed: productResult.failedRowCount })}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
               onClick={downloadReport}
-              className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium"
+              className="inline-flex min-h-11 items-center rounded-md border border-border bg-card px-4 text-sm font-medium md:min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
               {s.extReportBtn}
             </button>
             <button
               type="button"
               onClick={reset}
-              className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium"
+              className="inline-flex min-h-11 items-center rounded-md border border-border bg-card px-4 text-sm font-medium md:min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
               {s.extAnotherFile}
             </button>
@@ -608,9 +608,9 @@ function SourceCard({ def }: { def: SourceDef }) {
         </div>
       )}
       {phase === "done" && orderResult && (
-        <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/50 px-4 py-3.5">
+        <div className="mt-4 rounded-lg border border-success-solid/30 bg-success-soft/50 px-4 py-3.5">
           <p className="text-sm leading-relaxed">
-            <strong className="text-emerald-700">{interpolate(s.extOrderDoneA, { count: orderResult.created })}</strong> {interpolate(s.extOrderDoneB, { skipped: orderResult.skipped, failed: orderResult.failed })}
+            <strong className="text-success-solid">{interpolate(s.extOrderDoneA, { count: orderResult.created })}</strong> {interpolate(s.extOrderDoneB, { skipped: orderResult.skipped, failed: orderResult.failed })}
           </p>
           {orderResult.outcomes.some((o) => o.status !== "created") && (
             <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-text-muted">
@@ -627,14 +627,14 @@ function SourceCard({ def }: { def: SourceDef }) {
             <button
               type="button"
               onClick={downloadReport}
-              className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium"
+              className="inline-flex min-h-11 items-center rounded-md border border-border bg-card px-4 text-sm font-medium md:min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
               {s.extReportBtn}
             </button>
             <button
               type="button"
               onClick={reset}
-              className="inline-flex min-h-[40px] items-center rounded-md border border-border bg-card px-4 text-sm font-medium"
+              className="inline-flex min-h-11 items-center rounded-md border border-border bg-card px-4 text-sm font-medium md:min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
               {s.extAnotherFile}
             </button>
@@ -684,7 +684,7 @@ function FeedsCard() {
       <p className="mt-1.5 text-sm leading-relaxed text-text-muted">
         {s.feedsDescA} <span className="font-mono text-xs">X-Feed-Generated-At</span> {s.feedsDescB}
       </p>
-      {error && <p className="mt-3 text-sm font-medium text-rose-600">{error}</p>}
+      {error && <p className="mt-3 text-sm font-medium text-danger">{error}</p>}
       {feeds === null && !error && <p className="mt-3 text-sm text-text-muted">{s.feedsLoading}</p>}
       {feeds && (
         <div className="mt-3 space-y-2.5">
@@ -695,7 +695,7 @@ function FeedsCard() {
             >
               <span className="font-semibold">{feed.label}</span>
               {feed.templateBased && (
-                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 ring-1 ring-inset ring-amber-200">
+                <span className="rounded-full bg-warning-soft px-2 py-0.5 text-[11px] font-bold text-warning-solid ring-1 ring-inset ring-warning-solid/30">
                   {s.feedsTemplateBadge}
                 </span>
               )}
@@ -711,7 +711,7 @@ function FeedsCard() {
                 href={feed.path}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex min-h-[36px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold transition hover:border-brand-300"
+                className="inline-flex min-h-11 items-center rounded-md border border-border bg-card px-3 text-xs font-semibold transition hover:border-brand-300 md:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 {s.feedsOpen}
               </a>
@@ -721,7 +721,7 @@ function FeedsCard() {
                   void navigator.clipboard?.writeText(`${origin}${feed.path}`);
                   setCopied(feed.id);
                 }}
-                className="inline-flex min-h-[36px] items-center rounded-md border border-border bg-card px-3 text-xs font-semibold transition hover:border-brand-300"
+                className="inline-flex min-h-11 items-center rounded-md border border-border bg-card px-3 text-xs font-semibold transition hover:border-brand-300 md:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 {copied === feed.id ? s.feedsCopied : s.feedsCopy}
               </button>

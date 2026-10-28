@@ -279,7 +279,7 @@ export default function ProductImportPage() {
         actions={
           <Link
             href="/admin/products"
-            className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-medium shadow-xs transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-soft"
+            className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-medium shadow-xs transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             {s.impBackLink}
           </Link>
@@ -498,7 +498,7 @@ export default function ProductImportPage() {
               type="button"
               disabled={preview.validCount === 0 || phase === "confirming"}
               onClick={() => void handleConfirm()}
-              className="brand-gradient inline-flex min-h-[44px] items-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:shadow-lift hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+              className="brand-gradient inline-flex min-h-[44px] items-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:shadow-lift hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {phase === "confirming" ? s.impConfirming : interpolate(s.impConfirmBtn, { count: preview.validCount })}
             </button>
@@ -506,7 +506,7 @@ export default function ProductImportPage() {
               type="button"
               disabled={phase === "confirming"}
               onClick={reset}
-              className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-medium transition duration-fast ease-smooth hover:border-brand-300"
+              className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-medium transition duration-fast ease-smooth hover:border-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
               {s.cancelBtn}
             </button>
@@ -540,7 +540,7 @@ export default function ProductImportPage() {
                 <li key={p.id}>
                   <Link
                     href={`/admin/products/${p.id}`}
-                    className="inline-flex min-h-[36px] items-center rounded-full border border-brand-100 bg-brand-soft px-3.5 font-mono text-xs font-medium text-brand-ink transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-100"
+                    className="inline-flex min-h-11 items-center rounded-full border border-brand-100 bg-brand-soft px-3.5 font-mono text-xs font-medium text-brand-ink transition duration-fast ease-smooth hover:border-brand-300 hover:bg-brand-100 md:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                   >
                     {p.slug}
                   </Link>
@@ -577,7 +577,7 @@ export default function ProductImportPage() {
           <div className="mt-4 flex flex-wrap gap-2">
             <Link
               href="/admin/products"
-              className="brand-gradient inline-flex min-h-[44px] items-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:shadow-lift hover:brightness-105"
+              className="brand-gradient inline-flex min-h-[44px] items-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:shadow-lift hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
               {s.impGoList}
             </Link>
@@ -585,7 +585,7 @@ export default function ProductImportPage() {
               <button
                 type="button"
                 onClick={() => downloadTextFile("import-errors.csv", result.errorReportCsv)}
-                className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-medium transition duration-fast ease-smooth hover:border-brand-300"
+                className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-medium transition duration-fast ease-smooth hover:border-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 {s.impErrorReportBtn}
               </button>
@@ -593,7 +593,7 @@ export default function ProductImportPage() {
             <button
               type="button"
               onClick={reset}
-              className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-medium transition duration-fast ease-smooth hover:border-brand-300"
+              className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-4 text-sm font-medium transition duration-fast ease-smooth hover:border-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
               {s.impAnotherFile}
             </button>

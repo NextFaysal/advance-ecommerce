@@ -148,7 +148,7 @@ export function OrderPreviewDrawer({
       <div className="flex flex-wrap gap-2">
         <a
           href={`/admin/orders/${order.id}`}
-          className="flex-1 rounded-md bg-brand-600 px-4 py-2.5 text-center text-small font-semibold text-white shadow-sm transition motion-fast hover:bg-brand-700"
+          className="flex-1 rounded-md bg-brand-600 px-4 py-2.5 text-center text-small font-semibold text-white shadow-sm transition motion-fast hover:bg-brand-700 min-h-11 md:min-h-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
           {s.prevFullDetails}
         </a>
@@ -156,7 +156,7 @@ export function OrderPreviewDrawer({
           href={`/admin/orders/print?ids=${order.id}`}
           target="_blank"
           rel="noreferrer"
-          className="flex-1 rounded-md border border-border bg-card px-4 py-2.5 text-center text-small font-semibold text-text-main transition motion-fast hover:border-brand-300 hover:text-brand-700"
+          className="flex-1 rounded-md border border-border bg-card px-4 py-2.5 text-center text-small font-semibold text-text-main transition motion-fast hover:border-brand-300 hover:text-brand-700 min-h-11 md:min-h-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
           {s.prevPrintInvoice}
         </a>

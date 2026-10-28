@@ -138,7 +138,7 @@ const PIPELINE_STEPS = [
 const OFF_PATH: Record<string, { label: Record<Locale, string>; icon: IconName; cls: string }> = {
   FAILED: { label: { bn: "ডেলিভারি ব্যর্থ হয়েছে", en: "Delivery failed" }, icon: "alert", cls: "border-danger/25 bg-danger-soft text-danger" },
   RETURNING: { label: { bn: "পার্সেলটি ফেরত আসছে", en: "The parcel is returning" }, icon: "rotate-ccw", cls: "border-warning-solid/25 bg-warning-soft text-warning-solid" },
-  RETURNED: { label: { bn: "পার্সেলটি ফেরত এসেছে", en: "The parcel has been returned" }, icon: "rotate-ccw", cls: "border-border bg-slate-50 text-slate-600" },
+  RETURNED: { label: { bn: "পার্সেলটি ফেরত এসেছে", en: "The parcel has been returned" }, icon: "rotate-ccw", cls: "border-border bg-surface-2 text-text-muted" },
 };
 
 function ParcelStepper({ status }: { status: string }) {
@@ -166,17 +166,17 @@ function ParcelStepper({ status }: { status: string }) {
         return (
           <li key={step.status} className={`flex items-start ${idx > 0 ? "flex-1" : ""}`}>
             {idx > 0 && (
-              <span aria-hidden="true" className={`mx-1 mt-[13px] h-0.5 flex-1 rounded ${idx <= activeIdx ? "bg-emerald-400" : "bg-border"}`} />
+              <span aria-hidden="true" className={`mx-1 mt-[13px] h-0.5 flex-1 rounded ${idx <= activeIdx ? "bg-success-solid" : "bg-border"}`} />
             )}
             <span className="flex w-14 flex-col items-center gap-1 text-center">
               <span
                 aria-hidden="true"
                 className={`flex h-[27px] w-[27px] items-center justify-center rounded-full ${
                   done
-                    ? "bg-emerald-500 text-white"
+                    ? "bg-success-solid text-white"
                     : active
                       ? "bg-brand-600 text-white ring-4 ring-brand-100"
-                      : "bg-slate-100 text-slate-400"
+                      : "bg-surface-2 text-text-subtle"
                 }`}
               >
                 <Icon name={done ? "check" : step.icon} size={14} />
@@ -386,20 +386,20 @@ export function ShipmentsPanel({ orderId }: { orderId: string }) {
         {totalLines > 0 && (
           <div className="mt-3">
             <div
-              className="relative h-2.5 overflow-hidden rounded-full bg-slate-100"
+              className="relative h-2.5 overflow-hidden rounded-full bg-surface-2"
               role="img"
               aria-label={interpolate(s.shCoverageAria, { a: allocatedPct, d: deliveredPct })}
             >
-              <span className="absolute inset-y-0 left-0 bg-sky-300" style={{ width: `${allocatedPct}%` }} />
-              <span className="absolute inset-y-0 left-0 bg-emerald-500" style={{ width: `${deliveredPct}%` }} />
+              <span className="absolute inset-y-0 left-0 bg-chart-4" style={{ width: `${allocatedPct}%` }} />
+              <span className="absolute inset-y-0 left-0 bg-chart-5" style={{ width: `${deliveredPct}%` }} />
             </div>
             <p className="mt-1.5 flex flex-wrap gap-x-4 text-caption text-text-muted">
               <span>
-                <span aria-hidden="true" className="mr-1 inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                <span aria-hidden="true" className="mr-1 inline-block h-2 w-2 rounded-full bg-chart-5" />
                 {interpolate(s.shDeliveredLines, { d: deliveredLines, t: totalLines })}
               </span>
               <span>
-                <span aria-hidden="true" className="mr-1 inline-block h-2 w-2 rounded-full bg-sky-300" />
+                <span aria-hidden="true" className="mr-1 inline-block h-2 w-2 rounded-full bg-chart-4" />
                 {interpolate(s.shAllocatedLines, { a: allocatedLines, t: totalLines })}
               </span>
             </p>

@@ -128,18 +128,20 @@ function statusCell(status: OrderStatus) {
   return <Badge tone="neutral">{status}</Badge>;
 }
 
-/* Donut segment colors per order status (chart palette order from the design spec). */
+/* Donut segment colors per order status — v4 token vars (rgb(var(--c-*)))
+ * so every segment flips with dark mode via the globals.css pairs, the
+ * same hues the design spec's hex palette approximated (doc 31 D7). */
 const STATUS_COLORS: Partial<Record<OrderStatus, string>> = {
-  PENDING: "#F59E0B",
-  CONFIRMED: "#0EA5E9",
-  PROCESSING: "#8B5CF6",
-  PACKED: "#7C3AED",
-  SHIPPED: "#6366F1",
-  DELIVERED: "#10B981",
-  CANCELLED: "#94A3B8",
-  FAILED: "#F43F5E",
-  RETURNED: "#F97316",
-  REFUNDED: "#14B8A6",
+  PENDING: "rgb(var(--c-warning))",
+  CONFIRMED: "rgb(var(--c-info))",
+  PROCESSING: "rgb(var(--c-chart-2))",
+  PACKED: "rgb(var(--c-brand))",
+  SHIPPED: "rgb(var(--c-chart-1))",
+  DELIVERED: "rgb(var(--c-chart-5))",
+  CANCELLED: "rgb(var(--c-text-subtle))",
+  FAILED: "rgb(var(--c-danger))",
+  RETURNED: "rgb(var(--c-chart-3))",
+  REFUNDED: "rgb(var(--c-success))",
 };
 
 /* KPI tile in the ui StatCard's v4 visual language (icon chip, text-kpi
@@ -239,15 +241,15 @@ export default async function AdminHome() {
             {interpolate(s.heroTodaySales, { sales: formatPoisha(data.today.revenuePoisha), orders: data.today.orders })}
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
-            <Link href="/admin/orders" className="flex min-h-[44px] items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-brand-700 shadow-sm transition duration-fast ease-smooth hover:bg-brand-50">
+            <Link href="/admin/orders" className="flex min-h-[44px] items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-brand-700 shadow-sm transition duration-fast ease-smooth hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
               <Icon name="ShoppingCart" className="h-4 w-4" />
               {s.viewOrders}
             </Link>
-            <Link href="/admin/products/new" className="flex min-h-[44px] items-center gap-2 rounded-xl bg-white/15 px-4 text-sm font-medium text-white ring-1 ring-white/40 transition duration-fast ease-smooth hover:bg-white/25">
+            <Link href="/admin/products/new" className="flex min-h-[44px] items-center gap-2 rounded-xl bg-white/15 px-4 text-sm font-medium text-white ring-1 ring-white/40 transition duration-fast ease-smooth hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
               <Icon name="Package" className="h-4 w-4" />
               {s.addProduct}
             </Link>
-            <Link href="/admin/riders" className="flex min-h-[44px] items-center gap-2 rounded-xl bg-white/15 px-4 text-sm font-medium text-white ring-1 ring-white/40 transition duration-fast ease-smooth hover:bg-white/25">
+            <Link href="/admin/riders" className="flex min-h-[44px] items-center gap-2 rounded-xl bg-white/15 px-4 text-sm font-medium text-white ring-1 ring-white/40 transition duration-fast ease-smooth hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
               <Icon name="Bike" className="h-4 w-4" />
               {s.myRiders}
             </Link>
@@ -294,7 +296,7 @@ export default async function AdminHome() {
                 {interpolate(s.salesChartDesc, { from: data.range.from, to: data.range.to })}
               </p>
             </div>
-            <Link href="/admin/reports" className="flex items-center gap-1 text-small font-semibold text-brand-700 hover:underline">
+            <Link href="/admin/reports" className="flex items-center gap-1 rounded text-small font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
               {s.openReport}
               <Icon name="ChevronRight" className="h-4 w-4" />
             </Link>
@@ -346,7 +348,7 @@ export default async function AdminHome() {
                       cy="60"
                       r={DONUT_R}
                       fill="none"
-                      stroke={STATUS_COLORS[seg.status] ?? "#6366F1"}
+                      stroke={STATUS_COLORS[seg.status] ?? "rgb(var(--c-chart-1))"}
                       strokeWidth="13"
                       strokeDasharray={`${Math.max(0, seg.dash - 2)} ${DONUT_C - Math.max(0, seg.dash - 2)}`}
                       strokeDashoffset={-seg.offset}
@@ -361,7 +363,7 @@ export default async function AdminHome() {
               <ul className="mt-4 space-y-1.5">
                 {donutSegments.map((seg) => (
                   <li key={seg.status} className="flex items-center gap-2 text-small">
-                    <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: STATUS_COLORS[seg.status] ?? "#6366F1" }} />
+                    <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: STATUS_COLORS[seg.status] ?? "rgb(var(--c-chart-1))" }} />
                     <span className="min-w-0 flex-1">{statusCell(seg.status)}</span>
                     <span className="tnum font-semibold">{seg.n}</span>
                     <span className="tnum w-11 text-right text-caption text-text-subtle">
@@ -383,7 +385,7 @@ export default async function AdminHome() {
               <h2 className="text-h3">{s.recentOrders}</h2>
               <p className="mt-0.5 text-caption text-text-muted">{s.recentOrdersDesc}</p>
             </div>
-            <Link href="/admin/orders" className="flex items-center gap-1 text-small font-semibold text-brand-700 hover:underline">
+            <Link href="/admin/orders" className="flex items-center gap-1 rounded text-small font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
               {s.allOrders}
               <Icon name="ChevronRight" className="h-4 w-4" />
             </Link>
@@ -397,7 +399,7 @@ export default async function AdminHome() {
               <p className="mt-1 max-w-sm text-caption text-text-muted">
                 {s.noOrdersYetLongDesc}
               </p>
-              <Link href="/admin/products/new" className="brand-gradient mt-4 flex min-h-[40px] items-center rounded-xl px-4 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:opacity-95">
+              <Link href="/admin/products/new" className="brand-gradient mt-4 flex min-h-11 items-center rounded-xl px-4 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:opacity-95 md:min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                 {s.addProduct}
               </Link>
             </div>
@@ -405,7 +407,7 @@ export default async function AdminHome() {
             <ul className="mt-2 divide-y divide-border">
               {data.recentOrders.map((o) => (
                 <li key={o.id}>
-                  <Link href={`/admin/orders/${o.id}`} className="group flex items-center gap-3 py-3 transition duration-fast ease-smooth">
+                  <Link href={`/admin/orders/${o.id}`} className="group flex items-center gap-3 rounded-xl py-3 transition duration-fast ease-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                     <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-text-muted transition duration-fast ease-smooth group-hover:bg-brand-soft group-hover:text-brand-ink">
                       <Icon name="ShoppingCart" className="h-[18px] w-[18px]" />
                     </span>
@@ -436,7 +438,7 @@ export default async function AdminHome() {
             <ul className="mt-2 divide-y divide-border">
               {pendingActions.map((a) => (
                 <li key={a.label}>
-                  <Link href={a.href} className="group flex items-center gap-3 py-3">
+                  <Link href={a.href} className="group flex items-center gap-3 rounded-xl py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                     <span aria-hidden="true" className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${a.accent}`}>
                       <Icon name={a.icon} className="h-[18px] w-[18px]" />
                     </span>
@@ -455,7 +457,7 @@ export default async function AdminHome() {
           <Card>
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-h3">{s.lowStock}</h2>
-              <Link href="/admin/inventory" className="flex items-center gap-1 text-small font-semibold text-brand-700 hover:underline">
+              <Link href="/admin/inventory" className="flex items-center gap-1 rounded text-small font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                 {s.inventory}
                 <Icon name="ChevronRight" className="h-4 w-4" />
               </Link>
@@ -487,7 +489,7 @@ export default async function AdminHome() {
       <PageHeader title={s.allModules} subtitle={s.allModulesDesc} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
         {tiles.map((item) => (
-          <Link key={item.id} href={item.path} className="group block">
+          <Link key={item.id} href={item.path} className="group block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
             <Card elevation="lift" className="h-full group-hover:border-brand-300">
               <div className="flex items-start justify-between gap-2">
                 <span aria-hidden="true" className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-soft text-brand-ink transition duration-fast ease-smooth group-hover:bg-brand-100">

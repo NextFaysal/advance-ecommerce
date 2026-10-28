@@ -173,7 +173,7 @@ export function ReturnsPanel({ orderId }: { orderId: string }) {
     <Card className="p-4">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-small font-semibold text-text-main">{s.rtTitle}</h3>
-        <Link href="/admin/returns" className="text-small font-medium text-brand-700 hover:underline">
+        <Link href="/admin/returns" className="text-small font-medium text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
           {s.rtQueueLink}
         </Link>
       </div>

@@ -97,7 +97,7 @@ export function RailManagementSummary({ orderId }: { orderId: string }) {
           {view.held ? (
             <p
               role="alert"
-              className="mb-3 flex items-start gap-2 rounded-md bg-rose-50 px-3 py-2 text-small font-medium leading-relaxed text-rose-700"
+              className="mb-3 flex items-start gap-2 rounded-md bg-danger-soft px-3 py-2 text-small font-medium leading-relaxed text-danger"
             >
               <Icon name="alert" size={14} className="mt-0.5 shrink-0" />
               <span>

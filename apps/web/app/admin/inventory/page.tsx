@@ -230,7 +230,9 @@ export default async function AdminInventoryPage() {
           </Badge>
         </div>
         {low.length === 0 ? (
-          <p className="mt-3 text-small leading-relaxed text-text-muted">{s.lowStockNone}</p>
+          <div className="mt-3">
+            <EmptyState title={s.lowStockEmptyTitle} description={s.lowStockEmptyDesc} />
+          </div>
         ) : (
           <ul className="mt-4 space-y-2">
             {low.map((r) => {
@@ -248,7 +250,7 @@ export default async function AdminInventoryPage() {
                     {r.productId ? (
                       <Link
                         href={`/admin/products/${r.productId}`}
-                        className="block truncate text-small font-semibold text-text-main underline-offset-2 hover:text-brand-700 hover:underline"
+                        className="block truncate text-small font-semibold text-text-main underline-offset-2 hover:text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                       >
                         {r.productTitleBn ?? r.variantId}
                       </Link>

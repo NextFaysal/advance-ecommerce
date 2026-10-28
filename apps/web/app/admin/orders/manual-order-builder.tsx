@@ -887,7 +887,7 @@ export function ManualOrderBuilder({ onCreated }: { onCreated: () => void | Prom
               <ul className="mt-2 space-y-1 text-small text-text-muted">
                 {recentOrders.map((o) => (
                   <li key={o.id} className="flex flex-wrap items-center gap-x-2">
-                    <a href={`/admin/orders/${o.id}`} className="font-mono font-semibold text-brand-700 hover:underline">
+                    <a href={`/admin/orders/${o.id}`} className="font-mono font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                       {o.orderNo}
                     </a>
                     <span>{o.status}</span>

@@ -25,6 +25,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { formatBdt } from "@advance-ecommerce/validators";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { DataTableSkeleton } from "@/components/ui/table";
 import { useLocale } from "@/i18n/LocaleProvider";
@@ -284,11 +285,7 @@ export default function PurchaseOrdersPanel() {
     );
   }
   if (orders.length === 0) {
-    return (
-      <p className="text-small leading-relaxed text-text-muted">
-        {s.poEmpty}
-      </p>
-    );
+    return <EmptyState title={s.poEmptyTitle} description={s.poEmptyDesc} />;
   }
 
   return (
@@ -491,7 +488,10 @@ export default function PurchaseOrdersPanel() {
                     <div className="mt-4">
                       <p className="font-display text-small font-semibold text-text-main">{s.historyTitle}</p>
                       {detail.history.length === 0 ? (
-                        <p className="mt-1 text-caption text-text-muted">{s.historyNone}</p>
+                        <div className="mt-1">
+                          <p className="text-caption font-medium text-text-main">{s.historyEmptyTitle}</p>
+                          <p className="text-caption text-text-muted">{s.historyEmptyDesc}</p>
+                        </div>
                       ) : (
                         <ul className="mt-1 space-y-1">
                           {detail.history.map((h) => (

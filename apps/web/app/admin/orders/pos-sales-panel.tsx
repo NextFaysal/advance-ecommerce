@@ -93,7 +93,7 @@ export function PosSalesPanel() {
           <h2 className="text-h3">{s.posTitle}</h2>
           <p className="mt-0.5 max-w-2xl text-small leading-relaxed text-text-muted">
             {s.posIntro1}{" "}
-            <a href="/admin/pos" className="font-semibold text-brand-700 hover:underline">
+            <a href="/admin/pos" className="font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
               {s.posRegister}
             </a>{" "}
             {s.posIntro2}

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Money, formatPoisha } from "@/components/ui/money";
 import { DataTableSkeleton } from "@/components/ui/table";
@@ -255,7 +256,9 @@ function SplitPlanner({ orders, inventory }: { orders: OrderRow[]; inventory: In
         <code>allocateOrderItems()</code> {t.splitDesc2} <code>persisted: false</code> {t.splitDesc3}
       </p>
       {orders.length === 0 ? (
-        <p className="mt-4 text-sm text-text-muted">{t.noOrdersPlanner}</p>
+        <div className="mt-4">
+          <EmptyState title={t.noOrdersPlannerEmptyTitle} description={t.noOrdersPlannerEmptyDesc} />
+        </div>
       ) : (
         <>
           <OrderPicker orders={orders} value={selectedId ?? ""} onChange={setOrderId} label={t.realOrder} />
@@ -359,7 +362,9 @@ function PaymentPanel({ orders }: { orders: OrderRow[] }) {
         {t.paymentDesc1} <code>derivePaymentStatus()</code> {t.paymentDesc2}
       </p>
       {orders.length === 0 ? (
-        <p className="mt-4 text-sm text-text-muted">{t.noOrders}</p>
+        <div className="mt-4">
+          <EmptyState title={t.noOrdersEmptyTitle} description={t.noOrdersEmptyDesc} />
+        </div>
       ) : (
         <>
           <OrderPicker orders={orders} value={selectedId ?? ""} onChange={setOrderId} label={t.realOrder} />
@@ -386,7 +391,7 @@ function PaymentPanel({ orders }: { orders: OrderRow[] }) {
               </p>
               {selectedId ? (
                 <p className="mt-4 text-sm">
-                  <Link href={`/admin/orders/${selectedId}`} className="text-brand-600 underline">
+                  <Link href={`/admin/orders/${selectedId}`} className="text-brand-600 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                     {t.openWorkspace}
                   </Link>
                 </p>
@@ -465,7 +470,9 @@ function ExchangePanel({ orders, products }: { orders: OrderRow[]; products: Pro
         {t.exchangeDesc1} <code>computeExchange()</code> {t.exchangeDesc2}
       </p>
       {orders.length === 0 ? (
-        <p className="mt-4 text-sm text-text-muted">{t.noOrders}</p>
+        <div className="mt-4">
+          <EmptyState title={t.noOrdersEmptyTitle} description={t.noOrdersEmptyDesc} />
+        </div>
       ) : (
         <>
           <OrderPicker orders={orders} value={selectedId ?? ""} onChange={(id) => { setOrderId(id); setReturnedVariantId(""); }} label={t.returnOrder} />
@@ -608,7 +615,9 @@ function PreOrderPanel({ preOrders, onChanged }: { preOrders: PreOrder[]; onChan
         <code>preOrderDuePoisha()</code> {t.preorderDesc2}
       </p>
       {preOrders.length === 0 ? (
-        <p className="mt-4 text-sm text-text-muted">{t.noPreorders}</p>
+        <div className="mt-4">
+          <EmptyState title={t.noPreordersEmptyTitle} description={t.noPreordersEmptyDesc} />
+        </div>
       ) : (
         <>
         <div className="mt-4 hidden overflow-x-auto rounded-2xl border border-border/60 bg-card shadow-xs md:block">
@@ -714,7 +723,9 @@ function TransfersCard({ transfers }: { transfers: StockTransfer[] }) {
       <h2 className="font-display text-lg font-semibold text-text-main">{t.transfersTitle}</h2>
       <p className="mt-1 text-sm text-text-muted">{t.transfersDesc}</p>
       {transfers.length === 0 ? (
-        <p className="mt-4 text-sm text-text-muted">{t.noTransfers}</p>
+        <div className="mt-4">
+          <EmptyState title={t.noTransfersEmptyTitle} description={t.noTransfersEmptyDesc} />
+        </div>
       ) : (
         <>
         <div className="mt-4 hidden overflow-x-auto rounded-2xl border border-border/60 bg-card shadow-xs md:block">
@@ -845,7 +856,7 @@ export function AdvancedOrdersClient() {
       {failedFeeds.length > 0 ? (
         <div className="rounded-2xl border border-warning-solid/30 bg-warning-soft px-4 py-3 text-sm text-text-main">
           <strong>{t.feedsFailedPrefix}</strong> {failedFeeds.join(", ")}{t.feedsFailedSuffix}{" "}
-          <button type="button" className="underline" onClick={() => void loadAll()}>
+          <button type="button" className="underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300" onClick={() => void loadAll()}>
             {t.retry}
           </button>
         </div>

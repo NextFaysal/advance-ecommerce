@@ -142,7 +142,7 @@ export function OrderImportCard({ onImported }: { onImported?: () => void }) {
                   <>
                     <span className="text-success-solid">{s.impCreated}</span>
                     {r.orderId && r.orderNo ? (
-                      <Link href={`/admin/orders/${r.orderId}`} className="font-mono font-semibold text-brand-700 hover:underline">
+                      <Link href={`/admin/orders/${r.orderId}`} className="font-mono font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                         {r.orderNo}
                       </Link>
                     ) : null}

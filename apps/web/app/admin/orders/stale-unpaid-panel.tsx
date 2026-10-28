@@ -119,7 +119,7 @@ export function StaleUnpaidPanel() {
         <ul className="mt-3 divide-y divide-border rounded-xl border border-border bg-surface">
           {data.map((row) => (
             <li key={row.id} className="flex flex-col gap-1.5 px-3 py-2 text-small sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
-              <Link href={`/admin/orders/${row.id}`} className="font-semibold text-brand-700 hover:underline">
+              <Link href={`/admin/orders/${row.id}`} className="font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                 {row.orderNo}
               </Link>
               <span

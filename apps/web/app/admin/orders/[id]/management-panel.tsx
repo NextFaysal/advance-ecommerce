@@ -194,16 +194,16 @@ export function ManagementPanel({ orderId }: { orderId: string }) {
       {view.held && (
         <div
           role="alert"
-          className="mt-3 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 dark:border-rose-400/30 dark:bg-rose-500/10"
+          className="mt-3 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3"
         >
-          <p className="text-sm font-semibold text-rose-900 dark:text-rose-200">
+          <p className="text-sm font-semibold text-danger">
             {s.mgHeldTitleBase}
             {view.heldAt ? interpolate(s.mgHeldSince, { date: formatOrderDateTime(view.heldAt, locale) }) : ""}
           </p>
-          <p className="mt-0.5 text-small text-rose-800 dark:text-rose-300">
+          <p className="mt-0.5 text-small text-danger">
             {interpolate(s.tlReason, { reason: view.heldReason ?? "—" })}
           </p>
-          <p className="mt-1 text-caption text-rose-700 dark:text-rose-300">{s.mgHeldNote}</p>
+          <p className="mt-1 text-caption text-danger">{s.mgHeldNote}</p>
           <Button
             type="button"
             variant="outline"
@@ -367,7 +367,7 @@ export function ManagementPanel({ orderId }: { orderId: string }) {
       {error && (
         <p
           role="alert"
-          className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-small text-rose-800 dark:bg-rose-500/10 dark:text-rose-200"
+          className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-small text-danger"
         >
           {error}
         </p>
@@ -375,7 +375,7 @@ export function ManagementPanel({ orderId }: { orderId: string }) {
       {savedMsg && (
         <p
           role="status"
-          className="mt-3 rounded-md bg-emerald-50 px-3 py-2 text-small text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-200"
+          className="mt-3 rounded-md bg-success-soft px-3 py-2 text-small text-success-solid"
         >
           {savedMsg}
         </p>

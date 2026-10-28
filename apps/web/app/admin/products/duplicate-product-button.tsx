@@ -62,7 +62,7 @@ export function DuplicateProductButton({
     return (
       <Link
         href={`/admin/products/${copy.id}`}
-        className="inline-flex min-h-[44px] items-center rounded-xl px-3 text-small font-semibold text-success-solid transition duration-fast ease-smooth hover:bg-success-soft"
+        className="inline-flex min-h-[44px] items-center rounded-xl px-3 text-small font-semibold text-success-solid transition duration-fast ease-smooth hover:bg-success-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         title={interpolate(s.duplicateDoneTitle, { title: copy.title })}
       >
         {s.duplicateDoneLink}
