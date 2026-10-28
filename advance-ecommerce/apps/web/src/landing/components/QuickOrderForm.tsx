@@ -120,6 +120,7 @@ import {
   type CheckoutFieldsConfig,
 } from "@/checkout/fields";
 import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { StoreImage } from "@/storefront-ux/components/StoreImage";
 import { LANDING_STRINGS, type LandingStrings } from "../strings";
 import type { ResolvedOrderProduct } from "../render";
 
@@ -513,20 +514,20 @@ export function QuickOrderForm({
 
   if (phase.kind === "success") {
     return (
-      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center" role="status">
+      <div className="rounded-2xl border border-success-solid/30 bg-success-soft p-5 text-center" role="status">
         <p className="text-3xl" aria-hidden="true">✅</p>
-        <h3 className="mt-2 text-xl font-bold text-emerald-900">{s.successTitle}</h3>
-        <p className="mt-2 leading-7 text-emerald-900">
+        <h3 className="mt-2 text-xl font-bold text-success-solid">{s.successTitle}</h3>
+        <p className="mt-2 leading-7 text-success-solid">
           {s.successOrderNo}: <span className="font-bold">{phase.orderNo}</span>
           <br />
           {s.successTotalLabel}: <span className="font-bold">{formatBdt(phase.totalPoisha)}</span> {s.successTotalSuffix}
         </p>
-        <p className="mt-2 text-sm leading-6 text-emerald-800">
+        <p className="mt-2 text-sm leading-6 text-success-solid">
           {s.successConfirmNote}
         </p>
         <a
           href={`/track?orderNo=${encodeURIComponent(phase.orderNo)}`}
-          className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white transition hover:bg-emerald-700"
+          className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-success-solid px-4 py-2 font-semibold text-white transition hover:brightness-105"
         >
           {s.trackOrderCta}
         </a>
@@ -813,7 +814,7 @@ export function QuickOrderForm({
           />
           {funnel.bump.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={funnel.bump.imageUrl} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
+            <StoreImage src={funnel.bump.imageUrl} alt="" preset="thumb" className="w-14 shrink-0 rounded-lg" />
           ) : null}
           <span className="min-w-0">
             <span className="block font-bold text-text-main">
@@ -828,7 +829,7 @@ export function QuickOrderForm({
               {funnel.bump.discountedPoisha < funnel.bump.livePricePoisha ? (
                 <>
                   <span className="text-sm text-text-muted line-through">{formatBdt(funnel.bump.livePricePoisha)}</span>
-                  <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-800">
+                  <span className="rounded bg-success-soft px-1.5 py-0.5 text-xs font-semibold text-success-solid">
                     {interpolate(s.funnelYouSave, { amount: formatBdt(funnel.bump.livePricePoisha - funnel.bump.discountedPoisha) })}
                   </span>
                 </>
