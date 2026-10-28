@@ -30,8 +30,10 @@ import { RecentOrdersSection } from "@/marketing/components/RecentOrdersSection"
 import { SubscribeSaveSection } from "@/subscriptions/subscribe-save-section";
 import { BoxSubscribeSection } from "@/boxes/box-subscribe-section";
 import { CourseOutlineSection } from "@/courses/course-outline-section";
-import { RecordRecentlyViewed } from "@/storefront-ux/components/RecordRecentlyViewed";
-import { RecentlyViewedRail } from "@/storefront-ux/components/RecentlyViewedRail";
+import {
+  RecordRecentlyViewedLazy,
+  RecentlyViewedRailLazy,
+} from "@/storefront-ux/components/RecentlyViewedLazy";
 import { StickyBuyBar } from "@/storefront-ux/components/StickyBuyBar";
 import { CompareToggleButton, CompareTray } from "@/storefront-ux/components/CompareTray";
 import { BackInStockForm } from "@/storefront-ux/components/BackInStockForm";
@@ -167,7 +169,7 @@ export default async function AuroraPdpComposition({
   const trustTexts = [s.trustPdpCod, s.trustPdpDelivery, s.trustPdpReturn, s.trustPdpOriginal];
   return (
     <main className="mx-auto min-w-0 max-w-[1440px] px-4 py-6 sm:px-6 lg:py-8">
-      <RecordRecentlyViewed entry={recentlyViewedEntry} />
+      <RecordRecentlyViewedLazy entry={recentlyViewedEntry} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
       {/* Breadcrumb */}
@@ -709,7 +711,7 @@ export default async function AuroraPdpComposition({
         </Reveal>
       ) : null}
 
-      <RecentlyViewedRail excludeProductId={product.id} />
+      <RecentlyViewedRailLazy excludeProductId={product.id} />
       {/* Sticky bar hidden for price-on-request products (it shows a price). */}
       {priceOnRequest ? null : (
         <StickyBuyBar titleBn={title} pricePoisha={minPrice} inStock={displayInStock} buyBoxId="buy-box" />

@@ -24,9 +24,11 @@
  * manifest's `supportsDark: false` (registry.ts) is the honest
  * declaration of that — this package is light-first.
  *
- * Font stacks are values from the platform allowlist
- * (THEME_FONT_STACKS in src/lib/themes.ts): the Hind Siliguri-led
- * stacks, since this is a Bangla-first grocery layout.
+ * Font tokens reference the shared brand stacks defined once in
+ * app/globals.css (--font-brand-sans / --font-brand-display, perf
+ * wave item 5); the resolved stacks are the platform allowlist's
+ * Hind Siliguri-led stacks (THEME_FONT_STACKS in src/lib/themes.ts),
+ * since this is a Bangla-first grocery layout.
  */
 import type { ThemeTokens } from "@/lib/themes";
 
@@ -101,11 +103,12 @@ export const BAZAAR_TOKENS: ThemeTokens = {
     "--shadow-pop":
       "0 4px 12px rgba(30, 42, 50, 0.08), 0 20px 40px -12px rgba(30, 42, 50, 0.2)",
 
-    /* Typography — allowlisted Hind Siliguri-led stacks. */
-    "--font-sans":
-      '"Hind Siliguri", "Noto Sans Bengali", "Plus Jakarta Sans", system-ui, sans-serif',
-    "--font-display":
-      '"Hind Siliguri", "Plus Jakarta Sans", "Noto Sans Bengali", system-ui, sans-serif',
+    /* Typography — the shared brand stacks by reference (perf wave
+       item 5): the literal stacks live once in app/globals.css as
+       --font-brand-sans / --font-brand-display; the resolved values
+       are the allowlist's Hind Siliguri-led stacks, unchanged. */
+    "--font-sans": "var(--font-brand-sans)",
+    "--font-display": "var(--font-brand-display)",
   },
   // Light-first package: no dark delta (see header comment).
   dark: {},

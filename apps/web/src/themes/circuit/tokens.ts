@@ -24,9 +24,11 @@
  * background and cards, the same orange primary, a brightened
  * price red — not an empty passthrough.
  *
- * Font stacks are values from the platform allowlist
- * (THEME_FONT_STACKS in src/lib/themes.ts): the Hind Siliguri-led
- * stacks, since this is a Bangla-first storefront.
+ * Font tokens reference the shared brand stacks defined once in
+ * app/globals.css (--font-brand-sans / --font-brand-display, perf
+ * wave item 5); the resolved stacks are the platform allowlist's
+ * Hind Siliguri-led stacks (THEME_FONT_STACKS in src/lib/themes.ts),
+ * since this is a Bangla-first storefront.
  */
 import type { ThemeTokens } from "@/lib/themes";
 
@@ -103,11 +105,12 @@ export const CIRCUIT_TOKENS: ThemeTokens = {
     "--shadow-pop":
       "0 6px 16px rgba(16, 34, 46, 0.1), 0 24px 48px -12px rgba(16, 34, 46, 0.24)",
 
-    /* Typography — allowlisted Hind Siliguri-led stacks. */
-    "--font-sans":
-      '"Hind Siliguri", "Noto Sans Bengali", "Plus Jakarta Sans", system-ui, sans-serif',
-    "--font-display":
-      '"Hind Siliguri", "Plus Jakarta Sans", "Noto Sans Bengali", system-ui, sans-serif',
+    /* Typography — the shared brand stacks by reference (perf wave
+       item 5): the literal stacks live once in app/globals.css as
+       --font-brand-sans / --font-brand-display; the resolved values
+       are the allowlist's Hind Siliguri-led stacks, unchanged. */
+    "--font-sans": "var(--font-brand-sans)",
+    "--font-display": "var(--font-brand-display)",
   },
   /* Real dark delta (supportsDark: true): deep-navy surfaces, the
      same orange primary, a brightened price red so prices stay

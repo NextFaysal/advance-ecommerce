@@ -19,7 +19,7 @@ import Link from "next/link";
 import { ThemedProductCard } from "../themed-product-card";
 import type { Category } from "@/catalog/types";
 import { Reveal } from "@/components/ui/reveal";
-import { NewsletterForm } from "@/newsletter/components/NewsletterForm";
+import { NewsletterFormLazy } from "@/newsletter/components/NewsletterFormLazy";
 import { FlashSaleCountdownSection } from "@/marketing/flash-sale-section";
 import { HeroSlides } from "@/cms/HeroSlides";
 import { HeroExperiment } from "@/marketing/components/HeroExperiment";
@@ -423,7 +423,7 @@ async function AuroraHomeSectionsInner({
           </div>
           {/* Real subscribe form → POST /api/v1/public/newsletter
               (src/newsletter). Renders its own success/error states. */}
-          <NewsletterForm source="homepage" />
+          <NewsletterFormLazy source="homepage" />
         </div>
       </section>
       </Reveal>

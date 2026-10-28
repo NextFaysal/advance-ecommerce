@@ -43,8 +43,10 @@ import { WishlistToggleButton } from "@/catalog/WishlistToggleButton";
 import { CompareToggleButton, CompareTray } from "@/storefront-ux/components/CompareTray";
 import { BackInStockForm } from "@/storefront-ux/components/BackInStockForm";
 import { StickyBuyBar } from "@/storefront-ux/components/StickyBuyBar";
-import { RecordRecentlyViewed } from "@/storefront-ux/components/RecordRecentlyViewed";
-import { RecentlyViewedRail } from "@/storefront-ux/components/RecentlyViewedRail";
+import {
+  RecordRecentlyViewedLazy,
+  RecentlyViewedRailLazy,
+} from "@/storefront-ux/components/RecentlyViewedLazy";
 import { RecentOrdersSection } from "@/marketing/components/RecentOrdersSection";
 import { EmiNote } from "@/marketing/components/EmiNote";
 import { SubscribeSaveSection } from "@/subscriptions/subscribe-save-section";
@@ -146,7 +148,7 @@ export default async function HaatPdpComposition({
   const TRUST_ROWS = trustRows(s);
   return (
     <main className="bg-surface-2">
-      <RecordRecentlyViewed entry={recentlyViewedEntry} />
+      <RecordRecentlyViewedLazy entry={recentlyViewedEntry} />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
@@ -672,7 +674,7 @@ export default async function HaatPdpComposition({
         ) : null}
 
         {/* Recently viewed */}
-        <RecentlyViewedRail excludeProductId={product.id} />
+        <RecentlyViewedRailLazy excludeProductId={product.id} />
       </div>
 
       {/* Mobile sticky buy bar — same component + behaviour as

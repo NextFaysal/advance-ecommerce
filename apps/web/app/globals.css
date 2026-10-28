@@ -46,6 +46,21 @@
   /* Display stack as a token (theme catalogue --font-display); identical
      to the stack the .font-display utility below has always used. */
   --font-display: "Hind Siliguri", "Plus Jakarta Sans", system-ui, sans-serif;
+  /* Canonical brand stacks for theme packages (perf wave item 5):
+     every package tokens.ts now sets --font-sans/--font-display to
+     var(--font-brand-sans)/var(--font-brand-display), so the family
+     names live in exactly this one place and a future next/font
+     migration rewrites two lines instead of fourteen. The values are
+     the packages' long-standing stacks, byte-identical to before:
+     --font-brand-sans is the allowlist's "siliguri" stack and
+     --font-brand-display its "siliguri-display" stack
+     (THEME_FONT_STACKS in src/lib/themes.ts). Noto Sans Bengali keeps
+     its historical position BEHIND Hind Siliguri in both — Hind is
+     loaded and covers the Bengali range, so Noto never resolved
+     there (and is no longer loaded at all); it is retained in the
+     literal stack only so the resolved value stays byte-identical. */
+  --font-brand-sans: "Hind Siliguri", "Noto Sans Bengali", "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-brand-display: "Hind Siliguri", "Plus Jakarta Sans", "Noto Sans Bengali", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   /* RGB triplets for the static-hex colours in tailwind.config.js — the
      config references them as rgb(var(--c-…) / <alpha-value>) so these
