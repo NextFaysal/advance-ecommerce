@@ -35,7 +35,7 @@ export const BAZAAR_CHECKOUT_SKIN: CheckoutSkin = {
   PRIMARY_CTA_CLASS:
     "brand-gradient h-12 w-full rounded-md text-base font-semibold text-white shadow-md transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60",
   STICKY_BAR_CLASS:
-    "fixed inset-x-0 bottom-16 z-40 border-t border-input bg-card/95 px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur lg:hidden",
+    "fixed inset-x-0 bottom-0 z-40 border-t border-input bg-card/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur lg:hidden",
   STICKY_CTA_CLASS:
     "brand-gradient flex h-12 shrink-0 items-center gap-1.5 rounded-md px-5 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60",
 };

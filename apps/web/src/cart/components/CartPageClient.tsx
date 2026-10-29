@@ -27,6 +27,7 @@ import { computePricing } from "@/checkout/pricing";
 import type { PublicProduct } from "@/catalog/types";
 import { getWishlistIds, toggleWishlistId } from "@/catalog/wishlist";
 import { useLocale } from "@/i18n/LocaleProvider";
+import { useThemeView } from "@/themes/theme-view";
 import { interpolate, pick } from "@/i18n/locale";
 import {
   clearGuestCart,
@@ -68,6 +69,10 @@ export default function CartPageClient({
   const bengaliDigits = useBengaliNumerals();
   const { locale, t } = useLocale();
   const s = pick(locale, CART_STRINGS);
+  // Only the Aurora shell renders a mobile bottom nav; the sticky
+  // bar below must clear it (bottom-16) under Aurora and sit on the
+  // bottom edge (bottom-0 + safe-area) under every other shell.
+  const shellIsAurora = useThemeView().packageId === "aurora";
   const zoneLabel = (z: CartShippingZone) => (locale === "bn" ? z.labelBn : z.labelEn);
   const [cart, setCart] = useState<Cart | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -525,10 +530,19 @@ export default function CartPageClient({
         </Card>
       </div>
 
-      {/* Sticky total + checkout bar — small screens only, directly
-          above the shell's mobile bottom nav. Desktop keeps the summary
-          card's own checkout button. */}
-      <div className="fixed inset-x-0 bottom-16 z-40 border-t border-border bg-card/95 px-4 py-3 shadow-[0_-4px_16px_rgba(49,46,129,0.08)] backdrop-blur lg:hidden">
+      {/* Sticky total + checkout bar — small screens only. Under the
+          Aurora shell it sits directly above that shell's mobile
+          bottom nav (bottom-16); under every other shell there is no
+          bottom nav, so it anchors to the bottom edge with safe-area
+          padding. Desktop keeps the summary card's own checkout
+          button. */}
+      <div
+        className={`fixed inset-x-0 z-40 border-t border-border bg-card/95 px-4 shadow-[0_-4px_16px_rgba(49,46,129,0.08)] backdrop-blur lg:hidden ${
+          shellIsAurora
+            ? "bottom-16 py-3"
+            : "bottom-0 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        }`}
+      >
         <div className="mx-auto flex max-w-7xl items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-xs text-text-muted">{interpolate(s.totalWithDelivery, { zone: zoneLabel(zone) })}</p>

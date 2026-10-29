@@ -2,7 +2,13 @@
  * /faq — Frequently Asked Questions. Agent 29.
  * 10 Q&A (full {bn, en}) from src/legal/content.ts; one answer links to
  * /track (order tracking), others to /shipping-policy and /refund-policy.
- * Locale resolves per request (doc 30): visitor cookie → store default.
+ * Locale: the store default (doc 30 static-surface rule) — this page
+ * used to resolve the visitor's cookie locale per request via
+ * getRequestLocale(), whose cookies() read forced the whole route
+ * dynamic (no-store, full render per hit, ~4.5s RSC prefetches in
+ * production). The content is deploy-time constants with no
+ * per-visitor state, so it now renders exactly like the homepage:
+ * ISR + force-static in the store-default language.
  *
  * Doc 32 P7: the stacked always-open sections became a native
  * <details> accordion (kit-standard card rows, 44px summary targets,
@@ -14,10 +20,19 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { FAQ_CONTENT, LEGAL_LAST_UPDATED_DRAFT } from "@/legal/content";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
+
+// Speed fix (2026-10-29): ISR + force-static, the same pin the
+// homepage and PDP carry. revalidate 300 matches the blog/CMS
+// cadence (this page's content is editorial constants); the
+// force-static pin is what actually keeps the route in the
+// prerender manifest — under auto mode a route in this tree can
+// silently opt out of static generation and serve no-store.
+export const revalidate = 300;
+export const dynamic = "force-static";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const locale = await getRequestLocale();
+  const locale = await getStoreDefaultLocale();
   const content = FAQ_CONTENT[locale];
   return {
     title: `${content.title} — Advance Ecommerce`,
@@ -26,7 +41,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function FaqPage() {
-  const locale = await getRequestLocale();
+  const locale = await getStoreDefaultLocale();
   const content = FAQ_CONTENT[locale];
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-8 sm:py-12">

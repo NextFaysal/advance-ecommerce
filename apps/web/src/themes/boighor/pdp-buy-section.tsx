@@ -181,7 +181,7 @@ export default function BoighorPdpBuySection({
                       type="button"
                       onClick={() => setSelectedId(candidate.id)}
                       aria-pressed={isActive}
-                      className={`min-h-[40px] rounded-lg border px-3.5 text-sm font-semibold transition duration-200 active:scale-[0.97] ${
+                      className={`min-h-[44px] rounded-lg border px-3.5 text-sm font-semibold transition duration-200 active:scale-[0.97] ${
                         isActive
                           ? "border-primary bg-primary/10 text-primary ring-1 ring-primary"
                           : "border-input bg-card text-text-main hover:border-primary/60"
@@ -206,7 +206,7 @@ export default function BoighorPdpBuySection({
                 type="button"
                 onClick={() => setSelectedId(v.id)}
                 aria-pressed={isActive}
-                className={`min-h-[40px] rounded-lg border px-3.5 text-sm font-semibold transition duration-200 active:scale-[0.97] ${
+                className={`min-h-[44px] rounded-lg border px-3.5 text-sm font-semibold transition duration-200 active:scale-[0.97] ${
                   isActive
                     ? "border-primary bg-primary/10 text-primary ring-1 ring-primary"
                     : "border-input bg-card text-text-main hover:border-primary/60"

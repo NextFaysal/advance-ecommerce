@@ -40,7 +40,7 @@ export default function CircuitPdpTabs({
           role="tab"
           aria-selected={tab === "description"}
           onClick={() => setTab("description")}
-          className={`h-10 shrink-0 rounded-lg px-4 text-sm font-bold transition duration-200 sm:px-5 ${
+          className={`h-11 shrink-0 rounded-lg px-4 text-sm font-bold transition duration-200 sm:px-5 ${
             tab === "description"
               ? "bg-card text-primary shadow-card"
               : "text-text-muted hover:text-text-main"
@@ -53,7 +53,7 @@ export default function CircuitPdpTabs({
           role="tab"
           aria-selected={tab === "reviews"}
           onClick={() => setTab("reviews")}
-          className={`h-10 shrink-0 rounded-lg px-4 text-sm font-bold transition duration-200 sm:px-5 ${
+          className={`h-11 shrink-0 rounded-lg px-4 text-sm font-bold transition duration-200 sm:px-5 ${
             tab === "reviews"
               ? "bg-card text-primary shadow-card"
               : "text-text-muted hover:text-text-main"

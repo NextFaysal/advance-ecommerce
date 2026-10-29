@@ -14,7 +14,8 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { validateSessionToken } from "@/lib/auth";
 import { requirePermission, RbacError, type PermissionKey } from "@/lib/rbac";
-import { getOrderAging } from "@/orders/list-v2";
+import { getOrderAging, type AgingBucket } from "@/orders/list-v2";
+import { readThroughOrdersCache } from "@/orders/admin-cache";
 
 function err(code: string, message: string, status: number, details?: unknown) {
   return NextResponse.json({ error: { code, message, details } }, { status });
@@ -38,18 +39,43 @@ export async function GET() {
   const auth = await requireAdmin("orders.view");
   if ("error" in auth) return auth.error;
 
-  const now = new Date();
-  const buckets = await getOrderAging(now);
-  const totalStuck = buckets.reduce((sum, b) => sum + b.count, 0);
-
-  return NextResponse.json({
-    data: buckets,
-    meta: {
-      db: "PRISMA",
-      source: "DATABASE",
-      generatedAt: now.toISOString(),
-      totalStuck,
-      note: "Counts are full SQL counts per bucket; orders are the 10 oldest per bucket. Age is measured from createdAt for pending orders and from updatedAt for the other buckets.",
+  // Perf (2026-10-29 orders speed wave): the computed board is
+  // cached for 60 s (src/orders/admin-cache) — counts, rows and
+  // ageHours are exactly the compute-time values on a hit, and
+  // generatedAt says when they were computed. The buckets also
+  // compute concurrently now (src/orders/list-v2).
+  const body = await readThroughOrdersCache(
+    "admin:orders:aging:v1",
+    (
+      parsed,
+    ): parsed is {
+      data: AgingBucket[];
+      meta: {
+        db: string;
+        source: string;
+        generatedAt: string;
+        totalStuck: number;
+        note: string;
+      };
+    } =>
+      typeof parsed === "object" &&
+      parsed !== null &&
+      Array.isArray((parsed as { data?: unknown }).data),
+    async () => {
+      const now = new Date();
+      const buckets = await getOrderAging(now);
+      const totalStuck = buckets.reduce((sum, b) => sum + b.count, 0);
+      return {
+        data: buckets,
+        meta: {
+          db: "PRISMA",
+          source: "DATABASE",
+          generatedAt: now.toISOString(),
+          totalStuck,
+          note: "Counts are full SQL counts per bucket; orders are the 10 oldest per bucket. Age is measured from createdAt for pending orders and from updatedAt for the other buckets.",
+        },
+      };
     },
-  });
+  );
+  return NextResponse.json(body);
 }

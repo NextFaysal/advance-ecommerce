@@ -153,6 +153,37 @@ const ORDER_INCLUDE = {
   couponUsages: { include: { coupon: { select: { code: true } } } },
 };
 
+/**
+ * Slim include for the ADMIN LIST read (2026-10-29 orders speed
+ * wave). The full ORDER_INCLUDE loads an order's ENTIRE status
+ * history and EVERY note for each of the 25 rows on a page — both
+ * grow unboundedly over an order's life, and the list surface uses
+ * almost none of it:
+ *  - history: only the preview drawer's timeline head (newest 4,
+ *    see timelineHead in app/admin/orders/list-helpers.ts);
+ *  - notes: only the pickup badge's existence check for a
+ *    "[pickup:" note (app/admin/orders/page.tsx).
+ * The slim read therefore fetches the newest 4 history rows
+ * (re-ascending in listOrders before mapping, so the mapped
+ * Order.history is exactly what the preview renders) and only
+ * pickup notes (the badge's some() verdict is unchanged). Items,
+ * tags and coupon usages ride in full, exactly as before. The
+ * order DETAIL read keeps ORDER_INCLUDE — full history and notes
+ * still load there. Contract note: list-row `history`/`notes`
+ * arrays are intentionally partial (newest-4 / pickup-only); any
+ * future list consumer needing more must use the detail endpoint.
+ */
+const ORDER_LIST_INCLUDE = {
+  items: true,
+  history: { orderBy: { createdAt: "desc" as const }, take: 4 },
+  notes: {
+    where: { text: { contains: "[pickup:" } },
+    orderBy: { createdAt: "asc" as const },
+  },
+  tags: true,
+  couponUsages: { include: { coupon: { select: { code: true } } } },
+};
+
 async function findOrderRowByIdOrNo(idOrNo: string) {
   return prisma.order.findFirst({
     where: { deletedAt: null, OR: [{ id: idOrNo }, { orderNo: idOrNo }] },
@@ -323,6 +354,15 @@ const ORDER_LIST_ORDER_BY: Record<OrderListSort, Record<string, string>[]> = {
 
 export async function listOrders(
   filters: OrderListFilters,
+  opts?: {
+    /**
+     * Admin-list read (see ORDER_LIST_INCLUDE): newest-4 history +
+     * pickup-only notes instead of the full relations. Opt-in —
+     * the default read (detail-style consumers, sms-ingest) keeps
+     * the complete ORDER_INCLUDE.
+     */
+    slim?: boolean;
+  },
 ): Promise<{ rows: Order[]; total: number }> {
   const where: Record<string, unknown> = { deletedAt: null };
   if (filters.status) where.status = filters.status;
@@ -340,13 +380,37 @@ export async function listOrders(
     // and the status counts can never disagree about a search.
     where.OR = orderSearchOr(filters.search);
   }
+  const orderBy = (filters.sort ? ORDER_LIST_ORDER_BY[filters.sort] : [{ createdAt: "desc" }]) as never;
+  const page = {
+    skip: (filters.page - 1) * filters.pageSize,
+    take: filters.pageSize,
+  };
+  if (opts?.slim) {
+    const [total, slimRows] = await Promise.all([
+      prisma.order.count({ where: where as never }),
+      prisma.order.findMany({
+        where: where as never,
+        orderBy,
+        ...page,
+        include: ORDER_LIST_INCLUDE,
+      }),
+    ]);
+    return {
+      rows: slimRows.map((r) =>
+        // The slim include returns history newest-first; restore
+        // the ascending order orderRowToOrder (and every consumer)
+        // expects before mapping.
+        orderRowToOrder({ ...r, history: [...r.history].reverse() } as unknown as OrderRow),
+      ),
+      total,
+    };
+  }
   const [total, rows] = await Promise.all([
     prisma.order.count({ where: where as never }),
     prisma.order.findMany({
       where: where as never,
-      orderBy: (filters.sort ? ORDER_LIST_ORDER_BY[filters.sort] : [{ createdAt: "desc" }]) as never,
-      skip: (filters.page - 1) * filters.pageSize,
-      take: filters.pageSize,
+      orderBy,
+      ...page,
       include: ORDER_INCLUDE,
     }),
   ]);

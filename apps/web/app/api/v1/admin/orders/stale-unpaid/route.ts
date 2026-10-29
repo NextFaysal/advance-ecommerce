@@ -21,6 +21,7 @@ import { maskPhone } from "@advance-ecommerce/validators";
 import { prisma } from "@advance-ecommerce/db";
 import { validateSessionToken } from "@/lib/auth";
 import { requirePermission, RbacError, type PermissionKey } from "@/lib/rbac";
+import { readThroughOrdersCache } from "@/orders/admin-cache";
 
 function err(code: string, message: string, status: number, details?: unknown) {
   return NextResponse.json({ error: { code, message, details } }, { status });
@@ -48,57 +49,97 @@ export async function GET(req: Request) {
 
   const rawHours = Number(new URL(req.url).searchParams.get("hours") ?? "24");
   const hours = Number.isFinite(rawHours) ? Math.min(720, Math.max(1, Math.trunc(rawHours))) : 24;
-  const now = new Date();
-  const cutoff = new Date(now.getTime() - hours * 60 * 60 * 1000);
 
-  const where = {
-    status: "PENDING" as const,
-    paymentStatus: "UNPAID" as const,
-    deletedAt: null,
-    createdAt: { lt: cutoff },
-    OR: [{ advanceRequiredPoisha: { gt: 0 } }, { paymentMethod: { not: "COD" as const } }],
-  };
+  // Perf (2026-10-29 orders speed wave): the computed work list is
+  // cached for 60 s per hours value (src/orders/admin-cache) — the
+  // query and mapping are unchanged; on a hit, ageHours/cutoff are
+  // the compute-time values.
+  const body = await readThroughOrdersCache(
+    `admin:orders:stale-unpaid:v1:${hours}`,
+    (
+      parsed,
+    ): parsed is {
+      data: Array<{
+        id: string;
+        orderNo: string;
+        createdAt: string;
+        ageHours: number;
+        totalPoisha: number;
+        advanceRequiredPoisha: number;
+        advanceSatisfied: boolean;
+        paymentMethod: string;
+        customerPhoneMasked: string;
+      }>;
+      meta: {
+        db: string;
+        source: string;
+        hours: number;
+        cutoff: string;
+        total: number;
+        capped: boolean;
+        autoCancelActive: boolean;
+        note: string;
+      };
+    } =>
+      typeof parsed === "object" &&
+      parsed !== null &&
+      Array.isArray((parsed as { data?: unknown }).data) &&
+      typeof (parsed as { meta?: { total?: unknown } }).meta?.total === "number",
+    async () => {
+      const now = new Date();
+      const cutoff = new Date(now.getTime() - hours * 60 * 60 * 1000);
 
-  const [total, orders] = await Promise.all([
-    prisma.order.count({ where }),
-    prisma.order.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: MAX_ROWS,
-      select: {
-        id: true,
-        orderNo: true,
-        createdAt: true,
-        totalPoisha: true,
-        advanceRequiredPoisha: true,
-        advanceSatisfiedAt: true,
-        paymentMethod: true,
-        customerPhone: true,
-      },
-    }),
-  ]);
+      const where = {
+        status: "PENDING" as const,
+        paymentStatus: "UNPAID" as const,
+        deletedAt: null,
+        createdAt: { lt: cutoff },
+        OR: [{ advanceRequiredPoisha: { gt: 0 } }, { paymentMethod: { not: "COD" as const } }],
+      };
 
-  return NextResponse.json({
-    data: orders.map((o) => ({
-      id: o.id,
-      orderNo: o.orderNo,
-      createdAt: o.createdAt.toISOString(),
-      ageHours: Math.round(((now.getTime() - o.createdAt.getTime()) / 3_600_000) * 10) / 10,
-      totalPoisha: o.totalPoisha,
-      advanceRequiredPoisha: o.advanceRequiredPoisha,
-      advanceSatisfied: o.advanceSatisfiedAt !== null,
-      paymentMethod: o.paymentMethod,
-      customerPhoneMasked: maskPhone(o.customerPhone),
-    })),
-    meta: {
-      db: "PRISMA",
-      source: "DATABASE",
-      hours,
-      cutoff: cutoff.toISOString(),
-      total,
-      capped: total > MAX_ROWS,
-      autoCancelActive: false,
-      note: "Automatic cancellation of stale unpaid orders is NOT active — it arrives with the VPS worker. This is a manual work list.",
+      const [total, orders] = await Promise.all([
+        prisma.order.count({ where }),
+        prisma.order.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take: MAX_ROWS,
+          select: {
+            id: true,
+            orderNo: true,
+            createdAt: true,
+            totalPoisha: true,
+            advanceRequiredPoisha: true,
+            advanceSatisfiedAt: true,
+            paymentMethod: true,
+            customerPhone: true,
+          },
+        }),
+      ]);
+
+      return {
+        data: orders.map((o) => ({
+          id: o.id,
+          orderNo: o.orderNo,
+          createdAt: o.createdAt.toISOString(),
+          ageHours: Math.round(((now.getTime() - o.createdAt.getTime()) / 3_600_000) * 10) / 10,
+          totalPoisha: o.totalPoisha,
+          advanceRequiredPoisha: o.advanceRequiredPoisha,
+          advanceSatisfied: o.advanceSatisfiedAt !== null,
+          paymentMethod: o.paymentMethod,
+          customerPhoneMasked: maskPhone(o.customerPhone),
+        })),
+        meta: {
+          db: "PRISMA",
+          source: "DATABASE",
+          hours,
+          cutoff: cutoff.toISOString(),
+          total,
+          capped: total > MAX_ROWS,
+          autoCancelActive: false,
+          note: "Automatic cancellation of stale unpaid orders is NOT active — it arrives with the VPS worker. This is a manual work list.",
+        },
+      };
     },
-  });
+  );
+  return NextResponse.json(body);
 }

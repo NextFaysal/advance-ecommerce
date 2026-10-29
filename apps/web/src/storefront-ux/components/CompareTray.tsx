@@ -12,6 +12,7 @@ import Link from "next/link";
 import { fetchPublicProducts } from "@/catalog/public-client";
 import { interpolate, pick } from "@/i18n/locale";
 import { useLocale } from "@/i18n/LocaleProvider";
+import { useThemeView } from "@/themes/theme-view";
 import { addToCompare, removeFromCompare, toggleCompare, MAX_COMPARE_PRODUCTS } from "../compare";
 import { UX_STRINGS } from "../strings";
 
@@ -102,6 +103,10 @@ export function CompareToggleButton({ productId }: { productId: string }) {
 export function CompareTray() {
   const { locale } = useLocale();
   const s = pick(locale, UX_STRINGS);
+  // Only the Aurora shell renders a mobile bottom nav — the tray
+  // clears it (bottom-16) under Aurora, and otherwise floats just
+  // above the bottom edge with safe-area clearance.
+  const shellIsAurora = useThemeView().packageId === "aurora";
   const { ids, setIds } = useCompareIds();
   // Chip labels resolve from the real public catalog (ACTIVE products via
   // the public API); an id that no longer resolves falls back to the id.
@@ -124,7 +129,11 @@ export function CompareTray() {
   const labelFor = (id: string) => titles.get(id) ?? id;
 
   return (
-    <div className="fixed inset-x-0 bottom-16 z-40 px-4 md:bottom-[max(1rem,env(safe-area-inset-bottom))]">
+    <div
+      className={`fixed inset-x-0 z-40 px-4 md:bottom-[max(1rem,env(safe-area-inset-bottom))] ${
+        shellIsAurora ? "bottom-16" : "bottom-[max(0.75rem,env(safe-area-inset-bottom))]"
+      }`}
+    >
       <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-2 rounded-xl border bg-card px-3 py-2 shadow-lg">
         <span className="text-sm font-semibold">{interpolate(s.compareTrayLabel, { count: ids.length, max: MAX_COMPARE_PRODUCTS })}</span>
         {ids.map((id) => (

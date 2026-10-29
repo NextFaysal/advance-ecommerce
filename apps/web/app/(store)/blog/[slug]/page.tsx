@@ -25,6 +25,14 @@ import { BlogBody } from "./BlogBody";
 // revalidation time instead of on every request, so a rename or a
 // fresh publish can take up to one window to show up here.
 export const revalidate = 300;
+// Speed fix (2026-10-29): pin force-static next to the wave-52
+// revalidate, same as the blog index, homepage and PDP — under
+// auto mode this route silently opted out of static generation in
+// production despite revalidate + generateStaticParams. Renamed
+// slugs still follow their SeoRedirect and missing slugs still
+// 404; both resolve at generation/revalidation time, inside the
+// same 300s trade-off wave 52 already stated.
+export const dynamic = "force-static";
 
 export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
   try {

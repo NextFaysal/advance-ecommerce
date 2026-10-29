@@ -127,18 +127,26 @@ export async function GET(req: Request) {
   }
   const q = parsed.data;
   const search = q.q ?? q.search;
-  const [{ rows, total }, counts] = await Promise.all([
-    listOrders({
-      status: q.status,
-      paymentStatus: q.paymentStatus,
-      paymentMethod: q.paymentMethod,
-      courier: q.courier,
-      search,
-      stageId: q.stage,
-      sort: q.sort,
-      page: q.page,
-      pageSize: q.pageSize,
-    }),
+  // Perf (2026-10-29 orders speed wave): the workflow-stages config
+  // read joins the same parallel block instead of running as a
+  // sequential round after it, and the rows use the slim list read
+  // (ORDER_LIST_INCLUDE — newest-4 history + pickup-only notes; the
+  // detail endpoint still serves the full relations).
+  const [{ rows, total }, counts, workflowStages] = await Promise.all([
+    listOrders(
+      {
+        status: q.status,
+        paymentStatus: q.paymentStatus,
+        paymentMethod: q.paymentMethod,
+        courier: q.courier,
+        search,
+        stageId: q.stage,
+        sort: q.sort,
+        page: q.page,
+        pageSize: q.pageSize,
+      },
+      { slim: true },
+    ),
     // List v2: full-set status counts (SQL groupBy). They ignore the
     // status param on purpose — the chips must show what switching
     // status would yield under the CURRENT search/other filters.
@@ -152,16 +160,16 @@ export async function GET(req: Request) {
       search,
       stageId: q.stage,
     }),
+    // ADV-26 (BUILD-LITE): when the workflow-stages add-on is ON, the
+    // stage definitions ride in meta so the list page can resolve row
+    // tags (`stage:<id>` — rows already carry tags) to chips and offer
+    // the stage filter without a second request. Absent when OFF:
+    // the layer is inert and the list renders exactly as before.
+    isWorkflowStagesEnabled()
+      ? loadWorkflowStagesConfig().then((c) => c.config.stages)
+      : Promise.resolve(null),
   ]);
   const pageRows = rows.map((o) => publicOrder(o, auth.session.user.permissions));
-  // ADV-26 (BUILD-LITE): when the workflow-stages add-on is ON, the
-  // stage definitions ride in meta so the list page can resolve row
-  // tags (`stage:<id>` — rows already carry tags) to chips and offer
-  // the stage filter without a second request. Absent when OFF:
-  // the layer is inert and the list renders exactly as before.
-  const workflowStages = isWorkflowStagesEnabled()
-    ? (await loadWorkflowStagesConfig()).config.stages
-    : null;
   return NextResponse.json({
     data: pageRows,
     meta: {

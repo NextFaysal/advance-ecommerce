@@ -157,7 +157,7 @@ export default function ShobjiPdpBuySection({
   }
 
   const chipCls = (isActive: boolean, soldOut: boolean) =>
-    `min-h-[40px] rounded-full border px-3.5 text-sm font-semibold transition duration-200 active:scale-[0.97] ${
+    `min-h-[44px] rounded-full border px-3.5 text-sm font-semibold transition duration-200 active:scale-[0.97] ${
       isActive
         ? "border-primary bg-primary/10 text-primary ring-1 ring-primary"
         : "border-input bg-card text-text-main hover:border-primary/60"

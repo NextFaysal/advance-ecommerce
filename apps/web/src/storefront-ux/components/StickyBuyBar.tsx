@@ -64,20 +64,34 @@ export function StickyBuyBar({
     };
   }, [buyBoxId, inStock]);
 
-  if (!state.visible) return null;
-
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-2px_10px_rgba(0,0,0,0.08)] backdrop-blur md:hidden">
-      <div className="flex items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-text-main">{titleBn}</p>
-          <p className="text-base font-bold text-brand-700 dark:text-brand-300">{interpolate(s.priceFromTemplate, { price: digits(formatBdt(pricePoisha)) })}</p>
+    <>
+      {/* In-flow spacer (mobile only — same md breakpoint as the bar):
+          reserves the fixed bar's height at the end of the PDP so the
+          page footer's tail can never slide underneath the bar at
+          scroll-end. Rendered only when the bar can appear (in
+          stock); every themed composition mounts this component, so
+          this one spacer covers all themes. */}
+      {inStock ? (
+        <div
+          aria-hidden="true"
+          className="h-[calc(4.5rem+env(safe-area-inset-bottom))] md:hidden"
+        />
+      ) : null}
+      {state.visible ? (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-2px_10px_rgba(0,0,0,0.08)] backdrop-blur md:hidden">
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-text-main">{titleBn}</p>
+              <p className="text-base font-bold text-brand-700 dark:text-brand-300">{interpolate(s.priceFromTemplate, { price: digits(formatBdt(pricePoisha)) })}</p>
+            </div>
+            {/* Checkout (Step 12) wires this to cart/order creation, same as the buy box. */}
+            <button type="button" className="min-h-11 shrink-0 rounded-lg bg-brand-600 px-5 py-3 text-sm font-bold text-white shadow-card transition hover:bg-brand-700 active:scale-[0.98]">
+              {t.orderNow}
+            </button>
+          </div>
         </div>
-        {/* Checkout (Step 12) wires this to cart/order creation, same as the buy box. */}
-        <button type="button" className="min-h-11 shrink-0 rounded-lg bg-brand-600 px-5 py-3 text-sm font-bold text-white shadow-card transition hover:bg-brand-700 active:scale-[0.98]">
-          {t.orderNow}
-        </button>
-      </div>
-    </div>
+      ) : null}
+    </>
   );
 }

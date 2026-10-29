@@ -189,48 +189,53 @@ const AGING_TOP_N = 10;
  * masked here — the board never carries a full number.
  */
 export async function getOrderAging(now: Date = new Date()): Promise<AgingBucket[]> {
-  const buckets: AgingBucket[] = [];
-  for (const def of AGING_BUCKETS) {
-    const cutoff = new Date(now.getTime() - def.thresholdHours * 3_600_000);
-    const where = {
-      deletedAt: null,
-      status: def.status,
-      [def.field]: { lt: cutoff },
-    } as never;
-    const [count, rows] = await Promise.all([
-      prisma.order.count({ where }),
-      prisma.order.findMany({
-        where,
-        orderBy: { [def.field]: "asc" } as never,
-        take: AGING_TOP_N,
-        select: {
-          id: true,
-          orderNo: true,
-          status: true,
-          totalPoisha: true,
-          customerPhone: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      }),
-    ]);
-    buckets.push({
-      key: def.key,
-      labelBn: def.labelBn,
-      labelEn: def.labelEn,
-      count,
-      orders: rows.map((o) => {
-        const ref = def.field === "createdAt" ? o.createdAt : o.updatedAt;
-        return {
-          id: o.id,
-          orderNo: o.orderNo,
-          status: o.status as OrderStatus,
-          ageHours: Math.round(((now.getTime() - ref.getTime()) / 3_600_000) * 10) / 10,
-          totalPoisha: o.totalPoisha,
-          customerPhoneMasked: maskPhone(o.customerPhone),
-        };
-      }),
-    });
-  }
-  return buckets;
+  // Perf (2026-10-29 orders speed wave): the four buckets are
+  // independent — they previously ran as four SEQUENTIAL rounds
+  // (count + top-N each), which on a cold Neon connection stacked
+  // ~4x the latency into one request. They now run concurrently;
+  // bucket order and every number are unchanged.
+  return Promise.all(
+    AGING_BUCKETS.map(async (def): Promise<AgingBucket> => {
+      const cutoff = new Date(now.getTime() - def.thresholdHours * 3_600_000);
+      const where = {
+        deletedAt: null,
+        status: def.status,
+        [def.field]: { lt: cutoff },
+      } as never;
+      const [count, rows] = await Promise.all([
+        prisma.order.count({ where }),
+        prisma.order.findMany({
+          where,
+          orderBy: { [def.field]: "asc" } as never,
+          take: AGING_TOP_N,
+          select: {
+            id: true,
+            orderNo: true,
+            status: true,
+            totalPoisha: true,
+            customerPhone: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+      ]);
+      return {
+        key: def.key,
+        labelBn: def.labelBn,
+        labelEn: def.labelEn,
+        count,
+        orders: rows.map((o) => {
+          const ref = def.field === "createdAt" ? o.createdAt : o.updatedAt;
+          return {
+            id: o.id,
+            orderNo: o.orderNo,
+            status: o.status as OrderStatus,
+            ageHours: Math.round(((now.getTime() - ref.getTime()) / 3_600_000) * 10) / 10,
+            totalPoisha: o.totalPoisha,
+            customerPhoneMasked: maskPhone(o.customerPhone),
+          };
+        }),
+      };
+    }),
+  );
 }

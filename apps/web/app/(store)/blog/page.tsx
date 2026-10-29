@@ -24,6 +24,13 @@ import { listBlogCategories, listPublishedPosts } from "@/cms/blog";
 import { BlogBrowser } from "./BlogBrowser";
 
 export const revalidate = 300;
+// Speed fix (2026-10-29): pin force-static next to the wave-52
+// revalidate. revalidate alone did not keep this route static in
+// production (RSC prefetches rendering per request, ~4.5s) — the
+// same silent auto-mode opt-out the homepage and PDP suffered,
+// fixed there with this exact pin. The shell's content is
+// identical; BlogBrowser still applies the URL contract client-side.
+export const dynamic = "force-static";
 
 /** How many published summaries the shell ships to the client
  *  browser for in-page filtering/pagination. Mirrors the PDP's

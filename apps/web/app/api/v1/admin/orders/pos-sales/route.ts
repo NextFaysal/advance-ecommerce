@@ -12,8 +12,9 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { validateSessionToken } from "@/lib/auth";
 import { requirePermission, RbacError, type PermissionKey } from "@/lib/rbac";
-import { getPosSalesReport } from "@/orders/pos-sales";
+import { getPosSalesReport, type PosSalesReport } from "@/orders/pos-sales";
 import { parseAdminRange } from "@/orders/range-params";
+import { readThroughOrdersCache } from "@/orders/admin-cache";
 
 function err(code: string, message: string, status: number, details?: unknown) {
   return NextResponse.json({ error: { code, message, details } }, { status });
@@ -40,9 +41,19 @@ export async function GET(req: Request) {
   const range = parseAdminRange(new URL(req.url).searchParams);
   if (!range.ok) return err("INVALID_INPUT", range.message, 400);
 
-  const report = await getPosSalesReport(range.from, range.to);
-  return NextResponse.json({
-    data: report,
-    meta: { db: "PRISMA", source: "DATABASE", generatedAt: new Date().toISOString() },
-  });
+  // Perf (2026-10-29 orders speed wave): the computed report is
+  // cached for 60 s per range (src/orders/admin-cache) — the math
+  // is unchanged; on a hit, generatedAt is the compute time.
+  const body = await readThroughOrdersCache(
+    `admin:orders:pos-sales:v1:${range.from}:${range.to}`,
+    (parsed): parsed is { data: PosSalesReport; meta: { db: string; source: string; generatedAt: string } } =>
+      typeof parsed === "object" &&
+      parsed !== null &&
+      Array.isArray((parsed as { data?: { rows?: unknown } }).data?.rows),
+    async () => ({
+      data: await getPosSalesReport(range.from, range.to),
+      meta: { db: "PRISMA", source: "DATABASE", generatedAt: new Date().toISOString() },
+    }),
+  );
+  return NextResponse.json(body);
 }

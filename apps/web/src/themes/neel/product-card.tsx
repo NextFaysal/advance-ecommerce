@@ -276,7 +276,7 @@ function RatingRow({ data }: { data: CardData }) {
   return (
     <div className="mt-1 flex items-center gap-1.5">
       <Stars rating={data.ratingAverage ?? 0} size={13} />
-      <span className="text-[11px] font-medium tabular-nums text-text-subtle">
+      <span className="text-xs font-medium tabular-nums text-text-subtle">
         ({data.reviewCount})
       </span>
     </div>
