@@ -6,20 +6,23 @@
 # Redis, Meilisearch. Copy .env.production.example to `.env` next to this
 # file and fill in the real values first — never commit the real `.env`.
 #
-# DEPLOY ORDER (matters — the web image BUILD reads the database):
-#   1. docker compose -f docker-compose.prod.yml up -d postgres redis meilisearch
-#   2. docker compose -f docker-compose.prod.yml build web worker migrate
-#   3. docker compose -f docker-compose.prod.yml run --rm migrate
-#   4. docker compose -f docker-compose.prod.yml up -d
+# IMAGES ARE BUILT IN GITHUB ACTIONS (the VPS never builds):
+# .github/workflows/build-images.yml builds the Dockerfile's web/worker
+# targets and pushes them to GHCR; this file only PULLS them:
+#   ghcr.io/nextfaysal/advance-ecommerce-web:latest
+#   ghcr.io/nextfaysal/advance-ecommerce-worker:latest
+# The images are private — Dokploy needs a GitHub PAT with read:packages
+# (Dokploy → Settings → Registry), or pulls fail. The build needs a
+# database for prerendering; CI uses a throwaway seeded Postgres for
+# that (see the workflow). To build locally instead, use the Dockerfile
+# directly with `--network host` and a running Postgres on 127.0.0.1:5432.
 #
-# WHY HOST NETWORKING FOR THE WEB BUILD: the Next build prerenders
-# storefront pages from live catalogue data, so `next build` must reach
-# Postgres *while the image is being built*. Compose builds can't see
-# sibling services, so the web build uses the host network and talks to
-# the Postgres that step 1 published on 127.0.0.1:5432. That is also why
-# Postgres is published on the host loopback ONLY (never 0.0.0.0).
-# At runtime the containers use normal service-name networking
-# (DATABASE_URL @postgres:5432) — the host networking is build-time only.
+# DEPLOY (fresh start):
+#   1. Set the environment values (Dokploy Compose → Environment).
+#   2. docker compose -f docker-compose.prod.yml up -d
+#      (migrate runs first; web/worker wait for it to succeed)
+#   3. Create the first Owner against the REAL database — see
+#      DOCKER-DEPLOY.md ("First Owner").
 #
 # Full runbook: DOCKER-DEPLOY.md
 # =============================================================================
@@ -76,12 +79,8 @@ services:
   # Prisma CLI, no .next needed). Web and worker wait for this to
   # complete successfully before they start.
   migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: worker
-      args:
-        PRISMA_ENGINES_MIRROR: ${PRISMA_ENGINES_MIRROR:-}
+    image: ghcr.io/nextfaysal/advance-ecommerce-worker:latest
+    pull_policy: always
     restart: "no"
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/advance_ecommerce?schema=public
@@ -92,22 +91,8 @@ services:
     command: pnpm --filter @advance-ecommerce/db exec prisma migrate deploy --schema=prisma/schema.prisma
 
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: web
-      # Build-time only: reach the host-published Postgres for prerender.
-      network: host
-      args:
-        DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@127.0.0.1:5432/advance_ecommerce?schema=public
-        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
-        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-}
-        # First-Owner bootstrap (fresh DB only — see DOCKER-DEPLOY.md).
-        RUN_BOOTSTRAP: ${RUN_BOOTSTRAP:-0}
-        FIRST_OWNER_EMAIL: ${FIRST_OWNER_EMAIL:-}
-        FIRST_OWNER_PHONE: ${FIRST_OWNER_PHONE:-}
-        FIRST_OWNER_PASSWORD: ${FIRST_OWNER_PASSWORD:-}
-        PRISMA_ENGINES_MIRROR: ${PRISMA_ENGINES_MIRROR:-}
+    image: ghcr.io/nextfaysal/advance-ecommerce-web:latest
+    pull_policy: always
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-3000}:3000"
@@ -153,12 +138,8 @@ services:
   # automation, call-center. Refuses to start without REDIS_URL — the
   # compose value above points at the redis service.
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: worker
-      args:
-        PRISMA_ENGINES_MIRROR: ${PRISMA_ENGINES_MIRROR:-}
+    image: ghcr.io/nextfaysal/advance-ecommerce-worker:latest
+    pull_policy: always
     restart: unless-stopped
     environment:
       NODE_ENV: production
