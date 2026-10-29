@@ -107,7 +107,88 @@ export async function createSession(input: {
   return { session, token };
 }
 
+/* ------------------------------------------------------------------ */
+/* Session-validation memo (in-process, 30 s)                          */
+/*                                                                     */
+/* Every admin API call validates the staff session against the DB;    */
+/* on a cold Neon instance that lookup dominated request latency, so   */
+/* SUCCESSFUL validations are memoized per process for                 */
+/* SESSION_MEMO_TTL_MS. The memo key is the token's SHA-256 hash —     */
+/* the same value stored in Session.tokenHash; the raw token itself    */
+/* is never kept as a key or anywhere else in the memo.                */
+/*                                                                     */
+/* Failures are NEVER cached: an unknown, expired, or revoked token,   */
+/* or one whose user is inactive/deleted, hits the DB on every call    */
+/* and can never become valid via the memo.                            */
+/*                                                                     */
+/* TRADE-OFF (accepted by the owner, 2026-10-29): the memoized value   */
+/* is the full validation result — including the user's role name and  */
+/* permission keys — so a session revocation, password change,         */
+/* account deactivation, or role/permission edit can take up to        */
+/* SESSION_MEMO_TTL_MS to propagate to an instance that has already    */
+/* validated that token. Revocation through THIS module               */
+/* (revokeSession / revokeAllSessions) and the security              */
+/* sessions-revoke route drops the memo entry immediately, so a        */
+/* same-instance logout/revoke is not delayed; other instances         */
+/* converge within the TTL.                                            */
+/*                                                                     */
+/* Side effect preserved: the fire-and-forget lastUsedAt refresh in    */
+/* the DB path still runs whenever the memo misses; its own throttle   */
+/* (5 min) is far longer than the memo TTL, so bookkeeping cadence is  */
+/* effectively unchanged.                                              */
+/* ------------------------------------------------------------------ */
+
+export const SESSION_MEMO_TTL_MS = 30_000;
+
+const SESSION_MEMO_MAX_ENTRIES = 500;
+
+type ValidatedSession = NonNullable<
+  Awaited<ReturnType<typeof validateSessionTokenFromDb>>
+>;
+
+const sessionMemo = new Map<
+  string,
+  { value: ValidatedSession; expiresAtMs: number }
+>();
+
+/**
+ * Drop one memoized validation, addressed by the STORED token hash
+ * (Session.tokenHash — i.e. hashSessionToken(token), never a raw
+ * token). For revocation paths that know the session row but not the
+ * bearer token.
+ */
+export function forgetMemoizedSession(tokenHash: string): void {
+  sessionMemo.delete(tokenHash);
+}
+
 export async function validateSessionToken(token: string) {
+  const tokenHash = hashSessionToken(token);
+  const now = Date.now();
+  const hit = sessionMemo.get(tokenHash);
+  if (hit !== undefined) {
+    if (hit.expiresAtMs > now) {
+      // LRU touch: re-insert so the size cap evicts the coldest entry.
+      sessionMemo.delete(tokenHash);
+      sessionMemo.set(tokenHash, hit);
+      return hit.value;
+    }
+    sessionMemo.delete(tokenHash);
+  }
+  const result = await validateSessionTokenFromDb(token);
+  if (result !== null) {
+    if (sessionMemo.size >= SESSION_MEMO_MAX_ENTRIES) {
+      const oldest = sessionMemo.keys().next().value;
+      if (oldest !== undefined) sessionMemo.delete(oldest);
+    }
+    sessionMemo.set(tokenHash, {
+      value: result,
+      expiresAtMs: now + SESSION_MEMO_TTL_MS,
+    });
+  }
+  return result;
+}
+
+async function validateSessionTokenFromDb(token: string) {
   const session = await prisma.session.findUnique({
     where: { tokenHash: hashSessionToken(token) },
     include: {
@@ -162,17 +243,34 @@ export async function listSessions(userId: string) {
 }
 
 export async function revokeSession(sessionId: string, userId: string) {
+  const target = await prisma.session.findFirst({
+    where: { id: sessionId, userId },
+    select: { tokenHash: true },
+  });
   await prisma.session.updateMany({
     where: { id: sessionId, userId },
     data: { revokedAt: new Date() },
   });
+  // Same-instance revocation is immediate: drop the memo entry (keyed
+  // by the stored token hash) instead of letting it live out its TTL.
+  if (target !== null) sessionMemo.delete(target.tokenHash);
 }
 
 export async function revokeAllSessions(userId: string, exceptSessionId?: string) {
+  const where = {
+    userId,
+    revokedAt: null,
+    ...(exceptSessionId ? { id: { not: exceptSessionId } } : {}),
+  };
+  const targets = await prisma.session.findMany({
+    where,
+    select: { tokenHash: true },
+  });
   await prisma.session.updateMany({
-    where: { userId, revokedAt: null, ...(exceptSessionId ? { id: { not: exceptSessionId } } : {}) },
+    where,
     data: { revokedAt: new Date() },
   });
+  for (const target of targets) sessionMemo.delete(target.tokenHash);
 }
 
 /* ------------------------------------------------------------------ */

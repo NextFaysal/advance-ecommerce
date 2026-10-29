@@ -28,10 +28,10 @@ import { loadDeliverySlots } from "@/checkout/delivery-slots";
 import { getEmailTransportStatus } from "@/email/config";
 import { getMaintenanceConfig } from "@/privacy/maintenance";
 import { getRequestLocale } from "@/i18n/server";
-import { interpolate, pick, type Locale } from "@/i18n/locale";
+import { interpolate, isLocale, pick, type Locale } from "@/i18n/locale";
 import { SETTINGS_STRINGS, type SettingsStrings } from "./strings";
 import { StoreNameCard } from "./store-name-card";
-import { DefaultLanguageCard, parseDefaultLocale } from "./default-language-card";
+import { DefaultLanguageCard } from "./default-language-card";
 
 // Settings index — landing page for Admin > Settings.
 // The card statuses are REAL (2026-10-25; previously labelled demo
@@ -532,7 +532,7 @@ export default async function AdminSettingsPage() {
       </div>
 
       <div className="mb-6">
-        <DefaultLanguageCard initial={parseDefaultLocale(storeLocale)} dbReady={dbReady} />
+        <DefaultLanguageCard initial={isLocale(storeLocale) ? storeLocale : "bn"} dbReady={dbReady} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

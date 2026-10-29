@@ -13,7 +13,7 @@
  */
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
-import { LOCALES, LOCALE_SELF_NAMES, isLocale, type Locale } from "@/i18n/locale";
+import { LOCALES, LOCALE_SELF_NAMES, type Locale } from "@/i18n/locale";
 
 const LOCALE_KEY = "general.locale";
 
@@ -156,6 +156,9 @@ export function DefaultLanguageCard({ initial, dbReady }: DefaultLanguageCardPro
   );
 }
 
-export function parseDefaultLocale(value: string): Locale {
-  return isLocale(value) ? value : "bn";
-}
+// NOTE: no non-component exports from this client module — the settings
+// page (a server component) used to import a parseDefaultLocale helper
+// from here and call it during server render, which throws
+// "x is not a function" (client-module exports are component references,
+// not callable functions, on the server). The page now resolves the
+// locale itself with isLocale() from "@/i18n/locale".

@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@advance-ecommerce/db";
-import { hashSessionToken, validateSessionToken } from "@/lib/auth";
+import { forgetMemoizedSession, hashSessionToken, validateSessionToken } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
 
 // Revoke ONE active staff session (ADV-28 core) — the action behind
@@ -128,6 +128,11 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
+
+    // Same-instance revocation is immediate: drop the session-validation
+    // memo entry (keyed by the stored token hash) so the revoked token
+    // stops validating here at once instead of at the memo TTL.
+    forgetMemoizedSession(target.tokenHash);
 
     await writeAudit({
       actorId: caller.user.id,
