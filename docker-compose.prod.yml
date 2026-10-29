@@ -95,6 +95,9 @@ services:
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-3001}:3000"
+    networks:
+      - default
+      - dokploy-network
     environment:
       NODE_ENV: production
       TZ: Asia/Dhaka
@@ -182,3 +185,10 @@ volumes:
   pgdata:
   redisdata:
   meilidata:
+
+networks:
+  # Dokploy's Traefik proxy lives on this external network; without
+  # the web service attached to it, domains route to a Bad Gateway
+  # even though the app itself is healthy inside its own network.
+  dokploy-network:
+    external: true
