@@ -34,7 +34,7 @@
  */
 import Link from "next/link";
 import { fromPoisha } from "@advance-ecommerce/validators";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { interpolate, pick } from "@/i18n/locale";
 import { BOIGHOR_STRINGS, BOIGHOR_TRUST_ROWS } from "./strings";
 import { renderDescriptionHtml } from "@/catalog/description";
@@ -123,7 +123,7 @@ export default async function BoighorPdpComposition({
   recentlyViewedEntry,
   jsonLd,
 }: PdpCompositionProps) {
-  const locale = await getRequestLocale();
+  const locale = await getStoreDefaultLocale();
   const s = pick(locale, BOIGHOR_STRINGS);
   // Merchant data with bn/en variants renders in the active locale;
   // the other variant stays as the small subtitle (the PDP's design).

@@ -30,6 +30,15 @@ import type { PdpCompositionProps } from "@/themes/slots";
 // Presentation only — data flow, cart contracts and child components
 // are unchanged.
 export const revalidate = 60;
+// PDP speed fix (2026-10-29): under the default dynamic mode this
+// route silently opted out of static generation (no prerendered
+// routes in the manifest, no-store at runtime) even though no code
+// in the render path reads request state — a defensive dynamic-API
+// probe somewhere in the tree poisons the route. Content parity
+// between a force-static prerender and a dynamic render was
+// verified identical (visible text, demo catalogue), so pin the
+// intended ISR behaviour explicitly.
+export const dynamic = "force-static";
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const product = await getLivePublicProductBySlug(params.slug);

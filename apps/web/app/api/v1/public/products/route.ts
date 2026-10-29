@@ -64,8 +64,11 @@ export async function GET(req: Request) {
         },
       },
       // Speed wave: identical for every visitor — let the CDN serve
-      // it (60s fresh + SWR). Checkout re-validates price/stock live.
-      { headers: catalogCacheHeaders(60) },
+      // it. 300s fresh + 900s SWR (raised from 60s on 2026-10-29):
+      // a cold origin generation of the pageSize=100 variant takes
+      // ~5s on Neon, so the fresh window is kept wide; the data is
+      // display-only and checkout re-validates price/stock live.
+      { headers: catalogCacheHeaders(300, 900) },
     );
   } catch (error) {
     return handleServiceError(error);

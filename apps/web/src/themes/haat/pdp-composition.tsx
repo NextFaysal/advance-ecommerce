@@ -34,7 +34,7 @@
  */
 import Link from "next/link";
 import { fromPoisha } from "@advance-ecommerce/validators";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { interpolate, pick } from "@/i18n/locale";
 import { HAAT_STRINGS, type HaatStrings } from "./strings";
 import { renderDescriptionHtml } from "@/catalog/description";
@@ -139,7 +139,7 @@ export default async function HaatPdpComposition({
   recentlyViewedEntry,
   jsonLd,
 }: PdpCompositionProps) {
-  const locale = await getRequestLocale();
+  const locale = await getStoreDefaultLocale();
   const s = pick(locale, HAAT_STRINGS);
   // Merchant data with bn/en variants renders in the active locale;
   // the other variant stays as the small subtitle (the PDP's design).

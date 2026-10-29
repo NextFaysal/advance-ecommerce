@@ -33,7 +33,7 @@
  */
 import Link from "next/link";
 import { formatBdt, fromPoisha } from "@advance-ecommerce/validators";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { interpolate, pick } from "@/i18n/locale";
 import { BAZAAR_STRINGS, type BazaarStrings } from "./strings";
 import { renderDescriptionHtml } from "@/catalog/description";
@@ -130,7 +130,7 @@ export default async function BazaarPdpComposition({
   recentlyViewedEntry,
   jsonLd,
 }: PdpCompositionProps) {
-  const locale = await getRequestLocale();
+  const locale = await getStoreDefaultLocale();
   const s = pick(locale, BAZAAR_STRINGS);
   // Merchant data with bn/en variants renders in the active locale;
   // the other variant stays as the small subtitle (the PDP's design).

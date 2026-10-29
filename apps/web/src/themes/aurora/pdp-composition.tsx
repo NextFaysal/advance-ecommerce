@@ -49,7 +49,7 @@ import { QuestionsSection } from "@/qa/components/QuestionsSection";
 import { ThemedProductCard } from "../themed-product-card";
 import type { PdpCompositionProps } from "../slots";
 import { COMMON_STRINGS } from "@/i18n/dictionaries";
-import { getRequestLocale } from "@/i18n/server";
+import { getStoreDefaultLocale } from "@/i18n/server";
 import { interpolate, pick } from "@/i18n/locale";
 import { AURORA_STRINGS } from "./strings";
 import { Gallery } from "../../../app/(store)/product/[slug]/Gallery";
@@ -159,7 +159,7 @@ export default async function AuroraPdpComposition({
   recentlyViewedEntry,
   jsonLd,
 }: PdpCompositionProps) {
-  const locale = await getRequestLocale();
+  const locale = await getStoreDefaultLocale();
   const t = pick(locale, COMMON_STRINGS);
   const s = pick(locale, AURORA_STRINGS);
   // Merchant data with bn/en variants renders in the active locale;
