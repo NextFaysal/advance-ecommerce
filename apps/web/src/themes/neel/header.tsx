@@ -119,12 +119,12 @@ export default function NeelHeader({
           <span className="hidden truncate font-medium sm:block">
             {s.stripDelivery}
           </span>
-          <nav aria-label={s.quickLinksAria} className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <nav aria-label={s.quickLinksAria} className="scrollbar-none flex min-w-0 flex-nowrap items-center gap-x-4 gap-y-1 overflow-x-auto lg:flex-wrap lg:overflow-visible">
             {stripLinks.map((l) => (
               <Link
                 key={l.label}
                 href={l.href}
-                className="font-medium transition hover:text-primary"
+                className="shrink-0 whitespace-nowrap font-medium transition hover:text-primary"
               >
                 {l.label}
               </Link>
@@ -146,11 +146,11 @@ export default function NeelHeader({
             triggerClassName="shrink-0 text-white hover:bg-white/10"
             footer={<LanguageSwitcher />}
           />
-          <Link href="/" className="flex shrink-0 items-center gap-2" aria-label={brandName}>
-            <span className="flex h-10 w-10 items-center justify-center rounded-md bg-white/15 text-lg font-bold text-white ring-1 ring-white/30">
+          <Link href="/" className="flex min-w-0 flex-1 items-center gap-2 lg:flex-none lg:shrink-0" aria-label={brandName}>
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white/15 text-lg font-bold text-white ring-1 ring-white/30">
               {brandName.charAt(0)}
             </span>
-            <span className="hidden max-w-[10rem] truncate text-lg font-bold leading-tight text-white xs:block sm:max-w-none">
+            <span className="min-w-0 truncate text-lg font-bold leading-tight text-white">
               {brandName}
             </span>
           </Link>
@@ -179,12 +179,17 @@ export default function NeelHeader({
             </div>
           </form>
 
-          {/* Language switcher first (its pill carries its own
-              light background, legible on the blue gradient; this
-              actions row is visible at every width), then Sign In /
-              Register text links + icon actions */}
+          {/* Actions — on phone (<lg) the cluster shrinks to
+              icon-only 44px wishlist + cart buttons: the language
+              switcher and the labelled Compare column are hidden
+              (the switcher lives in the MobileMenuDrawer's
+              footer; account/track/wishlist live in its body),
+              so the stuck gradient tier stays inside the 112px
+              budget. The Sign In / Register stack keeps its
+              md:flex gate, and at lg the switcher + full labelled
+              columns render exactly as before. */}
           <div className="order-2 ml-auto flex shrink-0 items-center gap-1 sm:gap-2 lg:order-3 lg:ml-0">
-            <LanguageSwitcher className="mr-1" />
+            <LanguageSwitcher className="mr-1 hidden lg:inline-flex" />
             <div className="mr-1 hidden flex-col items-end leading-tight md:flex">
               <Link href="/account" className="text-[13px] font-bold text-white transition hover:underline">
                 {s.signIn}
@@ -196,18 +201,18 @@ export default function NeelHeader({
             <Link
               href="/wishlist"
               aria-label={wishlistCount > 0 ? interpolate(s.wishlistAriaCount, { count: wishlistCount }) : s.wishlistAria}
-              className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-white/90 transition hover:bg-white/10 hover:text-white"
+              className="relative hidden h-11 w-11 items-center justify-center lg:flex rounded-md text-white/90 transition hover:bg-white/10 hover:text-white lg:h-auto lg:w-auto lg:min-w-[52px] lg:flex-col lg:gap-0.5 lg:px-1.5 lg:py-1"
             >
               <span className="relative">
                 <Icon name="heart" size={23} />
                 <WhiteBadge count={wishlistCount} />
               </span>
-              <span className="text-[11px] font-medium leading-none">{s.wishlistLabel}</span>
+              <span className="hidden text-[11px] font-medium leading-none lg:block">{s.wishlistLabel}</span>
             </Link>
             <Link
               href="/compare"
               aria-label={s.compareAria}
-              className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-white/90 transition hover:bg-white/10 hover:text-white"
+              className="relative hidden min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-white/90 transition hover:bg-white/10 hover:text-white lg:flex"
             >
               <Icon name="refresh-ccw" size={23} />
               <span className="text-[11px] font-medium leading-none">{s.compareLabel}</span>
@@ -216,13 +221,13 @@ export default function NeelHeader({
               type="button"
               onClick={openCartDrawer}
               aria-label={effectiveCartCount > 0 ? interpolate(s.cartAriaCount, { count: effectiveCartCount }) : s.cartAria}
-              className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-white/90 transition hover:bg-white/10 hover:text-white"
+              className="relative flex h-11 w-11 items-center justify-center rounded-md text-white/90 transition hover:bg-white/10 hover:text-white lg:h-auto lg:w-auto lg:min-w-[52px] lg:flex-col lg:gap-0.5 lg:px-1.5 lg:py-1"
             >
               <span className="relative">
                 <Icon name="cart" size={23} />
                 <WhiteBadge count={effectiveCartCount} />
               </span>
-              <span className="text-[11px] font-medium leading-none">{s.cartLabel}</span>
+              <span className="hidden text-[11px] font-medium leading-none lg:block">{s.cartLabel}</span>
             </button>
           </div>
         </div>

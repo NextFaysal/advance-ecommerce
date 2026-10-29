@@ -167,7 +167,7 @@ export default function BazaarHeader({
             />
             <Link
               href="/"
-              className="flex min-w-0 items-center gap-2"
+              className="flex min-w-0 flex-1 items-center gap-2 lg:flex-none"
               aria-label={brandName}
             >
               <span
@@ -176,7 +176,7 @@ export default function BazaarHeader({
               >
                 {brandName.charAt(0)}
               </span>
-              <span className="max-w-[10rem] truncate text-lg font-bold leading-tight text-text-main sm:max-w-none">
+              <span className="min-w-0 truncate text-lg font-bold leading-tight text-text-main">
                 {brandName}
               </span>
             </Link>
@@ -206,15 +206,19 @@ export default function BazaarHeader({
             </form>
 
             {/* Actions — icon + small label, like the reference tier.
-                The language switcher leads the row: always visible at
-                every width (this row never collapses into a menu). */}
+                Below lg only the cart stays in the sticky row: the
+                language switcher and the labelled track/account/
+                wishlist actions live in the MobileMenuDrawer there,
+                so the brand keeps its room and the tier stays within
+                the 112px sticky budget. At lg the full row returns,
+                unchanged. */}
             <div className="order-2 ml-auto flex shrink-0 items-start gap-1 sm:gap-2 lg:order-3 lg:ml-0">
-              <LanguageSwitcher className="mr-1 self-center" />
+              <LanguageSwitcher className="mr-1 hidden self-center lg:inline-flex" />
               {actions.map((a) => (
                 <Link
                   key={a.href}
                   href={a.href}
-                  className="relative flex min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary"
+                  className="relative hidden min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary lg:flex"
                 >
                   <span className="relative">
                     <Icon name={a.icon} size={23} />
@@ -233,7 +237,7 @@ export default function BazaarHeader({
                   <Icon name="cart" size={23} />
                   <OrangeBadge count={effectiveCartCount} />
                 </span>
-                <span className="text-[11px] font-medium leading-none">{s.cartLabel}</span>
+                <span className="hidden text-[11px] font-medium leading-none lg:block">{s.cartLabel}</span>
               </button>
             </div>
           </div>

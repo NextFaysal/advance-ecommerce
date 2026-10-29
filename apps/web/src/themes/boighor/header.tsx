@@ -125,12 +125,12 @@ export default function BoighorHeader({
         className="text-white"
         style={{ backgroundColor: BOIGHOR_COLORS.utilityBlue }}
       >
-        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-0.5 px-4 py-1.5 text-[13px] sm:px-6">
-          <p className="flex items-center gap-1.5 font-medium">
+        <div className="mx-auto flex max-w-[1440px] flex-nowrap items-center gap-x-4 gap-y-0.5 px-4 py-1.5 text-[13px] sm:px-6 lg:flex-wrap">
+          <p className="flex min-w-0 flex-1 items-center gap-1.5 font-medium lg:flex-none">
             <Icon name="truck" size={15} />
-            {s.deliveryLine}
+            <span className="truncate">{s.deliveryLine}</span>
           </p>
-          <nav aria-label={s.quickLinksAria} className="ml-auto flex items-center gap-1">
+          <nav aria-label={s.quickLinksAria} className="ml-auto flex shrink-0 items-center gap-1">
             <Link
               href="/track"
               className="rounded px-2 py-1 font-medium text-white/90 transition hover:bg-white/10 hover:text-white"
@@ -162,13 +162,13 @@ export default function BoighorHeader({
           />
           <Link
             href="/"
-            className="flex shrink-0 items-center gap-2"
+            className="flex min-w-0 flex-1 items-center gap-2 lg:flex-none lg:shrink-0"
             aria-label={brandName}
           >
-            <span className="brand-gradient flex h-10 w-10 items-center justify-center rounded-lg text-lg font-bold text-white shadow-sm">
+            <span className="brand-gradient flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-lg font-bold text-white shadow-sm">
               {brandName.charAt(0)}
             </span>
-            <span className="hidden max-w-[10rem] truncate text-lg font-bold leading-tight text-text-main xs:block sm:max-w-none">
+            <span className="min-w-0 truncate text-lg font-bold leading-tight text-text-main">
               {brandName}
             </span>
           </Link>
@@ -197,39 +197,44 @@ export default function BoighorHeader({
             </div>
           </form>
 
-          {/* Actions — language switcher first (Tier 2 actions row
-              is always visible at every width), then account,
-              wishlist, cart */}
+          {/* Actions — on phone (<lg) the cluster shrinks to
+              icon-only 44px wishlist + cart buttons: the language
+              switcher and the labelled account column are hidden
+              (both live in the MobileMenuDrawer — switcher in its
+              footer, account/track links in its body), so the
+              stuck tier stays inside the 112px budget. At lg the
+              switcher + full labelled columns render exactly as
+              before. */}
           <div className="order-2 ml-auto flex shrink-0 items-start gap-1 sm:gap-2 lg:order-3 lg:ml-0">
-            <LanguageSwitcher className="mr-1 self-center" />
+            <LanguageSwitcher className="mr-1 hidden self-center lg:inline-flex" />
             <Link
               href="/account"
-              className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-lg px-1.5 py-1 text-text-muted transition hover:text-primary"
+              className="relative hidden min-w-[52px] flex-col items-center gap-0.5 rounded-lg px-1.5 py-1 text-text-muted transition hover:text-primary lg:flex"
             >
               <Icon name="user" size={23} />
               <span className="text-[11px] font-medium leading-none">{s.account}</span>
             </Link>
             <Link
               href="/wishlist"
-              className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-lg px-1.5 py-1 text-text-muted transition hover:text-primary"
+              className="relative hidden h-11 w-11 items-center justify-center lg:flex rounded-lg text-text-muted transition hover:text-primary lg:h-auto lg:w-auto lg:min-w-[52px] lg:flex-col lg:gap-0.5 lg:px-1.5 lg:py-1"
             >
               <span className="relative">
                 <Icon name="heart" size={23} />
                 <BlueBadge count={wishlistCount} />
               </span>
-              <span className="text-[11px] font-medium leading-none">{s.wishlist}</span>
+              <span className="hidden text-[11px] font-medium leading-none lg:block">{s.wishlist}</span>
             </Link>
             <button
               type="button"
               onClick={openCartDrawer}
               aria-label={effectiveCartCount > 0 ? interpolate(s.cartAriaCount, { count: effectiveCartCount }) : s.cartAria}
-              className="relative flex min-w-[52px] flex-col items-center gap-0.5 rounded-lg px-1.5 py-1 text-text-muted transition hover:text-primary"
+              className="relative flex h-11 w-11 items-center justify-center rounded-lg text-text-muted transition hover:text-primary lg:h-auto lg:w-auto lg:min-w-[52px] lg:flex-col lg:gap-0.5 lg:px-1.5 lg:py-1"
             >
               <span className="relative">
                 <Icon name="cart" size={23} />
                 <BlueBadge count={effectiveCartCount} />
               </span>
-              <span className="text-[11px] font-medium leading-none">{s.cart}</span>
+              <span className="hidden text-[11px] font-medium leading-none lg:block">{s.cart}</span>
             </button>
           </div>
         </div>

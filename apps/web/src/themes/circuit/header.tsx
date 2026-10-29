@@ -122,13 +122,13 @@ export default function CircuitHeader({
             />
             <Link
               href="/"
-              className="flex shrink-0 items-center gap-2"
+              className="flex min-w-0 flex-1 items-center gap-2 lg:flex-none lg:shrink-0"
               aria-label={brandName}
             >
-              <span className="brand-gradient flex h-10 w-10 items-center justify-center rounded-lg text-lg font-bold text-white shadow-sm">
+              <span className="brand-gradient flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-lg font-bold text-white shadow-sm">
                 {brandName.charAt(0)}
               </span>
-              <span className="hidden max-w-[10rem] truncate text-lg font-bold leading-tight text-white xs:block sm:max-w-none">
+              <span className="min-w-0 truncate text-lg font-bold leading-tight text-white">
                 {brandName}
               </span>
             </Link>
@@ -157,29 +157,49 @@ export default function CircuitHeader({
               </div>
             </form>
 
-            {/* Right cluster — language switcher first (its pill
-                carries its own light background, so it stays legible
-                on the navy tier, and this row is visible at every
-                width), then Offers, Account, gradient CTA */}
+            {/* Right cluster — on phone (<lg) only an icon-only
+                44px cart button shows: the language switcher, the
+                labelled Offers/Account columns and the gradient
+                "সব অফার" CTA are hidden (switcher + account live
+                in the MobileMenuDrawer; offers destinations are
+                one tap away via the category bar's /shop lead
+                link), which also removes the right-edge overflow
+                the labelled row + CTA caused at 390px. The header
+                must carry its own cart button on phone because the
+                floating cart is a merchant option (showFloating-
+                Actions) and cannot be the only cart access. At lg
+                the switcher + labelled columns + CTA render
+                exactly as before and the cart button steps aside. */}
             <div className="order-2 ml-auto flex shrink-0 items-center gap-1 sm:gap-2 lg:order-3 lg:ml-0">
-              <LanguageSwitcher className="mr-1" />
+              <LanguageSwitcher className="mr-1 hidden lg:inline-flex" />
+              <button
+                type="button"
+                onClick={openCartDrawer}
+                aria-label={effectiveCartCount > 0 ? interpolate(s.cartAriaCount, { count: effectiveCartCount }) : s.cartAria}
+                className="relative flex h-11 w-11 items-center justify-center rounded-md text-white/85 transition hover:text-white lg:hidden"
+              >
+                <span className="relative">
+                  <Icon name="cart" size={22} />
+                  <CountBadge count={effectiveCartCount} />
+                </span>
+              </button>
               <Link
                 href="/shop"
-                className="flex min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-white/85 transition hover:text-white"
+                className="hidden min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-white/85 transition hover:text-white lg:flex"
               >
                 <Icon name="tag" size={22} />
                 <span className="text-[11px] font-medium leading-none">{s.offersLabel}</span>
               </Link>
               <Link
                 href="/account"
-                className="flex min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-white/85 transition hover:text-white"
+                className="hidden min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-white/85 transition hover:text-white lg:flex"
               >
                 <Icon name="user" size={22} />
                 <span className="text-[11px] font-medium leading-none">{s.accountLabel}</span>
               </Link>
               <Link
                 href="/shop"
-                className="brand-gradient ml-1 inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg px-4 text-sm font-bold text-white shadow-md transition hover:opacity-95"
+                className="brand-gradient ml-1 hidden h-11 shrink-0 items-center gap-1.5 rounded-lg px-4 text-sm font-bold text-white shadow-md transition hover:opacity-95 lg:inline-flex"
               >
                 {s.allOffersCta}
                 <Icon name="arrow-right" size={16} />

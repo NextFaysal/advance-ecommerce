@@ -112,8 +112,8 @@ export default function ShobjiHeader({
     <header className="sticky top-0 z-40 border-b border-border bg-card shadow-card">
       <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 sm:px-6 lg:flex-nowrap lg:py-3">
         {/* Mobile menu (doc 33 §3.3) — the shared drawer; the
-            switcher rides in its footer slot AND stays in the
-            actions row below (every-width rule). */}
+            switcher rides in its footer slot (its only phone home;
+            the actions row keeps it at lg). */}
         <MobileMenuDrawer
           brandName={brandName}
           headerMenu={headerMenu}
@@ -124,13 +124,13 @@ export default function ShobjiHeader({
 
         <Link
           href="/"
-          className="flex min-h-[44px] shrink-0 items-center gap-2"
+          className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2 lg:flex-none"
           aria-label={brandName}
         >
-          <span className="brand-gradient flex h-10 w-10 items-center justify-center rounded-md text-lg font-bold text-white">
+          <span className="brand-gradient flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-lg font-bold text-white">
             {brandName.charAt(0)}
           </span>
-          <span className="max-w-[10rem] truncate text-lg font-bold leading-tight text-text-main sm:max-w-none">
+          <span className="min-w-0 truncate text-lg font-bold leading-tight text-text-main">
             {brandName}
           </span>
         </Link>
@@ -159,22 +159,25 @@ export default function ShobjiHeader({
           </div>
         </form>
 
-        {/* Actions — language switcher first (always visible at
-            every width in this row), then Track/Wishlist icon links,
-            solid purple account button, cart icon button (opens the
-            drawer). */}
+        {/* Actions — at lg: language switcher first, then
+            Track/Wishlist icon links, solid purple account button,
+            cart icon button (opens the drawer). Below lg only the
+            cart stays in the sticky row: the switcher and the
+            track/wishlist/account actions all live in the
+            MobileMenuDrawer there, so the brand keeps its room and
+            the tier stays within the 112px sticky budget. */}
         <div className="order-2 ml-auto flex shrink-0 items-center gap-1 sm:gap-2 lg:order-3 lg:ml-0">
-          <LanguageSwitcher className="mr-1" />
+          <LanguageSwitcher className="mr-1 hidden lg:inline-flex" />
           <Link
             href="/track"
-            className="relative hidden min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary xs:flex"
+            className="relative hidden min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary lg:flex"
           >
             <Icon name="package" size={23} />
             <span className="text-[11px] font-medium leading-none">{s.trackOrder}</span>
           </Link>
           <Link
             href="/wishlist"
-            className="relative flex min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary"
+            className="relative hidden min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary lg:flex"
           >
             <span className="relative">
               <Icon name="heart" size={23} />
@@ -184,7 +187,7 @@ export default function ShobjiHeader({
           </Link>
           <Link
             href="/account"
-            className="ml-1 flex h-11 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-sm transition hover:opacity-90"
+            className="ml-1 hidden h-11 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-sm transition hover:opacity-90 lg:flex"
             style={{ backgroundColor: SHOBJI_COLORS.primary }}
           >
             <Icon name="user" size={17} />
@@ -194,13 +197,13 @@ export default function ShobjiHeader({
             type="button"
             onClick={openCartDrawer}
             aria-label={effectiveCartCount > 0 ? interpolate(s.cartDrawerAriaWithCount, { count: effectiveCartCount }) : s.cartDrawerAria}
-            className="relative flex min-h-[44px] min-w-[52px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary"
+            className="relative flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-text-muted transition hover:text-primary lg:min-w-[52px]"
           >
             <span className="relative">
               <Icon name="cart" size={23} />
               <PurpleBadge count={effectiveCartCount} />
             </span>
-            <span className="text-[11px] font-medium leading-none">{s.cart}</span>
+            <span className="hidden text-[11px] font-medium leading-none lg:block">{s.cart}</span>
           </button>
         </div>
       </div>

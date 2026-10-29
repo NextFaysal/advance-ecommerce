@@ -141,8 +141,8 @@ export default function HaatHeader({
           {/* Mobile menu (doc 33 §3.3) — the shared drawer, dressed
               as a white chip mirroring the brand mark; it carries
               the menu + categories this search-led header has no
-              bar for. The switcher rides in its footer slot AND
-              stays in the tier below (every-width rule). */}
+              bar for. The switcher rides in its footer slot — its
+              only phone home; the tier keeps it at lg. */}
           <MobileMenuDrawer
             brandName={brandName}
             headerMenu={headerMenu}
@@ -153,13 +153,13 @@ export default function HaatHeader({
 
           <Link
             href="/"
-            className="order-1 flex min-h-[44px] shrink-0 items-center gap-2"
+            className="order-1 flex min-h-[44px] min-w-0 flex-1 items-center gap-2 lg:flex-none"
             aria-label={brandName}
           >
-            <span className="flex h-10 w-10 items-center justify-center rounded bg-white text-lg font-extrabold text-primary shadow-sm">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-white text-lg font-extrabold text-primary shadow-sm">
               {brandName.charAt(0)}
             </span>
-            <span className="max-w-[10rem] truncate text-lg font-extrabold leading-tight sm:max-w-none">
+            <span className="min-w-0 truncate text-lg font-extrabold leading-tight">
               {brandName}
             </span>
           </Link>
@@ -190,11 +190,13 @@ export default function HaatHeader({
           </form>
 
           {/* Language switcher — sits in the main tier beside the
-              cart, visible at every width (this row wraps but never
-              collapses into a menu). */}
-          <LanguageSwitcher className="order-2 ml-auto self-center lg:order-3 lg:ml-0" />
+              cart at lg; below lg it lives only in the drawer's
+              footer slot, so the phone row is just brand + cart and
+              the sticky tier stays within the 112px budget. */}
+          <LanguageSwitcher className="order-2 ml-auto hidden self-center lg:order-3 lg:inline-flex lg:ml-0" />
 
-          {/* Cart — opens the drawer; badge carries the live count */}
+          {/* Cart — opens the drawer; badge carries the live count.
+              Icon-only below lg (label returns at lg, unchanged). */}
           <button
             type="button"
             onClick={openCartDrawer}
@@ -203,13 +205,13 @@ export default function HaatHeader({
                 ? interpolate(s.cartAriaWithCount, { count: effectiveCartCount })
                 : s.cartAriaEmpty
             }
-            className="order-2 ml-auto flex min-h-[44px] shrink-0 flex-col items-center justify-center gap-0.5 rounded px-2 py-1 text-white transition hover:bg-white/10 lg:order-3 lg:ml-0"
+            className="order-2 ml-auto flex min-h-[44px] min-w-[44px] shrink-0 flex-col items-center justify-center gap-0.5 rounded px-2 py-1 text-white transition hover:bg-white/10 lg:order-3 lg:ml-0"
           >
             <span className="relative">
               <Icon name="cart" size={24} />
               <CountBadge count={effectiveCartCount} digits={digits} />
             </span>
-            <span className="text-[11px] font-semibold leading-none">{s.cartLabel}</span>
+            <span className="hidden text-[11px] font-semibold leading-none lg:block">{s.cartLabel}</span>
           </button>
         </div>
       </header>
