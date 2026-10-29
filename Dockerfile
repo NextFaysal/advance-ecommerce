@@ -42,6 +42,15 @@ ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH
 RUN corepack enable && corepack prepare pnpm@10.0.0 --activate
 
+# Prisma's platform detection needs OpenSSL present: without it the
+# generate step silently targets debian-openssl-1.1.x and the engine
+# then fails at runtime with "libssl.so.1.1: cannot open shared object
+# file" on Bookworm (which ships OpenSSL 3). Installing openssl makes
+# generate produce the correct debian-openssl-3.0.x engine.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /repo
 
 # Workspace manifests first, so the dependency layer stays cached until
@@ -97,6 +106,11 @@ ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
     NODE_ENV=production
 RUN corepack enable && corepack prepare pnpm@10.0.0 --activate
+
+# The copied Prisma engine links the system OpenSSL 3 at runtime.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /repo
 
