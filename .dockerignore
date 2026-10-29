@@ -1,0 +1,35 @@
+# Dependencies and build output — installed/built fresh inside the image.
+node_modules
+**/node_modules
+.next
+**/.next
+.turbo
+**/.turbo
+out
+dist
+
+# VCS and local environment — secrets must never enter an image.
+.git
+.gitignore
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.production.example
+
+# Logs, coverage, test artifacts
+*.log
+logs
+coverage
+playwright-report
+test-results
+
+# Local scratch that must not bloat (or leak into) the production image:
+# screenshot harnesses, theme screenshots, push manifests, backups.
+shot.mts
+shot-*.mts
+theme-screenshots
+.push
+backups
+*.tsbuildinfo
+.DS_Store

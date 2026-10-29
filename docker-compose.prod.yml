@@ -1,0 +1,204 @@
+# =============================================================================
+# advance-ecommerce — PRODUCTION stack (deployed via Dokploy "Compose")
+#
+# This is NOT the local-dev docker-compose.yml. Everything for real
+# trading runs here: web (Next.js), worker (queues/schedulers), Postgres,
+# Redis, Meilisearch. Copy .env.production.example to `.env` next to this
+# file and fill in the real values first — never commit the real `.env`.
+#
+# DEPLOY ORDER (matters — the web image BUILD reads the database):
+#   1. docker compose -f docker-compose.prod.yml up -d postgres redis meilisearch
+#   2. docker compose -f docker-compose.prod.yml build web worker migrate
+#   3. docker compose -f docker-compose.prod.yml run --rm migrate
+#   4. docker compose -f docker-compose.prod.yml up -d
+#
+# WHY HOST NETWORKING FOR THE WEB BUILD: the Next build prerenders
+# storefront pages from live catalogue data, so `next build` must reach
+# Postgres *while the image is being built*. Compose builds can't see
+# sibling services, so the web build uses the host network and talks to
+# the Postgres that step 1 published on 127.0.0.1:5432. That is also why
+# Postgres is published on the host loopback ONLY (never 0.0.0.0).
+# At runtime the containers use normal service-name networking
+# (DATABASE_URL @postgres:5432) — the host networking is build-time only.
+#
+# Full runbook: DOCKER-DEPLOY.md
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: advance_ecommerce
+      TZ: Asia/Dhaka
+    ports:
+      # Host loopback only: reachable for the web image build (and for
+      # local psql/pg_dump work), never exposed to the internet.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d advance_ecommerce"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.54.3
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
+      MEILI_ENV: production
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - meilidata:/meili_data
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:7700/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # One-shot schema migration. Uses the worker image (full source +
+  # Prisma CLI, no .next needed). Web and worker wait for this to
+  # complete successfully before they start.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+      args:
+        PRISMA_ENGINES_MIRROR: ${PRISMA_ENGINES_MIRROR:-}
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/advance_ecommerce?schema=public
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: pnpm --filter @advance-ecommerce/db exec prisma migrate deploy --schema=prisma/schema.prisma
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+      # Build-time only: reach the host-published Postgres for prerender.
+      network: host
+      args:
+        DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@127.0.0.1:5432/advance_ecommerce?schema=public
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-}
+        # First-Owner bootstrap (fresh DB only — see DOCKER-DEPLOY.md).
+        RUN_BOOTSTRAP: ${RUN_BOOTSTRAP:-0}
+        FIRST_OWNER_EMAIL: ${FIRST_OWNER_EMAIL:-}
+        FIRST_OWNER_PHONE: ${FIRST_OWNER_PHONE:-}
+        FIRST_OWNER_PASSWORD: ${FIRST_OWNER_PASSWORD:-}
+        PRISMA_ENGINES_MIRROR: ${PRISMA_ENGINES_MIRROR:-}
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Dhaka
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/advance_ecommerce?schema=public
+      REDIS_URL: redis://redis:6379
+      MEILISEARCH_HOST: http://meilisearch:7700
+      MEILISEARCH_API_KEY: ${MEILI_MASTER_KEY}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET in .env (see .env.production.example)}
+      AUTH_ENCRYPTION_KEY: ${AUTH_ENCRYPTION_KEY:?Set AUTH_ENCRYPTION_KEY in .env (see .env.production.example)}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:?Set SETTINGS_ENCRYPTION_KEY in .env (see .env.production.example)}
+      ADMIN_PATH: ${ADMIN_PATH:-/admin}
+      DEFAULT_LOCALE: ${DEFAULT_LOCALE:-bn}
+      DEFAULT_CURRENCY: ${DEFAULT_CURRENCY:-BDT}
+      OTP_EXPIRY_MINUTES: ${OTP_EXPIRY_MINUTES:-5}
+      OTP_MAX_ATTEMPTS: ${OTP_MAX_ATTEMPTS:-5}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-auto}
+      S3_BUCKET: ${S3_BUCKET:-}
+      NEXT_PUBLIC_CDN_URL: ${NEXT_PUBLIC_CDN_URL:-}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-resend}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      SMS_PROVIDER: ${SMS_PROVIDER:-}
+      WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
+      WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
+      WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+
+  # Background daemon: BullMQ queues (SMS/email/order jobs), schedulers,
+  # automation, call-center. Refuses to start without REDIS_URL — the
+  # compose value above points at the redis service.
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+      args:
+        PRISMA_ENGINES_MIRROR: ${PRISMA_ENGINES_MIRROR:-}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Dhaka
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/advance_ecommerce?schema=public
+      REDIS_URL: redis://redis:6379
+      MEILISEARCH_HOST: http://meilisearch:7700
+      MEILISEARCH_API_KEY: ${MEILI_MASTER_KEY}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET in .env (see .env.production.example)}
+      AUTH_ENCRYPTION_KEY: ${AUTH_ENCRYPTION_KEY:?Set AUTH_ENCRYPTION_KEY in .env (see .env.production.example)}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:?Set SETTINGS_ENCRYPTION_KEY in .env (see .env.production.example)}
+      ADMIN_PATH: ${ADMIN_PATH:-/admin}
+      DEFAULT_LOCALE: ${DEFAULT_LOCALE:-bn}
+      DEFAULT_CURRENCY: ${DEFAULT_CURRENCY:-BDT}
+      OTP_EXPIRY_MINUTES: ${OTP_EXPIRY_MINUTES:-5}
+      OTP_MAX_ATTEMPTS: ${OTP_MAX_ATTEMPTS:-5}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-auto}
+      S3_BUCKET: ${S3_BUCKET:-}
+      NEXT_PUBLIC_CDN_URL: ${NEXT_PUBLIC_CDN_URL:-}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-resend}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      SMS_PROVIDER: ${SMS_PROVIDER:-}
+      WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
+      WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
+      WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
+  redisdata:
+  meilidata:
