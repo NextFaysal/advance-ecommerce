@@ -93,11 +93,13 @@ services:
     image: ghcr.io/nextfaysal/advance-ecommerce-web:latest
     pull_policy: always
     restart: unless-stopped
-    # No published port either: all traffic arrives through Dokploy's
-    # Traefik over dokploy-network (domain -> container :3000). Any
-    # host port published here kept colliding with Dokploy's own
-    # services (its dashboard owns host :3000). For emergency direct
-    # access, publish a free host port temporarily, e.g. "3005:3000".
+    # Host port FIXED at 3005 (Nazmul's choice, 2026-10-29): host :3000
+    # belongs to Dokploy's own dashboard and :5432 to its Postgres, so
+    # both collided. Hardcoded on purpose — a ${WEB_PORT} variable in
+    # the Dokploy env kept overriding the default back to 3000.
+    # The domain also reaches the app via Traefik/dokploy-network.
+    ports:
+      - "3005:3000"
     networks:
       - default
       - dokploy-network
