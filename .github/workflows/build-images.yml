@@ -107,22 +107,24 @@ jobs:
         id: sha
         run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
+      # Plain `docker build`, NOT build-push-action: the action's
+      # docker-container BuildKit driver isolates the build in its own
+      # network namespace, so `--network host` there cannot reach the
+      # throwaway Postgres on the runner's 127.0.0.1:5432 (run #2 failed
+      # with "Can't reach database server"). The runner's own Docker
+      # daemon honours --network host as expected.
       - name: Build + push web image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: web
-          network: host
-          push: true
-          build-args: |
-            DATABASE_URL=${{ env.CI_DB_URL }}
-            NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL }}
-            NEXT_PUBLIC_APP_NAME=${{ vars.NEXT_PUBLIC_APP_NAME }}
-          tags: |
-            ${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-web:latest
-            ${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-web:${{ steps.sha.outputs.short }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-web:buildcache
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-web:buildcache,mode=max
+        run: |
+          docker build --network host --target web \
+            --build-arg DATABASE_URL="${{ env.CI_DB_URL }}" \
+            --build-arg NEXT_PUBLIC_APP_URL="${{ vars.NEXT_PUBLIC_APP_URL }}" \
+            --build-arg NEXT_PUBLIC_APP_NAME="${{ vars.NEXT_PUBLIC_APP_NAME }}" \
+            --cache-from ${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-web:latest \
+            -t ${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-web:latest \
+            -t ${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-web:${{ steps.sha.outputs.short }} \
+            .
+          docker push ${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-web:latest
+          docker push ${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-web:${{ steps.sha.outputs.short }}
 
       - name: Build + push worker image
         uses: docker/build-push-action@v6
