@@ -1,0 +1,137 @@
+# =============================================================================
+# Build the production Docker images in GitHub Actions and push to GHCR.
+#
+# Why: the VPS is too weak to run `next build` (RAM-hungry). CI builds,
+# the VPS only pulls and runs containers via Dokploy (docker-compose.prod.yml
+# references these images — there is no `build:` left there).
+#
+# The web image build PRERENDERS pages against a database, so this
+# workflow first starts a THROWAWAY Postgres on the runner, migrates +
+# base-seeds it, then builds with DATABASE_URL pointing at it over the
+# host network. The throwaway DB holds no real data: at runtime the ISR
+# pages revalidate against the real VPS database within minutes, and
+# product pages render on demand (none are prerendered from an empty
+# catalogue). RUN_BOOTSTRAP stays OFF here — the first Owner is created
+# against the REAL database after deploy (see DOCKER-DEPLOY.md).
+#
+# Images (private by default — grant Dokploy pull access with a GitHub
+# PAT that has read:packages, see DOCKER-DEPLOY.md):
+#   ghcr.io/nextfaysal/advance-ecommerce-web:latest
+#   ghcr.io/nextfaysal/advance-ecommerce-worker:latest
+# Each is also tagged with the short commit SHA.
+# =============================================================================
+
+name: Build images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/**"
+      - "packages/**"
+      - "scripts/**"
+      - "Dockerfile"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/build-images.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  CI_DB_URL: postgresql://postgres:ci-password@127.0.0.1:5432/advance_ecommerce?schema=public
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start throwaway Postgres (for the web build's prerender)
+        run: |
+          docker run -d --name ci-postgres \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=ci-password \
+            -e POSTGRES_DB=advance_ecommerce \
+            -p 5432:5432 \
+            postgres:16
+          for i in $(seq 1 30); do
+            if docker exec ci-postgres pg_isready -U postgres -d advance_ecommerce > /dev/null 2>&1; then
+              echo "postgres ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "postgres did not become ready"; exit 1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.0.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @advance-ecommerce/db db:generate
+
+      - name: Migrate + base-seed the throwaway DB
+        env:
+          DATABASE_URL: ${{ env.CI_DB_URL }}
+        run: |
+          pnpm --filter @advance-ecommerce/db exec prisma migrate deploy --schema=prisma/schema.prisma
+          pnpm --filter @advance-ecommerce/db db:seed
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build + push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: web
+          network: host
+          push: true
+          build-args: |
+            DATABASE_URL=${{ env.CI_DB_URL }}
+            NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL }}
+            NEXT_PUBLIC_APP_NAME=${{ vars.NEXT_PUBLIC_APP_NAME }}
+          tags: |
+            ${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-web:latest
+            ${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-web:${{ steps.sha.outputs.short }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-web:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-web:buildcache,mode=max
+
+      - name: Build + push worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: worker
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-worker:latest
+            ${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-worker:${{ steps.sha.outputs.short }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-worker:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/nextfaysal/advance-ecommerce-worker:buildcache,mode=max
