@@ -36,10 +36,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: advance_ecommerce
       TZ: Asia/Dhaka
-    ports:
-      # Host loopback only: reachable for the web image build (and for
-      # local psql/pg_dump work), never exposed to the internet.
-      - "127.0.0.1:5432:5432"
+    # No published port: web/worker reach Postgres over the compose
+    # network (postgres:5432). Publishing 5432 collides with Dokploy's
+    # own Postgres on the host and needlessly exposes the DB.
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
