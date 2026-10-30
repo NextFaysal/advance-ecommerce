@@ -265,6 +265,19 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   // Percent of the grand total asked as advance when the rule above
   // fires (integer 1-100; invalid stored values fall back to 20).
   "orders.rules.advance_percent": { category: "general", value: "20", isPublic: false },
+  // Max pending orders limit (multiple orders block). When enabled, a customer
+  // with >= max_pending_orders_count in PENDING status cannot create new orders.
+  "orders.rules.max_pending_orders_enabled": { category: "general", value: "false", isPublic: false },
+  "orders.rules.max_pending_orders_count": { category: "general", value: "2", isPublic: false },
+  // Daily order limit. When enabled, a customer cannot place more than
+  // daily_order_limit_count non-cancelled orders in a rolling 24-hour window.
+  "orders.rules.daily_order_limit_enabled": { category: "general", value: "false", isPublic: false },
+  "orders.rules.daily_order_limit_count": { category: "general", value: "3", isPublic: false },
+  // Order cooldown between subsequent orders by same customer (minutes). Default 5 min.
+  "orders.rules.order_cooldown_enabled": { category: "general", value: "false", isPublic: false },
+  "orders.rules.order_cooldown_minutes": { category: "general", value: "5", isPublic: false },
+  // Junk and gibberish address/name filter.
+  "orders.rules.junk_filter_enabled": { category: "general", value: "false", isPublic: false },
   // Approval workflows (ADV-27, doc 22 — src/orders/approvals.ts).
   // Master toggle defaults OFF: an unconfigured shop confirms and
   // refunds exactly as before (fail-open by design). When ON, an
@@ -505,7 +518,12 @@ export async function getSetting(key: string): Promise<string | null> {
 async function resolveSetting(key: string): Promise<string | null> {
   const cached = await getCachedValue(key);
   if (cached !== null) return cached;
-  const row = await prisma.setting.findUnique({ where: { key } });
+  let row = null;
+  try {
+    row = await prisma.setting.findUnique({ where: { key } });
+  } catch {
+    row = null;
+  }
   if (row !== null) {
     const value = row.valueEncrypted ? decryptValue(row.value) : row.value;
     await setCachedValue(key, value);

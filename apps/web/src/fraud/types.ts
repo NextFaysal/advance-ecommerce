@@ -14,7 +14,7 @@ export type { RiskLevel };
 /* Blacklist / whitelist                                               */
 /* ------------------------------------------------------------------ */
 
-export type FraudListKind = "phone" | "address";
+export type FraudListKind = "phone" | "address" | "ip";
 
 export interface FraudListEntry {
   id: string;
@@ -84,6 +84,8 @@ export interface FraudScoreInput {
   courierHistory?: CourierHistory;
   returnHistory?: ReturnHistory;
   lists: FraudLists;
+  /** Client IP address, when available. */
+  ip?: string;
   /** ISO timestamp injected by the caller (deterministic tests). */
   now: string;
 }
@@ -140,7 +142,7 @@ const addressRefSchema = z.object({
 
 const fraudListEntrySchema = z.object({
   id: z.string().min(1),
-  kind: z.enum(["phone", "address"]),
+  kind: z.enum(["phone", "address", "ip"]),
   value: z.string().min(1),
   district: z.string().optional(),
   reason: z.string().min(1),

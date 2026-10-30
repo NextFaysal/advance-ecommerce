@@ -315,26 +315,26 @@ export function ShopBrowser() {
 
   /* ---- URL state (single source of truth, same parsing as before) -- */
   const attrPairs = useMemo(
-    () => parseAttrs(searchParams.getAll("attr")),
+    () => parseAttrs(searchParams?.getAll("attr") ?? []),
     [searchParams],
   );
   const current: ShopState = {
-    category: first(searchParams.get("category") ?? undefined),
-    brand: first(searchParams.get("brand") ?? undefined),
-    sort: first(searchParams.get("sort") ?? undefined),
-    min: first(searchParams.get("min") ?? undefined),
-    max: first(searchParams.get("max") ?? undefined),
-    instock: first(searchParams.get("instock") ?? undefined),
-    q: first(searchParams.get("q") ?? undefined),
-    rating: first(searchParams.get("rating") ?? undefined),
+    category: first(searchParams?.get("category") ?? undefined),
+    brand: first(searchParams?.get("brand") ?? undefined),
+    sort: first(searchParams?.get("sort") ?? undefined),
+    min: first(searchParams?.get("min") ?? undefined),
+    max: first(searchParams?.get("max") ?? undefined),
+    instock: first(searchParams?.get("instock") ?? undefined),
+    q: first(searchParams?.get("q") ?? undefined),
+    rating: first(searchParams?.get("rating") ?? undefined),
     attr: attrPairs.map(pairToParam),
   };
   const { category, brand, q } = current;
-  const sort = parseSort(searchParams.get("sort") ?? undefined);
-  const minPoisha = parsePoisha(searchParams.get("min") ?? undefined);
-  const maxPoisha = parsePoisha(searchParams.get("max") ?? undefined);
-  const inStockOnly = searchParams.get("instock") === "1";
-  const ratingMin = parseRating(searchParams.get("rating") ?? undefined);
+  const sort = parseSort(searchParams?.get("sort") ?? undefined);
+  const minPoisha = parsePoisha(searchParams?.get("min") ?? undefined);
+  const maxPoisha = parsePoisha(searchParams?.get("max") ?? undefined);
+  const inStockOnly = searchParams?.get("instock") === "1";
+  const ratingMin = parseRating(searchParams?.get("rating") ?? undefined);
 
   // Attribute filters go to the API (exact totals) when the selection
   // fits its one-value-per-key contract. Multiple values for one key

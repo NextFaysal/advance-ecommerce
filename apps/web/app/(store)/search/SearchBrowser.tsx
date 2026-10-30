@@ -71,7 +71,7 @@ export function SearchBrowser() {
   const s = pick(locale, STORE_STRINGS);
   const st = pick(locale, SEARCH_STRINGS);
   const searchParams = useSearchParams();
-  const q = searchParams.get("q") ?? "";
+  const q = searchParams?.get("q") ?? "";
   const [state, setState] = useState<SearchState>({ status: "idle" });
 
   useEffect(() => {

@@ -65,10 +65,14 @@ export async function listActiveProducts(pageSize = 100): Promise<Product[]> {
 export async function listActivePublicProducts(pageSize = 100): Promise<PublicProduct[]> {
   const repo = await tryCatalogRepository();
   if (!repo) return [];
-  return cachedPublicRead(`active-public:${pageSize}`, async () => {
-    const result = await repo.listProducts({ status: "ACTIVE", page: 1, pageSize, liveOnly: true });
-    return result.products.map(toPublicProduct);
-  });
+  try {
+    return await cachedPublicRead(`active-public:${pageSize}`, async () => {
+      const result = await repo.listProducts({ status: "ACTIVE", page: 1, pageSize, liveOnly: true });
+      return result.products.map(toPublicProduct);
+    });
+  } catch {
+    return [];
+  }
 }
 
 /** PUBLIC filtered list (shop/search filters) with cost stripped. */
@@ -77,10 +81,14 @@ export async function listPublicProducts(
 ): Promise<{ products: PublicProduct[]; total: number; page: number; pageSize: number }> {
   const repo = await tryCatalogRepository();
   if (!repo) return { products: [], total: 0, page: 1, pageSize: filter.pageSize ?? 100 };
-  return cachedPublicRead(`public-list:${JSON.stringify(filter)}`, async () => {
-    const result = await repo.listProducts({ ...filter, status: "ACTIVE", liveOnly: true });
-    return { ...result, products: result.products.map(toPublicProduct) };
-  });
+  try {
+    return await cachedPublicRead(`public-list:${JSON.stringify(filter)}`, async () => {
+      const result = await repo.listProducts({ ...filter, status: "ACTIVE", liveOnly: true });
+      return { ...result, products: result.products.map(toPublicProduct) };
+    });
+  } catch {
+    return { products: [], total: 0, page: 1, pageSize: filter.pageSize ?? 100 };
+  }
 }
 
 /**
@@ -120,7 +128,11 @@ export async function listAllProducts(pageSizePerStatus = 100): Promise<Product[
 export async function listCategories(): Promise<Category[]> {
   const repo = await tryCatalogRepository();
   if (!repo) return [];
-  return cachedPublicRead("categories", () => repo.getCategories());
+  try {
+    return await cachedPublicRead("categories", () => repo.getCategories());
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -133,7 +145,11 @@ export async function listCategories(): Promise<Category[]> {
 export async function getLivePublicProductBySlug(slug: string): Promise<Product | null> {
   const repo = await tryCatalogRepository();
   if (!repo) return null;
-  return cachedPublicRead(`public-product:${slug}`, () => repo.getPublicProductBySlug(slug));
+  try {
+    return await cachedPublicRead(`public-product:${slug}`, () => repo.getPublicProductBySlug(slug));
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -21,6 +21,8 @@ import {
 } from "@/customer-auth/google";
 import { errorResponse } from "@/customer-auth/http";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: Request) {
   const config = await getGoogleAuthConfig();
   if (config === null) {

@@ -84,6 +84,46 @@ const CourierAssignmentPanel = nextDynamic(
   () => import("./courier-assignment-panel").then((m) => m.CourierAssignmentPanel),
   { loading: () => <PanelSkeleton /> },
 );
+const PhoneFraudCheckPanel = nextDynamic(
+  () => import("./phone-fraud-check-panel").then((m) => m.PhoneFraudCheckPanel),
+  { loading: () => <PanelSkeleton /> },
+);
+const ShippingLabelsPanel = nextDynamic(
+  () => import("./shipping-labels-panel").then((m) => m.ShippingLabelsPanel),
+  { loading: () => <PanelSkeleton /> },
+);
+const ReturnTrackerPanel = nextDynamic(
+  () => import("./return-tracker-panel").then((m) => m.ReturnTrackerPanel),
+  { loading: () => <PanelSkeleton /> },
+);
+const OrderSmsPanel = nextDynamic(
+  () => import("./order-sms-panel").then((m) => m.OrderSmsPanel),
+  { loading: () => <PanelSkeleton /> },
+);
+const WhatsAppRecoveryPanel = nextDynamic(
+  () => import("./whatsapp-recovery-panel").then((m) => m.WhatsAppRecoveryPanel),
+  { loading: () => <PanelSkeleton /> },
+);
+const ProfitCalculatorPanel = nextDynamic(
+  () => import("./profit-calculator-panel").then((m) => m.ProfitCalculatorPanel),
+  { loading: () => <PanelSkeleton /> },
+);
+const QrPaymentPanel = nextDynamic(
+  () => import("./qr-payment-panel").then((m) => m.QrPaymentPanel),
+  { loading: () => <PanelSkeleton /> },
+);
+const CourierCoveragePanel = nextDynamic(
+  () => import("./courier-coverage-panel").then((m) => m.CourierCoveragePanel),
+  { loading: () => <PanelSkeleton /> },
+);
+const CourierDisputeClaimPanel = nextDynamic(
+  () => import("./courier-dispute-claim-panel").then((m) => m.CourierDisputeClaimPanel),
+  { loading: () => <PanelSkeleton /> },
+);
+const CourierReconciliationPanel = nextDynamic(
+  () => import("./courier-reconciliation-panel").then((m) => m.CourierReconciliationPanel),
+  { loading: () => <PanelSkeleton /> },
+);
 import { buildCourierStatsFromDb } from "@/bd/courier-stats-db";
 import type { PaymentLinkListItemView } from "./actions";
 import { reconciliationReason, reconciliationStatusLabels } from "./labels";
@@ -150,125 +190,6 @@ async function todaysRecordedReceipts(todayYmd: string) {
   return { bkashExpectedPoisha, nagadExpectedPoisha };
 }
 
-function CourierReconciliationPanel({
-  run,
-  openDisputes,
-  locale,
-  s,
-}: {
-  run: CourierInvoiceRun | null;
-  openDisputes: number;
-  locale: Locale;
-  s: BdToolsStrings;
-}) {
-  if (!run) {
-    return (
-      <div className="space-y-3">
-        <EmptyState title={s.reconEmptyTitle} description={s.reconEmptyDesc} />
-      </div>
-    );
-  }
-
-  const disputed = run.rows.filter((r) => r.disputed);
-  const matched = run.rows.filter((r) => !r.disputed);
-  const summary = run.summary;
-
-  const disputedRows = disputed.map((r) => ({
-    shipment: <span className="font-mono text-xs">{r.shipmentId}</span>,
-    order: r.orderId ? <span className="font-mono text-xs">{r.orderId}</span> : "—",
-    provider: r.provider ?? "—",
-    status: <Badge tone="danger">{reconciliationStatusLabels(locale)[r.status]}</Badge>,
-    expected: r.expectedPayablePoisha !== null ? <Money poisha={r.expectedPayablePoisha} /> : "—",
-    invoiced: r.invoicedPayablePoisha !== null ? <Money poisha={r.invoicedPayablePoisha} /> : "—",
-    difference: r.differencePoisha !== null ? <Money poisha={r.differencePoisha} /> : "—",
-    reason: (
-      <span className="text-xs">
-        {r.disputeReasons.map((reason) => (
-          <span key={reason} className="block">
-            {reconciliationReason(reason, locale)}{" "}
-            <span className="font-mono text-text-muted">({reason})</span>
-          </span>
-        ))}
-      </span>
-    ),
-  }));
-
-  const matchedRows = matched.map((r) => ({
-    shipment: <span className="font-mono text-xs">{r.shipmentId}</span>,
-    order: r.orderId ? <span className="font-mono text-xs">{r.orderId}</span> : "—",
-    provider: r.provider ?? "—",
-    payable: r.expectedPayablePoisha !== null ? <Money poisha={r.expectedPayablePoisha} /> : "—",
-  }));
-
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge tone="brand">
-          {interpolate(s.reconRunBadge, {
-            courier: run.courierKey,
-            at: run.importedAt.slice(0, 16).replace("T", " "),
-          })}
-        </Badge>
-        <span className="text-sm text-text-muted">
-          {interpolate(s.reconSummaryText, { total: run.totalRows, valid: run.validRowCount, disputes: openDisputes })}
-        </span>
-      </div>
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label={s.statMatched} value={String(summary.matchedCount)} delta={s.statDeltaThisRun} icon={<Icon name="check" size={22} />} />
-        <StatCard label={s.statDisputed} value={String(summary.disputedCount)} delta={s.statDeltaThisRun} deltaTone="down" icon={<Icon name="alert" size={22} />} accent="bg-danger-soft text-danger" />
-        <StatCard label={s.statMissingExtra} value={`${summary.missingCount} / ${summary.extraCount}`} delta={s.statDeltaThisRun} icon={<Icon name="package" size={22} />} />
-        <StatCard label={s.statExpectedTotal} value={formatPoisha(summary.expectedTotalPoisha)} delta={s.statDeltaThisRun} icon={<Icon name="banknote" size={22} />} />
-      </div>
-      <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-        <div className="rounded-xl border border-border bg-success-soft p-3">
-          <p className="text-xs text-success-solid">{s.matchedTotalLabel}</p>
-          <p className="mt-1 text-text-main"><Money poisha={summary.matchedTotalPoisha} /></p>
-        </div>
-        <div className="rounded-xl border border-border bg-danger-soft p-3">
-          <p className="text-xs text-danger">{s.disputedTotalLabel}</p>
-          <p className="mt-1 text-text-main"><Money poisha={summary.disputedTotalPoisha} /></p>
-        </div>
-      </div>
-
-      <div>
-        <h3 className="mb-2 font-display text-sm font-semibold text-text-main">{s.disputedHeading}</h3>
-        {disputedRows.length > 0 ? (
-          <DataTable
-            columns={[
-              { key: "shipment", header: s.colShipment },
-              { key: "order", header: s.colOrder },
-              { key: "provider", header: s.colProvider },
-              { key: "status", header: s.colStatus },
-              { key: "expected", header: s.colExpected },
-              { key: "invoiced", header: s.colInvoiced },
-              { key: "difference", header: s.colDifference },
-              { key: "reason", header: s.colReason },
-            ]}
-            rows={disputedRows}
-          />
-        ) : (
-          <p className="text-sm text-text-muted">{s.noDisputed}</p>
-        )}
-      </div>
-
-      {matchedRows.length > 0 ? (
-        <div>
-          <h3 className="mb-2 font-display text-sm font-semibold text-text-main">{s.matchedHeading}</h3>
-          <DataTable
-            columns={[
-              { key: "shipment", header: s.colShipment },
-              { key: "order", header: s.colOrder },
-              { key: "provider", header: s.colProvider },
-              { key: "payable", header: s.colPayable },
-            ]}
-            rows={matchedRows}
-          />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export default async function BdToolsPage() {
   const locale = await getRequestLocale();
   const s = pick(locale, BD_TOOLS_STRINGS);
@@ -297,6 +218,17 @@ export default async function BdToolsPage() {
         <Tabs
           tabs={[
             { id: "address", label: s.tabAddress, content: <AddressParserPanel /> },
+            { id: "fraud-lookup", label: s.tabFraudLookup, content: <PhoneFraudCheckPanel /> },
+            { id: "shipping-labels", label: s.tabShippingLabels, content: <ShippingLabelsPanel /> },
+            { id: "return-tracker", label: s.tabReturnTracker, content: <ReturnTrackerPanel /> },
+            { id: "order-sms", label: s.tabOrderSms, content: <OrderSmsPanel /> },
+            { id: "whatsapp-recovery", label: s.tabWhatsappRecovery, content: <WhatsAppRecoveryPanel /> },
+            { id: "profit-calculator", label: s.tabProfitCalculator, content: <ProfitCalculatorPanel /> },
+            { id: "qr-payment", label: s.tabQrPayment, content: <QrPaymentPanel /> },
+            { id: "courier-coverage", label: s.tabCourierCoverage, content: <CourierCoveragePanel /> },
+            { id: "courier-claims", label: s.tabCourierClaims, content: <CourierDisputeClaimPanel /> },
+
+
             { id: "sms", label: s.tabSms, content: <SmsVerifyPanel /> },
             { id: "sms-devices", label: s.tabDevices, content: <SmsDevicesPanel /> },
             { id: "payment-links", label: s.tabPaymentLinks, content: <PaymentLinksPanel initialLinks={links} /> },
@@ -315,7 +247,7 @@ export default async function BdToolsPage() {
             {
               id: "courier-reconciliation",
               label: s.tabRecon,
-              content: <CourierReconciliationPanel run={latestRun} openDisputes={openDisputes} locale={locale} s={s} />,
+              content: <CourierReconciliationPanel initialRun={latestRun} initialOpenDisputes={openDisputes} />,
             },
             {
               id: "courier-assignment",

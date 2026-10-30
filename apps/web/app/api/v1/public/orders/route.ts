@@ -185,7 +185,11 @@ import {
   belowMinimum,
   codViolation,
   evaluateAdvanceRule,
+  exceedsDailyOrderLimit,
+  exceedsPendingOrderLimit,
+  isJunkText,
   loadOrderRules,
+  violatesOrderCooldown,
 } from "@/checkout/order-rules";
 import {
   assembleFraudInput,
@@ -676,8 +680,20 @@ export async function POST(req: Request) {
   // instrument and guessing must be expensive. Runs before the
   // idempotency claim so a limited attempt never poisons the key;
   // only when the module flag is on (off = the code is ignored).
+  const clientIp = (req.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() || null;
+  if (clientIp) {
+    const ipOrderLimit = await checkRateLimit(`checkout-rapid-ip:${clientIp}`, 5, 60 * 1000);
+    if (!ipOrderLimit.allowed) {
+      return errorResponse(
+        "TOO_MANY_ORDER_ATTEMPTS",
+        "অল্প সময়ের মধ্যে অনেকগুলো অর্ডার চেষ্টা করা হয়েছে। অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন। / Too many order attempts in a short period. Please try again later.",
+        429,
+      );
+    }
+  }
+
   if (form.giftCardCode && isFeatureEnabled("module.marketing_mechanics")) {
-    const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() || "unknown";
+    const ip = clientIp || "unknown";
     const limit = await checkRateLimit(`gift-card-checkout:${ip}:${form.phone}`, 10, 60 * 60 * 1000);
     if (!limit.allowed) {
       return errorResponse(
@@ -962,6 +978,17 @@ async function processCreate(
   // against the submitted district + the items' category slugs;
   // violations are a 422 that names the rule, in both languages.
   const rules = await loadOrderRules();
+
+  if (rules.junkFilterEnabled) {
+    if (isJunkText(form.customerName) || isJunkText(form.address.addressLine)) {
+      return errorResponse(
+        "INVALID_CUSTOMER_INFO",
+        "অনুগ্রহ করে সঠিক পূর্ণ নাম এবং বিস্তারিত ঠিকানা প্রদান করুন (অর্থহীন বা টেস্ট টেক্সট গ্রহণযোগ্য নয়)। / Please provide a valid full name and detailed address (test or junk characters are not accepted).",
+        422,
+        { field: isJunkText(form.customerName) ? "customerName" : "addressLine" },
+      );
+    }
+  }
   if (form.paymentMethod === "cod") {
     const violation = codViolation(rules, {
       district: form.address.district,

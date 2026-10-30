@@ -42,6 +42,13 @@ export interface OrderRules {
   advanceRequiredAbovePoisha: number;
   /** Advance percent of the grand total (1-100, default 20). */
   advancePercent: number;
+  maxPendingOrdersEnabled: boolean;
+  maxPendingOrdersCount: number;
+  dailyOrderLimitEnabled: boolean;
+  dailyOrderLimitCount: number;
+  orderCooldownEnabled: boolean;
+  orderCooldownMinutes: number;
+  junkFilterEnabled: boolean;
 }
 
 export const PERMISSIVE_ORDER_RULES: OrderRules = {
@@ -50,6 +57,13 @@ export const PERMISSIVE_ORDER_RULES: OrderRules = {
   codDisabledCategories: [],
   advanceRequiredAbovePoisha: 0,
   advancePercent: 20,
+  maxPendingOrdersEnabled: false,
+  maxPendingOrdersCount: 2,
+  dailyOrderLimitEnabled: false,
+  dailyOrderLimitCount: 3,
+  orderCooldownEnabled: false,
+  orderCooldownMinutes: 5,
+  junkFilterEnabled: false,
 };
 
 function parsePoisha(raw: string | null): number {
@@ -67,6 +81,16 @@ function parseList(raw: string | null): string[] {
     .filter((s) => s.length > 0);
 }
 
+function parseBoolean(raw: string | null): boolean {
+  return raw === "true" || raw === "1";
+}
+
+function parseCount(raw: string | null, fallback: number): number {
+  if (raw === null) return fallback;
+  const n = Number.parseInt(raw.trim(), 10);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
 function parsePercent(raw: string | null): number {
   if (raw === null) return 20;
   const n = Number.parseInt(raw.trim(), 10);
@@ -75,12 +99,32 @@ function parsePercent(raw: string | null): number {
 
 export async function loadOrderRules(): Promise<OrderRules> {
   try {
-    const [minOrder, districts, categories, above, percent] = await Promise.all([
+    const [
+      minOrder,
+      districts,
+      categories,
+      above,
+      percent,
+      maxPendingEnabled,
+      maxPendingCount,
+      dailyLimitEnabled,
+      dailyLimitCount,
+      cooldownEnabled,
+      cooldownMinutes,
+      junkFilterEnabled,
+    ] = await Promise.all([
       getSetting("orders.rules.min_order_poisha"),
       getSetting("orders.rules.cod_disabled_districts"),
       getSetting("orders.rules.cod_disabled_categories"),
       getSetting("orders.rules.advance_required_above_poisha"),
       getSetting("orders.rules.advance_percent"),
+      getSetting("orders.rules.max_pending_orders_enabled"),
+      getSetting("orders.rules.max_pending_orders_count"),
+      getSetting("orders.rules.daily_order_limit_enabled"),
+      getSetting("orders.rules.daily_order_limit_count"),
+      getSetting("orders.rules.order_cooldown_enabled"),
+      getSetting("orders.rules.order_cooldown_minutes"),
+      getSetting("orders.rules.junk_filter_enabled"),
     ]);
     return {
       minOrderPoisha: parsePoisha(minOrder),
@@ -88,6 +132,13 @@ export async function loadOrderRules(): Promise<OrderRules> {
       codDisabledCategories: parseList(categories),
       advanceRequiredAbovePoisha: parsePoisha(above),
       advancePercent: parsePercent(percent),
+      maxPendingOrdersEnabled: parseBoolean(maxPendingEnabled),
+      maxPendingOrdersCount: parseCount(maxPendingCount, 2),
+      dailyOrderLimitEnabled: parseBoolean(dailyLimitEnabled),
+      dailyOrderLimitCount: parseCount(dailyLimitCount, 3),
+      orderCooldownEnabled: parseBoolean(cooldownEnabled),
+      orderCooldownMinutes: parseCount(cooldownMinutes, 5),
+      junkFilterEnabled: parseBoolean(junkFilterEnabled),
     };
   } catch {
     return PERMISSIVE_ORDER_RULES;
@@ -156,4 +207,100 @@ export function evaluateAdvanceRule(
     advanceRequired: true,
     advancePoisha: Math.round((input.grandTotalPoisha * rules.advancePercent) / 100),
   };
+}
+
+/**
+ * Checks if a customer exceeds the pending orders limit.
+ * Counts orders that are currently in "PENDING" status.
+ */
+export function exceedsPendingOrderLimit(
+  rules: OrderRules,
+  priorOrders: readonly { status: string }[],
+): boolean {
+  if (!rules.maxPendingOrdersEnabled || rules.maxPendingOrdersCount <= 0) return false;
+  const pendingCount = priorOrders.filter((o) => o.status === "PENDING").length;
+  return pendingCount >= rules.maxPendingOrdersCount;
+}
+
+/**
+ * Checks if a customer exceeds the daily order limit.
+ * Counts non-cancelled orders created within the last 24 hours.
+ */
+export function exceedsDailyOrderLimit(
+  rules: OrderRules,
+  priorOrders: readonly { status: string; createdAt: string | Date }[],
+  nowMs: number = Date.now(),
+): boolean {
+  if (!rules.dailyOrderLimitEnabled || rules.dailyOrderLimitCount <= 0) return false;
+  const oneDayAgo = nowMs - 24 * 60 * 60 * 1000;
+  const dailyCount = priorOrders.filter((o) => {
+    if (o.status === "CANCELLED") return false;
+    const orderTime = new Date(o.createdAt).getTime();
+    return orderTime >= oneDayAgo && orderTime <= nowMs;
+  }).length;
+  return dailyCount >= rules.dailyOrderLimitCount;
+}
+
+/**
+ * Checks if a customer violates the cooldown period between subsequent orders.
+ */
+export function violatesOrderCooldown(
+  rules: OrderRules,
+  priorOrders: readonly { status: string; createdAt: string | Date }[],
+  nowMs: number = Date.now(),
+): { inCooldown: boolean; remainingSeconds: number } {
+  if (!rules.orderCooldownEnabled || rules.orderCooldownMinutes <= 0) {
+    return { inCooldown: false, remainingSeconds: 0 };
+  }
+  const cooldownMs = rules.orderCooldownMinutes * 60 * 1000;
+  // Look for the newest non-cancelled order
+  const validOrders = priorOrders
+    .filter((o) => o.status !== "CANCELLED" && o.status !== "INCOMPLETE")
+    .map((o) => new Date(o.createdAt).getTime())
+    .filter((time) => !Number.isNaN(time))
+    .sort((a, b) => b - a);
+
+  if (validOrders.length === 0) {
+    return { inCooldown: false, remainingSeconds: 0 };
+  }
+
+  const lastOrderTime = validOrders[0];
+  const elapsedMs = nowMs - lastOrderTime;
+  if (elapsedMs < cooldownMs) {
+    const remainingSeconds = Math.ceil((cooldownMs - elapsedMs) / 1000);
+    return { inCooldown: true, remainingSeconds };
+  }
+
+  return { inCooldown: false, remainingSeconds: 0 };
+}
+
+/**
+ * Detects mock, gibberish or spam texts in customer names and address lines.
+ */
+export function isJunkText(input?: string | null): boolean {
+  if (!input) return false;
+  const s = input.trim();
+  if (s.length < 3) return true;
+
+  // 1. Same character repeated 4+ times consecutively
+  if (/(.)\1{3,}/i.test(s)) return true;
+
+  // 2. Obvious keyboard mash patterns and mock words
+  const mashPatterns = [
+    /asdf/i,
+    /qwerty/i,
+    /zxcvb/i,
+    /123456/i,
+    /abcdef/i,
+    /\b(test|fake|dummy|asdfgh|unknown|demo|sample)\b/i,
+  ];
+  for (const pattern of mashPatterns) {
+    if (pattern.test(s)) return true;
+  }
+
+  // 3. Must contain at least one letter (Bengali or English)
+  const hasLetters = /[\p{L}]/u.test(s);
+  if (!hasLetters) return true;
+
+  return false;
 }

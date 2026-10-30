@@ -270,12 +270,13 @@ export async function countReviewsByStatus(): Promise<Record<ReviewStatus, numbe
  * this returns [], the homepage section renders nothing.
  */
 export async function listHomepageReviews(take = 6): Promise<HomepageReview[]> {
-  const rows = await prisma.review.findMany({
-    where: { status: "APPROVED", rating: { gte: 4 }, deletedAt: null },
-    orderBy: { createdAt: "desc" },
-    take,
-    include: { product: { select: { titleBn: true, slug: true } } },
-  });
+  try {
+    const rows = await prisma.review.findMany({
+      where: { status: "APPROVED", rating: { gte: 4 }, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      take,
+      include: { product: { select: { titleBn: true, slug: true } } },
+    });
   return rows.map((row) => ({
     id: row.id,
     authorName: row.authorName,
@@ -286,4 +287,7 @@ export async function listHomepageReviews(take = 6): Promise<HomepageReview[]> {
     productSlug: row.product.slug,
     createdAt: row.createdAt.toISOString(),
   }));
+  } catch {
+    return [];
+  }
 }

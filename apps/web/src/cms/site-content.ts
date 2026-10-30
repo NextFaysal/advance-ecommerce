@@ -66,9 +66,17 @@ function parseSection<T>(raw: string | null, schema: z.ZodType<T[], z.ZodTypeDef
 /** Full document as the admin editor needs it: invisible items and
  *  inactive slides included, defaults substituted per-section. */
 export async function readSiteContent(): Promise<SiteContentRead> {
-  const rows = await prisma.setting.findMany({
-    where: { key: { in: Object.values(SITE_CONTENT_KEYS) } },
-  });
+  let rows: Array<{ key: string; value: string; valueEncrypted: boolean }> = [];
+  try {
+    rows = await prisma.setting.findMany({
+      where: { key: { in: Object.values(SITE_CONTENT_KEYS) } },
+    });
+  } catch {
+    return {
+      content: { headerMenu: DEFAULT_HEADER_MENU, footerMenu: DEFAULT_FOOTER_MENU, heroSlides: DEFAULT_HERO_SLIDES },
+      configured: { headerMenu: false, footerMenu: false, heroSlides: false },
+    };
+  }
   const byKey = new Map(rows.map((r) => [r.key, r.valueEncrypted ? null : r.value]));
   const header = parseSection<SiteMenuItem>(
     byKey.get(SITE_CONTENT_KEYS.headerMenu) ?? null, z.array(siteMenuItemSchema), DEFAULT_HEADER_MENU,

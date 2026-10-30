@@ -89,7 +89,7 @@ export function scoreFraud(input: FraudScoreInput): FraudAssessment {
   const signals: SignalResult[] = [];
   const district = input.shippingAddress.district;
 
-  const blacklistHit = findBlacklistHit(input.lists, { phone: input.phone, district });
+  const blacklistHit = findBlacklistHit(input.lists, { phone: input.phone, district, ip: input.ip });
   signals.push(
     blacklistHit
       ? {
@@ -101,7 +101,7 @@ export function scoreFraud(input: FraudScoreInput): FraudAssessment {
       : { key: "blacklist_hit", points: 0, triggered: false, detail: "No blacklist match." },
   );
 
-  const whitelisted = !blacklistHit && isWhitelisted(input.lists, { phone: input.phone, district });
+  const whitelisted = !blacklistHit && isWhitelisted(input.lists, { phone: input.phone, district, ip: input.ip });
   signals.push({
     key: "whitelist",
     points: whitelisted ? SCORE_WEIGHTS.whitelistCredit : 0,

@@ -177,20 +177,32 @@ export function matchesAddressEntry(entry: FraudListEntry, district: string): bo
   return target !== "" && target === district.trim().toLowerCase();
 }
 
+/** IP match for IP entries, case-insensitive after trim. */
+export function matchesIpEntry(entry: FraudListEntry, ip?: string): boolean {
+  if (entry.kind !== "ip" || !ip || ip === "unknown") return false;
+  return entry.value.trim().toLowerCase() === ip.trim().toLowerCase();
+}
+
 export function findBlacklistHit(
   lists: FraudLists,
-  input: { phone: string; district: string },
+  input: { phone: string; district: string; ip?: string },
 ): FraudListEntry | undefined {
   return lists.blacklist.find(
-    (e) => matchesPhoneEntry(e, input.phone) || matchesAddressEntry(e, input.district),
+    (e) =>
+      matchesPhoneEntry(e, input.phone) ||
+      matchesAddressEntry(e, input.district) ||
+      matchesIpEntry(e, input.ip),
   );
 }
 
 export function isWhitelisted(
   lists: FraudLists,
-  input: { phone: string; district: string },
+  input: { phone: string; district: string; ip?: string },
 ): boolean {
   return lists.whitelist.some(
-    (e) => matchesPhoneEntry(e, input.phone) || matchesAddressEntry(e, input.district),
+    (e) =>
+      matchesPhoneEntry(e, input.phone) ||
+      matchesAddressEntry(e, input.district) ||
+      matchesIpEntry(e, input.ip),
   );
 }

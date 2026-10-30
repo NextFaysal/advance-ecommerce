@@ -52,7 +52,7 @@ export function SettingsNav() {
         const active =
           item.href === "/admin/settings"
             ? pathname === item.href
-            : pathname === item.href || pathname.startsWith(`${item.href}/`);
+            : pathname === item.href || pathname?.startsWith(`${item.href}/`);
         return (
           <Link
             key={item.href}

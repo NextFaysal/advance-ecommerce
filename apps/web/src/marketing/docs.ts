@@ -38,9 +38,13 @@ export interface MarketingDocStore {
 export function prismaMarketingDocStore(): MarketingDocStore {
   return {
     async read(key) {
-      const { prisma } = await import("@advance-ecommerce/db");
-      const row = await prisma.setting.findUnique({ where: { key } });
-      return row?.value ?? null;
+      try {
+        const { prisma } = await import("@advance-ecommerce/db");
+        const row = await prisma.setting.findUnique({ where: { key } });
+        return row?.value ?? null;
+      } catch {
+        return null;
+      }
     },
     async write(key, value, actorId) {
       const { prisma } = await import("@advance-ecommerce/db");

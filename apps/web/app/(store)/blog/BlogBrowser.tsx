@@ -75,9 +75,9 @@ export function BlogBrowser({
   categories: { category: string; count: number }[];
 }) {
   const searchParams = useSearchParams();
-  const categoryRaw = searchParams.get("category");
+  const categoryRaw = searchParams?.get("category");
   const category = categoryRaw?.trim() ? categoryRaw.trim() : null;
-  const requestedPage = Math.max(1, Number.parseInt(searchParams.get("page") ?? "1", 10) || 1);
+  const requestedPage = Math.max(1, Number.parseInt(searchParams?.get("page") ?? "1", 10) || 1);
 
   const filtered = category ? posts.filter((p) => p.category === category) : posts;
   // Same clamping as blogPagination() server-side: at least one page,

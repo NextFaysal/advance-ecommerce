@@ -22,6 +22,8 @@ import {
 } from "@/customer-auth/facebook";
 import { errorResponse } from "@/customer-auth/http";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: Request) {
   const config = await getFacebookAuthConfig();
   if (config === null) {

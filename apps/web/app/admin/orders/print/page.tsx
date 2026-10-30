@@ -492,7 +492,7 @@ function PrintCentreInner() {
   const s = pick(locale, ORDER_STRINGS);
   const searchParams = useSearchParams();
   const ids = useMemo(() => {
-    const raw = searchParams.get("ids") ?? "";
+    const raw = searchParams?.get("ids") ?? "";
     const unique = [...new Set(raw.split(",").map((s) => s.trim()).filter(Boolean))];
     return unique.slice(0, MAX_INVOICES);
   }, [searchParams]);
