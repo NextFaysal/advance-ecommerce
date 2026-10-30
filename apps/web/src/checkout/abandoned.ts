@@ -24,7 +24,7 @@
  *   (source "manual" + an internal note naming the capture).
  */
 import { z } from "zod";
-import { addQty, isValidQtyNumber, lineTotalPoisha, qtyToMilli, roundHalfUpDiv, QTY_MILLI } from "../lib/quantity";
+import { addQty, isValidQtyNumber, lineTotalPoisha, qtyToDecimalString, qtyToMilli, roundHalfUpDiv, QTY_MILLI } from "../lib/quantity";
 import { validateOrderLineQuantities } from "../orders/quantity-rules";
 import { prisma } from "@advance-ecommerce/db";
 import { priorityForSource } from "../callcenter/queue";
@@ -44,6 +44,7 @@ import { emitAutomationEvent } from "../automation/producers";
 import { dispatchWebhookEvent } from "../webhooks/dispatch";
 import {
   createOrderRecord,
+  nextOrderNoTx,
   findOrderByIdempotencyKey,
   getVariantSnapshots,
   listOrdersByPhone,
@@ -270,6 +271,124 @@ export async function captureAbandonedCheckout(
     // address this row carries. Never throws.
     await dispatchWebhookEvent("checkout.abandoned", row.id);
   }
+
+  // Sync Incomplete Order into the Order table so it appears in the Admin Orders list
+  try {
+    const incompleteKey = `inc_${input.sessionKey}`;
+    const existingOrder = await prisma.order.findUnique({
+      where: { idempotencyKey: incompleteKey },
+    });
+
+    if (existingOrder) {
+      if (existingOrder.status === "INCOMPLETE") {
+        await prisma.$transaction(async (tx) => {
+          await tx.orderItem.deleteMany({ where: { orderId: existingOrder.id } });
+          await tx.order.update({
+            where: { id: existingOrder.id },
+            data: {
+              customerName: input.name?.trim() || existingOrder.customerName,
+              customerPhone: phone,
+              division: address?.division || existingOrder.division,
+              district: address?.district || existingOrder.district,
+              upazila: address?.upazila || existingOrder.upazila,
+              union: address?.union || existingOrder.union,
+              addressLine: address?.addressLine || existingOrder.addressLine,
+              subtotalPoisha,
+              totalPoisha: subtotalPoisha + 6000,
+              items: {
+                create: items.map((i) => {
+                  const s = snapshots.get(i.variantId);
+                  return {
+                    variantId: i.variantId,
+                    productName: s?.productName || "Product",
+                    sku: s?.sku || i.variantId,
+                    unitPricePoisha: i.pricePoishaAtCapture,
+                    quantity: qtyToDecimalString(i.quantity),
+                  };
+                }),
+              },
+            },
+          });
+          await tx.payment.updateMany({
+            where: { orderId: existingOrder.id },
+            data: { amountPoisha: subtotalPoisha + 6000 },
+          });
+        });
+      }
+    } else {
+      await prisma.$transaction(async (tx) => {
+        const customer = await tx.customer.upsert({
+          where: { phone },
+          create: {
+            name: input.name?.trim() || "Customer",
+            phone,
+          },
+          update: {
+            ...(input.name?.trim() ? { name: input.name.trim() } : {}),
+          },
+        });
+        const orderNo = await nextOrderNoTx(tx);
+        const order = await tx.order.create({
+          data: {
+            orderNo,
+            customerId: customer.id,
+            customerName: input.name?.trim() || "Customer",
+            customerPhone: phone,
+            division: address?.division || "Dhaka",
+            district: address?.district || "Dhaka",
+            upazila: address?.upazila || "Dhaka",
+            union: address?.union || null,
+            addressLine: address?.addressLine || "অসম্পূর্ণ চেকআউট (Incomplete address)",
+            status: "INCOMPLETE",
+            paymentMethod: "COD",
+            paymentStatus: "UNPAID",
+            subtotalPoisha,
+            discountPoisha: 0,
+            shippingPoisha: 6000,
+            codFeePoisha: 0,
+            taxPoisha: 0,
+            totalPoisha: subtotalPoisha + 6000,
+            riskScore: 0,
+            source: "website_incomplete",
+            idempotencyKey: incompleteKey,
+            items: {
+              create: items.map((i) => {
+                const s = snapshots.get(i.variantId);
+                return {
+                  variantId: i.variantId,
+                  productName: s?.productName || "Product",
+                  sku: s?.sku || i.variantId,
+                  unitPricePoisha: i.pricePoishaAtCapture,
+                  quantity: qtyToDecimalString(i.quantity),
+                };
+              }),
+            },
+          },
+        });
+        await tx.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            from: null,
+            to: "INCOMPLETE",
+            changedById: null,
+            reason: "চেকআউট ফর্ম পূরণ করেছেন কিন্তু সাবমিট করেননি (Incomplete Order)",
+          },
+        });
+        await tx.payment.create({
+          data: {
+            orderId: order.id,
+            method: "COD",
+            amountPoisha: subtotalPoisha + 6000,
+            paidPoisha: 0,
+            status: "UNPAID",
+          },
+        });
+      });
+    }
+  } catch (err) {
+    console.error("[incomplete-order] sync error:", err);
+  }
+
   return { id: row.id, status: "OPEN", closed: false, droppedVariantIds };
 }
 

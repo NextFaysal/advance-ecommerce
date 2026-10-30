@@ -22,7 +22,7 @@ import { stageTagWhere } from "./stages";
 import type { OrderStatus } from "./types";
 
 export const ORDER_STATUSES: readonly OrderStatus[] = [
-  "PENDING", "CONFIRMED", "PROCESSING", "PACKED", "SHIPPED",
+  "INCOMPLETE", "PENDING", "CONFIRMED", "PROCESSING", "PACKED", "SHIPPED",
   "DELIVERED", "FAILED", "RETURN_REQUESTED", "RETURNING", "RETURNED",
   "CANCELLED", "REFUNDED", "EXCHANGED",
 ];

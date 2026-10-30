@@ -148,6 +148,28 @@ export default function AdminAbandonedPage() {
     }
   }
 
+  async function sendWhatsAppRecovery(id: string) {
+    setBusyId(id);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/v1/admin/abandoned/${id}/whatsapp`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error?.message || "WhatsApp লিংক তৈরি করা যায়নি");
+      }
+      if (json.data?.waUrl) {
+        window.open(json.data.waUrl, "_blank");
+        setNotice("গ্রাহকের জন্য WhatsApp রিকভারি চ্যাট খোলা হয়েছে।");
+      }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "WhatsApp রিকভারি ব্যর্থ হয়েছে");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <main className="space-y-6">
       <PageHeader title={s.title} subtitle={s.description} />
@@ -255,6 +277,14 @@ export default function AdminAbandonedPage() {
                   </ul>
 
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                    <button
+                      type="button"
+                      disabled={busyId === row.id}
+                      onClick={() => void sendWhatsAppRecovery(row.id)}
+                      className="min-h-11 w-full rounded-xl border border-emerald-500/40 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 px-3 py-1.5 text-small font-medium transition duration-fast ease-smooth disabled:opacity-50 sm:min-h-0 sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+                    >
+                      💬 হোয়াটসঅ্যাপ রিকভারি
+                    </button>
                     <button
                       type="button"
                       disabled={busyId === row.id || row.hasCallTask}

@@ -773,6 +773,7 @@ export async function releaseOrderStockReservations(orderId: string): Promise<vo
 /* ------------------------------------------------------------------ */
 
 export interface CreateOrderRecordInput {
+  incompleteSessionKey?: string;
   idempotencyKey: string;
   customerName: string;
   customerPhone: string;
@@ -998,7 +999,7 @@ function dhakaDayStamp(now: Date = new Date()): string {
  * keep their historical numbers — nothing renumbers history. The
  * orderNo @unique constraint remains as the backstop.
  */
-async function nextOrderNoTx(tx: ProductTypesTx): Promise<string> {
+export async function nextOrderNoTx(tx: ProductTypesTx): Promise<string> {
   const day = dhakaDayStamp();
   const rows = await tx.$queryRaw<{ lastSeq: number }[]>`
     INSERT INTO "OrderSequence" ("day", "lastSeq")
@@ -1062,16 +1063,14 @@ export async function createOrderRecord(
   let giftCardBalanceAfterPoisha: number | null = null;
   try {
     const created = await prisma.$transaction(async (tx) => {
-      // Wave 20: the order number is minted INSIDE the transaction
-      // from the per-day OrderSequence counter (see nextOrderNoTx), so
-      // the sequence draw and the order commit or roll back together.
-      const orderNo = await nextOrderNoTx(tx);
-      // Wave 15 (product types): preorder caps + bundle component
-      // availability, validated before anything is written; the
-      // returned needs are deducted after the order row exists.
-      // Wave 19: bundleVariantIds tells the general reservation which
-      // line variants are bundle shells (skip — components carry the
-      // stock) while the flag is ON; empty when the flag is OFF.
+      const existingIncomplete = input.incompleteSessionKey
+        ? await tx.order.findUnique({
+            where: { idempotencyKey: `inc_${input.incompleteSessionKey}` },
+          })
+        : null;
+      const isReusingIncomplete = existingIncomplete && existingIncomplete.status === "INCOMPLETE";
+
+      const orderNo = isReusingIncomplete ? existingIncomplete.orderNo : await nextOrderNoTx(tx);
       const { componentNeeds, bundleVariantIds } = await validateProductTypeRules(tx, input.items);
       const customer = await tx.customer.upsert({
         where: { phone: input.customerPhone },
@@ -1099,52 +1098,98 @@ export async function createOrderRecord(
           },
         });
       }
-      const order = await tx.order.create({
-        data: {
-          orderNo,
-          customerId: customer.id,
-          customerName: input.customerName,
-          customerPhone: input.customerPhone,
-          division: input.address.division,
-          district: input.address.district,
-          upazila: input.address.upazila,
-          union: input.address.union ?? null,
-          addressLine: input.address.addressLine,
-          status: "PENDING",
-          paymentMethod: paymentMethodToDb(input.paymentMethod) as never,
-          paymentStatus: "UNPAID",
-          subtotalPoisha: input.pricing.subtotalPoisha,
-          discountPoisha: input.pricing.discountPoisha,
-          shippingPoisha: input.pricing.shippingPoisha,
-          codFeePoisha: input.pricing.codFeePoisha,
-          taxPoisha: input.pricing.taxPoisha,
-          vatPoisha: vatSplit ? vatSplit.vatPoisha : null,
-          vatRateBps: vatSplit ? vatRateBps : null,
-          totalPoisha: input.pricing.totalPoisha,
-          riskScore: input.riskScore,
-          advanceRequiredPoisha: input.advanceRequiredPoisha ?? 0,
-          advanceReason: input.advanceRequiredPoisha
-            ? (input.advanceReason ?? null)
-            : null,
-          requiresOtp: input.requiresOtp ?? false,
-          deliverySlot: input.deliverySlot ?? null,
-          giftMessage: input.giftMessage ?? null,
-          source: input.source ?? "website",
-          resellerId: input.resellerId ?? null,
-          idempotencyKey: input.idempotencyKey,
-          items: {
-            create: input.items.map((i) => ({
-              variantId: i.variantId,
-              productName: i.productName,
-              sku: i.sku,
-              unitPricePoisha: i.unitPricePoisha,
-              // Wave 59: Decimal(12, 3) column — hand Prisma the
-              // canonical decimal string, never a float.
-              quantity: qtyToDecimalString(i.quantity),
-            })),
-          },
-        },
-      });
+      if (isReusingIncomplete) {
+        await tx.orderItem.deleteMany({ where: { orderId: existingIncomplete.id } });
+      }
+      const order = isReusingIncomplete
+        ? await tx.order.update({
+            where: { id: existingIncomplete.id },
+            data: {
+              customerId: customer.id,
+              customerName: input.customerName,
+              customerPhone: input.customerPhone,
+              division: input.address.division,
+              district: input.address.district,
+              upazila: input.address.upazila,
+              union: input.address.union ?? null,
+              addressLine: input.address.addressLine,
+              status: "PENDING",
+              paymentMethod: paymentMethodToDb(input.paymentMethod) as never,
+              paymentStatus: "UNPAID",
+              subtotalPoisha: input.pricing.subtotalPoisha,
+              discountPoisha: input.pricing.discountPoisha,
+              shippingPoisha: input.pricing.shippingPoisha,
+              codFeePoisha: input.pricing.codFeePoisha,
+              taxPoisha: input.pricing.taxPoisha,
+              vatPoisha: vatSplit ? vatSplit.vatPoisha : null,
+              vatRateBps: vatSplit ? vatRateBps : null,
+              totalPoisha: input.pricing.totalPoisha,
+              riskScore: input.riskScore,
+              advanceRequiredPoisha: input.advanceRequiredPoisha ?? 0,
+              advanceReason: input.advanceRequiredPoisha
+                ? (input.advanceReason ?? null)
+                : null,
+              requiresOtp: input.requiresOtp ?? false,
+              deliverySlot: input.deliverySlot ?? null,
+              giftMessage: input.giftMessage ?? null,
+              source: input.source ?? "website",
+              resellerId: input.resellerId ?? null,
+              idempotencyKey: input.idempotencyKey,
+              items: {
+                create: input.items.map((i) => ({
+                  variantId: i.variantId,
+                  productName: i.productName,
+                  sku: i.sku,
+                  unitPricePoisha: i.unitPricePoisha,
+                  quantity: qtyToDecimalString(i.quantity),
+                })),
+              },
+            },
+          })
+        : await tx.order.create({
+            data: {
+              orderNo,
+              customerId: customer.id,
+              customerName: input.customerName,
+              customerPhone: input.customerPhone,
+              division: input.address.division,
+              district: input.address.district,
+              upazila: input.address.upazila,
+              union: input.address.union ?? null,
+              addressLine: input.address.addressLine,
+              status: "PENDING",
+              paymentMethod: paymentMethodToDb(input.paymentMethod) as never,
+              paymentStatus: "UNPAID",
+              subtotalPoisha: input.pricing.subtotalPoisha,
+              discountPoisha: input.pricing.discountPoisha,
+              shippingPoisha: input.pricing.shippingPoisha,
+              codFeePoisha: input.pricing.codFeePoisha,
+              taxPoisha: input.pricing.taxPoisha,
+              vatPoisha: vatSplit ? vatSplit.vatPoisha : null,
+              vatRateBps: vatSplit ? vatRateBps : null,
+              totalPoisha: input.pricing.totalPoisha,
+              riskScore: input.riskScore,
+              advanceRequiredPoisha: input.advanceRequiredPoisha ?? 0,
+              advanceReason: input.advanceRequiredPoisha
+                ? (input.advanceReason ?? null)
+                : null,
+              requiresOtp: input.requiresOtp ?? false,
+              deliverySlot: input.deliverySlot ?? null,
+              giftMessage: input.giftMessage ?? null,
+              source: input.source ?? "website",
+              resellerId: input.resellerId ?? null,
+              idempotencyKey: input.idempotencyKey,
+              items: {
+                create: input.items.map((i) => ({
+                  variantId: i.variantId,
+                  productName: i.productName,
+                  sku: i.sku,
+                  unitPricePoisha: i.unitPricePoisha,
+                  quantity: qtyToDecimalString(i.quantity),
+                })),
+              },
+            },
+          });
       // Wave 15: reserve bundle components through the stock ledger
       // (no-op for non-bundle orders / flag OFF — the needs map is
       // empty in both cases).
@@ -1163,19 +1208,39 @@ export async function createOrderRecord(
         ? new Set<string>([...bundleVariantIds, input.rentalBooking.variantId])
         : bundleVariantIds;
       await reserveOrderLineItems(tx, input.items, reserveSkipVariantIds, order.id, orderNo);
-      await tx.orderStatusHistory.create({
-        data: { orderId: order.id, from: null, to: "PENDING", changedById: null },
-      });
+      if (isReusingIncomplete) {
+        await tx.orderStatusHistory.create({
+          data: { orderId: order.id, from: "INCOMPLETE", to: "PENDING", changedById: null, reason: "অর্ডার সাবমিট করা হয়েছে (Checkout completed)" },
+        });
+        await tx.payment.updateMany({
+          where: { orderId: order.id },
+          data: {
+            method: paymentMethodToDb(input.paymentMethod) as never,
+            amountPoisha: input.pricing.totalPoisha,
+            paidPoisha: 0,
+            status: "UNPAID",
+          },
+        });
+      } else {
+        await tx.orderStatusHistory.create({
+          data: { orderId: order.id, from: null, to: "PENDING", changedById: null },
+        });
+        await tx.payment.create({
+          data: {
+            orderId: order.id,
+            method: paymentMethodToDb(input.paymentMethod) as never,
+            amountPoisha: input.pricing.totalPoisha,
+            paidPoisha: 0,
+            status: "UNPAID",
+          },
+        });
+      }
       if (input.note) {
         const note = await tx.orderNote.create({
           data: { orderId: order.id, authorId: null, text: input.note },
         });
         noteId = note.id;
       }
-      // Wave 21 (doc 17, O3): the advance requirement is part of the
-      // order's timeline from birth — a note in the same transaction,
-      // so staff opening the order see exactly what is due and why,
-      // and the CONFIRMED gate's refusal never comes as a surprise.
       if (input.advanceRequiredPoisha && input.advanceRequiredPoisha > 0) {
         await tx.orderNote.create({
           data: {
@@ -1185,15 +1250,6 @@ export async function createOrderRecord(
           },
         });
       }
-      await tx.payment.create({
-        data: {
-          orderId: order.id,
-          method: paymentMethodToDb(input.paymentMethod) as never,
-          amountPoisha: input.pricing.totalPoisha,
-          paidPoisha: 0,
-          status: "UNPAID",
-        },
-      });
       if (dbCoupon && input.appliedCoupon) {
         await tx.couponUsage.create({
           data: {

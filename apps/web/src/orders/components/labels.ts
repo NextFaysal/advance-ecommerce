@@ -6,6 +6,7 @@ import type { OrderStatus, PaymentStatus } from "../types";
 import type { RefundStatus } from "../refunds";
 
 export const ORDER_STATUS_BN: Record<OrderStatus, string> = {
+  INCOMPLETE: "অসম্পূর্ণ অর্ডার",
   PENDING: "পেন্ডিং",
   CONFIRMED: "কনফার্ম করা",
   PROCESSING: "প্রসেসিং",
@@ -53,6 +54,7 @@ export const STATUS_TONE_DOT_CLASS: Record<StatusTone, string> = {
 };
 
 export const ORDER_STATUS_VISUAL: Record<OrderStatus, StatusVisual> = {
+  INCOMPLETE: { tone: "warning", icon: "alert", labelBn: ORDER_STATUS_BN.INCOMPLETE, labelEn: "Incomplete" },
   PENDING: { tone: "warning", icon: "clock", labelBn: ORDER_STATUS_BN.PENDING, labelEn: "Pending" },
   CONFIRMED: { tone: "info", icon: "check", labelBn: ORDER_STATUS_BN.CONFIRMED, labelEn: "Confirmed" },
   PROCESSING: { tone: "brand", icon: "refresh-ccw", labelBn: ORDER_STATUS_BN.PROCESSING, labelEn: "Processing" },

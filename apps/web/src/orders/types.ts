@@ -2,6 +2,7 @@
 import type { BdAddress } from "../checkout/validation";
 
 export type OrderStatus =
+  | "INCOMPLETE"
   | "PENDING"
   | "CONFIRMED"
   | "PROCESSING"

@@ -40,6 +40,7 @@ export function formatOrderDate(iso: string, locale: Locale): string {
 /** The 13 order statuses in funnel (lifecycle) order — the same order
  *  the chips have always rendered in, now also the kanban column order. */
 export const ORDER_FUNNEL_STATUSES: readonly OrderStatus[] = [
+  "INCOMPLETE",
   "PENDING",
   "CONFIRMED",
   "PROCESSING",

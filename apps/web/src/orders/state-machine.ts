@@ -8,6 +8,7 @@ import { publishOrderStatusChanged } from "./event-bus";
 import type { Order, OrderStatus } from "./types";
 
 export const ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  INCOMPLETE: ["PENDING", "CONFIRMED", "CANCELLED"],
   PENDING: ["CONFIRMED", "CANCELLED"],
   CONFIRMED: ["PROCESSING", "CANCELLED"],
   PROCESSING: ["PACKED", "CANCELLED"],
@@ -24,6 +25,7 @@ export const ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 };
 
 export const CANCELLABLE_STATUSES: OrderStatus[] = [
+  "INCOMPLETE",
   "PENDING",
   "CONFIRMED",
   "PROCESSING",

@@ -10,13 +10,14 @@ import { UI_STRINGS, type UiStrings } from "./strings";
    v2 inline SVG set (icon.tsx), rendered at 12px inside the badge.
    Labels are locale-resolved from the shared UI dictionary
    (./strings, doc 30). */
-export type OrderStatus = "PENDING" | "CONFIRMED" | "PROCESSING" | "PACKED" | "SHIPPED" | "DELIVERED" | "CANCELLED" | "FAILED" | "RETURNED" | "REFUNDED";
+export type OrderStatus = "INCOMPLETE" | "PENDING" | "CONFIRMED" | "PROCESSING" | "PACKED" | "SHIPPED" | "DELIVERED" | "CANCELLED" | "FAILED" | "RETURNED" | "REFUNDED";
 export type PaymentStatus = "UNPAID" | "PARTIAL" | "PAID" | "FAILED" | "REFUNDED";
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH";
 
 type Tone = "warning" | "info" | "brand" | "success" | "danger" | "neutral";
 
 const orderMeta: Record<OrderStatus, { icon: IconName; tone: Tone }> = {
+  INCOMPLETE: { icon: "alert", tone: "warning" },
   PENDING: { icon: "clock", tone: "warning" },
   CONFIRMED: { icon: "check", tone: "info" },
   PROCESSING: { icon: "refresh-ccw", tone: "brand" },
@@ -45,6 +46,7 @@ const riskMeta: Record<RiskLevel, { tone: "success" | "warning" | "danger" }> = 
 
 function orderLabel(s: UiStrings, status: OrderStatus): string {
   const labels: Record<OrderStatus, string> = {
+    INCOMPLETE: s.statusIncomplete,
     PENDING: s.statusPending,
     CONFIRMED: s.statusConfirmed,
     PROCESSING: s.statusProcessing,

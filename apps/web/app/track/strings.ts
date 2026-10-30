@@ -90,6 +90,7 @@ export const TRACK_STRINGS: Record<Locale, TrackStrings> = { bn, en };
 /* ------------------------------------------------------------------ */
 
 const orderStatusBn = {
+  INCOMPLETE: "অসম্পূর্ণ অর্ডার",
   PENDING: "অর্ডার পেয়েছি",
   CONFIRMED: "কনফার্ম হয়েছে",
   PROCESSING: "প্রসেসিং চলছে",
@@ -108,6 +109,7 @@ const orderStatusBn = {
 export type OrderStatusStrings = { [K in keyof typeof orderStatusBn]: string };
 
 const orderStatusEn: OrderStatusStrings = {
+  INCOMPLETE: "Incomplete order",
   PENDING: "Order received",
   CONFIRMED: "Confirmed",
   PROCESSING: "Processing",

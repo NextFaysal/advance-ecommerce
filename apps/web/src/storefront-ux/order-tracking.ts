@@ -30,6 +30,7 @@ import {
 } from "@/restaurant/selection";
 
 export const ORDER_STATUS_LABELS_BN: Record<OrderStatus, string> = {
+  INCOMPLETE: "অসম্পূর্ণ অর্ডার",
   PENDING: "অর্ডার পেয়েছি",
   CONFIRMED: "কনফার্ম হয়েছে",
   PROCESSING: "প্রসেসিং চলছে",
@@ -46,6 +47,7 @@ export const ORDER_STATUS_LABELS_BN: Record<OrderStatus, string> = {
 };
 
 export const ORDER_STATUS_LABELS_EN: Record<OrderStatus, string> = {
+  INCOMPLETE: "Incomplete order",
   PENDING: "Order received",
   CONFIRMED: "Confirmed",
   PROCESSING: "Processing",

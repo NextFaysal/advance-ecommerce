@@ -1265,7 +1265,8 @@ async function processCreate(
   let created: Awaited<ReturnType<typeof createOrderRecord>>;
   try {
     created = await createOrderRecord({
-    idempotencyKey: form.idempotencyKey,
+      incompleteSessionKey: form.checkoutSessionKey,
+      idempotencyKey: form.idempotencyKey,
     customerName: form.customerName,
     customerPhone: form.phone, // already normalized to +8801XXXXXXXXX by Zod transform
     customerEmail: form.email || undefined,

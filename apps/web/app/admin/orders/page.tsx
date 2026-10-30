@@ -75,7 +75,7 @@ import { ADMIN_STRINGS } from "@/admin/strings";
 import { ORDER_STRINGS } from "./strings";
 
 const STATUSES: ("ALL" | OrderStatus)[] = [
-  "ALL", "PENDING", "CONFIRMED", "PROCESSING", "PACKED", "SHIPPED",
+  "ALL", "INCOMPLETE", "PENDING", "CONFIRMED", "PROCESSING", "PACKED", "SHIPPED",
   "DELIVERED", "FAILED", "RETURN_REQUESTED", "RETURNING", "RETURNED",
   "CANCELLED", "REFUNDED", "EXCHANGED",
 ];
