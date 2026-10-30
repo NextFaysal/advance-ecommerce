@@ -47,6 +47,16 @@ const bn = {
   linkErp: "ERP হিসাব",
   linkLoyalty: "লয়্যালটি",
   linkAdvancedOrders: "অ্যাডভান্সড অর্ডার",
+  linkSubscriptions: "সাবস্ক্রিপশন",
+  linkSubscriptionBoxes: "সাবস্ক্রিপশন বক্স",
+  linkWarehouse: "ওয়্যারহাউস",
+  linkSourcing: "সোর্সিং",
+  linkRestaurant: "রেস্তোরাঁ / KDS",
+  linkServices: "সার্ভিস ও বুকিং",
+  linkRental: "রেন্টাল",
+  linkPrintOnDemand: "প্রিন্ট অন ডিমান্ড",
+  linkCourses: "কোর্স / LMS",
+  linkMarketing: "মার্কেটিং",
 };
 
 export type FeatureFlagsStrings = { [K in keyof typeof bn]: string };
@@ -96,6 +106,16 @@ const en: FeatureFlagsStrings = {
   linkErp: "ERP Accounts",
   linkLoyalty: "Loyalty",
   linkAdvancedOrders: "Advanced Orders",
+  linkSubscriptions: "Subscriptions",
+  linkSubscriptionBoxes: "Subscription Boxes",
+  linkWarehouse: "Warehouse",
+  linkSourcing: "Sourcing",
+  linkRestaurant: "Restaurant / KDS",
+  linkServices: "Services & Bookings",
+  linkRental: "Rental",
+  linkPrintOnDemand: "Print-on-Demand",
+  linkCourses: "Courses / LMS",
+  linkMarketing: "Marketing",
 };
 
 export const FEATURE_FLAGS_STRINGS: Record<Locale, FeatureFlagsStrings> = { bn, en };
