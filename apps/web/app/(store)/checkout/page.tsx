@@ -32,6 +32,16 @@
 // the checkoutSessionKey flow are exactly as before; the mobile
 // sticky bar's button is a form-associated submit for the SAME form
 // (one submit path — see the bar's comment below).
+//
+// Address mode (2026-10-30): the field config also carries
+// addressMode. "cascade" is everything above. "single" (the
+// shipped default) collects NO cascade: the customer writes the
+// whole address into one textarea (the addressLine field) and the
+// submit sends division/district/upazila/union as empty strings —
+// staff clarify by phone when an address is unclear. The page
+// derives what renders from effectiveFields(fieldsConfig) — the
+// same helper the public orders route enforces with — so the two
+// can never disagree.
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Cart } from "../../../src/cart/types";
@@ -75,6 +85,7 @@ import { getCheckoutSkin } from "@/themes/skin-registry";
 import {
   coerceCheckoutFieldsConfig,
   DEFAULT_CHECKOUT_FIELDS_CONFIG,
+  effectiveFields,
   effectiveRequired,
   effectiveVisible,
   fieldByKey,
@@ -301,9 +312,11 @@ export default function CheckoutPage() {
   // from GET /api/v1/public/checkout-config — labels, placeholders,
   // visibility, required flags and order for Steps ১/২, plus up to
   // 5 custom text fields. State starts at DEFAULT_CHECKOUT_FIELDS_CONFIG
-  // (the original hardcoded form, exactly), so a pending or failed
-  // fetch renders today's checkout unchanged; a successful fetch is
-  // passed through the shared coercion before it is trusted.
+  // ("single" address mode — the shipped default), so a pending or
+  // failed fetch renders the simple one-address-box form; a
+  // successful fetch is passed through the shared coercion before
+  // it is trusted, and a merchant who saved "cascade" mode gets
+  // the cascade form as soon as it lands.
   const [fieldsConfig, setFieldsConfig] = useState<CheckoutFieldsConfig>(
     DEFAULT_CHECKOUT_FIELDS_CONFIG,
   );
@@ -316,12 +329,26 @@ export default function CheckoutPage() {
         if (json.data) setFieldsConfig(coerceCheckoutFieldsConfig(json.data));
       })
       .catch(() => {
-        // The default config stays — the form is the original one.
+        // The default config stays — the form is the simple one.
       });
     return () => {
       cancelled = true;
     };
   }, []);
+  // Address mode (2026-10-30): effectiveFields() is the ONE
+  // derivation of what the config's addressMode shows — in
+  // "single" mode the cascade (division/district/upazila) and
+  // union defs come back invisible, so the cascade unit never
+  // renders and no render/validation path below can demand them.
+  // Every consumer in this page (Steps ১/২ rendering, the submit's
+  // fieldAnswers collection, the cascade label lookups) reads
+  // effectiveConfig, never the raw fieldsConfig — the same helper
+  // the public orders route enforces with server-side.
+  const effectiveConfig: CheckoutFieldsConfig = {
+    ...fieldsConfig,
+    fields: effectiveFields(fieldsConfig),
+  };
+  const singleAddress = fieldsConfig.addressMode === "single";
   // Service booking (ADV-23 vertical 2, wave 56): from GET
   // /api/v1/public/services/config — rendered ONLY when the services
   // module is enabled AND the cart contains a variant from the
@@ -1062,7 +1089,7 @@ export default function CheckoutPage() {
       cartTotalPoisha: cartSubtotalPoisha(cart),
     };
     const fieldAnswers: Record<string, string> = {};
-    for (const def of visibleFieldsForGroup(fieldsConfig, "address")) {
+    for (const def of visibleFieldsForGroup(effectiveConfig, "address")) {
       if (!def.extra) continue;
       if (!effectiveVisible(def, submitConditionCtx)) continue;
       const value = String(data.get(def.key) ?? "").trim();
@@ -1073,10 +1100,14 @@ export default function CheckoutPage() {
       phone: data.get("phone"),
       email: data.get("email") ?? "",
       address: {
-        division: data.get("division"),
-        district: data.get("district"),
-        upazila: data.get("upazila"),
-        union: data.get("union") || undefined,
+        // Single address mode: the cascade inputs are not rendered
+        // at all, so the values are sent as the empty strings the
+        // mode contract specifies (the server gate reads them the
+        // same way via effectiveFields — nothing is collected).
+        division: singleAddress ? "" : data.get("division"),
+        district: singleAddress ? "" : data.get("district"),
+        upazila: singleAddress ? "" : data.get("upazila"),
+        union: singleAddress ? "" : data.get("union") || undefined,
         addressLine: data.get("addressLine"),
       },
       note: data.get("note") ?? undefined,
@@ -1300,10 +1331,14 @@ export default function CheckoutPage() {
   // second submit handler anywhere (OD3).
 
   // Checkout field rendering (doc 28): Steps ১/২ render from
-  // fieldsConfig. Labels render exactly as the config carries them
-  // (the default labels are the original form's); the required
-  // attribute comes from the def. Under the DEFAULT config the
-  // emitted fields, order and flags are the original form's.
+  // effectiveConfig — the raw fieldsConfig passed through
+  // effectiveFields() for its address mode. Labels render exactly
+  // as the config carries them (the default labels are the
+  // original form's); the required attribute comes from the def.
+  // Under a "cascade" config the emitted fields, order and flags
+  // are the original form's; under "single" the cascade + union
+  // defs are invisible here, so only the address textarea collects
+  // the address.
   // Doc 29: the live condition context — the picked payment method
   // (mirrored state), the shipping method exactly as the submit
   // sends it (submittedZone), the picked division, and the
@@ -1317,15 +1352,15 @@ export default function CheckoutPage() {
     division: division || undefined,
     cartTotalPoisha: cart ? cartSubtotalPoisha(cart) : 0,
   };
-  const infoFieldDefs = visibleFieldsForGroup(fieldsConfig, "info").filter((def) =>
+  const infoFieldDefs = visibleFieldsForGroup(effectiveConfig, "info").filter((def) =>
     effectiveVisible(def, conditionCtx),
   );
-  const addressFieldDefs = visibleFieldsForGroup(fieldsConfig, "address").filter((def) =>
+  const addressFieldDefs = visibleFieldsForGroup(effectiveConfig, "address").filter((def) =>
     effectiveVisible(def, conditionCtx),
   );
-  const divisionDef = fieldByKey(fieldsConfig, "division");
-  const districtDef = fieldByKey(fieldsConfig, "district");
-  const upazilaDef = fieldByKey(fieldsConfig, "upazila");
+  const divisionDef = fieldByKey(effectiveConfig, "division");
+  const districtDef = fieldByKey(effectiveConfig, "district");
+  const upazilaDef = fieldByKey(effectiveConfig, "upazila");
   // Display label: the label TEXT is merchant config (doc 28) —
   // doc 30 only selects which configured variant renders: labelBn
   // in Bangla mode, labelEn in English mode (each falling back to
@@ -1539,6 +1574,28 @@ export default function CheckoutPage() {
         );
       }
       if (def.key === "addressLine") {
+        // Single address mode: this one box IS the whole address,
+        // so it renders as a textarea with the mode's example
+        // placeholder (a merchant-set placeholder still wins).
+        // INPUT_CLASS pins h-12 for one-line inputs; the inline
+        // height lets rows={3} govern the box instead. Cascade
+        // mode keeps the original one-line input, untouched.
+        if (singleAddress) {
+          return (
+            <label key={def.key} className="block">
+              <span className="mb-1.5 block text-sm font-medium text-text-main">{fieldLabel(def)}</span>
+              <textarea
+                name="addressLine"
+                required={effectiveRequired(def, conditionCtx)}
+                autoComplete="street-address"
+                rows={3}
+                placeholder={def.placeholder || s.addressSinglePlaceholder}
+                className={`${INPUT_CLASS} py-3`}
+                style={{ height: "auto" }}
+              />
+            </label>
+          );
+        }
         return (
           <label key={def.key} className="block">
             <span className="mb-1.5 block text-sm font-medium text-text-main">{fieldLabel(def)}</span>
@@ -1853,7 +1910,7 @@ export default function CheckoutPage() {
     <main className="mx-auto w-full max-w-[720px] px-4 pb-32 pt-6 sm:px-6 lg:max-w-[1080px] lg:pb-12">
       <h1 className="font-display text-h1">{s.pageTitle}</h1>
       <p className="mt-2 text-sm leading-6 text-text-muted">
-        {s.checkoutIntro}
+        {singleAddress ? s.checkoutIntroSingle : s.checkoutIntro}
       </p>
 
       {/* Progress header (OD3): the four steps of the single-page
@@ -1964,7 +2021,7 @@ export default function CheckoutPage() {
             {t.address}
           </h2>
           <div className="mt-4 grid gap-4">
-        {geoTree ? (
+        {geoTree && !singleAddress ? (
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-text-main">
               {s.pasteAddressLabel}

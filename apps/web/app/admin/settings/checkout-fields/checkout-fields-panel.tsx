@@ -319,10 +319,14 @@ function FieldRulesBlocks({
   );
 }
 
+/** Address style (contract: config.addressMode in src/checkout/fields.ts). */
+type AddressMode = "cascade" | "single";
+
 export function CheckoutFieldsPanel() {
   const { locale } = useLocale();
   const s = pick(locale, SETTINGS_STRINGS);
   const [fields, setFields] = useState<CheckoutFieldDef[] | null>(null);
+  const [addressMode, setAddressMode] = useState<AddressMode>("single");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -341,7 +345,11 @@ export function CheckoutFieldsPanel() {
       }
       // Pass whatever the API returned through the shared coercion —
       // the editor then always works on a valid, complete field set.
-      setFields(coerceCheckoutFieldsConfig(json.data).fields);
+      // The address mode rides the same coerced document and
+      // round-trips through this panel's save below.
+      const coerced = coerceCheckoutFieldsConfig(json.data);
+      setFields(coerced.fields);
+      setAddressMode(coerced.addressMode === "cascade" ? "cascade" : "single");
       setError(null);
     } catch {
       setError(s.chfNetworkLoad);
@@ -437,7 +445,7 @@ export function CheckoutFieldsPanel() {
         validation:
           f.validation && Object.keys(f.validation).length > 0 ? f.validation : undefined,
       }));
-      const config: CheckoutFieldsConfig = { version: 1, fields: cleanedFields };
+      const config: CheckoutFieldsConfig = { version: 1, addressMode, fields: cleanedFields };
       const res = await fetch("/api/v1/admin/checkout-fields", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -609,6 +617,40 @@ export function CheckoutFieldsPanel() {
         </p>
       )}
 
+      <fieldset className="mt-4 rounded-xl border border-border bg-background px-4 py-3">
+        <legend className="px-1 text-sm font-medium text-text-main">{s.chfAddressModeLabel}</legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-card px-3 py-2.5">
+            <input
+              type="radio"
+              name="chf-address-mode"
+              checked={addressMode === "cascade"}
+              disabled={busy}
+              onChange={() => setAddressMode("cascade")}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600 disabled:opacity-50"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-text-main">{s.chfAddressModeCascade}</span>
+              <span className="mt-0.5 block text-xs leading-5 text-text-muted">{s.chfAddressModeCascadeHelp}</span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-card px-3 py-2.5">
+            <input
+              type="radio"
+              name="chf-address-mode"
+              checked={addressMode === "single"}
+              disabled={busy}
+              onChange={() => setAddressMode("single")}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600 disabled:opacity-50"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-text-main">{s.chfAddressModeSingle}</span>
+              <span className="mt-0.5 block text-xs leading-5 text-text-muted">{s.chfAddressModeSingleHelp}</span>
+            </span>
+          </label>
+        </div>
+      </fieldset>
+
       <div className="mt-4 rounded-xl border border-border bg-background px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-text-main">{s.chfPresetLabel}</span>
@@ -638,6 +680,11 @@ export function CheckoutFieldsPanel() {
       </div>
 
       <h3 className="mt-6 text-sm font-semibold text-text-main">{s.chfStep2}</h3>
+      {addressMode === "single" && (
+        <p role="note" className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-700">
+          {s.chfSingleModeBanner}
+        </p>
+      )}
       <div className="mt-3 grid gap-3">
         {addressFields.map((def, i) => renderBuiltinRow(def, i, addressFields.length))}
       </div>

@@ -32,6 +32,8 @@ const bn = {
   cartLoading: "কার্ট লোড হচ্ছে…",
   checkoutIntro:
     "শুধু নাম, ফোন নম্বর আর ঠিকানা দিলেই অর্ডার হয়ে যাবে। ঠিকানা দিন ধাপে ধাপে: বিভাগ › জেলা › উপজেলা।",
+  checkoutIntroSingle:
+    "শুধু নাম, ফোন নম্বর আর পুরো ঠিকানা একসাথে লিখলেই অর্ডার হয়ে যাবে।",
   stepsAria: "চেকআউটের ধাপ",
   stepInfo: "তথ্য",
   stepAddress: "ঠিকানা",
@@ -63,6 +65,8 @@ const bn = {
   step2Aria: "ধাপ ২: ঠিকানা",
   pasteAddressLabel: "সম্পূর্ণ ঠিকানা একসাথে লিখুন (ঐচ্ছিক)",
   pasteAddressPlaceholder: "যেমন: বাসা ১২, রোড ৫, মিরপুর ১০, ঢাকা",
+  addressSinglePlaceholder:
+    "যেমন: বাসা ১২, রোড ৫, মিরপুর ১০, ঢাকা — পুরো ঠিকানা একসাথে লিখুন",
   suggestionPrompt: "আপনি কি {label} বোঝাতে চেয়েছেন?",
   districtWord: "জেলা",
   upazilaWord: "উপজেলা",
@@ -266,6 +270,8 @@ const en: CheckoutStrings = {
   cartLoading: "Loading cart…",
   checkoutIntro:
     "Just your name, phone number and address — that's all it takes to order. Give your address step by step: Division › District › Upazila.",
+  checkoutIntroSingle:
+    "Just your name, phone number and your full address written in one place — that's all it takes to order.",
   stepsAria: "Checkout steps",
   stepInfo: "Info",
   stepAddress: "Address",
@@ -293,6 +299,8 @@ const en: CheckoutStrings = {
   step2Aria: "Step 2: Address",
   pasteAddressLabel: "Write the full address at once (optional)",
   pasteAddressPlaceholder: "e.g. House 12, Road 5, Mirpur 10, Dhaka",
+  addressSinglePlaceholder:
+    "e.g. House 12, Road 5, Mirpur 10, Dhaka — write your full address here",
   suggestionPrompt: "Did you mean {label}?",
   districtWord: "District",
   upazilaWord: "Upazila",

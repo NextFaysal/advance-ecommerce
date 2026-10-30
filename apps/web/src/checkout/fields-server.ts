@@ -11,9 +11,12 @@
  *
  * FAIL-SOFT READS (the restaurant config-store contract): a missing
  * doc, a corrupt doc, or a DB error resolves to
- * DEFAULT_CHECKOUT_FIELDS_CONFIG — the original hardcoded checkout
- * form. A corrupt config must never take checkout down, and with no
- * saved doc the storefront behaves exactly as it did before doc 28.
+ * DEFAULT_CHECKOUT_FIELDS_CONFIG — the shipped default config
+ * ("single" address mode; see fields.ts). A corrupt config must
+ * never take checkout down. Both the read and the write pass
+ * through coerceCheckoutFieldsConfig, so the config's addressMode
+ * round-trips through this store unchanged — no mode handling
+ * lives here.
  */
 import { prisma } from "@advance-ecommerce/db";
 import { getSetting, invalidateSettingCache } from "@/lib/settings";

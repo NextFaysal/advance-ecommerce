@@ -18,6 +18,22 @@
  * - email / union / note: fully editable.
  * - Extra fields: keys extra_1..extra_5 only, text only.
  *
+ * Address mode (2026-10-30): the config also carries a top-level
+ * `addressMode: "cascade" | "single"`. "cascade" is the original
+ * form — the division/district/upazila selects above, whose values
+ * shipping and courier pricing key off. "single" (the DEFAULT for
+ * fresh installs — the platform owner directed simple-by-default)
+ * collects NO cascade at all: the customer writes the whole address
+ * into ONE free-text box (the addressLine field, rendered as a
+ * textarea) and the client submits the cascade values as empty
+ * strings; staff clarify by phone when an address is unclear. The
+ * mode never rewrites the stored field defs — `effectiveFields()`
+ * below is the single derivation of what a mode SHOWS, and both
+ * the checkout page and the public orders route consume it, so the
+ * form and the server gate can never disagree about the cascade.
+ * A saved config's mode is honoured as-is; the "single" default
+ * only fills in when a stored doc carries no valid mode.
+ *
  * Client-safe: no imports beyond types. The checkout page imports
  * the defaults + helpers from here; the server reader lives in
  * fields-server.ts.
@@ -83,8 +99,12 @@ export type CheckoutFieldDef = {
   validation?: CheckoutFieldValidation;
 };
 
+/** How the address is collected: structured geo cascade selects, or one free-text box. */
+export type CheckoutAddressMode = "cascade" | "single";
+
 export type CheckoutFieldsConfig = {
   version: 1;
+  addressMode: CheckoutAddressMode;
   fields: CheckoutFieldDef[];
 };
 
@@ -180,13 +200,15 @@ function coerceValidation(raw: unknown): CheckoutFieldValidation | undefined {
 }
 
 /**
- * Default form = SIMPLE checkout (Nazmul, 2026-10-30): the customer
- * is asked only for what delivery needs — name, phone, the address
- * cascade and the detailed address. Email / union / note ship HIDDEN;
- * the merchant can switch any of them on (or back off) from
- * Admin → Settings → Checkout Fields, where a one-click preset
- * mirrors these two shapes. This default applies wherever no
- * `checkout.fields` Setting has been saved; a saved config wins.
+ * Default form = SIMPLE checkout (Nazmul, 2026-10-30): the default
+ * addressMode is "single" (see DEFAULT_CHECKOUT_FIELDS_CONFIG), so
+ * the customer is asked only for name, phone and ONE free-text
+ * address box. Email / union / note also ship HIDDEN in the defs
+ * below; the merchant can switch the mode to "cascade" and/or
+ * switch any of them on (or back off) from Admin → Settings →
+ * Checkout Fields, where a one-click preset mirrors these shapes.
+ * This default applies wherever no `checkout.fields` Setting has
+ * been saved; a saved config wins.
  */
 const BUILTIN_DEFAULTS: CheckoutFieldDef[] = [
   { key: "customerName", labelBn: "আপনার নাম", labelEn: "Your name", visible: true, required: true },
@@ -200,9 +222,14 @@ const BUILTIN_DEFAULTS: CheckoutFieldDef[] = [
   { key: "note", labelBn: "নোট (ঐচ্ছিক)", labelEn: "Note (optional)", visible: false, required: false },
 ];
 
-/** The default config = the original hardcoded checkout form, exactly. */
+/**
+ * The default config: the original hardcoded checkout form's field
+ * defs, in "single" address mode — a fresh install asks for name,
+ * phone and one free-text address, nothing else (see the header).
+ */
 export const DEFAULT_CHECKOUT_FIELDS_CONFIG: CheckoutFieldsConfig = {
   version: 1,
+  addressMode: "single",
   fields: BUILTIN_DEFAULTS.map((f) => ({ ...f })),
 };
 
@@ -254,6 +281,15 @@ function coerceField(raw: unknown, fallback: CheckoutFieldDef): CheckoutFieldDef
  * with valid extra_N keys and non-empty labels. Never throws.
  */
 export function coerceCheckoutFieldsConfig(raw: unknown): CheckoutFieldsConfig {
+  // Address mode: a stored "cascade"/"single" is honoured verbatim;
+  // anything else (missing doc, legacy doc, corrupt value) falls
+  // back to the DEFAULT config's mode — never to a hardcoded one,
+  // so the platform default lives in exactly one place.
+  const rawAddressMode = isRecord(raw) ? raw.addressMode : undefined;
+  const addressMode: CheckoutAddressMode =
+    rawAddressMode === "cascade" || rawAddressMode === "single"
+      ? rawAddressMode
+      : DEFAULT_CHECKOUT_FIELDS_CONFIG.addressMode;
   const rawFields: unknown[] = isRecord(raw) && Array.isArray(raw.fields) ? raw.fields : [];
   const out: CheckoutFieldDef[] = [];
   // Built-ins first, in the merchant's saved relative order per group:
@@ -293,7 +329,7 @@ export function coerceCheckoutFieldsConfig(raw: unknown): CheckoutFieldsConfig {
       extraCount += 1;
     }
   }
-  return { version: 1, fields: out };
+  return { version: 1, addressMode, fields: out };
 }
 
 /** Visible fields of one step group, in config order. Extra fields render at the end of the address group. */
@@ -311,6 +347,36 @@ export function visibleFieldsForGroup(
 /** The field def for a key (built-in or extra), or undefined. */
 export function fieldByKey(config: CheckoutFieldsConfig, key: string): CheckoutFieldDef | undefined {
   return config.fields.find((f) => f.key === key);
+}
+
+/** Keys the single-address mode never collects (the whole address goes into addressLine). */
+const SINGLE_MODE_HIDDEN_KEYS: ReadonlySet<string> = new Set([
+  "division",
+  "district",
+  "upazila",
+  "union",
+]);
+
+/**
+ * The field defs the config's address mode actually uses. In
+ * "cascade" mode this is the config's defs, unchanged (identity).
+ * In "single" mode the geo cascade (division / district / upazila)
+ * and union are forced `visible: false` — the customer writes the
+ * whole address into the addressLine box instead, and the client
+ * submits the cascade values as empty strings. The config's own
+ * defs are never mutated: switching the mode back to "cascade"
+ * restores the stored cascade exactly, locked flags included (the
+ * stored defs keep their LOCKED_VISIBLE coercion — the hiding
+ * happens only here, at this effective layer).
+ *
+ * The checkout page AND the public orders route both consume this
+ * helper, so they can never disagree about what a mode collects.
+ */
+export function effectiveFields(config: CheckoutFieldsConfig): CheckoutFieldDef[] {
+  if (config.addressMode !== "single") return config.fields;
+  return config.fields.map((f) =>
+    SINGLE_MODE_HIDDEN_KEYS.has(f.key) ? { ...f, visible: false } : f,
+  );
 }
 
 /** Doc 29: does a condition match the live checkout context? */

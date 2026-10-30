@@ -129,6 +129,14 @@
  *   the platform line-total rule), and present values are checked
  *   against the field's validation rules (400
  *   CHECKOUT_FIELD_TOO_SHORT / _TOO_LONG / _INVALID_FORMAT).
+ *   Address mode (`addressMode` on the same doc): in "single" mode
+ *   the checkout collects ONE free-text address, so the body is
+ *   parsed with a relaxed-cascade variant of the same schema
+ *   (division/district/upazila optional, default ""), enforcement
+ *   runs against effectiveFields(config) (cascade + union forced
+ *   hidden = treated as absent), and the order stores "" cascade
+ *   columns — the shipping engine prices the empty district via
+ *   its outside-Dhaka fallback. Cascade mode is byte-identical.
  * - Print-on-demand (ADV-23 vertical 5, wave 56): an optional
  *   `pod` customisation (variant + print text + optional palette
  *   colour) is gated by module.print_on_demand — field present +
@@ -157,8 +165,9 @@ import { NextResponse } from "next/server";
 import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
 import { cookies } from "next/headers";
 import { z } from "zod";
-import { checkoutFormSchema } from "@/checkout/validation";
+import { bdAddressSchema, checkoutFormSchema } from "@/checkout/validation";
 import {
+  effectiveFields,
   effectiveRequired,
   effectiveVisible,
   fieldByKey,
@@ -166,6 +175,7 @@ import {
   validateAnswer,
   type CheckoutConditionContext,
   type CheckoutFieldDef,
+  type CheckoutFieldsConfig,
 } from "@/checkout/fields";
 import { getCheckoutFieldsConfig } from "@/checkout/fields-server";
 import { computePricing, formatBdt } from "@/checkout/pricing";
@@ -272,7 +282,7 @@ function errorResponse(code: string, message: string, status: number, details?: 
 // Unknown keys inside fieldAnswers are NOT a schema error: the
 // enforcement below reads only config-defined keys and drops the
 // rest.
-const createOrderBodySchema = checkoutFormSchema.extend({
+const storefrontBodyExtensions = {
   fieldAnswers: z.record(z.string(), z.string()).optional(),
   // Doc 34 L7 (§3.7): funnel claims from a funnel order step's
   // QuickOrderForm — additive like fieldAnswers, funnel-only.
@@ -284,6 +294,28 @@ const createOrderBodySchema = checkoutFormSchema.extend({
   // failure path drops the funnel piece — NEVER the order.
   funnel: z.object({ token: z.string().min(1) }).optional(),
   bump: z.object({ token: z.string().min(1) }).optional(),
+};
+const createOrderBodySchema = checkoutFormSchema.extend(storefrontBodyExtensions);
+
+// Address mode (checkout.fields `addressMode: "single"`): the
+// checkout collects ONE free-text address, so division / district
+// / upazila arrive missing or "" — this variant makes them
+// optional with a "" default (the Order / Address columns are
+// plain strings, so "" stores as-is; the shipping engine prices
+// an empty district with its outside-Dhaka fallback). Built from
+// the SAME base schema + the SAME storefront extensions, so every
+// other field keeps the strict parse, addressLine stays required
+// (min length included), and the schema above remains the
+// cascade-mode parse, byte-identical. src/checkout/validation.ts
+// is NOT relaxed: its shared schema also backs staff manual
+// orders, which always collect the cascade.
+const createOrderBodySingleSchema = checkoutFormSchema.extend({
+  address: bdAddressSchema.extend({
+    division: z.string().trim().optional().default(""),
+    district: z.string().trim().optional().default(""),
+    upazila: z.string().trim().optional().default(""),
+  }),
+  ...storefrontBodyExtensions,
 });
 type CreateOrderBody = z.infer<typeof createOrderBodySchema>;
 
@@ -405,17 +437,39 @@ type CheckoutFieldsGate =
 
 /**
  * Doc 28 + doc 29 enforcement against the saved checkout.fields
- * config. Doc 29 evaluates each field's EFFECTIVE visibility /
- * requirement against the live context (payment method, shipping
- * method, division, merchandise subtotal) and validates present
- * values against the field's rules. Returns the (possibly adjusted)
- * form plus the OrderNote text for the extra-field answers, or the
+ * config. The config is loaded ONCE by POST (which also picks the
+ * parse schema from its addressMode) and threaded in, so the gate
+ * enforces the exact snapshot the body was parsed with. Doc 29
+ * evaluates each field's EFFECTIVE visibility / requirement
+ * against the live context (payment method, shipping method,
+ * division, merchandise subtotal) and validates present values
+ * against the field's rules. Returns the (possibly adjusted) form
+ * plus the OrderNote text for the extra-field answers, or the
  * refusal to return. With the default config (no conditions or
  * validation anywhere) this is a no-op, exactly as doc 28:
  * email/union/note are visible + optional and there are no extras.
+ *
+ * Enforcement runs against effectiveFields(config): in single
+ * address mode that forces the cascade + union defs hidden, and a
+ * not-effectively-visible field is treated as absent below — so a
+ * saved "union required" (or a union condition) can never refuse
+ * or leak into a single-mode order.
  */
-async function enforceCheckoutFields(form: CreateOrderBody): Promise<CheckoutFieldsGate> {
-  const config = await getCheckoutFieldsConfig();
+async function enforceCheckoutFields(
+  form: CreateOrderBody,
+  config: CheckoutFieldsConfig,
+): Promise<CheckoutFieldsGate> {
+  const effConfig: CheckoutFieldsConfig = { ...config, fields: effectiveFields(config) };
+
+  // Single address mode: the cascade is not collected — whatever a
+  // stale client still sent is normalised to "" here (treated as
+  // absent, the same discipline as a hidden field's value below),
+  // so the order stores "" cascade columns and the condition
+  // context sees the same empty division the order will carry.
+  const singleMode = config.addressMode === "single";
+  const division = singleMode ? "" : form.address.division;
+  const district = singleMode ? "" : form.address.district;
+  const upazila = singleMode ? "" : form.address.upazila;
 
   // Doc 29 condition context. The merchandise subtotal is recomputed
   // from DB variant prices ONLY when some field actually carries a
@@ -423,7 +477,7 @@ async function enforceCheckoutFields(form: CreateOrderBody): Promise<CheckoutFie
   // exactly as doc 28. Unknown variant ids contribute 0 (later gates
   // reject them anyway); a lookup failure leaves the total
   // undefined, which simply never matches a cart-total condition.
-  const needsCartTotal = config.fields.some(
+  const needsCartTotal = effConfig.fields.some(
     (f) => f.visibleWhen?.source === "cartTotal" || f.requiredWhen?.source === "cartTotal",
   );
   let cartTotalPoisha: number | undefined;
@@ -442,7 +496,7 @@ async function enforceCheckoutFields(form: CreateOrderBody): Promise<CheckoutFie
   const ctx: CheckoutConditionContext = {
     paymentMethod: form.paymentMethod,
     shippingMethod: form.shippingMethod,
-    division: form.address.division,
+    division,
     ...(cartTotalPoisha !== undefined ? { cartTotalPoisha } : {}),
   };
 
@@ -497,7 +551,7 @@ async function enforceCheckoutFields(form: CreateOrderBody): Promise<CheckoutFie
     { key: "note", value: form.note, apply: (v: string | undefined) => { note = v; } },
   ] as const;
   for (const field of builtins) {
-    const def = fieldByKey(config, field.key);
+    const def = fieldByKey(effConfig, field.key);
     if (!def) continue;
     if (!effectiveVisible(def, ctx)) {
       field.apply(undefined);
@@ -514,7 +568,7 @@ async function enforceCheckoutFields(form: CreateOrderBody): Promise<CheckoutFie
 
   // addressLine: visibility + required are locked, but it may carry
   // a validation block — its (always present) value must satisfy it.
-  const addressLineDef = fieldByKey(config, "addressLine");
+  const addressLineDef = fieldByKey(effConfig, "addressLine");
   if (addressLineDef) {
     const refusal = refuseInvalid(addressLineDef, form.address.addressLine);
     if (refusal) return refusal;
@@ -525,7 +579,7 @@ async function enforceCheckoutFields(form: CreateOrderBody): Promise<CheckoutFie
   // are ignored entirely.
   const answers: Record<string, string> = {};
   const humanLines: string[] = [];
-  for (const def of config.fields) {
+  for (const def of effConfig.fields) {
     if (!def.extra || !effectiveVisible(def, ctx)) continue;
     const raw = form.fieldAnswers?.[def.key];
     const value = typeof raw === "string" ? raw.trim() : "";
@@ -552,12 +606,23 @@ async function enforceCheckoutFields(form: CreateOrderBody): Promise<CheckoutFie
       : undefined;
 
   // Rebuild the form ONLY when a hidden field actually carried a
-  // value — with the default config nothing is rebuilt and the
-  // downstream path is byte-identical.
+  // value (or single mode normalised the cascade) — with the
+  // default config nothing is rebuilt and the downstream path is
+  // byte-identical.
   let adjusted = form;
   if (email !== form.email) adjusted = { ...adjusted, email };
   if (note !== form.note) adjusted = { ...adjusted, note };
-  if (union !== form.address.union) adjusted = { ...adjusted, address: { ...adjusted.address, union } };
+  if (
+    union !== form.address.union ||
+    division !== form.address.division ||
+    district !== form.address.district ||
+    upazila !== form.address.upazila
+  ) {
+    adjusted = {
+      ...adjusted,
+      address: { ...adjusted.address, union, division, district, upazila },
+    };
+  }
   return { ok: true, form: adjusted, noteText };
 }
 
@@ -572,7 +637,17 @@ const enrichmentByOrderId = new Map<string, EnrichedOrder>();
 export async function POST(req: Request) {
   await ensureDbFeatureFlags().catch(() => {});
   const body = await req.json().catch(() => null);
-  const parsed = createOrderBodySchema.safeParse(body);
+  // The saved checkout.fields config picks the parse schema: in
+  // single address mode the cascade fields are optional (default
+  // ""); in cascade mode the strict schema parses exactly as
+  // before. The same config snapshot is threaded into the create
+  // below, so the doc 28/29 gate enforces the mode the body was
+  // parsed with. getCheckoutFieldsConfig is fail-soft (defaults on
+  // any error), so this read can never take checkout down.
+  const fieldsConfig = await getCheckoutFieldsConfig();
+  const parsed = (
+    fieldsConfig.addressMode === "single" ? createOrderBodySingleSchema : createOrderBodySchema
+  ).safeParse(body);
   if (!parsed.success) {
     return errorResponse(
       "VALIDATION_ERROR",
@@ -624,7 +699,7 @@ export async function POST(req: Request) {
   // real guarantee against duplicates. A success (201) or an
   // in-create replay (200) keeps the claim: an order exists for it.
   try {
-    const res = await processCreate(form);
+    const res = await processCreate(form, fieldsConfig);
     if (res.status >= 400) idempotencyStore.release(form.idempotencyKey);
     return res;
   } catch (err) {
@@ -633,14 +708,21 @@ export async function POST(req: Request) {
   }
 }
 
-async function processCreate(form: CreateOrderBody): Promise<NextResponse> {
+async function processCreate(
+  form: CreateOrderBody,
+  fieldsConfig: CheckoutFieldsConfig,
+): Promise<NextResponse> {
   // Dynamic checkout fields (doc 28): enforce the merchant's saved
   // checkout.fields config before anything else — hidden
   // email/union/note values are dropped from the form the rest of
   // this flow sees, a missing required field refuses the create,
   // and the extra-field answers ride along to the create-time note
-  // below. Default config -> the gate is a no-op.
-  const fieldsGate = await enforceCheckoutFields(form);
+  // below. Default config -> the gate is a no-op. Single address
+  // mode: the gate additionally normalises the cascade to "" (see
+  // enforceCheckoutFields), so every downstream reader — shop
+  // rules, the shipping engine, createOrderRecord — sees exactly
+  // the address the order will store.
+  const fieldsGate = await enforceCheckoutFields(form, fieldsConfig);
   if (!fieldsGate.ok) {
     return errorResponse(fieldsGate.code, fieldsGate.message, 400, fieldsGate.details);
   }
