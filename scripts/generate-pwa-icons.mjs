@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import zlib from "zlib";
+import { fileURLToPath } from "node:url";
 
 function crc32(buf) {
   let table = crc32.table;
@@ -152,7 +153,7 @@ function generatePngBuffer(width, height, isMaskable = false) {
 
 // Resolve against the script's own location so the generator works
 // from any CWD (repo root locally, apps/web under pnpm on Vercel).
-const outDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../apps/web/public/icons");
+const outDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../apps/web/public/icons");
 if (!fs.existsSync(outDir)) {
   fs.mkdirSync(outDir, { recursive: true });
 }
