@@ -52,7 +52,12 @@
 - [x] `bullmq` & `ioredis` installed, worker daemon entrypoint ready in `apps/web/scripts/worker.ts`
 - [x] PWA: manifest, service worker, offline page, registration wired into root layout
 - [x] PWA icon PNGs (192 / 512 / maskable) generated and verified in `apps/web/public/icons/`
-- [x] Playwright scaffolding: config (mobile-360 + desktop projects) + 5 spec files
+- [x] Subscription Boxes (ADV-23 Vertical 4, Wave-56d): BullMQ repeatable worker sweep (`scripts/worker.ts`), admin manual sweep trigger (`/api/v1/admin/boxes/sweep`), cycle notification alerts (`/api/v1/admin/boxes/notify`), 11/11 passing unit tests (`scripts/test-subscription-boxes.ts`), Playwright E2E spec
+- [x] BD Logistics & Smart Routing: Multi-courier intelligent selection engine (Pathao, Steadfast, RedX, eCourier, Paperfly) based on destination zone, weight, and COD success rates (`/api/v1/admin/shipping/smart-route`)
+- [x] Abandoned Checkout Recovery: 1-click WhatsApp recovery link generation (`/api/v1/admin/abandoned/[id]/whatsapp`) and INCOMPLETE order tracking in Prisma
+- [x] Complete BD Tools Suite: Courier Reconciliation, Return Tracker, Shipping Label Printer, Order SMS, Phone Fraud Checker, WhatsApp Recovery, Profit Calculator, bKash/Nagad QR Generator, Courier Coverage Hub, Lost Parcel Claims
+- [x] Order Limit & Anti-Spam Rules: Max pending orders block, rolling 24-hr daily order limit, junk customer text filter, checkout rapid IP rate-limiting
+- [x] Playwright scaffolding: config (mobile-360 + desktop projects) + 6 spec files (including subscription-boxes.spec.ts)
 - [ ] E2E specs execution against running local server + seeded DB
 
 ## Docs
