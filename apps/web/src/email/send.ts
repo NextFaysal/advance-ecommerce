@@ -261,6 +261,16 @@ export async function processEmailJob(
   deps: EmailJobSendDeps,
 ): Promise<HandlerResult> {
   const ref = job.orderId ?? job.recipientRef;
+  // The provider-level idempotency key for this one logical email:
+  // the job's own stable dedupe key when the producer set one (every
+  // current producer does — it doubles as the BullMQ jobId), else
+  // the same deterministic derivation enqueueEmailJob falls back to.
+  // Never random, never time-based: a BullMQ retry of this job must
+  // present the SAME key so the provider replays instead of
+  // double-sending (Resend honours Idempotency-Key for 24h; the SMTP
+  // adapter ignores the field).
+  const providerIdempotencyKey =
+    job.idempotencyKey ?? `${job.templateKey}-${job.recipientRef}`;
   const provider = await deps.emailTransport();
   if (provider === null) {
     return {
@@ -314,6 +324,7 @@ export async function processEmailJob(
       html: rendered.html,
       templateKey: job.templateKey,
       orderId: order.id,
+      idempotencyKey: providerIdempotencyKey,
     });
     if (result.status === "failed") throw new Error("EMAIL_SEND_FAILED:provider");
     return { status: "succeeded", ref: result.messageId, detail: "order confirmation email via adapter" };
@@ -341,6 +352,7 @@ export async function processEmailJob(
       html: rendered.html,
       templateKey: job.templateKey,
       orderId: null,
+      idempotencyKey: providerIdempotencyKey,
     });
     if (result.status === "failed") throw new Error("EMAIL_SEND_FAILED:provider");
     return { status: "succeeded", ref: result.messageId, detail: "staff invite email via adapter" };
@@ -395,6 +407,7 @@ export async function processEmailJob(
       html: rendered.html,
       templateKey: job.templateKey,
       orderId: null,
+      idempotencyKey: providerIdempotencyKey,
       attachments: [{ filename: `report-${from}-to-${to}.csv`, contentBase64: Buffer.from(csv, "utf8").toString("base64") }],
     });
     if (result.status === "failed") throw new Error("EMAIL_SEND_FAILED:provider");
@@ -423,6 +436,7 @@ export async function processEmailJob(
       html: `<pre style="font-family:inherit;white-space:pre-wrap">${escaped}</pre>`,
       templateKey: job.templateKey,
       orderId: null,
+      idempotencyKey: providerIdempotencyKey,
     });
     if (result.status === "failed") throw new Error("EMAIL_SEND_FAILED:provider");
     return { status: "succeeded", ref: result.messageId, detail: "daily digest email via adapter" };

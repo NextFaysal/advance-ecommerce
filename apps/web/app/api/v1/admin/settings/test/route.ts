@@ -29,6 +29,9 @@ import {
   probeEcourierConnection,
   type EcourierSettingsReader,
 } from "@/integrations/ecourier-resolver";
+import { EMAIL_PROVIDERS } from "@/integrations/email";
+import { resolveEmailProbe } from "@/email/config";
+import { verifySmtpConnection } from "@/integrations/email-smtp";
 
 // POST /api/v1/admin/settings/test — contract in src/integrations/sandbox/SETTINGS-API-CONTRACT.md
 // Sandbox: succeeds without any credential, reported as sandbox (simulated, no real provider call).
@@ -52,16 +55,28 @@ import {
 // acceptance only, placement NOT tested; eCourier: assigned-package list):
 // unconfigured -> 422 naming the missing courier.<provider>.* fields,
 // provider rejection -> 502 with the provider's code.
+// Email (notifications wave): the transport tested is the SAVED
+// email.provider setting (the body only names the category). Resend
+// has no cheap read-only probe, so its branch is a PRESENCE check
+// only (api_key + from_address set) and the message says no network
+// verification was performed. SMTP is a REAL greeting+auth verify()
+// against the saved settings — it sends nothing: unconfigured -> 422
+// naming the missing email.smtp.* fields, provider rejection -> 502
+// with the nodemailer error code only.
 // No credential value is ever returned or logged.
 const bodySchema = z.object({
-  category: z.enum(["payment", "courier", "sms"]),
-  provider: z.string().min(1).max(50),
+  category: z.enum(["payment", "courier", "sms", "email"]),
+  // Required for every category EXCEPT email: the email probe reads
+  // the provider from the saved email.provider setting, so the body
+  // names only the category there.
+  provider: z.string().min(1).max(50).optional(),
 });
 
 const PROVIDERS: Record<string, readonly string[]> = {
   payment: ["cod", "bkash", "nagad", "rocket", "upay", "sslcommerz", "aamarpay", "shurjopay", "stripe", "paypal"],
   courier: ["steadfast", "pathao", "redx", "paperfly", "ecourier"],
   sms: [...SMS_PROVIDERS],
+  email: [...EMAIL_PROVIDERS],
 };
 
 /** ADV-2 real balance probe for one SMS provider (see header). */
@@ -271,6 +286,92 @@ async function testEcourierCourier() {
   });
 }
 
+/** Notifications wave: email transport probe (see header). */
+async function testEmailProvider() {
+  const probe = await resolveEmailProbe();
+  if (probe.providerName === "resend") {
+    // Presence check only — Resend offers no read-only probe call,
+    // so a pass here means the credential and sender exist, NOT that
+    // a send was verified. The message says so plainly.
+    const missingFields: string[] = [];
+    if (!probe.resendApiKeySet) missingFields.push("email.resend.api_key");
+    if (!probe.fromAddressSet) missingFields.push("email.from_address");
+    if (missingFields.length > 0) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "EMAIL_NOT_CONFIGURED",
+            message: `resend is not configured — missing field(s): ${missingFields.join(", ")}.`,
+            details: { missingFields },
+          },
+        },
+        { status: 422 },
+      );
+    }
+    return NextResponse.json({
+      data: {
+        ok: true,
+        status: "configured",
+        provider: "resend",
+        message:
+          "Resend API key and from address are set (presence check only — no network verification was performed for Resend).",
+      },
+    });
+  }
+  if (probe.providerName === "smtp" && probe.smtp !== null) {
+    const missingFields = [...probe.smtpMissingFields];
+    if (!probe.fromAddressSet) missingFields.push("email.from_address");
+    if (missingFields.length > 0) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "EMAIL_NOT_CONFIGURED",
+            message: `smtp is not configured — missing field(s): ${missingFields.join(", ")}.`,
+            details: { missingFields },
+          },
+        },
+        { status: 422 },
+      );
+    }
+    try {
+      await verifySmtpConnection(probe.smtp);
+      return NextResponse.json({
+        data: {
+          ok: true,
+          status: "connected",
+          provider: "smtp",
+          message:
+            "SMTP connection verified against the saved settings (greeting + auth succeeded; no email was sent).",
+        },
+      });
+    } catch (e) {
+      const providerCode =
+        e instanceof Error && e.message.startsWith("SMTP_VERIFY_FAILED:")
+          ? e.message.slice("SMTP_VERIFY_FAILED:".length)
+          : "unknown";
+      return NextResponse.json(
+        {
+          error: {
+            code: "EMAIL_PROVIDER_ERROR",
+            message: "SMTP connection check failed.",
+            details: { providerCode },
+          },
+        },
+        { status: 502 },
+      );
+    }
+  }
+  return NextResponse.json(
+    {
+      error: {
+        code: "EMAIL_NOT_CONFIGURED",
+        message: `Unknown email provider "${probe.providerName}" (email.provider setting).`,
+      },
+    },
+    { status: 422 },
+  );
+}
+
 export async function POST(req: Request) {
   const token = cookies().get("admin_session")?.value;
   if (!token) {
@@ -284,10 +385,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: { code: "FORBIDDEN", message: "settings.integrations permission required." } }, { status: 403 });
   }
   const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
-  if (!parsed.success || !(PROVIDERS[parsed.data.category] as readonly string[]).includes(parsed.data.provider)) {
+  if (
+    !parsed.success ||
+    (parsed.data.category !== "email" &&
+      !(PROVIDERS[parsed.data.category] as readonly string[]).includes(parsed.data.provider ?? ""))
+  ) {
     return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "Unknown category/provider." } }, { status: 400 });
   }
-  const { category, provider } = parsed.data;
+  const { category } = parsed.data;
+  const provider = parsed.data.provider ?? "";
+  if (category === "email") {
+    // Notifications wave: the email probe reads the SAVED settings
+    // (provider choice included) — it must run BEFORE the generic
+    // mode logic below, which would read a non-existent
+    // email.<provider>.mode key, default to "sandbox" and fake a pass.
+    try {
+      return await testEmailProvider();
+    } catch {
+      return NextResponse.json(
+        { error: { code: "DB_NOT_READY", message: "Email settings could not be read (Settings store unavailable)." } },
+        { status: 503 },
+      );
+    }
+  }
   if (category === "sms") {
     // ADV-2: real balance probe — must run BEFORE the generic mode
     // logic below, which would otherwise read a non-existent

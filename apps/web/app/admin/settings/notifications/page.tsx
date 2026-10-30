@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
-import { Icon } from "@/components/ui/icon";
 import {
   SMS_PROVIDERS,
   getIntegrationConfigWithSecrets,
@@ -14,6 +13,7 @@ import {
   type SmsSettingsInitial,
 } from "./sms-settings-card";
 import { getEmailTransportStatus, type EmailTransportStatus } from "@/email/config";
+import { EmailSettingsCard, type EmailSettingsInitial } from "./email-settings-card";
 import { getRequestLocale } from "@/i18n/server";
 import { pick } from "@/i18n/locale";
 import { SETTINGS_B_STRINGS } from "../strings-b";
@@ -82,6 +82,51 @@ export default async function NotificationsSettingsPage() {
     }),
   );
 
+  // Email editor initial state (doc-verification wave, 2026-10-30):
+  // plain values for text fields, PRESENCE booleans for secrets — a
+  // secret value never reaches the page props, same discipline as the
+  // SMS card above.
+  const emailInitial: EmailSettingsInitial = {
+    provider: "resend",
+    fromName: "",
+    fromAddress: "",
+    resendApiKeyPresent: false,
+    smtpEnabled: true,
+    smtpHost: "",
+    smtpPort: "",
+    smtpSecure: "",
+    smtpUser: "",
+    smtpPasswordPresent: false,
+    smtpTlsRejectUnauthorized: true,
+    configured: emailStatus.configured,
+    statusReason: emailStatus.reason ?? "",
+  };
+  if (dbReady) {
+    try {
+      emailInitial.provider = (await getSetting("email.provider")) ?? "resend";
+      emailInitial.fromName = (await getSetting("email.from_name")) ?? "";
+      emailInitial.fromAddress = (await getSetting("email.from_address")) ?? "";
+      const resendFields = await getIntegrationConfigWithSecrets("email", "resend").catch(
+        () => ({}) as Record<string, string>,
+      );
+      emailInitial.resendApiKeyPresent = (resendFields.api_key ?? "").trim() !== "";
+      const smtpFields = await getIntegrationConfigWithSecrets("email", "smtp").catch(
+        () => ({}) as Record<string, string>,
+      );
+      emailInitial.smtpEnabled = (await getSetting("email.smtp.enabled")) !== "false";
+      emailInitial.smtpHost = smtpFields.host ?? "";
+      emailInitial.smtpPort = smtpFields.port ?? "";
+      emailInitial.smtpSecure = smtpFields.secure ?? "";
+      emailInitial.smtpUser = smtpFields.user ?? "";
+      emailInitial.smtpPasswordPresent = (smtpFields.password ?? "").trim() !== "";
+      emailInitial.smtpTlsRejectUnauthorized =
+        (smtpFields.tls_reject_unauthorized ?? "true") !== "false";
+    } catch {
+      // Keep the defaults; the card still renders and saves will
+      // surface any settings API failure with its real message.
+    }
+  }
+
   return (
     <main className="min-w-0">
       <PageHeader
@@ -102,29 +147,7 @@ export default async function NotificationsSettingsPage() {
         <SmsSettingsCard initial={initial} dbReady={dbReady} />
       </div>
 
-      <section className="mt-6 rounded-2xl border border-border/60 bg-card p-5 shadow-card">
-        <h2 className="flex items-center gap-2.5 font-display text-base font-semibold text-text-main">
-          <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
-            <Icon name="info" size={17} />
-          </span>
-          {s.notifEmailTitle}
-        </h2>
-        <p className="mt-3 text-sm leading-relaxed text-text-muted">
-          {emailStatus.configured ? (
-            <>{s.notifEmailConfigured}</>
-          ) : (
-            <>
-              {s.notifEmailNotConfiguredA}
-              {emailStatus.reason ? <> ({emailStatus.reason})</> : null}
-              {s.notifEmailNotConfiguredB}
-              <code>email.resend.api_key</code>
-              {s.notifEmailNotConfiguredC}
-              <code>email.from_address</code>
-              {s.notifEmailNotConfiguredD}
-            </>
-          )}
-        </p>
-      </section>
+      <EmailSettingsCard initial={emailInitial} dbReady={dbReady} />
     </main>
   );
 }

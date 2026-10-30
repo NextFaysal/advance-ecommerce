@@ -19,6 +19,13 @@ export interface EmailSendInput {
   attachments?: { filename: string; contentBase64: string }[];
   templateKey: string | null;
   orderId: string | null;
+  /** Optional provider idempotency key for this one logical email —
+   *  stable across queue retries, derived deterministically by the
+   *  caller (never random). Resend honours it via the documented
+   *  `Idempotency-Key` header (retained 24h; a repeated key+payload
+   *  returns the original result instead of sending twice). The SMTP
+   *  adapter ignores it. */
+  idempotencyKey?: string;
 }
 
 export interface EmailSendResult {

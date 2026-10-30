@@ -6,8 +6,10 @@ const nextConfig = {
   // coupon snapshot) needs the hook enabled on Next 14.
   experimental: { instrumentationHook: true },
   // Keep the Prisma client external so it is required from real
-  // node_modules at runtime instead of being bundled.
-  serverExternalPackages: ["@prisma/client", ".prisma/client", "bullmq", "ioredis"],
+  // node_modules at runtime instead of being bundled. nodemailer is
+  // external for the same reason (native Node mail transport with
+  // dynamic requires — the SMTP email adapter loads it server-side).
+  serverExternalPackages: ["@prisma/client", ".prisma/client", "bullmq", "ioredis", "nodemailer"],
   // Image optimization (speed wave batch 2): AVIF/WebP output for
   // next/image. Remote hosts: demo placeholder photos (picsum) plus the
   // object-storage hosts merchant uploads will live on later (R2 public
