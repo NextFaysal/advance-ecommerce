@@ -84,10 +84,19 @@ export type InvoiceSlotName = keyof InvoiceTemplateOverrides;
 
 export const INVOICE_TEMPLATE_KEY = "templates.invoice";
 
-export type EmailTemplateKey = "order_confirmation" | "staff_invite" | "report_delivery";
+export type EmailTemplateKey =
+  | "order_confirmation"
+  | "order_shipped"
+  | "order_delivered"
+  | "order_cancelled"
+  | "staff_invite"
+  | "report_delivery";
 
 export const OVERRIDABLE_EMAIL_KEYS: readonly EmailTemplateKey[] = [
   "order_confirmation",
+  "order_shipped",
+  "order_delivered",
+  "order_cancelled",
   "staff_invite",
   "report_delivery",
 ] as const;
@@ -110,6 +119,9 @@ export const DEFAULT_INVOICE_FOOTER: BilingualSlot = {
  *  header can never drift from what the renderers substitute. */
 export const EMAIL_PLACEHOLDERS: Record<EmailTemplateKey, readonly string[]> = {
   order_confirmation: ["orderNo", "store", "total", "customerName", "paymentMethod"],
+  order_shipped: ["orderNo", "store", "total", "customerName", "paymentMethod"],
+  order_delivered: ["orderNo", "store", "total", "customerName", "paymentMethod"],
+  order_cancelled: ["orderNo", "store", "total", "customerName", "paymentMethod"],
   staff_invite: ["store", "role", "inviteeName", "expiry"],
   report_delivery: ["store", "reportName", "periodFrom", "periodTo", "rowCount"],
 };

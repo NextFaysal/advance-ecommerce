@@ -1568,6 +1568,47 @@ export async function applyOrderTransition(
   await emitAutomationEvent("order.status_changed", row.id, { dedupeSuffix: to });
   // Webhooks (ADV-26): same emit seam. Never throws.
   await dispatchWebhookEvent("order.status_changed", row.id);
+  // Lifecycle email (notifications wave): a committed transition INTO
+  // SHIPPED / DELIVERED / CANCELLED queues the matching customer email
+  // (order_shipped / order_delivered / order_cancelled) on the
+  // email-send queue. The worker resolves the recipient from the
+  // order's customer and SKIPs honestly when the customer has no email
+  // address, so the enqueue here is unconditional. Fire-and-forget:
+  // the floating promise is fully self-caught, so a queue failure can
+  // never fail or roll back the committed transition — failures only
+  // log (order id + template key, nothing sensitive). The
+  // idempotencyKey doubles as the BullMQ jobId, so repeat transitions
+  // and producer retries re-enqueue the SAME job instead of a
+  // duplicate — a customer can never be emailed twice for one
+  // transition into a status.
+  if (to === "SHIPPED" || to === "DELIVERED" || to === "CANCELLED") {
+    const templateKey = `order_${to.toLowerCase()}`;
+    const orderId = row.id;
+    void (async () => {
+      try {
+        const emailSend = await import("../email/send");
+        const outcome = await emailSend.enqueueEmailJob(
+          {
+            orderId,
+            templateKey,
+            recipientRef: orderId,
+            idempotencyKey: `order-${templateKey}-${orderId}`,
+          },
+          "order-lifecycle-email",
+        );
+        if (outcome.email === "not_queued") {
+          console.error(
+            `lifecycle email not queued (order ${orderId}, template ${templateKey}): ${outcome.reason}`,
+          );
+        }
+      } catch (error) {
+        console.error(
+          `lifecycle email enqueue failed (order ${orderId}, template ${templateKey}):`,
+          error instanceof Error ? error.name : "unknown-error",
+        );
+      }
+    })();
+  }
   return { kind: "ok", order: result.order, from: order.status };
 }
 

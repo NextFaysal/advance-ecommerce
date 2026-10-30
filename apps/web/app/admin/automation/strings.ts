@@ -1,5 +1,5 @@
 import type { Locale } from "@/i18n/locale";
-import type { AutomationAction, ConditionField } from "@/automation/types";
+import type { AutomationAction, ConditionField, RenderableEmailTemplate } from "@/automation/types";
 
 const bn = {
   title: "অটোমেশন",
@@ -58,6 +58,10 @@ const bn = {
   actAssignCourier: "কুরিয়ার নির্ধারণ করুন: {courier}",
   actSendSms: "SMS পাঠান (টেমপ্লেট: {key})",
   actSendEmail: "ইমেইল পাঠান (টেমপ্লেট: {key})",
+  fEmailTemplate: "ইমেইল টেমপ্লেট",
+  fEmailSubject: "ইমেইলের বিষয়",
+  fEmailMessage: "ইমেইলের বার্তা",
+  emailNoticeHelp: "এই লেখাটাই অর্ডারের কাস্টমারের কাছে ইমেইল যাবে — বিষয় ও বার্তা দুটোই দিতে হবে।",
   actAddTag: "ট্যাগ যোগ করুন: {tag}",
   actRemoveTag: "ট্যাগ সরান: {tag}",
   actNotifyStaff: "স্টাফকে জানান: {message}",
@@ -181,6 +185,10 @@ const en: AutomationStrings = {
   actAssignCourier: "Assign courier: {courier}",
   actSendSms: "Send SMS (template: {key})",
   actSendEmail: "Send email (template: {key})",
+  fEmailTemplate: "Email template",
+  fEmailSubject: "Email subject",
+  fEmailMessage: "Email message",
+  emailNoticeHelp: "This exact text is emailed to the order's customer — both the subject and the message are required.",
   actAddTag: "Add tag: {tag}",
   actRemoveTag: "Remove tag: {tag}",
   actNotifyStaff: "Notify staff: {message}",
@@ -371,4 +379,27 @@ const actionParamEn: Partial<Record<AutomationAction["type"], string>> = {
 export const ACTION_PARAM_LABEL: Record<Locale, Partial<Record<AutomationAction["type"], string>>> = {
   bn: actionParamBn,
   en: actionParamEn,
+};
+
+/** Option labels for the send_email template SELECT — exactly the
+ *  renderable set (RENDERABLE_EMAIL_TEMPLATES in automation/types);
+ *  a free-text key here is what let unrenderable templates like
+ *  "payment_help" be saved and silently skipped by the worker. */
+const emailTemplateBn: Record<RenderableEmailTemplate, string> = {
+  order_confirmation: "অর্ডার কনফার্মেশন",
+  order_shipped: "অর্ডার পাঠানো হয়েছে",
+  order_delivered: "অর্ডার ডেলিভারি হয়েছে",
+  order_cancelled: "অর্ডার বাতিল হয়েছে",
+  automation_notice: "নিজের লেখা নোটিশ",
+};
+const emailTemplateEn: Record<RenderableEmailTemplate, string> = {
+  order_confirmation: "Order confirmation",
+  order_shipped: "Order shipped",
+  order_delivered: "Order delivered",
+  order_cancelled: "Order cancelled",
+  automation_notice: "Custom notice (your own text)",
+};
+export const EMAIL_TEMPLATE_TEXT: Record<Locale, Record<RenderableEmailTemplate, string>> = {
+  bn: emailTemplateBn,
+  en: emailTemplateEn,
 };

@@ -156,10 +156,38 @@ export type AutomationAction =
   | { type: "confirm_order" }
   | { type: "assign_courier"; courier: string }
   | { type: "send_sms"; templateKey: string }
-  | { type: "send_email"; templateKey: string }
+  | {
+      type: "send_email";
+      templateKey: string;
+      /** automation_notice only: the merchant-written email subject. */
+      subject?: string;
+      /** automation_notice only: the merchant-written email body text. */
+      message?: string;
+    }
   | { type: "add_tag"; tag: string }
   | { type: "remove_tag"; tag: string }
   | { type: "notify_staff"; message: string };
+
+/**
+ * The email templates the email worker can actually RENDER
+ * (src/email/send.ts processEmailJob). A send_email action naming any
+ * other key can never send — the effect executor validates against
+ * this list BEFORE enqueueing and records an honest skip instead of
+ * queueing an email that would silently die in the worker (the
+ * automation-email fix, 2026-10-30; staff_invite / report_delivery /
+ * daily_digest are platform-internal templates, not rule-usable).
+ * "automation_notice" renders the action's own subject + message to
+ * the order's customer.
+ */
+export const RENDERABLE_EMAIL_TEMPLATES = [
+  "order_confirmation",
+  "order_shipped",
+  "order_delivered",
+  "order_cancelled",
+  "automation_notice",
+] as const;
+
+export type RenderableEmailTemplate = (typeof RENDERABLE_EMAIL_TEMPLATES)[number];
 
 export type AutomationActionType = AutomationAction["type"];
 
@@ -295,7 +323,15 @@ export const automationActionSchema: z.ZodType<AutomationAction> = z.lazy(() =>
     z.object({ type: z.literal("confirm_order") }),
     z.object({ type: z.literal("assign_courier"), courier: z.string().min(1).max(50) }),
     z.object({ type: z.literal("send_sms"), templateKey: z.string().min(1).max(100) }),
-    z.object({ type: z.literal("send_email"), templateKey: z.string().min(1).max(100) }),
+    z.object({
+      type: z.literal("send_email"),
+      templateKey: z.string().min(1).max(100),
+      // Meaningful only with templateKey "automation_notice" (the
+      // effect executor requires both non-empty there and skips
+      // honestly when they are missing).
+      subject: z.string().max(200).optional(),
+      message: z.string().max(5000).optional(),
+    }),
     z.object({ type: z.literal("add_tag"), tag: z.string().min(1).max(50) }),
     z.object({ type: z.literal("remove_tag"), tag: z.string().min(1).max(50) }),
     z.object({ type: z.literal("notify_staff"), message: z.string().min(1).max(500) }),

@@ -94,10 +94,23 @@ export const EXAMPLE_RULES: AutomationRule[] = [
   {
     id: "rule_failed_payment_email",
     name: "Payment failed — send payment-help email",
-    description: "When an order's payment status becomes FAILED, email the customer a payment-help message.",
+    description:
+      "When an order's payment status becomes FAILED, email the customer a payment-help message. " +
+      "Uses the automation_notice template (the rule's own subject + message, sent to the order's customer) — " +
+      "the old version named a \"payment_help\" template the email worker cannot render, so it could never send.",
     trigger: "order.status_changed",
     conditions: condition("paymentStatus", "eq", "FAILED"),
-    actions: [{ type: "send_email", templateKey: "payment_help" }],
+    actions: [
+      {
+        type: "send_email",
+        templateKey: "automation_notice",
+        subject: "Your payment did not go through — we can help",
+        message:
+          "Hello, the payment for your recent order did not go through, so your order is not confirmed yet. " +
+          "You can simply pay cash on delivery instead, or contact us and we will help you complete the payment. " +
+          "Thank you for shopping with us.",
+      },
+    ],
     delaySeconds: 0,
     enabled: false,
     createdAt: AT,

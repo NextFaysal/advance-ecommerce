@@ -28,6 +28,16 @@
  * rendered HERE, at send time, from current DB state — an order that
  * was cancelled before the worker ran still gets the confirmation it
  * was owed at creation (the job announces creation, nothing else).
+ *
+ * Template keys rendered by processEmailJob: order_confirmation,
+ * order_shipped, order_delivered, order_cancelled (the order
+ * lifecycle — the recipient is the order's Customer-row email,
+ * resolved at send time like the confirmation), staff_invite,
+ * report_delivery, daily_digest, and automation_notice (merchant-
+ * authored subject/body carried on the job from the automation
+ * send_email action — no template renders it; the recipient is
+ * still the order's customer). Any other templateKey skips as
+ * unknown.
  */
 import { prisma } from "@advance-ecommerce/db";
 import type { EmailProvider } from "../integrations/email";
@@ -35,7 +45,11 @@ import { QUEUE_NAMES, type EmailJob } from "../jobs/queues";
 import { bullMqJobOptions } from "../jobs/workers";
 import type { HandlerResult } from "../jobs/handlers";
 import {
+  plainTextToHtml,
+  renderOrderCancelledEmail,
   renderOrderConfirmationEmail,
+  renderOrderDeliveredEmail,
+  renderOrderShippedEmail,
   renderReportDeliveryEmail,
   renderStaffInviteEmail,
   type EmailLocale,
@@ -240,7 +254,13 @@ async function defaultStoreIdentity(): Promise<{ storeName: string; locale: Emai
  *  the web process. Any failure resolves to "no override": a broken
  *  override document must never block an email. */
 async function emailCopyOverride(
-  key: "order_confirmation" | "staff_invite" | "report_delivery",
+  key:
+    | "order_confirmation"
+    | "order_shipped"
+    | "order_delivered"
+    | "order_cancelled"
+    | "staff_invite"
+    | "report_delivery",
   locale: EmailLocale,
 ) {
   try {
@@ -249,6 +269,48 @@ async function emailCopyOverride(
   } catch {
     return undefined;
   }
+}
+
+function emailSkip(ref: string, detail: string): HandlerResult {
+  return { status: "skipped", ref, detail };
+}
+
+/** Order + customer-email loading shared by every order email branch
+ *  (order_confirmation / order_shipped / order_delivered /
+ *  order_cancelled / automation_notice): the order id comes off the
+ *  job (orderId, falling back to recipientRef), the recipient is the
+ *  Customer row's email resolved NOW, at send time. A missing id,
+ *  a vanished order or a customer without an email is a SKIP result,
+ *  never a throw — with the same reason strings every branch used
+ *  before this was factored out. */
+async function loadOrderRecipient(job: EmailJob, ref: string) {
+  const orderId = job.orderId ?? (job.recipientRef !== "" ? job.recipientRef : undefined);
+  if (orderId === undefined) {
+    return { ok: false as const, skip: emailSkip(ref, `malformed ${job.templateKey} payload`) };
+  }
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, deletedAt: null },
+    select: {
+      id: true,
+      orderNo: true,
+      customerName: true,
+      totalPoisha: true,
+      paymentMethod: true,
+      customerId: true,
+    },
+  });
+  if (order === null) {
+    return { ok: false as const, skip: emailSkip(ref, "order not found at send time") };
+  }
+  const customer = await prisma.customer.findFirst({
+    where: { id: order.customerId, deletedAt: null },
+    select: { email: true },
+  });
+  const toEmail = (customer?.email ?? "").trim();
+  if (toEmail === "") {
+    return { ok: false as const, skip: emailSkip(ref, "customer has no email on file") };
+  }
+  return { ok: true as const, order, toEmail };
 }
 
 /**
@@ -282,32 +344,9 @@ export async function processEmailJob(
   const identity = await (deps.storeIdentity ?? defaultStoreIdentity)();
 
   if (job.templateKey === "order_confirmation") {
-    const orderId = job.orderId ?? (job.recipientRef !== "" ? job.recipientRef : undefined);
-    if (orderId === undefined) {
-      return { status: "skipped", ref, detail: "malformed order_confirmation payload" };
-    }
-    const order = await prisma.order.findFirst({
-      where: { id: orderId, deletedAt: null },
-      select: {
-        id: true,
-        orderNo: true,
-        customerName: true,
-        totalPoisha: true,
-        paymentMethod: true,
-        customerId: true,
-      },
-    });
-    if (order === null) {
-      return { status: "skipped", ref, detail: "order not found at send time" };
-    }
-    const customer = await prisma.customer.findFirst({
-      where: { id: order.customerId, deletedAt: null },
-      select: { email: true },
-    });
-    const toEmail = (customer?.email ?? "").trim();
-    if (toEmail === "") {
-      return { status: "skipped", ref, detail: "customer has no email on file" };
-    }
+    const loaded = await loadOrderRecipient(job, ref);
+    if (!loaded.ok) return loaded.skip;
+    const { order, toEmail } = loaded;
     const rendered = renderOrderConfirmationEmail({
       locale: identity.locale,
       storeName: identity.storeName,
@@ -328,6 +367,78 @@ export async function processEmailJob(
     });
     if (result.status === "failed") throw new Error("EMAIL_SEND_FAILED:provider");
     return { status: "succeeded", ref: result.messageId, detail: "order confirmation email via adapter" };
+  }
+
+  if (
+    job.templateKey === "order_shipped" ||
+    job.templateKey === "order_delivered" ||
+    job.templateKey === "order_cancelled"
+  ) {
+    // Order lifecycle (shipped / delivered / cancelled): same
+    // ids-only payload + send-time recipient resolution as the
+    // confirmation, including merchant copy overrides (the
+    // lifecycle keys joined EmailTemplateKey in the same wave).
+    const loaded = await loadOrderRecipient(job, ref);
+    if (!loaded.ok) return loaded.skip;
+    const { order, toEmail } = loaded;
+    const render =
+      job.templateKey === "order_shipped"
+        ? renderOrderShippedEmail
+        : job.templateKey === "order_delivered"
+          ? renderOrderDeliveredEmail
+          : renderOrderCancelledEmail;
+    const rendered = render({
+      locale: identity.locale,
+      storeName: identity.storeName,
+      customerName: order.customerName,
+      orderNo: order.orderNo,
+      totalPoisha: order.totalPoisha,
+      paymentMethod: String(order.paymentMethod),
+      copyOverride: await emailCopyOverride(job.templateKey, identity.locale),
+    });
+    const result = await provider.send({
+      to: toEmail,
+      subject: rendered.subject,
+      body: rendered.text,
+      html: rendered.html,
+      templateKey: job.templateKey,
+      orderId: order.id,
+      idempotencyKey: providerIdempotencyKey,
+    });
+    if (result.status === "failed") throw new Error("EMAIL_SEND_FAILED:provider");
+    const detail =
+      job.templateKey === "order_shipped"
+        ? "order shipped email via adapter"
+        : job.templateKey === "order_delivered"
+          ? "order delivered email via adapter"
+          : "order cancelled email via adapter";
+    return { status: "succeeded", ref: result.messageId, detail };
+  }
+
+  if (job.templateKey === "automation_notice") {
+    // Automation send_email action: the subject + body are merchant-
+    // authored in the rule config and ride on the job (noticeSubject
+    // / noticeText) — no template or copy override applies. The
+    // recipient is still the order's customer, resolved at send time
+    // exactly like the order branches above.
+    const noticeSubject = (job.noticeSubject ?? "").trim();
+    const noticeText = job.noticeText ?? "";
+    if (noticeSubject === "" || noticeText.trim() === "") {
+      return { status: "skipped", ref, detail: "malformed automation_notice payload" };
+    }
+    const loaded = await loadOrderRecipient(job, ref);
+    if (!loaded.ok) return loaded.skip;
+    const result = await provider.send({
+      to: loaded.toEmail,
+      subject: noticeSubject,
+      body: noticeText,
+      html: plainTextToHtml(noticeText, identity.locale),
+      templateKey: job.templateKey,
+      orderId: loaded.order.id,
+      idempotencyKey: providerIdempotencyKey,
+    });
+    if (result.status === "failed") throw new Error("EMAIL_SEND_FAILED:provider");
+    return { status: "succeeded", ref: result.messageId, detail: "automation notice email via adapter" };
   }
 
   if (job.templateKey === "staff_invite") {

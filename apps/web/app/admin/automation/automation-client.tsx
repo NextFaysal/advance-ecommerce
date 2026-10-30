@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { formatPoisha } from "@/components/ui/money";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { interpolate, type Locale } from "@/i18n/locale";
@@ -29,6 +30,7 @@ import {
   ACTION_PARAM_LABEL,
   ACTION_TYPE_TEXT,
   AUTOMATION_STRINGS,
+  EMAIL_TEMPLATE_TEXT,
   FIELD_TEXT,
   OPERATOR_TEXT,
   TRIGGER_TEXT,
@@ -38,6 +40,7 @@ import {
   AUTOMATION_TRIGGERS,
   CONDITION_FIELDS,
   CONDITION_OPERATORS,
+  RENDERABLE_EMAIL_TEMPLATES,
   type AutomationAction,
   type AutomationEvent,
   type AutomationRule,
@@ -112,7 +115,11 @@ function actionParam(action: AutomationAction): string {
   }
 }
 
-function buildAction(type: AutomationAction["type"], param: string): AutomationAction {
+function buildAction(
+  type: AutomationAction["type"],
+  param: string,
+  email?: { subject: string; message: string },
+): AutomationAction {
   switch (type) {
     case "confirm_order":
       return { type };
@@ -121,7 +128,11 @@ function buildAction(type: AutomationAction["type"], param: string): AutomationA
     case "send_sms":
       return { type, templateKey: param };
     case "send_email":
-      return { type, templateKey: param };
+      // automation_notice carries the merchant's own subject + message
+      // on the action; the order templates take neither.
+      return param === "automation_notice"
+        ? { type, templateKey: param, subject: email?.subject ?? "", message: email?.message ?? "" }
+        : { type, templateKey: param };
     case "add_tag":
       return { type, tag: param };
     case "remove_tag":
@@ -189,6 +200,9 @@ interface RuleFormState {
   value: string;
   actionType: AutomationAction["type"];
   actionParam: string;
+  /** send_email + automation_notice only: the merchant-written text. */
+  emailSubject: string;
+  emailMessage: string;
 }
 
 const EMPTY_FORM: RuleFormState = {
@@ -202,6 +216,8 @@ const EMPTY_FORM: RuleFormState = {
   value: "",
   actionType: "confirm_order",
   actionParam: "",
+  emailSubject: "",
+  emailMessage: "",
 };
 
 function parseConditionValue(form: RuleFormState): ConditionValue | undefined {
@@ -325,6 +341,8 @@ export function AutomationClient() {
       value: simpleCondition ? valueText(simpleCondition.field, simpleCondition.value) : "",
       actionType: simpleAction?.type ?? "confirm_order",
       actionParam: simpleAction ? actionParam(simpleAction) : "",
+      emailSubject: simpleAction?.type === "send_email" ? (simpleAction.subject ?? "") : "",
+      emailMessage: simpleAction?.type === "send_email" ? (simpleAction.message ?? "") : "",
     });
     setEditingId(rule.id);
     setFormStatus(null);
@@ -360,7 +378,12 @@ export function AutomationClient() {
           if (parseConditionValue(form) === undefined && form.operator !== "exists" && form.operator !== "not_exists") {
             delete (body.conditions as { value?: unknown }).value;
           }
-          body.actions = [buildAction(form.actionType, form.actionParam.trim())];
+          body.actions = [
+            buildAction(form.actionType, form.actionParam.trim(), {
+              subject: form.emailSubject.trim(),
+              message: form.emailMessage.trim(),
+            }),
+          ];
         }
         const res = await apiJson<{ rule: AutomationRule }>(`/api/v1/admin/automation/${editingId}`, {
           method: "PATCH",
@@ -381,7 +404,16 @@ export function AutomationClient() {
         const res = await apiJson<{ rule: AutomationRule }>("/api/v1/admin/automation", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ ...base, conditions: condition, actions: [buildAction(form.actionType, form.actionParam.trim())] }),
+          body: JSON.stringify({
+            ...base,
+            conditions: condition,
+            actions: [
+              buildAction(form.actionType, form.actionParam.trim(), {
+                subject: form.emailSubject.trim(),
+                message: form.emailMessage.trim(),
+              }),
+            ],
+          }),
         });
         if (res.ok && res.data?.rule) {
           setRules((prev) => [...prev, res.data!.rule]);
@@ -586,14 +618,45 @@ export function AutomationClient() {
           />
           <div>
             <span className="mb-1 block text-xs font-medium text-text-muted">{t.fAction}</span>
-            <select className={SELECT_CLASS} disabled={editingComplex} value={form.actionType} onChange={(e) => setForm({ ...form, actionType: e.target.value as AutomationAction["type"] })}>
+            <select
+              className={SELECT_CLASS}
+              disabled={editingComplex}
+              value={form.actionType}
+              onChange={(e) => {
+                const actionType = e.target.value as AutomationAction["type"];
+                // Switching to send_email: the param becomes a template
+                // key, so a leftover param from another action type (a
+                // tag, a courier name) must not survive into the SELECT.
+                const actionParam =
+                  actionType === "send_email" &&
+                  !(RENDERABLE_EMAIL_TEMPLATES as readonly string[]).includes(form.actionParam)
+                    ? "order_confirmation"
+                    : form.actionParam;
+                setForm({ ...form, actionType, actionParam });
+              }}
+            >
               {(Object.keys(ACTION_TYPE_TEXT[locale]) as AutomationAction["type"][]).map((ty) => (
                 <option key={ty} value={ty}>{ACTION_TYPE_TEXT[locale][ty]}</option>
               ))}
             </select>
           </div>
-          {ACTION_PARAM_LABEL[locale][form.actionType] ? (
+          {form.actionType === "send_email" ? (
+            <div>
+              <span className="mb-1 block text-xs font-medium text-text-muted">{t.fEmailTemplate}</span>
+              <select className={SELECT_CLASS} disabled={editingComplex} value={form.actionParam} onChange={(e) => setForm({ ...form, actionParam: e.target.value })}>
+                {RENDERABLE_EMAIL_TEMPLATES.map((key) => (
+                  <option key={key} value={key}>{EMAIL_TEMPLATE_TEXT[locale][key]}</option>
+                ))}
+              </select>
+            </div>
+          ) : ACTION_PARAM_LABEL[locale][form.actionType] ? (
             <Input label={ACTION_PARAM_LABEL[locale][form.actionType] ?? ""} name="rule-action-param" disabled={editingComplex} value={form.actionParam} onChange={(e) => setForm({ ...form, actionParam: e.target.value })} />
+          ) : null}
+          {form.actionType === "send_email" && form.actionParam === "automation_notice" ? (
+            <>
+              <Input label={t.fEmailSubject} name="rule-email-subject" disabled={editingComplex} maxLength={200} value={form.emailSubject} onChange={(e) => setForm({ ...form, emailSubject: e.target.value })} />
+              <Textarea label={t.fEmailMessage} name="rule-email-message" disabled={editingComplex} maxLength={5000} rows={4} helper={t.emailNoticeHelp} value={form.emailMessage} onChange={(e) => setForm({ ...form, emailMessage: e.target.value })} />
+            </>
           ) : null}
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />

@@ -162,6 +162,194 @@ export function renderOrderConfirmationEmail(
 }
 
 /* ------------------------------------------------------------------ */
+/* Order lifecycle: shipped / delivered / cancelled                    */
+/* ------------------------------------------------------------------ */
+
+/** Shared input for the three order-lifecycle renderers below — the
+ *  same fields the order-confirmation renderer takes, except the
+ *  payment method is optional: when it is absent (or blank) no
+ *  payment line is rendered. */
+export interface OrderLifecycleEmailInput {
+  locale: EmailLocale;
+  /** Settings general.store_name; "" when unset. */
+  storeName: string;
+  customerName: string;
+  orderNo: string;
+  totalPoisha: number;
+  /** Raw checkout payment method code (cod / bkash / …), optional. */
+  paymentMethod?: string;
+  /** Merchant subject/intro override (ADV-29) — see EmailCopyOverride. */
+  copyOverride?: EmailCopyOverride;
+}
+
+function lifecycleTokens(input: OrderLifecycleEmailInput, store: string, total: string) {
+  const rawMethod = (input.paymentMethod ?? "").trim();
+  const method = rawMethod !== "" ? paymentMethodLabel(rawMethod, input.locale) : "";
+  return {
+    method,
+    tokens: {
+      orderNo: input.orderNo,
+      store,
+      total,
+      customerName: input.customerName,
+      paymentMethod: method,
+    } as Record<string, string>,
+  };
+}
+
+function lifecycleOverride(
+  input: OrderLifecycleEmailInput,
+  tokens: Record<string, string>,
+): { overrideSubject: string | null; overrideIntro: string | null } {
+  return {
+    overrideSubject:
+      input.copyOverride?.subject !== undefined && input.copyOverride.subject.trim() !== ""
+        ? applyTokens(input.copyOverride.subject.trim(), tokens)
+        : null,
+    overrideIntro:
+      input.copyOverride?.intro !== undefined && input.copyOverride.intro.trim() !== ""
+        ? applyTokens(input.copyOverride.intro.trim(), tokens)
+        : null,
+  };
+}
+
+export function renderOrderShippedEmail(input: OrderLifecycleEmailInput): RenderedEmail {
+  const store = storeLabel(input.storeName, input.locale);
+  const total = formatBdt(input.totalPoisha);
+  const { method, tokens } = lifecycleTokens(input, store, total);
+  const { overrideSubject, overrideIntro } = lifecycleOverride(input, tokens);
+
+  if (input.locale === "bn") {
+    const subject = overrideSubject ?? `অর্ডার পাঠানো হয়েছে — ${input.orderNo} · ${store}`;
+    const lines = [
+      `আসসালামু আলাইকুম ${input.customerName},`,
+      overrideIntro ?? `${store} থেকে আপনার অর্ডারটি পাঠিয়ে দেওয়া হয়েছে — এটি এখন আপনার ঠিকানার পথে।`,
+      `অর্ডার নম্বর: ${input.orderNo}`,
+      `মোট: ${total}`,
+      ...(method !== "" ? [`পেমেন্ট পদ্ধতি: ${method}`] : []),
+      `অর্ডারের সর্বশেষ অবস্থা আপনার অ্যাকাউন্টে দেখতে পারবেন। কোনো সাহায্য লাগলে এই ইমেইলে উত্তর দিন বা স্টোরে যোগাযোগ করুন।`,
+      `ধন্যবাদ,\n${store}`,
+    ];
+    return {
+      subject,
+      text: lines.join("\n\n"),
+      html: wrapHtml("bn", lines.map((l) => escapeHtml(l).replace(/\n/g, "<br>"))),
+    };
+  }
+
+  const subject = overrideSubject ?? `Order shipped — ${input.orderNo} · ${store}`;
+  const lines = [
+    `Hello ${input.customerName},`,
+    overrideIntro ?? `Your order from ${store} has been shipped and is on its way to you.`,
+    `Order number: ${input.orderNo}`,
+    `Total: ${total}`,
+    ...(method !== "" ? [`Payment method: ${method}`] : []),
+    `You can follow the latest status of your order in your account. If you need help, reply to this email or contact the store.`,
+    `Thank you,\n${store}`,
+  ];
+  return {
+    subject,
+    text: lines.join("\n\n"),
+    html: wrapHtml("en", lines.map((l) => escapeHtml(l).replace(/\n/g, "<br>"))),
+  };
+}
+
+export function renderOrderDeliveredEmail(input: OrderLifecycleEmailInput): RenderedEmail {
+  const store = storeLabel(input.storeName, input.locale);
+  const total = formatBdt(input.totalPoisha);
+  const { method, tokens } = lifecycleTokens(input, store, total);
+  const { overrideSubject, overrideIntro } = lifecycleOverride(input, tokens);
+
+  if (input.locale === "bn") {
+    const subject = overrideSubject ?? `অর্ডার ডেলিভারি সম্পন্ন — ${input.orderNo} · ${store}`;
+    const lines = [
+      `আসসালামু আলাইকুম ${input.customerName},`,
+      overrideIntro ?? `আপনার অর্ডারটি সফলভাবে ডেলিভারি হয়েছে।`,
+      `অর্ডার নম্বর: ${input.orderNo}`,
+      `মোট: ${total}`,
+      ...(method !== "" ? [`পেমেন্ট পদ্ধতি: ${method}`] : []),
+      `${store} থেকে কেনাকাটা করার জন্য ধন্যবাদ! কোনো সাহায্য লাগলে এই ইমেইলে উত্তর দিন বা স্টোরে যোগাযোগ করুন।`,
+      `ধন্যবাদ,\n${store}`,
+    ];
+    return {
+      subject,
+      text: lines.join("\n\n"),
+      html: wrapHtml("bn", lines.map((l) => escapeHtml(l).replace(/\n/g, "<br>"))),
+    };
+  }
+
+  const subject = overrideSubject ?? `Order delivered — ${input.orderNo} · ${store}`;
+  const lines = [
+    `Hello ${input.customerName},`,
+    overrideIntro ?? `Your order has been delivered successfully.`,
+    `Order number: ${input.orderNo}`,
+    `Total: ${total}`,
+    ...(method !== "" ? [`Payment method: ${method}`] : []),
+    `Thank you for shopping with ${store}! If you need help, reply to this email or contact the store.`,
+    `Thank you,\n${store}`,
+  ];
+  return {
+    subject,
+    text: lines.join("\n\n"),
+    html: wrapHtml("en", lines.map((l) => escapeHtml(l).replace(/\n/g, "<br>"))),
+  };
+}
+
+export function renderOrderCancelledEmail(input: OrderLifecycleEmailInput): RenderedEmail {
+  const store = storeLabel(input.storeName, input.locale);
+  const total = formatBdt(input.totalPoisha);
+  const { method, tokens } = lifecycleTokens(input, store, total);
+  const { overrideSubject, overrideIntro } = lifecycleOverride(input, tokens);
+
+  if (input.locale === "bn") {
+    const subject = overrideSubject ?? `অর্ডার বাতিল করা হয়েছে — ${input.orderNo} · ${store}`;
+    const lines = [
+      `আসসালামু আলাইকুম ${input.customerName},`,
+      overrideIntro ?? `আপনার অর্ডারটি বাতিল করা হয়েছে।`,
+      `অর্ডার নম্বর: ${input.orderNo}`,
+      `মোট: ${total}`,
+      ...(method !== "" ? [`পেমেন্ট পদ্ধতি: ${method}`] : []),
+      `আপনাকে আর কিছু করতে হবে না — কোনো পদক্ষেপ প্রয়োজন হলে আমাদের টিম আপনার সাথে যোগাযোগ করবে। কোনো প্রশ্ন থাকলে এই ইমেইলে উত্তর দিন বা স্টোরে যোগাযোগ করুন।`,
+      `ধন্যবাদ,\n${store}`,
+    ];
+    return {
+      subject,
+      text: lines.join("\n\n"),
+      html: wrapHtml("bn", lines.map((l) => escapeHtml(l).replace(/\n/g, "<br>"))),
+    };
+  }
+
+  const subject = overrideSubject ?? `Order cancelled — ${input.orderNo} · ${store}`;
+  const lines = [
+    `Hello ${input.customerName},`,
+    overrideIntro ?? `Your order has been cancelled.`,
+    `Order number: ${input.orderNo}`,
+    `Total: ${total}`,
+    ...(method !== "" ? [`Payment method: ${method}`] : []),
+    `There is nothing further you need to do — if anything is needed, our team will contact you. If you have any questions, reply to this email or contact the store.`,
+    `Thank you,\n${store}`,
+  ];
+  return {
+    subject,
+    text: lines.join("\n\n"),
+    html: wrapHtml("en", lines.map((l) => escapeHtml(l).replace(/\n/g, "<br>"))),
+  };
+}
+
+/** Minimal HTML body for merchant-authored plain text (the
+ *  automation_notice payload): blank-line-separated paragraphs,
+ *  every character escaped, single newlines kept as line breaks.
+ *  Used by src/email/send.ts, which sends the raw text as `text`. */
+export function plainTextToHtml(text: string, locale: EmailLocale): string {
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter((p) => p !== "")
+    .map((p) => escapeHtml(p).replace(/\n/g, "<br>"));
+  return wrapHtml(locale, paragraphs.length > 0 ? paragraphs : [escapeHtml(text)]);
+}
+
+/* ------------------------------------------------------------------ */
 /* Staff invite                                                        */
 /* ------------------------------------------------------------------ */
 

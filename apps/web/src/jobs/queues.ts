@@ -239,6 +239,19 @@ export interface EmailJob {
   /** Covered period, Dhaka YYYY-MM-DD bounds. */
   reportPeriodFrom?: string;
   reportPeriodTo?: string;
+  /**
+   * Automation-notice flavour (templateKey === "automation_notice"):
+   * produced by the automation send_email action when a rule fires
+   * against an order. The subject + body are MERCHANT-AUTHORED in the
+   * rule's action config — no template renders them, so they ride on
+   * the payload (the staff-invite precedent above: payload-only
+   * content the send path cannot rebuild from stored state). The
+   * recipient is still resolved from the order's Customer row at send
+   * time, never stored on the job; `orderId` (mirrored in
+   * `recipientRef`) names the order. Neither field is ever logged.
+   */
+  noticeSubject?: string;
+  noticeText?: string;
 }
 export interface WebhookJob { event: string; payloadId: string; }
 

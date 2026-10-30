@@ -59,6 +59,7 @@ import { formatBdt } from "@advance-ecommerce/validators";
 import type { EnqueueEmailResult } from "../email/send";
 import type { SmsProvider } from "../integrations/sms";
 import type { EmailJob } from "../jobs/queues";
+import { RENDERABLE_EMAIL_TEMPLATES } from "./types";
 import type {
   ActionEffect,
   AutomationEvent,
@@ -243,6 +244,33 @@ async function executeEmailEffect(
 ): Promise<ActionEffect> {
   if (effect.action.type !== "send_email") return effect;
   const templateKey = effect.action.templateKey;
+  // Automation-email fix (2026-10-30): validate BEFORE enqueueing.
+  // The worker renders only RENDERABLE_EMAIL_TEMPLATES; anything else
+  // used to queue happily and then SKIP silently at send time, so a
+  // merchant's rule could "send" email that never existed (the
+  // shipped example's payment_help did exactly this). A bad key is
+  // now an honest skip HERE, in the run log, and nothing is queued.
+  if (!(RENDERABLE_EMAIL_TEMPLATES as readonly string[]).includes(templateKey)) {
+    return {
+      ...effect,
+      status: "skipped",
+      description:
+        `Send email (template ${templateKey}) — skipped, "${templateKey}" is not a renderable email template; ` +
+        `nothing was queued. The email worker can only render: ${RENDERABLE_EMAIL_TEMPLATES.join(", ")}.`,
+      reason: "template_not_renderable",
+    };
+  }
+  const noticeSubject = effect.action.subject?.trim() ?? "";
+  const noticeText = effect.action.message?.trim() ?? "";
+  if (templateKey === "automation_notice" && (noticeSubject === "" || noticeText === "")) {
+    return {
+      ...effect,
+      status: "skipped",
+      description:
+        "Send email (template automation_notice) — skipped, automation_notice needs a non-empty subject and message on the action; nothing was queued.",
+      reason: "notice_content_missing",
+    };
+  }
   if (!event.order) {
     return {
       ...effect,
@@ -262,6 +290,10 @@ async function executeEmailEffect(
       orderId: event.order.id,
       templateKey,
       recipientRef: event.order.id,
+      // automation_notice carries the merchant's own text on the job;
+      // the worker renders it to the order's customer (the recipient
+      // is resolved from the order, like order_confirmation).
+      ...(templateKey === "automation_notice" ? { noticeSubject, noticeText } : {}),
       idempotencyKey: `automation-email-${log.id}-${index}`,
     };
     const outcome = await enqueue(job);
