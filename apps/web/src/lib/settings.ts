@@ -592,6 +592,13 @@ export async function getIntegrationStatus(
       `${category}.${provider}.secret`,
       `${category}.${provider}.password`,
       `${category}.${provider}.token`,
+      // Courier credential shapes the generic list used to miss —
+      // without these, a fully-configured RedX (access_token) or a
+      // Pathao client_secret read as "not configured" on every badge.
+      `${category}.${provider}.access_token`,
+      `${category}.${provider}.client_secret`,
+      `${category}.${provider}.secret_key`,
+      `${category}.${provider}.api_secret`,
     ];
     let configured = false;
     for (const key of credentialKeys) {
@@ -602,6 +609,30 @@ export async function getIntegrationStatus(
       }
     }
     out.push({ provider, enabled, configured });
+  }
+  return out;
+}
+
+/**
+ * Admin settings payload ONLY: the NON-secret values of one provider
+ * (enabled, client_id, username, store_id, user_id, mode, ...), keyed
+ * by full setting key. Secret-suffixed and encrypted rows are excluded
+ * by construction, so a settings form can prefill its plain fields
+ * without ever receiving a credential. (getPublicSettings cannot serve
+ * this: provider rows are saved isPublic=false and stay out of it.)
+ */
+export async function getIntegrationPlainValues(
+  category: "payment" | "courier" | "sms" | "email" | "storage",
+  providers: readonly string[],
+): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const provider of providers) {
+    const prefix = `${category}.${provider}.`;
+    const rows = await prisma.setting.findMany({ where: { key: { startsWith: prefix } } });
+    for (const row of rows) {
+      if (row.valueEncrypted || isSecretSettingKey(row.key)) continue;
+      out[row.key] = row.value;
+    }
   }
   return out;
 }

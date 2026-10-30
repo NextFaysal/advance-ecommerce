@@ -8,6 +8,10 @@
  *     values and says so in meta (defaults are not presented as DB values).
  *   - integrations: per-provider { provider, enabled, configured } ONLY.
  *     configured is a boolean — a credential value is NEVER returned.
+ *   - integrationValues: NON-secret provider values only (enabled,
+ *     client_id, store_id, ...), so settings forms can prefill plain
+ *     fields. Secret-suffixed/encrypted rows are excluded in the lib
+ *     helper — a credential value is NEVER returned here either.
  *
  * POST { key, value, reason } -> set one setting via src/lib/settings.setSetting
  *   - requires settings.edit, plus settings.integrations for integration
@@ -33,6 +37,7 @@ import {
   SETTING_DEFAULTS,
   SMS_PROVIDERS,
   STORAGE_PROVIDERS,
+  getIntegrationPlainValues,
   getIntegrationStatus,
   getPublicSettings,
   isKnownSettingKey,
@@ -77,6 +82,7 @@ export async function GET() {
   }
 
   const integrations: Record<string, IntegrationStatus[]> = {};
+  const integrationValues: Record<string, string> = {};
   for (const category of INTEGRATION_CATEGORIES) {
     const providers =
       category === "payment"
@@ -90,6 +96,7 @@ export async function GET() {
               : STORAGE_PROVIDERS;
     try {
       integrations[category] = await getIntegrationStatus(category, providers);
+      Object.assign(integrationValues, await getIntegrationPlainValues(category, providers));
     } catch {
       dbReady = false;
       integrations[category] = providers.map((provider) => ({ provider, enabled: false, configured: false }));
@@ -97,7 +104,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    data: { publicSettings, integrations },
+    data: { publicSettings, integrations, integrationValues },
     meta: { db: dbReady ? "CONNECTED" : "NOT_WIRED", note: dbReady ? undefined : "DB not reachable — public values below are built-in defaults, integration configured=false is a fallback, not a DB read." },
   });
 }
