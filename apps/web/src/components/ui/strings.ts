@@ -44,6 +44,7 @@ const bn = {
   showEnNumerals: "ইংরেজি সংখ্যায় দেখান",
 
   // Status badges (order / payment / risk)
+  statusIncomplete: "অসম্পূর্ণ",
   statusPending: "মুলতুবি",
   statusConfirmed: "নিশ্চিত",
   statusProcessing: "প্রসেসিং",
@@ -87,7 +88,8 @@ const en: UiStrings = {
   showBnNumerals: "Show in Bangla numerals",
   showEnNumerals: "Show in English numerals",
 
-  statusPending: "Pending",
+  statusIncomplete: "Incomplete",
+    statusPending: "Pending",
   statusConfirmed: "Confirmed",
   statusProcessing: "Processing",
   statusPacked: "Packed",

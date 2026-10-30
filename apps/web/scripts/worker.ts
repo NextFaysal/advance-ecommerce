@@ -47,8 +47,28 @@ import type {
 /* this entrypoint uses. No `any` anywhere.                            */
 /* ------------------------------------------------------------------ */
 
+interface BullMqQueueConstructor {
+  new (
+    name: string,
+    options: { connection: RedisConnectionLike },
+  ): {
+    add(
+      name: string,
+      data: unknown,
+      opts?: {
+        repeat?: { every: number };
+        jobId?: string;
+        removeOnComplete?: boolean | number;
+        removeOnFail?: boolean | number;
+      },
+    ): Promise<unknown>;
+    close(): Promise<void>;
+  };
+}
+
 interface BullMqModuleShape {
   Worker: BullMqWorkerConstructor;
+  Queue?: BullMqQueueConstructor;
 }
 
 interface RedisConnectionLike {
@@ -164,6 +184,28 @@ async function main(): Promise<void> {
     connection,
   );
 
+  /* 4b — repeatable schedulers (ADV-18 Subscription generation) ------- */
+  let subscriptionsQueue: { close(): Promise<void> } | null = null;
+  if (bullmq.Queue) {
+    try {
+      const q = new bullmq.Queue("subscription-generation", { connection });
+      subscriptionsQueue = q;
+      await q.add(
+        "sweep",
+        { sweepKey: "repeatable-subscriptions" },
+        {
+          repeat: { every: 15 * 60 * 1000 },
+          jobId: "subscriptions-repeatable-sweep",
+          removeOnComplete: 10,
+          removeOnFail: 50,
+        },
+      );
+      console.log("[worker] ⏰ Scheduled repeatable sweep for subscriptions (every 15m)");
+    } catch (schedErr) {
+      console.warn("[worker] ⚠️ Could not schedule subscription repeatable job:", schedErr);
+    }
+  }
+
   console.log(`[worker] ✅ Worker chaalu hoyeche — queue shunchhe:`);
   console.log(`[worker] ✅ Worker running — listening on queues:`);
   for (const entry of workersModule.workerManifest()) {
@@ -180,6 +222,7 @@ async function main(): Promise<void> {
     console.log(`[worker] ${signal} peyeche — worker bondho hochhe… / received ${signal} — shutting down…`);
     void (async () => {
       try {
+        await subscriptionsQueue?.close();
         await created.close();
         await connection.quit();
         console.log(`[worker] ✅ Worker bondho hoyeche. / Worker closed cleanly.`);

@@ -171,6 +171,7 @@ export function buildPushPayload(
 
 /** Statuses with no customer push map to null (no notification). */
 export const ORDER_STATUS_PUSH_TEMPLATES: Record<OrderStatus, PushTemplateKey | null> = {
+  INCOMPLETE: null,
   PENDING: null,
   CONFIRMED: "order_confirmed",
   PROCESSING: null,

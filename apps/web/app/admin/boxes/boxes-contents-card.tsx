@@ -61,6 +61,33 @@ export function BoxesContentsCard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [notifyingCycle, setNotifyingCycle] = useState<string | null>(null);
+
+  async function notifySubscribers(cycleKey: string) {
+    if (variantId === "" || cycleKey === "") return;
+    setNotifyingCycle(cycleKey);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/v1/admin/boxes/notify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ variantId, cycleKey }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(json?.error?.message ?? "নোটিফিকেশন পাঠানো যায়নি।");
+      } else {
+        setNotice(
+          `সাইকেল ${cycleKey}: ${json.data?.sentCount ?? 0} জন সাবস্ক্রাইবারকে সফলভাবে নোটিফাই করা হয়েছে।`
+        );
+      }
+    } catch {
+      setError("সার্ভারের সাথে সংযোগে সমস্যা হয়েছে।");
+    } finally {
+      setNotifyingCycle(null);
+    }
+  }
 
   // Per-cycle item search state: which cycle index is searching +
   // the query + results (one open search at a time keeps it simple).
@@ -304,6 +331,16 @@ export function BoxesContentsCard() {
                 >
                   {s.deleteCycle}
                 </button>
+                {cycle.cycleKey && cycle.items.length > 0 ? (
+                  <button
+                    type="button"
+                    disabled={notifyingCycle === cycle.cycleKey}
+                    className={SMALL_BUTTON + " border-brand-500/30 text-brand-600 hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-900/30"}
+                    onClick={() => notifySubscribers(cycle.cycleKey)}
+                  >
+                    {notifyingCycle === cycle.cycleKey ? "পাঠানো হচ্ছে…" : "📢 গ্রাহকদের নোটিফাই করুন"}
+                  </button>
+                ) : null}
               </div>
 
               <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
