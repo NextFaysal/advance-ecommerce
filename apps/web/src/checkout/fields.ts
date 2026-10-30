@@ -179,16 +179,25 @@ function coerceValidation(raw: unknown): CheckoutFieldValidation | undefined {
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/**
+ * Default form = SIMPLE checkout (Nazmul, 2026-10-30): the customer
+ * is asked only for what delivery needs — name, phone, the address
+ * cascade and the detailed address. Email / union / note ship HIDDEN;
+ * the merchant can switch any of them on (or back off) from
+ * Admin → Settings → Checkout Fields, where a one-click preset
+ * mirrors these two shapes. This default applies wherever no
+ * `checkout.fields` Setting has been saved; a saved config wins.
+ */
 const BUILTIN_DEFAULTS: CheckoutFieldDef[] = [
   { key: "customerName", labelBn: "আপনার নাম", labelEn: "Your name", visible: true, required: true },
   { key: "phone", labelBn: "মোবাইল নম্বর", labelEn: "Mobile number", placeholder: "01XXXXXXXXX", visible: true, required: true },
-  { key: "email", labelBn: "ইমেইল (ঐচ্ছিক)", labelEn: "Email (optional)", visible: true, required: false },
+  { key: "email", labelBn: "ইমেইল (ঐচ্ছিক)", labelEn: "Email (optional)", visible: false, required: false },
   { key: "division", labelBn: "বিভাগ", labelEn: "Division", visible: true, required: true },
   { key: "district", labelBn: "জেলা", labelEn: "District", visible: true, required: true },
   { key: "upazila", labelBn: "উপজেলা", labelEn: "Upazila", visible: true, required: true },
-  { key: "union", labelBn: "ইউনিয়ন (ঐচ্ছিক)", labelEn: "Union (optional)", visible: true, required: false },
+  { key: "union", labelBn: "ইউনিয়ন (ঐচ্ছিক)", labelEn: "Union (optional)", visible: false, required: false },
   { key: "addressLine", labelBn: "বিস্তারিত ঠিকানা", labelEn: "Detailed address", visible: true, required: true },
-  { key: "note", labelBn: "নোট (ঐচ্ছিক)", labelEn: "Note (optional)", visible: true, required: false },
+  { key: "note", labelBn: "নোট (ঐচ্ছিক)", labelEn: "Note (optional)", visible: false, required: false },
 ];
 
 /** The default config = the original hardcoded checkout form, exactly. */

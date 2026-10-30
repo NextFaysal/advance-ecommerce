@@ -469,6 +469,23 @@ export function CheckoutFieldsPanel() {
   const addressFields = builtins.filter((f) => groupOf(f.key) === "address");
   const extras = (fields ?? []).filter((f) => f.extra);
 
+  /**
+   * One-click presets over the only freely-hideable built-ins
+   * (email / union / note). Simple hides all three — the customer
+   * then fills just name, phone, the cascade and the address line,
+   * matching the shipped default; Standard shows all three again.
+   * Locked fields and merchant extras are never touched, and the
+   * preset only edits the draft — the audited save below applies it.
+   */
+  const PRESET_KEYS: ReadonlySet<string> = new Set(["email", "union", "note"]);
+  function applyPreset(preset: "simple" | "standard") {
+    setFields((prev) =>
+      (prev ?? []).map((f) =>
+        PRESET_KEYS.has(f.key) ? { ...f, visible: preset === "standard" } : f,
+      ),
+    );
+  }
+
   function renderBuiltinRow(def: CheckoutFieldDef, pos: number, groupSize: number) {
     const visibleLocked = LOCKED_VISIBLE.has(def.key);
     const requiredLocked = LOCKED_REQUIRED.has(def.key);
@@ -591,6 +608,29 @@ export function CheckoutFieldsPanel() {
           {notice}
         </p>
       )}
+
+      <div className="mt-4 rounded-xl border border-border bg-background px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-text-main">{s.chfPresetLabel}</span>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => applyPreset("simple")}
+            className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-text-main transition hover:border-brand-500 disabled:opacity-50"
+          >
+            {s.chfPresetSimple}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => applyPreset("standard")}
+            className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-text-main transition hover:border-brand-500 disabled:opacity-50"
+          >
+            {s.chfPresetStandard}
+          </button>
+        </div>
+        <p className="mt-2 text-xs leading-5 text-text-muted">{s.chfPresetHelp}</p>
+      </div>
 
       <h3 className="mt-6 text-sm font-semibold text-text-main">{s.chfStep1}</h3>
       <div className="mt-3 grid gap-3">

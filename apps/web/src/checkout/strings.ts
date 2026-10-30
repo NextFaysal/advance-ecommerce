@@ -31,7 +31,7 @@ const bn = {
   pageTitle: "চেকআউট — এক পেজেই অর্ডার",
   cartLoading: "কার্ট লোড হচ্ছে…",
   checkoutIntro:
-    "ফোন নম্বর আবশ্যক, ইমেইল ঐচ্ছিক। ঠিকানা দিন ধাপে ধাপে: বিভাগ › জেলা › উপজেলা › ইউনিয়ন (ঐচ্ছিক)।",
+    "শুধু নাম, ফোন নম্বর আর ঠিকানা দিলেই অর্ডার হয়ে যাবে। ঠিকানা দিন ধাপে ধাপে: বিভাগ › জেলা › উপজেলা।",
   stepsAria: "চেকআউটের ধাপ",
   stepInfo: "তথ্য",
   stepAddress: "ঠিকানা",
@@ -265,7 +265,7 @@ const en: CheckoutStrings = {
   pageTitle: "Checkout — order on one page",
   cartLoading: "Loading cart…",
   checkoutIntro:
-    "A phone number is required, email is optional. Give your address step by step: Division › District › Upazila › Union (optional).",
+    "Just your name, phone number and address — that's all it takes to order. Give your address step by step: Division › District › Upazila.",
   stepsAria: "Checkout steps",
   stepInfo: "Info",
   stepAddress: "Address",
