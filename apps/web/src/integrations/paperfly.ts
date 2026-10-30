@@ -57,9 +57,14 @@
  *    the adapter returns zero counts + successRatePercent null ("no
  *    data") — never simulated numbers.
  *  - getRates: the binding charge for a booking is the charge on the
- *    create response, persisted on the Shipment row. getRates stays
- *    the platform rate-card ESTIMATE (courierChargePoisha, the same
- *    function the sandbox uses).
+ *    create response, persisted on the Shipment row. getRates is an
+ *    ESTIMATE from Paperfly's own published charge table
+ *    (paperfly.com.bd, read 2026-10-30): Same City ৳70 /
+ *    Periphery-Suburb ৳110 / Rest of Bangladesh ৳130 for up to 1 KG,
+ *    +৳20 per additional KG, COD charge 1% (0% same-city). Our zone
+ *    model has no periphery/suburb tier: inside_dhaka maps to Same
+ *    City (0% COD fee) and every other zone to Rest of Bangladesh
+ *    (1% COD fee, estimated on the order value).
  *  - Money: Paperfly amounts are BDT decimals; they are converted to
  *    integer poisha exactly once, at this boundary. Parcel weight is
  *    sent in kg decimals, converted from grams at the same boundary.
@@ -90,8 +95,8 @@ import type {
   CreateShipmentResult,
   ShipmentAddress,
   ShipmentStatus,
+  ShippingZone,
 } from "./courier";
-import { courierChargePoisha } from "./sandbox/courier-rates";
 import type { ProviderConfig, WebhookVerification } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -259,6 +264,28 @@ export function gramsToPaperflyKg(weightGrams: number): number {
   return Number((weightGrams / 1000).toFixed(2));
 }
 
+/** ESTIMATE charge (integer poisha) from Paperfly's own published
+ *  charge table (paperfly.com.bd, read 2026-10-30): Same City ৳70 /
+ *  Periphery-Suburb ৳110 / Rest of Bangladesh ৳130 for up to 1 KG,
+ *  +৳20 per additional KG, COD charge 1% (0% same-city). Our zone
+ *  model has no periphery/suburb tier, so inside_dhaka maps to Same
+ *  City and every other zone (outside_dhaka, district) to Rest of
+ *  Bangladesh; the COD fee is estimated on the order value the rate
+ *  input carries. This feeds getRates ONLY — the binding charge for
+ *  a booking is the charge on the create response (see header). */
+export function paperflyPublishedChargePoisha(
+  zone: ShippingZone,
+  weightGrams: number,
+  codAmountPoisha: number,
+): number {
+  const sameCity = zone === "inside_dhaka";
+  const basePoisha = sameCity ? 7000 : 13000;
+  const billableKg = Math.max(1, Math.ceil(weightGrams / 1000));
+  const weightPoisha = (billableKg - 1) * 2000;
+  const codFeePoisha = sameCity ? 0 : Math.round(codAmountPoisha / 100);
+  return basePoisha + weightPoisha + codFeePoisha;
+}
+
 export interface PaperflyCreateOrderBody {
   /** The merchant reference Paperfly tracks the parcel by. */
   ref_id: string;
@@ -276,7 +303,6 @@ export interface PaperflyCreateOrderBody {
   total_amount: number;
   /** kg decimal (the provider's unit — converted from grams once). */
   max_weight: number;
-  total_lot: number;
   note: string | null;
 }
 
@@ -295,7 +321,6 @@ export function buildPaperflyCreateOrderBody(
     cash_collection_amount: poishaToPaperflyBdt(input.codAmountPoisha),
     total_amount: poishaToPaperflyBdt(input.codAmountPoisha),
     max_weight: gramsToPaperflyKg(input.weightGrams),
-    total_lot: input.itemCount,
     note: input.note,
   };
   if (storeName.trim() !== "") body.store_name = storeName.trim();
@@ -779,12 +804,17 @@ export function createPaperflyProvider(
     },
 
     async getRates(input: CourierRateInput): Promise<CourierRate[]> {
-      // Platform rate-card ESTIMATE (see header): the binding charge
-      // arrives with the create response and is what the row persists.
+      // Paperfly published-table ESTIMATE (see header): the binding
+      // charge arrives with the create response and is what the row
+      // persists.
       return [
         {
           provider: "paperfly",
-          chargePoisha: courierChargePoisha(input.zone, input.weightGrams),
+          chargePoisha: paperflyPublishedChargePoisha(
+            input.zone,
+            input.weightGrams,
+            input.orderValuePoisha,
+          ),
           estimatedDays: 2,
         },
       ];

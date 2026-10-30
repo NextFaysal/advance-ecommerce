@@ -49,6 +49,8 @@ interface FieldDef {
   suffix: string;
   labelKey: keyof SettingsStrings;
   secret: boolean;
+  /** May be left blank (resolver falls back or the value is unused). */
+  optional?: boolean;
 }
 
 // The credential set each live resolver requires/uses. webhook_secret
@@ -59,18 +61,27 @@ const PROVIDER_FIELDS: Record<ProviderKey, FieldDef[]> = {
     { suffix: "api_key", labelKey: "shipFApiKey", secret: true },
     { suffix: "secret_key", labelKey: "shipFSecretKey", secret: true },
     { suffix: "webhook_secret", labelKey: "shipFWebhookSecret", secret: true },
+    // The official doc copy doesn't expose the API host and third-party
+    // packages suggest a different one — the resolver honours this
+    // override so the merchant can correct it without a code change.
+    { suffix: "base_url", labelKey: "shipFBaseUrl", secret: false, optional: true },
   ],
   pathao: [
     { suffix: "client_id", labelKey: "shipFClientId", secret: false },
     { suffix: "client_secret", labelKey: "shipFClientSecret", secret: true },
-    { suffix: "username", labelKey: "shipFUsername", secret: false },
-    { suffix: "password", labelKey: "shipFPassword", secret: true },
-    { suffix: "store_id", labelKey: "shipFStoreId", secret: false },
+    // Optional since the doc-verification wave: Pathao's current flow
+    // issues tokens from client_id + client_secret alone, and the
+    // store is auto-picked from the API when store_id is blank.
+    { suffix: "username", labelKey: "shipFUsername", secret: false, optional: true },
+    { suffix: "password", labelKey: "shipFPassword", secret: true, optional: true },
+    { suffix: "store_id", labelKey: "shipFStoreId", secret: false, optional: true },
     { suffix: "webhook_secret", labelKey: "shipFWebhookSecret", secret: true },
+    { suffix: "base_url", labelKey: "shipFBaseUrl", secret: false, optional: true },
   ],
   redx: [
     { suffix: "access_token", labelKey: "shipFAccessToken", secret: true },
     { suffix: "webhook_secret", labelKey: "shipFWebhookSecret", secret: true },
+    { suffix: "base_url", labelKey: "shipFBaseUrl", secret: false, optional: true },
   ],
   paperfly: [
     { suffix: "username", labelKey: "shipFUsername", secret: false },
@@ -82,6 +93,10 @@ const PROVIDER_FIELDS: Record<ProviderKey, FieldDef[]> = {
     { suffix: "user_id", labelKey: "shipFUserId", secret: false },
     { suffix: "api_key", labelKey: "shipFApiKey", secret: true },
     { suffix: "api_secret", labelKey: "shipFApiSecret", secret: true },
+    // Mandatory in eCourier's official API doc (v5.5) and required by
+    // the resolver — the doc-verification wave caught that this form
+    // never collected it, so eCourier could never be configured here.
+    { suffix: "package_code", labelKey: "shipFPackageCode", secret: false },
     { suffix: "webhook_secret", labelKey: "shipFWebhookSecret", secret: true },
   ],
 };
@@ -210,6 +225,7 @@ function ProviderSection({
         {fields.map((f) => (
           <label key={f.suffix} className="block text-xs font-semibold text-text-main">
             {s[f.labelKey]}
+            {f.optional && <span className="font-normal text-text-muted"> ({s.shipOptional})</span>}
             <input
               type={f.secret ? "password" : "text"}
               placeholder={f.secret ? "••••••••" : ""}

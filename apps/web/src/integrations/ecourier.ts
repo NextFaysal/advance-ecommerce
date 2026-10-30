@@ -14,36 +14,56 @@
  *             courier.ecourier.api_key / .api_secret / .user_id).
  *   Create:   POST /order-place { product_id, recipient_name,
  *             recipient_mobile, recipient_city, recipient_area,
- *             recipient_thana, recipient_address, package_code,
- *             product_price, actual_product_price, payment_method,
- *             number_of_item, comments, weight }.
- *             `product_id` is the merchant-unique reference — eCourier
- *             itself rejects a duplicate (product_id, mobile) pair —
- *             derived deterministically from (orderRef,
- *             idempotencyKey) exactly like the sibling adapters'
- *             invoice ids. `package_code` is a merchant-assigned
- *             package from the eCourier panel (Settings
- *             courier.ecourier.package_code, part of the configured
- *             test): eCourier rejects a booking whose package code is
- *             not assigned to the merchant.
+ *             recipient_thana, recipient_address, recipient_zip,
+ *             package_code, product_price, actual_product_price,
+ *             payment_method, number_of_item, comments } — the v5.5
+ *             General place-order parameter set (no `weight`, no
+ *             `recipient_division`: weight rides on the package).
+ *             `product_id` is the merchant-unique reference (v5.5
+ *             caps it at 20 characters) — eCourier itself rejects a
+ *             duplicate (product_id, mobile) pair — derived
+ *             deterministically from (orderRef, idempotencyKey)
+ *             exactly like the sibling adapters' invoice ids.
+ *             `product_price` / `actual_product_price` are Integer
+ *             (whole taka) in v5.5. `recipient_zip` is listed
+ *             Mandatory with "Default null"; this platform carries
+ *             no postcode, so null is sent explicitly. `package_code`
+ *             is a merchant-assigned package from the eCourier panel
+ *             (Settings courier.ecourier.package_code, part of the
+ *             configured test): eCourier rejects a booking whose
+ *             package code is not assigned to the merchant. The
+ *             documented success response is ONLY
+ *             { errors, response_code, message, ID } — no charge
+ *             field (see the CHARGE note under HONESTY RULES).
  *   Status:   POST /track { ecr } — eCourier's API is POST-shaped
- *             even for reads.
+ *             even for reads. The v5.5 response carries the parcel
+ *             records under `query_data` (the string "No Data Found"
+ *             when the ECR is unknown); each record's `status` is an
+ *             array of [label, comment, timestamp] triples, NEWEST
+ *             FIRST — the current status is the FIRST triple's label.
+ *   Cancel:   POST /cancel-order { tracking, comment } (v5.5 §2.4) —
+ *             keyed by the ECR id this adapter persists as the
+ *             Shipment trackingId; the response reports
+ *             { success: "true" / "false", message } (string booleans).
  *   Packages: POST /packages — the merchant's assigned packages
  *             (the probe; also how an admin discovers package codes).
+ *             The v5.5 response is a TOP-LEVEL JSON ARRAY of
+ *             { package_name, package_code, shipping_charge, weight,
+ *             delivery_time, coverage_id, coverage }.
  *
  * UNVERIFIED-API NOTE (honesty): no live eCourier account exists on
- * this install yet, and the provider's API details could not be
- * verified from this codebase. The base URL, the three auth header
- * names, the endpoint paths and the create field names are the
- * eCourier merchant API shape as published in eCourier's own API
- * document (v5.2) and public integrations at build time; response
- * parsing is deliberately TOLERANT (several accepted spellings per
- * field, error bodies read in eCourier's documented
- * `{ errors: [...], response_code }` shape), and the first live
- * booking MUST be checked against the merchant panel — the create
- * RESPONSE field spellings (the parcel id + delivery charge) are the
- * first thing to re-verify there. Nothing in this module pretends a
- * call succeeded when the provider did not clearly accept it.
+ * this install yet, so no call below has been exercised against the
+ * real API from this codebase. The base URL, the three auth header
+ * names, the endpoint paths and the request/response shapes are the
+ * eCourier merchant API as published in eCourier's own "Merchant API
+ * Document — General" v5.5 (this adapter was re-aligned to v5.5 after
+ * an earlier v5.2 reading proved wrong on the track envelope, the
+ * create-response charge and the cancel shape); response parsing
+ * stays deliberately TOLERANT where the doc leaves room (error
+ * bodies read in the documented `{ errors: [...], response_code }`
+ * shape), and the first live booking MUST still be checked against
+ * the merchant panel. Nothing in this module pretends a call
+ * succeeded when the provider did not clearly accept it.
  *
  * HONESTY RULES (platform-wide, do not weaken — same as Steadfast):
  *  - A create the provider did not clearly accept THROWS
@@ -52,22 +72,33 @@
  *    resolved promise as a real booking, so returning a fabricated
  *    shipment would be a phantom booking — the throw is what gives
  *    BullMQ retry / dead-letter.
- *  - CANCEL: eCourier documents a cancel call keyed by the merchant
- *    `product_id`, but its exact shape is unverified and this
- *    integration does not persist product_id apart from the booking
- *    key, so cancelShipment throws NOT_SUPPORTED (cancel from the
- *    eCourier merchant panel) — the same posture as the siblings. It
- *    never marks anything cancelled locally.
+ *  - CANCEL: v5.5 §2.4 documents POST /cancel-order keyed by
+ *    `tracking` — the ECR id, which this adapter persists as the
+ *    Shipment trackingId — with a Mandatory `comment` (≤255 chars).
+ *    cancelShipment calls it for real and only reports the cancel
+ *    once eCourier answers success "true"; a provider refusal (or an
+ *    unreadable answer) throws, and nothing is marked cancelled
+ *    locally on the provider's behalf. (An earlier reading of the
+ *    docs claimed the cancel was keyed by product_id with an
+ *    unverified shape — v5.5 contradicts that; the ECR-keyed call
+ *    above is the documented one.)
  *  - successRate: no per-phone delivery-history endpoint is known,
  *    so the adapter returns zero counts + successRatePercent null
  *    ("no data") — never simulated numbers.
- *  - getRates: the binding charge for a booking is the charge on the
- *    create response, persisted on the Shipment row. getRates stays
- *    the platform rate-card ESTIMATE (courierChargePoisha, the same
- *    function the sandbox uses).
- *  - Money: eCourier amounts are BDT decimals; they are converted to
- *    integer poisha exactly once, at this boundary. Parcel weight is
- *    sent in kg decimals, converted from grams at the same boundary.
+ *  - CHARGE: the v5.5 create response carries NO charge field, so a
+ *    booking's persisted charge resolves from the assigned package's
+ *    `shipping_charge` (the /packages list) and falls back to 0 when
+ *    even that cannot be read — the booking is real the moment the
+ *    ID is in hand and must never throw over a missing charge; the
+ *    parcel's true charge reconciles later from /track's
+ *    `shipping_price`. getRates stays the platform rate-card
+ *    ESTIMATE (courierChargePoisha, the same function the sandbox
+ *    uses).
+ *  - Money: eCourier amounts are BDT; they are converted to integer
+ *    poisha exactly once, at this boundary. The two price fields on
+ *    create are whole-taka Integers in v5.5, so they round at this
+ *    boundary (the only place a fractional taka is dropped; the COD
+ *    amount of record stays integer poisha on our side).
  *  - The API key / secret are constructor inputs only — never
  *    logged, never in an error message, never in a URL this module
  *    builds. (Provider error STRINGS from eCourier's `errors` array
@@ -105,7 +136,7 @@ export class EcourierProviderError extends Error {
   readonly provider = "ecourier" as const;
   /** Machine code: NOT_CONFIGURED | NOT_SUPPORTED | INVALID_INPUT |
    *  INVALID_PHONE | NETWORK | HTTP_<status> | ECOURIER_<response_code> |
-   *  UNRECOGNIZED_RESPONSE. */
+   *  NOT_FOUND | UNRECOGNIZED_RESPONSE. */
   readonly code: string;
 
   constructor(code: string, message: string) {
@@ -127,6 +158,8 @@ export function normalizeEcourierStatus(raw: string): string {
 
 export const ECOURIER_DELIVERY_STATUS_MAP: Record<string, ShipmentStatus> = {
   pending: "CREATED",
+  // v5.5 doc label "Initiated" — the parcel's first documented state.
+  initiated: "CREATED",
   order_placed: "CREATED",
   order_created: "CREATED",
   created: "CREATED",
@@ -141,10 +174,15 @@ export const ECOURIER_DELIVERY_STATUS_MAP: Record<string, ShipmentStatus> = {
   transit: "IN_TRANSIT",
   at_hub: "IN_TRANSIT",
   at_sorting_hub: "IN_TRANSIT",
+  // v5.5 doc labels "In Source Branch" / "In Destination Branch".
+  in_source_branch: "IN_TRANSIT",
+  in_destination_branch: "IN_TRANSIT",
   hold: "IN_TRANSIT",
   on_hold: "IN_TRANSIT",
   out_for_delivery: "OUT_FOR_DELIVERY",
   on_the_way: "OUT_FOR_DELIVERY",
+  // v5.5 doc label "On the way to Delivery".
+  on_the_way_to_delivery: "OUT_FOR_DELIVERY",
   delivering: "OUT_FOR_DELIVERY",
   delivered: "DELIVERED",
   partial_delivered: "DELIVERED",
@@ -196,6 +234,13 @@ export function poishaToEcourierBdt(poisha: number): number {
   return Number((poisha / 100).toFixed(2));
 }
 
+/** Integer poisha -> the WHOLE-TAKA Integer eCourier v5.5 types
+ *  `product_price` / `actual_product_price` as. Rounds at this
+ *  boundary only (see the Money note in the file header). */
+export function poishaToEcourierIntegerTaka(poisha: number): number {
+  return Math.round(poisha / 100);
+}
+
 /* ------------------------------------------------------------------ */
 /* Pure request shaping (exported for smoke tests)                     */
 /* ------------------------------------------------------------------ */
@@ -213,10 +258,20 @@ function stableHash36(text: string): string {
  *  of booking a second parcel. Deriving it deterministically from
  *  (orderRef, idempotencyKey) means a BullMQ retry of the same
  *  booking job reuses the same reference — and our own store replay
- *  check returns the original booking before any network call. */
+ *  check returns the original booking before any network call.
+ *  v5.5 caps `product_id` at 20 characters, so the id is a short
+ *  readable order-ref prefix plus an 8-char hash widened from the
+ *  same (orderRef, idempotencyKey) seed (11 + 1 + 8 = 20 max). */
 export function buildEcourierProductId(orderRef: string, idempotencyKey: string): string {
-  const base = orderRef.replace(/[^A-Za-z0-9-]/g, "").slice(0, 24) || "ORDER";
-  return `${base}-${stableHash36(`${orderRef}:${idempotencyKey}`)}`;
+  const base = orderRef.replace(/[^A-Za-z0-9-]/g, "").slice(0, 11) || "ORDER";
+  const seed = `${orderRef}:${idempotencyKey}`;
+  let hash = "";
+  let salt = 0;
+  while (hash.length < 8) {
+    hash += stableHash36(salt === 0 ? seed : `${seed}#${salt}`);
+    salt += 1;
+  }
+  return `${base}-${hash.slice(0, 8)}`;
 }
 
 /** eCourier's recipient_address is the free-text detail address;
@@ -241,7 +296,9 @@ export function ecourierRecipientPhone(raw: string): string {
   return `0${normalized.slice(4)}`; // "+880" + 10 digits -> "0" + 10 digits
 }
 
-/** Grams -> the kg decimal eCourier expects (weight). */
+/** Grams -> kg decimal. The v5.5 place-order call sends no weight
+ *  (weight rides on the package), so the create body no longer uses
+ *  this; kept as the module's grams->kg converter of record. */
 export function gramsToEcourierKg(weightGrams: number): number {
   return Number((weightGrams / 1000).toFixed(2));
 }
@@ -255,11 +312,15 @@ export interface EcourierCreateOrderBody {
   recipient_city: string;
   recipient_area: string;
   recipient_thana: string;
-  recipient_division: string;
   recipient_address: string;
+  /** v5.5 lists recipient_zip Mandatory with "Default null"; this
+   *  platform carries no postcode, so the documented default is
+   *  sent explicitly. */
+  recipient_zip: null;
   /** Merchant-assigned package code (Settings courier.ecourier.package_code). */
   package_code: string;
-  /** BDT decimal (the provider's unit — converted from poisha once). */
+  /** Whole-taka Integer (v5.5 types both price fields as Integer —
+   *  converted from poisha once, at this boundary). */
   product_price: number;
   actual_product_price: number;
   /** "COD" — this platform books cash-on-delivery parcels; a prepaid
@@ -267,8 +328,6 @@ export interface EcourierCreateOrderBody {
   payment_method: "COD";
   number_of_item: number;
   comments: string;
-  /** kg decimal (the provider's unit — converted from grams once). */
-  weight: number;
 }
 
 export function buildEcourierCreateOrderBody(
@@ -283,15 +342,14 @@ export function buildEcourierCreateOrderBody(
     recipient_city: input.address.district,
     recipient_area: input.address.upazila,
     recipient_thana: input.address.upazila,
-    recipient_division: input.address.division,
     recipient_address: composeEcourierAddress(input.address),
+    recipient_zip: null,
     package_code: packageCode,
-    product_price: poishaToEcourierBdt(input.codAmountPoisha),
-    actual_product_price: poishaToEcourierBdt(input.codAmountPoisha),
+    product_price: poishaToEcourierIntegerTaka(input.codAmountPoisha),
+    actual_product_price: poishaToEcourierIntegerTaka(input.codAmountPoisha),
     payment_method: "COD",
     number_of_item: input.itemCount,
     comments: input.note ?? "",
-    weight: gramsToEcourierKg(input.weightGrams),
   };
 }
 
@@ -432,6 +490,11 @@ export interface EcourierAdapterOptions {
 export interface EcourierPackage {
   code: string;
   name: string | null;
+  /** The package's `shipping_charge` (BDT on the wire -> integer
+   *  poisha here); null when the list item carries no readable
+   *  charge. This is the create-charge fallback: the v5.5
+   *  order-place response itself carries no charge field. */
+  chargePoisha: number | null;
 }
 
 /** The live eCourier provider: the CourierProvider contract plus the
@@ -549,7 +612,13 @@ export function createEcourierProvider(
     return injectedStore ?? defaultStore();
   }
 
-  async function callApi(path: string, body: unknown): Promise<Record<string, unknown>> {
+  /** One POST against the merchant API, returning the parsed JSON
+   *  AS-IS (object, array or scalar): /packages answers with a
+   *  TOP-LEVEL ARRAY in v5.5, so the record-shape requirement lives
+   *  in callApi below, not here. A record-shaped body is still run
+   *  through the documented rejection check (`errors` /
+   *  `response_code`) before it is handed back. */
+  async function callApiJson(path: string, body: unknown): Promise<unknown> {
     let res: Response;
     try {
       res = await fetchFn(`${baseUrl}${path}`, {
@@ -574,22 +643,46 @@ export function createEcourierProvider(
     if (res.status < 200 || res.status >= 300) {
       throw new EcourierProviderError(`HTTP_${res.status}`, `eCourier returned HTTP ${res.status}.`);
     }
-    const json = asRecord(parseJsonLoose(text));
+    const json = parseJsonLoose(text);
     if (json === null) {
       throw new EcourierProviderError("UNRECOGNIZED_RESPONSE", "eCourier returned a non-JSON response.");
     }
-    const rejection = providerRejection(json);
-    if (rejection !== null) {
-      throw new EcourierProviderError(rejection.code, rejection.message);
+    const record = asRecord(json);
+    if (record !== null) {
+      const rejection = providerRejection(record);
+      if (rejection !== null) {
+        throw new EcourierProviderError(rejection.code, rejection.message);
+      }
+    }
+    return json;
+  }
+
+  /** callApiJson for the endpoints whose documented response is a
+   *  JSON object (order-place, track, cancel-order). */
+  async function callApi(path: string, body: unknown): Promise<Record<string, unknown>> {
+    const json = asRecord(await callApiJson(path, body));
+    if (json === null) {
+      throw new EcourierProviderError(
+        "UNRECOGNIZED_RESPONSE",
+        "eCourier returned an unexpected (non-object) response.",
+      );
     }
     return json;
   }
 
   async function listPackages(): Promise<EcourierPackage[]> {
-    const json = await callApi("/packages", {});
+    const json = await callApiJson("/packages", {});
     let list: unknown = null;
-    if (Array.isArray(json.data)) list = json.data;
-    else if (Array.isArray(json.packages)) list = json.packages;
+    // v5.5: the response IS the array. The data/packages envelopes
+    // stay as tolerance for older response shapes.
+    if (Array.isArray(json)) list = json;
+    else {
+      const record = asRecord(json);
+      if (record !== null) {
+        if (Array.isArray(record.data)) list = record.data;
+        else if (Array.isArray(record.packages)) list = record.packages;
+      }
+    }
     if (!Array.isArray(list)) return [];
     const out: EcourierPackage[] = [];
     for (const item of list) {
@@ -597,17 +690,36 @@ export function createEcourierProvider(
       const record = item as Record<string, unknown>;
       const code = stringField(record, "package_code", "code", "package_id");
       if (code !== null) {
-        out.push({ code, name: stringField(record, "package_name", "name", "title") });
+        let chargePoisha: number | null = null;
+        const chargeField = record.shipping_charge;
+        if (chargeField !== undefined && chargeField !== null) {
+          try {
+            chargePoisha = ecourierBdtToPoisha(chargeField);
+          } catch {
+            chargePoisha = null;
+          }
+        }
+        out.push({
+          code,
+          name: stringField(record, "package_name", "name", "title"),
+          chargePoisha,
+        });
       }
     }
     return out;
   }
 
   /** The charge eCourier recorded for a parcel (BDT field ->
-   *  poisha); null when the record carries none. */
+   *  poisha); null when the record carries none. `shipping_price`
+   *  is the field the v5.5 /track record carries. */
   function chargeFromRecord(record: Record<string, unknown>): number | null {
     const field =
-      record.delivery_charge ?? record.charge ?? record.delivery_fee ?? record.total_charge;
+      record.delivery_charge ??
+      record.shipping_price ??
+      record.shipping_charge ??
+      record.charge ??
+      record.delivery_fee ??
+      record.total_charge;
     if (field === undefined || field === null) return null;
     try {
       return ecourierBdtToPoisha(field);
@@ -616,36 +728,67 @@ export function createEcourierProvider(
     }
   }
 
-  /** One tracking read, reduced to its status-bearing record: the
-   *  API answers with a record, a `data` record, or a history ARRAY
-   *  (whose LAST entry is the current state). */
+  /** One tracking read, reduced to its status-bearing record.
+   *  v5.5 shape: the parcel records ride under `query_data` — an
+   *  ARRAY of records (one for an ECR lookup), or the STRING
+   *  "No Data Found" when the ECR is unknown. Each record's `status`
+   *  is an array of [label, comment, timestamp] triples listed
+   *  NEWEST FIRST, so the current status is the FIRST triple's
+   *  label. The returned record keeps the whole parcel record
+   *  (including `shipping_price`, the charge of record) with
+   *  `status` reduced to that current label string. */
   async function fetchTrackingRecord(ecr: string): Promise<Record<string, unknown>> {
     const json = await callApi("/track", { ecr });
-    const data = json.data ?? json.tracking ?? json;
-    if (Array.isArray(data)) {
-      const last = data.length > 0 ? asRecord(data[data.length - 1]) : null;
-      if (last === null) {
+    const nested = asRecord(json.data);
+    const queryData = json.query_data ?? nested?.query_data;
+    if (typeof queryData === "string") {
+      // Documented order-missing shape: query_data: "No Data Found".
+      throw new EcourierProviderError(
+        "NOT_FOUND",
+        `eCourier has no parcel for ECR ${ecr} (${queryData}).`,
+      );
+    }
+    if (Array.isArray(queryData)) {
+      if (queryData.length === 0) {
+        throw new EcourierProviderError("NOT_FOUND", `eCourier has no parcel for ECR ${ecr}.`);
+      }
+      const record = asRecord(queryData[0]);
+      if (record === null) {
         throw new EcourierProviderError(
           "UNRECOGNIZED_RESPONSE",
-          "eCourier tracking response had an empty history.",
+          "eCourier tracking response had no status record.",
         );
       }
-      return last;
+      let label: string | null = null;
+      const triples = record.status;
+      if (Array.isArray(triples) && triples.length > 0) {
+        const first = triples[0];
+        if (Array.isArray(first)) {
+          if (typeof first[0] === "string" && first[0].trim() !== "") label = first[0];
+        } else if (typeof first === "string" && first.trim() !== "") {
+          label = first;
+        }
+      }
+      if (label === null && typeof record.status === "string" && record.status.trim() !== "") {
+        label = record.status;
+      }
+      if (label === null) {
+        throw new EcourierProviderError(
+          "UNRECOGNIZED_RESPONSE",
+          "eCourier tracking record had no readable status.",
+        );
+      }
+      return { ...record, status: label };
     }
+    // Tolerance fallback: a plain record (or `data` record) carrying
+    // a string status, for response shapes outside the v5.5 doc.
+    const data = json.data ?? json.tracking ?? json;
     const record = asRecord(data);
-    if (record === null) {
+    if (record === null || typeof record.status !== "string") {
       throw new EcourierProviderError(
         "UNRECOGNIZED_RESPONSE",
         "eCourier tracking response had no status record.",
       );
-    }
-    // A nested history array inside the record: current = last entry.
-    for (const key of ["status_history", "history", "tracking_details", "statuses"]) {
-      const history = record[key];
-      if (Array.isArray(history) && history.length > 0) {
-        const last = asRecord(history[history.length - 1]);
-        if (last !== null) return { ...record, ...last };
-      }
     }
     return record;
   }
@@ -699,18 +842,28 @@ export function createEcourierProvider(
           "eCourier order-place response had no parcel id (ID).",
         );
       }
-      // The ACTUAL charge for this parcel (BDT decimal at the
-      // boundary -> poisha). A charge we cannot read is never
-      // persisted as a guess — the booking exists provider-side
-      // under `product_id`, so a retry replays safely instead of
-      // double-booking (eCourier rejects the duplicate pair).
-      const chargePoisha = chargeFromRecord(data);
+      // CHARGE (choice, per v5.5): the documented order-place
+      // response — { errors, response_code, message, ID } — carries
+      // NO charge field, so the previous "throw when no charge is
+      // readable" behaviour would have failed every real booking
+      // AFTER eCourier accepted it. The booking therefore succeeds
+      // on the ID alone, and the persisted charge resolves as: a
+      // charge field on the response when one is present (tolerant
+      // read), else the assigned package's `shipping_charge` from
+      // the /packages list, else 0. 0 means "charge not yet known",
+      // never a guessed number — the parcel's true charge
+      // reconciles later from /track's `shipping_price`.
+      let chargePoisha = chargeFromRecord(data);
       if (chargePoisha === null) {
-        throw new EcourierProviderError(
-          "UNRECOGNIZED_RESPONSE",
-          "eCourier order-place response had no readable delivery charge.",
-        );
+        try {
+          const packages = await listPackages();
+          const own = packages.find((p) => p.code === creds.packageCode.trim());
+          chargePoisha = own?.chargePoisha ?? null;
+        } catch {
+          chargePoisha = null;
+        }
       }
+      const persistedChargePoisha = chargePoisha ?? 0;
       const shipmentId = ecourierShipmentId(ecr);
       try {
         const shipment = await shipments.create({
@@ -720,7 +873,7 @@ export function createEcourierProvider(
           orderRef: parsed.data.orderId,
           codAmountPoisha: parsed.data.codAmountPoisha,
           weightGrams: parsed.data.weightGrams,
-          chargePoisha,
+          chargePoisha: persistedChargePoisha,
           idempotencyKey: parsed.data.idempotencyKey,
         });
         return {
@@ -747,17 +900,47 @@ export function createEcourierProvider(
       }
     },
 
-    async cancelShipment(_shipmentId: string) {
-      void _shipmentId;
-      // eCourier's documented cancel is keyed by the merchant
-      // product_id with an unverified shape (see header). Faking a
-      // local cancel would leave a live parcel on the road marked
-      // cancelled here — the exact failure the honesty rules exist
-      // to prevent.
-      throw new EcourierProviderError(
-        "NOT_SUPPORTED",
-        "eCourier cancel is not wired in this integration (unverified endpoint shape); cancel the parcel from the eCourier merchant panel.",
-      );
+    async cancelShipment(shipmentId: string) {
+      // v5.5 §2.4: POST /cancel-order { tracking, comment } — keyed
+      // by the ECR id, the very value this adapter persists as the
+      // Shipment trackingId (our row id is `EC-<ecr>`). The stored
+      // row's trackingId is authoritative when the row is readable;
+      // the id itself is the fallback (it embeds the ECR).
+      let ecr = shipmentId.startsWith("EC-") ? shipmentId.slice(3) : shipmentId;
+      try {
+        const shipments = await store();
+        const row = await shipments.findById(shipmentId);
+        if (row !== null && row.trackingId.trim() !== "") ecr = row.trackingId;
+      } catch {
+        // Store unreadable: fall back to the id-derived ECR.
+      }
+      if (ecr.trim() === "") {
+        throw new EcourierProviderError(
+          "INVALID_INPUT",
+          "eCourier cancel needs a shipment with a known ECR id.",
+        );
+      }
+      // `comment` is Mandatory (≤255 chars); the interface carries
+      // no caller reason, so a fixed merchant-side default is sent.
+      const comment = "Cancelled by the merchant from the store admin panel.".slice(0, 255);
+      const json = await callApi("/cancel-order", { tracking: ecr, comment });
+      // The documented answer is { success: "true" / "false",
+      // message } — STRING booleans. Anything but an explicit true
+      // (a "false", or a shape we cannot read) is NOT a cancel: the
+      // parcel stays live provider-side and the caller must see the
+      // failure, never a fabricated local cancel.
+      const succeeded = json.success === true || json.success === "true";
+      if (!succeeded) {
+        throw new EcourierProviderError(
+          "ECOURIER_REJECTED",
+          `eCourier did not cancel parcel ${ecr}: ${stringField(json, "message") ?? "provider reported failure"}`,
+        );
+      }
+      // ShipmentStatus has no CANCELLED value; a provider-confirmed
+      // cancel is the terminal FAILED state (the status map's
+      // convention for provider-side cancels).
+      const status: ShipmentStatus = "FAILED";
+      return { status };
     },
 
     async getStatus(trackingId: string) {
@@ -793,8 +976,9 @@ export function createEcourierProvider(
     },
 
     async getRates(input: CourierRateInput): Promise<CourierRate[]> {
-      // Platform rate-card ESTIMATE (see header): the binding charge
-      // arrives with the create response and is what the row persists.
+      // Platform rate-card ESTIMATE (see header): the persisted
+      // booking charge comes from the package's shipping_charge
+      // (the v5.5 create response carries no charge at all).
       return [
         {
           provider: "ecourier",

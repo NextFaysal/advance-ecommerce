@@ -5,16 +5,23 @@
  * against the Pathao merchant API, mirroring the Steadfast live adapter
  * (src/integrations/steadfast.ts) contract-for-contract:
  *
- *   Base:     https://merchant.pathao.com/aladdin/api/v1
- *   Auth:     OAuth2 — POST /issue-token (grant_type "password" with
- *             client_id + client_secret + merchant username + password)
- *             -> { access_token, refresh_token, expires_in }; the token
- *             is cached per adapter instance and refreshed via the
- *             refresh_token grant (falling back to a fresh password
- *             grant) once it nears expiry. Credentials come from
- *             encrypted Settings — see pathao-resolver.ts (Settings keys
- *             courier.pathao.client_id / .client_secret / .username /
- *             .password / .store_id).
+ *   Base:     https://api-hermes.pathao.com/aladdin/api/v1 (the live
+ *             API host per Pathao's official WooCommerce plugin;
+ *             merchant.pathao.com is the merchant PANEL, not the API.
+ *             Overridable via Settings courier.pathao.base_url.)
+ *   Auth:     OAuth2 — POST /issue-token -> { access_token,
+ *             refresh_token, expires_in }; the token is cached per
+ *             adapter instance and refreshed via the refresh_token
+ *             grant (falling back to a fresh grant) once it nears
+ *             expiry. The fresh grant is grant_type "password"
+ *             (client_id + client_secret + merchant username +
+ *             password) when a username + password pair is configured,
+ *             and { client_id, client_secret } only otherwise — the
+ *             flow Pathao's official plugin uses. Credentials come
+ *             from encrypted Settings — see pathao-resolver.ts
+ *             (Settings keys courier.pathao.client_id / .client_secret
+ *             are the required pair; .username / .password /
+ *             .store_id / .base_url are optional).
  *   Create:   POST /orders — Pathao addresses parcels by numeric
  *             city/zone/area IDS, not names, so booking first resolves
  *             the structured BD address through the lookup endpoints
@@ -31,8 +38,12 @@
  * yet, so field spellings are parsed TOLERANTLY (several accepted
  * spellings per field, like the Steadfast webhook parser) and the
  * first live booking must be checked against the merchant panel. The
- * delivery_type (12 = normal) and item_type (2 = parcel) constants
- * are the documented values as understood at build time.
+ * delivery_type (48 = Normal delivery; 12 = On Demand) and item_type
+ * (2 = parcel) constants follow Pathao's OFFICIAL open-source
+ * WooCommerce plugin (github.com/pathao-eng/courier-woocommerce-
+ * plugin), verified in the doc-22 follow-up research — an earlier
+ * build of this adapter wrongly sent 12 as "normal", which would
+ * have booked every live parcel as On Demand.
  *
  * HONESTY RULES (platform-wide, do not weaken — same as Steadfast):
  *  - A create the provider did not clearly accept THROWS
@@ -43,9 +54,16 @@
  *    integrated here, so cancelShipment throws NOT_SUPPORTED (cancel
  *    from the Pathao merchant panel). It never marks anything
  *    cancelled locally.
- *  - successRate: no per-phone delivery-history endpoint is known, so
- *    the adapter returns zero counts + successRatePercent null ("no
- *    data") — never simulated numbers.
+ *  - successRate: POST /user/success-rate is documented by two
+ *    independent THIRD-PARTY integrations (it does not appear in
+ *    Pathao's official plugin or public docs), so it is implemented
+ *    tolerantly: a response whose shape is not recognised — or any
+ *    failed call — returns zero counts + successRatePercent null
+ *    ("no data"). Numbers are never simulated.
+ *  - store_id: OPTIONAL. When Settings carries no store_id, bookings
+ *    resolve the merchant's store from GET /stores at booking time —
+ *    the is_default_store entry, else the first store — and fail
+ *    clearly only when the account has no stores at all.
  *  - getRates: the binding charge for a booking is the delivery_fee
  *    on the create response, persisted on the Shipment row. getRates
  *    stays the platform rate-card ESTIMATE (courierChargePoisha, the
@@ -113,6 +131,13 @@ export function normalizePathaoStatus(raw: string): string {
 export const PATHAO_DELIVERY_STATUS_MAP: Record<string, ShipmentStatus> = {
   pending: "CREATED",
   order_placed: "CREATED",
+  // Official Title_Snake vocabulary (Pathao's own plugin): a created
+  // order and a pickup assignment are both pre-pickup states.
+  order_created: "CREATED",
+  assigned_for_pickup: "CREATED",
+  // A failed pickup is NOT terminal — Pathao re-attempts pickup, so
+  // the parcel is still in the pre-pickup stage.
+  pickup_failed: "CREATED",
   pickup_requested: "CREATED",
   // "assigned" = a rider is assigned; the sandbox map already treats
   // assignment as the pickup step, so the live map stays consistent.
@@ -121,13 +146,20 @@ export const PATHAO_DELIVERY_STATUS_MAP: Record<string, ShipmentStatus> = {
   picked_up: "PICKED_UP",
   pickup_completed: "PICKED_UP",
   at_sorting_hub: "IN_TRANSIT",
+  // "At_the_Sorting_HUB" — the official spelling has the extra "the";
+  // without this key every routine hub scan was rejected as unknown.
+  at_the_sorting_hub: "IN_TRANSIT",
   received_at_hub: "IN_TRANSIT",
+  received_at_last_mile_hub: "IN_TRANSIT",
   in_transit: "IN_TRANSIT",
+  // An exchange parcel is back in motion, not in a terminal state.
+  exchange: "IN_TRANSIT",
   // A hold is a pause, not a failure (the Steadfast live convention;
   // the sandbox's pathao on_hold -> FAILED stays sandbox-only).
   on_hold: "IN_TRANSIT",
   hold: "IN_TRANSIT",
   delivering: "OUT_FOR_DELIVERY",
+  assigned_for_delivery: "OUT_FOR_DELIVERY",
   out_for_delivery: "OUT_FOR_DELIVERY",
   delivered: "DELIVERED",
   partial_delivered: "DELIVERED",
@@ -138,10 +170,18 @@ export const PATHAO_DELIVERY_STATUS_MAP: Record<string, ShipmentStatus> = {
   // terminal failure of the shipment (same convention as Steadfast).
   cancelled: "FAILED",
   canceled: "FAILED",
+  pickup_cancelled: "FAILED",
   return_in_transit: "RETURNING",
   returning: "RETURNING",
   returned: "RETURNED",
   return: "RETURNED",
+  // A paid return still ends with the parcel back at the merchant.
+  paid_return: "RETURNED",
+  // Deliberately ABSENT: payment_invoice and order_updated are
+  // non-delivery events (a payment notice / a generic edit notice),
+  // not delivery statuses. They stay unmapped so the webhook route's
+  // map-miss path records them as ignorable unknown_raw_status
+  // no-ops — see parsePathaoWebhookBody.
 };
 
 /** Map a raw Pathao order_status to the internal ShipmentStatus.
@@ -230,11 +270,16 @@ export interface PathaoCreateOrderBody {
   recipient_address: string;
   recipient_city: number;
   recipient_zone: number;
-  /** Null when the union matched no Pathao area (area is the most
-   *  granular level; city + zone are the required ones). */
-  recipient_area: number | null;
-  /** 12 = normal delivery (documented value; see header note). */
-  delivery_type: 12;
+  /** Key ABSENT when the union matched no Pathao area (area is the
+   *  most granular level; city + zone are the required ones). The
+   *  official plugin omits the key rather than sending explicit null. */
+  recipient_area?: number;
+  /** What is in the parcel. The official payload always carries it;
+   *  see pathaoItemDescription for how it is derived here. Key absent
+   *  when nothing honest is available to put in it. */
+  item_description?: string;
+  /** 48 = Normal delivery (12 = On Demand; see header note). */
+  delivery_type: 48;
   /** 2 = parcel (documented value; see header note). */
   item_type: 2;
   special_instruction: string;
@@ -251,12 +296,24 @@ export interface PathaoResolvedAddressIds {
   areaId: number | null;
 }
 
+/** item_description for the create payload. CreateShipmentInput
+ *  carries NO item list — counts only — so there are no item names
+ *  to join the way the official plugin does ("name ×qty"). The note
+ *  is the only order-description text this install holds, so it is
+ *  the fallback; with no note the key is omitted entirely rather
+ *  than filled with invented text. */
+export function pathaoItemDescription(input: CreateShipmentInput): string | null {
+  const note = (input.note ?? "").trim();
+  return note !== "" ? note : null;
+}
+
 export function buildPathaoCreateOrderBody(
   input: CreateShipmentInput,
   merchantOrderId: string,
   storeId: number,
   ids: PathaoResolvedAddressIds,
 ): PathaoCreateOrderBody {
+  const itemDescription = pathaoItemDescription(input);
   return {
     store_id: storeId,
     merchant_order_id: merchantOrderId,
@@ -265,8 +322,9 @@ export function buildPathaoCreateOrderBody(
     recipient_address: composePathaoAddress(input.address),
     recipient_city: ids.cityId,
     recipient_zone: ids.zoneId,
-    recipient_area: ids.areaId,
-    delivery_type: 12,
+    ...(ids.areaId !== null ? { recipient_area: ids.areaId } : {}),
+    ...(itemDescription !== null ? { item_description: itemDescription } : {}),
+    delivery_type: 48,
     item_type: 2,
     special_instruction: input.note ?? "",
     item_quantity: input.itemCount,
@@ -294,11 +352,26 @@ export interface PathaoWebhookEvent {
   idempotencyKey: string;
 }
 
-/** Parse a Pathao webhook body ({ consignment_id, merchant_order_id,
- *  order_status, ... }) — sandbox field spellings (trackingId /
- *  rawStatus / delivery_status) are accepted too. Returns null when
- *  the event cannot be identified (no consignment id or no status):
- *  the route rejects it, nothing is applied. */
+/** Parse a Pathao webhook body — the official payload is
+ *  { event, merchant_order_id, order_status, delivery_fee,
+ *  consignment_id }; sandbox field spellings (trackingId / rawStatus
+ *  / delivery_status) are accepted too. When order_status is absent
+ *  the status is derived from `event` ("order.at-the-sorting-hub" ->
+ *  "at-the-sorting-hub"; the shared normaliser turns that into the
+ *  map key at_the_sorting_hub downstream). Returns null when the
+ *  event cannot be identified (no consignment id, and no status or
+ *  event to take a status from): the route rejects it, nothing is
+ *  applied.
+ *
+ *  NON-DELIVERY EVENTS (payment_invoice / order_updated): these are
+ *  deliberately NOT in PATHAO_DELIVERY_STATUS_MAP, and this parser
+ *  deliberately still returns an event for them — the route's
+ *  map-miss path then records a verified, ignorable
+ *  unknown_raw_status no-op (applied: false, nothing mutated), which
+ *  is the route's own documented no-op mechanism. Returning null
+ *  instead would make the route answer 400 "invalid body" BEFORE
+ *  signature verification for a legitimate Pathao event, so null
+ *  stays reserved for bodies that cannot be identified at all. */
 export function parsePathaoWebhookBody(body: unknown): PathaoWebhookEvent | null {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return null;
   const record = body as Record<string, unknown>;
@@ -312,7 +385,17 @@ export function parsePathaoWebhookBody(body: unknown): PathaoWebhookEvent | null
   };
   const consignmentId = str("consignment_id", "consignmentId");
   const trackingId = consignmentId ?? str("trackingId", "tracking_id");
-  const rawStatus = str("order_status", "status", "delivery_status", "rawStatus");
+  let rawStatus = str("order_status", "status", "delivery_status", "rawStatus");
+  if (rawStatus === null) {
+    // Event-only official bodies carry the status in the event name
+    // ("order.at-the-sorting-hub", "order.delivered", ...): strip
+    // the leading "order" segment and let the shared normaliser
+    // handle case/hyphens when the status is mapped.
+    const event = str("event", "event_name", "eventName");
+    if (event !== null) {
+      rawStatus = event.replace(/^order[._-]/i, "").trim() || null;
+    }
+  }
   if (trackingId === null || rawStatus === null) return null;
   const updatedAt = str("updated_at", "updatedAt");
   let codCollectedPoisha: number | null = null;
@@ -336,6 +419,82 @@ export function parsePathaoWebhookBody(body: unknown): PathaoWebhookEvent | null
     merchantOrderId: str("merchant_order_id", "merchantOrderId"),
     codCollectedPoisha,
     idempotencyKey: `pathao:${consignmentId ?? trackingId}:${normalizePathaoStatus(rawStatus)}:${updatedAt ?? "na"}`,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Success-rate response shaping (pure; exported for smoke tests)      */
+/* ------------------------------------------------------------------ */
+
+/** Tolerant parse of the POST /user/success-rate response. The
+ *  endpoint is documented by third-party integrations only, so its
+ *  exact envelope is not certain: a response counts as recognised
+ *  only when a numeric TOTAL and a numeric DELIVERED count appear
+ *  under common spellings, at the top level or under `data`.
+ *  Anything else returns null and the caller reports "no data".
+ *  A missing failed count is derived as the non-delivered,
+ *  non-returned remainder; the percent is the provider's own when
+ *  given, else Math.round(delivered / total * 100) — the platform
+ *  convention (the sandbox provider computes it the same way). */
+export function parsePathaoSuccessRate(phone: string, payload: unknown): CourierSuccessRate | null {
+  const root = asRecord(payload);
+  if (root === null) return null;
+  const record = asRecord(root.data) ?? root;
+  const num = (...keys: string[]): number | null => {
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
+      if (
+        typeof value === "string" &&
+        value.trim() !== "" &&
+        Number.isFinite(Number(value)) &&
+        Number(value) >= 0
+      ) {
+        return Number(value);
+      }
+    }
+    return null;
+  };
+  const total = num(
+    "total",
+    "total_orders",
+    "total_order",
+    "total_parcels",
+    "total_parcel",
+    "total_count",
+    "total_delivery",
+    "total_deliveries",
+  );
+  const delivered = num(
+    "delivered",
+    "delivered_count",
+    "total_delivered",
+    "successful",
+    "success",
+    "success_count",
+    "completed",
+  );
+  if (total === null || delivered === null || total === 0) return null;
+  const returned = num("returned", "returned_count", "total_returned", "return", "return_count") ?? 0;
+  const failedField = num("failed", "failed_count", "total_failed", "unsuccessful", "cancelled", "canceled");
+  const failed = failedField ?? Math.max(0, total - delivered - returned);
+  const providerPercent = num(
+    "success_rate",
+    "successRate",
+    "success_rate_percent",
+    "success_percentage",
+    "rate",
+  );
+  const successRatePercent =
+    providerPercent !== null && providerPercent <= 100
+      ? Math.round(providerPercent)
+      : Math.round((delivered / total) * 100);
+  return {
+    phone,
+    delivered: Math.round(delivered),
+    failed: Math.round(failed),
+    returned: Math.round(returned),
+    successRatePercent,
   };
 }
 
@@ -391,6 +550,12 @@ async function defaultStore(): Promise<PathaoShipmentStore> {
 export interface PathaoNamedId {
   id: number;
   name: string;
+}
+
+/** A merchant store from GET /stores, including the default flag the
+ *  booking-time store resolution needs (listStores drops it). */
+export interface PathaoStoreEntry extends PathaoNamedId {
+  isDefault: boolean;
 }
 
 function parseNamedIdList(payload: unknown, idKeys: string[], nameKeys: string[]): PathaoNamedId[] {
@@ -453,11 +618,17 @@ function matchNamedId(list: PathaoNamedId[], wanted: string): PathaoNamedId | nu
 export interface PathaoCredentials {
   clientId: string;
   clientSecret: string;
-  username: string;
-  password: string;
-  /** The merchant store every booking is created under (Pathao
-   *  requires store_id on create; one default store per install). */
-  storeId: number;
+  /** OPTIONAL merchant username + password. When BOTH are present the
+   *  OAuth password grant is used; when the pair is absent the token
+   *  is issued with client_id + client_secret only — the flow
+   *  Pathao's official plugin uses. A lone value counts as absent. */
+  username?: string;
+  password?: string;
+  /** OPTIONAL merchant store bookings are created under (Pathao
+   *  requires store_id on create). Null = nothing pinned in Settings:
+   *  the store is resolved from GET /stores at booking time — the
+   *  is_default_store entry, else the first store. */
+  storeId: number | null;
 }
 
 export type PathaoFetch = (url: string, init?: RequestInit) => Promise<Response>;
@@ -492,7 +663,7 @@ export interface PathaoCourierProvider extends CourierProvider {
   }): Promise<PathaoPricePlan>;
 }
 
-export const PATHAO_API_BASE = "https://merchant.pathao.com/aladdin/api/v1";
+export const PATHAO_API_BASE = "https://api-hermes.pathao.com/aladdin/api/v1";
 
 /** Our Shipment row id for a Pathao consignment. */
 export function pathaoShipmentId(consignmentId: string | number): string {
@@ -558,19 +729,23 @@ export function createPathaoProvider(
   creds: PathaoCredentials,
   opts: PathaoAdapterOptions = {},
 ): PathaoCourierProvider {
-  if (
-    creds.clientId.trim() === "" ||
-    creds.clientSecret.trim() === "" ||
-    creds.username.trim() === "" ||
-    creds.password.trim() === "" ||
-    !Number.isInteger(creds.storeId) ||
-    creds.storeId <= 0
-  ) {
+  if (creds.clientId.trim() === "" || creds.clientSecret.trim() === "") {
     throw new PathaoProviderError(
       "NOT_CONFIGURED",
-      "Pathao client_id, client_secret, username, password and a positive store_id are all required.",
+      "Pathao client_id and client_secret are required.",
     );
   }
+  if (creds.storeId !== null && (!Number.isInteger(creds.storeId) || creds.storeId <= 0)) {
+    throw new PathaoProviderError(
+      "NOT_CONFIGURED",
+      "Pathao store_id, when set, must be a positive integer.",
+    );
+  }
+  // Both-or-neither: a lone username or password cannot run the
+  // password grant, so the pair counts as absent and the token is
+  // issued with client_id + client_secret only.
+  const hasPasswordGrant =
+    (creds.username ?? "").trim() !== "" && (creds.password ?? "").trim() !== "";
   const fetchFn = opts.fetchFn ?? fetch;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const baseUrl = (opts.baseUrl ?? PATHAO_API_BASE).replace(/\/+$/, "");
@@ -642,13 +817,29 @@ export function createPathaoProvider(
     };
   }
 
+  /** The fresh-issue grant for this install: the password grant when
+   *  a username + password pair is configured, otherwise the official
+   *  plugin's { client_id, client_secret }-only issue-token call. */
+  function freshGrant(): Record<string, string> {
+    if (hasPasswordGrant) {
+      return {
+        client_id: creds.clientId,
+        client_secret: creds.clientSecret,
+        username: creds.username as string,
+        password: creds.password as string,
+        grant_type: "password",
+      };
+    }
+    return { client_id: creds.clientId, client_secret: creds.clientSecret };
+  }
+
   async function getAccessToken(forceRefresh = false): Promise<string> {
     if (!forceRefresh && cachedToken !== null && Date.now() < cachedToken.usableUntilMs) {
       return cachedToken.accessToken;
     }
     // Prefer the refresh grant when a refresh token is held; any
-    // failure falls back to a fresh password grant (a stale refresh
-    // token must not wedge every booking behind it).
+    // failure falls back to a fresh grant (a stale refresh token
+    // must not wedge every booking behind it).
     if (cachedToken?.refreshToken) {
       try {
         cachedToken = await requestToken({
@@ -662,13 +853,7 @@ export function createPathaoProvider(
         cachedToken = null;
       }
     }
-    cachedToken = await requestToken({
-      client_id: creds.clientId,
-      client_secret: creds.clientSecret,
-      username: creds.username,
-      password: creds.password,
-      grant_type: "password",
-    });
+    cachedToken = await requestToken(freshGrant());
     return cachedToken.accessToken;
   }
 
@@ -738,6 +923,70 @@ export function createPathaoProvider(
     return { cityId: city.id, zoneId: zone.id, areaId };
   }
 
+  /** GET /stores with the is_default_store flag parseNamedIdList
+   *  drops. Same tolerant list unwrapping as the other lookups. */
+  async function fetchStores(): Promise<PathaoStoreEntry[]> {
+    const json = await callApi("/stores", { method: "GET" });
+    let list: unknown = null;
+    if (Array.isArray(json)) list = json;
+    else if (Array.isArray(json.data)) list = json.data;
+    else if (typeof json.data === "object" && json.data !== null) {
+      const inner = json.data as Record<string, unknown>;
+      for (const key of Object.keys(inner)) {
+        if (Array.isArray(inner[key])) {
+          list = inner[key];
+          break;
+        }
+      }
+    }
+    if (!Array.isArray(list)) return [];
+    const out: PathaoStoreEntry[] = [];
+    for (const item of list) {
+      const record = asRecord(item);
+      if (record === null) continue;
+      let id: number | null = null;
+      for (const key of ["store_id", "id"]) {
+        const value = record[key];
+        if (typeof value === "number" && Number.isFinite(value)) id = value;
+        else if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) {
+          id = Number(value);
+        }
+        if (id !== null) break;
+      }
+      let name: string | null = null;
+      for (const key of ["store_name", "name"]) {
+        const value = record[key];
+        if (typeof value === "string" && value.trim() !== "") {
+          name = value.trim();
+          break;
+        }
+      }
+      if (id === null || name === null) continue;
+      const flag = record.is_default_store ?? record.is_default;
+      out.push({ id, name, isDefault: flag === true || flag === 1 || flag === "true" || flag === "1" });
+    }
+    return out;
+  }
+
+  /** The store bookings are created under: the Settings-pinned id
+   *  when one is configured, else the account's default store
+   *  (is_default_store, else the first store) resolved once per
+   *  adapter instance. Fails clearly only when the account has no
+   *  stores at all. */
+  let resolvedStoreId: number | null = creds.storeId;
+  async function resolveStoreId(): Promise<number> {
+    if (resolvedStoreId !== null) return resolvedStoreId;
+    const stores = await fetchStores();
+    if (stores.length === 0) {
+      throw new PathaoProviderError(
+        "NOT_CONFIGURED",
+        "Pathao account has no stores; create a store in the Pathao merchant panel or pin courier.pathao.store_id in Settings.",
+      );
+    }
+    resolvedStoreId = (stores.find((s) => s.isDefault) ?? stores[0]).id;
+    return resolvedStoreId;
+  }
+
   return {
     name: "pathao",
     config: liveConfig(),
@@ -767,8 +1016,9 @@ export function createPathaoProvider(
         };
       }
       const ids = await resolveAddressIds(input.address);
+      const storeId = await resolveStoreId();
       const merchantOrderId = buildPathaoMerchantOrderId(parsed.data.orderId, parsed.data.idempotencyKey);
-      const body = buildPathaoCreateOrderBody(input, merchantOrderId, creds.storeId, ids);
+      const body = buildPathaoCreateOrderBody(input, merchantOrderId, storeId, ids);
       const json = await callApi("/orders", { method: "POST", body: JSON.stringify(body) });
       const data = asRecord(json.data) ?? json;
       const consignmentId = stringField(data, "consignment_id", "consignmentId");
@@ -893,9 +1143,33 @@ export function createPathaoProvider(
     },
 
     async successRate(phone: string): Promise<CourierSuccessRate> {
-      // No per-phone history endpoint is known (see header): zero
-      // counts + null rate is the honest "no data" shape.
-      return { phone, delivered: 0, failed: 0, returned: 0, successRatePercent: null };
+      // POST /user/success-rate (third-party-documented only — see
+      // the header note). ANY failure here — an invalid phone, a
+      // network/HTTP error, an unrecognised response shape — returns
+      // the honest "no data" shape instead of throwing into the
+      // caller's COD-confirmation flow or inventing numbers.
+      const noData: CourierSuccessRate = {
+        phone,
+        delivered: 0,
+        failed: 0,
+        returned: 0,
+        successRatePercent: null,
+      };
+      let localPhone: string;
+      try {
+        localPhone = pathaoRecipientPhone(phone);
+      } catch {
+        return noData;
+      }
+      try {
+        const json = await callApi("/user/success-rate", {
+          method: "POST",
+          body: JSON.stringify({ phone: localPhone }),
+        });
+        return parsePathaoSuccessRate(phone, json) ?? noData;
+      } catch {
+        return noData;
+      }
     },
 
     listCities,
@@ -903,8 +1177,8 @@ export function createPathaoProvider(
     listAreas,
 
     async listStores(): Promise<PathaoNamedId[]> {
-      const json = await callApi("/stores", { method: "GET" });
-      return parseNamedIdList(json, ["store_id", "id"], ["store_name", "name"]);
+      const stores = await fetchStores();
+      return stores.map((s) => ({ id: s.id, name: s.name }));
     },
 
     async estimatePricePlan(input: {
@@ -915,9 +1189,9 @@ export function createPathaoProvider(
       const json = await callApi("/merchant/price-plan", {
         method: "POST",
         body: JSON.stringify({
-          store_id: creds.storeId,
+          store_id: await resolveStoreId(),
           item_type: 2,
-          delivery_type: 12,
+          delivery_type: 48,
           item_weight: gramsToPathaoKg(input.weightGrams),
           recipient_city: input.cityId,
           recipient_zone: input.zoneId,

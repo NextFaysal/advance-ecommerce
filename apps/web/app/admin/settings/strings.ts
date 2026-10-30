@@ -440,6 +440,9 @@ const bn = {
   shipFAccessToken: "Access Token",
   shipFUserId: "User ID",
   shipFApiSecret: "API Secret",
+  shipFBaseUrl: "Base URL",
+  shipFPackageCode: "Package Code",
+  shipOptional: "ঐচ্ছিক",
 };
 
 export type SettingsStrings = { [K in keyof typeof bn]: string };
@@ -854,6 +857,9 @@ const en: SettingsStrings = {
   shipFAccessToken: "Access Token",
   shipFUserId: "User ID",
   shipFApiSecret: "API Secret",
+  shipFBaseUrl: "Base URL",
+  shipFPackageCode: "Package Code",
+  shipOptional: "optional",
 };
 
 export const SETTINGS_STRINGS: Record<Locale, SettingsStrings> = { bn, en };

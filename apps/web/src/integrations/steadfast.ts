@@ -5,6 +5,15 @@
  * against the real Steadfast API v1:
  *
  *   Base:     https://portal.steadfast.com.bd/api/v1
+ *             HOST UNVERIFIED against the official doc: the API
+ *             Documentation V1 copy reviewed for this adapter did not
+ *             expose the literal base URL, and third-party packages
+ *             suggest portal.packzy.com instead. The Settings balance
+ *             probe (probeSteadfastConnection in steadfast-resolver.ts)
+ *             is the check that settles which host the merchant
+ *             account answers on; the optional Settings key
+ *             courier.steadfast.base_url overrides the host without a
+ *             code change.
  *   Auth:     `Api-Key` + `Secret-Key` headers (merchant panel API keys),
  *             supplied from encrypted Settings — see steadfast-resolver.ts
  *             (Settings keys courier.steadfast.api_key / .secret_key).
@@ -12,18 +21,27 @@
  *             recipient_phone, recipient_address, cod_amount, note,
  *             total_lot, delivery_type } -> { status: 200, message,
  *             consignment: { consignment_id, tracking_code, status,
- *             delivery_charge, cod_fee, ... } }
+ *             ... } }. The doc's example response carries NO
+ *             delivery_charge / cod_fee (see the charge fallback in
+ *             steadfastChargeFromConsignment).
+ *   Bulk:     POST /create_order/bulk-order  JSON { data: "<JSON array
+ *             of create bodies, stringified>" } (doc §3, max 500 per
+ *             call) -> per-item { status: "success" | "error",
+ *             consignment_id, tracking_code, ... }.
  *   Status:   GET /status_by_trackingcode/{code} and
  *             GET /status_by_cid/{consignment_id} ->
  *             { status: 200, delivery_status }
  *   Balance:  GET /get_balance -> { status: 200, current_balance }
+ *   Fraud:    GET /fraud_check/{phone} (doc §6) -> { Total_parcels,
+ *             total_delivered, total_cancelled, total_fraud_reports }
  *
  * delivery_status vocabulary (Steadfast docs) — mapped in
  * STEADFAST_DELIVERY_STATUS_MAP below, the ONE map the adapter, the
  * status poller and the live webhook branch all share:
  *   pending, in_review, hold, unknown, unknown_approval_pending,
  *   delivered_approval_pending, partial_delivered_approval_pending,
- *   delivered, partial_delivered, cancelled.
+ *   delivered, partial_delivered, cancelled, cancelled_approval_pending
+ *   (all 11 values the doc lists).
  * (The sandbox status-mapping.ts table covers the same words minus
  * `unknown`; it stays untouched for the sandbox branch.)
  *
@@ -35,13 +53,22 @@
  *  - CANCEL: Steadfast API v1 has NO cancel endpoint. cancelShipment
  *    throws NOT_SUPPORTED (cancel from the Steadfast merchant panel).
  *    It never marks anything cancelled locally.
- *  - successRate: API v1 exposes no per-phone delivery history, so the
- *    adapter returns zero counts + successRatePercent null ("no data")
- *    — never the sandbox's hash-simulated numbers.
+ *  - successRate: REAL per-phone history from the doc §6 endpoint
+ *    GET /fraud_check/{phone} ({ Total_parcels, total_delivered,
+ *    total_cancelled, total_fraud_reports }). The doc's total_cancelled
+ *    conflates cancelled + returned parcels in one count, so it is
+ *    reported as `failed` and `returned` stays 0 — a split is never
+ *    invented, and counts are never the sandbox's hash-simulated
+ *    numbers.
  *  - getRates: API v1 has no rate endpoint. Rates are the platform's
  *    own rate-card estimate (courierChargePoisha, the same function the
  *    sandbox uses); the ACTUAL charge is read from the create_order
  *    response (delivery_charge) and persisted on the Shipment row.
+ *    When a create response omits delivery_charge — the official
+ *    doc's example response does — the booking still succeeds and the
+ *    platform estimate is persisted instead (see
+ *    steadfastChargeFromConsignment); a booking is never failed over
+ *    a missing charge field.
  *  - Money: Steadfast amounts are BDT decimals; they are converted to
  *    integer poisha exactly once, at this boundary.
  *  - Credentials are constructor inputs only — never logged, never in
@@ -109,6 +136,7 @@ export const STEADFAST_DELIVERY_STATUS_MAP: Record<string, ShipmentStatus> = {
   // ShipmentStatus has no CANCELLED value; a provider-side cancel is a
   // terminal failure of the shipment (same convention as the sandbox).
   cancelled: "FAILED",
+  cancelled_approval_pending: "FAILED",
 };
 
 /** Map a raw Steadfast delivery_status to the internal ShipmentStatus.
@@ -140,6 +168,39 @@ export function steadfastBdtToPoisha(value: unknown): number {
  *  (cod_amount). Rounded to 2dp so no float dust reaches the wire. */
 export function poishaToSteadfastBdt(poisha: number): number {
   return Number((poisha / 100).toFixed(2));
+}
+
+/* ------------------------------------------------------------------ */
+/* Charge resolution for a created consignment                         */
+/* ------------------------------------------------------------------ */
+
+/** The platform rate-card estimate for a booking whose zone the create
+ *  input does not carry: zone "district" — the same default the
+ *  sandbox provider persists and cod-settlement falls back to, i.e.
+ *  exactly what getRates returns for that zone. */
+export function steadfastEstimatedChargePoisha(weightGrams: number): number {
+  return courierChargePoisha("district", weightGrams);
+}
+
+/** The charge to persist for a consignment Steadfast accepted.
+ *  delivery_charge present -> the ACTUAL charge (BDT decimal -> poisha;
+ *  a present-but-non-numeric value still throws — a charge we cannot
+ *  read is never persisted as a guessed number). delivery_charge ABSENT
+ *  -> the platform rate-card estimate: the official doc's example
+ *  create response carries no delivery_charge / cod_fee at all, so
+ *  absence is a documented shape, not an error — failing the booking
+ *  there would strand a live consignment provider-side with no
+ *  Shipment row here. The estimate is reconciled against the
+ *  provider's invoice later (cod-settlement). */
+export function steadfastChargeFromConsignment(
+  consignment: Record<string, unknown>,
+  weightGrams: number,
+): number {
+  const raw = consignment.delivery_charge;
+  if (raw === undefined || raw === null) {
+    return steadfastEstimatedChargePoisha(weightGrams);
+  }
+  return steadfastBdtToPoisha(raw);
 }
 
 /* ------------------------------------------------------------------ */
@@ -201,13 +262,17 @@ export function buildSteadfastCreateOrderBody(
   input: CreateShipmentInput,
   invoice: string,
 ): SteadfastCreateOrderBody {
+  // Doc field limits (API Documentation V1): recipient_name <= 100
+  // chars, recipient_address <= 250, note <= 480. Over-limit values
+  // are TRUNCATED, never thrown over — a too-long name must not fail
+  // a booking the provider would otherwise accept.
   return {
     invoice,
-    recipient_name: input.address.recipientName,
+    recipient_name: input.address.recipientName.slice(0, 100),
     recipient_phone: steadfastRecipientPhone(input.address.recipientPhone),
-    recipient_address: composeSteadfastAddress(input.address),
+    recipient_address: composeSteadfastAddress(input.address).slice(0, 250),
     cod_amount: poishaToSteadfastBdt(input.codAmountPoisha),
-    note: input.note,
+    note: input.note === null ? null : input.note.slice(0, 480),
     total_lot: input.itemCount,
     delivery_type: 0,
   };
@@ -319,6 +384,27 @@ async function defaultStore(): Promise<SteadfastShipmentStore> {
   };
 }
 
+/** Persist a provider-accepted consignment, resolving the UNIQUE
+ *  (id / trackingId) race the way createShipment always has: when a
+ *  concurrent replay won the insert (P2002), the winner's row is
+ *  returned instead of erroring. */
+async function persistConsignment(
+  shipments: SteadfastShipmentStore,
+  args: Parameters<SteadfastShipmentStore["create"]>[0],
+): Promise<SteadfastShipmentRecord> {
+  try {
+    return await shipments.create(args);
+  } catch (err) {
+    if (typeof err === "object" && err !== null && (err as { code?: string }).code === "P2002") {
+      const winner =
+        (await shipments.findById(args.shipmentId)) ??
+        (await shipments.findByTracking(args.trackingId));
+      if (winner !== null) return winner;
+    }
+    throw err;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* The adapter                                                         */
 /* ------------------------------------------------------------------ */
@@ -343,10 +429,34 @@ export interface SteadfastBalance {
   currency: "BDT";
 }
 
+/** One item's outcome from createBulkShipments. Per-item failures are
+ *  REPORTED, never thrown and never fabricated into bookings: `ok`
+ *  items carry the persisted Shipment row's ids; failed items carry
+ *  the provider's (or the persistence layer's) machine code + message. */
+export interface SteadfastBulkCreateItemResult {
+  orderId: string;
+  ok: boolean;
+  shipmentId: string | null;
+  trackingId: string | null;
+  status: ShipmentStatus | null;
+  /** True when the booking already existed (store replay) — the item
+   *  made no network call. */
+  replayed: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
 /** The live Steadfast provider: the CourierProvider contract plus the
- *  balance probe (Steadfast API v1 offers /get_balance). */
+ *  balance probe (Steadfast API v1 offers /get_balance) and bulk
+ *  create (doc §3). */
 export interface SteadfastCourierProvider extends CourierProvider {
   getBalance(): Promise<SteadfastBalance>;
+  /** Bulk create: POST /create_order/bulk-order, chunked at the doc's
+   *  500-per-call max. NOT part of the shared CourierProvider
+   *  interface (it has no bulk hook) and no caller is wired to it yet —
+   *  it exists so a bulk booking path can adopt the provider's real
+   *  bulk endpoint instead of looping createShipment. */
+  createBulkShipments(inputs: CreateShipmentInput[]): Promise<SteadfastBulkCreateItemResult[]>;
 }
 
 export const STEADFAST_API_BASE = "https://portal.steadfast.com.bd/api/v1";
@@ -532,46 +642,209 @@ export function createSteadfastProvider(
           "Steadfast create_order response had no consignment id / tracking code.",
         );
       }
-      // The ACTUAL charge for this consignment (BDT decimal at the
-      // boundary -> poisha). Missing charge = a response shape we do
-      // not trust enough to persist; the booking exists provider-side
-      // under `invoice`, so a retry replays safely (duplicate invoice
-      // rejection surfaces instead of a second parcel).
-      const chargePoisha = steadfastBdtToPoisha(consignment.delivery_charge);
+      // The charge to persist: the ACTUAL delivery_charge when the
+      // response carries one, else the platform rate-card estimate —
+      // the doc's example response has no delivery_charge at all, and
+      // the consignment exists provider-side either way, so a missing
+      // charge must never fail the booking (see
+      // steadfastChargeFromConsignment). cod_fee is not consumed by
+      // the store contract, so its absence needs no fallback value.
+      const chargePoisha = steadfastChargeFromConsignment(consignment, parsed.data.weightGrams);
       const shipmentId = steadfastShipmentId(consignmentId);
-      try {
-        const shipment = await shipments.create({
-          shipmentId,
-          trackingId: trackingCode,
-          provider: "steadfast",
-          orderRef: parsed.data.orderId,
-          codAmountPoisha: parsed.data.codAmountPoisha,
-          weightGrams: parsed.data.weightGrams,
-          chargePoisha,
-          idempotencyKey: parsed.data.idempotencyKey,
+      const shipment = await persistConsignment(shipments, {
+        shipmentId,
+        trackingId: trackingCode,
+        provider: "steadfast",
+        orderRef: parsed.data.orderId,
+        codAmountPoisha: parsed.data.codAmountPoisha,
+        weightGrams: parsed.data.weightGrams,
+        chargePoisha,
+        idempotencyKey: parsed.data.idempotencyKey,
+      });
+      return {
+        shipmentId,
+        trackingId: shipment.trackingId,
+        status: shipment.status,
+        labelUrl: null,
+      };
+    },
+
+    async createBulkShipments(
+      inputs: CreateShipmentInput[],
+    ): Promise<SteadfastBulkCreateItemResult[]> {
+      const fail = (
+        orderId: string,
+        errorCode: string,
+        errorMessage: string,
+      ): SteadfastBulkCreateItemResult => ({
+        orderId,
+        ok: false,
+        shipmentId: null,
+        trackingId: null,
+        status: null,
+        replayed: false,
+        errorCode,
+        errorMessage,
+      });
+      if (inputs.length === 0) return [];
+      const results: (SteadfastBulkCreateItemResult | null)[] = inputs.map(() => null);
+      const shipments = await store();
+      // Validate + replay per item first (same contract as
+      // createShipment): already-booked items return their stored
+      // booking and never reach the network.
+      const pending: {
+        index: number;
+        input: CreateShipmentInput;
+        parsed: z.infer<typeof createSchema>;
+        invoice: string;
+      }[] = [];
+      for (let index = 0; index < inputs.length; index += 1) {
+        const input = inputs[index] as CreateShipmentInput;
+        const parsed = createSchema.safeParse(input);
+        if (!parsed.success) {
+          results[index] = fail(input.orderId ?? "", "INVALID_INPUT", "Invalid shipment input.");
+          continue;
+        }
+        if (input.provider !== "steadfast") {
+          results[index] = fail(
+            parsed.data.orderId,
+            "INVALID_INPUT",
+            `Steadfast adapter cannot book provider "${input.provider}".`,
+          );
+          continue;
+        }
+        const existing = await shipments.findByBookingKey(parsed.data.idempotencyKey);
+        if (existing !== null) {
+          results[index] = {
+            orderId: parsed.data.orderId,
+            ok: true,
+            shipmentId: existing.shipmentId,
+            trackingId: existing.trackingId,
+            status: existing.status,
+            replayed: true,
+            errorCode: null,
+            errorMessage: null,
+          };
+          continue;
+        }
+        pending.push({
+          index,
+          input,
+          parsed: parsed.data,
+          invoice: buildSteadfastInvoice(parsed.data.orderId, parsed.data.idempotencyKey),
         });
-        return {
-          shipmentId,
-          trackingId: shipment.trackingId,
-          status: shipment.status,
-          labelUrl: null,
-        };
-      } catch (err) {
-        // UNIQUE (id / trackingId) backstop: a concurrent replay won.
-        if (typeof err === "object" && err !== null && (err as { code?: string }).code === "P2002") {
-          const winner =
-            (await shipments.findById(shipmentId)) ?? (await shipments.findByTracking(trackingCode));
-          if (winner !== null) {
-            return {
-              shipmentId: winner.shipmentId,
-              trackingId: winner.trackingId,
-              status: winner.status,
-              labelUrl: null,
+      }
+      // Doc §3: one call carries at most 500 orders, as
+      // { data: "<JSON-stringified array of create bodies>" }. A
+      // whole-call failure (network / HTTP / body status) throws via
+      // callApi — the batch is unconfirmed, and a retry replays
+      // safely via the store check + deterministic invoices above.
+      const BULK_CHUNK_SIZE = 500;
+      for (let start = 0; start < pending.length; start += BULK_CHUNK_SIZE) {
+        const chunk = pending.slice(start, start + BULK_CHUNK_SIZE);
+        const bodies = chunk.map((item) => buildSteadfastCreateOrderBody(item.input, item.invoice));
+        const json = await callApi("/create_order/bulk-order", {
+          method: "POST",
+          body: JSON.stringify({ data: JSON.stringify(bodies) }),
+        });
+        const rawItems = Array.isArray(json.data) ? json.data : null;
+        if (rawItems === null) {
+          throw new SteadfastProviderError(
+            "UNRECOGNIZED_RESPONSE",
+            "Steadfast bulk create response had no per-item data array.",
+          );
+        }
+        // Match results to submissions: by invoice when the item
+        // echoes one, else by position among the invoice-less items.
+        const unmatched: Record<string, unknown>[] = [];
+        const byInvoice = new Map<string, Record<string, unknown>>();
+        for (const raw of rawItems) {
+          const record = asRecord(raw);
+          if (record === null) continue;
+          const invoice = stringField(record, "invoice");
+          if (invoice !== null) byInvoice.set(invoice, record);
+          else unmatched.push(record);
+        }
+        let positional = 0;
+        for (const item of chunk) {
+          let record = byInvoice.get(item.invoice) ?? null;
+          if (record !== null) {
+            byInvoice.delete(item.invoice);
+          } else if (positional < unmatched.length) {
+            record = unmatched[positional] as Record<string, unknown>;
+            positional += 1;
+          }
+          if (record === null) {
+            results[item.index] = fail(
+              item.parsed.orderId,
+              "UNRECOGNIZED_RESPONSE",
+              "Steadfast bulk create returned no result for this order.",
+            );
+            continue;
+          }
+          const itemStatus = stringField(record, "status");
+          if (itemStatus !== "success") {
+            results[item.index] = fail(
+              item.parsed.orderId,
+              "STEADFAST_BULK_ITEM",
+              stringField(record, "message") ??
+                `Steadfast rejected this bulk item (status: ${itemStatus ?? "unknown"}).`,
+            );
+            continue;
+          }
+          const consignmentId = stringField(record, "consignment_id");
+          const trackingCode = stringField(record, "tracking_code");
+          if (consignmentId === null || trackingCode === null) {
+            results[item.index] = fail(
+              item.parsed.orderId,
+              "UNRECOGNIZED_RESPONSE",
+              "Steadfast bulk item had no consignment id / tracking code.",
+            );
+            continue;
+          }
+          try {
+            const chargePoisha = steadfastChargeFromConsignment(record, item.parsed.weightGrams);
+            const shipment = await persistConsignment(shipments, {
+              shipmentId: steadfastShipmentId(consignmentId),
+              trackingId: trackingCode,
+              provider: "steadfast",
+              orderRef: item.parsed.orderId,
+              codAmountPoisha: item.parsed.codAmountPoisha,
+              weightGrams: item.parsed.weightGrams,
+              chargePoisha,
+              idempotencyKey: item.parsed.idempotencyKey,
+            });
+            results[item.index] = {
+              orderId: item.parsed.orderId,
+              ok: true,
+              shipmentId: shipment.shipmentId,
+              trackingId: shipment.trackingId,
+              status: shipment.status,
+              replayed: false,
+              errorCode: null,
+              errorMessage: null,
             };
+          } catch (err) {
+            // The consignment EXISTS provider-side (Steadfast accepted
+            // it); only the local persist failed. Report it per-item —
+            // a retry replays safely (same deterministic invoice).
+            results[item.index] = fail(
+              item.parsed.orderId,
+              err instanceof SteadfastProviderError ? err.code : "PERSIST_FAILED",
+              "Steadfast accepted this consignment but persisting the Shipment row failed; retrying the batch replays it.",
+            );
           }
         }
-        throw err;
       }
+      return results.map(
+        (result, index) =>
+          result ??
+          fail(
+            inputs[index]?.orderId ?? "",
+            "UNRECOGNIZED_RESPONSE",
+            "No bulk result was produced for this order.",
+          ),
+      );
     },
 
     async cancelShipment(_shipmentId: string) {
@@ -629,9 +902,40 @@ export function createSteadfastProvider(
     },
 
     async successRate(phone: string): Promise<CourierSuccessRate> {
-      // API v1 exposes no per-phone history (see header): zero counts
-      // + null rate is the honest "no data" shape the interface allows.
-      return { phone, delivered: 0, failed: 0, returned: 0, successRatePercent: null };
+      // Doc §6: GET /fraud_check/{phone} — real per-phone delivery
+      // history. The phone goes in Steadfast's local form
+      // (01XXXXXXXXX); an invalid number throws INVALID_PHONE before
+      // any network call, same as the create path.
+      const localPhone = steadfastRecipientPhone(phone);
+      const json = await callApi(`/fraud_check/${encodeURIComponent(localPhone)}`, {
+        method: "GET",
+      });
+      const count = (value: unknown): number | null => {
+        const num =
+          typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+        return Number.isFinite(num) && num >= 0 ? Math.trunc(num) : null;
+      };
+      // Field spellings are the doc's own — note the capital-T
+      // Total_parcels beside its lowercase siblings.
+      const total = count(json.Total_parcels);
+      const delivered = count(json.total_delivered);
+      const cancelled = count(json.total_cancelled);
+      if (total === null || delivered === null || cancelled === null) {
+        throw new SteadfastProviderError(
+          "UNRECOGNIZED_RESPONSE",
+          "Steadfast fraud_check response had no readable parcel counts.",
+        );
+      }
+      return {
+        phone,
+        delivered,
+        // The doc's total_cancelled conflates cancelled + returned
+        // parcels in one count; it is carried as `failed` and
+        // `returned` stays 0 rather than inventing a split.
+        failed: cancelled,
+        returned: 0,
+        successRatePercent: total > 0 ? Number(((delivered / total) * 100).toFixed(2)) : null,
+      };
     },
 
     async getBalance(): Promise<SteadfastBalance> {

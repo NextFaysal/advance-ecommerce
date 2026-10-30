@@ -17,6 +17,15 @@
  * and labelled sandbox (meta.sandbox: true) — a store without a
  * courier account behaves exactly as before this slice.
  *
+ * OPTIONAL host override: `courier.redx.base_url` (a plain, non-secret
+ * Setting) replaces the adapter's default API base when it holds a
+ * valid http(s) URL. RedX publishes no official public API docs, so
+ * the shipped default base rests on third-party consensus (see the
+ * provenance note in redx.ts); this override lets a merchant point
+ * the adapter at the host their merchant panel documents — or at the
+ * sandbox host — without a code change. An absent/blank/invalid value
+ * is ignored and the default (or a caller-supplied baseUrl) applies.
+ *
  * The settings store is injected as a reader so this module stays free
  * of the Prisma import (the worker's lazy-settings pattern in
  * worker-deps.ts) and is smoke-testable with a fake reader. Reader
@@ -57,6 +66,17 @@ export interface ResolvedRedxCourier {
 
 function fieldValue(fields: Record<string, string>, field: string): string {
   return (fields[field] ?? "").trim();
+}
+
+/** The optional courier.redx.base_url Setting as a usable override:
+ *  the trimmed value when it is an http(s) URL, else undefined (the
+ *  adapter default / caller option then applies). Never throws — a
+ *  malformed override must not take live booking down with it. */
+function settingsBaseUrl(raw: string | null): string | undefined {
+  if (raw === null) return undefined;
+  const value = raw.trim();
+  if (value === "" || !/^https?:\/\//i.test(value)) return undefined;
+  return value;
 }
 
 async function safeGet(reader: RedxSettingsReader, key: string): Promise<string | null> {
@@ -100,7 +120,12 @@ export async function buildConfiguredRedxProvider(
   const diagnosis = await diagnoseRedxCourier(reader);
   if (!diagnosis.configured) return null;
   const fields = await safeSecrets(reader);
-  return createRedxProvider({ accessToken: fieldValue(fields, "access_token") }, opts);
+  // The merchant-facing host override (courier.redx.base_url) wins
+  // over a caller-supplied baseUrl: correcting the host from the
+  // panel is exactly what the Setting exists for.
+  const baseUrl = settingsBaseUrl(await safeGet(reader, "courier.redx.base_url"));
+  const effectiveOpts = baseUrl !== undefined ? { ...opts, baseUrl } : opts;
+  return createRedxProvider({ accessToken: fieldValue(fields, "access_token") }, effectiveOpts);
 }
 
 /** Resolve the live RedX adapter for a book path, or null when it is

@@ -5,7 +5,9 @@
  * against the RedX merchant API, mirroring the Steadfast live adapter
  * (src/integrations/steadfast.ts) contract-for-contract:
  *
- *   Base:     https://api.redx.com.bd/v1
+ *   Base:     https://openapi.redx.com.bd/v1.0.0-beta (the default;
+ *             overridable per install via the courier.redx.base_url
+ *             Setting — see redx-resolver.ts).
  *   Auth:     a merchant access token, sent on every call in the
  *             `API-ACCESS-TOKEN` header. The token comes from encrypted
  *             Settings — see redx-resolver.ts (Settings key
@@ -20,19 +22,30 @@
  *   Create:   POST /parcel { merchant_invoice_id, customer_name,
  *             customer_phone, customer_address, delivery_area_id,
  *             delivery_area, cash_collection_amount, parcel_weight,
- *             parcel_details }.
+ *             instruction, value }. The booking note travels as
+ *             `instruction`. `parcel_details_json` is deliberately
+ *             NOT sent: CreateShipmentInput carries no structured
+ *             per-item details (only an item count), so there is
+ *             nothing truthful to serialise under a JSON name.
  *   Status:   GET /parcel/track/{tracking_id}.
  *
- * UNVERIFIED-API NOTE (honesty): no live RedX account exists on this
- * install yet, and the provider's API details could not be verified
- * from this codebase. The endpoint paths, the `API-ACCESS-TOKEN`
- * header name and the response field spellings below are the RedX
- * merchant API shape as documented publicly at build time; parsing is
- * deliberately TOLERANT (several accepted spellings per field, like
- * the Steadfast webhook parser) and the first live booking MUST be
- * checked against the merchant panel — the auth header name is the
- * first thing to re-verify there. Nothing in this module pretends a
- * call succeeded when the provider did not clearly accept it.
+ * UNVERIFIED-API NOTE (honesty — provenance): RedX publishes NO
+ * official public API documentation; its API docs are merchant-gated,
+ * so nothing below could be verified against a first-party source.
+ * The base URL, endpoint paths, request/response field spellings and
+ * the `API-ACCESS-TOKEN` header name rest instead on convergent
+ * independent third-party packages (kejubayer, centrex,
+ * abdur-rahaman), which agree with each other: the production base
+ * https://openapi.redx.com.bd/v1.0.0-beta is their consensus host
+ * (sandbox: https://sandbox.redx.com.bd/v1.0.0-beta). The previous
+ * default, https://api.redx.com.bd/v1, was supported by NO source
+ * found and was replaced on that basis. Everything here remains
+ * UNVERIFIED until the first live booking confirms it against the
+ * merchant panel — the auth header name is the first thing to
+ * re-verify there. Parsing is deliberately TOLERANT (several accepted
+ * spellings per field, like the Steadfast webhook parser), and
+ * nothing in this module pretends a call succeeded when the provider
+ * did not clearly accept it.
  *
  * HONESTY RULES (platform-wide, do not weaken — same as Steadfast):
  *  - A create the provider did not clearly accept THROWS
@@ -231,7 +244,11 @@ export interface RedxCreateParcelBody {
   cash_collection_amount: number;
   /** kg decimal (the provider's unit — converted from grams once). */
   parcel_weight: number;
-  parcel_details: string;
+  /** The booking note, sent as RedX's delivery `instruction`.
+   *  (`parcel_details_json` is omitted entirely: the platform's
+   *  CreateShipmentInput has no structured per-item detail fields,
+   *  so there is nothing truthful to serialise under that name.) */
+  instruction: string;
   value: number;
 }
 
@@ -249,7 +266,7 @@ export function buildRedxCreateParcelBody(
     delivery_area: area.name,
     cash_collection_amount: poishaToRedxBdt(input.codAmountPoisha),
     parcel_weight: gramsToRedxKg(input.weightGrams),
-    parcel_details: input.note ?? "",
+    instruction: input.note ?? "",
     // Declared parcel value for the provider's records: the COD
     // amount (0 for a prepaid parcel).
     value: poishaToRedxBdt(input.codAmountPoisha),
@@ -407,7 +424,13 @@ export interface RedxCourierProvider extends CourierProvider {
   listAreas(): Promise<RedxDeliveryArea[]>;
 }
 
-export const REDX_API_BASE = "https://api.redx.com.bd/v1";
+/** Default RedX OpenAPI base — the consensus production host across
+ *  the independent third-party packages cited in the header note
+ *  (sandbox host: https://sandbox.redx.com.bd/v1.0.0-beta). NOT
+ *  verified against official docs (none are public); a merchant can
+ *  override it without a code change via the courier.redx.base_url
+ *  Setting — see redx-resolver.ts. */
+export const REDX_API_BASE = "https://openapi.redx.com.bd/v1.0.0-beta";
 
 /** Our Shipment row id for a RedX parcel. */
 export function redxShipmentId(parcelId: string | number): string {

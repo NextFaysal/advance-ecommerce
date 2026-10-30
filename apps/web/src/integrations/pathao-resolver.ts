@@ -7,11 +7,18 @@
  * Pathao counts as CONFIGURED only when BOTH hold:
  *   - `courier.pathao.enabled` is "true" (the admin's on/off intent —
  *     the same gate SMS applies per provider), and
- *   - every required credential field is present in the encrypted
- *     Settings store: client_id, client_secret, username, password,
- *     store_id (Settings keys courier.pathao.* — client_secret and
- *     password are encrypted at rest by the settings service's
- *     secret-suffix rule).
+ *   - the required credential pair is present in the encrypted
+ *     Settings store: client_id + client_secret (Settings keys
+ *     courier.pathao.* — client_secret is encrypted at rest by the
+ *     settings service's secret-suffix rule).
+ *
+ * OPTIONAL fields (never blocking): username + password (when both
+ * are present the adapter uses the OAuth password grant; otherwise
+ * the token is issued with client_id + client_secret only — the flow
+ * Pathao's official plugin uses), store_id (when absent, or not a
+ * positive integer, the adapter resolves the merchant's default
+ * store from the API at booking time), and base_url (an API host
+ * override, passed through like the payment resolvers' api_base_url).
  *
  * When Pathao is not configured, resolution returns null and the
  * CALLER falls back to the sandbox provider, whose bookings stay
@@ -40,13 +47,7 @@ export interface PathaoSettingsReader {
   getProviderSecrets(provider: string): Promise<Record<string, string>>;
 }
 
-export const PATHAO_REQUIRED_FIELDS = [
-  "client_id",
-  "client_secret",
-  "username",
-  "password",
-  "store_id",
-] as const;
+export const PATHAO_REQUIRED_FIELDS = ["client_id", "client_secret"] as const;
 
 export interface PathaoDiagnosis {
   provider: "pathao";
@@ -90,13 +91,10 @@ export async function diagnosePathaoCourier(
 ): Promise<PathaoDiagnosis> {
   const enabled = (await safeGet(reader, "courier.pathao.enabled")) === "true";
   const fields = await safeSecrets(reader);
+  // Only the client_id + client_secret pair is required; username /
+  // password / store_id / base_url are optional and never appear
+  // here (see the header note).
   const missingFields = PATHAO_REQUIRED_FIELDS.filter((f) => fieldValue(fields, f) === "");
-  // store_id must also PARSE as a positive integer — a non-numeric
-  // value is as unconfigured as a missing one, and is reported by
-  // field NAME (never value) alongside the missing ones.
-  const storeRaw = fieldValue(fields, "store_id");
-  const storeValid = storeRaw !== "" && Number.isInteger(Number(storeRaw)) && Number(storeRaw) > 0;
-  if (!storeValid && !missingFields.includes("store_id")) missingFields.push("store_id");
   return {
     provider: "pathao",
     enabled,
@@ -106,8 +104,9 @@ export async function diagnosePathaoCourier(
 }
 
 /** Build the REAL adapter when Pathao is fully configured (enabled +
- *  all credentials), else null. Used by the resolver and by the admin
- *  probe, which must test Pathao itself — never a fallback. */
+ *  the required credential pair), else null. Used by the resolver and
+ *  by the admin probe, which must test Pathao itself — never a
+ *  fallback. */
 export async function buildConfiguredPathaoProvider(
   reader: PathaoSettingsReader,
   opts: PathaoAdapterOptions = {},
@@ -115,15 +114,29 @@ export async function buildConfiguredPathaoProvider(
   const diagnosis = await diagnosePathaoCourier(reader);
   if (!diagnosis.configured) return null;
   const fields = await safeSecrets(reader);
+  const optional = (field: string): string | undefined => {
+    const value = fieldValue(fields, field);
+    return value === "" ? undefined : value;
+  };
+  // store_id is optional: a value that does not parse as a positive
+  // integer counts as unset (null) and the adapter resolves the
+  // merchant's default store from the API at booking time — it never
+  // blocks configuration.
+  const storeRaw = fieldValue(fields, "store_id");
+  const storeParsed = Number(storeRaw);
+  const storeId =
+    storeRaw !== "" && Number.isInteger(storeParsed) && storeParsed > 0 ? storeParsed : null;
   return createPathaoProvider(
     {
       clientId: fieldValue(fields, "client_id"),
       clientSecret: fieldValue(fields, "client_secret"),
       username: fieldValue(fields, "username"),
       password: fieldValue(fields, "password"),
-      storeId: Number(fieldValue(fields, "store_id")),
+      storeId,
     },
-    opts,
+    // base_url rides opts like the payment resolvers' api_base_url;
+    // a caller-passed opts.baseUrl (spread after) wins over Settings.
+    { baseUrl: optional("base_url"), ...opts },
   );
 }
 

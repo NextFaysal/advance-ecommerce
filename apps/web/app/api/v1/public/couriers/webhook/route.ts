@@ -18,16 +18,17 @@
 // never accepted on a live branch: no configured webhook_secret =>
 // verification fails (401, no state change). The idempotency key is
 // derived deterministically by the parser when the sender provides
-// none. SIGNATURE-SCHEME NOTE: neither Pathao nor RedX documents an
-// HMAC webhook signature in anything this codebase can verify, so the
-// live branches enforce the platform's own contract — HMAC-SHA256 hex
-// of the raw body in the x-webhook-signature header, keyed by the
-// Settings webhook_secret — exactly like the Steadfast live branch.
-// If a provider cannot send that header, its live webhook receiver
-// stays closed (401) BY DESIGN and status polling (the adapters'
-// getStatus) is the working path; the receiver opens only when the
-// sender can be configured to sign this way (e.g. via the provider's
-// webhook-secret field where one exists).
+// none. SIGNATURE-SCHEME NOTE: the live branches enforce the platform's
+// own contract — HMAC-SHA256 hex of the raw body in the
+// x-webhook-signature header, keyed by the Settings webhook_secret.
+// ONE provider has a documented real scheme of its own (doc-verification
+// wave, 2026-10-30): Pathao's official plugin sends the secret itself
+// in X-PATHAO-SIGNATURE, so the Pathao live branch additionally accepts
+// that header by timing-safe equality and translates it into the
+// platform HMAC locally, and answers Pathao's `webhook_integration`
+// handshake event with Pathao's published integration-secret header.
+// RedX's scheme remains undocumented publicly, so its receiver stays
+// on the platform contract and status polling is its working path.
 //
 // Both branches funnel into the SAME apply: rawStatus is mapped per
 // provider, the shipment status only moves forward (or to FAILED/
@@ -78,6 +79,23 @@ import { mapEcourierDeliveryStatus, parseEcourierWebhookBody } from "@/integrati
 import { diagnoseEcourierCourier } from "@/integrations/ecourier-resolver";
 import { COURIER_PROVIDERS } from "@/integrations/courier";
 import { getIntegrationConfigWithSecrets, getSetting } from "@/lib/settings";
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+/** Pathao's webhook protocol, per Pathao's OWN open-source WooCommerce
+ *  plugin (doc-verification wave, 2026-10-30): Pathao does NOT sign
+ *  bodies with HMAC — it sends the webhook secret itself in the
+ *  X-PATHAO-SIGNATURE header (receivers do a plain equality check), and
+ *  when the integration is first connected it fires a
+ *  `webhook_integration` handshake event that the receiver must answer
+ *  with this fixed response header (a constant published in Pathao's
+ *  plugin source) so the panel marks the integration verified. */
+const PATHAO_INTEGRATION_SECRET = "f3992ecc-59da-4cbe-a049-a13da2018d51";
+
+function safeSecretEqual(presented: string, expected: string): boolean {
+  const a = Buffer.from(presented);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 const bodySchema = z.object({
   trackingId: z.string().min(1),
@@ -281,6 +299,26 @@ export async function POST(req: Request) {
   /* ---------------- LIVE branches (ADV-5: steadfast, pathao, redx) ---------------- */
   const liveSpec = LIVE_WEBHOOK_SPECS[provider];
   if (liveSpec !== undefined && (await liveConfigured(provider))) {
+    // Pathao integration handshake: no consignment/status to apply —
+    // answering with Pathao's published integration-secret header is
+    // the whole protocol (their panel then marks the webhook verified).
+    if (
+      provider === "pathao" &&
+      typeof body === "object" &&
+      body !== null &&
+      (body as Record<string, unknown>).event === "webhook_integration"
+    ) {
+      return NextResponse.json(
+        {
+          data: { verified: true, duplicate: false, applied: false, reason: "integration_handshake" },
+          meta: { sandbox: false, live: true, provider },
+        },
+        {
+          status: 200,
+          headers: { "X-Pathao-Merchant-Webhook-Integration-Secret": PATHAO_INTEGRATION_SECRET },
+        },
+      );
+    }
     const event = liveSpec.parse(body);
     if (event === null) {
       return NextResponse.json(
@@ -297,11 +335,23 @@ export async function POST(req: Request) {
       (typeof bodyKey === "string" && bodyKey !== "" ? bodyKey : null) ??
       event.idempotencyKey;
     const secret = await liveWebhookSecret(provider);
+    // Pathao's real scheme: the secret itself arrives in
+    // X-PATHAO-SIGNATURE. On a timing-safe match, translate it into the
+    // platform HMAC locally so the shared verify/log/apply pipeline
+    // below runs unchanged; anything else falls through to the plain
+    // platform-HMAC check and fails closed as before.
+    let signature = req.headers.get(WEBHOOK_HEADERS.signature);
+    if (provider === "pathao" && secret) {
+      const presented = req.headers.get("x-pathao-signature");
+      if (presented && safeSecretEqual(presented, secret)) {
+        signature = createHmac("sha256", secret).update(rawBody).digest("hex");
+      }
+    }
     const result = await processWebhook({
       channel: "courier",
       provider,
       rawBody,
-      signature: req.headers.get(WEBHOOK_HEADERS.signature),
+      signature,
       timestamp: req.headers.get(WEBHOOK_HEADERS.timestamp) ?? undefined,
       idempotencyKey,
       secret,

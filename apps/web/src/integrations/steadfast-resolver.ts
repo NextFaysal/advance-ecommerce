@@ -25,6 +25,12 @@
  * to a fake live adapter. diagnoseSteadfastCourier() names the missing
  * FIELD KEYS only (booleans + names, never values) for the Settings
  * connection probe.
+ *
+ * Optional: `courier.steadfast.base_url` overrides the API base URL
+ * (the adapter's default host is doc-unverified — see the steadfast.ts
+ * header). Only an http(s) value is honoured; anything else is ignored
+ * and the adapter default stands. An explicit opts.baseUrl (tests /
+ * probes) wins over the Settings value.
  */
 import {
   createSteadfastProvider,
@@ -103,9 +109,12 @@ export async function buildConfiguredSteadfastProvider(
   const diagnosis = await diagnoseSteadfastCourier(reader);
   if (!diagnosis.configured) return null;
   const fields = await safeSecrets(reader);
+  const baseUrlSetting = fieldValue(fields, "base_url");
+  const baseUrl = /^https?:\/\//i.test(baseUrlSetting) ? baseUrlSetting : undefined;
   return createSteadfastProvider(
     { apiKey: fieldValue(fields, "api_key"), secretKey: fieldValue(fields, "secret_key") },
-    opts,
+    // Settings base_url first so an explicit opts.baseUrl overrides it.
+    { ...(baseUrl !== undefined ? { baseUrl } : {}), ...opts },
   );
 }
 
