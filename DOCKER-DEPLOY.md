@@ -87,8 +87,11 @@ docker compose -f docker-compose.prod.yml exec \
   is safe.
 - Then log in at `/admin` with that email + password, and register a
   passkey / enable 2FA from the security settings.
-- The app also offers a first-run setup wizard while no Owner exists —
-  either path works; do not use both.
+- Note: there is NO first-run setup wizard in the app — `/admin` is a
+  plain login form (verified on the live VPS site 2026-10-30). This
+  bootstrap exec is the only way to create the first Owner. Leaving
+  `FIRST_OWNER_*` in the Dokploy stack env does nothing by itself:
+  nothing reads them at container runtime.
 
 ## 4. Neon migration — skipped
 
