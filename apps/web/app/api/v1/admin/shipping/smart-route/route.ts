@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { guardError, requireAdmin } from "@/reports/guard";
 import { calculateSmartRoute, type RoutingStrategy } from "@/integrations/smart-routing";
 
 const querySchema = z.object({
@@ -12,6 +13,12 @@ const querySchema = z.object({
 });
 
 export async function GET(request: Request) {
+  // Admin-only like every sibling route under /api/v1/admin (added in
+  // review of 590a2da4 — the handler takes only query params and reads
+  // no private data, but the admin namespace is authenticated by
+  // convention and this endpoint is not a public calculator).
+  const guard = await requireAdmin("orders.view");
+  if (!guard.ok) return NextResponse.json(guardError(guard), { status: guard.status });
   try {
     const { searchParams } = new URL(request.url);
     const parsed = querySchema.safeParse(Object.fromEntries(searchParams.entries()));
