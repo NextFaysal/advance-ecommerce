@@ -2,11 +2,11 @@
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ["@advance-ecommerce/db", "@advance-ecommerce/validators"],
-  serverExternalPackages: ["@prisma/client", ".prisma/client", "bullmq", "ioredis", "nodemailer"],
   // instrumentation.ts (server-start DB wiring for feature flags +
   // coupon snapshot) needs the hook enabled on Next 14.
   experimental: {
     instrumentationHook: true,
+    serverComponentsExternalPackages: ["@prisma/client", ".prisma/client", "bullmq", "ioredis", "nodemailer"],
   },
   // Image optimization (speed wave batch 2): AVIF/WebP output for
   // next/image. Remote hosts: demo placeholder photos (picsum) plus the
