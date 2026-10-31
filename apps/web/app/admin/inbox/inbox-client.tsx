@@ -70,6 +70,13 @@ const STATUS_LABEL: Record<ConversationStatus, string> = {
   RESOLVED: "সমাধান হয়েছে",
 };
 
+const QUICK_REPLIES = [
+  { label: "🚚 ডেলিভারি চার্জ", text: "আমাদের ডেলিভারি চার্জ: ঢাকার ভেতরে ৬০ টাকা, ঢাকার বাইরে ১২০ টাকা।" },
+  { label: "💳 পেমেন্ট পদ্ধতি", text: "ক্যাশ অন ডেলিভারি এবং বিকাশ/নগদে পেমেন্ট করার সুবিধা রয়েছে।" },
+  { label: "📦 অর্ডার তথ্য", text: "অর্ডারটি নিশ্চিত করতে অনুগ্রহ করে আপনার নাম, মোবাইল নম্বর এবং সম্পূর্ণ ঠিকানা পাঠান।" },
+  { label: "🙏 ধন্যবাদ", text: "আমাদের সাথে থাকার জন্য ধন্যবাদ! আর কোনো তথ্য জানার থাকলে অবশ্যই জানাবেন।" },
+];
+
 const FILTERS: { id: ChannelFilter; label: string }[] = [
   { id: "ALL", label: "সব" },
   { id: "MESSENGER", label: "Messenger" },
@@ -154,10 +161,161 @@ export default function InboxClient({
    *  channel -> the composer really sends; otherwise demo queueing. */
   channelLive: Record<InboxChannel, boolean>;
 }) {
+  const [liveConversations, setLiveConversations] = useState<ConversationView[]>(conversations);
+  const [liveThreads, setLiveThreads] = useState<Record<string, InboxMessage[]>>(threads);
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("ALL");
   const [selectedId, setSelectedId] = useState<string | null>(conversations[0]?.id ?? null);
   const [replyText, setReplyText] = useState("");
   const [queuedReplies, setQueuedReplies] = useState<Record<string, QueuedReply[]>>({});
+
+  useEffect(() => {
+    setLiveConversations(conversations);
+  }, [conversations]);
+  useEffect(() => {
+    setLiveThreads(threads);
+  }, [threads]);
+
+  const [autoSync, setAutoSync] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string>("");
+
+  const syncInbox = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/v1/admin/inbox");
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.data?.conversations && Array.isArray(json.data.conversations)) {
+          setLiveConversations(json.data.conversations);
+        }
+      }
+      if (selectedId) {
+        const msgRes = await fetch(`/api/v1/admin/inbox?conversationId=${selectedId}`);
+        if (msgRes.ok) {
+          const msgJson = await msgRes.json();
+          if (msgJson?.data?.messages && Array.isArray(msgJson.data.messages)) {
+            setLiveThreads((prev) => ({ ...prev, [selectedId]: msgJson.data.messages }));
+          }
+        }
+      }
+      setLastSyncTime(new Date().toLocaleTimeString("bn-BD", { hour: "numeric", minute: "2-digit", second: "2-digit" }));
+    } catch {
+      // non-blocking
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!autoSync) return;
+    const interval = setInterval(() => {
+      void syncInbox();
+    }, 7000);
+    return () => clearInterval(interval);
+  }, [autoSync, selectedId]);
+
+  const [staffList, setStaffList] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    fetch("/api/v1/admin/staff?page=1&pageSize=100")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        if (payload?.data?.members && Array.isArray(payload.data.members)) {
+          setStaffList(payload.data.members.map((m: any) => ({ id: m.id, name: m.name || m.email })));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const [statusUpdating, setStatusUpdating] = useState(false);
+  const changeConversationStatus = async (newStatus: ConversationStatus) => {
+    if (!selected || statusUpdating) return;
+    setStatusUpdating(true);
+    try {
+      const res = await fetch(`/api/v1/admin/inbox/conversations/${selected.id}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) {
+        const payload = await res.json();
+        if (payload?.data?.conversation) {
+          setReadViews((prev) => ({ ...prev, [selected.id]: payload.data.conversation }));
+          setLiveConversations((prev) =>
+            prev.map((c) => (c.id === selected.id ? { ...c, status: newStatus } : c)),
+          );
+        }
+      }
+    } catch {
+      // non-blocking
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
+  const changeAssignee = async (agentId: string) => {
+    if (!selected || statusUpdating) return;
+    setStatusUpdating(true);
+    const assignedToId = agentId === "" ? null : agentId;
+    try {
+      const res = await fetch(`/api/v1/admin/inbox/conversations/${selected.id}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignedToId }),
+      });
+      if (res.ok) {
+        const payload = await res.json();
+        if (payload?.data?.conversation) {
+          setReadViews((prev) => ({ ...prev, [selected.id]: payload.data.conversation }));
+          setLiveConversations((prev) =>
+            prev.map((c) => (c.id === selected.id ? { ...c, assignedAgentId: assignedToId } : c)),
+          );
+        }
+      }
+    } catch {
+      // non-blocking
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
+  const [showProductShare, setShowProductShare] = useState(false);
+  const [prodVariantId, setProdVariantId] = useState("");
+  const [prodTitle, setProdTitle] = useState("");
+  const [prodUrl, setProdUrl] = useState("");
+  const [prodSharing, setProdSharing] = useState(false);
+
+  const shareProductCard = async () => {
+    if (!selected || !prodVariantId.trim() || !prodTitle.trim() || prodSharing) return;
+    setProdSharing(true);
+    try {
+      const res = await fetch(`/api/v1/admin/inbox/conversations/${selected.id}/product-card`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          variantId: prodVariantId.trim(),
+          productTitle: prodTitle.trim(),
+          productUrl: prodUrl.trim() || undefined,
+        }),
+      });
+      if (res.ok) {
+        const payload = await res.json();
+        if (payload?.data?.message) {
+          setLiveThreads((prev) => ({
+            ...prev,
+            [selected.id]: [...(prev[selected.id] ?? []), payload.data.message],
+          }));
+          setProdVariantId("");
+          setProdTitle("");
+          setProdUrl("");
+          setShowProductShare(false);
+        }
+      }
+    } catch {
+      // error
+    } finally {
+      setProdSharing(false);
+    }
+  };
   /* ---- ADV-6 part 2: real-send state. Sent messages returned by the
    * reply route (persisted OUTBOUND rows with platform ids) are kept
    * per conversation and appended to the server-prop thread for
@@ -206,17 +364,17 @@ export default function InboxClient({
    * is overridden: the badge keeps the last server-reported count. */
   const [readViews, setReadViews] = useState<Record<string, ConversationView>>({});
   const views = useMemo(
-    () => conversations.map((c) => readViews[c.id] ?? c),
-    [conversations, readViews],
+    () => liveConversations.map((c) => readViews[c.id] ?? c),
+    [liveConversations, readViews],
   );
   const filteredViews = useMemo(
     () => views.filter((v) => channelFilter === "ALL" || v.channel === channelFilter),
     [views, channelFilter],
   );
-  const selected = conversations.find((c) => c.id === selectedId) ?? null;
+  const selected = liveConversations.find((c) => c.id === selectedId) ?? null;
   const selectedView = selected;
   const selectedMessages = selected
-    ? [...(threads[selected.id] ?? []), ...(sentMessages[selected.id] ?? [])]
+    ? [...(liveThreads[selected.id] ?? []), ...(sentMessages[selected.id] ?? [])]
     : [];
   const selectedLive = selected ? channelLive[selected.channel] : false;
   const anyChannelLive = channelLive.MESSENGER || channelLive.WHATSAPP || channelLive.INSTAGRAM;
@@ -483,23 +641,46 @@ export default function InboxClient({
 
   return (
     <div className="space-y-6">
-      {anyChannelLive ? (
-        <Card className="border-success-solid/30 bg-success-soft text-sm text-text-main">
-          ✅ যেসব চ্যানেলের Meta সেটিংস দেওয়া আছে সেগুলো <strong>লাইভ</strong>:{" "}
-          {(Object.keys(CHANNEL_LABEL) as InboxChannel[])
-            .map((ch) => `${CHANNEL_LABEL[ch]} — ${channelLive[ch] ? "উত্তর সত্যিকারে যাবে" : "কিউ-ইনটেন্ট (ডেমো)"}`)
-            .join(" · ")}
-          । লাইভ চ্যানেলে পাঠানো ব্যর্থ হলে Meta-র ত্রুটি এখানেই দেখানো হয় — ভুয়া “পাঠানো
-          হয়েছে” দেখানো হয় না। ড্রাফট কোনো অর্ডার নয় — নিশ্চিত করতে ম্যানুয়াল অর্ডার ফর্ম
-          ব্যবহার করুন।
-        </Card>
-      ) : (
-        <Card className="border-warning-solid/30 bg-warning-soft text-sm text-text-main">
-          ⚠️ TEMPORARY DEMO — কোনো চ্যানেল API সংযুক্ত নেই। উত্তর <strong>পাঠানো যায় না</strong>:
-          কম্পোজার শুধু এই পেজের state-এ “কিউ করা” অভিপ্রায় রাখে। ড্রাফট কোনো অর্ডার নয় এবং
-          কোথাও জমা হয় না — নিশ্চিত করতে ম্যানুয়াল অর্ডার ফর্ম ব্যবহার করুন।
-        </Card>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {anyChannelLive ? (
+          <div className="flex-1 rounded-xl border border-success-solid/30 bg-success-soft px-4 py-2.5 text-xs text-text-main">
+            ✅ যেসব চ্যানেলের Meta সেটিংস দেওয়া আছে সেগুলো <strong>লাইভ</strong> (Messenger · WhatsApp · Instagram)।
+            <a href="/admin/settings/integrations" className="ml-2 font-semibold underline hover:text-brand-700">
+              মেটা সেটিংস পরিবর্তন করুন ↗
+            </a>
+          </div>
+        ) : (
+          <div className="flex-1 rounded-xl border border-warning-solid/30 bg-warning-soft px-4 py-2.5 text-xs text-text-main">
+            ⚠️ কোনো চ্যানেল API সংযুক্ত নেই।
+            <a href="/admin/settings/integrations" className="ml-2 font-semibold underline hover:text-brand-700">
+              মেটা ইন্টিগ্রেশন সেটিংসে গিয়ে পেজ টোকেন ও ক্রেডেনশিয়াল কনফিগার করুন ↗
+            </a>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void syncInbox()}
+            disabled={syncing}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-text-main shadow-2xs hover:bg-surface-2 transition"
+          >
+            <span>{syncing ? "🔄" : "⚡"}</span>
+            <span>{syncing ? "সিঙ্ক হচ্ছে..." : "রিফ্রেশ"}</span>
+            {lastSyncTime && <span className="text-[10px] text-text-muted font-normal">({lastSyncTime})</span>}
+          </button>
+          <button
+            type="button"
+            onClick={() => setAutoSync((p) => !p)}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition ${
+              autoSync ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-border bg-card text-text-muted"
+            }`}
+          >
+            <span className={`inline-block h-2 w-2 rounded-full ${autoSync ? "bg-emerald-500 animate-pulse" : "bg-neutral-400"}`} />
+            <span>{autoSync ? "লাইভ অটো-সিঙ্ক চালু" : "অটো-সিঙ্ক বন্ধ"}</span>
+          </button>
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="মোট কথোপকথন" value={String(views.length)} delta="ডাটাবেস" icon="💬" />
@@ -592,16 +773,58 @@ export default function InboxClient({
           {selected && selectedView ? (
             <>
               <Card>
-                <div className="mb-4 flex flex-wrap items-center gap-2">
-                  <h2 className="font-display text-base font-semibold text-text-main">{selected.customerDisplayName}</h2>
-                  <Badge tone={CHANNEL_TONE[selected.channel]}>
-                    {CHANNEL_LABEL[selected.channel]}
-                  </Badge>
-                  <Badge tone="neutral">{STATUS_LABEL[selected.status]}</Badge>
-                  <span className="text-xs text-text-muted">
-                    ফোন: {selectedView.phoneMasked ?? "এখনো পাওয়া যায়নি"} · দায়িত্বে:{" "}
-                    {selected.assignedAgentId ?? "কেউ নির্ধারিত নয়"}
-                  </span>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="font-display text-base font-semibold text-text-main">{selected.customerDisplayName}</h2>
+                    <Badge tone={CHANNEL_TONE[selected.channel]}>
+                      {CHANNEL_LABEL[selected.channel]}
+                    </Badge>
+                    <span className="text-xs text-text-muted">
+                      📞 {selectedView.phoneMasked ?? "ফোন পাওয়া যায়নি"}
+                    </span>
+                  </div>
+
+                  {/* Status & Assignment controls */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex rounded-lg border border-border bg-card p-0.5 text-xs">
+                      {(["OPEN", "PENDING", "RESOLVED"] as ConversationStatus[]).map((st) => (
+                        <button
+                          key={st}
+                          type="button"
+                          onClick={() => void changeConversationStatus(st)}
+                          disabled={statusUpdating || selected.status === st}
+                          className={`rounded-md px-2.5 py-1 font-medium transition ${
+                            selected.status === st
+                              ? st === "RESOLVED"
+                                ? "bg-emerald-600 text-white font-semibold shadow-xs"
+                                : st === "PENDING"
+                                  ? "bg-amber-600 text-white font-semibold shadow-xs"
+                                  : "bg-brand-600 text-white font-semibold shadow-xs"
+                              : "text-text-muted hover:text-text-main hover:bg-surface-2"
+                          }`}
+                        >
+                          {STATUS_LABEL[st]}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-xs text-text-muted">
+                      <span>👤 দায়িত্বে:</span>
+                      <select
+                        value={selected.assignedAgentId ?? ""}
+                        onChange={(e) => void changeAssignee(e.target.value)}
+                        disabled={statusUpdating}
+                        className="rounded-lg border border-border bg-card px-2 py-1 text-xs outline-none focus:border-brand-500"
+                      >
+                        <option value="">কারো নয় (Unassigned)</option>
+                        {staffList.map((st) => (
+                          <option key={st.id} value={st.id}>
+                            {st.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -645,6 +868,74 @@ export default function InboxClient({
                 </div>
 
                 <div className="mt-5 rounded-2xl border border-border/60 bg-surface-2/40 p-4">
+                  {/* Quick Replies row */}
+                  <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-semibold text-text-muted">⚡ দ্রুত উত্তর (Quick Reply):</span>
+                    {QUICK_REPLIES.map((qr, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setReplyText((prev) => (prev ? `${prev} ${qr.text}` : qr.text))}
+                        className="rounded-full border border-border bg-card px-2.5 py-0.5 text-[11px] font-medium text-text-main shadow-2xs hover:bg-brand-50 hover:text-brand-700 hover:border-brand-200 transition"
+                      >
+                        {qr.label}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setShowProductShare((prev) => !prev)}
+                      className="ml-auto rounded-full border border-brand-300 bg-brand-50 px-2.5 py-0.5 text-[11px] font-semibold text-brand-700 hover:bg-brand-100 transition"
+                    >
+                      🛍️ পণ্য সুপারিশ করুন
+                    </button>
+                  </div>
+
+                  {showProductShare && (
+                    <div className="mb-3 rounded-xl border border-brand-200 bg-brand-50/50 p-3 text-xs">
+                      <p className="font-semibold text-brand-900 mb-2">🛍️ চ্যাটে পণ্য সুপারিশ কার্ড পাঠান:</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <input
+                          type="text"
+                          placeholder="পণ্যের ভেরিয়েন্ট আইডি (variantId)"
+                          value={prodVariantId}
+                          onChange={(e) => setProdVariantId(e.target.value)}
+                          className="h-8 rounded-lg border border-border bg-card px-2 text-xs"
+                        />
+                        <input
+                          type="text"
+                          placeholder="পণ্যের নাম (যেমন: সুতি পাঞ্জাবি)"
+                          value={prodTitle}
+                          onChange={(e) => setProdTitle(e.target.value)}
+                          className="h-8 rounded-lg border border-border bg-card px-2 text-xs"
+                        />
+                        <input
+                          type="text"
+                          placeholder="পণ্য পেজ URL (ঐচ্ছিক)"
+                          value={prodUrl}
+                          onChange={(e) => setProdUrl(e.target.value)}
+                          className="h-8 rounded-lg border border-border bg-card px-2 text-xs"
+                        />
+                      </div>
+                      <div className="mt-2 flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowProductShare(false)}
+                          className="px-2.5 py-1 text-xs text-text-muted hover:text-text-main"
+                        >
+                          বাতিল
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void shareProductCard()}
+                          disabled={!prodVariantId.trim() || !prodTitle.trim() || prodSharing}
+                          className="rounded-lg bg-brand-600 px-3 py-1 font-semibold text-white shadow-xs hover:bg-brand-700 disabled:opacity-50"
+                        >
+                          {prodSharing ? "পাঠানো হচ্ছে..." : "কার্ড পাঠান"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <label htmlFor="inbox-reply" className="mb-1 block text-xs font-medium text-text-muted">
                     {selectedLive
                       ? `উত্তর লিখুন — ${CHANNEL_LABEL[selected.channel]} লাইভ, সত্যিকারে পাঠানো হবে`

@@ -275,3 +275,54 @@ export async function appendOutboundMessageDb(
   });
   return rowToMessage(created);
 }
+
+/**
+ * Update conversation status (OPEN, PENDING, RESOLVED) or assigned agent.
+ */
+export async function updateConversationStatusDb(
+  conversationId: string,
+  patch: { status?: ConversationStatus; assignedToId?: string | null },
+): Promise<Conversation | null> {
+  const existing = await prisma.inboxConversation.findUnique({
+    where: { id: conversationId },
+    select: { id: true },
+  });
+  if (!existing) return null;
+  const data: { status?: string; assignedToId?: string | null } = {};
+  if (patch.status !== undefined) data.status = patch.status;
+  if (patch.assignedToId !== undefined) data.assignedToId = patch.assignedToId;
+
+  const row = await prisma.inboxConversation.update({
+    where: { id: conversationId },
+    data,
+  });
+  const messages = await messagesForConversationDb(row.id);
+  return rowToConversation(row, messages);
+}
+
+/**
+ * Persist an outbound product recommendation card into the conversation.
+ */
+export async function appendProductCardMessageDb(
+  conversationId: string,
+  variantId: string,
+  productTitle: string,
+): Promise<InboxMessage> {
+  const conversationRow = await prisma.inboxConversation.findUnique({
+    where: { id: conversationId },
+    select: { channel: true },
+  });
+  if (!conversationRow) throw new Error(`Inbox conversation not found: ${conversationId}`);
+  const created = await prisma.inboxMessage.create({
+    data: {
+      conversationId,
+      channel: conversationRow.channel,
+      externalMessageId: `prod-card-${randomUUID()}`,
+      direction: "OUTBOUND",
+      kind: "PRODUCT_CARD",
+      body: `🛍️ পণ্যের সুপারিশ: ${productTitle}`,
+      refId: variantId,
+    },
+  });
+  return rowToMessage(created);
+}

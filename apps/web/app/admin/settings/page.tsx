@@ -528,7 +528,15 @@ export default async function AdminSettingsPage() {
       </Card>
 
       <div className="mb-6">
-        <StoreNameCard initial={storeName} dbReady={dbReady} />
+        <StoreNameCard
+          initial={storeName}
+          initialLogoUrl={publicSettings["branding.logo_url"] ?? ""}
+          initialFaviconUrl={publicSettings["branding.favicon_url"] ?? ""}
+          initialSupportPhone={publicSettings["general.support_phone"] ?? ""}
+          initialSupportEmail={publicSettings["general.support_email"] ?? ""}
+          initialStoreAddress={publicSettings["general.store_address"] ?? ""}
+          dbReady={dbReady}
+        />
       </div>
 
       <div className="mb-6">

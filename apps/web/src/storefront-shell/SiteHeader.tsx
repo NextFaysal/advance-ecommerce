@@ -56,6 +56,7 @@ import { SHELL_STRINGS, TRENDING_TERMS } from "./strings";
 
 export interface SiteHeaderProps {
   brandName?: string;
+  logoUrl?: string;
   /** Overrides the guest-cart localStorage count when provided. */
   cartCount?: number;
   /** Public category TREE for the mega menu (Wave 13-2: roots with
@@ -311,7 +312,7 @@ function SearchPanelContent({
   );
 }
 
-export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount, categories, headerMenu }: SiteHeaderProps) {
+export default function SiteHeader({ brandName = "Advance Ecommerce", logoUrl, cartCount, categories, headerMenu }: SiteHeaderProps) {
   const { locale, t } = useLocale();
   const s = pick(locale, SHELL_STRINGS);
   // CMS menu labels are owner content with their own {bn, en} fields:
@@ -454,12 +455,18 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", cartCount,
         <div className="relative mx-auto flex h-16 max-w-[1440px] items-center gap-3 px-4 sm:gap-4 sm:px-6">
           {/* Brand */}
           <a href="/" className="flex shrink-0 items-center gap-2" aria-label={brandName}>
-            <span className="brand-gradient flex h-9 w-9 items-center justify-center rounded-lg text-base font-bold text-white shadow-sm">
-              {brandName.charAt(0)}
-            </span>
-            <span className="hidden text-base font-bold text-text-main xs:block">
-              {brandName}
-            </span>
+            {logoUrl ? (
+              <img src={logoUrl} alt={brandName} className="h-9 max-w-[150px] object-contain sm:h-10 sm:max-w-[180px]" />
+            ) : (
+              <>
+                <span className="brand-gradient flex h-9 w-9 items-center justify-center rounded-lg text-base font-bold text-white shadow-sm">
+                  {brandName.charAt(0)}
+                </span>
+                <span className="hidden text-base font-bold text-text-main xs:block">
+                  {brandName}
+                </span>
+              </>
+            )}
           </a>
 
           {/* Search — GET form to the existing /search route, upgraded

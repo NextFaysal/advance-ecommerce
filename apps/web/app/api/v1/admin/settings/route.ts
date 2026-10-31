@@ -28,6 +28,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { prisma } from "@advance-ecommerce/db";
 import { validateSessionToken } from "@/lib/auth";
 import { requirePermission, RbacError, type PermissionKey } from "@/lib/rbac";
 import {
@@ -101,6 +102,17 @@ export async function GET() {
       dbReady = false;
       integrations[category] = providers.map((provider) => ({ provider, enabled: false, configured: false }));
     }
+  }
+
+  try {
+    const metaRows = await prisma.setting.findMany({ where: { key: { startsWith: "meta." } } });
+    for (const row of metaRows) {
+      if (!row.valueEncrypted && !isSecretSettingKey(row.key)) {
+        integrationValues[row.key] = row.value;
+      }
+    }
+  } catch {
+    // non-blocking
   }
 
   return NextResponse.json({

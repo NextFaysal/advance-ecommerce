@@ -474,6 +474,15 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
                 {pick(locale, nextLabel)}
               </Button>
             )}
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/admin/orders/print?ids=${order.id}`)}
+              >
+                🖨 {locale === "bn" ? "ইনভয়েস প্রিন্ট" : "Print Invoice"}
+              </Button>
+            </div>
             {/* OD8 — keyboard shortcut hint ("?" toggles; the keys
                 themselves are wired in the effect above). */}
             <div className="relative mt-3">

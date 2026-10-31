@@ -118,6 +118,7 @@ export interface BulkJob {
   reason?: string;
   /** Required for action "tag". */
   tag?: string;
+  courier?: string;
   requestedBy: string;
   status: BulkJobStatus;
   perOrderResults: BulkOrderResult[];
@@ -143,6 +144,7 @@ export interface EnqueueBulkJobInput {
   toStatus?: OrderStatus;
   reason?: string;
   tag?: string;
+  courier?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -414,6 +416,7 @@ export function enqueueBulkJob(input: EnqueueBulkJobInput): { job: BulkJob; crea
     toStatus: input.toStatus,
     reason: input.reason,
     tag: input.tag,
+    courier: input.courier,
     requestedBy: input.requestedBy,
     status: "QUEUED",
     perOrderResults: [],
@@ -534,7 +537,7 @@ async function runForOrder(
       if (NOT_BOOKABLE_STATUSES.includes(order.status)) {
         return fail(orderId, "ORDER_NOT_BOOKABLE", `Order in status ${order.status} cannot be booked with a courier.`);
       }
-      const providerKey = resolveSandboxProvider(order.courier);
+      const providerKey = resolveSandboxProvider(job.courier || order.courier);
       if (!providerKey) {
         return fail(
           orderId,

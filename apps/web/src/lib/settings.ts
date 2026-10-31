@@ -58,6 +58,11 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   "general.currency": { category: "general", value: "BDT", isPublic: true },
   "general.timezone": { category: "general", value: "Asia/Dhaka", isPublic: true },
   "general.store_name": { category: "general", value: "", isPublic: true },
+  "branding.logo_url": { category: "branding", value: "", isPublic: true },
+  "branding.favicon_url": { category: "branding", value: "", isPublic: true },
+  "general.support_phone": { category: "general", value: "", isPublic: true },
+  "general.support_email": { category: "general", value: "", isPublic: true },
+  "general.store_address": { category: "general", value: "", isPublic: true },
   // EMI display (ADV-18B — src/marketing/emi.ts). DISPLAY ONLY: no
   // gateway, no change to amounts charged; the breakdown is computed
   // from these values and labelled as bank-card terms. months is a
@@ -66,7 +71,6 @@ export const SETTING_DEFAULTS: Record<string, { category: SettingCategory; value
   "payments.emi.months": { category: "payment", value: "3,6,12", isPublic: false },
   "payments.emi.surcharge_bps": { category: "payment", value: "0", isPublic: false },
   "payments.emi.min_order_poisha": { category: "payment", value: "0", isPublic: false },
-  "general.store_address": { category: "general", value: "", isPublic: false },
   "general.store_bin": { category: "general", value: "", isPublic: false },
   "storage.provider": { category: "storage", value: "r2", isPublic: false },
   "storage.cdn_url": { category: "storage", value: "", isPublic: true },

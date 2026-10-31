@@ -659,7 +659,7 @@ export default function AdminOrdersPage() {
            *  mid-scroll; desktop keeps the in-flow position. The bar
            *  component and its job behaviour are unchanged. */}
           <div className={selected.size > 0 ? "mb-4 max-md:fixed max-md:inset-x-3 max-md:bottom-3 max-md:z-40" : "mb-4 empty:mb-0"}>
-            <BulkActionBar selectedIds={selectedIds} onClear={() => setSelected(new Set())} onDone={() => void load()} />
+            <BulkActionBar selectedIds={selectedIds} orders={pageOrders} onClear={() => setSelected(new Set())} onDone={() => void load()} />
             {/* ADV-19: order merge — renders only for an exact pair. */}
             {selected.size === 2 ? (
               <div className="mt-2 flex justify-end">

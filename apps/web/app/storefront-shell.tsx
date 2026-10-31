@@ -62,6 +62,15 @@ interface SiteContentResponse {
   configured: SiteContentConfigured;
 }
 
+interface PublicSettings {
+  storeName?: string;
+  logoUrl?: string;
+  faviconUrl?: string;
+  supportPhone?: string;
+  supportEmail?: string;
+  storeAddress?: string;
+}
+
 export default function StorefrontShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   // Theme slots (S3a): Header/Footer are resolved from the active
@@ -96,6 +105,31 @@ export default function StorefrontShell({ children }: { children: ReactNode }) {
   useEffect(() => subscribeCartDrawerOpen(() => setCartDrawerOpen(true)), []);
   const [categories, setCategories] = useState<ReadonlyArray<PublicCategoryNode> | undefined>(undefined);
   const [siteContent, setSiteContent] = useState<SiteContentResponse | undefined>(undefined);
+  const [settings, setSettings] = useState<PublicSettings | undefined>(undefined);
+
+  useEffect(() => {
+    let live = true;
+    fetch("/api/v1/public/settings")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json: { success?: boolean; data?: PublicSettings } | null) => {
+        if (live && json?.data) {
+          setSettings(json.data);
+          if (json.data.faviconUrl) {
+            let link = document.querySelector("link[rel*='icon']") as HTMLLinkElement | null;
+            if (!link) {
+              link = document.createElement("link");
+              link.rel = "shortcut icon";
+              document.getElementsByTagName("head")[0]?.appendChild(link);
+            }
+            link.href = json.data.faviconUrl;
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -147,10 +181,17 @@ export default function StorefrontShell({ children }: { children: ReactNode }) {
   // skipped it; other packages now skip it too).
   const hasMobileBottomNav = themeView.packageId === DEFAULT_PACKAGE_ID;
   const headerProps = {
+    brandName: settings?.storeName || undefined,
+    logoUrl: settings?.logoUrl || undefined,
     categories,
     headerMenu: siteContent?.configured.headerMenu ? siteContent.headerMenu : undefined,
   };
   const footerProps = {
+    brandName: settings?.storeName || undefined,
+    logoUrl: settings?.logoUrl || undefined,
+    supportPhone: settings?.supportPhone || undefined,
+    supportEmail: settings?.supportEmail || undefined,
+    storeAddress: settings?.storeAddress || undefined,
     footerMenu: siteContent?.configured.footerMenu ? siteContent.footerMenu : undefined,
   };
   return (

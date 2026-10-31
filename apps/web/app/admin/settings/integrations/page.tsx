@@ -113,6 +113,51 @@ const INTEGRATIONS: IntegrationCardDef[] = [
       { key: "general.redis.url", label: "Redis Connection URL", placeholder: "redis://127.0.0.1:6379 or rediss://default:token@..." },
     ],
   },
+  {
+    id: "meta_core",
+    titleKey: "intTitle",
+    titleEnText: "Meta App & Webhook (F-Commerce Core)",
+    descKey: "intRedisDesc",
+    category: "meta",
+    fields: [
+      { key: "meta.app_id", label: "Meta App ID", placeholder: "e.g. 123456789012345" },
+      { key: "meta.app_secret", label: "Meta App Secret", placeholder: "", placeholderKey: "intWriteOnly", secret: true },
+      { key: "meta.webhook_verify_token", label: "Webhook Verify Token", placeholder: "Custom secret token for webhook handshake", secret: true },
+    ],
+  },
+  {
+    id: "meta_messenger",
+    titleKey: "intTitle",
+    titleEnText: "Facebook Messenger (Page Messaging)",
+    descKey: "intRedisDesc",
+    category: "meta",
+    fields: [
+      { key: "meta.page_id", label: "Facebook Page ID", placeholder: "e.g. 109876543210987" },
+      { key: "meta.page_access_token", label: "Page Access Token (Permanent / Long-lived)", placeholder: "", placeholderKey: "intWriteOnly", secret: true },
+    ],
+  },
+  {
+    id: "meta_whatsapp",
+    titleKey: "intTitle",
+    titleEnText: "WhatsApp Cloud API",
+    descKey: "intRedisDesc",
+    category: "meta",
+    fields: [
+      { key: "meta.whatsapp_phone_number_id", label: "WhatsApp Phone Number ID", placeholder: "e.g. 105948372615243" },
+      { key: "meta.waba_id", label: "WhatsApp Business Account ID (WABA ID)", placeholder: "e.g. 192837465019283" },
+      { key: "meta.whatsapp_access_token", label: "WhatsApp System User Access Token", placeholder: "", placeholderKey: "intWriteOnly", secret: true },
+    ],
+  },
+  {
+    id: "meta_instagram",
+    titleKey: "intTitle",
+    titleEnText: "Instagram Direct Messaging",
+    descKey: "intRedisDesc",
+    category: "meta",
+    fields: [
+      { key: "meta.ig_id", label: "Instagram Account ID (IG ID)", placeholder: "e.g. 17841400000000000" },
+    ],
+  },
 ];
 
 // Card titles in Bangla (the English titles are titleEnText above).
@@ -123,6 +168,10 @@ const TITLES_BN: Record<string, string> = {
   upay: "উপায় পেমেন্ট গেটওয়ে (Upay)",
   rocket: "রকেট ম্যানুয়াল পেমেন্ট (Rocket)",
   redis: "রেডিস ক্যাশ ও লাইভ পাব/সাব",
+  meta_core: "মেটা অ্যাপ ও ওয়েবহুক (F-Commerce কোর)",
+  meta_messenger: "ফেসবুক মেসেঞ্জার পেজ ইন্টিগ্রেশন (Messenger)",
+  meta_whatsapp: "হোয়াটসঅ্যাপ ক্লাউড API (WhatsApp Cloud API)",
+  meta_instagram: "ইনস্টাগ্রাম ডিরেক্ট মেসেজিং (Instagram Direct)",
 };
 
 const MODULE_LINKS: { titleBn: string; titleEn: string; descKey: SKey; href: string; badgeKey: SKey }[] = [
@@ -146,8 +195,12 @@ export default function IntegrationsSettingsPage() {
     fetch("/api/v1/admin/settings")
       .then((res) => res.json())
       .then((payload) => {
-        if (payload?.data?.publicSettings) {
-          setFormData((prev) => ({ ...payload.data.publicSettings, ...prev }));
+        if (payload?.data) {
+          setFormData((prev) => ({
+            ...payload.data.publicSettings,
+            ...payload.data.integrationValues,
+            ...prev,
+          }));
         }
       })
       .catch(() => {});

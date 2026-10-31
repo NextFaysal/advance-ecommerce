@@ -23,6 +23,10 @@ import { SHELL_STRINGS } from "./strings";
 
 export interface SiteFooterProps {
   brandName?: string;
+  logoUrl?: string;
+  supportPhone?: string;
+  supportEmail?: string;
+  storeAddress?: string;
   /** "Powered by" line — OFF by default (white-label installs). */
   showPoweredBy?: boolean;
   /** Owner-configured footer menu (Admin → Content, CMS site
@@ -34,6 +38,10 @@ export interface SiteFooterProps {
 
 export default function SiteFooter({
   brandName = "Advance Ecommerce",
+  logoUrl,
+  supportPhone,
+  supportEmail,
+  storeAddress,
   showPoweredBy = false,
   footerMenu,
 }: SiteFooterProps) {
@@ -56,14 +64,35 @@ export default function SiteFooter({
           {/* Brand intro */}
           <div className="col-span-2 min-w-0 lg:col-span-1">
             <a href="/" className="flex items-center gap-2" aria-label={brandName}>
-              <span className="brand-gradient flex h-10 w-10 items-center justify-center rounded-lg text-lg font-bold text-white shadow-sm">
-                {brandName.charAt(0)}
-              </span>
-              <span className="text-base font-bold text-text-main">{brandName}</span>
+              {logoUrl ? (
+                <img src={logoUrl} alt={brandName} className="h-10 max-w-[180px] object-contain" />
+              ) : (
+                <>
+                  <span className="brand-gradient flex h-10 w-10 items-center justify-center rounded-lg text-lg font-bold text-white shadow-sm">
+                    {brandName.charAt(0)}
+                  </span>
+                  <span className="text-base font-bold text-text-main">{brandName}</span>
+                </>
+              )}
             </a>
             <p className="mt-3 max-w-xs break-words text-sm leading-6 text-text-muted">
               {s.footerIntro}
             </p>
+            {(supportPhone || supportEmail || storeAddress) && (
+              <div className="mt-3 space-y-1 text-xs text-text-muted">
+                {storeAddress && <p>📍 {storeAddress}</p>}
+                {supportPhone && (
+                  <p>
+                    📞 <a href={`tel:${supportPhone}`} className="hover:text-brand-700">{supportPhone}</a>
+                  </p>
+                )}
+                {supportEmail && (
+                  <p>
+                    ✉️ <a href={`mailto:${supportEmail}`} className="hover:text-brand-700">{supportEmail}</a>
+                  </p>
+                )}
+              </div>
+            )}
             <a
               href="/track"
               className="mt-4 inline-flex min-h-[44px] items-center rounded-lg bg-brand-50 px-3.5 py-2 text-sm font-semibold text-brand-700 transition hover:bg-brand-100 lg:min-h-0"

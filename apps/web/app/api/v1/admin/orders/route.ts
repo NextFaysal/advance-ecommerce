@@ -189,6 +189,7 @@ const bulkSchema = z
     action: z.enum(["confirm", "print_label", "book_courier", "update_status", "tag"]),
     orderIds: z.array(z.string().min(1)).min(1).max(200),
     tag: z.string().min(1).optional(),
+    courier: z.string().min(1).optional(),
     // update_status only: target status + reason (reason is required by the
     // state machine itself for CANCELLED / REFUNDED).
     toStatus: z
@@ -242,6 +243,7 @@ async function handleBulkAction(req: Request, session: AdminSession, body: unkno
     toStatus: parsed.data.toStatus,
     reason: parsed.data.reason,
     tag: parsed.data.tag,
+    courier: parsed.data.courier,
   });
   await writeAudit({
     actorId: auth.session.user.id,
