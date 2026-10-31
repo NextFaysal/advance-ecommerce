@@ -170,6 +170,25 @@ export default function AdminAbandonedPage() {
     }
   }
 
+  async function sendSmsRecovery(id: string) {
+    setBusyId(id);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/v1/admin/abandoned/${id}/sms`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error?.message || "SMS পাঠানো যায়নি");
+      }
+      setNotice("গ্রাহকের মোবাইলে সফলভাবে SMS রিকভারি পাঠানো হয়েছে।");
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "SMS রিকভারি ব্যর্থ হয়েছে");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <main className="space-y-6">
       <PageHeader title={s.title} subtitle={s.description} />
@@ -284,6 +303,14 @@ export default function AdminAbandonedPage() {
                       className="min-h-11 w-full rounded-xl border border-emerald-500/40 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 px-3 py-1.5 text-small font-medium transition duration-fast ease-smooth disabled:opacity-50 sm:min-h-0 sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
                     >
                       💬 হোয়াটসঅ্যাপ রিকভারি
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyId === row.id}
+                      onClick={() => void sendSmsRecovery(row.id)}
+                      className="min-h-11 w-full rounded-xl border border-sky-500/40 bg-sky-50 text-sky-800 hover:bg-sky-100 px-3 py-1.5 text-small font-medium transition duration-fast ease-smooth disabled:opacity-50 sm:min-h-0 sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+                    >
+                      📩 SMS রিকভারি
                     </button>
                     <button
                       type="button"

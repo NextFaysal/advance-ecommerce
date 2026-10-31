@@ -20,6 +20,7 @@ import type {
   SiteMenuItem,
 } from "@/cms/site-content-types";
 import InstallPrompt from "@/pwa/install-prompt";
+import { ChatBubble } from "@/storefront-shell/ChatBubble";
 import ResellerRefCapture from "@/reseller/RefCapture";
 import dynamic from "next/dynamic";
 
@@ -234,6 +235,11 @@ export default function StorefrontShell({ children }: { children: ReactNode }) {
           enabled config; suppression + page exclusions live inside.
           Lazy-loaded via next/dynamic above (audit item 2). */}
       <ExitIntentPopup />
+      <ChatBubble
+        storeName={settings?.storeName}
+        supportPhone={settings?.supportPhone}
+        logoUrl={settings?.logoUrl}
+      />
     </div>
   );
 }
