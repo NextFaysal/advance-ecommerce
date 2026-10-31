@@ -34,7 +34,7 @@ export function EmptyState({
             <span className="brand-soft-gradient flex h-[68px] w-[68px] items-center justify-center rounded-[1.4rem] text-brand-ink shadow-xs ring-1 ring-inset ring-brand-ink/10">
               <Icon name="package" size={32} strokeWidth={1.25} />
             </span>
-            <span className="brand-gradient absolute -right-0.5 -top-0.5 flex h-6 w-6 items-center justify-center rounded-full text-white shadow-glow">
+            <span className="bg-brand-600 absolute -right-0.5 -top-0.5 flex h-6 w-6 items-center justify-center rounded-full text-white">
               <Icon name="sparkles" size={12} />
             </span>
           </span>

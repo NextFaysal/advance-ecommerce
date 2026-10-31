@@ -46,7 +46,7 @@ export function Input({
           id={inputId}
           aria-describedby={describedBy}
           aria-invalid={Boolean(error)}
-          className={`w-full bg-transparent text-sm text-text-main outline-none placeholder:text-text-subtle ${className}`}
+          className={`w-full bg-transparent text-base text-text-main outline-none placeholder:text-text-subtle sm:text-sm ${className}`}
         />
         {suffix ? <span className="shrink-0">{suffix}</span> : null}
       </span>

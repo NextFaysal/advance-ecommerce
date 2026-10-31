@@ -119,7 +119,7 @@ export function HeroExperiment({
         ) : (
           <>
             সারাদেশে হোম ডেলিভারি,
-            <span className="brand-gradient bg-clip-text text-transparent"> পছন্দের সব পণ্য</span>
+            <span className="text-brand-700"> পছন্দের সব পণ্য</span>
           </>
         )}
       </h1>

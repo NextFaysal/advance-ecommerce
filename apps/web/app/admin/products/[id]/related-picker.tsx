@@ -154,7 +154,7 @@ export function RelatedPicker({
             {interpolate(s.relDesc, { max: MAX_PICKS })}
           </p>
         </div>
-        <span className="brand-gradient shrink-0 rounded-full px-3 py-1.5 text-xs font-bold tabular-nums text-white shadow-md">
+        <span className="bg-brand-soft shrink-0 rounded-full px-3 py-1.5 text-xs font-bold tabular-nums text-brand-ink shadow-md">
           {picks.length}/{MAX_PICKS}
         </span>
       </div>
@@ -221,7 +221,7 @@ export function RelatedPicker({
                   : "bg-surface-2 text-text-muted ring-black/5";
             return (
               <li key={pick.id} className="flex items-center gap-3 rounded-xl border border-border/60 bg-surface-2/40 px-3 py-2.5">
-                <span aria-hidden="true" className="brand-gradient flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold tnum text-white shadow-xs">
+                <span aria-hidden="true" className="bg-brand-soft flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold tnum text-brand-ink shadow-xs">
                   {i + 1}
                 </span>
                 <span className="min-w-0 flex-1">

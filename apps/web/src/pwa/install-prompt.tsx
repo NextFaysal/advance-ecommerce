@@ -94,7 +94,7 @@ export function InstallPrompt() {
       className="anim-drawer-in fixed inset-x-3 bottom-20 z-50 sm:inset-x-auto sm:right-4 sm:w-full sm:max-w-sm lg:bottom-6"
     >
       <div className="flex items-start gap-3 rounded-2xl border border-border bg-card p-4 shadow-pop">
-        <span className="brand-gradient flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-white shadow-lift">
+        <span className="bg-primary flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-white shadow-lift">
           <Icon name="store" size={24} />
         </span>
         <div className="min-w-0 flex-1">

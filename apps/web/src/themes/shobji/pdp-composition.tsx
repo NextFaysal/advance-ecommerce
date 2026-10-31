@@ -78,7 +78,7 @@ function trustRows(s: ShobjiStrings) {
 
 function StarRow({ rating }: { rating: number }) {
   return (
-    <span aria-hidden="true" className="text-[#E9B949]">
+    <span aria-hidden="true" className="text-accent">
       {Array.from({ length: 5 }, (_, i) => (
         <svg
           key={i}

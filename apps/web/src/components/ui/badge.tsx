@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
    fixed emerald/amber/rose/sky -50 fills did not). */
 const tones: Record<string, string> = {
   brand: "bg-brand-soft text-brand-ink",
-  gradient: "brand-gradient text-white",
+  gradient: "bg-brand-600 text-white",
   success: "bg-success-soft text-success-solid",
   warning: "bg-warning-soft text-warning-solid",
   danger: "bg-danger-soft text-danger",

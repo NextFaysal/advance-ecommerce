@@ -181,7 +181,7 @@ export function LandedCostPanel() {
     <div className="space-y-4">
       <Card className="space-y-4">
         <div className="flex items-center gap-3">
-          <span aria-hidden="true" className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
+          <span aria-hidden="true" className="bg-brand-soft flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-brand-ink shadow-md">
             <Icon name="banknote" size={20} />
           </span>
           <div className="min-w-0">
@@ -283,7 +283,7 @@ export function LandedCostPanel() {
                 <dt className="text-xs font-medium text-text-muted">{s.bdLocal}</dt>
                 <dd className="mt-1 font-mono text-base font-semibold tabular-nums text-text-main">{formatPoisha(breakdown.localPoishaPerUnit)}</dd>
               </div>
-              <div className="brand-gradient rounded-xl px-4 py-3.5 text-white shadow-md sm:col-span-2">
+              <div className="bg-brand-600 rounded-xl px-4 py-3.5 text-white shadow-md sm:col-span-2">
                 <dt className="text-xs font-medium text-white/85">{s.bdLanded}</dt>
                 <dd className="mt-1 font-mono text-2xl font-bold tabular-nums">{formatPoisha(breakdown.landedPoishaPerUnit)}</dd>
               </div>

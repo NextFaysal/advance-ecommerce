@@ -104,7 +104,7 @@ export default function SiteFooter({
           {columns.map((col) => (
             <nav key={col.id} className="min-w-0" aria-label={pickLabel(col.headingBn, col.headingEn)}>
               <p className="text-sm font-bold text-text-main">{pickLabel(col.headingBn, col.headingEn)}</p>
-              <span aria-hidden="true" className="brand-gradient mt-2 block h-0.5 w-8 rounded-full" />
+              <span aria-hidden="true" className="bg-primary mt-2 block h-0.5 w-8 rounded-full" />
               <ul className="mt-3.5 space-y-2.5">
                 {col.links.map((link) => (
                   <li key={link.id}>

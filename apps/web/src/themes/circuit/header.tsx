@@ -145,7 +145,7 @@ export default function CircuitHeader({
                   name="q"
                   placeholder={s.searchPlaceholder}
                   aria-label={s.searchAria}
-                  className="h-11 w-full rounded-lg border border-white/20 bg-white pl-4 pr-12 text-sm text-[#1B2A36] shadow-sm transition placeholder:text-[#7A8C9C] focus:outline-none focus:ring-2 focus:ring-primary/60"
+                  className="h-11 w-full rounded-lg border border-white/20 bg-white pl-4 pr-12 text-sm text-text-main shadow-sm transition placeholder:text-text-subtle focus:outline-none focus:ring-2 focus:ring-primary/60"
                 />
                 <button
                   type="submit"

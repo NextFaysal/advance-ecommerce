@@ -27,6 +27,7 @@ export function NavGroups({
   pathname,
   locale,
   offFeatureFlags,
+  variant = "sidebar",
 }: {
   groups: readonly AdminNavGroup[];
   pathname: string;
@@ -36,6 +37,10 @@ export function NavGroups({
    *  lock badge (and mini-mode dot) only while its flag is in this
    *  list — enabling the flag removes the badge on the next render. */
   offFeatureFlags: readonly string[];
+  /** Doc 35 wave 3: "drawer" (the MobileNav full-nav drawer) renders
+   *  rows at the 44px mobile touch minimum; the desktop "sidebar"
+   *  keeps its denser 40px rows. */
+  variant?: "sidebar" | "drawer";
 }) {
   const s = pick(locale, ADMIN_STRINGS);
   const offFlags = new Set(offFeatureFlags);
@@ -62,14 +67,17 @@ export function NavGroups({
                   aria-current={active ? "page" : undefined}
                   aria-label={label}
                   title={label}
-                  className={`focus-ring group relative flex min-h-[40px] items-center gap-3 rounded-md py-2 pl-3 pr-2 text-sm transition duration-fast ease-smooth group-data-[collapsed=true]/sidebar:justify-center group-data-[collapsed=true]/sidebar:gap-0 group-data-[collapsed=true]/sidebar:px-0 ${
+                  className={`focus-ring group relative flex ${variant === "drawer" ? "min-h-[44px]" : "min-h-[40px]"} items-center gap-3 rounded-md py-2 pl-3 pr-2 text-sm transition duration-fast ease-smooth group-data-[collapsed=true]/sidebar:justify-center group-data-[collapsed=true]/sidebar:gap-0 group-data-[collapsed=true]/sidebar:px-0 ${
                     active
                       ? "bg-brand-soft font-semibold text-brand-ink shadow-xs"
                       : "font-medium text-text-muted hover:bg-surface-2 hover:text-text-main"
                   }`}
                 >
                   {active ? (
-                    <span aria-hidden="true" className="brand-gradient absolute inset-y-2 left-0 w-1 rounded-full" />
+                    /* Solid brand bar (doc 35 wave 3): the gradient is
+                       reserved for hero / primary CTA / logo marks,
+                       not nav indicators. */
+                    <span aria-hidden="true" className="absolute inset-y-2 left-0 w-1 rounded-full bg-brand" />
                   ) : null}
                   <span
                     aria-hidden="true"

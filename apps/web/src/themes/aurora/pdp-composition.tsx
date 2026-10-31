@@ -234,7 +234,7 @@ export default async function AuroraPdpComposition({
 
           <div className="relative mt-5 overflow-hidden rounded-3xl border border-border bg-card p-5 shadow-card sm:p-6">
             {/* Aurora accent hairline — decorative top edge of the buy card */}
-            <div aria-hidden="true" className="brand-gradient absolute inset-x-0 top-0 h-1" />
+            <div aria-hidden="true" className="bg-primary absolute inset-x-0 top-0 h-1" />
             {/* Price — or the price-on-request label (schema wave 2) */}
             {priceOnRequest ? (
               <p className="pt-1 font-display text-3xl font-extrabold text-brand-700 dark:text-brand-300">
@@ -695,7 +695,7 @@ export default async function AuroraPdpComposition({
           <section className="mt-12">
             <div className="flex items-center gap-4">
               <h2 className="shrink-0 font-display text-xl font-extrabold text-text-main sm:text-2xl">{s.relatedProducts}</h2>
-              <span aria-hidden="true" className="brand-gradient h-px flex-1 rounded-full opacity-40" />
+              <span aria-hidden="true" className="bg-primary h-px flex-1 rounded-full opacity-40" />
             </div>
             <div className="-mx-4 mt-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:snap-none sm:grid-cols-3 sm:overflow-visible sm:px-0 sm:pb-0 xl:grid-cols-4 xl:gap-4">
               {related.map((p) => (

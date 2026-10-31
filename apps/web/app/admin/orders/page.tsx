@@ -350,10 +350,13 @@ export default function AdminOrdersPage() {
   }, [loadState, page, totalPages]);
 
   useEffect(() => {
-    // Initial filter from the URL (command-palette natural-language links
+    // Initial state from the URL (command-palette natural-language links
     // land here with ?status= / ?q= / ?district=). Setting state is all
     // it takes — the query effect above refetches; the server search
-    // covers order number / name / district / phone.
+    // covers order number / name / district / phone. Doc 35 wave 2:
+    // the URL sync below also WRITES these params, so the read now
+    // restores everything the write can produce (view / stage / page /
+    // pageSize included), each value validated before it is trusted.
     const params = new URLSearchParams(window.location.search);
     const statusParam = params.get("status");
     if (statusParam && (STATUSES as string[]).includes(statusParam)) {
@@ -361,7 +364,53 @@ export default function AdminOrdersPage() {
     }
     const q = params.get("q") ?? params.get("search");
     if (q) setSearch(q);
+    const stageParam = params.get("stage");
+    if (stageParam) setStageFilter(stageParam);
+    const viewParam = params.get("view");
+    if (viewParam === "table" || viewParam === "kanban") setView(viewParam);
+    const pageParam = Number(params.get("page"));
+    if (Number.isInteger(pageParam) && pageParam > 1) setPage(pageParam);
+    const sizeParam = Number(params.get("pageSize"));
+    if ([25, 50, 100].includes(sizeParam)) setPageSize(sizeParam);
   }, []);
+
+  /* Doc 35 wave 2 (guidelines P1): write the list state back to the
+   * URL so a refresh or a shared link restores the exact view. Uses
+   * history.replaceState directly — no router navigation, no
+   * re-render, so the fetch effect above cannot loop on it. Params
+   * this page does not own (e.g. ?district= from palette links) are
+   * preserved untouched; default values are omitted to keep URLs
+   * short. The first run is skipped: on mount the URL is the SOURCE
+   * (the read effect above), not something to overwrite with the
+   * not-yet-applied defaults. */
+  const urlSyncArmed = useRef(false);
+  useEffect(() => {
+    if (!urlSyncArmed.current) {
+      urlSyncArmed.current = true;
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const put = (key: string, value: string | null) => {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    };
+    put("status", filter !== "ALL" ? filter : null);
+    put("stage", stageFilter !== "" ? stageFilter : null);
+    put("q", debouncedSearch.trim() !== "" ? debouncedSearch.trim() : null);
+    // The mount read accepts ?search= as a legacy alias for q; once
+    // this effect owns the URL, drop the alias so it cannot resurrect
+    // a cleared search on the next refresh.
+    params.delete("search");
+    put("view", view !== "table" ? view : null);
+    put("page", page > 1 ? String(page) : null);
+    put("pageSize", pageSize !== 25 ? String(pageSize) : null);
+    const qs = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      qs ? `${window.location.pathname}?${qs}` : window.location.pathname,
+    );
+  }, [filter, stageFilter, debouncedSearch, view, page, pageSize]);
 
   /* List v2: `orders` IS the current page. Filtering, searching,
    * counting and sorting all happened on the server — no client-side
@@ -482,7 +531,7 @@ export default function AdminOrdersPage() {
                     type="button"
                     onClick={() => setView(v)}
                     aria-pressed={view === v}
-                    className={`min-h-[36px] rounded-lg px-3.5 text-small font-semibold transition duration-fast ease-smooth ${
+                    className={`min-h-[44px] rounded-lg px-3.5 text-small font-semibold transition duration-fast ease-smooth sm:min-h-[36px] ${
                       view === v ? "bg-card text-brand-700 shadow-sm" : "text-text-muted hover:text-text-main"
                     } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
                   >
@@ -498,7 +547,7 @@ export default function AdminOrdersPage() {
                       type="button"
                       onClick={() => setDensity(d)}
                       aria-pressed={density === d}
-                      className={`min-h-[36px] rounded-lg px-3 text-small font-semibold transition duration-fast ease-smooth ${
+                      className={`min-h-[44px] rounded-lg px-3 text-small font-semibold transition duration-fast ease-smooth sm:min-h-[36px] ${
                         density === d ? "bg-card text-brand-700 shadow-sm" : "text-text-muted hover:text-text-main"
                       } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
                     >
@@ -569,7 +618,7 @@ export default function AdminOrdersPage() {
                   id="orders-stage-filter"
                   value={stageFilter}
                   onChange={(e) => { setStageFilter(e.target.value); setPage(1); }}
-                  className="min-h-[36px] rounded-xl border border-border bg-card px-2.5 text-small font-medium text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                  className="min-h-[44px] rounded-xl border border-border bg-card px-2.5 text-small font-medium text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 sm:min-h-[36px]"
                 >
                   <option value="">{s.lpAllStages}</option>
                   {stageDefs.map((sd) => (
@@ -946,7 +995,7 @@ export default function AdminOrdersPage() {
                 id="orders-page-size"
                 value={pageSize}
                 onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-                className="rounded-xl border border-border bg-card px-2 py-1.5 text-small outline-none focus:border-brand-ink"
+                className="min-h-[44px] rounded-xl border border-border bg-card px-2 py-1.5 text-small outline-none focus:border-brand-ink sm:min-h-[36px]"
               >
                 {[25, 50, 100].map((n) => (
                   <option key={n} value={n}>{n}</option>

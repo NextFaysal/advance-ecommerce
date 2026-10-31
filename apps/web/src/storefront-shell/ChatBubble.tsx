@@ -30,7 +30,7 @@ export function ChatBubble({
       {isOpen && (
         <div className="mb-3 w-72 sm:w-80 overflow-hidden rounded-2xl border border-border/80 bg-card shadow-2xl transition-all duration-200 animate-in fade-in slide-in-from-bottom-4">
           {/* Header */}
-          <div className="brand-gradient p-4 text-white">
+          <div className="bg-primary p-4 text-white">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 {logoUrl ? (

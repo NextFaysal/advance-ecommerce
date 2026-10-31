@@ -46,10 +46,27 @@ export interface DashboardData {
   /** All-time (non-deleted) order counts keyed by status. */
   countsByStatus: Partial<Record<OrderStatus, number>>;
   pendingCount: number;
+  /** Orders in CONFIRMED / PROCESSING / PACKED with no live Shipment
+   *  row yet — the "to ship" work queue (Doc 35 wave 1). */
+  toShipCount: number;
+  /** Payment rows with status FAILED, all-time like the other pending
+   *  counts on this card (Doc 35 wave 1). */
+  failedPaymentsCount: number;
   /** ManualTrxSubmission rows still awaiting review (persisted source). */
   pendingTrxReviews: number;
   recentOrders: DashboardRecentOrder[];
-  lowStock: (LowStockRow & { warehouseName: string })[];
+  /** Low-stock rows carry the product/variant NAMES (doc 35 wave 3):
+   *  the page used to render the raw variantId as the product name,
+   *  which an owner cannot act on. `variantLabel` is the attribute
+   *  summary ("Size: L, Color: Red"), empty for attribute-less
+   *  variants; the ID is demoted to a muted suffix on screen. */
+  lowStock: (LowStockRow & {
+    warehouseName: string;
+    productTitleBn: string;
+    productTitleEn: string;
+    variantSku: string;
+    variantLabel: string;
+  })[];
   lowStockThreshold: number;
 }
 
@@ -68,7 +85,10 @@ export interface DashboardData {
 const DASHBOARD_CACHE_TTL_SECONDS = 30;
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const cacheKey = `admin:dashboard:v1:${todayInDhaka()}`;
+  // Shape changed in doc 35 wave 3 (low-stock rows gained product /
+  // variant names) — v3 so a stale v2 entry is never parsed into the
+  // new shape.
+  const cacheKey = `admin:dashboard:v3:${todayInDhaka()}`;
   try {
     const cached = await getCachedValue(cacheKey);
     if (cached !== null) {
@@ -100,7 +120,7 @@ async function computeDashboardData(): Promise<DashboardData> {
   // (fetchSalesRows keeps its internal orders -> refunds order — a
   // true dependency.) Low stock comes from listLowStockDb (A4),
   // which loads only the below-threshold variants' rows.
-  const [rows, grouped, [pendingTrxReviews, recent, lowStockRead, warehouses]] =
+  const [rows, grouped, [pendingTrxReviews, toShipCount, failedPaymentsCount, recent, lowStockRead, warehouses]] =
     await Promise.all([
       fetchSalesRows(range),
       prisma.order.groupBy({
@@ -110,6 +130,20 @@ async function computeDashboardData(): Promise<DashboardData> {
       }),
       Promise.all([
         prisma.manualTrxSubmission.count({ where: { status: "PENDING" } }),
+        // To ship: fulfilment-ready orders with no live booking yet.
+        // The Order.shipments relation is the real link; soft-deleted
+        // shipments do not count as a booking.
+        prisma.order.count({
+          where: {
+            deletedAt: null,
+            status: { in: ["CONFIRMED", "PROCESSING", "PACKED"] },
+            shipments: { none: { deletedAt: null } },
+          },
+        }),
+        // Failed payments: Payment.status is the canonical field
+        // (PaymentStatus.FAILED). All-time, matching pendingCount and
+        // pendingTrxReviews, which also carry no time window.
+        prisma.payment.count({ where: { status: "FAILED", deletedAt: null } }),
         prisma.order.findMany({
           where: { deletedAt: null },
           orderBy: { createdAt: "desc" },
@@ -188,6 +222,40 @@ async function computeDashboardData(): Promise<DashboardData> {
     .filter((r) => r.isLow)
     .sort((a, b) => a.quantityAvailable - b.quantityAvailable);
 
+  // Doc 35 wave 3: resolve the names behind the variant IDs. One
+  // batched lookup for just the low-stock variants (a handful of
+  // rows); a variant deleted since its inventory rows were written
+  // falls back to empty titles and the page renders its SKU/ID.
+  const lowStockVariantIds = [...new Set(lowStock.map((r) => r.variantId))];
+  const lowStockVariants = lowStockVariantIds.length
+    ? await prisma.productVariant.findMany({
+        where: { id: { in: lowStockVariantIds } },
+        select: {
+          id: true,
+          sku: true,
+          attributes: true,
+          product: { select: { titleBn: true, titleEn: true } },
+        },
+      })
+    : [];
+  const variantInfo = new Map(lowStockVariants.map((v) => [v.id, v]));
+  const lowStockNamed = lowStock.map((r) => {
+    const v = variantInfo.get(r.variantId);
+    const attrs =
+      v && v.attributes && typeof v.attributes === "object" && !Array.isArray(v.attributes)
+        ? (v.attributes as Record<string, unknown>)
+        : {};
+    return {
+      ...r,
+      productTitleBn: v?.product.titleBn ?? "",
+      productTitleEn: v?.product.titleEn ?? "",
+      variantSku: v?.sku ?? "",
+      variantLabel: Object.entries(attrs)
+        .map(([k, val]) => `${k}: ${String(val)}`)
+        .join(", "),
+    };
+  });
+
   return {
     range,
     totals,
@@ -196,9 +264,11 @@ async function computeDashboardData(): Promise<DashboardData> {
     week: { revenuePoisha: weekTotals.revenuePoisha, orders: weekTotals.orders },
     countsByStatus,
     pendingCount: countsByStatus.PENDING ?? 0,
+    toShipCount,
+    failedPaymentsCount,
     pendingTrxReviews,
     recentOrders: recent.map((o) => ({ ...o, status: o.status as OrderStatus })),
-    lowStock,
+    lowStock: lowStockNamed,
     lowStockThreshold: LOW_STOCK_THRESHOLD,
   };
 }

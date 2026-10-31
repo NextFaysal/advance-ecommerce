@@ -71,10 +71,10 @@ export function DefaultLanguageCard({ initial, dbReady }: DefaultLanguageCardPro
 
   return (
     <section className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-card">
-      <div className="brand-gradient h-1.5 w-full" aria-hidden="true" />
+      <div className="bg-brand-600 h-1.5 w-full" aria-hidden="true" />
       <div className="p-5">
         <div className="flex items-center gap-3">
-          <span aria-hidden="true" className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
+          <span aria-hidden="true" className="bg-brand-soft flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-brand-ink shadow-md">
             <Icon name="globe" size={20} />
           </span>
           <h2 className="font-display text-base font-semibold text-text-main">ডিফল্ট ভাষা (Default Language)</h2>
@@ -104,7 +104,7 @@ export function DefaultLanguageCard({ initial, dbReady }: DefaultLanguageCardPro
                   aria-pressed={option === value}
                   disabled={saving}
                   className={`min-h-[36px] rounded-full px-4 text-sm font-medium transition motion-fast ${
-                    option === value ? "brand-gradient text-white shadow" : "text-text-muted hover:text-text-main"
+                    option === value ? "bg-brand-600 text-white shadow" : "text-text-muted hover:text-text-main"
                   }`}
                 >
                   {LOCALE_SELF_NAMES[option]}

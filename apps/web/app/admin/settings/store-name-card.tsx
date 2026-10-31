@@ -140,10 +140,10 @@ export function StoreNameCard({
 
   return (
     <section className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-card">
-      <div className="brand-gradient h-1.5 w-full" aria-hidden="true" />
+      <div className="bg-brand-600 h-1.5 w-full" aria-hidden="true" />
       <div className="p-5 sm:p-6">
         <div className="flex items-center gap-3">
-          <span aria-hidden="true" className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
+          <span aria-hidden="true" className="bg-brand-soft flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-brand-ink shadow-md">
             <Icon name="store" size={20} />
           </span>
           <div>

@@ -37,7 +37,7 @@ export function LanguageSwitcher({ className = "" }: { className?: string }) {
           aria-pressed={option === locale}
           className={`min-h-[32px] rounded-full px-3 font-medium transition motion-fast ${
             option === locale
-              ? "brand-gradient text-white shadow"
+              ? "bg-brand-600 text-white shadow"
               : "text-text-muted hover:text-text-main"
           }`}
         >

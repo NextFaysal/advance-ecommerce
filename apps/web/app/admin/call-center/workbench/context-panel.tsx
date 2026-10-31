@@ -149,7 +149,7 @@ export function Customer360Panel({
           <button
             type="button"
             onClick={() => setReloadKey((k) => k + 1)}
-            className="brand-gradient mt-2 rounded-xl px-3 py-1.5 text-sm font-medium text-white shadow-glow hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+            className="bg-brand-600 mt-2 rounded-xl px-3 py-1.5 text-sm font-medium text-white shadow-md hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             {s.tryAgain}
           </button>

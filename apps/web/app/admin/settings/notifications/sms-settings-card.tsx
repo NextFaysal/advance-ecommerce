@@ -423,8 +423,10 @@ export function SmsSettingsCard({ initial, dbReady }: SmsSettingsCardProps) {
             type="button"
             onClick={() => void handleSave()}
             disabled={saving}
-            className="brand-gradient inline-flex min-h-[44px] items-center rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-busy={saving || undefined}
+            className="brand-gradient inline-flex min-h-[44px] items-center gap-2 rounded-md px-5 text-sm font-semibold text-white shadow-md transition motion-fast hover:shadow-lift hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
           >
+            {saving ? <Icon name="spinner" size={16} className="motion-safe:animate-spin" /> : null}
             {saving ? s.saving : s.saveSettings}
           </button>
         </div>

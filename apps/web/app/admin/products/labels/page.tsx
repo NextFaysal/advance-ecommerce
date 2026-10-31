@@ -33,9 +33,9 @@ export default async function ProductLabelsPage() {
       />
       {!enabled ? (
         <Card className="overflow-hidden">
-          <div className="brand-gradient -mx-5 -mt-5 mb-5 h-1.5" aria-hidden="true" />
+          <div className="bg-brand-600 -mx-5 -mt-5 mb-5 h-1.5" aria-hidden="true" />
           <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-            <span aria-hidden="true" className="brand-gradient flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-white shadow-md">
+            <span aria-hidden="true" className="bg-brand-soft flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-brand-ink shadow-md">
               <Icon name="shield" size={26} />
             </span>
             <p role="status" className="text-sm leading-relaxed">

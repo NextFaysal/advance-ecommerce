@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 
 function BrandPanel({ welcome, text }: { welcome: string; text: string }) {
   return (
-    <aside className="brand-gradient relative hidden w-[44%] flex-col justify-between overflow-hidden p-10 text-white lg:flex">
+    <aside className="bg-brand-600 relative hidden w-[44%] flex-col justify-between overflow-hidden p-10 text-white lg:flex">
       <div className="flex items-center gap-3">
         <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/20 text-xl font-extrabold backdrop-blur">
           A

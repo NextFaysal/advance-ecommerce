@@ -299,7 +299,7 @@ export default function ProductImportPage() {
                   state === "done"
                     ? "bg-success-solid text-white"
                     : state === "active"
-                      ? "brand-gradient text-white shadow-md"
+                      ? "bg-brand-600 text-white shadow-md"
                       : "border border-border bg-card text-text-subtle"
                 }`}
               >
@@ -577,7 +577,7 @@ export default function ProductImportPage() {
           <div className="mt-4 flex flex-wrap gap-2">
             <Link
               href="/admin/products"
-              className="brand-gradient inline-flex min-h-[44px] items-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:shadow-lift hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+              className="bg-brand-600 inline-flex min-h-[44px] items-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:shadow-lift hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
             >
               {s.impGoList}
             </Link>

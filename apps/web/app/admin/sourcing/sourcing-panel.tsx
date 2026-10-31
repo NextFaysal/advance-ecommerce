@@ -186,9 +186,9 @@ export function SourcingPanel() {
   return (
     <div className="space-y-4">
       <Card className="overflow-hidden">
-        <div className="brand-gradient -mx-5 -mt-5 mb-5 h-1.5" aria-hidden="true" />
+        <div className="bg-brand-600 -mx-5 -mt-5 mb-5 h-1.5" aria-hidden="true" />
         <div className="flex items-center gap-3">
-          <span aria-hidden="true" className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
+          <span aria-hidden="true" className="bg-brand-soft flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-brand-ink shadow-md">
             <Icon name="store" size={20} />
           </span>
           <div className="min-w-0">
@@ -326,7 +326,7 @@ export function SourcingPanel() {
                       <span
                         aria-hidden="true"
                         className={`absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full text-white shadow ${
-                          picked ? "brand-gradient" : "bg-black/50"
+                          picked ? "bg-brand-600" : "bg-black/50"
                         }`}
                       >
                         <Icon name={picked ? "check" : "minus"} size={13} />

@@ -51,7 +51,7 @@ export default async function EditProductPage({
           </span>
           <Link
             href="/admin/products"
-            className="brand-gradient mt-5 inline-flex min-h-[44px] items-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+            className="bg-brand-600 mt-5 inline-flex min-h-[44px] items-center rounded-xl px-5 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
           >
             {s.backToList}
           </Link>

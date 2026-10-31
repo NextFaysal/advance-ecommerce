@@ -107,7 +107,7 @@ function VisualSlot({
             imgClassName="transition duration-300 group-hover:scale-[1.04]"
           />
         ) : (
-          <span aria-hidden="true" className="brand-gradient absolute inset-0" />
+          <span aria-hidden="true" className="bg-primary absolute inset-0" />
         )}
         <span aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
         <span className="absolute inset-x-0 bottom-0 block p-4">
@@ -122,7 +122,7 @@ function VisualSlot({
     );
   }
   return (
-    <div aria-hidden="true" className="brand-gradient relative hidden overflow-hidden rounded-xl opacity-90 lg:block">
+    <div aria-hidden="true" className="bg-primary relative hidden overflow-hidden rounded-xl opacity-90 lg:block">
       <span className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/15" />
       <span className="absolute -bottom-12 -left-6 h-48 w-48 rounded-full bg-white/10" />
     </div>

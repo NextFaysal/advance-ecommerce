@@ -151,7 +151,7 @@ export default function AddressManager({ addresses }: { addresses: AccountAddres
             <input id="addr-line" className={inputCls} value={form.addressLine} onChange={(e) => set("addressLine", e.target.value)} required placeholder="বাসা/হোল্ডিং, রোড, এলাকা" />
           </div>
           <label className="flex items-center gap-2 text-sm text-text-main">
-            <input type="checkbox" className="h-4 w-4 rounded border-border accent-[#4F46E5]" checked={form.isDefault} onChange={(e) => set("isDefault", e.target.checked)} />
+            <input type="checkbox" className="h-4 w-4 rounded border-border accent-brand-600" checked={form.isDefault} onChange={(e) => set("isDefault", e.target.checked)} />
             এটিকে ডিফল্ট ঠিকানা করুন
           </label>
           <div className="flex gap-2">

@@ -1,32 +1,42 @@
 import type { ReactNode } from "react";
+import { PageHeader as ShellPageHeader } from "@/admin-shell/PageHeader";
 
 /**
- * PageHeader (Design System v4, doc 31 D3) — editorial heading system:
- * optional brand eyebrow (or breadcrumb above), display-type title at
- * the h1 scale, muted description, actions right. Kept style-consistent
- * with the admin shell's own PageHeader (doc 31 D2). Optional `eyebrow`
- * prop; v1 props unchanged.
+ * PageHeader — THE admin page-heading system (doc 35 wave 3).
+ *
+ * This module used to be a second, competing implementation (h1-scale
+ * title + optional `section-eyebrow`). The codebase now has exactly
+ * one renderer: the admin shell's PageHeader (doc 31 D2, text-page-title
+ * scale). This file remains only as a props-compatible delegate so the
+ * ~54 existing call sites keep compiling and rendering identically to
+ * the ~29 shell call sites:
+ *
+ *   title       → title
+ *   description → subtitle
+ *   breadcrumb  → a one-crumb breadcrumb trail (plain string in,
+ *                 shell crumb out; pass `breadcrumbLabel` through the
+ *                 shell component directly when an aria-label is needed)
+ *   actions     → actions
+ *
+ * The `eyebrow` prop is REMOVED, not deprecated: no call site passed
+ * it (verified by grep at wave 3), and the eyebrow pattern is a Taste
+ * gate fail. New pages should import PageHeader from
+ * "@/admin-shell/PageHeader" directly.
  */
-export function PageHeader({ title, description, breadcrumb, eyebrow, actions }: {
+export function PageHeader({ title, description, breadcrumb, actions, className }: {
   title: string;
   description?: string;
   breadcrumb?: string;
-  eyebrow?: string;
   actions?: ReactNode;
+  className?: string;
 }) {
   return (
-    <header className="mb-6">
-      {breadcrumb ? (
-        <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-text-subtle">{breadcrumb}</p>
-      ) : null}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          {eyebrow ? <p className="section-eyebrow mb-1">{eyebrow}</p> : null}
-          <h1 className="font-display text-h1 text-text-main">{title}</h1>
-          {description ? <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-text-muted">{description}</p> : null}
-        </div>
-        {actions ? <div className="flex flex-wrap items-center gap-2 pt-1">{actions}</div> : null}
-      </div>
-    </header>
+    <ShellPageHeader
+      title={title}
+      subtitle={description}
+      breadcrumbs={breadcrumb ? [{ label: breadcrumb }] : undefined}
+      actions={actions}
+      className={className}
+    />
   );
 }

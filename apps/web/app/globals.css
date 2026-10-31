@@ -13,6 +13,9 @@
 
 /* D0 tokens — Part II wins on conflict. No component may use a hex/spacing/shadow outside these tokens. */
 :root {
+  /* Doc 35 wave 2: native scrollbars / selects / form controls follow
+     the theme instead of rendering light inside dark mode. */
+  color-scheme: light;
   --background: 230 60% 98%;
   --foreground: 238 28% 16%;
   --card: 0 0% 100%;
@@ -103,6 +106,8 @@
 }
 
 .dark {
+  /* Doc 35 wave 2: see the :root note — native controls go dark too. */
+  color-scheme: dark;
   --background: 236 37% 9%;
   --foreground: 236 100% 96%;
   --card: 238 33% 14%;

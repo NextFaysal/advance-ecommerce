@@ -228,7 +228,7 @@ export function FreeShippingProgress({
       >
         <div
           aria-hidden="true"
-          className="brand-gradient h-full rounded-full transition-all duration-500 ease-out"
+          className="bg-primary h-full rounded-full transition-all duration-500 ease-out"
           style={{ width: `${pct}%` }}
         />
       </div>

@@ -353,7 +353,7 @@ export function ColumnPicker({
                   type="checkbox"
                   checked={!hidden.includes(c.key)}
                   onChange={() => onToggle(c.key)}
-                  className="h-4 w-4 rounded accent-[#4F46E5]"
+                  className="h-4 w-4 rounded accent-brand-600"
                 />
                 {c.label}
               </label>

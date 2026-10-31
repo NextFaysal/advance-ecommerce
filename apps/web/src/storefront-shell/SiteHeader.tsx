@@ -424,8 +424,8 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", logoUrl, c
 
   return (
     <>
-      {/* Announcement bar — brand gradient, scrolls away (not sticky) */}
-      <div className="brand-gradient text-white">
+      {/* Announcement bar — solid brand, scrolls away (not sticky) */}
+      <div className="bg-primary text-white">
         <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-4 py-2 text-xs sm:px-6">
           <p className="min-w-0 truncate font-medium">{s.announcement}</p>
           <span className="hidden shrink-0 items-center gap-4 sm:flex">
@@ -485,7 +485,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", logoUrl, c
               className="flex h-11 w-full items-center gap-2 rounded-full border border-border bg-surface-2 pl-4 pr-1.5 text-sm text-text-subtle sm:hidden"
             >
               <span className="min-w-0 flex-1 truncate text-left">{t.searchPlaceholder}</span>
-              <span className="brand-gradient flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white">
+              <span className="bg-primary flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white">
                 <SearchIcon />
               </span>
             </button>
@@ -519,7 +519,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", logoUrl, c
                 <button
                   type="submit"
                   aria-label={t.search}
-                  className="brand-gradient absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:opacity-90"
+                  className="bg-primary absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:opacity-90"
                 >
                   <SearchIcon />
                 </button>
@@ -648,7 +648,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", logoUrl, c
                 onKeyDown={(e) => {
                   if (e.key === "Escape") setMegaOpen(false);
                 }}
-                className="brand-gradient flex min-h-[44px] items-center gap-2 rounded-lg px-4 text-sm font-bold text-white shadow-sm transition hover:opacity-90"
+                className="bg-primary flex min-h-[44px] items-center gap-2 rounded-lg px-4 text-sm font-bold text-white shadow-sm transition hover:opacity-90"
               >
                 <GridIcon />
                 {s.allCategories}
@@ -784,7 +784,7 @@ export default function SiteHeader({ brandName = "Advance Ecommerce", logoUrl, c
                 <button
                   type="submit"
                   aria-label={t.search}
-                  className="brand-gradient absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-full text-white transition hover:opacity-90"
+                  className="bg-primary absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-full text-white transition hover:opacity-90"
                 >
                   <SearchIcon />
                 </button>

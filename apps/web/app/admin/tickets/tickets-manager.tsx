@@ -231,7 +231,7 @@ export function TicketsManager() {
             onClick={() => setTab(tb.key)}
             className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
               tab === tb.key
-                ? "brand-gradient text-white shadow"
+                ? "bg-brand-600 text-white shadow"
                 : "border border-border bg-card text-text-muted hover:text-text-main"
             }`}
           >

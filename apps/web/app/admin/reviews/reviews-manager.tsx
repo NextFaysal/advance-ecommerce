@@ -147,7 +147,7 @@ export function ReviewsManager() {
               onClick={() => setTab(t.key)}
               className={`rounded-xl px-4 py-2 text-sm font-bold shadow-sm transition ${
                 active
-                  ? "brand-gradient text-white"
+                  ? "bg-brand-600 text-white"
                   : "border border-border bg-card text-text-main hover:bg-surface-2"
               }`}
             >

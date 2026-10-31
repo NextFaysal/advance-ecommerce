@@ -186,7 +186,7 @@ export function GalleryCore({
                 <span
                   aria-hidden="true"
                   className={`h-2 rounded-full transition-all duration-300 ${
-                    i === selected ? "brand-gradient w-6" : "w-2 bg-border"
+                    i === selected ? "bg-primary w-6" : "w-2 bg-border"
                   }`}
                 />
               </button>

@@ -28,6 +28,7 @@ import {
   startAuthentication,
 } from "@simplewebauthn/browser";
 import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
+import { Icon } from "@/components/ui/icon";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { pick } from "@/i18n/locale";
 import { LOGIN_STRINGS } from "./strings";
@@ -138,6 +139,13 @@ export default function AdminLoginPage() {
 
   async function handleTotp(event: FormEvent) {
     event.preventDefault();
+    // The submit stays enabled for an incomplete code (doc 35 wave 4):
+    // validate here so the page's own error surface can answer instead
+    // of a silently disabled button.
+    if (code.length !== 6) {
+      setMessage(s.errInvalidCode);
+      return;
+    }
     setLoading(true);
     setMessage("");
     try {
@@ -212,6 +220,7 @@ export default function AdminLoginPage() {
                 </label>
                 <input
                   id="identifier"
+                  name="identifier"
                   type="text"
                   autoComplete="username"
                   value={identifier}
@@ -227,6 +236,7 @@ export default function AdminLoginPage() {
                 </label>
                 <input
                   id="password"
+                  name="password"
                   type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   value={password}
@@ -249,8 +259,10 @@ export default function AdminLoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="brand-gradient h-12 w-full rounded-xl text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
+                aria-busy={loading || undefined}
+                className="brand-gradient inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
               >
+                {loading ? <Icon name="spinner" size={16} className="motion-safe:animate-spin" /> : null}
                 {loading ? s.loggingIn : s.login}
               </button>
               {passkeySupported && (
@@ -264,8 +276,10 @@ export default function AdminLoginPage() {
                     type="button"
                     onClick={() => void handlePasskey()}
                     disabled={passkeyBusy}
-                    className="h-12 w-full rounded-xl border border-border bg-bg-app text-sm font-semibold text-text-main transition hover:border-brand-500 disabled:opacity-60"
+                    aria-busy={passkeyBusy || undefined}
+                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-border bg-bg-app text-sm font-semibold text-text-main transition hover:border-brand-500 disabled:opacity-60"
                   >
+                    {passkeyBusy ? <Icon name="spinner" size={16} className="motion-safe:animate-spin" /> : null}
                     {passkeyBusy ? s.passkeyBusy : s.passkeyLogin}
                   </button>
                 </>
@@ -281,21 +295,23 @@ export default function AdminLoginPage() {
                 </label>
                 <input
                   id="code"
+                  name="code"
                   type="text"
                   inputMode="numeric"
                   autoComplete="one-time-code"
                   value={code}
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   required
-                  pattern="\d{6}"
                   className="h-12 w-full rounded-xl border border-border bg-bg-app px-4 text-center text-lg tracking-[0.5em] text-text-main outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
                 />
               </div>
               <button
                 type="submit"
-                disabled={loading || code.length !== 6}
-                className="brand-gradient h-12 w-full rounded-xl text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
+                disabled={loading}
+                aria-busy={loading || undefined}
+                className="brand-gradient inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
               >
+                {loading ? <Icon name="spinner" size={16} className="motion-safe:animate-spin" /> : null}
                 {loading ? s.verifying : s.verify}
               </button>
             </form>

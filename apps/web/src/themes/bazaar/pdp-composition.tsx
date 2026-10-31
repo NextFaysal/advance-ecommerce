@@ -80,7 +80,7 @@ function trustRows(s: BazaarStrings) {
 
 function StarRow({ rating }: { rating: number }) {
   return (
-    <span aria-hidden="true" className="text-[#F59E0B]">
+    <span aria-hidden="true" className="text-amber-500">
       {Array.from({ length: 5 }, (_, i) => (
         <svg
           key={i}

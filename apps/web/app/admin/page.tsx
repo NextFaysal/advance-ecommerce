@@ -26,16 +26,12 @@
 // cycle, string labels) cannot carry.
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { PageHeader } from "@/admin-shell/PageHeader";
+import { Phone } from "@/components/ui/phone";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Money, formatPoisha } from "@/components/ui/money";
-import { CountUp } from "@/components/ui/count-up";
-import { Phone } from "@/components/ui/phone";
 import { StatusBadge, type OrderStatus as BadgeOrderStatus } from "@/components/ui/status-badge";
-import { ADMIN_NAV, isLockedAddOnNow, navItemLabel } from "@/admin-nav/config";
-import { featureFlags } from "@/lib/feature-flags";
-import { ensureDbFeatureFlags } from "@/lib/feature-flags-db";
+import { UI_STRINGS } from "@/components/ui/strings";
 import { AreaChart, Sparkline } from "@/components/ui/chart-kit";
 import { getRequestLocale } from "@/i18n/server";
 import { interpolate, intlLocale, pick, type Locale } from "@/i18n/locale";
@@ -112,9 +108,13 @@ function Icon({ name, className = "h-5 w-5" }: { name: string; className?: strin
   );
 }
 
-function greeting(s: AdminStrings): string {
+function greeting(s: AdminStrings, locale: Locale): string {
+  // Doc 35 wave 3: the hour is read through the ACTIVE locale helper
+  // (intlLocale) instead of a hardcoded "en-GB". The `-u-nu-latn`
+  // extension forces Latin digits so the Number() parse below works
+  // in Bangla too (bn-BD would render Bengali digits and parse NaN).
   const hour = Number(
-    new Intl.DateTimeFormat("en-GB", { hour: "numeric", hour12: false, timeZone: "Asia/Dhaka" }).format(new Date()),
+    new Intl.DateTimeFormat(`${intlLocale(locale)}-u-nu-latn`, { hour: "numeric", hour12: false, timeZone: "Asia/Dhaka" }).format(new Date()),
   );
   if (hour < 5) return s.greetNight;
   if (hour < 12) return s.greetMorning;
@@ -190,18 +190,6 @@ export default async function AdminHome() {
   const s = pick(locale, ADMIN_STRINGS);
   const data = await getDashboardData();
   const { totals } = data;
-  const tiles = ADMIN_NAV.filter((item) => item.id !== "dashboard");
-
-  /* Live add-on lock state for the module tiles below — same
-   * resolution as the admin layout: a tile's lock chip shows only
-   * while its feature flag is actually OFF in the flag store. */
-  await ensureDbFeatureFlags();
-  const offFlags = new Set(
-    ADMIN_NAV.map((item) => item.featureFlag).filter(
-      (key): key is string =>
-        key !== null && !featureFlags.isFeatureEnabled(key),
-    ),
-  );
 
   /* Orders-by-status donut — all-time counts, real data only. */
   const statusEntries = (Object.entries(data.countsByStatus) as [OrderStatus, number][])
@@ -236,10 +224,34 @@ export default async function AdminHome() {
 
   const pendingActions = [
     { label: s.pendingOrdersLabel, count: data.pendingCount, href: "/admin/orders?status=PENDING", icon: "Clock", accent: "bg-warning-soft text-warning-solid" },
+    // The orders list accepts a single ?status= only, so the to-ship
+    // row (three statuses) lands on the worklist itself, where the
+    // status chips carry the per-status counts.
+    { label: s.toShipLabel, count: data.toShipCount, href: "/admin/orders", icon: "Truck", accent: "bg-brand-soft text-brand-ink" },
     { label: s.pendingTrxLabel, count: data.pendingTrxReviews, href: "/admin/payments", icon: "ClipboardCheck", accent: "bg-info-soft text-info-solid" },
+    { label: s.failedPaymentsLabel, count: data.failedPaymentsCount, href: "/admin/payments", icon: "CreditCard", accent: "bg-danger-soft text-danger" },
     { label: s.lowStockItemsLabel, count: data.lowStock.length, href: "/admin/inventory", icon: "TriangleAlert", accent: "bg-danger-soft text-danger" },
   ];
   const pendingTotal = pendingActions.reduce((s, a) => s + a.count, 0);
+
+  /* Donut legend labels (doc 35 wave 3): plain text in the status
+   * colour, NOT full StatusBadge pills — the legend sits next to a
+   * quiet donut and the pill per row was heavier than the data.
+   * Labels come from the same UI dictionary StatusBadge resolves. */
+  const ui = pick(locale, UI_STRINGS);
+  const statusLabels: Record<BadgeOrderStatus, string> = {
+    INCOMPLETE: ui.statusIncomplete,
+    PENDING: ui.statusPending,
+    CONFIRMED: ui.statusConfirmed,
+    PROCESSING: ui.statusProcessing,
+    PACKED: ui.statusPacked,
+    SHIPPED: ui.statusShipped,
+    DELIVERED: ui.statusDelivered,
+    CANCELLED: ui.statusCancelled,
+    FAILED: ui.statusFailed,
+    RETURNED: ui.statusReturned,
+    REFUNDED: ui.statusRefunded,
+  };
 
   return (
     <main>
@@ -249,7 +261,7 @@ export default async function AdminHome() {
         <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 right-40 h-56 w-56 rounded-full bg-white/10" />
         <div className="relative">
           <p className="text-small font-medium text-white/80">{s.heroAdminLabel}</p>
-          <h1 className="mt-1 text-h2">{greeting(s)}!</h1>
+          <h1 className="mt-1 text-h2">{greeting(s, locale)}!</h1>
           <p className="mt-1 max-w-xl text-small leading-relaxed text-white/90">
             {interpolate(s.heroTodaySales, { sales: formatPoisha(data.today.revenuePoisha), orders: data.today.orders })}
           </p>
@@ -270,34 +282,68 @@ export default async function AdminHome() {
         </div>
       </section>
 
-      {/* My attendance (ADV-27) — self-fetching card, own record only. */}
-      <AttendanceCard />
+      {/* Pending actions — Doc 35 wave 1: the to-do card renders
+          directly under the hero, so the day's work is the first
+          thing the owner reaches (on a phone it previously sat below
+          the KPIs and charts). Wave 3 final order: hero → pending
+          actions → KPI row → attendance → charts. */}
+      <Card className="mb-6">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-h3">{s.toDo}</h2>
+          {pendingTotal > 0 ? <Badge tone="warning">{interpolate(s.pendingBadge, { count: pendingTotal })}</Badge> : <Badge tone="success">{s.allGood}</Badge>}
+        </div>
+        <ul className="mt-2 grid grid-cols-1 gap-x-8 md:grid-cols-2 xl:grid-cols-3">
+          {pendingActions.map((a) => (
+            <li key={a.label} className="border-b border-border">
+              <Link href={a.href} className="group flex items-center gap-3 rounded-xl py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
+                <span aria-hidden="true" className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${a.accent}`}>
+                  <Icon name={a.icon} className="h-[18px] w-[18px]" />
+                </span>
+                <span className="min-w-0 flex-1 text-small font-medium leading-snug">{a.label}</span>
+                <span className="tnum text-base font-bold">{a.count}</span>
+                <span aria-hidden="true" className="text-text-subtle transition group-hover:text-brand-600">
+                  <Icon name="ChevronRight" className="h-4 w-4" />
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </Card>
 
-      {/* KPI row */}
+      {/* KPI row — Doc 35 wave 3: values render statically (the
+          CountUp animation was dropped on this Operate screen; an
+          owner's figures should simply be there). The shared CountUp
+          component is untouched and still animates on the storefront. */}
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label={s.totalSales30} value={<CountUp value={totals.revenuePoisha} format="poisha" />} icon="Banknote" accent="bg-brand-soft text-brand-ink" sparkline={<Sparkline data={revenueSpark} color={1} />}>
+        <KpiCard label={s.totalSales30} value={formatPoisha(totals.revenuePoisha)} icon="Banknote" accent="bg-brand-soft text-brand-ink" sparkline={<Sparkline data={revenueSpark} color={1} />}>
           <PeriodStrip items={[
             { label: s.today, value: formatPoisha(data.today.revenuePoisha) },
             { label: s.week, value: formatPoisha(data.week.revenuePoisha) },
           ]} />
         </KpiCard>
-        <KpiCard label={s.orders30} value={<CountUp value={totals.orders} format="plain" />} icon="ShoppingCart" accent="bg-info-soft text-info-solid" sparkline={<Sparkline data={ordersSpark} color={4} />}>
+        <KpiCard label={s.orders30} value={new Intl.NumberFormat(intlLocale(locale)).format(totals.orders)} icon="ShoppingCart" accent="bg-info-soft text-info-solid" sparkline={<Sparkline data={ordersSpark} color={4} />}>
           <PeriodStrip items={[
             { label: s.today, value: interpolate(s.ordersCount, { count: data.today.orders }) },
             { label: s.week, value: interpolate(s.ordersCount, { count: data.week.orders }) },
           ]} />
         </KpiCard>
-        <KpiCard label={s.totalProfit30} value={<CountUp value={totals.grossProfitPoisha} format="poisha" />} icon="TrendingUp" accent="bg-success-soft text-success-solid">
+        <KpiCard label={s.totalProfit30} value={formatPoisha(totals.grossProfitPoisha)} icon="TrendingUp" accent="bg-success-soft text-success-solid">
           <p className="mt-3 border-t border-border pt-3 text-caption text-text-muted">
             {interpolate(s.netAndUnits, { net: formatPoisha(totals.netRevenuePoisha), units: totals.units })}
           </p>
         </KpiCard>
-        <KpiCard label={s.avgOrderValue} value={<CountUp value={aovPoisha} format="poisha" />} icon="Calculator" accent="bg-warning-soft text-warning-solid" sparkline={<Sparkline data={aovSpark} color={2} />}>
+        <KpiCard label={s.avgOrderValue} value={formatPoisha(aovPoisha)} icon="Calculator" accent="bg-warning-soft text-warning-solid" sparkline={<Sparkline data={aovSpark} color={2} />}>
           <p className="mt-3 border-t border-border pt-3 text-caption text-text-muted">
             {interpolate(s.refundAndShipping, { refund: formatPoisha(totals.refundPoisha), shipping: formatPoisha(totals.shippingPoisha) })}
           </p>
         </KpiCard>
       </div>
+
+      {/* My attendance (ADV-27) — self-fetching card, own record only.
+          Doc 35 wave 3: moved BELOW the KPI row — it is staff
+          furniture, not the shop's health, so it no longer outranks
+          the business figures on the owner's home. */}
+      <AttendanceCard />
 
       {/* Bento row 1 — revenue + status donut */}
       <div className="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -309,7 +355,7 @@ export default async function AdminHome() {
                 {interpolate(s.salesChartDesc, { from: data.range.from, to: data.range.to })}
               </p>
             </div>
-            <Link href="/admin/reports" className="flex items-center gap-1 rounded text-small font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
+            <Link href="/admin/reports" className="flex min-h-[24px] items-center gap-1 rounded py-1 text-small font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
               {s.openReport}
               <Icon name="ChevronRight" className="h-4 w-4" />
             </Link>
@@ -377,7 +423,11 @@ export default async function AdminHome() {
                 {donutSegments.map((seg) => (
                   <li key={seg.status} className="flex items-center gap-2 text-small">
                     <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: STATUS_COLORS[seg.status] ?? "rgb(var(--c-chart-1))" }} />
-                    <span className="min-w-0 flex-1">{statusCell(seg.status)}</span>
+                    <span className="min-w-0 flex-1 truncate font-medium" style={{ color: STATUS_COLORS[seg.status] ?? "rgb(var(--c-chart-1))" }}>
+                      {(BADGE_STATUSES as readonly string[]).includes(seg.status)
+                        ? statusLabels[seg.status as BadgeOrderStatus]
+                        : seg.status}
+                    </span>
                     <span className="tnum font-semibold">{seg.n}</span>
                     <span className="tnum w-11 text-right text-caption text-text-subtle">
                       {Math.round(seg.frac * 100)}%
@@ -398,7 +448,7 @@ export default async function AdminHome() {
               <h2 className="text-h3">{s.recentOrders}</h2>
               <p className="mt-0.5 text-caption text-text-muted">{s.recentOrdersDesc}</p>
             </div>
-            <Link href="/admin/orders" className="flex items-center gap-1 rounded text-small font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
+            <Link href="/admin/orders" className="flex min-h-[24px] items-center gap-1 rounded py-1 text-small font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
               {s.allOrders}
               <Icon name="ChevronRight" className="h-4 w-4" />
             </Link>
@@ -442,35 +492,11 @@ export default async function AdminHome() {
         </Card>
 
         <div className="space-y-4">
-          {/* Pending actions */}
-          <Card>
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-h3">{s.toDo}</h2>
-              {pendingTotal > 0 ? <Badge tone="warning">{interpolate(s.pendingBadge, { count: pendingTotal })}</Badge> : <Badge tone="success">{s.allGood}</Badge>}
-            </div>
-            <ul className="mt-2 divide-y divide-border">
-              {pendingActions.map((a) => (
-                <li key={a.label}>
-                  <Link href={a.href} className="group flex items-center gap-3 rounded-xl py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
-                    <span aria-hidden="true" className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${a.accent}`}>
-                      <Icon name={a.icon} className="h-[18px] w-[18px]" />
-                    </span>
-                    <span className="min-w-0 flex-1 text-small font-medium leading-snug">{a.label}</span>
-                    <span className="tnum text-base font-bold">{a.count}</span>
-                    <span aria-hidden="true" className="text-text-subtle transition group-hover:text-brand-600">
-                      <Icon name="ChevronRight" className="h-4 w-4" />
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </Card>
-
           {/* Low stock */}
           <Card>
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-h3">{s.lowStock}</h2>
-              <Link href="/admin/inventory" className="flex items-center gap-1 rounded text-small font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
+              <Link href="/admin/inventory" className="flex min-h-[24px] items-center gap-1 rounded py-1 text-small font-semibold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
                 {s.inventory}
                 <Icon name="ChevronRight" className="h-4 w-4" />
               </Link>
@@ -483,8 +509,23 @@ export default async function AdminHome() {
                 {data.lowStock.map((row) => (
                   <li key={`${row.warehouseId}-${row.variantId}`} className="flex items-center justify-between gap-2 py-3">
                     <div className="min-w-0">
-                      <p className="truncate font-mono text-small">{row.variantId}</p>
-                      <p className="text-caption text-text-muted">{s.warehouseLabel}: {row.warehouseName} · {s.reservedLabel}: {row.quantityReserved}</p>
+                      {/* Doc 35 wave 3: product + variant NAMES lead
+                          (resolved in src/reports/dashboard.ts); the
+                          raw variant ID is demoted to a muted suffix
+                          so the owner can actually act on the row. */}
+                      <p className="truncate text-small font-medium">
+                        {locale === "bn"
+                          ? row.productTitleBn || row.productTitleEn
+                          : row.productTitleEn || row.productTitleBn || row.variantSku || row.variantId}
+                        {row.variantLabel ? (
+                          <span className="text-text-muted"> — {row.variantLabel}</span>
+                        ) : null}
+                      </p>
+                      <p className="truncate text-caption text-text-muted">
+                        {s.warehouseLabel}: {row.warehouseName} · {s.reservedLabel}: {row.quantityReserved}
+                        {row.variantSku ? <> · {row.variantSku}</> : null}
+                        <span className="font-mono text-text-subtle"> · {row.variantId}</span>
+                      </p>
                     </div>
                     <Badge tone={row.quantityAvailable === 0 ? "danger" : "warning"}>
                       <Icon name="TriangleAlert" className="h-3 w-3" />
@@ -498,29 +539,22 @@ export default async function AdminHome() {
         </div>
       </div>
 
-      {/* All modules */}
-      <PageHeader title={s.allModules} subtitle={s.allModulesDesc} />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-        {tiles.map((item) => (
-          <Link key={item.id} href={item.path} className="group block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
-            <Card elevation="lift" className="h-full group-hover:border-brand-300">
-              <div className="flex items-start justify-between gap-2">
-                <span aria-hidden="true" className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-soft text-brand-ink transition duration-fast ease-smooth group-hover:bg-brand-100">
-                  <Icon name={item.icon} className="h-5 w-5" />
-                </span>
-                {isLockedAddOnNow(item, offFlags) ? (
-                  <span className="flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-caption font-semibold text-warning-solid">
-                    <Icon name="Lock" className="h-3 w-3" />
-                    {s.addOn}
-                  </span>
-                ) : null}
-              </div>
-              <p className="mt-3 font-semibold leading-snug">{navItemLabel(item, locale)}</p>
-              <p className="mt-0.5 truncate text-caption text-text-muted">{item.path}</p>
-            </Card>
-          </Link>
-        ))}
-      </div>
+      {/* All modules — Doc 35 wave 3: the ~60-tile duplicate of the
+          sidebar + ⌘K palette is GONE from the home page (it repeated
+          the navigation the shell already carries, captioned with raw
+          URLs, and pushed the day's work below the fold). What
+          remains is one quiet row linking to the dedicated modules
+          page, which keeps the full catalogue + add-on state. */}
+      <Link
+        href="/admin/modules"
+        className="group flex min-h-[44px] items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card px-5 py-3 shadow-xs transition duration-fast ease-smooth hover:border-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+      >
+        <span className="min-w-0">
+          <span className="block truncate text-small font-semibold">{s.allModules}</span>
+          <span className="block truncate text-caption text-text-muted">{s.allModulesDesc}</span>
+        </span>
+        <Icon name="ChevronRight" className="h-4 w-4 shrink-0 text-text-muted transition duration-fast group-hover:text-brand-700" />
+      </Link>
     </main>
   );
 }

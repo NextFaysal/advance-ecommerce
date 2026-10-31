@@ -115,7 +115,10 @@ export function MobileNav({
           className="fixed inset-0 z-50 flex animate-fade-slide-in flex-col bg-card md:hidden"
         >
           <div className="flex h-16 shrink-0 items-center gap-3 border-b border-border px-4">
-            <span aria-hidden="true" className="brand-gradient flex h-9 w-9 items-center justify-center rounded-md text-sm font-bold text-white shadow-glow">
+            {/* Logo mark — one of the three sanctioned brand-gradient
+                uses (hero / primary CTA / logo, doc 35); glow dropped
+                in wave 3. */}
+            <span aria-hidden="true" className="brand-gradient flex h-9 w-9 items-center justify-center rounded-md text-sm font-bold text-white">
               A
             </span>
             <span className="min-w-0 flex-1">
@@ -132,7 +135,7 @@ export function MobileNav({
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 pb-[env(safe-area-inset-bottom)]">
-            <NavGroups groups={groups} pathname={pathname} locale={locale} offFeatureFlags={offFeatureFlags} />
+            <NavGroups groups={groups} pathname={pathname} locale={locale} offFeatureFlags={offFeatureFlags} variant="drawer" />
           </div>
         </div>
       ) : null}

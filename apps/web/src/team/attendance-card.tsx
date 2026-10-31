@@ -14,6 +14,23 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useLocale } from "@/i18n/LocaleProvider";
+import { pick, type Locale } from "@/i18n/locale";
+
+/**
+ * Card chrome strings (doc 30 pattern: `bn` written once, `en` typed
+ * with the mapped type so parity is compile-checked). The status
+ * sentences below still come from the attendance API's own wording
+ * and stay as-is; only the card heading is dictionary-driven.
+ */
+const bn = {
+  heading: "আমার উপস্থিতি",
+};
+type AttendanceCardStrings = { [K in keyof typeof bn]: string };
+const en: AttendanceCardStrings = {
+  heading: "My attendance",
+};
+const ATTENDANCE_CARD_STRINGS: Record<Locale, AttendanceCardStrings> = { bn, en };
 
 interface MyAttendanceData {
   user: { id: string; name: string };
@@ -38,6 +55,8 @@ function hoursText(minutes: number): string {
 }
 
 export function AttendanceCard() {
+  const { locale } = useLocale();
+  const s = pick(locale, ATTENDANCE_CARD_STRINGS);
   const [data, setData] = useState<MyAttendanceData | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -91,7 +110,7 @@ export function AttendanceCard() {
     <Card className="mb-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-h3">আমার উপস্থিতি</h2>
+          <h2 className="text-h3">{s.heading}</h2>
           <p className="mt-1 text-small text-text-subtle">
             {data === null && error === "" && "লোড হচ্ছে…"}
             {error !== "" && error}
@@ -112,7 +131,7 @@ export function AttendanceCard() {
               এই মাসে উপস্থিতি: {data.monthSummary.presentDays} দিন · মোট {hoursText(data.monthSummary.totalMinutes)}
             </p>
           )}
-          {note !== "" && <p className="mt-2 text-small font-medium text-amber-600">{note}</p>}
+          {note !== "" && <p className="mt-2 text-small font-medium text-warning-solid">{note}</p>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {data?.state === "checked_in" ? (

@@ -1,10 +1,12 @@
 import { navItemLabel } from "@/admin-nav/config";
 import { CommandPaletteTrigger } from "@/admin/command-palette-trigger";
+import { QuickCreateMenu } from "./QuickCreateMenu";
 import { pick, type Locale } from "@/i18n/locale";
 import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import { ADMIN_STRINGS } from "@/admin/strings";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { ShellIcon } from "./icons";
+import { ShellIdentity } from "./ShellIdentity";
 import { activeNavItem } from "./nav-utils";
 
 /**
@@ -13,11 +15,26 @@ import { activeNavItem } from "./nav-utils";
  * Server component. Contents (all preserved from the pre-D2 layout,
  * plus the theme toggle the D2 brief adds): mobile brand, breadcrumb
  * (Admin › active section), the ⌘K command-palette trigger, the "+ New"
- * button (unchanged — it carries no menu/links today, so no quick-create
- * menu is invented here), notifications, ThemeToggle, LanguageSwitcher
- * and the admin avatar. An environment chip is deliberately skipped:
- * the sidebar store card already carries the Live status, and a second
- * chip would need data the shell does not have.
+ * quick-create menu, ThemeToggle, LanguageSwitcher and the admin
+ * avatar. An environment chip is deliberately skipped: the sidebar
+ * store card already carries the Live status, and a second chip would
+ * need data the shell does not have.
+ *
+ * Doc 35 wave 1: the "+ New" button was dead (no menu, no action) and
+ * is now the QuickCreateMenu client island. The notifications bell was
+ * also dead — no badge, no panel — and is REMOVED rather than wired:
+ * the only unread source is the inbox, whose sole existing helper
+ * (loadInbox in src/inbox/store.ts) loads every conversation and every
+ * message, far too heavy for a shell that renders on every admin page
+ * and deliberately carries no badge queries. No count is faked; the
+ * bell can return when a cheap unread-count query exists.
+ *
+ * Doc 35 wave 3: the avatar is no longer a hardcoded gradient "N" —
+ * ShellIdentity renders the real signed-in staff member's initials
+ * from their own session. Brand exception (recorded): the only
+ * brand-gradient left in this header is the QuickCreateMenu "+ New"
+ * button, a primary CTA — the gradient is reserved for hero, primary
+ * CTAs and logo marks, nowhere else.
  */
 export function Topbar({ pathname, locale }: { pathname: string; locale: Locale }) {
   const s = pick(locale, ADMIN_STRINGS);
@@ -41,24 +58,16 @@ export function Topbar({ pathname, locale }: { pathname: string; locale: Locale 
         <CommandPaletteTrigger />
       </div>
       <span className="ml-auto flex items-center gap-1.5 lg:ml-0">
-        <button
-          type="button"
-          className="focus-ring brand-gradient flex min-h-[44px] items-center gap-1.5 rounded-md px-3.5 text-sm font-semibold text-white shadow-md transition duration-fast ease-smooth hover:shadow-glow"
-        >
-          <ShellIcon name="Plus" className="h-4 w-4" />
-          <span className="hidden sm:inline">{s.newItem}</span>
-        </button>
-        <button
-          type="button"
-          aria-label={s.notifications}
-          className="focus-ring relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-text-muted transition duration-fast hover:bg-surface-2 hover:text-text-main"
-        >
-          <ShellIcon name="Bell" className="h-5 w-5" />
-        </button>
+        <QuickCreateMenu />
         <ThemeToggle />
         <LanguageSwitcher />
-        <span aria-label={s.adminAvatar} className="brand-gradient ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-white ring-2 ring-brand-100">
-          N
+        <span className="ml-1">
+          <ShellIdentity
+            variant="avatar"
+            fallbackName={s.admin}
+            fallbackDetail={s.sessionActive}
+            avatarLabel={s.adminAvatar}
+          />
         </span>
       </span>
     </header>

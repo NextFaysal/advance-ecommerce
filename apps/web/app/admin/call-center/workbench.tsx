@@ -535,7 +535,7 @@ export function CallCenterWorkbench() {
         <button
           type="button"
           onClick={() => void load()}
-          className="brand-gradient mt-3 rounded-xl px-3 py-1.5 text-sm font-medium text-white shadow-glow hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+          className="bg-brand-600 mt-3 rounded-xl px-3 py-1.5 text-sm font-medium text-white shadow-md hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
           {s.tryAgain}
         </button>
@@ -550,7 +550,7 @@ export function CallCenterWorkbench() {
         <button
           type="button"
           onClick={() => setQueueOpen(true)}
-          className="brand-gradient rounded-xl px-3 py-1.5 text-sm font-medium text-white shadow-glow hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 xl:hidden"
+          className="bg-brand-600 rounded-xl px-3 py-1.5 text-sm font-medium text-white shadow-md hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 xl:hidden"
         >
           {interpolate(s.queueButton, { count: unassignedCount })}
         </button>

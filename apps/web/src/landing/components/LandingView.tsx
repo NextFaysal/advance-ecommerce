@@ -165,7 +165,7 @@ const DESIGN_BG_CLASS: Record<NonNullable<LandingSectionDesign["bg"]>, string> =
   none: "",
   card: "bg-card",
   surface: "bg-surface-2",
-  brand: "brand-gradient text-white",
+  brand: "bg-primary text-white",
   dark: "bg-overlay text-white",
 };
 const DESIGN_PADDING_CLASS: Record<NonNullable<LandingSectionDesign["paddingY"]>, string> = {
@@ -210,7 +210,7 @@ function renderSection(section: LandingViewSection, ctx: SectionRenderContext): 
   switch (section.kind) {
     case "hero":
       return (
-        <section key={section.id} className="brand-gradient rounded-b-2xl px-5 py-10 text-center text-white">
+        <section key={section.id} className="bg-primary rounded-b-2xl px-5 py-10 text-center text-white">
           {section.imageUrl ? (
             <div className="mx-auto mb-6 max-w-xl">
               <StoreImage

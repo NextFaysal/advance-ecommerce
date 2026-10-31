@@ -46,7 +46,7 @@ export function Tabs({
                 role="tab"
                 aria-selected={isActive}
                 onClick={() => setActive(t.id)}
-                className={`flex min-h-[38px] shrink-0 items-center gap-2 rounded-full px-3.5 text-sm font-medium transition duration-base ease-smooth focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 ${
+                className={`flex min-h-[44px] shrink-0 items-center gap-2 rounded-full px-3.5 text-sm font-medium transition duration-base ease-smooth focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 ${
                   isActive
                     ? "bg-surface-raised text-text-main shadow-xs"
                     : "text-text-muted hover:text-text-main"

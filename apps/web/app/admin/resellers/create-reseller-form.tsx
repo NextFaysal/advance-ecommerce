@@ -106,7 +106,7 @@ export function CreateResellerForm() {
             padding: "9px 18px",
             borderRadius: 6,
             border: "none",
-            background: "#4f46e5",
+            background: "rgb(var(--c-brand))",
             color: "#fff",
             fontSize: 14,
             fontWeight: 600,

@@ -148,7 +148,7 @@ export function LabelsPanel() {
       <div className="space-y-4 lg:sticky lg:top-4">
       <Card className="space-y-4">
         <div className="flex items-center gap-3">
-          <span aria-hidden="true" className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-md">
+          <span aria-hidden="true" className="bg-brand-soft flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-brand-ink shadow-md">
             <Icon name="tag" size={20} />
           </span>
           <div className="min-w-0">

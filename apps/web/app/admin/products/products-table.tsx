@@ -72,6 +72,15 @@ function statusMeta(s: ProductsStrings): Record<string, { label: string; tone: "
 }
 const STATUS_FILTERS = ["ALL", "ACTIVE", "DRAFT", "ARCHIVED"] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
+
+/** Doc 35 wave 2 (guidelines P1): the list state (search / status /
+ *  category / page) is restored from the URL on mount and written
+ *  back on every change (see the sync effects in the table), so a
+ *  refresh or shared link restores the exact view. The restore runs
+ *  in a mount effect — the same pattern as the orders list — so the
+ *  prerendered HTML and the first client render agree (no hydration
+ *  mismatch) and the write effect can tell "URL is the source" apart
+ *  from "state changed". */
 const PRODUCT_STATUSES = ["ACTIVE", "DRAFT", "ARCHIVED"] as const;
 
 type ProductSortKey = "title" | "price" | "stock" | "status";
@@ -370,6 +379,56 @@ export function ProductsTable({
     }, 300);
     return () => clearTimeout(t);
   }, [search]);
+
+  // Doc 35 wave 2: restore the list state from the URL once on mount
+  // (?q= / ?status= / ?category= / ?page=). Setting state is all it
+  // takes — the load effect refetches. Values are validated first;
+  // the category slug is trusted as-is (an unknown slug simply
+  // filters to an empty result, same as picking it from the select
+  // before the category list has loaded).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get("q");
+    if (q) setSearch(q);
+    const statusParam = params.get("status");
+    if (statusParam && (STATUS_FILTERS as readonly string[]).includes(statusParam)) {
+      setStatus(statusParam as StatusFilter);
+    }
+    const categoryParam = params.get("category");
+    if (categoryParam) setCategory(categoryParam);
+    const pageParam = Number(params.get("page"));
+    if (Number.isInteger(pageParam) && pageParam > 1) setPage(pageParam);
+  }, []);
+
+  /* Doc 35 wave 2: write the list state back to the URL so a refresh
+   * or a shared link restores the exact view. history.replaceState
+   * directly — no router navigation and no re-render, so the fetch
+   * effects cannot loop on it. Params this table does not own are
+   * preserved; default values are omitted. The first run is skipped:
+   * on mount the URL is the SOURCE (the restore effect above), not
+   * something to overwrite with not-yet-applied defaults. */
+  const urlSyncArmed = useRef(false);
+  useEffect(() => {
+    if (!urlSyncArmed.current) {
+      urlSyncArmed.current = true;
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const put = (key: string, value: string | null) => {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    };
+    put("q", debouncedSearch !== "" ? debouncedSearch : null);
+    put("status", status !== "ALL" ? status : null);
+    put("category", category !== "" ? category : null);
+    put("page", page > 1 ? String(page) : null);
+    const qs = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      qs ? `${window.location.pathname}?${qs}` : window.location.pathname,
+    );
+  }, [debouncedSearch, status, category, page]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -900,7 +959,7 @@ export function ProductsTable({
               onChange={(e) => setSearch(e.target.value)}
               placeholder={s.searchPh}
               aria-label={s.searchAria}
-              className="h-12 w-full rounded-xl border border-border bg-card pl-10 pr-3 text-sm shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15 hover:border-brand-200"
+              className="h-12 w-full rounded-xl border border-border bg-card pl-10 pr-3 text-base shadow-xs outline-none transition duration-base ease-smooth focus:border-brand-ink focus:ring-[3px] focus:ring-brand-ink/15 hover:border-brand-200 sm:text-sm"
             />
           </div>
           <select

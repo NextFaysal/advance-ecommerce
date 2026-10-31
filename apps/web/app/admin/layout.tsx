@@ -75,6 +75,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           palette chunk loads on the first ⌘K / topbar-trigger press,
           which still opens it on that first press. */}
       <AdminCommandPaletteLazy offFeatureFlags={offFeatureFlags} />
+      {/* Doc 35 wave 2 (guidelines P1): skip-to-content — the first
+          focusable element in the shell, visually hidden until it
+          receives keyboard focus, jumping past the sidebar + topbar
+          straight to <main id="main-content"> below. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-xl focus:bg-brand-600 focus:px-4 focus:py-2.5 focus:text-small focus:font-semibold focus:text-white focus:shadow-lift focus:outline-none focus:ring-2 focus:ring-brand-300"
+      >
+        {locale === "bn" ? "মূল কন্টেন্টে যান" : "Skip to main content"}
+      </a>
       {/* Staff presence heartbeat for the current /admin path
           (renders nothing; auth screens returned above, so they
           never heartbeat). */}
@@ -84,7 +94,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         {/* Content column */}
         <div className="flex min-w-0 flex-1 flex-col">
           <Topbar pathname={pathname} locale={locale} />
-          <main className="min-w-0 flex-1 px-4 py-6 pb-24 sm:px-6 md:pb-8">
+          <main id="main-content" className="min-w-0 flex-1 px-4 py-6 pb-24 sm:px-6 md:pb-8">
             <div className="mx-auto w-full max-w-[1440px]">{children}</div>
           </main>
         </div>

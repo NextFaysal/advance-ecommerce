@@ -94,7 +94,7 @@ function StaticPanel() {
   const str = pick(locale, CIRCUIT_STRINGS);
   return (
     <div className="brand-soft-gradient relative block h-full min-h-[260px] w-full overflow-hidden rounded-2xl shadow-card sm:min-h-[340px]">
-      <span aria-hidden="true" className="brand-gradient absolute -right-12 -top-12 h-48 w-48 rounded-full opacity-20" />
+      <span aria-hidden="true" className="bg-accent absolute -right-12 -top-12 h-48 w-48 rounded-full opacity-20" />
       <span aria-hidden="true" className="absolute -bottom-16 -left-10 h-56 w-56 rounded-full bg-primary/10" />
       <span className="absolute inset-x-0 bottom-0 block p-5 sm:p-7">
         <span className="block max-w-lg font-display text-2xl font-extrabold leading-snug text-text-main sm:text-3xl">

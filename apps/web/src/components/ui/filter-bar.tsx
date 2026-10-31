@@ -44,7 +44,7 @@ export function FilterBar({
             type="button"
             aria-label={s.clearSearch}
             onClick={() => { setQuery(""); onSearch?.(""); }}
-            className="shrink-0 rounded-full p-1 text-text-subtle transition duration-fast ease-smooth hover:bg-surface-2 hover:text-text-main"
+            className="-mr-2 flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-text-subtle transition duration-fast ease-smooth hover:bg-surface-2 hover:text-text-main"
           >
             <Icon name="x" size={14} />
           </button>

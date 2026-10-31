@@ -124,7 +124,7 @@ function SectionHeading({
 }
 
 const CATEGORY_TINTS: ReadonlyArray<{ bg: string; fg: string }> = [
-  { bg: "bg-[#EEF2FF]", fg: "text-[#4338CA]" },
+  { bg: "bg-brand-50", fg: "text-brand-700" },
   { bg: "bg-violet-50", fg: "text-violet-700" },
   { bg: "bg-pink-50", fg: "text-pink-700" },
   { bg: "bg-amber-50", fg: "text-amber-700" },
@@ -192,22 +192,22 @@ function HeroVisual({ s }: { s: AuroraStrings }) {
       <div className="absolute -bottom-14 -left-8 h-52 w-52 rounded-full bg-black/10" />
       <div className="relative flex h-full flex-col justify-between gap-4">
         <div className="w-56 rounded-2xl bg-white/95 p-4 shadow-lg">
-          <p className="flex items-center gap-2 text-sm font-bold text-[#1F2037]">
+          <p className="flex items-center gap-2 text-sm font-bold text-text-main">
             <span className="text-primary"><CashIcon size={20} /></span> {s.trustCodTitle}
           </p>
-          <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">{s.heroCodText}</p>
+          <p className="mt-1 text-xs leading-5 text-text-muted">{s.heroCodText}</p>
         </div>
         <div className="ml-auto w-60 rounded-2xl bg-white/95 p-4 shadow-lg">
-          <p className="flex items-center gap-2 text-sm font-bold text-[#1F2037]">
+          <p className="flex items-center gap-2 text-sm font-bold text-text-main">
             <span className="text-primary"><TruckIcon size={20} /></span> {s.heroFastDeliveryTitle}
           </p>
-          <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">{s.heroDeliveryText}</p>
+          <p className="mt-1 text-xs leading-5 text-text-muted">{s.heroDeliveryText}</p>
         </div>
         <div className="w-52 rounded-2xl bg-white/95 p-4 shadow-lg">
-          <p className="flex items-center gap-2 text-sm font-bold text-[#1F2037]">
+          <p className="flex items-center gap-2 text-sm font-bold text-text-main">
             <span className="text-primary"><ShieldIcon size={20} /></span> {s.heroQualityTitle}
           </p>
-          <p className="mt-1 text-xs leading-5 text-[#5B5F7A]">{s.heroQualityText}</p>
+          <p className="mt-1 text-xs leading-5 text-text-muted">{s.heroQualityText}</p>
         </div>
       </div>
     </div>

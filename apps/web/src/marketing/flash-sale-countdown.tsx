@@ -80,7 +80,7 @@ export function FlashSaleCountdown({ title, endsAt, items }: FlashSaleCountdownP
   const placeholder = "––";
 
   return (
-    <section aria-label="ফ্ল্যাশ সেল" className="brand-gradient mt-5 overflow-hidden rounded-3xl text-white shadow-md">
+    <section aria-label="ফ্ল্যাশ সেল" className="bg-primary mt-5 overflow-hidden rounded-3xl text-white shadow-md">
       <div className="flex flex-wrap items-center gap-x-8 gap-y-5 p-6 sm:p-8">
         <div className="min-w-0">
           <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-bold text-brand-700 shadow-sm">

@@ -1813,7 +1813,7 @@ export function ProductEditor({
               ) : null}
               <span
                 aria-hidden="true"
-                className={`brand-gradient absolute inset-x-3 -bottom-px h-[2.5px] rounded-full transition duration-base ease-smooth ${
+                className={`bg-brand-600 absolute inset-x-3 -bottom-px h-[2.5px] rounded-full transition duration-base ease-smooth ${
                   tab === t ? "opacity-100" : "opacity-0"
                 }`}
               />
@@ -2461,7 +2461,7 @@ export function ProductEditor({
                     <span className="flex aspect-[4/3] w-full items-center justify-center border-b border-dashed border-border bg-surface-2/60 text-xs text-text-subtle">{s.mediaNoImage}</span>
                   )}
                   {idx === 0 && (
-                    <span className="brand-gradient absolute left-2.5 top-2.5 rounded-full px-2.5 py-1 text-[11px] font-semibold leading-none text-white shadow-md">
+                    <span className="bg-brand-600 absolute left-2.5 top-2.5 rounded-full px-2.5 py-1 text-[11px] font-semibold leading-none text-white shadow-md">
                       {s.mediaPrimary}
                     </span>
                   )}
@@ -3200,7 +3200,7 @@ export function ProductEditor({
         </div>
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuemin={0} aria-valuemax={QUALITY_CHECKLIST.length} aria-valuenow={QUALITY_CHECKLIST.filter((item) => qualityDone[item.key]).length}>
           <div
-            className="brand-gradient h-full rounded-full transition-all duration-base ease-smooth"
+            className="bg-brand-600 h-full rounded-full transition-all duration-base ease-smooth"
             style={{ width: `${(QUALITY_CHECKLIST.filter((item) => qualityDone[item.key]).length / QUALITY_CHECKLIST.length) * 100}%` }}
           />
         </div>
